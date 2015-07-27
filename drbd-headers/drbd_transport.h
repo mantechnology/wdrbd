@@ -1,6 +1,6 @@
 #ifndef DRBD_TRANSPORT_H
 #define DRBD_TRANSPORT_H
-
+#ifdef _WIN32_CHECK
 #include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/wait.h>
@@ -245,5 +245,5 @@ static inline struct page *page_chain_next(struct page *page)
    commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #define SK_CAN_REUSE   1
 #endif
-
+#endif
 #endif

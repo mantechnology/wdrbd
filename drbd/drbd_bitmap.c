@@ -23,7 +23,9 @@
  */
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
-
+#ifdef _WIN32
+#include "drbd.h"
+#else
 #include <linux/bitops.h>
 #include <linux/vmalloc.h>
 #include <linux/string.h>
@@ -31,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/dynamic_debug.h>
 #include <asm/kmap_types.h>
+#endif
 
 #include "drbd_int.h"
 
@@ -235,7 +238,11 @@ static void bm_store_page_idx(struct page *page, unsigned long idx)
 
 static unsigned long bm_page_to_idx(struct page *page)
 {
+#ifdef _WIN32
+    return (ULONG_PTR)page_private(page) & BM_PAGE_IDX_MASK;
+#else
 	return page_private(page) & BM_PAGE_IDX_MASK;
+#endif
 }
 
 /* As is very unlikely that the same page is under IO from more than one
@@ -311,8 +318,10 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 
 	for (i = 0; i < number; i++) {
 		if (!pages[i]) {
+#ifdef _WIN32_CHECK
 			pr_alert("bm_free_pages tried to free a NULL pointer; i=%lu n=%lu\n",
 				 i, number);
+#endif
 			continue;
 		}
 		__free_page(pages[i]);
@@ -322,10 +331,12 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 
 static void bm_vk_free(void *ptr, int v)
 {
+#ifdef _WIN32_CHECK
 	if (v)
 		vfree(ptr);
 	else
 		kfree(ptr);
+#endif
 }
 
 /*
@@ -352,9 +363,11 @@ static struct page **bm_realloc_pages(struct drbd_bitmap *b, unsigned long want)
 	bytes = sizeof(struct page *)*want;
 	new_pages = kzalloc(bytes, GFP_NOIO | __GFP_NOWARN);
 	if (!new_pages) {
+#ifndef _WIN32
 		new_pages = __vmalloc(bytes,
 				GFP_NOIO | __GFP_HIGHMEM | __GFP_ZERO,
 				PAGE_KERNEL);
+#endif
 		if (!new_pages)
 			return NULL;
 		vmalloced = 1;
@@ -469,6 +482,10 @@ static inline unsigned long bit_to_page_interleaved(struct drbd_bitmap *bitmap,
 #ifdef COMPAT_KMAP_ATOMIC_PAGE_ONLY
 #define ____bm_op(device, bitmap_index, start, end, op, buffer, km_type) \
 	____bm_op(device, bitmap_index, start, end, op, buffer)
+#endif
+
+#ifdef _WIN32
+#define __always_inline __inline
 #endif
 static __always_inline unsigned long
 ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long start, unsigned long end,

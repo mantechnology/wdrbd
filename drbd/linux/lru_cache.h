@@ -28,6 +28,7 @@
 
 #ifdef _WIN32
 #include <stdbool.h>
+#include "drbd_windrv.h"
 #define COMPAT_HAVE_BOOL_TYPE
 #else
 #include <linux/list.h>

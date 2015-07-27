@@ -1,7 +1,9 @@
 #ifndef KREF_DEBUG_H
 #define KREF_DEBUG_H
 
+#ifdef _WIN32_CHECK
 #include <linux/seq_file.h>
+#endif
 
 #ifdef CONFIG_KREF_DEBUG
 
@@ -35,8 +37,17 @@ static inline void kref_debug_put(struct kref_debug_info *debug_info, int holder
 	kref_debug_sub(debug_info, 1, holder_nr);
 }
 #else
+#ifdef _WIN32_CHECK
 struct kref_debug_class {};
 struct kref_debug_info {};
+#else
+struct kref_debug_class {
+    const char *name;
+};
+struct kref_debug_info {
+    const struct kref_debug_class *class;
+};
+#endif
 static inline void initialize_kref_debugging(void)
 {}
 #define kref_debug_init(D, K, C) __kref_debug_init(D, K)

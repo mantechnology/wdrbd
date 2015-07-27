@@ -773,11 +773,7 @@ extern int atomic_read(const atomic_t *v);
 extern int atomic_xchg(atomic_t *v, int n);
 
 // from rcu_list.h
-#define prefetch(_addr)		(_addr)
-#define list_for_each_entry_rcu(type, pos, head, member) \
-	for (pos = list_entry_rcu((head)->next, type, member); \
-		prefetch(pos->member.next), &pos->member != (head); \
-		pos = list_entry_rcu(pos->member.next, type, member))
+
 
 static __inline void init_waitqueue_head(wait_queue_head_t *q)
 {	
@@ -866,8 +862,8 @@ extern void kobject_get(struct kobject *kobj);
 extern void kobject_del(struct kobject *kobj);
 
 extern void * kcalloc(int e_count, int x, int flag, ULONG Tag);
-extern void * kzalloc(int x, int flag, ULONG Tag);
-extern void * kmalloc(int size, int flag, ULONG Tag);
+extern void * kzalloc(int x, int flag);
+extern void * kmalloc(int size, int flag);
 extern void kfree(void * x);
 extern void * kmem_cache_alloc(void * cache, int flag, ULONG Tag);
 extern void kmem_cache_destroy(struct kmem_cache *s);

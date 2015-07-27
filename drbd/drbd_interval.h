@@ -1,10 +1,14 @@
 #ifndef __DRBD_INTERVAL_H
 #define __DRBD_INTERVAL_H
 
+#ifdef _WIN32
+#include "types.h"
+#include "rbtree.h"
+#else
 #include <linux/version.h>
 #include <linux/types.h>
 #include <linux/rbtree.h>
-
+#endif
 /* Compatibility code for 2.6.16 (SLES10) */
 #ifndef rb_parent
 #define rb_parent(r)   ((r)->rb_parent)

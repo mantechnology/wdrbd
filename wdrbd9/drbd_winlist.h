@@ -97,21 +97,32 @@ static __inline void list_splice_init(struct list_head *list, struct list_head *
 	}
 }
 
+static __inline int list_empty_careful(const struct list_head *head)
+{
+     struct list_head *next = head->next;
+     return (next == head) && (next == head->prev);
+}
+
+#ifdef _WIN32_CHECK
+#define prefetch(_addr)		(_addr)
+#define list_for_each_entry_rcu(type, pos, head, member) \
+	for (pos = list_entry_rcu((head)->next, type, member); \
+		prefetch(pos->member.next), &pos->member != (head); \
+		pos = list_entry_rcu(pos->member.next, type, member))
+#else
+#define list_for_each_entry_rcu(pos, head, member) \
+	for (;;)
+#endif
+
 #define list_for_each_safe(pos, n, head) \
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 		pos = n, n = pos->next)
 
-#ifndef _WIN32
-	#define list_for_each_entry(pos, head, member)				\
-		for (pos = list_entry((head)->next, typeof(*pos), member);	\
-			 &pos->member != (head); 	\
-			 pos = list_entry(pos->member.next, typeof(*pos), member))
-#else
-	#define list_for_each_entry(type, pos, head, member) \
-		for (pos = list_entry((head)->next, type, member);	\
-			 &pos->member != (head); 	\
-			 pos = list_entry(pos->member.next, type, member))
-#endif
+#define list_for_each_entry(type, pos, head, member) \
+	for (pos = list_entry((head)->next, type, member);	\
+			&pos->member != (head); 	\
+			pos = list_entry(pos->member.next, type, member))
+
 
 #ifndef _WIN32
 	#define list_for_each_entry_safe_from(pos, n, head, member) 			\

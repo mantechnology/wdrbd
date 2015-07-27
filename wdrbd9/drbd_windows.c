@@ -313,9 +313,9 @@ int atomic_read(const atomic_t *v)
 	return InterlockedAnd((atomic_t *)v, 0xffffffff);
 }
 
-void * kmalloc(int size, int flag, ULONG Tag)
+void * kmalloc(int size, int flag)
 {
-	return kcalloc(1, size, flag, Tag);
+	return kcalloc(1, size, flag, 'lamk');
 }
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
@@ -323,13 +323,13 @@ void * kcalloc(int size, int count, int flag, ULONG Tag)
 	return kzalloc(size * count, 0, Tag);
 }
 
-void * kzalloc(int size, int flag, ULONG Tag)
+void * kzalloc(int size, int flag)
 {
 	void *mem;
     static int fail_count = 0; // DV
 
 retry: // DV
-	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
+	mem = ExAllocatePoolWithTag(NonPagedPool, size, 'lazk');
 	if (!mem)
 	{
         WDRBD_WARN("kzalloc: no memory! fail_count=%d\n", fail_count); 
@@ -730,12 +730,6 @@ void complete_all(struct completion *c)
 static  void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 {
 	list_add(&new->task_list, &head->task_list);
-}
-
-static inline int list_empty_careful(const struct list_head *head)
-{
-     struct list_head *next = head->next;
-     return (next == head) && (next == head->prev);
 }
 
 long schedule(wait_queue_head_t *q, long timeout, char *func, int line) 

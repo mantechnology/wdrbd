@@ -1,6 +1,8 @@
 #ifndef __DRBD_WINGENL_H__
 #define __DRBD_WINGENL_H__
 
+#define BLKSSZGET			1
+
 #define NETLINK_PORT			5678
 
 #define NLM_F_REQUEST			1       /* It is request message.       */

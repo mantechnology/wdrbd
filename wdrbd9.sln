@@ -55,9 +55,9 @@ Global
 		Win8.1 Release|x64 = Win8.1 Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.ActiveCfg = Win8.1 Debug|Win32
-		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.Build.0 = Win8.1 Debug|Win32
-		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.Deploy.0 = Win8.1 Debug|Win32
+		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.ActiveCfg = Win7 Debug|x64
+		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.Build.0 = Win7 Debug|x64
+		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|Win32.Deploy.0 = Win7 Debug|x64
 		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|x64.ActiveCfg = Win8.1 Debug|x64
 		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|x64.Build.0 = Win8.1 Debug|x64
 		{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}.Debug|x64.Deploy.0 = Win8.1 Debug|x64

@@ -28,6 +28,8 @@
 
 #ifdef _WIN32
 #include <linux/lru_cache.h>
+#include "drbd.h"
+#include "drbd_winlist.h"
 #else
 #include <linux/compiler.h>
 #include <linux/types.h>
@@ -49,7 +51,9 @@
 #endif
 #include "drbd_wrappers.h"
 #include "drbd_strings.h"
+#ifndef _WIN32
 #include "compat.h"
+#endif
 #include "drbd_state.h"
 #include "drbd_protocol.h"
 #include "drbd_kref_debug.h"
@@ -96,14 +100,16 @@ extern int two_phase_commit_fail;
 
 extern char usermode_helper[];
 
+#ifndef _WIN32
 #include <linux/major.h>
+#endif
 #ifndef DRBD_MAJOR
 # define DRBD_MAJOR 147
 #endif
-
+#ifndef _WIN32
 #include <linux/blkdev.h>
 #include <linux/bio.h>
-
+#endif
 /* This is used to stop/restart our threads.
  * Cannot use SIGTERM nor SIGKILL, since these
  * are sent out by init on runlevel changes
@@ -123,7 +129,85 @@ struct drbd_device;
 struct drbd_connection;
 
 /* I want to be able to grep for "drbd $resource_name"
- * and get all relevant log lines. */
+* and get all relevant log lines. */
+#ifdef _WIN32
+#define __drbd_printk_device(level, device, fmt, ...)		\
+	({								\
+		const struct drbd_device *__d = (device);		\
+		const struct drbd_resource *__r = __d->resource;	\
+		printk(level "drbd %s/%u drbd%u: " fmt,			\
+			__r->name, __d->vnr, __d->minor, __VA_ARGS__);	\
+	})
+
+#define __drbd_printk_peer_device(level, peer_device, fmt, ...)	\
+	({								\
+		const struct drbd_device *__d;				\
+		const struct drbd_connection *__c;			\
+		const struct drbd_resource *__r;			\
+		const char *__cn;					\
+		rcu_read_lock();					\
+		__d = (peer_device)->device;				\
+		__c = (peer_device)->connection;			\
+		__r = __d->resource;					\
+		__cn = rcu_dereference(__c->transport.net_conf)->name;	\
+		printk(level "drbd %s/%u drbd%u %s: " fmt,		\
+			__r->name, __d->vnr, __d->minor, __cn, __VA_ARGS__);\
+		rcu_read_unlock();					\
+	})
+
+#define __drbd_printk_resource(level, resource, fmt, ...) \
+	printk(level "drbd %s: " fmt, (resource)->name, __VA_ARGS__)
+
+#define __drbd_printk_connection(level, connection, fmt, ...) \
+	({	rcu_read_lock(); \
+		printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
+		       rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
+		rcu_read_unlock(); \
+	})
+
+void drbd_printk_with_wrong_object_type(void);
+
+#define __drbd_printk_if_same_type(obj, type, func, level, fmt, ...) 
+
+#define drbd_printk(level, obj, fmt, ...)
+
+#if defined(disk_to_dev)
+#define drbd_dbg(device, fmt, args...) \
+	dev_dbg(disk_to_dev(device->vdisk), fmt, ## args)
+#elif defined(DEBUG)
+#define drbd_dbg(device, fmt, args...) \
+	drbd_printk(KERN_DEBUG, device, fmt, ## args)
+#else
+#define drbd_dbg(device, fmt, ...) \
+	do { if (0) drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__); } while (0)
+#endif
+
+#if defined(dynamic_dev_dbg) && defined(disk_to_dev)
+#define dynamic_drbd_dbg(device, fmt, args...) \
+	dynamic_dev_dbg(disk_to_dev(device->vdisk), fmt, ## args)
+#else
+#define dynamic_drbd_dbg(device, fmt, ...) \
+	drbd_dbg(device, fmt, __VA_ARGS__)
+#endif
+
+#define drbd_emerg(device, fmt, ...) \
+	drbd_printk(KERN_EMERG, device, fmt, __VA_ARGS__)
+#define drbd_alert(device, fmt, ...) \
+	drbd_printk(KERN_ALERT, device, fmt, __VA_ARGS__)
+#define drbd_err(device, fmt, ...) \
+	drbd_printk(KERN_ERR, device, fmt, __VA_ARGS__)
+#define drbd_warn(device, fmt, ...) \
+	drbd_printk(KERN_WARNING, device, fmt, __VA_ARGS__)
+#define drbd_info(device, fmt, ...) \
+	drbd_printk(KERN_INFO, device, fmt, __VA_ARGS__)
+
+#if defined(DEBUG)
+#define drbd_debug(obj, fmt, args...) \
+	drbd_printk(KERN_DEBUG, obj, fmt, ## args)
+#else
+#define drbd_debug(obj, fmt, ...)
+#endif
+#else
 #define __drbd_printk_device(level, device, fmt, args...)		\
 	({								\
 		const struct drbd_device *__d = (device);		\
@@ -216,12 +300,16 @@ void drbd_printk_with_wrong_object_type(void);
 #else
 #define drbd_debug(obj, fmt, args...)
 #endif
-
+#endif
 extern struct ratelimit_state drbd_ratelimit_state;
 
 static inline int drbd_ratelimit(void)
 {
+#ifdef _WIN32
+    return 0;
+#else
 	return __ratelimit(&drbd_ratelimit_state);
+#endif
 }
 
 #define D_ASSERT(x, exp)							\
@@ -236,6 +324,9 @@ static inline int drbd_ratelimit(void)
  *
  * Unlike the assert macro, this macro returns a boolean result.
  */
+#ifdef _WIN32
+#define expect(exp) (exp)
+#else
 #define expect(x, exp) ({							\
 		bool _bool = (exp);						\
 		if (!_bool)							\
@@ -243,6 +334,7 @@ static inline int drbd_ratelimit(void)
 			        #exp, __func__);				\
 		_bool;								\
 		})
+#endif
 
 /* Defines to control fault insertion */
 enum {
@@ -876,7 +968,9 @@ struct drbd_resource {
 	struct idr devices;		/* volume number to device mapping */
 	struct list_head connections;
 	struct list_head resources;
+#ifdef _WIN32_CHECK
 	struct res_opts res_opts;
+#endif
 	int max_node_id;
 	struct mutex conf_update;	/* for ready-copy-update of net_conf and disk_conf
 					   and devices, connection and peer_devices lists */
@@ -892,8 +986,9 @@ struct drbd_resource {
 	struct list_head peer_ack_list;  /* requests to send peer acks for */
 	u64 last_peer_acked_dagtag;  /* dagtag of last PEER_ACK'ed request */
 	struct drbd_request *peer_ack_req;  /* last request not yet PEER_ACK'ed */
-
+#ifdef _WIN32_CHECK
 	struct semaphore state_sem;
+#endif
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
 	bool remote_state_change;  /* remote state change in progress */
@@ -916,11 +1011,12 @@ struct drbd_resource {
 	atomic_t current_tle_nr;	/* transfer log epoch number */
 	unsigned current_tle_writes;	/* writes seen within this tl epoch */
 
-
+#ifdef _WIN32_CHECK
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) && !defined(cpumask_bits)
 	cpumask_t cpu_mask[1];
 #else
 	cpumask_var_t cpu_mask;
+#endif
 #endif
 
 	struct drbd_work_queue work;
@@ -1080,9 +1176,11 @@ struct drbd_connection {
 	} send;
 
 	unsigned int peer_node_id;
+#ifdef _WIN32_CHECK
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal
 					    implementation might have more members than the
 					    abstract one. */
+#endif
 };
 
 struct drbd_peer_device {
@@ -1292,7 +1390,9 @@ struct drbd_device {
 		spinlock_t q_lock;	/* dec only once finished. */
 		struct list_head q;	/* n > 0 even if q already empty */
 	} pending_bitmap_work;
+#ifdef _WIN32_CHECK
 	struct device_conf device_conf;
+#endif
 
 	/* any requests that would block in drbd_make_request()
 	 * are deferred to this single-threaded work queue */
@@ -1301,7 +1401,7 @@ struct drbd_device {
 
 struct drbd_bm_aio_ctx {
 	struct drbd_device *device;
-	struct list_head list; /* on device->pending_bitmap_io */;
+	struct list_head list; /* on device->pending_bitmap_io */
 	unsigned long start_jif;
 	atomic_t in_flight;
 	unsigned int done;
@@ -1680,10 +1780,11 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * we limit us to a platform agnostic constant here for now.
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
+#ifdef _WIN32_CHECK
 #if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #endif
-
+#endif
 #define DRBD_MAX_SIZE_H80_PACKET (1U << 15) /* Header 80 only allows packets up to 32KiB data */
 #define DRBD_MAX_BIO_SIZE_P95    (1U << 17) /* Protocol 95 to 99 allows bios up to 128KiB */
 
@@ -1955,21 +2056,29 @@ extern void queued_twopc_timer_fn(unsigned long data);
 static inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
 	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
-	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
+#ifdef _WIN32_CHECK
+    return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
+#else
+    return 0;
+#endif
 }
 
 /* sets the number of 512 byte sectors of our virtual device */
 static inline void drbd_set_my_capacity(struct drbd_device *device,
 					sector_t size)
 {
+#ifdef _WIN32_CHECK
 	/* set_capacity(device->this_bdev->bd_disk, size); */
 	set_capacity(device->vdisk, size);
 	device->this_bdev->bd_inode->i_size = (loff_t)size << 9;
+#endif
 }
 
 static inline void drbd_kobject_uevent(struct drbd_device *device)
 {
+#ifdef _WIN32_CHECK
 	kobject_uevent(disk_to_kobj(device->vdisk), KOBJ_CHANGE);
+#endif
 	/* rhel4 / sles9 and older don't have this at all,
 	 * which means user space (udev) won't get events about possible changes of
 	 * corresponding resource + disk names after the initial drbd minor creation.
@@ -2070,10 +2179,12 @@ extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_req)
 {
 	struct page *page = peer_req->pages;
+#ifdef _WIN32_CHECK
 	page_chain_for_each(page) {
 		if (page_count(page) > 1)
 			return 1;
 	}
+#endif
 	return 0;
 }
 
@@ -2107,7 +2218,9 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
+#ifdef _WIN32_CHECK
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+#endif
 	rcu_read_unlock();
 	switch (ep) {
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
@@ -2463,9 +2576,15 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
  *
  * You have to call put_ldev() when finished working with device->ldev.
  */
+#ifdef _WIN32
+#define get_ldev_if_state(_device, _min_state)				\
+	(_get_ldev_if_state((_device), (_min_state)) ?			\
+	true : false)
+#else
 #define get_ldev_if_state(_device, _min_state)				\
 	(_get_ldev_if_state((_device), (_min_state)) ?			\
 	 ({ __acquire(x); true; }) : false)
+#endif
 #define get_ldev(_device) get_ldev_if_state(_device, D_INCONSISTENT)
 
 static inline void put_ldev(struct drbd_device *device)
@@ -2522,6 +2641,7 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 	 * for any newly introduced state we may have forgotten to add here */
 
 	rcu_read_lock();
+#ifdef _WIN32_CHECK
 	for_each_peer_device_rcu(peer_device, device) {
 		switch (peer_device->repl_state[NOW]) {
 		/* New io is only accepted when the peer device is unknown or there is
@@ -2555,6 +2675,7 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 		if (!stable)
 			break;
 	}
+#endif
 	rcu_read_unlock();
 
 	switch (device->disk_state[NOW]) {

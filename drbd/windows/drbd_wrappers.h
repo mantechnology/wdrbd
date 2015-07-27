@@ -5,6 +5,8 @@
 #include "rbtree.h"
 
 #include "drbd_wingenl.h"
+#include "drbd_windrv.h"
+#include "idr.h"
 #else
 #include "compat.h"
 #include <linux/ctype.h>
@@ -1311,9 +1313,10 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr, km)
 #endif
 
-#if !defined(for_each_set_bit) && defined(for_each_bit)
-#define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
-#endif
+#define for_each_set_bit(bit, addr, size) \
+	for ((bit) = find_first_bit((addr), (size));		\
+	     (bit) < (size);					\
+	     (bit) = find_next_bit((addr), (size), (bit) + 1))
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY
 #undef hlist_for_each_entry
@@ -1326,7 +1329,9 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 #ifndef COMPAT_HAVE_PRANDOM_U32
 static inline u32 prandom_u32(void)
 {
+#ifdef _WIN32_CHECK
     return random32();
+#endif
 }
 #endif
 
@@ -1453,8 +1458,10 @@ calling namespace */
 #define rcu_dereference_protected(p, c) (p)
 #endif
 
+#ifdef _WIN32_CHECK
 #ifndef COMPAT_HAVE_F_PATH_DENTRY
 #define f_path.dentry f_dentry
+#endif
 #endif
 
 #ifndef list_next_rcu
@@ -1468,5 +1475,8 @@ calling namespace */
 	struct list_head *__next = ACCESS_ONCE(__ptr->next); \
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
-#endif 
+#endif
+
+#define drbd_kmap_atomic(page, km)	(page->addr)
+#define drbd_kunmap_atomic(addr, km)	(addr)
 #endif

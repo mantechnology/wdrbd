@@ -26,6 +26,8 @@
 #ifdef _WIN32
 #include "drbd_windrv.h"
 #include "drbd_wingenl.h"
+#include "drbd.h"
+#include "drbd_endian.h"
 #include "idr.h"
 #else
 #include <linux/slab.h>
@@ -44,7 +46,8 @@ enum al_transaction_types {
 };
 /* all fields on disc in big endian */
 #ifdef _WIN32
-# pragma pack (push, 1) 
+#pragma pack (push, 1)
+#define __packed
 #endif
 struct __packed al_transaction_on_disk {
 	/* don't we all like magic */
@@ -107,12 +110,14 @@ struct __packed al_transaction_on_disk {
 };
 
 #ifdef _WIN32
-# pragma pack (pop) 
+#pragma pack (pop) 
 #endif
 
-struct update_odbm_work {
-	struct drbd_work w;
-	unsigned int enr;
+struct update_peers_work
+{
+    struct drbd_work w;
+    struct drbd_peer_device *peer_device;
+    unsigned int enr;
 };
 
 void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
@@ -121,11 +126,17 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 	long t;
 
 	do {
+#ifdef _WIN32
+        wait_event_timeout(t, device->misc_wait,
+            (r = atomic_cmpxchg(&device->md_io.in_use, 0, 1)) == 0 ||
+            device->disk_state[NOW] <= D_FAILED,
+            HZ * 10);
+#else
 		t = wait_event_timeout(device->misc_wait,
 				(r = atomic_cmpxchg(&device->md_io.in_use, 0, 1)) == 0 ||
 				device->disk_state[NOW] <= D_FAILED,
 				HZ * 10);
-
+#endif
 		if (t == 0) {
 			drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?\n");
 			continue;
@@ -153,7 +164,9 @@ void wait_until_done_or_force_detached(struct drbd_device *device, struct drbd_b
 	long dt;
 
 	rcu_read_lock();
+#ifdef _WIN32_CHECK
 	dt = rcu_dereference(bdev->disk_conf)->disk_timeout;
+#endif
 	rcu_read_unlock();
 	dt = dt * HZ / 10;
 	if (dt == 0)
@@ -161,8 +174,8 @@ void wait_until_done_or_force_detached(struct drbd_device *device, struct drbd_b
 
 // _WIN32_V9_CHECK: ÀÎÀÚ ¸ÂÃã! 
 #ifdef _WIN32
-	wait_event_timeout(dt, mdev->misc_wait,
-		*done || test_bit(FORCE_DETACH, &mdev->flags), dt);
+    wait_event_timeout(dt, device->misc_wait,
+        *done || test_bit(FORCE_DETACH, &device->flags), dt);
 #else
 	dt = wait_event_timeout(device->misc_wait,
 			*done || test_bit(FORCE_DETACH, &device->flags), dt);
@@ -207,6 +220,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	if (!(rw & WRITE) && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)
 		/* special case, drbd_md_read() during drbd_adm_attach(): no get_ldev */
 		;
+
 	else if (!get_ldev_if_state(device, D_ATTACHING)) {
 		/* Corresponding put_ldev in drbd_md_endio() */
 		drbd_err(device, "ASSERT FAILED: get_ldev_if_state() == 1 in _drbd_md_sync_page_io()\n");
@@ -275,7 +289,11 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 }
 
 static struct bm_extent*
+#ifdef _WIN32
+find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *except_,
+#else
 find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *except,
+#endif
 			  unsigned int enr)
 {
 	struct drbd_peer_device *peer_device;
@@ -283,8 +301,10 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
+#ifdef _WIN32_CHECK
 		if (peer_device == except)
 			continue;
+#endif
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
@@ -299,7 +319,11 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 }
 
 static int
+#ifdef _WIN32
+set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except_,
+#else
 set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
+#endif
 		 unsigned int enr)
 {
 	struct drbd_peer_device *peer_device;
@@ -308,8 +332,10 @@ set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
+#ifdef _WIN32_CHECK
 		if (peer_device == except)
 			continue;
+#endif
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
@@ -418,7 +444,9 @@ void drbd_al_begin_io_commit(struct drbd_device *device)
 			bool write_al_updates;
 
 			rcu_read_lock();
+#ifdef _WIN32_CHECK
 			write_al_updates = rcu_dereference(device->ldev->disk_conf)->al_updates;
+#endif
 			rcu_read_unlock();
 
 			if (write_al_updates)
@@ -662,7 +690,11 @@ int al_write_transaction(struct drbd_device *device)
 	 * lc_try_lock_for_transaction() --, someone may still
 	 * be in the process of changing it. */
 	spin_lock_irq(&device->al_lock);
+#ifdef _WIN32
+    list_for_each_entry(struct lc_element, e, &device->act_log->to_be_changed, list) {
+#else
 	list_for_each_entry(e, &device->act_log->to_be_changed, list) {
+#endif
 		if (i == AL_UPDATES_PER_TRANSACTION) {
 			i++;
 			break;
@@ -714,7 +746,9 @@ int al_write_transaction(struct drbd_device *device)
 	else {
 		bool write_al_updates;
 		rcu_read_lock();
+#ifdef _WIN32_CHECK
 		write_al_updates = rcu_dereference(device->ldev->disk_conf)->al_updates;
+#endif
 		rcu_read_unlock();
 		if (write_al_updates) {
 			if (drbd_md_sync_page_io(device, device->ldev, sector, WRITE)) {
@@ -1251,7 +1285,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	rcu_read_unlock();
 	if (mask) {
 		int bitmap_index;
-
+#ifdef _WIN32_CHECK
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {
 			if (test_bit(bitmap_index, &bits))
 				drbd_bm_set_bits(device, bitmap_index,
@@ -1260,6 +1294,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 				drbd_bm_clear_bits(device, bitmap_index,
 						   clear_start, clear_end);
 		}
+#endif
 	}
 
 out:
@@ -1335,8 +1370,13 @@ int drbd_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector)
 	bool sa;
 
 retry:
+#ifdef _WIN32
+    wait_event_interruptible(sig, device->al_wait,
+        (bm_ext = _bme_get(peer_device, enr)));
+#else
 	sig = wait_event_interruptible(device->al_wait,
 			(bm_ext = _bme_get(peer_device, enr)));
+#endif
 	if (sig)
 		return -EINTR;
 
@@ -1347,10 +1387,15 @@ retry:
 	sa = drbd_rs_c_min_rate_throttle(peer_device);
 
 	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
+#ifdef _WIN32
+        wait_event_interruptible(sig, device->al_wait,
+            !_is_in_al(device, enr * AL_EXT_PER_BM_SECT + i) ||
+            (sa && test_bit(BME_PRIORITY, &bm_ext->flags)));
+#else
 		sig = wait_event_interruptible(device->al_wait,
 					       !_is_in_al(device, enr * AL_EXT_PER_BM_SECT + i) ||
 					       (sa && test_bit(BME_PRIORITY, &bm_ext->flags)));
-
+#endif
 		if (sig || (sa && test_bit(BME_PRIORITY, &bm_ext->flags))) {
 			spin_lock_irq(&device->al_lock);
 			if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
