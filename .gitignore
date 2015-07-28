@@ -7,5 +7,6 @@ build/drbd/drbd.v12.suo
 *.tmh
 *.sdf
 *.suo
+*.opensdf
 *Release/
 *Debug/

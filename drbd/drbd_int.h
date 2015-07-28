@@ -30,6 +30,7 @@
 #include <linux/lru_cache.h>
 #include "drbd.h"
 #include "drbd_winlist.h"
+#include "sched.h"
 #else
 #include <linux/compiler.h>
 #include <linux/types.h>
@@ -1808,7 +1809,11 @@ extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, unsigned long,
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, unsigned long, unsigned long);
 extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, unsigned long, unsigned long);
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, unsigned long, unsigned long);
+#ifdef _WIN32
+extern int drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long);
+#else
 extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
+#endif
 extern int  drbd_bm_read(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, unsigned long, unsigned long);
 extern int  drbd_bm_write(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);

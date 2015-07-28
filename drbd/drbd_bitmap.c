@@ -25,6 +25,8 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "drbd.h"
+#include "Const_hweight.h"
+#include "drbd_endian.h"
 #else
 #include <linux/bitops.h>
 #include <linux/vmalloc.h>
@@ -830,7 +832,9 @@ static u64 drbd_md_on_disk_bits(struct drbd_device *device)
 	/* for interoperability between 32bit and 64bit architectures,
 	 * we round on 64bit words.  FIXME do we still need this? */
 	word64_on_disk = bitmap_sectors << (9 - 3); /* x * (512/8) */
+#ifdef _WIN32_CHECK
 	do_div(word64_on_disk, device->bitmap->bm_max_peers);
+#endif
 	return word64_on_disk << 6; /* x * 64 */;
 }
 
@@ -1127,7 +1131,9 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 
 	if (ctx->flags & BM_AIO_COPY_PAGES) {
 		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_WAIT);
+#ifdef _WIN32_CHECK
 		copy_highpage(page, b->bm_pages[page_nr]);
+#endif
 		bm_store_page_idx(page, page_nr);
 	} else
 		page = b->bm_pages[page_nr];

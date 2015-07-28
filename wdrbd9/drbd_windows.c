@@ -1010,7 +1010,7 @@ void releaseSpinLock(KSPIN_LOCK *lock, KIRQL flags)
 	KeReleaseSpinLock(lock, flags);
 }
 
-long spin_lock_irqsave_for_vs2013(spinlock_t *lock)
+long _spin_lock_irqsave(spinlock_t *lock)
 {
 	KIRQL	oldIrql;
 	acquireSpinLock(&lock->spinLock, &oldIrql);

@@ -1,4 +1,5 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
+#ifndef _WIN32
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
@@ -6,7 +7,7 @@
 #include <linux/stat.h>
 #include <linux/jiffies.h>
 #include <linux/list.h>
-
+#endif
 #include "drbd_int.h"
 #include "drbd_req.h"
 #include "drbd_debugfs.h"

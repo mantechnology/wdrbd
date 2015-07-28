@@ -184,7 +184,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
-    <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd\windows;$(SolutionDir)\drbd-headers;$(SolutionDir)\drbd-headers\windows;$(SolutionDir)\drbd-utils\user\shared;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(SolutionDir)\drbd-headers\windows;$(SolutionDir)\drbd-utils\user\shared;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -246,13 +246,15 @@
     <ClInclude Include="..\drbd\drbd_state_change.h" />
     <ClInclude Include="..\drbd\drbd_vli.h" />
     <ClInclude Include="..\drbd\kref_debug.h" />
-    <ClInclude Include="..\drbd\windows\drbd_wrappers.h" />
+    <ClInclude Include="Const_hweight.h" />
     <ClInclude Include="drbd_windows.h" />
     <ClInclude Include="drbd_windrv.h" />
     <ClInclude Include="drbd_wingenl.h" />
     <ClInclude Include="drbd_winlist.h" />
+    <ClInclude Include="drbd_wrappers.h" />
     <ClInclude Include="idr.h" />
     <ClInclude Include="rbtree.h" />
+    <ClInclude Include="sched.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

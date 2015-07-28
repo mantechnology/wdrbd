@@ -676,9 +676,9 @@ extern void spin_lock(spinlock_t *lock);
 extern void spin_unlock(spinlock_t *lock);
 extern void spin_unlock_irq(spinlock_t *lock);
 extern void spin_unlock_irqrestore(spinlock_t *lock, long flags);
-extern long spin_lock_irqsave_for_vs2013(spinlock_t* lock);
+extern long _spin_lock_irqsave(spinlock_t* lock);
 
-#define spin_lock_irqsave(lock, flag) flags = spin_lock_irqsave_for_vs2013(lock); 
+#define spin_lock_irqsave(lock, flags) flags = _spin_lock_irqsave(lock); 
 
 extern void read_lock(spinlock_t *lock);
 extern void read_unlock(spinlock_t *lock);	

@@ -13,12 +13,19 @@
 
 #include <stdint.h>
 #ifdef _WIN32
+#define inline  __inline
 #else
 #include <endian.h>
 #endif
 
 #ifndef BITS_PER_LONG
+#if defined(_WIN64)
+# define BITS_PER_LONG 64
+#elif defined(_WIN32)
+# define BITS_PER_LONG 32
+#else
 # define BITS_PER_LONG __WORDSIZE
+#endif
 #endif
 
 /* linux/byteorder/swab.h */

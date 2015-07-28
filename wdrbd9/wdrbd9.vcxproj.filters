@@ -23,9 +23,6 @@
     <Filter Include="Header Files\drbd">
       <UniqueIdentifier>{fedb00aa-357f-477d-afbc-937e6f2defb8}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\drbd\windows">
-      <UniqueIdentifier>{a421bf15-1285-41fa-ab15-d02a8b889295}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="wdrbd9.inf">
@@ -173,10 +170,16 @@
     <ClInclude Include="..\drbd\kref_debug.h">
       <Filter>Header Files\drbd</Filter>
     </ClInclude>
-    <ClInclude Include="..\drbd\windows\drbd_wrappers.h">
-      <Filter>Header Files\drbd\windows</Filter>
-    </ClInclude>
     <ClInclude Include="rbtree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Const_hweight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="drbd_wrappers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sched.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

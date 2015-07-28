@@ -2360,8 +2360,13 @@ static int adm_detach(struct drbd_device *device, int force)
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
+#ifdef _WIN32
+	wait_event_interruptible(ret, device->misc_wait,
+			get_disk_state(device) != D_DETACHING);
+#else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
+#endif
 	if (retcode >= SS_SUCCESS)
 		drbd_cleanup_device(device);
 	if (retcode == SS_IS_DISKLESS)
