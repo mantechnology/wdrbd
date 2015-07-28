@@ -27,7 +27,9 @@
  */
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
-
+#ifdef _WIN32
+#include "windows/drbd.h"
+#else
 #include <linux/module.h>
 #include <linux/jiffies.h>
 #include <linux/drbd.h>
@@ -53,7 +55,7 @@
 #include <linux/vmalloc.h>
 #include <linux/device.h>
 #include <linux/dynamic_debug.h>
-
+#endif
 #include <linux/drbd_limits.h>
 #include "drbd_int.h"
 #include "drbd_protocol.h"

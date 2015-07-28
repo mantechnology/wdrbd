@@ -1304,6 +1304,11 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
     return atomic_add_unless(&kref->refcount, 1, 0);
 }
+#else
+static __inline int kref_get_unless_zero(struct kref *kref)
+{
+    return 0;
+}
 #endif
 #endif
 

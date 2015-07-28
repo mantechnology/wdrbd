@@ -1,10 +1,13 @@
 #ifndef DRBD_TRANSPORT_H
 #define DRBD_TRANSPORT_H
-#ifdef _WIN32_CHECK
+#ifdef _WIN32
+#include "linux-compat/list.h"
+#else
 #include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/wait.h>
 #include <linux/socket.h>
+#endif
 
 /* Whenever touch this file in a non-trivial way, increase the
    DRBD_TRANSPORT_API_VERSION
@@ -17,7 +20,7 @@
    we can reuse these flags for our purposes */
 #define CALLER_BUFFER  MSG_DONTROUTE
 #define GROW_BUFFER    MSG_PROBE
-
+#ifdef _WIN32_CHECK
 /*
  * gfp_mask for allocating memory with no write-out.
  *
@@ -50,6 +53,7 @@
 			tr_err(x, "ASSERTION %s FAILED in %s\n", 		\
 				 #exp, __func__);				\
 	} while (0)
+#endif
 
 struct drbd_resource;
 struct drbd_connection;
@@ -78,7 +82,7 @@ enum drbd_tr_free_op {
 	DESTROY_TRANSPORT
 };
 
-
+#ifdef WIN32_CHECK
 struct drbd_path {
 	struct sockaddr_storage my_addr;
 	struct sockaddr_storage peer_addr;
@@ -115,7 +119,7 @@ struct drbd_transport_stats {
 struct drbd_transport_ops {
 	void (*free)(struct drbd_transport *, enum drbd_tr_free_op free_op);
 	int (*connect)(struct drbd_transport *);
-#ifdef _WIN32_CHECK
+
 /**
  * recv() - Receive data via the transport
  * @transport:	The transport to use
@@ -178,12 +182,13 @@ struct drbd_transport_ops {
 struct drbd_transport_class {
 	const char *name;
 	const int instance_size;
+#ifdef _WIN32_CHECK
 	struct module *module;
+#endif
 	int (*init)(struct drbd_transport *);
 	struct list_head list;
 };
-
-
+#ifdef _WIN32_CHECK
 /* An "abstract base class" for transport implementations. I.e. it
    should be embedded into a transport specific representation of a
    listening "socket" */

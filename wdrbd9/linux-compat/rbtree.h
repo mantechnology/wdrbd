@@ -91,35 +91,25 @@ return ret;
 -----------------------------------------------------------------------
 */
 
-#ifndef _LINUX_RBTREE_H
-#define _LINUX_RBTREE_H
+#ifndef __RBTREE_H__
+#define __RBTREE_H__
+//#include <BaseTsd.h>
+#include <wdm.h>
 
-#ifdef _WIN32
 #ifdef _WIN64
-# pragma pack (push, 8) 
+__declspec(align(8)) struct rb_node
 #else
-# pragma pack (push, 4)  
+__declspec(align(4)) struct rb_node
 #endif
-#endif
-
-struct rb_node
 {
-#ifdef _WIN32
 	ULONG_PTR rb_parent_color;
-#else
-	unsigned long  rb_parent_color;
-#endif
 
 #define RB_RED      0
 #define RB_BLACK    1
 	struct rb_node *rb_right;
 	struct rb_node *rb_left;
-} __attribute__((aligned(sizeof(long) )));
+};
 /* The alignment might seem pointless, but allegedly CRIS needs it */
-
-#ifdef _WIN32
-# pragma pack (pop) 
-#endif
 
 struct rb_root
 {
@@ -134,16 +124,12 @@ struct rb_root
 #define rb_set_red(r)  ((r)->rb_parent_color &= ~1)
 #define rb_set_black(r)  ((r)->rb_parent_color |= 1)
 
-static inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
+static __inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
 {
-#ifdef _WIN32
 	rb->rb_parent_color = (rb->rb_parent_color & 3) | (ULONG_PTR) p;
-#else
-	rb->rb_parent_color = (rb->rb_parent_color & 3) | (unsigned long) p;
-#endif
 }
 
-static inline void rb_set_color(struct rb_node *rb, int color)
+static __inline void rb_set_color(struct rb_node *rb, int color)
 {
 	rb->rb_parent_color = (rb->rb_parent_color & ~1) | color;
 }
@@ -155,7 +141,7 @@ static inline void rb_set_color(struct rb_node *rb, int color)
 #define RB_EMPTY_NODE(node) (rb_parent(node) == node)
 #define RB_CLEAR_NODE(node) (rb_set_parent(node, node))
 
-static inline void rb_init_node(struct rb_node *rb)
+static __inline void rb_init_node(struct rb_node *rb)
 {
 	rb->rb_parent_color = 0;
 	rb->rb_right = NULL;
@@ -184,14 +170,10 @@ extern struct rb_node *rb_last(const struct rb_root *);
 extern void rb_replace_node(struct rb_node *victim, struct rb_node *new,
 struct rb_root *root);
 
-static inline void rb_link_node(struct rb_node * node, struct rb_node * parent,
+static __inline void rb_link_node(struct rb_node * node, struct rb_node * parent,
 struct rb_node ** rb_link)
 {
-#ifdef _WIN32
 	node->rb_parent_color = (ULONG_PTR) parent;
-#else
-	node->rb_parent_color = (unsigned long) parent;
-#endif
 	node->rb_left = node->rb_right = NULL;
 
 	*rb_link = node;

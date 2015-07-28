@@ -11,6 +11,7 @@
 
 #ifndef __IDR_H__
 #define __IDR_H__
+#include "drbd_windrv.h"
 
 
 #if BITS_PER_LONG == 32

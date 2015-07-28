@@ -3,7 +3,7 @@
 
 #include <mountdev.h>
 #include "mvolse.h"
-#include "ioctl.h"
+#include "windows/ioctl.h"
 
 #define	MVOL_IOCOMPLETE_REQ(Irp, status, size)		\
 {							\

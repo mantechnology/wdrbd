@@ -25,7 +25,7 @@
 #ifndef _DRBD_REQ_H
 #define _DRBD_REQ_H
 #ifdef _WIN32
-#include "drbd.h"
+#include "windows/drbd.h"
 #else
 #include <linux/module.h>
 

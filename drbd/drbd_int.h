@@ -28,7 +28,7 @@
 
 #ifdef _WIN32
 #include <linux/lru_cache.h>
-#include "drbd.h"
+#include "windows/drbd.h"
 #include "linux-compat/list.h"
 #include "linux-compat/sched.h"
 #else
@@ -1177,11 +1177,9 @@ struct drbd_connection {
 	} send;
 
 	unsigned int peer_node_id;
-#ifdef _WIN32_CHECK
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal
 					    implementation might have more members than the
 					    abstract one. */
-#endif
 };
 
 struct drbd_peer_device {
@@ -1476,9 +1474,13 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 
 /* Each caller of for_each_connect() must hold req_lock or adm_mutex or conf_update.
    The update locations hold all three! */
+#ifdef _WIN32
+#define for_each_connection(connection, resource) \
+	list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
+#else
 #define for_each_connection(connection, resource) \
 	list_for_each_entry(connection, &resource->connections, connections)
-
+#endif
 #define for_each_connection_rcu(connection, resource) \
 	list_for_each_entry_rcu(connection, &resource->connections, connections)
 

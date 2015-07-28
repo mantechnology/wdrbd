@@ -2,8 +2,9 @@
 #define __DRBD_INTERVAL_H
 
 #ifdef _WIN32
-#include "types.h"
+#include "windows/types.h"
 #include "linux-compat/rbtree.h"
+#define inline __inline
 #else
 #include <linux/version.h>
 #include <linux/types.h>

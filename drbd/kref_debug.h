@@ -43,8 +43,10 @@ static inline void kref_debug_put(struct kref_debug_info *debug_info, int holder
 struct kref_debug_class {};
 struct kref_debug_info {};
 #else
+#define KREF_DEBUG_HOLDER_MAX 16
 struct kref_debug_class {
     const char *name;
+    const char *holder_name[KREF_DEBUG_HOLDER_MAX];
 };
 struct kref_debug_info {
     const struct kref_debug_class *class;

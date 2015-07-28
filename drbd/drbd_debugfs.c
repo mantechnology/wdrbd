@@ -494,14 +494,21 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 			   "  target_node_id: %d\n",
 			   twopc.tid, twopc.initiator_node_id,
 			   twopc.target_node_id);
+#ifdef _WIN32_CHECK
 		if (twopc.initiator_node_id == resource->res_opts.node_id) {
+#else
+        if (twopc.initiator_node_id == 0) {
+#endif
 			struct drbd_connection *connection;
 
 			seq_puts(m, "  peers reply's: ");
 			rcu_read_lock();
 			for_each_connection(connection, resource) {
+#ifdef _WIN32_CHECK
 				char *name = rcu_dereference((connection)->transport.net_conf)->name;
-
+#else
+                char *name = "dummy";
+#endif
 				if (!test_bit(TWOPC_PREPARED, &connection->flags))
 					seq_printf(m, "%s n.p., ", name);
 				else if (test_bit(TWOPC_NO, &connection->flags))
@@ -529,7 +536,11 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 		return 0;
 	}
 	seq_puts(m, "\n Queued for later execution:\n");
+#ifdef _WIN32
+    list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
+#else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
+#endif
 		jif = jiffies - q->start_jif;
 		seq_printf(m, "  tid: %u, initiator_node_id: %d, since: %d ms\n",
 			   q->reply.tid, q->reply.initiator_node_id, jiffies_to_msecs(jif));
@@ -538,7 +549,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 
 	return 0;
 }
-
+#ifdef _WIN32_CHECK
 /* simple_positive(file->f_path.dentry) respectively debugfs_positive(),
  * but neither is "reachable" from here.
  * So we have our own inline version of it above.  :-( */
@@ -1249,11 +1260,7 @@ void drbd_debugfs_cleanup(void)
 	drbd_debugfs_remove(&drbd_debugfs_root);
 }
 
-#ifdef _WIN32
-int drbd_debugfs_init(void)
-#else
 int __init drbd_debugfs_init(void)
-#endif
 {
 	struct dentry *dentry;
 
@@ -1285,3 +1292,4 @@ fail:
 	else
 		return -EINVAL;
 }
+#endif

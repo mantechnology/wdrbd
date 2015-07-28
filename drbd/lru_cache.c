@@ -23,7 +23,7 @@
 
  */
 #ifdef _WIN32
-#include "seq_file.h" /* for seq_printf */
+#include "linux-compat/seq_file.h" /* for seq_printf */
 #else
 #include <linux/module.h>
 #include <linux/bitops.h>

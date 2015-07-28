@@ -23,8 +23,8 @@
 
  */
 #ifdef _WIN32
-#include "seq_file.h"
-#include "drbd.h"
+#include "linux-compat/seq_file.h"
+#include "windows/drbd.h"
 #else
 #include <linux/module.h>
 
