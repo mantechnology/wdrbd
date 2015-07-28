@@ -22,7 +22,10 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
  */
-
+#ifdef _WIN32
+#include "seq_file.h"
+#include "drbd.h"
+#else
 #include <linux/module.h>
 
 #include <asm/uaccess.h>
@@ -31,6 +34,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/drbd.h>
+#endif
 #include "drbd_int.h"
 #include <drbd_transport.h>
 

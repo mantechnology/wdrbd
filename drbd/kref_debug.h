@@ -1,7 +1,9 @@
 #ifndef KREF_DEBUG_H
 #define KREF_DEBUG_H
 
-#ifdef _WIN32_CHECK
+#ifdef _WIN32
+#include "linux-compat/seq_file.h"
+#else
 #include <linux/seq_file.h>
 #endif
 

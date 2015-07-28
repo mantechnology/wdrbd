@@ -28,7 +28,7 @@
 #include "drbd_wingenl.h"
 #include "drbd.h"
 #include "drbd_endian.h"
-#include "idr.h"
+#include "linux-compat/idr.h"
 #else
 #include <linux/slab.h>
 #include <linux/crc32c.h>
@@ -113,11 +113,10 @@ struct __packed al_transaction_on_disk {
 #pragma pack (pop) 
 #endif
 
-struct update_peers_work
-{
-    struct drbd_work w;
-    struct drbd_peer_device *peer_device;
-    unsigned int enr;
+struct update_peers_work {
+       struct drbd_work w;
+       struct drbd_peer_device *peer_device;
+       unsigned int enr;
 };
 
 void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)

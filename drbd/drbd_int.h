@@ -29,8 +29,8 @@
 #ifdef _WIN32
 #include <linux/lru_cache.h>
 #include "drbd.h"
-#include "drbd_winlist.h"
-#include "sched.h"
+#include "linux-compat/list.h"
+#include "linux-compat/sched.h"
 #else
 #include <linux/compiler.h>
 #include <linux/types.h>
@@ -1492,9 +1492,13 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 
 /* Each caller of for_each_peer_device() must hold req_lock or adm_mutex or conf_update.
    The update locations hold all three! */
+#ifdef _WIN32
+#define for_each_peer_device(peer_device, device) \
+	list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
+#else
 #define for_each_peer_device(peer_device, device) \
 	list_for_each_entry(peer_device, &device->peer_devices, peer_devices)
-
+#endif
 #define for_each_peer_device_rcu(peer_device, device) \
 	list_for_each_entry_rcu(peer_device, &device->peer_devices, peer_devices)
 
@@ -2874,10 +2878,17 @@ struct bm_extent {
  * @id:      id entry's key
  */
 #ifndef idr_for_each_entry
+#ifdef _WIN32
+#define idr_for_each_entry(idp, entry, id)				\
+	for (id = 0, entry = (struct drbd_resource*)idr_get_next((idp), &(id)); \
+	     entry != NULL;						\
+	     ++id, entry = (struct drbd_resource*)idr_get_next((idp), &(id))) 
+#else
 #define idr_for_each_entry(idp, entry, id)				\
 	for (id = 0, entry = (typeof(entry))idr_get_next((idp), &(id)); \
 	     entry != NULL;						\
 	     ++id, entry = (typeof(entry))idr_get_next((idp), &(id)))
+#endif
 #endif
 
 #ifndef idr_for_each_entry_continue

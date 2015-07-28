@@ -1,5 +1,5 @@
-#ifndef __DRBD_WINLIST_H__
-#define __DRBD_WINLIST_H__
+#ifndef __LIST_H__
+#define __LIST_H__
 
 
 #ifdef CONFIG_ILLEGAL_POINTER_VALUE
@@ -123,31 +123,14 @@ static __inline int list_empty_careful(const struct list_head *head)
 			&pos->member != (head); 	\
 			pos = list_entry(pos->member.next, type, member))
 
+#define list_for_each_entry_safe_from(type, pos, n, head, member) 			\
+	for (n = list_entry(pos->member.next, type, member);		\
+			&pos->member != (head);						\
+			pos = n, n = list_entry(n->member.next, type, member))
 
-#ifndef _WIN32
-	#define list_for_each_entry_safe_from(pos, n, head, member) 			\
-		for (n = list_entry(pos->member.next, typeof(*pos), member);		\
-			 &pos->member != (head);						\
-			 pos = n, n = list_entry(n->member.next, typeof(*n), member))
-#else
-	#define list_for_each_entry_safe_from(type, pos, n, head, member) 			\
-		for (n = list_entry(pos->member.next, type, member);		\
-			 &pos->member != (head);						\
-			 pos = n, n = list_entry(n->member.next, type, member))
-#endif
-
-#ifndef _WIN32
-	#define list_for_each_entry_safe(pos, n, head, member)                  \
-			for (pos = list_entry((head)->next, typeof(*pos), member),      \
-					 n = list_entry(pos->member.next, typeof(*pos), member); \
-				 &pos->member != (head);                                    \
-				  pos = n, n = list_entry(n->member.next, typeof(*n), member))
-#else
-	#define list_for_each_entry_safe(type, pos, n, head, member)                  \
-			for (pos = list_entry((head)->next, type, member),      \
-					 n = list_entry(pos->member.next, type, member); \
-				 &pos->member != (head);                                    \
-				  pos = n, n = list_entry(n->member.next, type, member))
-#endif
-
-#endif __DRBD_WINLIST_H__
+#define list_for_each_entry_safe(type, pos, n, head, member)                  \
+		for (pos = list_entry((head)->next, type, member),      \
+					n = list_entry(pos->member.next, type, member); \
+				&pos->member != (head);                                    \
+				pos = n, n = list_entry(n->member.next, type, member))
+#endif _LIST_H__

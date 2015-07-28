@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <ntstrsafe.h>
 #include <stdbool.h>
-#include "drbd_winlist.h"
+#include "linux-compat/list.h"
 #include "mvolmsg.h"
 #include "disp.h"
 

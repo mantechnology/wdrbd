@@ -23,6 +23,12 @@
     <Filter Include="Header Files\drbd">
       <UniqueIdentifier>{fedb00aa-357f-477d-afbc-937e6f2defb8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\linux-compat">
+      <UniqueIdentifier>{3b44d30e-dca5-4d94-861e-9531ea01d734}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\linux-compat">
+      <UniqueIdentifier>{debe8a57-48bc-4e63-8e07-5c7da3ec1f2a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="wdrbd9.inf">
@@ -55,9 +61,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="drbd_windows.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="idr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\drbd\drbd_actlog.c">
@@ -120,8 +123,14 @@
     <ClCompile Include="netlink.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="rbtree.c">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="linux-compat\seq_file.c">
+      <Filter>Source Files\linux-compat</Filter>
+    </ClCompile>
+    <ClCompile Include="linux-compat\rbtree.c">
+      <Filter>Source Files\linux-compat</Filter>
+    </ClCompile>
+    <ClCompile Include="linux-compat\idr.c">
+      <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -132,12 +141,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="drbd_wingenl.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="drbd_winlist.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="idr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\drbd\drbd_debugfs.h">
@@ -170,17 +173,29 @@
     <ClInclude Include="..\drbd\kref_debug.h">
       <Filter>Header Files\drbd</Filter>
     </ClInclude>
-    <ClInclude Include="rbtree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Const_hweight.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="drbd_wrappers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="sched.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="linux-compat\seq_file.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\Const_hweight.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\idr.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\jiffies.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\rbtree.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\sched.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\list.h">
+      <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

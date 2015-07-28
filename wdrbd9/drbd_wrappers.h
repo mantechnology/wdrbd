@@ -2,11 +2,10 @@
 #define _DRBD_WRAPPERS_H
 
 #ifdef _WIN32
-#include "rbtree.h"
-
+#include "linux-compat/rbtree.h"
+#include "linux-compat/idr.h"
 #include "drbd_wingenl.h"
 #include "drbd_windrv.h"
-#include "idr.h"
 #else
 #include "compat.h"
 #include <linux/ctype.h>

@@ -225,10 +225,11 @@
     <ClCompile Include="data.c" />
     <ClCompile Include="disp.c" />
     <ClCompile Include="drbd_windows.c" />
-    <ClCompile Include="idr.c" />
+    <ClCompile Include="linux-compat\idr.c" />
+    <ClCompile Include="linux-compat\rbtree.c" />
+    <ClCompile Include="linux-compat\seq_file.c" />
     <ClCompile Include="netlink.c" />
     <ClCompile Include="ops.c" />
-    <ClCompile Include="rbtree.c" />
     <ClCompile Include="send_buf.c" />
     <ClCompile Include="sub.c" />
     <ClCompile Include="thread.c" />
@@ -246,15 +247,17 @@
     <ClInclude Include="..\drbd\drbd_state_change.h" />
     <ClInclude Include="..\drbd\drbd_vli.h" />
     <ClInclude Include="..\drbd\kref_debug.h" />
-    <ClInclude Include="Const_hweight.h" />
     <ClInclude Include="drbd_windows.h" />
     <ClInclude Include="drbd_windrv.h" />
     <ClInclude Include="drbd_wingenl.h" />
-    <ClInclude Include="drbd_winlist.h" />
     <ClInclude Include="drbd_wrappers.h" />
-    <ClInclude Include="idr.h" />
-    <ClInclude Include="rbtree.h" />
-    <ClInclude Include="sched.h" />
+    <ClInclude Include="linux-compat\Const_hweight.h" />
+    <ClInclude Include="linux-compat\idr.h" />
+    <ClInclude Include="linux-compat\jiffies.h" />
+    <ClInclude Include="linux-compat\list.h" />
+    <ClInclude Include="linux-compat\rbtree.h" />
+    <ClInclude Include="linux-compat\sched.h" />
+    <ClInclude Include="linux-compat\seq_file.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

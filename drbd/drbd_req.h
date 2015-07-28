@@ -124,7 +124,11 @@ enum drbd_req_event {
 	RESEND,
 	FAIL_FROZEN_DISK_IO,
 	RESTART_FROZEN_DISK_IO,
+#ifdef _WIN32
+    NOTHING
+#else
 	NOTHING,
+#endif
 };
 
 /* encoding of request states for now.  we don't actually need that many bits.

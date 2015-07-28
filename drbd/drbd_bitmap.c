@@ -25,7 +25,7 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "drbd.h"
-#include "Const_hweight.h"
+#include "linux-compat/Const_hweight.h"
 #include "drbd_endian.h"
 #else
 #include <linux/bitops.h>

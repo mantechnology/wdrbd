@@ -1,5 +1,8 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
-#ifndef _WIN32
+#ifdef _WIN32
+#include "linux-compat/seq_file.h"
+#include "linux-compat/jiffies.h"
+#else
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
@@ -136,9 +139,11 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 	seq_print_age_or_dash(m, s & RQ_LOCAL_PENDING, now - req->pre_submit_jif);
 
 #define RQ_HDR_3 "\tsent\tacked\tdone"
+#ifdef _WIN32_CHECK
 	print_one_age_or_dash(m, req, RQ_NET_SENT, 0, now, offsetof(typeof(*req), pre_send_jif));
 	print_one_age_or_dash(m, req, RQ_NET_SENT, RQ_NET_PENDING, now, offsetof(typeof(*req), acked_jif));
 	print_one_age_or_dash(m, req, RQ_NET_DONE, 0, now, offsetof(typeof(*req), net_done_jif));
+#endif
 
 #define RQ_HDR_4 "\tstate\n"
 	seq_print_request_state(m, req);
@@ -281,7 +286,12 @@ static void seq_print_peer_request(struct seq_file *m,
 {
 	bool reported_preparing = false;
 	struct drbd_peer_request *peer_req;
+#ifdef _WIN32
+    list_for_each_entry(struct drbd_peer_request, peer_req, lh, w.list)
+    {
+#else
 	list_for_each_entry(peer_req, lh, w.list) {
+#endif
 		if (reported_preparing && !(peer_req->flags & EE_SUBMITTED))
 			continue;
 
@@ -340,7 +350,11 @@ static void seq_print_resource_transfer_log_summary(struct seq_file *m,
 
 	seq_puts(m, "n\tdevice\tvnr\t" RQ_HDR);
 	spin_lock_irq(&resource->req_lock);
+#ifdef _WIN32
+    list_for_each_entry(struct drbd_request, req, &resource->transfer_log, tl_requests) {
+#else
 	list_for_each_entry(req, &resource->transfer_log, tl_requests) {
+#endif
 		struct drbd_device *device = req->device;
 		struct drbd_peer_device *peer_device;
 		unsigned int tmp = 0;

@@ -3,7 +3,7 @@
 
 #ifdef _WIN32
 #include "types.h"
-#include "rbtree.h"
+#include "linux-compat/rbtree.h"
 #else
 #include <linux/version.h>
 #include <linux/types.h>

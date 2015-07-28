@@ -22,13 +22,16 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
  */
-
+#ifdef _WIN32
+#include "seq_file.h" /* for seq_printf */
+#else
 #include <linux/module.h>
 #include <linux/bitops.h>
 #include <linux/slab.h>
 #include <linux/string.h> /* for memset */
 #include <linux/seq_file.h> /* for seq_printf */
 #include <linux/lru_cache.h>
+#endif
 #include "drbd_wrappers.h"
 
 /* this is developers aid only.
