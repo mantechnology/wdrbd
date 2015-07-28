@@ -1077,12 +1077,6 @@ extern struct task_struct * find_current_thread();
 #endif
 
 #define MAX_PROC_BUF	2048
-struct seq_file {
-	char buf[MAX_PROC_BUF];
-};
-
-extern int seq_file_idx;
-extern int seq_printf(struct seq_file *m, const char *f,...);
 
 extern void *crypto_alloc_tfm(char *name, u32 mask);
 extern unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm);

@@ -88,7 +88,7 @@ struct drbd_path {
 
 	struct list_head list;
 };
-
+#endif
 /* Each transport implementation should embed a struct drbd_transport
    into it's instance data structure. */
 struct drbd_transport {
@@ -115,7 +115,7 @@ struct drbd_transport_stats {
 struct drbd_transport_ops {
 	void (*free)(struct drbd_transport *, enum drbd_tr_free_op free_op);
 	int (*connect)(struct drbd_transport *);
-
+#ifdef _WIN32_CHECK
 /**
  * recv() - Receive data via the transport
  * @transport:	The transport to use

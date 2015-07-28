@@ -368,7 +368,11 @@ static void seq_print_resource_transfer_log_summary(struct seq_file *m,
 			spin_unlock_irq(&resource->req_lock);
 			cond_resched();
 			spin_lock_irq(&resource->req_lock);
+#ifdef _WIN32
+            req_next = list_next_entry(struct drbd_request, req, tl_requests);
+#else
 			req_next = list_next_entry(req, tl_requests);
+#endif
 			if (kref_put(&req->kref, drbd_req_destroy))
 				req = req_next;
 			if (&req->tl_requests == &resource->transfer_log)
@@ -1245,7 +1249,11 @@ void drbd_debugfs_cleanup(void)
 	drbd_debugfs_remove(&drbd_debugfs_root);
 }
 
+#ifdef _WIN32
+int drbd_debugfs_init(void)
+#else
 int __init drbd_debugfs_init(void)
+#endif
 {
 	struct dentry *dentry;
 

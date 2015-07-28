@@ -1045,8 +1045,13 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 
 #ifndef list_next_entry
 /* introduced in 008208c (v3.13-rc1) */
+#ifdef _WIN32
+#define list_next_entry(type, pos, member) \
+        list_entry((pos)->member.next, type, member)
+#else
 #define list_next_entry(pos, member) \
         list_entry((pos)->member.next, typeof(*(pos)), member)
+#endif
 #endif
 
 /*

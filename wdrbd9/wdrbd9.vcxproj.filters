@@ -120,9 +120,6 @@
     <ClCompile Include="..\drbd\lru_cache.c">
       <Filter>Source Files\drbd</Filter>
     </ClCompile>
-    <ClCompile Include="netlink.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="linux-compat\seq_file.c">
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
@@ -130,6 +127,9 @@
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
     <ClCompile Include="linux-compat\idr.c">
+      <Filter>Source Files\linux-compat</Filter>
+    </ClCompile>
+    <ClCompile Include="linux-compat\netlink.c">
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
   </ItemGroup>
@@ -173,9 +173,6 @@
     <ClInclude Include="..\drbd\kref_debug.h">
       <Filter>Header Files\drbd</Filter>
     </ClInclude>
-    <ClInclude Include="drbd_wrappers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="linux-compat\seq_file.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
@@ -196,6 +193,30 @@
     </ClInclude>
     <ClInclude Include="linux-compat\list.h">
       <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="proto.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="comm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="disp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mvolmsg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mvolse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="send_buf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="wsk2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="drbd_wrappers.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

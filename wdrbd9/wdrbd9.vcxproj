@@ -226,9 +226,9 @@
     <ClCompile Include="disp.c" />
     <ClCompile Include="drbd_windows.c" />
     <ClCompile Include="linux-compat\idr.c" />
+    <ClCompile Include="linux-compat\netlink.c" />
     <ClCompile Include="linux-compat\rbtree.c" />
     <ClCompile Include="linux-compat\seq_file.c" />
-    <ClCompile Include="netlink.c" />
     <ClCompile Include="ops.c" />
     <ClCompile Include="send_buf.c" />
     <ClCompile Include="sub.c" />
@@ -247,6 +247,8 @@
     <ClInclude Include="..\drbd\drbd_state_change.h" />
     <ClInclude Include="..\drbd\drbd_vli.h" />
     <ClInclude Include="..\drbd\kref_debug.h" />
+    <ClInclude Include="comm.h" />
+    <ClInclude Include="disp.h" />
     <ClInclude Include="drbd_windows.h" />
     <ClInclude Include="drbd_windrv.h" />
     <ClInclude Include="drbd_wingenl.h" />
@@ -258,6 +260,11 @@
     <ClInclude Include="linux-compat\rbtree.h" />
     <ClInclude Include="linux-compat\sched.h" />
     <ClInclude Include="linux-compat\seq_file.h" />
+    <ClInclude Include="mvolmsg.h" />
+    <ClInclude Include="mvolse.h" />
+    <ClInclude Include="proto.h" />
+    <ClInclude Include="send_buf.h" />
+    <ClInclude Include="wsk2.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

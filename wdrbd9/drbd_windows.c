@@ -1230,23 +1230,6 @@ void set_disk_ro(struct gendisk *disk, int flag)
 
 }
 
-int seq_printf(struct seq_file *m, const char *f,...)
-{
-	int ret;
-	va_list args;
-
-	va_start(args, f);
-#ifdef _WIN32
-	ret = vsprintf(m->buf + seq_file_idx, f, args);
-#else
-	ret = seq_vprintf(m, f, args);
-#endif
-	va_end(args);
-	seq_file_idx += ret;
-	ASSERT(seq_file_idx < MAX_PROC_BUF);
-	return ret;
-}
-
 #ifdef _WIN32_CT
 #define CT_MAX_THREAD_LIST          40
 static LIST_HEAD(ct_thread_list);
