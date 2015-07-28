@@ -13,6 +13,18 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="user">
+      <UniqueIdentifier>{095b50d9-f3eb-489c-b352-bcc605c6f573}</UniqueIdentifier>
+      <ParseFiles>true</ParseFiles>
+    </Filter>
+    <Filter Include="user\shared">
+      <UniqueIdentifier>{be160261-21aa-4796-93e9-00465139d187}</UniqueIdentifier>
+      <ParseFiles>false</ParseFiles>
+    </Filter>
+    <Filter Include="user\linux">
+      <UniqueIdentifier>{7bfd3d8d-9f57-47b2-8e98-992c0468e7fc}</UniqueIdentifier>
+      <ParseFiles>false</ParseFiles>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="drbdcon\main.cpp">
@@ -21,10 +33,138 @@
     <ClCompile Include="drbdcon\ops.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="user\v9\config_flags.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_adjust.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_dump.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_main.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_parser.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_postparse.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdadm_usage_cnt.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdsetup.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdsetup_colors.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbdtool_common.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\registry.c">
+      <Filter>user</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\drbdmeta.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\libgenl.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\shared_main.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\shared_parser.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\shared_tool.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\wrap_printf.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\shared\drbd_buildtag.c">
+      <Filter>user\shared</Filter>
+    </ClCompile>
+    <ClCompile Include="user\v9\drbd_nla.c">
+      <Filter>user</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drbdcon\mvol.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="drbdcon\ioctl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\config_flags.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbd_nla.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbdadm.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbdadm_dump.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbdadm_parser.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbdsetup_colors.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\drbdtool_common.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\registry.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\v9\sys_queue.h">
+      <Filter>user</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\config.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\drbd_endian.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\drbdmeta_parser.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\libgenl.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\shared_main.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\shared_parser.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\shared_tool.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\shared\wrap_printf.h">
+      <Filter>user\shared</Filter>
+    </ClInclude>
+    <ClInclude Include="user\linux\drbd_config.h">
+      <Filter>user\linux</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="user\shared_prereqs.mk">
+      <Filter>user</Filter>
+    </None>
+    <None Include="user\v9\drbdadm_scanner.fl">
+      <Filter>user</Filter>
+    </None>
+    <None Include="user\shared\config.h.in">
+      <Filter>user\shared</Filter>
+    </None>
+    <None Include="user\shared\drbdmeta_scanner.fl">
+      <Filter>user\shared</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -52,7 +52,7 @@ main(int argc, char* argv [])
     char    NagleEnableFlag = 0;
     char    NagleDisableFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
-    char    *ResourceName;
+    char    *ResourceName = NULL;
 
     int     Force = 0;
 

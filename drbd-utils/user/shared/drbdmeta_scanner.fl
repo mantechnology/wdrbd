@@ -1,6 +1,6 @@
 %{
 #ifdef _WIN32
-#include "drbd_windows.h"
+#include "windows/types.h"
 #endif
 
 #include "drbd_endian.h"

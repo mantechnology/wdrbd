@@ -1,4 +1,0 @@
-/* automatically generated. DO NOT EDIT. */
-#include <linux/drbd.h>
-const char *drbd_buildtag(void)
-{
