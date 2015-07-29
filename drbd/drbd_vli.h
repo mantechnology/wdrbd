@@ -25,6 +25,9 @@
 #ifndef _DRBD_VLI_H
 #define _DRBD_VLI_H
 
+#ifdef _WIN32 // _WIN32_CHECK : 일단 헤더파일 오류 회피! 추후 정리
+#include "..\drbd-utils\user\shared\drbd_endian.h"
+#endif
 /*
  * At a granularity of 4KiB storage represented per bit,
  * and stroage sizes of several TiB,
