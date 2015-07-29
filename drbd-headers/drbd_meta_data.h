@@ -13,6 +13,11 @@
 #define be_u16 struct { uint16_t be; }
 #endif
 
+#ifdef _WIN32
+#pragma pack (push, 1)
+#define __packed // _WIN32_CHECK: 한 곳에서 정의되도록 조치필요
+#endif
+
 struct peer_dev_md_on_disk_9 {
 	be_u64 bitmap_uuid;
 	be_u64 bitmap_dagtag;
@@ -49,6 +54,10 @@ struct meta_data_on_disk_9 {
 	char padding[0] __attribute__((aligned(4096)));
 } __packed;
 
+
+#ifdef _WIN32
+#pragma pack (pop) 
+#endif
 
 #undef be_u64
 #undef be_u32
