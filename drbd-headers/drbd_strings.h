@@ -1,4 +1,4 @@
-#ifndef __DRBD_STRINGS_H
+﻿#ifndef __DRBD_STRINGS_H
 #define __DRBD_STRINGS_H
 
 struct state_names {

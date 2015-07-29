@@ -1,8 +1,8 @@
-#include "drbd_windrv.h"
+ï»¿#include "drbd_windrv.h"
 #include "wsk2.h"
 #include "drbd_wingenl.h"
-#include "../user/drbd_endian.h"
-#include "idr.h"
+#include "linux-compat/drbd_endian.h"
+#include "linux-compat/idr.h"
 #include "disp.h" 
 #include "drbd_int.h"
 #include "send_buf.h"	
@@ -190,12 +190,12 @@ LONG NTAPI send_buf(
 			data_sz = get_ring_buffer_size(bab);
 			if ((data_sz + BufferSize) > highwater)
 			{
-				// TODO: Ãâ·ÂºÎÇÏ ¹«½Ã, ¾ÈÁ¤È­ ÀÌÈÄ Á¦°Å
+				// TODO: ì¶œë ¥ë¶€í•˜ ë¬´ì‹œ, ì•ˆì •í™” ì´í›„ ì œê±°
 				//printk("WDRBD_WARN: [%s] bab(%s) overflow. retry(%d/%d). bab:total(%d) queued(%d) requested(%d) highwater(%d)", __FUNCTION__, bab->name, i, retry, bab->length, data_sz, BufferSize, highwater);
 			}
 			else
 			{
-				// TODO: Ãâ·ÂºÎÇÏ ¹«½Ã, ¾ÈÁ¤È­ ÀÌÈÄ Á¦°Å
+				// TODO: ì¶œë ¥ë¶€í•˜ ë¬´ì‹œ, ì•ˆì •í™” ì´í›„ ì œê±°
 				printk(KERN_WARNING "WDRBD_WARN: [%s] bab(%s) overflow resolved at loop(%d/%d).\n", __FUNCTION__, bab->name, i, retry);
 				goto buffering;
 			}
@@ -257,7 +257,7 @@ void do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout)
 			loop++;
 			if (((pos = strlen(sbuf)) + 10) > 1024 )
 			{
-				DbgPrint("SENDBUF_TRACE: who list(%d) too big. ignore!\n", loop); // ASYNC ÀÏ °æ¿ì ¹ß»ý!
+				DbgPrint("SENDBUF_TRACE: who list(%d) too big. ignore!\n", loop); // ASYNC ì¼ ê²½ìš° ë°œìƒ!
 				list_del(&req->list);
 				kfree(req);
 				big = 1;

@@ -19,7 +19,8 @@
    along with drbd; see the file COPYING.  If not, write to
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 */
-
+#ifdef _WIN32
+#else
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/socket.h>
@@ -27,6 +28,7 @@
 #include <linux/net.h>
 #include <linux/tcp.h>
 #include <linux/highmem.h>
+#endif
 #include <linux/drbd_genl_api.h>
 #include <drbd_protocol.h>
 #include <drbd_transport.h>

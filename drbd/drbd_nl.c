@@ -24,7 +24,16 @@
  */
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
-
+#ifdef _WIN32
+#include "windows/drbd.h"
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
+#include "drbd_state_change.h"
+#include "drbd_debugfs.h"
+#include "drbd_transport.h"
+#include "linux/drbd_limits.h"
+#else
 #include <linux/module.h>
 #include <linux/drbd.h>
 #include <linux/in.h>
@@ -45,6 +54,7 @@
 #include <linux/kthread.h>
 #include <linux/security.h>
 #include <net/genetlink.h>
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
 /*
  * copied from more recent kernel source
@@ -166,6 +176,7 @@ extern struct genl_ops drbd_genl_ops[];
 #define drbd_security_netlink_recv(skb, cap) \
 	security_netlink_recv(skb, cap)
 #else
+#ifndef _WIN32
 /* see
  * fd77846 security: remove the security_netlink_recv hook as it is equivalent to capable()
  */
@@ -173,6 +184,7 @@ static inline bool drbd_security_netlink_recv(struct sk_buff *skb, int cap)
 {
 	return !capable(cap);
 }
+#endif
 #endif
 
 
@@ -524,6 +536,7 @@ static char **make_envp(struct env *env)
 }
 
 /* Macro refers to local variables peer_device, device and connection! */
+#ifdef _WIN32_CHECK
 #define magic_printk(level, fmt, args...)				\
 	if (peer_device)						\
 		__drbd_printk_peer_device(level, peer_device, fmt, args); \
@@ -531,6 +544,9 @@ static char **make_envp(struct env *env)
 		__drbd_printk_device(level, device, fmt, args);		\
 	else								\
 		__drbd_printk_connection(level, connection, fmt, args);
+#else
+#define magic_printk(level, fmt, args, ...)
+#endif
 
 int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection, char *cmd)
 {

@@ -3,7 +3,7 @@
 #include "drbd_wingenl.h"	/// SEO:
 #include "proto.h"
 
-#include "idr.h"
+#include "linux-compat/idr.h"
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 

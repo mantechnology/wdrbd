@@ -27,7 +27,7 @@
 #include "drbd_windrv.h"
 #include "drbd_wingenl.h"
 #include "windows/drbd.h"
-#include "drbd_endian.h"
+#include "linux-compat/drbd_endian.h"
 #include "linux-compat/idr.h"
 #else
 #include <linux/slab.h>

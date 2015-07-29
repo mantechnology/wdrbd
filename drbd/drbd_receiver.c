@@ -22,7 +22,14 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#ifdef _WIN32
+#include "windows/drbd.h"
 
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
+#include "drbd_vli.h"
+#else
 #include <linux/module.h>
 
 #include <asm/uaccess.h>
@@ -47,6 +54,7 @@
 #include "drbd_req.h"
 #include "drbd_vli.h"
 #include <linux/scatterlist.h>
+#endif
 
 #define PRO_FEATURES (FF_TRIM)
 

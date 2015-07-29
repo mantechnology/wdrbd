@@ -26,7 +26,7 @@
 #ifdef _WIN32
 #include "linux-compat/bitops.h"
 #include "windows/drbd.h"
-#include "drbd_endian.h"
+#include "linux-compat/drbd_endian.h"
 #else
 #include <linux/bitops.h>
 #include <linux/vmalloc.h>

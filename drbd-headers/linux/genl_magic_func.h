@@ -1,7 +1,9 @@
 #ifndef GENL_MAGIC_FUNC_H
 #define GENL_MAGIC_FUNC_H
 
+#ifndef __KERNEL__
 #include <linux/genl_magic_struct.h>
+#endif
 
 /*
  * Magic: declare tla policy						{{{1
@@ -132,6 +134,29 @@ static void dprint_array(const char *dir, int nla_type,
  * use one static buffer for parsing of nested attributes */
 static struct nlattr *nested_attr_tb[128];
 
+#ifndef __KERNEL__
+#ifndef BUILD_BUG_ON
+/* Force a compilation error if condition is true */
+#define BUILD_BUG_ON(condition) ((void)BUILD_BUG_ON_ZERO(condition))
+/* Force a compilation error if condition is true, but also produce a
+   result (of value 0 and type size_t), so the expression can be used
+   e.g. in a structure initializer (or where-ever else comma expressions
+   aren't permitted). */
+#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
+#define BUILD_BUG_ON_NULL(e) ((void *)sizeof(struct { int:-!!(e); }))
+#endif
+#else
+#ifndef BUILD_BUG_ON
+/* Force a compilation error if condition is true */
+#define BUILD_BUG_ON(condition) 
+/* Force a compilation error if condition is true, but also produce a
+   result (of value 0 and type size_t), so the expression can be used
+   e.g. in a structure initializer (or where-ever else comma expressions
+   aren't permitted). */
+#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
+#define BUILD_BUG_ON_NULL(e) ((void *)sizeof(struct { int:-!!(e); }))
+#endif
+#endif
 #undef GENL_struct
 #define GENL_struct(tag_name, tag_number, s_name, s_fields)		\
 static int __ ## s_name ## _from_attrs(struct s_name *s,		\
@@ -164,7 +189,24 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 	return __ ## s_name ## _from_attrs(s, info, true);		\
 }					__attribute__((unused))		\
 
+#ifndef __KERNEL__
 #define __assign(attr_nr, attr_flag, name, nla_type, type, assignment...)	\
+		nla = ntb[attr_nr];						\
+		if (nla) {						\
+			if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
+				pr_info("<< must not change invariant attr: %s\n", #name);	\
+				return -EEXIST;				\
+            			}						\
+			assignment;					\
+        		} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
+			/* attribute missing from payload, */		\
+			/* which was expected */			\
+		} else if ((attr_flag) & DRBD_F_REQUIRED) {		\
+			pr_info("<< missing attr: %s\n", #name);	\
+			return -ENOMSG;					\
+		}
+#else
+#define __assign(attr_nr, attr_flag, name, nla_type, type, assignment, ...)	\
 		nla = ntb[attr_nr];						\
 		if (nla) {						\
 			if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
@@ -179,6 +221,7 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 			pr_info("<< missing attr: %s\n", #name);	\
 			return -ENOMSG;					\
 		}
+#endif
 
 #undef __field
 #define __field(attr_nr, attr_flag, name, nla_type, type, __get, __put,	\
@@ -207,6 +250,8 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
  * Magic: define op number to op name mapping				{{{1
  *									{{{2
  */
+#ifndef __KERNEL__
+#else
 static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 __attribute__ ((unused));
 static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
@@ -220,8 +265,9 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 		     return "unknown";
 	}
 }
+#endif
 
-#ifdef __KERNEL__
+#ifndef __KERNEL__
 #include <linux/stringify.h>
 /*
  * Magic: define genl_ops						{{{1

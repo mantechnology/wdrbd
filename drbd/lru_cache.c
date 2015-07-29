@@ -1,4 +1,4 @@
-/*
+﻿/*
    lru_cache.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -23,7 +23,9 @@
 
  */
 #ifdef _WIN32
+#include "linux-compat/bitops.h"
 #include "linux-compat/seq_file.h" /* for seq_printf */
+#include "linux/lru_cache.h"
 #else
 #include <linux/module.h>
 #include <linux/bitops.h>
@@ -42,7 +44,7 @@
 	BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags)); \
 } while (0)
 
-#define RETURN(x...)     do { \
+#define RETURN(x)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
 	return x ; } while (0)
 

@@ -13,11 +13,15 @@
 # error "you need to define GENL_MAGIC_INCLUDE_FILE before inclusion"
 #endif
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include "windows/types.h"
+#else
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
 #include <linux/types.h>
 #endif
+
+
 
 #define CONCAT__(a,b)	a ## b
 #define CONCAT_(a,b)	CONCAT__(a,b)

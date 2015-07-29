@@ -1,4 +1,4 @@
-#ifndef DRBD_TRANSPORT_H
+﻿#ifndef DRBD_TRANSPORT_H
 #define DRBD_TRANSPORT_H
 #ifdef _WIN32
 #include "linux-compat/list.h"
@@ -83,17 +83,17 @@ enum drbd_tr_free_op {
 	DESTROY_TRANSPORT
 };
 
-#ifdef WIN32_CHECK
 struct drbd_path {
+#ifdef WIN32_CHECK
 	struct sockaddr_storage my_addr;
 	struct sockaddr_storage peer_addr;
-
+#endif
 	int my_addr_len;
 	int peer_addr_len;
 
 	struct list_head list;
 };
-#endif
+
 /* Each transport implementation should embed a struct drbd_transport
    into it's instance data structure. */
 struct drbd_transport {

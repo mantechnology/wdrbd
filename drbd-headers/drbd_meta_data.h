@@ -15,7 +15,7 @@
 
 #ifdef _WIN32
 #pragma pack (push, 1)
-#define __packed // _WIN32_CHECK: ÇÑ °÷¿¡¼­ Á¤ÀÇµÇµµ·Ï Á¶Ä¡ÇÊ¿ä
+#define __packed // _WIN32_CHECK: ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ÇµÇµï¿½ï¿½ï¿½ ï¿½ï¿½Ä¡ï¿½Ê¿ï¿½
 #endif
 
 struct peer_dev_md_on_disk_9 {

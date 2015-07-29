@@ -29,7 +29,7 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "windows/drbd.h"
-#include "drbd_endian.h"
+#include "linux-compat/drbd_endian.h"
 #include <linux-compat/Kernel.h>
 #else
 #include <linux/module.h>

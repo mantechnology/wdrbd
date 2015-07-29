@@ -1,4 +1,7 @@
+﻿#ifdef _WIN32
+#else
 #include <linux/module.h>
+#endif
 #include <drbd_transport.h>
 #include "drbd_int.h"
 

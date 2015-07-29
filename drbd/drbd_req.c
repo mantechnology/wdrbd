@@ -22,14 +22,18 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
  */
-
+#ifdef _WIN32
+#include "windows/drbd.h"
+#include "drbd_int.h"
+#include "drbd_req.h"
+#else
 #include <linux/module.h>
 
 #include <linux/slab.h>
 #include <linux/drbd.h>
 #include "drbd_int.h"
 #include "drbd_req.h"
-
+#endif
 
 /* We only support diskstats for 2.6.16 and up.
  * see also commit commit a362357b6cd62643d4dda3b152639303d78473da

@@ -1,4 +1,4 @@
-#ifndef __WIN32_SEND_BUFFING_H
+﻿#ifndef __WIN32_SEND_BUFFING_H
 #define __WIN32_SEND_BUFFING_H
 
 #include "drbd_windrv.h"	

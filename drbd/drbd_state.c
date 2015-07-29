@@ -26,7 +26,9 @@
  */
 
 #include <linux/drbd_limits.h>
+#ifdef _WIN32_CHECK
 #include <linux/random.h>
+#endif
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"

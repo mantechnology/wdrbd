@@ -2,7 +2,7 @@
 #include "wsk2.h"		/// SEO:
 #include "drbd_wingenl.h"	/// SEO:
 #include "idr.h"
-#include "../user/libgenl.h"
+//#include "../user/libgenl.h"
 #include "Drbd_int.h"
 
 extern int drbd_tla_parse(struct nlmsghdr *nlh);

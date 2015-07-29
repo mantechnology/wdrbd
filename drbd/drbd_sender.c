@@ -22,7 +22,11 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 */
-
+#ifdef _WIN32
+#include "windows/drbd.h"
+#include "linux-compat/sched.h"
+#include "linux-compat/wait.h"
+#else
 #include <linux/module.h>
 #include <linux/drbd.h>
 #include <linux/sched.h>
@@ -33,7 +37,7 @@
 #include <linux/slab.h>
 #include <linux/random.h>
 #include <linux/scatterlist.h>
-
+#endif
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"

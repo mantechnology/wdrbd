@@ -1245,14 +1245,14 @@ struct genl_multicast_group
 };
 
 static inline int genl_register_mc_group(struct genl_family *family,
-struct genl_multicast_group *grp)
+            struct genl_multicast_group *grp)
 {
     grp->id = 1;
     return 0;
 }
 
 static inline void genl_unregister_mc_group(struct genl_family *family,
-struct genl_multicast_group *grp)
+    struct genl_multicast_group *grp)
 {}
 
 #endif

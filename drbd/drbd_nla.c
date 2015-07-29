@@ -1,6 +1,10 @@
 #include "drbd_wrappers.h"
+#ifdef _WIN32
+#include "linux-compat/kernel.h"
+#else
 #include <linux/kernel.h>
 #include <net/netlink.h>
+#endif
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"
 

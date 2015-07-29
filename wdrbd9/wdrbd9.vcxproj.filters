@@ -135,6 +135,9 @@
     <ClCompile Include="linux-compat\netlink.c">
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
+    <ClCompile Include="linux-compat\Attr.c">
+      <Filter>Source Files\linux-compat</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drbd_windows.h">
@@ -246,6 +249,9 @@
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
     <ClInclude Include="linux-compat\spinlock.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\drbd_endian.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
   </ItemGroup>
