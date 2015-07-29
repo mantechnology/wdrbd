@@ -1,4 +1,4 @@
-#ifndef DRBD_WINDOWS_H
+ï»¿#ifndef DRBD_WINDOWS_H
 #define DRBD_WINDOWS_H
 
 
@@ -7,7 +7,7 @@
 //#include <stdbool.h>
 //#include "windows/types.h"
 
-#define _WIN32_SEND_BUFFING	// BAB ¼Û½Å¹öÆÛ¸µ »ç¿ë. cygwin ºôµå½Ã »ç¿ë. ÃÖÁ¾ ¾ÈÁ¤È­ ÈÄ Á¦°Å
+#define _WIN32_SEND_BUFFING	// BAB ì†¡ì‹ ë²„í¼ë§ ì‚¬ìš©. cygwin ë¹Œë“œì‹œ ì‚¬ìš©. ìµœì¢… ì•ˆì •í™” í›„ ì œê±°
 #define _WIN32_MVFL
 
 #define pid_t				int

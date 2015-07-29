@@ -1,4 +1,4 @@
-/*
+﻿/*
   drbd_int.h
 
   This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -27,10 +27,14 @@
 #define _DRBD_INT_H
 
 #ifdef _WIN32
-#include <linux/lru_cache.h>
-#include "windows/drbd.h"
+#include "windows/types.h"
 #include "linux-compat/list.h"
 #include "linux-compat/sched.h"
+#include "linux-compat/bitops.h"
+#include "linux/lru_cache.h"
+#include "linux/drbd_genl_api.h"
+#include "windows/drbd.h"
+#include "linux/drbd_config.h"
 #else
 #include <linux/compiler.h>
 #include <linux/types.h>
@@ -481,6 +485,7 @@ extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
 
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
+#ifdef _WIN32_CHECK // kmpak 29150729 신규
 #define dagtag_newer_eq(a,b)      \
 	(typecheck(u64, a) && \
 	 typecheck(u64, b) && \
@@ -490,6 +495,10 @@ extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
 	(typecheck(u64, a) && \
 	 typecheck(u64, b) && \
 	((s64)(a) - (s64)(b) > 0))
+#else
+#define dagtag_newer_eq(a,b)    false
+#define dagtag_newer(a,b)       false
+#endif
 
 struct drbd_request {
 	struct drbd_device *device;
@@ -969,9 +978,7 @@ struct drbd_resource {
 	struct idr devices;		/* volume number to device mapping */
 	struct list_head connections;
 	struct list_head resources;
-#ifdef _WIN32_CHECK
 	struct res_opts res_opts;
-#endif
 	int max_node_id;
 	struct mutex conf_update;	/* for ready-copy-update of net_conf and disk_conf
 					   and devices, connection and peer_devices lists */
@@ -1389,9 +1396,7 @@ struct drbd_device {
 		spinlock_t q_lock;	/* dec only once finished. */
 		struct list_head q;	/* n > 0 even if q already empty */
 	} pending_bitmap_work;
-#ifdef _WIN32_CHECK
 	struct device_conf device_conf;
-#endif
 
 	/* any requests that would block in drbd_make_request()
 	 * are deferred to this single-threaded work queue */
@@ -1462,10 +1467,13 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 	}
 	return req->rq_state[1 + idx];
 }
-
+#ifdef _WIN32
+#define for_each_resource(resource, _resources) \
+	list_for_each_entry(struct drbd_resource, resource, _resources, resources)
+#else
 #define for_each_resource(resource, _resources) \
 	list_for_each_entry(resource, _resources, resources)
-
+#endif
 #define for_each_resource_rcu(resource, _resources) \
 	list_for_each_entry_rcu(resource, _resources, resources)
 
@@ -1505,7 +1513,7 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 	list_for_each_entry_rcu(peer_device, &device->peer_devices, peer_devices)
 
 #define for_each_peer_device_safe(peer_device, tmp, device) \
-	list_for_each_entry_safe(peer_device, tmp, &device->peer_devices, peer_devices)
+	list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp, &device->peer_devices, peer_devices)
 
 #define for_each_peer_device_ref(peer_device, m, resource)		\
 	for (peer_device = __drbd_next_peer_device_ref(&m, NULL, resource); \
@@ -2229,9 +2237,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
-#ifdef _WIN32_CHECK
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-#endif
 	rcu_read_unlock();
 	switch (ep) {
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */

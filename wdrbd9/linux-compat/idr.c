@@ -1,4 +1,4 @@
-// DRBD_DOC: from http://ftp.openswan.org/openswan/openswan-ocf/klips-fsm/lib/idr.c
+﻿// DRBD_DOC: from http://ftp.openswan.org/openswan/openswan-ocf/klips-fsm/lib/idr.c
 /*
 * 2002-10-18  written by Jim Houston jim.houston@ccur.com
 *	Copyright (C) 2002 by Concurrent Computer Corporation

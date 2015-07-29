@@ -29,6 +29,9 @@
     <Filter Include="Source Files\linux-compat">
       <UniqueIdentifier>{debe8a57-48bc-4e63-8e07-5c7da3ec1f2a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\drbd\linux">
+      <UniqueIdentifier>{74500581-b928-4cda-9506-9f823cdf48d1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="wdrbd9.inf">
@@ -176,9 +179,6 @@
     <ClInclude Include="linux-compat\seq_file.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
-    <ClInclude Include="linux-compat\Const_hweight.h">
-      <Filter>Header Files\linux-compat</Filter>
-    </ClInclude>
     <ClInclude Include="linux-compat\idr.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
@@ -217,6 +217,36 @@
     </ClInclude>
     <ClInclude Include="drbd_wrappers.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\Kernel.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="..\drbd\linux\drbd_config.h">
+      <Filter>Header Files\drbd\linux</Filter>
+    </ClInclude>
+    <ClInclude Include="..\drbd\linux\genl_magic_func-genl_register_family_with_ops_groups.h">
+      <Filter>Header Files\drbd\linux</Filter>
+    </ClInclude>
+    <ClInclude Include="..\drbd\linux\genl_magic_func-genl_register_mc_group.h">
+      <Filter>Header Files\drbd\linux</Filter>
+    </ClInclude>
+    <ClInclude Include="..\drbd\linux\lru_cache.h">
+      <Filter>Header Files\drbd\linux</Filter>
+    </ClInclude>
+    <ClInclude Include="Bitops.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\hweight.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\Backing-dev.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\Wait.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\spinlock.h">
+      <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,11 +1,11 @@
-﻿#include <stdint.h>		/// SEO:
-#include "drbd_windrv.h"	/// SEO:
-#include "wsk2.h"		/// SEO:
-#include "drbd_wingenl.h"	/// SEO:
-#include "idr.h"
-#include "drbd_wrappers.h"
+﻿#include <stdint.h>
 #include <stdarg.h>
 #include <intrin.h>
+#include "drbd_windrv.h"
+#include "wsk2.h"
+#include "drbd_wingenl.h"
+#include "linux-compat/idr.h"
+#include "drbd_wrappers.h"
 #include "disp.h"
 
 #ifdef ALLOC_PRAGMA
@@ -446,7 +446,18 @@ mempool_t *mempool_create_page_pool(int min_nr, int order)
 	p_pool->page_alloc = 1; 
 	return p_pool; 
 }
-
+#ifndef _WIN32_CHECK
+mempool_t *mempool_create_slab_pool(int min_nr, int order)
+{
+	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
+	if (!p_pool)
+	{
+		return 0;
+	}
+	p_pool->page_alloc = 1; 
+	return p_pool; 
+}
+#endif
 void *mempool_alloc_slab(gfp_t gfp_mask, void *pool_data)
 {
 	return 1; // skip error!
@@ -501,9 +512,9 @@ void kmem_cache_destroy(struct kmem_cache *s)
 }
 
 struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
-                  unsigned long flags, void (*ctor)(void *), ULONG Tag)
+                  unsigned long flags, void (*ctor)(void *))
 {
-	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, Tag);	
+	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, 'memk');	
 	if (!p)
 	{
 		WDRBD_ERROR("kzalloc failed\n");
@@ -540,10 +551,10 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
 }
 
-struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
+struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs)
 {
 	struct bio *bio;
-	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask, Tag);
+	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask);
 	if (!bio)
 	{
 		return 0;
@@ -1094,9 +1105,18 @@ void del_timer(struct timer_list *t)
 	KeCancelTimer(&t->ktimer); 
 }
 
-void del_timer_sync(struct timer_list *t)
+int del_timer_sync(struct timer_list *t)
 {
 	KeCancelTimer(&t->ktimer);
+    return 0;
+#ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
+  	for (;;) {
+		int ret = try_to_del_timer_sync(timer);
+		if (ret >= 0)
+			return ret;
+		cpu_relax();
+	}
+#endif
 }
 
 int mod_timer(struct timer_list *t, unsigned long expires_ms)
@@ -1324,8 +1344,10 @@ struct task_struct* ct_find_thread(PKTHREAD id)
 
 struct task_struct *find_current_thread() 
 {
-	extern struct task_struct g_nlThread; 
+	extern struct task_struct g_nlThread;
+#ifdef _WIN32_CHECK
 	extern struct retry_worker retry;
+#endif
 
 	struct task_struct *curr = 0;
 	struct drbd_conf *mdev;
@@ -1337,12 +1359,12 @@ struct task_struct *find_current_thread()
 	{
 		return &g_nlThread;
 	}
-
+#ifdef _WIN32_CHECK
 	if (retry.task.current_thr == threadHandle)
 	{
 		return &retry.task.current_thr;
 	}
-
+#endif
 	rcu_read_lock();
 	idr_for_each_entry(&minors, mdev, i)  // i means minor number
 	{
@@ -1691,14 +1713,9 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      __list_add_rcu(new, head->prev, head);
 }
 
-void add_disk(struct gendisk *disk)
-{
-	// 방식이 다름
-}
-
- struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag)
+ struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
  {
-     return kzalloc(sizeof(struct request_queue), 0, Tag);
+     return kzalloc(sizeof(struct request_queue), 0);
  }
 
 /**

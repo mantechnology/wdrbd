@@ -1,4 +1,4 @@
-/*
+﻿/*
    drbd_bitmap.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -21,11 +21,11 @@
    along with drbd; see the file COPYING.  If not, write to
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
+ 
 #ifdef _WIN32
+#include "linux-compat/bitops.h"
 #include "windows/drbd.h"
-#include "linux-compat/Const_hweight.h"
 #include "drbd_endian.h"
 #else
 #include <linux/bitops.h>

@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
+﻿#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
 #ifdef _WIN32
 #include "linux-compat/seq_file.h"
 #include "linux-compat/jiffies.h"
@@ -494,21 +494,14 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 			   "  target_node_id: %d\n",
 			   twopc.tid, twopc.initiator_node_id,
 			   twopc.target_node_id);
-#ifdef _WIN32_CHECK
+
 		if (twopc.initiator_node_id == resource->res_opts.node_id) {
-#else
-        if (twopc.initiator_node_id == 0) {
-#endif
 			struct drbd_connection *connection;
 
 			seq_puts(m, "  peers reply's: ");
 			rcu_read_lock();
 			for_each_connection(connection, resource) {
-#ifdef _WIN32_CHECK
 				char *name = rcu_dereference((connection)->transport.net_conf)->name;
-#else
-                char *name = "dummy";
-#endif
 				if (!test_bit(TWOPC_PREPARED, &connection->flags))
 					seq_printf(m, "%s n.p., ", name);
 				else if (test_bit(TWOPC_NO, &connection->flags))

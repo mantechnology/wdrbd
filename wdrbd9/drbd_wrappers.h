@@ -1,4 +1,4 @@
-#ifndef _DRBD_WRAPPERS_H
+﻿#ifndef _DRBD_WRAPPERS_H
 #define _DRBD_WRAPPERS_H
 
 #ifdef _WIN32
@@ -6,6 +6,8 @@
 #include "linux-compat/idr.h"
 #include "drbd_wingenl.h"
 #include "drbd_windrv.h"
+
+#include "linux-compat/Backing-dev.h"
 #else
 #include "compat.h"
 #include <linux/ctype.h>
@@ -23,45 +25,45 @@
 #endif
 
 #ifndef pr_fmt
-#define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
+#define pr_fmt(fmt)	fmt
 #endif
 
 /* {{{ pr_* macros */
 /* some very old kernels don't have them, or at least not all of them */
 #ifndef pr_emerg
 #define pr_emerg(fmt, ...) \
-		printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_EMERG pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_alert
 #define pr_alert(fmt, ...) \
-		printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_ALERT pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_crit
 #define pr_crit(fmt, ...) \
-		printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_CRIT pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_err
 #define pr_err(fmt, ...) \
-		printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_ERR pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_warning
 #define pr_warning(fmt, ...) \
-		printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_WARNING pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_warn
 #define pr_warn pr_warning
 #endif
 #ifndef pr_notice
 #define pr_notice(fmt, ...) \
-		printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_NOTICE pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_info
 #define pr_info(fmt, ...) \
-		printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_INFO pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_cont
 #define pr_cont(fmt, ...) \
-		printk(KERN_CONT fmt, ##__VA_ARGS__)
+		printk(KERN_CONT fmt, __VA_ARGS__)
 #endif
 
 /* pr_devel() should produce zero code unless DEBUG is defined */
@@ -100,12 +102,11 @@ and BLKDEV_IFL_WAIT disappeared again.) */
 #define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, gfpf, s, BLKDEV_IFL_WAIT)
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
 {
     int retval = 512;
-    if (q && q->hardsect_size)
-        retval = q->hardsect_size;
+    if (q && q->logical_block_size)
+        retval = q->logical_block_size;
     return retval;
 }
 
@@ -121,14 +122,13 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
 
 static inline unsigned int queue_max_sectors(struct request_queue *q)
 {
-    return q->max_sectors;
+    return q->max_hw_sectors;
 }
 
 static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
 {
-    q->hardsect_size = size;
+    q->logical_block_size = size;
 }
-#endif
 
 #ifdef COMPAT_HAVE_VOID_MAKE_REQUEST
 /* in Commit 5a7bbad27a410350e64a2d7f5ec18fc73836c14f (between Linux-3.1 and 3.2)
@@ -1037,10 +1037,14 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 /* see c26d34a rcu: Add lockdep-enabled variants of rcu_dereference() */
 #define rcu_dereference_raw(p) rcu_dereference(p)
 #endif
+#ifdef _WIN32_CHECK
 #define list_entry_rcu(ptr, type, member) \
 	({typeof (*ptr) *__ptr = (typeof (*ptr) __force *)ptr; \
 	 container_of((typeof(ptr))rcu_dereference_raw(__ptr), type, member); \
 	})
+#else
+#define list_entry_rcu(ptr, type, member)   NULL
+#endif
 #endif
 
 #ifndef list_next_entry
@@ -1322,10 +1326,9 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr, km)
 #endif
 
-#define for_each_set_bit(bit, addr, size) \
-	for ((bit) = find_first_bit((addr), (size));		\
-	     (bit) < (size);					\
-	     (bit) = find_next_bit((addr), (size), (bit) + 1))
+#if !defined(for_each_set_bit) && defined(for_each_bit)
+#define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
+#endif
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY
 #undef hlist_for_each_entry
@@ -1478,12 +1481,16 @@ calling namespace */
 #endif
 
 #ifndef list_first_or_null_rcu
+#ifdef _WIN32_CHECK
 #define list_first_or_null_rcu(ptr, type, member) \
 ({ \
 	struct list_head *__ptr = (ptr); \
 	struct list_head *__next = ACCESS_ONCE(__ptr->next); \
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
+#else
+#define list_first_or_null_rcu(ptr, type, member) NULL
+#endif
 #endif
 
 #define drbd_kmap_atomic(page, km)	(page->addr)

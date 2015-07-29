@@ -6,6 +6,7 @@
 #include <ntstrsafe.h>
 #include <stdbool.h>
 #include "linux-compat/list.h"
+#include "linux-compat/Wait.h"
 #include "windows/types.h"
 #include "mvolmsg.h"
 #include "disp.h"
@@ -66,6 +67,7 @@
 #define GFP_KERNEL              1
 #define GFP_ATOMIC              2
 #define GFP_NOIO				(__GFP_WAIT)
+#define GFP_NOWAIT	            0
 #define gfp_t					int
 #define atomic_t				volatile long
 
@@ -73,6 +75,8 @@
 #define ATOMIC_INIT(i)			(i)
 
 #define RELATIVE(wait) (-(wait))
+
+#define __init                  NTAPI
 
 #define NANOSECONDS(nanos) \
 (((signed __int64)(nanos)) / 100L)
@@ -98,6 +102,8 @@
 #define BIO_RW_FAILFAST_TRANSPORT	8
 #define BIO_RW_FAILFAST_DRIVER		9
 #define BIO_RW_NOIDLE				10
+
+#define KBUILD_MODNAME      __FILE__
 
 /*
  * Request flags.  For use in the cmd_flags field of struct request, and in
@@ -209,7 +215,6 @@ enum rq_flag_bits {
 #define WRITE_SYNC				WRITE	// REQ_SYNC | REQ_NOIDLE not used.
 
 // for drbd_actlog.c
-#define __packed
 #define __attribute__(packed)
 #define __attribute(packed)
 #ifdef LONG_MAX
@@ -405,12 +410,6 @@ do { \
 
 #define offsetof(_type, _field)			(&((_type *)0)->_field)
 
-typedef struct _tagSPINLOCK
-{
-	KSPIN_LOCK spinLock;
-	KIRQL saved_oldIrql; 
-} spinlock_t, rwlock_t;
-
 struct mutex {
 	KMUTEX mtx;
 #ifdef _WIN32_TMP_DEBUG_MUTEX
@@ -437,14 +436,6 @@ struct hlist_node {
 	 for (pos = hlist_entry_safe((head)->first, type, member);\
 	     pos; \
 	     pos = hlist_entry_safe((pos)->member.next, type, member))
-
-typedef struct __wait_queue_head {
-	spinlock_t lock;
-	struct list_head task_list;
-	KEVENT	wqh_event;
-#define Q_NAME_SZ	16 
-	char eventName[Q_NAME_SZ]; 
-} wait_queue_head_t;
 
 struct kobject { 
     const char          *name;
@@ -508,7 +499,7 @@ struct timer_list {
 
 extern void init_timer(struct timer_list *t);
 extern void add_timer(struct timer_list *t);
-extern void del_timer_sync(struct timer_list *t);
+extern int del_timer_sync(struct timer_list *t);
 extern void del_timer(struct timer_list *t);
 extern int mod_timer(struct timer_list *t, unsigned long expires);
 
@@ -610,7 +601,7 @@ extern struct bio_pair *bio_split(struct bio *bi, int first_sectors);
 extern void bio_pair_release(struct bio_pair *dbio);
 extern struct bio_set *bioset_create(unsigned int, unsigned int);
 extern void bioset_free(struct bio_set *);
-extern struct bio *bio_alloc(gfp_t, int, ULONG);
+extern struct bio *bio_alloc(gfp_t, int);
 extern struct bio *bio_kmalloc(gfp_t, int);
 extern struct bio *bio_alloc_bioset(gfp_t, int, struct bio_set *);
 extern void bio_put(struct bio *);
@@ -683,7 +674,7 @@ extern void kref_init(struct kref *kref);
 
 extern struct request_queue *bdev_get_queue(struct block_device *bdev);
 extern void blk_cleanup_queue(struct request_queue *q);
-extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag);
+extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask);
 typedef void (make_request_fn) (struct request_queue *q, struct bio *bio);
 extern void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn);
 extern void blk_queue_flush(struct request_queue *q, unsigned int flush);
@@ -729,6 +720,7 @@ struct task_struct {
 /// SEO: mempool
 extern mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_data);
 extern mempool_t *mempool_create_page_pool(int min_nr, int order);
+extern mempool_t *mempool_create_slab_pool(int min_nr, int order);
 extern void * mempool_alloc(mempool_t *pool, gfp_t gfp_mask);
 extern void mempool_free(void *req, void *mempool);
 extern void mempool_destroy(void *p);
@@ -845,14 +837,9 @@ extern void * kmalloc(int size, int flag);
 extern void kfree(void * x);
 extern void * kmem_cache_alloc(void * cache, int flag, ULONG Tag);
 extern void kmem_cache_destroy(struct kmem_cache *s);
-extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *), ULONG Tag);
+extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *));
 extern void kmem_cache_free(void * cache, void * x);
 
-
-typedef struct _wait_queue {
-	unsigned int flags;
-	struct list_head task_list;
-} wait_queue_t;
 
 static __inline wait_queue_t initqueue(wait_queue_t *wq)
 {
@@ -860,6 +847,7 @@ static __inline wait_queue_t initqueue(wait_queue_t *wq)
 	return *wq; 
 }
 
+#define DEFINE_WAIT(name)
 #define DEFINE_WAIT_FUNC(name)
 
 extern void init_completion(struct completion *x);
@@ -1037,14 +1025,6 @@ static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
 #define generic_find_next_zero_le_bit(addr, size, offset) find_next_zero_bit(addr, size, offset)
 #define generic_find_next_le_bit(addr, size, offset)	find_next_bit(addr, size, offset)
 #endif
-
-struct retry_worker {
-	struct workqueue_struct *wq;
-	struct work_struct worker;
-	spinlock_t lock;
-	struct list_head writes;
-	struct task_struct task;
-};
 
 #ifdef _WIN32_CT
 #define current		    ct_find_thread(KeGetCurrentThread())

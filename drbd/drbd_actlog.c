@@ -1,4 +1,4 @@
-/*
+ï»¿/*
    drbd_actlog.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -110,7 +110,8 @@ struct __packed al_transaction_on_disk {
 };
 
 #ifdef _WIN32
-#pragma pack (pop) 
+#pragma pack (pop)
+#undef __packed
 #endif
 
 struct update_peers_work {
@@ -163,15 +164,13 @@ void wait_until_done_or_force_detached(struct drbd_device *device, struct drbd_b
 	long dt;
 
 	rcu_read_lock();
-#ifdef _WIN32_CHECK
 	dt = rcu_dereference(bdev->disk_conf)->disk_timeout;
-#endif
 	rcu_read_unlock();
 	dt = dt * HZ / 10;
 	if (dt == 0)
 		dt = MAX_SCHEDULE_TIMEOUT;
 
-// _WIN32_V9_CHECK: ÀÎÀÚ ¸ÂÃã! 
+// _WIN32_V9_CHECK: ì¸ìž ë§žì¶¤! 
 #ifdef _WIN32
     wait_event_timeout(dt, device->misc_wait,
         *done || test_bit(FORCE_DETACH, &device->flags), dt);
@@ -443,9 +442,7 @@ void drbd_al_begin_io_commit(struct drbd_device *device)
 			bool write_al_updates;
 
 			rcu_read_lock();
-#ifdef _WIN32_CHECK
 			write_al_updates = rcu_dereference(device->ldev->disk_conf)->al_updates;
-#endif
 			rcu_read_unlock();
 
 			if (write_al_updates)
@@ -745,9 +742,7 @@ int al_write_transaction(struct drbd_device *device)
 	else {
 		bool write_al_updates;
 		rcu_read_lock();
-#ifdef _WIN32_CHECK
 		write_al_updates = rcu_dereference(device->ldev->disk_conf)->al_updates;
-#endif
 		rcu_read_unlock();
 		if (write_al_updates) {
 			if (drbd_md_sync_page_io(device, device->ldev, sector, WRITE)) {

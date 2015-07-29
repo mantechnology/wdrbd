@@ -1,4 +1,4 @@
-/*
+﻿/*
 	* include/linux/idr.h
 	*
 	* 2002-10-18  written by Jim Houston jim.houston@ccur.com

@@ -30,8 +30,11 @@ enum {
 /* hack around predefined gcc/cpp "linux=1",
  * we cannot possibly include <1/drbd_genl.h> */
 #undef linux
-
+#ifdef _WIN32
+#include "windows/drbd.h"
+#else
 #include <linux/drbd.h>
+#endif
 #define GENL_MAGIC_VERSION	2
 #define GENL_MAGIC_FAMILY	drbd
 #define GENL_MAGIC_FAMILY_HDRSZ	sizeof(struct drbd_genlmsghdr)

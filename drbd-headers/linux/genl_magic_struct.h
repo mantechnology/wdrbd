@@ -100,8 +100,11 @@ extern void CONCAT_(GENL_MAGIC_FAMILY, _genl_unregister)(void);
 	__s32_field(attr_nr, attr_flag, name)
 #define __str_field_def(attr_nr, attr_flag, name, maxlen) \
 	__str_field(attr_nr, attr_flag, name, maxlen)
-
+#ifdef _WIN32
+#define GENL_op_init(args,...)	args
+#else
 #define GENL_op_init(args...)	args
+#endif
 #define GENL_doit(handler)		\
 	.doit = handler,		\
 	.flags = GENL_ADMIN_PERM,
@@ -250,13 +253,23 @@ struct s_name { s_fields };
 	type name;
 
 #undef __array
-// #ifdef _WIN32 _WIN32_V9_CHECK: needed?
+#ifdef _WIN32
+#define __array(attr_nr, attr_flag, name, nla_type, type, maxlen,	\
+		__get, __put, __is_signed)				\
+	__u32 name ## _len;	\
+    type name[maxlen];
+
+#pragma pack(push, 4)
+#include GENL_MAGIC_INCLUDE_FILE
+#pragma pack(pop)
+#else
 #define __array(attr_nr, attr_flag, name, nla_type, type, maxlen,	\
 		__get, __put, __is_signed)				\
 	type name[maxlen];	\
 	__u32 name ## _len;
 
 #include GENL_MAGIC_INCLUDE_FILE
+#endif
 
 #undef GENL_struct
 #define GENL_struct(tag_name, tag_number, s_name, s_fields)		\

@@ -1,4 +1,4 @@
-#ifndef __DRBD_INTERVAL_H
+﻿#ifndef __DRBD_INTERVAL_H
 #define __DRBD_INTERVAL_H
 
 #ifdef _WIN32

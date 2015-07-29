@@ -1,4 +1,4 @@
-#ifndef __DRBD_WINGENL_H__
+﻿#ifndef __DRBD_WINGENL_H__
 #define __DRBD_WINGENL_H__
 
 #define BLKSSZGET			1
@@ -78,7 +78,7 @@ enum {
 
 struct sk_buff
 {
-    int len;		// DRBD_DOC: app, kernel�?msg_buff 교환???�료구조 ?�치�??�함. len ???�외?�고 app �??�송
+    int len;		// DRBD_DOC: app, kernel媛?msg_buff 援먰솚???먮즺援ъ“ ?쇱튂瑜??꾪븿. len ???쒖쇅?섍퀬 app 濡??꾩넚
     unsigned int tail;
     unsigned int end;
 

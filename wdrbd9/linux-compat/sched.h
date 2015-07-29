@@ -1,4 +1,4 @@
-#ifndef __SCHED_H__
+﻿#ifndef __SCHED_H__
 #define __SCHED_H__
 
 #ifdef _WIN32

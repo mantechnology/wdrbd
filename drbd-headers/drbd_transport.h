@@ -2,6 +2,7 @@
 #define DRBD_TRANSPORT_H
 #ifdef _WIN32
 #include "linux-compat/list.h"
+#include "linux-compat/wait.h"
 #else
 #include <linux/kref.h>
 #include <linux/list.h>
@@ -232,18 +233,19 @@ extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 /* drbd_receiver.c*/
 extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
 extern void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net);
-
+#endif
 /* see also page_chain_add and friends in drbd_receiver.c */
 static inline struct page *page_chain_next(struct page *page)
 {
 	return (struct page *)page_private(page);
 }
+#ifdef _WIN32
 #define page_chain_for_each(page) \
-	for (; page && ({ prefetch(page_chain_next(page)); 1; }); \
-			page = page_chain_next(page))
+	for (; page ; page = page_chain_next(page))
+#else
 #define page_chain_for_each_safe(page, n) \
 	for (; page && ({ n = page_chain_next(page); 1; }); page = n)
-
+#endif
 #ifndef SK_CAN_REUSE
 /* This constant was introduced by Pavel Emelyanov <xemul@parallels.com> on
    Thu Apr 19 03:39:36 2012 +0000. Before the release of linux-3.5
@@ -251,4 +253,4 @@ static inline struct page *page_chain_next(struct page *page)
 #define SK_CAN_REUSE   1
 #endif
 #endif
-#endif
+
