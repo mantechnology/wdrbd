@@ -105,7 +105,7 @@ extern void CONCAT_(GENL_MAGIC_FAMILY, _genl_unregister)(void);
 #define __str_field_def(attr_nr, attr_flag, name, maxlen) \
 	__str_field(attr_nr, attr_flag, name, maxlen)
 #ifdef _WIN32
-#define GENL_op_init(args,...)	args
+#define GENL_op_init(...)	__VA_ARGS__
 #else
 #define GENL_op_init(args...)	args
 #endif

@@ -1176,8 +1176,9 @@ static inline int genlmsg_total_size(int payload)
 * genlmsg_new() was added to <net/genetlink.h> in mainline commit 3dabc715
 * (v2.6.20-rc2).
 */
-#ifndef _WIN32
 #ifndef COMPAT_HAVE_GENLMSG_NEW
+extern void *genlmsg_new(size_t payload, gfp_t flags);
+#else
 #include <net/genetlink.h>
 
 static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
@@ -1185,14 +1186,19 @@ static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
     return nlmsg_new(genlmsg_total_size(payload), flags);
 }
 #endif
-#endif
 
 /*
 * genlmsg_put() was introduced in mainline commit 482a8524 (v2.6.15-rc1) and
 * changed in 17c157c8 (v2.6.20-rc2).  genlmsg_put_reply() was introduced in
 * 17c157c8.  We replace the compat_genlmsg_put() from 482a8524.
 */
-#ifndef _WIN32
+#ifdef _WIN32
+#define genlmsg_put compat_genlmsg_put
+extern void *genlmsg_put_reply(struct msg_buff *skb,
+                         struct genl_info *info,
+                         struct genl_family *family,
+                         int flags, u8 cmd);
+#else
 #ifndef COMPAT_HAVE_GENLMSG_PUT_REPLY
 #include <net/genetlink.h>
 
@@ -1227,8 +1233,6 @@ struct genl_family *family,
         flags, cmd);
 }
 #endif
-#else
-#define genlmsg_put compat_genlmsg_put
 #endif
 
 /*

@@ -57,26 +57,7 @@ struct genl_ops
     int (*done)(struct netlink_callback *cb);
 };
 
-/**
-* struct genl_info - receiving information
-* @snd_seq: sending sequence number
-* @nlhdr: netlink message header
-* @genlhdr: generic netlink message header
-* @userhdr: user specific header
-* @attrs: netlink attributes
-*/
-struct genl_info
-{
-    __u32			seq;
-    struct nlmsghdr *	nlhdr;
-    struct genlmsghdr *	genlhdr;
-    void *			userhdr;
-    struct nlattr **	attrs;
-    u32             snd_seq;
-    u32			    snd_portid;
-    PWSK_SOCKET		NetlinkSock;
-    LIST_ENTRY      ListEntry;
-};
+
 
 #ifndef __read_mostly
 #define __read_mostly
@@ -141,8 +122,75 @@ struct genl_info
 
 #define GENL_ADMIN_PERM		0x01
 
+#define GENL_ID_GENERATE	0
+
 #define nla_nest_cancel(_X,_Y)	__noop
 
+#define __stringify_1(x)	#x
+#define __stringify(x)		__stringify_1(x)
+
+enum
+{
+    CTRL_CMD_UNSPEC,
+    CTRL_CMD_NEWFAMILY,
+    CTRL_CMD_DELFAMILY,
+    CTRL_CMD_GETFAMILY,
+    CTRL_CMD_NEWOPS,
+    CTRL_CMD_DELOPS,
+    CTRL_CMD_GETOPS,
+    CTRL_CMD_NEWMCAST_GRP,
+    CTRL_CMD_DELMCAST_GRP,
+    CTRL_CMD_GETMCAST_GRP, /* unused */
+    CTRL_ATTR_FAMILY_NAME,
+    CTRL_ATTR_FAMILY_ID,
+    __CTRL_CMD_MAX,
+};
+
+/**
+* struct genl_family - generic netlink family
+* @id: protocol family idenfitier
+* @hdrsize: length of user specific header in bytes
+* @name: name of family
+* @version: protocol version
+* @maxattr: maximum number of attributes supported
+* @attrbuf: buffer to store parsed attributes
+* @ops_list: list of all assigned operations
+* @family_list: family list
+* @mcast_groups: multicast groups list
+*/
+struct genl_family
+{
+    unsigned int		id;
+    unsigned int		hdrsize;
+    char			name[GENL_NAMSIZ];
+    unsigned int		version;
+    unsigned int		maxattr;
+    struct nlattr **	attrbuf;	/* private */
+    struct list_head	ops_list;	/* private */
+    struct list_head	family_list;	/* private */
+    struct list_head	mcast_groups;	/* private */
+};
+
+/**
+* struct genl_info - receiving information
+* @snd_seq: sending sequence number
+* @nlhdr: netlink message header
+* @genlhdr: generic netlink message header
+* @userhdr: user specific header
+* @attrs: netlink attributes
+*/
+struct genl_info
+{
+    __u32			seq;
+    struct nlmsghdr *	nlhdr;
+    struct genlmsghdr *	genlhdr;
+    void *			userhdr;
+    struct nlattr **	attrs;
+    u32             snd_seq;
+    u32			    snd_portid;
+    PWSK_SOCKET		NetlinkSock;
+    LIST_ENTRY      ListEntry;
+};
 
 /**
 * Standard attribute types to specify validation policy
@@ -402,6 +450,15 @@ static inline int nlmsg_report(const struct nlmsghdr *nlh)
 			  nlmsg_attrlen(nlh, hdrlen), rem)
 
 /**
+* nlmsg_free - free a netlink message
+* @skb: socket buffer of netlink message
+*/
+static inline void nlmsg_free(struct sk_buff *skb)
+{
+    kfree(skb);
+}
+
+/**
 * nlmsg_for_each_msg - iterate over a stream of messages
 * @pos: loop counter, set to current message
 * @head: head of message stream
@@ -472,7 +529,6 @@ static inline void *nla_data(const struct nlattr *nla)
 * @nla: netlink attribute
 */
 
-//#ifndef _WIN32 // _WIN32_V9_CHECK: 
 static inline int nla_len(const struct nlattr *nla)
 {
     return nla->nla_len - NLA_HDRLEN;
@@ -830,23 +886,4 @@ static __inline void *genlmsg_data(const struct genlmsghdr *gnlh)
 {
     return ((unsigned char *)gnlh + GENL_HDRLEN);
 }
-
-enum {
-	CTRL_CMD_UNSPEC,
-	CTRL_CMD_NEWFAMILY,
-	CTRL_CMD_DELFAMILY,
-	CTRL_CMD_GETFAMILY,
-	CTRL_CMD_NEWOPS,
-	CTRL_CMD_DELOPS,
-	CTRL_CMD_GETOPS,
-	CTRL_CMD_NEWMCAST_GRP,
-	CTRL_CMD_DELMCAST_GRP,
-	CTRL_CMD_GETMCAST_GRP, /* unused */
-	CTRL_ATTR_FAMILY_NAME,
-	CTRL_ATTR_FAMILY_ID,
-	__CTRL_CMD_MAX,
-};
-
-
-
 #endif __DRBD_WINGENL_H__

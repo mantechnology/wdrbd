@@ -287,7 +287,7 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 static struct genl_ops ZZZ_genl_ops[] __read_mostly = {
 #include GENL_MAGIC_INCLUDE_FILE
 };
-#ifndef __KERNEL__
+
 #undef GENL_op
 #define GENL_op(op_name, op_num, handler, tla_list)
 
@@ -306,7 +306,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 #endif
 	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy)-1,
 };
-
+#ifndef __KERNEL__
 /*
  * Magic: define multicast groups
  * Magic: define multicast group registration helper

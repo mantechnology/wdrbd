@@ -83,11 +83,11 @@ enum drbd_tr_free_op {
 	DESTROY_TRANSPORT
 };
 
+
 struct drbd_path {
-#ifdef WIN32_CHECK
 	struct sockaddr_storage my_addr;
 	struct sockaddr_storage peer_addr;
-#endif
+
 	int my_addr_len;
 	int peer_addr_len;
 
