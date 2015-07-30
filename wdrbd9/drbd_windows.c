@@ -525,9 +525,9 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 	return p;
 }
 
-int kref_put(struct kref *kref, void (*release)(struct kref *kref))
+void kref_put(struct kref *kref, void (*release)(struct kref *kref))
 {
-	return kref_sub(kref, 1, release);
+	kref_sub(kref, 1, release); //_WIN32_CHECK
 }
 
 int kref_get(struct kref *kref)
@@ -655,7 +655,7 @@ union drbd_state ns_val(union drbd_state prev, int bitpos, int mask, int val)
 union drbd_state ns2_val1(struct drbd_conf *mdev, int bitpos, int mask, int s)
 {
 	union drbd_state __ns;
-	__ns = drbd_read_state(mdev);
+	//__ns = drbd_read_state(mdev); //_WIN32_CHECK drbd_read_state 메소드 없어짐
 	__ns.i &= ~(mask << bitpos);
 	__ns.i |= (s << bitpos);
 	return __ns;
@@ -664,7 +664,7 @@ union drbd_state ns2_val1(struct drbd_conf *mdev, int bitpos, int mask, int s)
 union drbd_state ns2_val2(struct drbd_conf *mdev, int bitpos1, int mask1, int s1, int bitpos2, int mask2, int s2)
 {
 	union drbd_state __ns;
-	__ns = drbd_read_state(mdev);
+	//__ns = drbd_read_state(mdev); //_WIN32_CHECK drbd_read_state 메소드 없어짐
 	__ns.i &= ~(mask1 << bitpos1);
 	__ns.i |= (s1 << bitpos1);
 	__ns.i &= ~(mask2 << bitpos2);

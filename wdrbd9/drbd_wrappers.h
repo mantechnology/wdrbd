@@ -224,16 +224,38 @@ See 6712ecf8f648118c3363c142196418f89a510b90 */
 #define BIO_ENDIO_FN_START if (bio->bi_size) return 1
 #define BIO_ENDIO_FN_RETURN return 0
 #else
+#ifdef _WIN32
+#define BIO_ENDIO_TYPE NTSTATUS
+#define FAULT_TEST_FLAG     (ULONG_PTR)0x11223344
+#define BIO_ENDIO_ARGS (void *p1, void *p2, void *p3)
+#define BIO_ENDIO_FN_START 
+
+#define BIO_ENDIO_FN_RETURN \
+	if (Irp->MdlAddress != NULL) { \
+		MmUnlockPages(Irp->MdlAddress); \
+		IoFreeMdl(Irp->MdlAddress); \
+		Irp->MdlAddress = NULL; \
+	} \
+	IoFreeIrp(Irp); \
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 #define BIO_ENDIO_TYPE void
 #define BIO_ENDIO_ARGS(b,e) (b,e)
 #define BIO_ENDIO_FN_START do {} while (0)
 #define BIO_ENDIO_FN_RETURN return
 #endif
+#endif
 
 /* bi_end_io handlers */
+#ifdef _WIN32 
+extern  BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS; //_WIN32_V9
+extern  BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS;
+extern  BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS;
+#else
 extern BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 #define part_inc_in_flight(A, B) part_inc_in_flight(A)
@@ -1264,8 +1286,10 @@ static inline void genl_unregister_mc_group(struct genl_family *family,
 static inline void kref_sub(struct kref *kref, unsigned int count,
     void(*release) (struct kref *kref))
 {
+    //_WIN32_CHECK with kref_put
     while (count--)
         kref_put(kref, release);
+    //_WIN32_CHECK_END
 }
 #endif
 

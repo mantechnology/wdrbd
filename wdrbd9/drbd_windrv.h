@@ -668,7 +668,7 @@ extern int mutex_is_locked(struct mutex *m);
 extern void mutex_unlock(struct mutex *m);
 extern int mutex_trylock(struct mutex *m);
 
-extern int kref_put(struct kref *kref, void (*release)(struct kref *kref));
+extern void kref_put(struct kref *kref, void (*release)(struct kref *kref)); //_WIN32_CHECK
 extern int kref_get(struct kref *kref);
 extern void kref_init(struct kref *kref);
 
