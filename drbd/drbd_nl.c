@@ -220,7 +220,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	int err;
 
 	memset(adm_ctx, 0, sizeof(*adm_ctx));
-
+#ifndef _WIN32
 	/*
 	 * genl_rcv_msg() only checks if commands with the GENL_ADMIN_PERM flag
 	 * set have CAP_NET_ADMIN; we also require CAP_SYS_ADMIN for
@@ -229,7 +229,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	if ((drbd_genl_ops[cmd].flags & GENL_ADMIN_PERM) &&
 	    drbd_security_netlink_recv(skb, CAP_SYS_ADMIN))
 		return -EPERM;
-
+#endif
 	adm_ctx->reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (!adm_ctx->reply_skb) {
 		err = -ENOMEM;

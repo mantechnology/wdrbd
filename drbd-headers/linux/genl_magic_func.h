@@ -269,6 +269,7 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 
 #ifndef __KERNEL__
 #include <linux/stringify.h>
+#endif
 /*
  * Magic: define genl_ops						{{{1
  *									{{{2
@@ -286,7 +287,7 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 static struct genl_ops ZZZ_genl_ops[] __read_mostly = {
 #include GENL_MAGIC_INCLUDE_FILE
 };
-
+#ifndef __KERNEL__
 #undef GENL_op
 #define GENL_op(op_name, op_num, handler, tla_list)
 

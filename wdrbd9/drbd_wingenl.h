@@ -1,5 +1,7 @@
 ﻿#ifndef __DRBD_WINGENL_H__
 #define __DRBD_WINGENL_H__
+#include <wdm.h>
+#include <wsk.h>
 
 struct sk_buff
 {
@@ -43,6 +45,16 @@ struct netlink_callback
     struct sk_buff          *skb;
     const struct nlmsghdr   *nlh;
     ULONG_PTR               args[6];
+};
+
+struct genl_ops
+{
+    u8    cmd;
+    unsigned int		flags;
+    const struct nla_policy	*policy;
+    int (*doit)(struct sk_buff *skb, struct genl_info *info);
+    int (*dumpit)(struct sk_buff *skb, struct netlink_callback *cb);
+    int (*done)(struct netlink_callback *cb);
 };
 
 /**
@@ -127,12 +139,10 @@ struct genl_info
 #define NLMSG_ALIGN(_len)		(((_len)+NLMSG_ALIGNTO-1) & ~(NLMSG_ALIGNTO-1))
 #define GENL_HDRLEN			    NLMSG_ALIGN(sizeof(struct genlmsghdr))
 
+#define GENL_ADMIN_PERM		0x01
+
 #define nla_nest_cancel(_X,_Y)	__noop
 
-
-#ifndef __read_mostly
-#define __read_mostly
-#endif
 
 /**
 * Standard attribute types to specify validation policy

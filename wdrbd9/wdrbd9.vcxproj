@@ -204,7 +204,9 @@
     <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\drbd\drbd_actlog.c" />
+    <ClCompile Include="..\drbd\drbd_actlog.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\drbd\drbd_bitmap.c" />
     <ClCompile Include="..\drbd\drbd_debugfs.c" />
     <ClCompile Include="..\drbd\drbd_interval.c" />

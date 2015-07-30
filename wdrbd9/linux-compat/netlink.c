@@ -7,11 +7,6 @@
 
 extern int drbd_tla_parse(struct nlmsghdr *nlh);
 
-struct genl_ops {
-	int   (*doit)(struct sk_buff *skb, struct genl_info *info);
-	u8    cmd;
-};
-
 extern int drbd_adm_add_minor(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_delete_minor(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info);
