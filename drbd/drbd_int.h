@@ -1467,13 +1467,31 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 	}
 	return req->rq_state[1 + idx];
 }
+
 #ifdef _WIN32
-#define for_each_resource(resource, _resources) \
-	list_for_each_entry(struct drbd_resource, resource, _resources, resources)
+#define for_each_resource(type, resource, _resources) \
+	list_for_each_entry(type, resource, _resources, resources)
+
+#define for_each_resource_rcu(type, resource, _resources) \
+	list_for_each_entry_rcu(type, resource, _resources, resources)
+
+#define for_each_resource_safe(type, resource, tmp, _resources) \
+	list_for_each_entry_safe(type, resource, tmp, _resources, resources)
+
+/* Each caller of for_each_connect() must hold req_lock or adm_mutex or conf_update.
+   The update locations hold all three! */
+#define for_each_connection(type, connection, resource) \
+	list_for_each_entry(type, connection, &resource->connections, connections)
+
+#define for_each_connection_rcu(type, connection, resource) \
+	list_for_each_entry_rcu(type, connection, &resource->connections, connections)
+
+#define for_each_connection_safe(type, connection, tmp, resource) \
+	list_for_each_entry_safe(type, connection, tmp, &resource->connections, connections)
 #else
 #define for_each_resource(resource, _resources) \
 	list_for_each_entry(resource, _resources, resources)
-#endif
+
 #define for_each_resource_rcu(resource, _resources) \
 	list_for_each_entry_rcu(resource, _resources, resources)
 
@@ -1482,22 +1500,15 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 
 /* Each caller of for_each_connect() must hold req_lock or adm_mutex or conf_update.
    The update locations hold all three! */
-#ifdef _WIN32
-#define for_each_connection(type, connection, resource) \
-	list_for_each_entry(type, connection, &resource->connections, connections)
-
-#define for_each_connection_rcu(type, connection, resource) \
-	list_for_each_entry_rcu(type, connection, &resource->connections, connections)
-#else
 #define for_each_connection(connection, resource) \
 	list_for_each_entry(connection, &resource->connections, connections)
 
 #define for_each_connection_rcu(connection, resource) \
 	list_for_each_entry_rcu(connection, &resource->connections, connections)
-#endif
+
 #define for_each_connection_safe(connection, tmp, resource) \
 	list_for_each_entry_safe(connection, tmp, &resource->connections, connections)
-
+#endif
 #define for_each_connection_ref(connection, m, resource)		\
 	for (connection = __drbd_next_connection_ref(&m, NULL, resource); \
 	     connection;						\
@@ -1506,20 +1517,24 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 /* Each caller of for_each_peer_device() must hold req_lock or adm_mutex or conf_update.
    The update locations hold all three! */
 #ifdef _WIN32
-#define for_each_peer_device(peer_device, device) \
-	list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
+#define for_each_peer_device(type, peer_device, device) \
+	list_for_each_entry(type, peer_device, &device->peer_devices, peer_devices)
 
 #define for_each_peer_device_rcu(type, peer_device, device) \
 	list_for_each_entry_rcu(type, peer_device, &device->peer_devices, peer_devices)
+
+#define for_each_peer_device_safe(type, peer_device, tmp, device) \
+	list_for_each_entry_safe(type, peer_device, tmp, &device->peer_devices, peer_devices)
 #else
 #define for_each_peer_device(peer_device, device) \
 	list_for_each_entry(peer_device, &device->peer_devices, peer_devices)
 
 #define for_each_peer_device_rcu(peer_device, device) \
 	list_for_each_entry_rcu(peer_device, &device->peer_devices, peer_devices)
-#endif
+
 #define for_each_peer_device_safe(peer_device, tmp, device) \
-	list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp, &device->peer_devices, peer_devices)
+	list_for_each_entry_safe(peer_device, tmp, &device->peer_devices, peer_devices)
+#endif
 
 #define for_each_peer_device_ref(peer_device, m, resource)		\
 	for (peer_device = __drbd_next_peer_device_ref(&m, NULL, resource); \
