@@ -249,7 +249,11 @@ struct drbd_connection *__drbd_next_connection_ref(u64 *visited,
 		} else if (previous_visible) {	/* visible -> we are now on a vital element */
 			connection = list_entry_rcu(pos, struct drbd_connection, connections);
 		} else { /* not visible -> pos might point to a dead element now */
+#ifdef _WIN32
+            for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 			for_each_connection_rcu(connection, resource) {
+#endif
 				node_id = connection->peer_node_id;
 				if (!(*visited & NODE_MASK(node_id)))
 					goto found;
@@ -298,7 +302,11 @@ struct drbd_peer_device *__drbd_next_peer_device_ref(u64 *visited,
 		} else if (previous_visible) {
 			peer_device = list_entry_rcu(pos, struct drbd_peer_device, peer_devices);
 		} else {
+#ifdef _WIN32
+            for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
+#else
 			for_each_peer_device_rcu(peer_device, device) {
+#endif
 				if (!(*visited & NODE_MASK(peer_device->node_id)))
 					goto found;
 			}

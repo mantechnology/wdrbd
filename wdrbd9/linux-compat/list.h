@@ -159,16 +159,11 @@ static __inline int list_empty_careful(const struct list_head *head)
      return (next == head) && (next == head->prev);
 }
 
-#ifdef _WIN32_CHECK
 #define prefetch(_addr)		(_addr)
 #define list_for_each_entry_rcu(type, pos, head, member) \
 	for (pos = list_entry_rcu((head)->next, type, member); \
 		prefetch(pos->member.next), &pos->member != (head); \
 		pos = list_entry_rcu(pos->member.next, type, member))
-#else
-#define list_for_each_entry_rcu(pos, head, member) \
-	for (;;)
-#endif
 
 #define list_for_each_safe(pos, n, head) \
 	for (pos = (head)->next, n = pos->next; pos != (head); \

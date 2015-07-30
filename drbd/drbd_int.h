@@ -1483,15 +1483,18 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 /* Each caller of for_each_connect() must hold req_lock or adm_mutex or conf_update.
    The update locations hold all three! */
 #ifdef _WIN32
-#define for_each_connection(connection, resource) \
-	list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
+#define for_each_connection(type, connection, resource) \
+	list_for_each_entry(type, connection, &resource->connections, connections)
+
+#define for_each_connection_rcu(type, connection, resource) \
+	list_for_each_entry_rcu(type, connection, &resource->connections, connections)
 #else
 #define for_each_connection(connection, resource) \
 	list_for_each_entry(connection, &resource->connections, connections)
-#endif
+
 #define for_each_connection_rcu(connection, resource) \
 	list_for_each_entry_rcu(connection, &resource->connections, connections)
-
+#endif
 #define for_each_connection_safe(connection, tmp, resource) \
 	list_for_each_entry_safe(connection, tmp, &resource->connections, connections)
 
@@ -1505,13 +1508,16 @@ static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
 #ifdef _WIN32
 #define for_each_peer_device(peer_device, device) \
 	list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
+
+#define for_each_peer_device_rcu(type, peer_device, device) \
+	list_for_each_entry_rcu(type, peer_device, &device->peer_devices, peer_devices)
 #else
 #define for_each_peer_device(peer_device, device) \
 	list_for_each_entry(peer_device, &device->peer_devices, peer_devices)
-#endif
+
 #define for_each_peer_device_rcu(peer_device, device) \
 	list_for_each_entry_rcu(peer_device, &device->peer_devices, peer_devices)
-
+#endif
 #define for_each_peer_device_safe(peer_device, tmp, device) \
 	list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp, &device->peer_devices, peer_devices)
 
@@ -2076,7 +2082,7 @@ static inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
 	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
 #ifdef _WIN32_CHECK
-    return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
+	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
 #else
     return 0;
 #endif
