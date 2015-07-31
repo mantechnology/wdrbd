@@ -872,19 +872,19 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	do {\
 		for (;;) {\
 			if (condition) \
-			{ \
+						{ \
 				break; \
-			} \
+						} \
 			schedule(&wq, 1, __func, __line); /*  DW105: workaround: 1 ms polling  */ \
-		} \
-	} while (0)
+				} \
+		} while (0)
 
 #define wait_event(wq, condition) \
 	do {\
 		if (condition) \
 			break; \
 		__wait_event(wq, condition, __FUNCTION__, __LINE__); \
-	} while (0)
+		} while (0)
 
 
 #define __wait_event_timeout(wq, condition, ret)  \
@@ -894,18 +894,18 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		for (;;) {\
 			i++; \
 			if (condition)   \
-			{\
+						{\
 				break;     \
-			}\
+						}\
 			/*ret = schedule(&wq, ret, __FUNC__, __LINE__);*/\
 			if (++t > ret) \
-			{\
+						{\
 				ret = 0;\
 				break;\
-			}\
+						}\
 			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
-		}  \
-	} while (0)
+				}  \
+		} while (0)
 
 #define wait_event_timeout(t, wq, condition, timeout) \
 	do { \
@@ -913,22 +913,22 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		if (!(condition)) \
 			__wait_event_timeout(wq, condition, __ret);  \
 		t = __ret; \
-	} while (0)
+		} while (0)
 
 #define __wait_event_interruptible(wq, condition, ret)   \
 	do { \
 		for (;;) { \
 			if (condition)     \
-			{ \
+						{ \
 				break;      \
-			} \
+						} \
 			/* if (!signal_pending(current)) */ \
 			{ \
 				/*schedule(&wq, MAX_SCHEDULE_TIMEOUT, __FUNC__, __LINE__); */\
 				schedule(&wq, 1, __FUNCTION__, __LINE__); /* DW105: workaround: 1 ms polling */ \
 			}  \
-		} \
-	} while (0)
+				} \
+		} while (0)
 
 #define wait_event_interruptible(sig, wq, condition) \
 	do {\
@@ -936,7 +936,13 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 			if (!(condition))  \
 				__wait_event_interruptible(wq, condition, __ret); \
 			sig = __ret; \
-	} while (0)
+		} while (0)
+
+// _WIN32_V9 : CHECK
+#define wait_event_interruptible_timeout(t, wq, cond, to) \
+	do {\
+			DbgPrint("_WIN32_CHECK: make wait_event_interruptible_timeout body!!\n"); \
+		} while (0)
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)
 
@@ -1025,6 +1031,16 @@ static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
 #define generic_find_next_zero_le_bit(addr, size, offset) find_next_zero_bit(addr, size, offset)
 #define generic_find_next_le_bit(addr, size, offset)	find_next_bit(addr, size, offset)
 #endif
+
+// _WIN32_CHECK: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
+struct retry_worker {
+	struct workqueue_struct *wq;
+	struct work_struct worker;
+	spinlock_t lock;
+	struct list_head writes;
+	struct task_struct task;
+};
+
 
 #ifdef _WIN32_CT
 #define current		    ct_find_thread(KeGetCurrentThread())
@@ -1260,5 +1276,8 @@ struct semaphore {
 extern void down(struct semaphore *sem);
 extern void up(struct semaphore *sem);
 
+#define snprintf(a, b, c,...) memset(a, 0, b); sprintf(a, c, ##__VA_ARGS__)
+
+int drbd_genl_multicast_events(void *mdev, const struct sib_info *sib);
 
 #endif __DRBD_WINDRV_H__
