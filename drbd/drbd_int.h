@@ -308,14 +308,15 @@ void drbd_printk_with_wrong_object_type(void);
 #endif
 extern struct ratelimit_state drbd_ratelimit_state;
 
+#ifdef _WIN32 // _WIN32_V9 : 인자가 줄어듬. 처리로직은 동일 항 듯, 일단 WDRBD_V8 용으로 점트하도록 조치
+extern int _DRBD_ratelimit(char * __FILE, int __LINE);
+#define drbd_ratelimit() _DRBD_ratelimit(__FILE__, __LINE__)
+#else
 static inline int drbd_ratelimit(void)
 {
-#ifdef _WIN32
-    return 0;
-#else
 	return __ratelimit(&drbd_ratelimit_state);
-#endif
 }
+#endif
 
 #define D_ASSERT(x, exp)							\
 	do {									\
