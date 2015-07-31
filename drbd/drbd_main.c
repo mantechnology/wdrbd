@@ -63,13 +63,17 @@
 #include "drbd_protocol.h"
 #include "drbd_req.h" /* only for _req_mod in tl_release and tl_clear */
 #include "drbd_vli.h"
+
+#ifdef _WIN32_SEND_BUFFING
+#include "send_buf.h"		
+#endif
+
 #include "drbd_debugfs.h"
 #include "drbd_meta_data.h"
-
+#ifndef _WIN32 // _WIN32_V9: not used
 #ifdef COMPAT_HAVE_LINUX_BYTEORDER_SWABB_H
 #include <linux/byteorder/swabb.h>
 #else
-#ifdef _WIN32_CHECK
 #include <linux/swab.h>
 #endif
 #endif
@@ -80,12 +84,17 @@
 #define DRBD_RELEASE_RETURN int
 #endif
 
+// DRBD_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
 static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
+#ifdef _WIN32  // _WIN32_V9 : STATIC -> static
+static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+#else
 static void md_sync_timer_fn(unsigned long data);
+#endif
 static int w_bitmap_io(struct drbd_work *w, int unused);
 static int flush_send_buffer(struct drbd_connection *connection, enum drbd_stream drbd_stream);
-#ifdef _WIN32_CHECK
+#ifndef _WIN32
 MODULE_AUTHOR("Philipp Reisner <phil@linbit.com>, "
 	      "Lars Ellenberg <lars@linbit.com>");
 MODULE_DESCRIPTION("drbd - Distributed Replicated Block Device v" REL_VERSION);
@@ -105,10 +114,25 @@ module_param(disable_sendpage, bool, 0644);
 module_param(allow_oos, bool, 0);
 #endif
 #ifdef CONFIG_DRBD_FAULT_INJECTION
+#ifdef _WIN32
+
+// DRBD_DOC: 참고 _DRBD_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
+//Example: Simulate data write errors on / dev / drbd0 with a probability of 5 % .
+//		echo 16 > /sys/module/drbd/parameters/enable_faults
+//		echo 1 > /sys/module/drbd/parameters/fault_devs
+//		echo 5 > /sys/module/drbd/parameters/fault_rate
+
+int enable_faults = 0;  // 0xFFFF;
+int fault_rate = 0;     // 5% 이하로 시험
+int fault_devs = 0;     // 시험 대상 minor 번호
+
+static int fault_count = 0;
+#else
 int enable_faults;
 int fault_rate;
 static int fault_count;
 int fault_devs;
+#endif
 int two_phase_commit_fail;
 
 #ifndef _WIN32
@@ -126,8 +150,13 @@ module_param(two_phase_commit_fail, int, 0644);
 
 /* module parameter, defined */
 unsigned int minor_count = DRBD_MINOR_COUNT_DEF;
+#ifdef _WIN32 // WDRBD_V8 에서 튜닝된 값이고 초기화 안되면 오류로 기억
+bool disable_sendpage = 1;      // DRBD_DOC: not support page I/O
+bool allow_oos = 0;
+#else
 bool disable_sendpage;
 bool allow_oos;
+#endif
 
 /* Module parameter for setting the user mode helper program
  * to run. Default is /sbin/drbdadm */
@@ -145,12 +174,19 @@ module_param_string(usermode_helper, usermode_helper, sizeof(usermode_helper), 0
 struct idr drbd_devices;
 struct list_head drbd_resources;
 
+#ifdef _WIN32 // DRBD_CHECK: 변수 추가, 컴파일 오류시 재확인 후 제거
+NPAGED_LOOKASIDE_LIST drbd_request_mempool;
+NPAGED_LOOKASIDE_LIST drbd_ee_mempool;		/* peer requests */
+NPAGED_LOOKASIDE_LIST drbd_al_ext_cache;	/* bitmap extents */
+NPAGED_LOOKASIDE_LIST drbd_bm_ext_cache;	/* activity log extents */
+#else
 struct kmem_cache *drbd_request_cache;
 struct kmem_cache *drbd_ee_cache;	/* peer requests */
 struct kmem_cache *drbd_bm_ext_cache;	/* bitmap extents */
 struct kmem_cache *drbd_al_ext_cache;	/* activity log extents */
 mempool_t *drbd_request_mempool;
 mempool_t *drbd_ee_mempool;
+#endif
 mempool_t *drbd_md_io_page_pool;
 struct bio_set *drbd_md_io_bio_set;
 
@@ -169,8 +205,13 @@ wait_queue_head_t drbd_pp_wait;
 
 DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
 
+#ifdef _WIN32 // DRBD_CHECK: WDRBD_V8 에서 사용되는 전역 추가
+EX_SPIN_LOCK g_rcuLock;
+struct mutex g_genl_mutex;
+#endif
+
 static const struct block_device_operations drbd_ops = {
-#ifndef _WIN32
+#ifndef _WIN32 //_WIN32_V9
 	.owner =   THIS_MODULE,
 #endif
 	.open =    drbd_open,
@@ -186,6 +227,9 @@ static void bio_destructor_drbd(struct bio *bio)
 
 struct bio *bio_alloc_drbd(gfp_t gfp_mask)
 {
+#ifdef _WIN32 // _WIN32_V9
+	return bio_alloc(gfp_mask, 1);
+#else
 	struct bio *bio;
 
 	if (!drbd_md_io_bio_set)
@@ -198,6 +242,7 @@ struct bio *bio_alloc_drbd(gfp_t gfp_mask)
 	bio->bi_destructor = bio_destructor_drbd;
 #endif
 	return bio;
+#endif
 }
 
 #ifdef __CHECKER__
