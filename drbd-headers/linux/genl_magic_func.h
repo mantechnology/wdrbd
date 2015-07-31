@@ -386,7 +386,7 @@ static inline int s_name ## _to_unpriv_skb(struct sk_buff *skb,		\
 
 #include GENL_MAGIC_INCLUDE_FILE
 
-
+#endif /* __KERNEL__ */
 /* Functions for initializing structs to default values.  */
 
 #undef __field
@@ -417,7 +417,6 @@ s_fields								\
 
 #include GENL_MAGIC_INCLUDE_FILE
 
-#endif /* __KERNEL__ */
 
 /* }}}1 */
 #endif /* GENL_MAGIC_FUNC_H */
