@@ -223,7 +223,11 @@ struct lru_cache {
 	struct list_head to_be_changed;
 
 	/* the pre-created kmem cache to allocate the objects from */
+#ifdef _WIN32
+	PNPAGED_LOOKASIDE_LIST lc_cache;
+#else
 	struct kmem_cache *lc_cache;
+#endif
 
 	/* size of tracked objects, used to memset(,0,) them in lc_reset */
 	size_t element_size;
@@ -247,11 +251,17 @@ struct lru_cache {
 
 	/* statistics */
 	unsigned used; /* number of elements currently on in_use list */
+#ifdef _WIN32
+	ULONG_PTR hits, misses, starving, locked, changed;
+
+	/* see below: flag-bits for lru_cache */
+	ULONG_PTR flags;
+#else
 	unsigned long hits, misses, starving, locked, changed;
 
 	/* see below: flag-bits for lru_cache */
 	unsigned long flags;
-
+#endif
 
 	void  *lc_private;
 	const char *name;
@@ -290,9 +300,15 @@ enum {
 #define LC_LOCKED   (1<<__LC_LOCKED)
 #define LC_STARVING (1<<__LC_STARVING)
 
+#ifdef _WIN32
+extern struct lru_cache *lc_create(const char *name, PNPAGED_LOOKASIDE_LIST cache,
+		unsigned max_pending_changes,
+		unsigned e_count, size_t e_size, size_t e_off);
+#else
 extern struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 		unsigned max_pending_changes,
 		unsigned e_count, size_t e_size, size_t e_off);
+#endif
 extern void lc_reset(struct lru_cache *lc);
 extern void lc_destroy(struct lru_cache *lc);
 extern void lc_set(struct lru_cache *lc, unsigned int enr, int index);

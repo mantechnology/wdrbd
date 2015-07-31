@@ -1245,5 +1245,20 @@ typedef struct _PTR_ENTRY
 #define UINT_MAX	(~0U)
 #endif
 
+//#ifdef _WIN32_V9 CHECK!!
+//semaphore 임시 포팅. 
+// mutex.h 가 사용안되는 듯. 일단 복잡하여 이곳에서 처리함. 
+struct semaphore {
+	//17         raw_spinlock_t          lock;
+	//18         unsigned int            count;
+	//19         struct list_head        wait_list;
+	//20 
+
+	int dummy;
+};
+
+extern void down(struct semaphore *sem);
+extern void up(struct semaphore *sem);
+
 
 #endif __DRBD_WINDRV_H__

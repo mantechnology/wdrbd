@@ -69,8 +69,12 @@ int lc_try_lock(struct lru_cache *lc)
 {
 	unsigned long val;
 	do {
+#ifdef _WIN32
+		val = atomic_cmpxchg(&lc->flags, 0, LC_LOCKED); // _WIN32_CHECK: 기능이 동일한 지 재확인
+#else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
-	} while (unlikely (val == LC_PARANOIA));
+#endif
+	} while (val == LC_PARANOIA);
 	/* Spin until no-one is inside a PARANOIA_ENTRY()/RETURN() section. */
 	return 0 == val;
 #if 0
@@ -97,9 +101,15 @@ int lc_try_lock(struct lru_cache *lc)
  * Returns a pointer to a newly initialized struct lru_cache on success,
  * or NULL on (allocation) failure.
  */
+#ifdef _WIN32
+struct lru_cache *lc_create(const char *name, PNPAGED_LOOKASIDE_LIST cache,
+		unsigned max_pending_changes,
+		unsigned e_count, size_t e_size, size_t e_off)
+#else
 struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 		unsigned max_pending_changes,
 		unsigned e_count, size_t e_size, size_t e_off)
+#endif
 {
 	struct hlist_head *slot = NULL;
 	struct lc_element **element = NULL;
@@ -117,6 +127,23 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	if (e_count > LC_MAX_ACTIVE)
 		return NULL;
 
+#ifdef _WIN32
+	slot = (struct hlist_head *)ExAllocatePoolWithTag(NonPagedPool,
+		e_count * sizeof(struct hlist_head), 'F4DW');
+	if (!slot)
+		goto out_fail;
+	RtlZeroMemory(slot, e_count * sizeof(struct hlist_head));
+	element = (struct lc_element **)ExAllocatePoolWithTag(NonPagedPool,
+		e_count * sizeof(struct lc_element *), '05DW');
+	if (!element)
+		goto out_fail;
+	RtlZeroMemory(element, e_count * sizeof(struct lc_element *));
+	lc = (struct lru_cache *)ExAllocatePoolWithTag(NonPagedPool,
+		sizeof(struct lru_cache), '15DW');
+	if (!lc)
+		goto out_fail;
+	RtlZeroMemory(lc, sizeof(struct lru_cache));
+#else
 	slot = kcalloc(e_count, sizeof(struct hlist_head), GFP_KERNEL);
 	if (!slot)
 		goto out_fail;
@@ -127,6 +154,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	lc = kzalloc(sizeof(*lc), GFP_KERNEL);
 	if (!lc)
 		goto out_fail;
+#endif
 
 	INIT_LIST_HEAD(&lc->in_use);
 	INIT_LIST_HEAD(&lc->lru);
@@ -144,11 +172,18 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 
 	/* preallocate all objects */
 	for (i = 0; i < e_count; i++) {
+#ifdef _WIN32
+		void *p = ExAllocateFromNPagedLookasideList(cache);
+		if( !p )	break;
+		RtlZeroMemory(p, e_size);
+#else
 		void *p = kmem_cache_alloc(cache, GFP_KERNEL);
 		if (!p)
 			break;
-		memset(p, 0, lc->element_size);
-		e = p + e_off;
+#endif
+
+		e = (size_t)p + e_off;
+
 		e->lc_index = i;
 		e->lc_number = LC_FREE;
 		e->lc_new_number = LC_FREE;
@@ -161,7 +196,11 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	/* else: could not allocate all elements, give up */
 	for (i--; i; i--) {
 		void *p = element[i];
+#ifdef _WIN32
+		ExFreeToNPagedLookasideList(cache, (size_t)p - e_off); // _WIN32_CHECK: (size_t) 캐스팅이 적절한지 재확인
+#else
 		kmem_cache_free(cache, p - e_off);
+#endif
 	}
 	kfree(lc);
 out_fail:
@@ -175,8 +214,12 @@ static void lc_free_by_index(struct lru_cache *lc, unsigned i)
 	void *p = lc->lc_element[i];
 	WARN_ON(!p);
 	if (p) {
-		p -= lc->element_off;
+		p -= lc->element_off; // _WIN32_CHECK: p 를 (size_t) 캐스팅 해야하는지 재확인
+#ifdef _WIN32
+		ExFreeToNPagedLookasideList(lc->lc_cache, p);
+#else
 		kmem_cache_free(lc->lc_cache, p);
+#endif
 	}
 }
 
@@ -224,7 +267,7 @@ void lc_reset(struct lru_cache *lc)
 	for (i = 0; i < lc->nr_elements; i++) {
 		struct lc_element *e = lc->lc_element[i];
 		void *p = e;
-		p -= lc->element_off;
+		p -= lc->element_off; // _WIN32_CHECK: p 를 (size_t) 캐스팅 해야하는지 재확인
 		memset(p, 0, lc->element_size);
 		/* re-init it */
 		e->lc_index = i;
@@ -248,10 +291,17 @@ size_t lc_seq_printf_stats(struct seq_file *seq, struct lru_cache *lc)
 	 * progress) and "changed", when this in fact lead to an successful
 	 * update of the cache.
 	 */
-	return seq_printf(seq, "\t%s: used:%u/%u "
+#if defined(_WIN64)
+	seq_printf(seq, "\t%s: used:%u/%u "
+		"hits:%I64u misses:%I64u starving:%I64u locked:%I64u changed:%I64u\n",
+		lc->name, lc->used, lc->nr_elements,
+		lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
+#else
+	seq_printf(seq, "\t%s: used:%u/%u "
 		"hits:%lu misses:%lu starving:%lu locked:%lu changed:%lu\n",
 		lc->name, lc->used, lc->nr_elements,
 		lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
+#endif
 }
 
 static struct hlist_head *lc_hash_slot(struct lru_cache *lc, unsigned int enr)
@@ -263,11 +313,16 @@ static struct hlist_head *lc_hash_slot(struct lru_cache *lc, unsigned int enr)
 static struct lc_element *__lc_find(struct lru_cache *lc, unsigned int enr,
 		bool include_changing)
 {
-	struct lc_element *e;
+	struct lc_element *e; // _WIN32_CHECK: 초기화 불필요?
 
 	BUG_ON(!lc);
 	BUG_ON(!lc->nr_elements);
+
+#ifndef _WIN32
 	hlist_for_each_entry(e, lc_hash_slot(lc, enr), colision) {
+#else
+	hlist_for_each_entry(struct lc_element, e, lc_hash_slot(lc, enr), colision) {
+#endif
 		/* "about to be changed" elements, pending transaction commit,
 		 * are hashed by their "new number". "Normal" elements have
 		 * lc_number == lc_new_number. */
@@ -550,8 +605,12 @@ void lc_committed(struct lru_cache *lc)
 	struct lc_element *e, *tmp;
 
 	PARANOIA_ENTRY();
+#ifndef _WIN32
 	list_for_each_entry_safe(e, tmp, &lc->to_be_changed, list) {
-		/* count number of changes, not number of transactions */
+#else
+	list_for_each_entry_safe(struct lc_element, e, tmp, &lc->to_be_changed, list) {
+#endif
+				/* count number of changes, not number of transactions */
 		++lc->changed;
 		e->lc_number = e->lc_new_number;
 		list_move(&e->list, &lc->in_use);
