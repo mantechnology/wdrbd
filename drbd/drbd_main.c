@@ -1759,9 +1759,17 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 				struct bm_xfer_ctx *c)
 {
 	struct bitstream bs;
+
+#ifdef _WIN32
+	ULONG_PTR plain_bits;
+	ULONG_PTR tmp;
+	ULONG_PTR rl;
+#else
 	unsigned long plain_bits;
 	unsigned long tmp;
 	unsigned long rl;
+#endif
+
 	unsigned len;
 	unsigned toggle;
 	int bits, use_rle;
@@ -1792,7 +1800,11 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	do {
 		tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
 				    : _drbd_bm_find_next(peer_device, c->bit_offset);
+#ifdef _WIN64
+		if (tmp == -1ULL)
+#else
 		if (tmp == -1UL)
+#endif
 			tmp = c->bm_bits;
 		rl = tmp - c->bit_offset;
 
@@ -1863,7 +1875,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32
+#ifdef _WIN32_V9 // _WIN32_CHECK
 	pc = (char *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #else
 	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
@@ -1887,6 +1899,11 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 		/* was not compressible.
 		 * send a buffer full of plain text bits instead. */
 		unsigned int data_size;
+#ifdef _WIN32_V9
+		DbgPrint("WIN32_CHECK: send_bitmap_rle_or_plain: check p size value please!\n");
+		//	size_t num_words;
+		//	size_t *p = (size_t)(sock->sbuf) + header_size;
+#endif
 		unsigned long num_words;
 		unsigned long *pu = (unsigned long *)pc;
 
@@ -1946,6 +1963,9 @@ static int _drbd_send_bitmap(struct drbd_device *device,
 		put_ldev(device);
 	}
 
+#ifdef _WIN32
+	memset(&c, 0, sizeof(struct bm_xfer_ctx));
+#endif
 	c = (struct bm_xfer_ctx) {
 		.bm_bits = drbd_bm_bits(device),
 		.bm_words = drbd_bm_words(device),
@@ -1983,7 +2003,10 @@ void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set
 		return;
 	p->barrier = barrier_nr;
 	p->set_size = cpu_to_be32(set_size);
-	send_command(connection, -1, P_BARRIER_ACK, CONTROL_STREAM);
+#ifdef DRBD_TRACE // _WIN32: 최종 시점에 제거
+	WDRBD_TRACE("P_BARRIER_ACK: set sz:%d\n", set_size);
+#endif
+	conn_send_command(tconn, sock, P_BARRIER_ACK, sizeof(*p), NULL, 0);
 }
 
 /**
@@ -2009,6 +2032,10 @@ static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet
 	p->block_id = block_id;
 	p->blksize = blksize;
 	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("cmd 0x%x id: 0x%llx seq: 0x%x sect: 0x%llx sz: %d\n", 
+		cmd, p->block_id, be32_to_cpu(p->seq_num), be64_to_cpu(p->sector), be32_to_cpu(p->blksize));
+#endif
 	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
 }
 
@@ -2061,6 +2088,9 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 {
 	struct p_block_req *p;
 
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("sz=%d sector=%lld\n", size, sector);
+#endif
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
 	if (!p)
 		return -EIO;
@@ -2155,13 +2185,13 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
-#ifdef _WIN32
+#ifdef _WIN32_V9 // _WIN32_CHECK
     offset2 = (ULONG_PTR)buffer2 - (ULONG_PTR)page_address(page2);
 #else
 	offset2 = buffer2 - page_address(page2);
 #endif
 	from_base = drbd_kmap_atomic(page, KM_USER0);
-#ifdef _WIN32
+#ifdef _WIN32_V9 // _WIN32_CHECK
 	memcpy(buffer2, (char *)from_base + offset, size);
 #else
 	memcpy(buffer2, from_base + offset, size);
@@ -2170,7 +2200,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
 
 	if (!err) {
-		sbuf->unsent =
+		sbuf->unsent = // _WIN32_CHECK: 원본 재확인
 		sbuf->pos += size;
 	}
 
@@ -2198,9 +2228,17 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 
 static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 {
+#ifndef _WIN32
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
+#endif
 
+#ifdef _WIN32_V9 // _WIN32_CHECK !!!!
+	int err;
+	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
+	if (err)
+		return err;
+#else
 	/* hint all but last page with MSG_MORE */
 	bio_for_each_segment(bvec, bio, iter) {
 		int err;
@@ -2211,6 +2249,8 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 		if (err)
 			return err;
 	}
+#endif
+
 	return 0;
 }
 
@@ -2220,6 +2260,12 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 	DRBD_ITER_TYPE iter;
 
 	/* hint all but last page with MSG_MORE */
+#ifdef _WIN32
+	int err;
+	err = _drbd_no_send_page(mdev, bio->win32_page_buf, 0, bio->bi_size, 0);
+	if (err)
+		return err;
+#else
 	bio_for_each_segment(bvec, bio, iter) {
 		int err;
 
@@ -2229,6 +2275,7 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 		if (err)
 			return err;
 	}
+#endif
 	return 0;
 }
 
@@ -2238,7 +2285,13 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	struct page *page = peer_req->pages;
 	unsigned len = peer_req->i.size;
 	int err;
-
+#ifdef _WIN32_V9 // _WIN32_CHECK !!!!
+	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
+	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
+	err = _drbd_no_send_page(peer_device, peer_req->win32_big_page, 0, len, 0);
+	if (err)
+		return err;
+#else
 	/* hint all but last page with MSG_MORE */
 	page_chain_for_each(page) {
 		unsigned l = min_t(unsigned, len, PAGE_SIZE);
@@ -2249,6 +2302,8 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 			return err;
 		len -= l;
 	}
+#endif
+
 	return 0;
 }
 
@@ -2296,10 +2351,15 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	}
 
 	p->sector = cpu_to_be64(req->i.sector);
+#ifdef _WIN32
+	p->block_id = (ULONG_PTR)req;
+#else
 	p->block_id = (unsigned long)req;
-	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
-	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
-	if (peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T)
+#endif
+	p->seq_num = cpu_to_be32(atomic_inc_return(&mdev->packet_seq));
+	dp_flags = bio_flags_to_wire(mdev, req->master_bio->bi_rw);
+	if (mdev->state.conn >= C_SYNC_SOURCE &&
+	    mdev->state.conn <= C_PAUSED_SYNC_T)
 		dp_flags |= DP_MAY_SET_IN_SYNC;
 	if (peer_device->connection->agreed_pro_version >= 100) {
 		if (s & RQ_EXP_RECEIVE_ACK)
@@ -2312,13 +2372,19 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	/* our digest is still only over the payload.
 	 * TRIM does not carry any payload. */
 	if (digest_size)
+#ifdef _WIN32 // _WIN32_CHECK: network buffer duplicated
+		drbd_csum_bio(peer_device->connection->integrity_tfm, req, p + 1);
+#else
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, p + 1);
+#endif
 
 	if (trim) {
 		err = __send_command(peer_device->connection, device->vnr, P_TRIM, DATA_STREAM);
 		goto out;
 	}
-
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("P_DATA: sect: 0x%llx sz: %d\n", req->i.sector, req->i.size);
+#endif
 	additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
 	err = __send_command(peer_device->connection, device->vnr, P_DATA, DATA_STREAM);
 	if (!err) {
@@ -2334,16 +2400,40 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		 * receiving side, we sure have detected corruption elsewhere.
 		 */
 		if (!(s & (RQ_EXP_RECEIVE_ACK | RQ_EXP_WRITE_ACK)) || digest_size)
+#ifdef _WIN32_V9
+		{
+#ifdef DRBD_TRACE
+            WDRBD_TRACE("_drbd_send_bio! ASYNC protocol!"); 
+#endif
+			err = _drbd_no_send_page(peer_device, req->win32_page_buf, 0, req->i.size, 0);
+		}
+#else
 			err = _drbd_send_bio(peer_device, req->master_bio);
+#endif
+
 		else
+#ifdef _WIN32_V9
+		{
+#ifdef DRBD_TRACE
+            WDRBD_TRACE("_drbd_send_zc_bio! SYNC/Semi-SYNC protocol!\n");
+#endif
+			err = _drbd_no_send_page(peer_device, req->win32_page_buf, 0, req->i.size, 0);
+		}
+#else
 			err = _drbd_send_zc_bio(peer_device, req->master_bio);
+#endif
 
 		/* double check digest, sometimes buffers have been modified in flight. */
 		if (digest_size > 0 && digest_size <= 64) {
 			/* 64 byte, 512 bit, is the largest digest size
 			 * currently supported in kernel crypto. */
 			unsigned char digest[64];
+#ifdef _WIN32_V9
+			// if (req->win32_page_buf)
+			drbd_csum_bio(peer_device, mdev->tconn->integrity_tfm, req, digest);
+#else
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest);
+#endif
 			if (memcmp(p + 1, digest, digest_size)) {
 				drbd_warn(device,
 					"Digest mismatch, buffer modified by upper layers during write: %llus +%u\n",
