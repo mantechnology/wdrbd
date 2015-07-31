@@ -367,7 +367,7 @@ drbd_insert_fault(struct drbd_device *device, unsigned int type) {
 #ifdef _WIN32
 	int ret = fault_rate &&
 		(enable_faults & (1<<type)) &&
-		_drbd_insert_fault(mdev, type);
+		_drbd_insert_fault(device, type);
 
     if (ret)
     {
