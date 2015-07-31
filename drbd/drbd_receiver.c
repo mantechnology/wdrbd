@@ -176,14 +176,34 @@ static void page_chain_add(struct page **head,
 	*head = chain_first;
 }
 
-static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
+#ifdef _WIN32
+static void * __drbd_alloc_pages(struct drbd_conf *mdev, unsigned int number)
+{
+	/* Yes, testing drbd_pp_vacant outside the lock is racy.
+	* So what. It saves a spin_lock. */
+	if (drbd_pp_vacant >= (int)number) {
+		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
+		if (mem)
+		{
+			spin_lock(&drbd_pp_lock);
+			drbd_pp_vacant -= (int)number;
+			spin_unlock(&drbd_pp_lock);
+			return mem;
+		}
+	}
+
+	return NULL;
+}
+#else
+static struct page *__drbd_alloc_pages(struct drbd_conf *mdev,
+	unsigned int number)
 {
 	struct page *page = NULL;
 	struct page *tmp = NULL;
 	unsigned int i = 0;
 
 	/* Yes, testing drbd_pp_vacant outside the lock is racy.
-	 * So what. It saves a spin_lock. */
+	* So what. It saves a spin_lock. */
 	if (drbd_pp_vacant >= number) {
 		spin_lock(&drbd_pp_lock);
 		page = page_chain_del(&drbd_pp_pool, number);
@@ -194,8 +214,11 @@ static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 			return page;
 	}
 
+	/* GFP_TRY, because we must not cause arbitrary write-out: in a DRBD
+	* "criss-cross" setup, that might cause write-out on some other DRBD,
+	* which in turn might block on the other node at this very place.  */
 	for (i = 0; i < number; i++) {
-		tmp = alloc_page(gfp_mask);
+		tmp = alloc_page(GFP_TRY);
 		if (!tmp)
 			break;
 		set_page_private(tmp, (unsigned long)page);
@@ -206,8 +229,8 @@ static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 		return page;
 
 	/* Not enough pages immediately available this time.
-	 * No need to jump around here, drbd_alloc_pages will retry this
-	 * function "soon". */
+	* No need to jump around here, drbd_alloc_pages will retry this
+	* function "soon". */
 	if (page) {
 		tmp = page_chain_tail(page, NULL);
 		spin_lock(&drbd_pp_lock);
@@ -217,6 +240,7 @@ static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 	}
 	return NULL;
 }
+#endif
 
 /* kick lower level device, if we have more than (arbitrary number)
  * reference counts on it, which typically are locally submitted io
@@ -359,20 +383,38 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 }
 
 /* Must not be used from irq, as that may deadlock: see drbd_alloc_pages.
- * Is also used from inside an other spin_lock_irq(&resource->req_lock);
- * Either links the page chain back to the global pool,
- * or returns all pages to the system. */
-void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net)
+* Is also used from inside an other spin_lock_irq(&mdev->tconn->req_lock);
+* Either links the page chain back to the global pool,
+* or returns all pages to the system. */
+/* wdrbd에서는 실질적으로 page pool 할당을 해주진 않는다.
+* 다만 pool_size의 영향을 받게 하기 위해 page_count 관리를 받도록만 하며
+* 따라서 여기서 page반환같은 실질적인 메모리 free를 하지 않는다.
+* 그점이 __drbd_free_peer_req() 과 다른 부분이다.
+*/
+#ifdef _WIN32
+void drbd_free_pages(struct drbd_conf *mdev, int page_count, int is_net)
+#else
+STATIC void drbd_free_pages(struct drbd_conf *mdev, struct page *page, int is_net)
+#endif
 {
-	struct drbd_connection *connection =
-		container_of(transport, struct drbd_connection, transport);
-	atomic_t *a = is_net ? &connection->pp_in_use_by_net : &connection->pp_in_use;
+
+#ifdef _WIN32_TDODO 기존 mdev를 V9 형식으로 변경이 필요함.
+	atomic_t *a = is_net ? &mdev->pp_in_use_by_net : &mdev->pp_in_use;
 	int i;
 
+#ifdef _WIN32
+	if (page_count == NULL)
+		return;
+
+	spin_lock(&drbd_pp_lock);
+	drbd_pp_vacant += page_count;
+	spin_unlock(&drbd_pp_lock);
+	i = page_count;
+#else	
 	if (page == NULL)
 		return;
 
-	if (drbd_pp_vacant > (DRBD_MAX_BIO_SIZE/PAGE_SIZE) * minor_count)
+	if (drbd_pp_vacant > (DRBD_MAX_BIO_SIZE / PAGE_SIZE) * minor_count)
 		i = page_chain_free(page);
 	else {
 		struct page *tmp;
@@ -382,11 +424,16 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 		drbd_pp_vacant += i;
 		spin_unlock(&drbd_pp_lock);
 	}
+
+#endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
-		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
-			is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+		dev_warn(DEV, "ASSERTION FAILED: %s: %d < 0\n",
+		is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+
 	wake_up(&drbd_pp_wait);
+#endif
+
 }
 
 /*
@@ -409,6 +456,8 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_request *peer_req;
 
+#ifdef _WIN32_TODO // drbd_alloc_peer_req 의 인자가 변경되어 V9 포팅 필요.
+
 	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
 		return NULL;
 
@@ -426,6 +475,7 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	peer_req->submit_jif = jiffies;
 	peer_req->peer_device = peer_device;
 	peer_req->pages = NULL;
+#endif
 
 	return peer_req;
 }
@@ -433,7 +483,7 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
-
+#ifdef _WIN32_TODO // __drbd_free_peer_req 인자 변경. V9 형식으로 변경 필요.
 	might_sleep();
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
@@ -441,6 +491,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	mempool_free(peer_req, drbd_ee_mempool);
+#endif
 }
 
 int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, bool is_net_ee)
@@ -531,7 +582,9 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 		prepare_to_wait(&device->ee_wait, &wait, TASK_UNINTERRUPTIBLE);
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_kick_lo(device);
+#ifdef _WIN32_TODO // schedule 의 인자 v9 형식으로 변경 필요.
 		schedule();
+#endif
 		finish_wait(&device->ee_wait, &wait);
 		spin_lock_irq(&device->resource->req_lock);
 	}
