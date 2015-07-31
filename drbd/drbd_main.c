@@ -793,7 +793,11 @@ static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *aut
 	int id;
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 	for_each_connection_rcu(connection, resource) {
+#endif
 		if (connection->cstate[NOW] >= C_CONNECTED &&
 		    connection->peer_role[NOW] == R_PRIMARY) {
 			all_secondary = false;
@@ -828,7 +832,11 @@ bool drbd_device_stable(struct drbd_device *device, u64 *authoritative)
 		return false;
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 	for_each_connection_rcu(connection, resource) {
+#endif
 		peer_device = conn_peer_device(connection, device->vnr);
 		switch (peer_device->repl_state[NOW]) {
 		case L_WF_BITMAP_T:
@@ -1168,7 +1176,11 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 		mask |= NODE_MASK(resource->res_opts.node_id);
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_connection_rcu(struct drbd_connection, c, resource) {
+#else
 	for_each_connection_rcu(c, resource) {
+#endif
 		int node_id = c->peer_node_id;
 		int idx = 1 + node_id;
 
@@ -2412,7 +2424,11 @@ static bool primary_peer_present(struct drbd_resource *resource)
 	bool two_primaries, rv = false;
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 	for_each_connection_rcu(connection, resource) {
+#endif
 		nc = rcu_dereference(connection->transport.net_conf);
 		two_primaries = nc ? nc->two_primaries : false;
 
@@ -3198,10 +3214,7 @@ void conn_free_crypto(struct drbd_connection *connection)
 
 int set_resource_options(struct drbd_resource *resource, struct res_opts *res_opts)
 {
-#ifdef _WIN32
     resource->res_opts = *res_opts;
-    return 0;
-#else
 	struct drbd_connection *connection;
 	cpumask_var_t new_cpu_mask;
 	int err;
@@ -3239,7 +3252,11 @@ int set_resource_options(struct drbd_resource *resource, struct res_opts *res_op
 	if (!cpumask_equal(resource->cpu_mask, new_cpu_mask)) {
 		cpumask_copy(resource->cpu_mask, new_cpu_mask);
 		rcu_read_lock();
+#ifdef _WIN32
+		for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 		for_each_connection_rcu(connection, resource) {
+#endif
 			connection->receiver.reset_cpu_mask = 1;
 			connection->ack_receiver.reset_cpu_mask = 1;
 			connection->sender.reset_cpu_mask = 1;
@@ -3251,7 +3268,6 @@ int set_resource_options(struct drbd_resource *resource, struct res_opts *res_op
 fail:
 	free_cpumask_var(new_cpu_mask);
 	return err;
-#endif
 }
 
 struct drbd_resource *drbd_create_resource(const char *name,
@@ -5292,7 +5308,11 @@ u64 directly_connected_nodes(struct drbd_resource *resource, enum which_state wh
 	struct drbd_connection *connection;
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 	for_each_connection_rcu(connection, resource) {
+#endif
 		if (connection->cstate[which] < C_CONNECTED)
 			continue;
 		directly_connected |= NODE_MASK(connection->peer_node_id);
