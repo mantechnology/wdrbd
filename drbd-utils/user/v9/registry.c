@@ -1,4 +1,4 @@
-/*
+﻿/*
    drbdadm_registry.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.

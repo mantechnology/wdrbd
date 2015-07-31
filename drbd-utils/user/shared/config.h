@@ -1,4 +1,4 @@
-/* user/shared/config.h.  Generated from config.h.in by configure.  */
+﻿/* user/shared/config.h.  Generated from config.h.in by configure.  */
 /* user/shared/config.h.in.  Generated from configure.ac by autoheader.  */
 
 /* Local configuration directory. Commonly /etc or /usr/local/etc */

@@ -1,4 +1,4 @@
-/*
+﻿/*
    drbdadm_parser.h a hand crafted parser
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.

@@ -1,4 +1,4 @@
-#ifndef DRBDTOOL_COMMON_H
+﻿#ifndef DRBDTOOL_COMMON_H
 #define DRBDTOOL_COMMON_H
 
 #include "drbd_endian.h"

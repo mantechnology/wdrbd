@@ -1,4 +1,4 @@
-
+﻿
 
 #include <stdbool.h>
 #ifdef _WIN32

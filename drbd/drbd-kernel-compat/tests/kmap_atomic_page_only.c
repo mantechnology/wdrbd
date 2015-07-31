@@ -1,4 +1,4 @@
-#include <linux/highmem.h>
+﻿#include <linux/highmem.h>
 /* see 980c19e3
  * highmem: mark k[un]map_atomic() with two arguments as deprecated */
 void *f(void)

@@ -1,4 +1,4 @@
-#ifndef DRBD_STATE_CHANGE_H
+﻿#ifndef DRBD_STATE_CHANGE_H
 #define DRBD_STATE_CHANGE_H
 
 struct drbd_resource_state_change {

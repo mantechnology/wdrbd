@@ -1,4 +1,4 @@
-#ifndef KREF_DEBUG_H
+﻿#ifndef KREF_DEBUG_H
 #define KREF_DEBUG_H
 
 #ifdef _WIN32

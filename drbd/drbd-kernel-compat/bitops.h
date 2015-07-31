@@ -1,4 +1,4 @@
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+﻿#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 /* did not yet include generic_find_next_le_bit() {{{ */
 
 #if defined(__LITTLE_ENDIAN)

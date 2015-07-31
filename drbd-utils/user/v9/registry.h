@@ -1,4 +1,4 @@
-#ifndef __REGISTRY_H
+﻿#ifndef __REGISTRY_H
 #define __REGISTRY_H
 
 extern int register_minor(int minor, const char *path);

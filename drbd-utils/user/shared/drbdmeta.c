@@ -1,4 +1,4 @@
-/*
+ï»¿/*
    drbdmeta.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -5037,7 +5037,7 @@ struct format *new_cfg()
 #ifdef _WIN32_APP
 	err = posix_memalign(&on_disk_buffer, pagesize, ALIGN(buffer_size, pagesize));
 #else
-    err = _aligned_malloc(&on_disk_buffer, pagesize, ALIGN(buffer_size, pagesize)); //_WIN32_V9_CHECK : ÇÊ¿ä¾øÀ¸¸é »èÁ¦.
+    err = _aligned_malloc(&on_disk_buffer, pagesize, ALIGN(buffer_size, pagesize)); //_WIN32_V9_CHECK : í•„ìš”ì—†ìœ¼ë©´ ì‚­ì œ.
 #endif
 	if (err) {
 		fprintf(stderr, "could not posix_memalign() on_disk_buffer\n");

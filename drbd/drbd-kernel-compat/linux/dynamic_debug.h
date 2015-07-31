@@ -1,4 +1,4 @@
-#ifndef _DYNAMIC_DEBUG_H
+﻿#ifndef _DYNAMIC_DEBUG_H
 #define _DYNAMIC_DEBUG_H
 
 #ifndef dynamic_dev_dbg

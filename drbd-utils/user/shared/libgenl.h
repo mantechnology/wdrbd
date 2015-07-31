@@ -1,4 +1,4 @@
-#ifndef LIBGENL_H
+ï»¿#ifndef LIBGENL_H
 #define LIBGENL_H
 
 /*
@@ -86,14 +86,14 @@ do {							\
 
 
 struct msg_buff {
-#ifdef _WIN32_APP // _WIN32_V9_CHECK: È®ÀÎ!
+#ifdef _WIN32_APP // _WIN32_V9_CHECK: í™•ì¸!
     /* housekeeping */
     unsigned char *tail;
     unsigned char *end;
     /* start of data to be send(),
     * or received into */
 #else
-	int len;		// DRBD_DOC: app, kernel°£ msg_buff ±³È¯½Ã ÀÚ·á±¸Á¶ ÀÏÄ¡¸¦ À§ÇÔ. len À» Á¦¿ÜÇÏ°í app ·Î Àü¼Û
+	int len;		// DRBD_DOC: app, kernelê°„ msg_buff êµí™˜ì‹œ ìë£Œêµ¬ì¡° ì¼ì¹˜ë¥¼ ìœ„í•¨. len ì„ ì œì™¸í•˜ê³  app ë¡œ ì „ì†¡
 	unsigned int tail;
 	unsigned int end;
 #endif

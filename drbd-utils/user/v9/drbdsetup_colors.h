@@ -1,4 +1,4 @@
-#ifndef DRBDSETUP_COLORS_H
+﻿#ifndef DRBDSETUP_COLORS_H
 #define DRBDSETUP_COLORS_H
 
 #include <linux/drbd.h>

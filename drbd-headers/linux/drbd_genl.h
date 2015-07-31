@@ -1,4 +1,4 @@
-/*
+﻿/*
  * General overview:
  * full generic netlink message:
  * |nlmsghdr|genlmsghdr|<payload>

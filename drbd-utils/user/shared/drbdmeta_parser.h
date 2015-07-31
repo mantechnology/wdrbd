@@ -1,4 +1,4 @@
-typedef union YYSTYPE {
+﻿typedef union YYSTYPE {
   char* txt;
   uint64_t   u64;
 } YYSTYPE;

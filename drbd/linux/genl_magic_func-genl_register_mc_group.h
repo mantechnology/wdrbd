@@ -1,4 +1,4 @@
-#undef GENL_mc_group
+﻿#undef GENL_mc_group
 #define GENL_mc_group(group)						\
 static struct genl_multicast_group					\
 CONCAT_(GENL_MAGIC_FAMILY, _mcg_ ## group) __read_mostly = {		\

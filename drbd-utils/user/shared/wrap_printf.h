@@ -1,4 +1,4 @@
-#ifndef __WRAP_PRINTF
+﻿#ifndef __WRAP_PRINTF
 #define __WRAP_PRINTF
 
 extern int wrap_printf(int indent, const char *format, ...)

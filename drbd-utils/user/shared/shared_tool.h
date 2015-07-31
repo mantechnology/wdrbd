@@ -1,4 +1,4 @@
-#ifndef TOOL_SHARED_H
+﻿#ifndef TOOL_SHARED_H
 #define TOOL_SHARED_H
 
 #ifndef _WIN32

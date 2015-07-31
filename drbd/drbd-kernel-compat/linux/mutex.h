@@ -1,4 +1,4 @@
-/* "Backport" of the mutex to older Linux-2.6.x kernels.
+﻿/* "Backport" of the mutex to older Linux-2.6.x kernels.
  */
 #ifndef __LINUX_MUTEX_H
 #define __LINUX_MUTEX_H

@@ -1,1 +1,1 @@
-/* empty file, for compat reasons */
+﻿/* empty file, for compat reasons */

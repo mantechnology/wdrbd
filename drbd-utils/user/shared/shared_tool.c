@@ -1,4 +1,4 @@
-#ifdef _WIN32
+ï»¿#ifdef _WIN32
 #include "windows/types.h"
 #endif
 
@@ -251,12 +251,12 @@ int sget_token(char *s, int size, const char** text)
 
 /**
 * @brief
-* µð½ºÅ© È¤Àº º¼·ýÀÇ size¸¦ ±¸ÇØ¿À´Â ÇÔ¼ö
-* º¼·ýÀÇ size¸¦ ±¸ÇØ¿Ã °æ¿ì¶ó¸é ÀÎÀÚ·Î "\\.\X:" ÇüÅÂÀÇ ¹®ÀÚ¿­À» Áà¾ßÇÑ´Ù.
+* ë””ìŠ¤í¬ í˜¹ì€ ë³¼ë¥¨ì˜ sizeë¥¼ êµ¬í•´ì˜¤ëŠ” í•¨ìˆ˜
+* ë³¼ë¥¨ì˜ sizeë¥¼ êµ¬í•´ì˜¬ ê²½ìš°ë¼ë©´ ì¸ìžë¡œ "\\.\X:" í˜•íƒœì˜ ë¬¸ìžì—´ì„ ì¤˜ì•¼í•œë‹¤.
 *
 * @return
-*   ¼º°ø½Ã - º¼·ýÀÇ size
-*   ½ÇÆÐ½Ã - 0
+*   ì„±ê³µì‹œ - ë³¼ë¥¨ì˜ size
+*   ì‹¤íŒ¨ì‹œ - 0
 */
 long long GetDriveGeometry(LPWSTR wszPath, DISK_GEOMETRY *pdg)
 {

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * DRBD setup via genetlink
  *
  * This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -3890,7 +3890,7 @@ static void print_usage_and_exit(const char* addinfo)
 
 static int modprobe_drbd(void)
 {	
-#ifndef _WIN32 //_WIN32_V9_CHECK : modprobe �ʿ伺 Ȯ��
+#ifndef _WIN32 //_WIN32_V9_CHECK : modprobe 필요성 확인
     struct stat sb;
     int ret, retries = 10;
 	ret = stat("/proc/drbd", &sb);

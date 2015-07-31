@@ -1,4 +1,4 @@
-/*
+ï»¿/*
  *
    drbdadm_parser.c a hand crafted parser
 
@@ -25,7 +25,7 @@
  */
 
 #ifdef _WIN32
-//_WIN32_V9_CHECK: ÀÌÀü¹öÀÜ¿¡¼­ ÇÊ¿ä¼º ÀçÈ®ÀÎ
+//_WIN32_V9_CHECK: ì´ì „ë²„ì”ì—ì„œ í•„ìš”ì„± ì¬í™•ì¸
 #include "windows/types.h"
 #endif
 

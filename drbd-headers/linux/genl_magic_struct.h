@@ -1,4 +1,4 @@
-#ifndef GENL_MAGIC_STRUCT_H
+﻿#ifndef GENL_MAGIC_STRUCT_H
 #define GENL_MAGIC_STRUCT_H
 
 #ifndef GENL_MAGIC_FAMILY

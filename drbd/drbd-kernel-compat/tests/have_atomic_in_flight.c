@@ -1,4 +1,4 @@
-#include <linux/version.h>
+﻿#include <linux/version.h>
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39)
 #include <linux/genhd.h>
 

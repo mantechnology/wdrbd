@@ -1,4 +1,4 @@
-#include <linux/blkdev.h>
+﻿#include <linux/blkdev.h>
 
 #ifndef __same_type
 # define __same_type(a, b) __builtin_types_compatible_p(typeof(a), typeof(b))

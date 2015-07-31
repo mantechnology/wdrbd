@@ -1,4 +1,4 @@
-#ifndef _WIN32
+﻿#ifndef _WIN32
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>

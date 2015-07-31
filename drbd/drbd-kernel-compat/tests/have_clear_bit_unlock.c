@@ -1,4 +1,4 @@
-#include <asm/barrier.h>
+﻿#include <asm/barrier.h>
 /* Including asm/barrier.h is necessary for s390.
 
    They define smp_mb__before_clear_bit() in asm/system.h
