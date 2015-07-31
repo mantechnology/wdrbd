@@ -84,7 +84,7 @@
 #define DRBD_RELEASE_RETURN int
 #endif
 
-// DRBD_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
+// _WIN32_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
 static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
@@ -116,7 +116,7 @@ module_param(allow_oos, bool, 0);
 #ifdef CONFIG_DRBD_FAULT_INJECTION
 #ifdef _WIN32
 
-// DRBD_DOC: 참고 _DRBD_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
+// DRBD_DOC: 참고 _WIN32_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
 //Example: Simulate data write errors on / dev / drbd0 with a probability of 5 % .
 //		echo 16 > /sys/module/drbd/parameters/enable_faults
 //		echo 1 > /sys/module/drbd/parameters/fault_devs
@@ -174,7 +174,7 @@ module_param_string(usermode_helper, usermode_helper, sizeof(usermode_helper), 0
 struct idr drbd_devices;
 struct list_head drbd_resources;
 
-#ifdef _WIN32 // DRBD_CHECK: 변수 추가, 컴파일 오류시 재확인 후 제거
+#ifdef _WIN32 // _WIN32_CHECK: 변수 추가, 컴파일 오류시 재확인 후 제거
 NPAGED_LOOKASIDE_LIST drbd_request_mempool;
 NPAGED_LOOKASIDE_LIST drbd_ee_mempool;		/* peer requests */
 NPAGED_LOOKASIDE_LIST drbd_al_ext_cache;	/* bitmap extents */
@@ -205,7 +205,7 @@ wait_queue_head_t drbd_pp_wait;
 
 DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
 
-#ifdef _WIN32 // DRBD_CHECK: WDRBD_V8 에서 사용되는 전역 추가
+#ifdef _WIN32 // WIN32_CHECK: WDRBD_V8 에서 사용되는 전역 추가
 EX_SPIN_LOCK g_rcuLock;
 struct mutex g_genl_mutex;
 #endif

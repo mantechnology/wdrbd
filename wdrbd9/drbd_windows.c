@@ -1881,7 +1881,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	toks += now - last_msg;					
 	last_msg = now;
 
-	__ret = 0;  // DRBD_CHECK
+	__ret = 0;  // _WIN32_CHECK
 #ifdef _WIN32_CHECK : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	

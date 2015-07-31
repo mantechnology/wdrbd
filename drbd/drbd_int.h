@@ -1346,7 +1346,7 @@ struct submit_worker {
 	/* protected by ..->resource->req_lock */
 	struct list_head writes;
 
-#ifdef DRBD_CHECK: 	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
+#ifdef _WIN32_CHECK: 	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
 #ifdef _WIN32_CT
     struct drbd_thread thi;
 #else
@@ -1617,7 +1617,7 @@ extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 #ifdef CONFIG_SMP
 extern void drbd_thread_current_set_cpu(struct drbd_thread *thi);
 #else
-#define drbd_thread_current_set_cpu(A) ({})  // DRBD_CHECK: VS2013 에서 컴파일이 되는가?
+#define drbd_thread_current_set_cpu(A) ({})  // _WIN32_CHECK: VS2013 에서 컴파일이 되는가?
 #endif
 extern void tl_release(struct drbd_connection *, unsigned int barrier_nr,
 		       unsigned int set_size);
@@ -1792,7 +1792,7 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 /* mostly arbitrarily set the represented size of one bitmap extent,
  * aka resync extent, to 128 MiB (which is also 4096 Byte worth of bitmap
  * at 4k per bit resolution) */
-#define BM_EXT_SHIFT	 27	/* 128 MiB per resync extent */  // DRBD_CHECK: 24->27로 변경됨, 이로 인한 사이트에펙트는 없는지 재확인 
+#define BM_EXT_SHIFT	 27	/* 128 MiB per resync extent */  // _WIN32_CHECK: 24->27로 변경됨, 이로 인한 사이트에펙트는 없는지 재확인 
 #define BM_EXT_SIZE	 (1<<BM_EXT_SHIFT)
 
 #if (BM_BLOCK_SHIFT != 12)
@@ -1910,7 +1910,7 @@ extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long
 extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
 #endif
  
-// DRBD_CHECK: 아래 함수들 중 입력 인자와 리턴이 _WIN64에 필요한 것들 추루 주의하여 포팅 필요!!!
+// _WIN32_CHECK: 아래 함수들 중 입력 인자와 리턴이 _WIN64에 필요한 것들 추루 주의하여 포팅 필요!!!
  
 extern int  drbd_bm_read(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, unsigned long, unsigned long);
@@ -1932,10 +1932,10 @@ extern unsigned long _drbd_bm_total_weight(struct drbd_device *, int);
 extern unsigned long drbd_bm_total_weight(struct drbd_peer_device *);
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
-		size_t number, unsigned long *buffer);
+		size_t number, unsigned long *buffer); // _WIN32_CHECK: for Win64
 /* for _drbd_send_bitmap */
 extern void drbd_bm_get_lel(struct drbd_peer_device *peer_device, size_t offset,
-		size_t number, unsigned long *buffer);
+		size_t number, unsigned long *buffer); // _WIN32_CHECK: for Win64
 
 extern void drbd_bm_lock(struct drbd_device *device, char *why, enum bm_flag flags);
 extern void drbd_bm_unlock(struct drbd_device *device);
@@ -1944,12 +1944,19 @@ extern void drbd_bm_slot_unlock(struct drbd_peer_device *peer_device);
 extern void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsigned int to_index);
 /* drbd_main.c */
 
+#ifdef _WIN32
+extern NPAGED_LOOKASIDE_LIST drbd_request_mempool;
+extern NPAGED_LOOKASIDE_LIST drbd_ee_mempool;		/* peer requests */
+extern NPAGED_LOOKASIDE_LIST drbd_bm_ext_cache;		/* bitmap extents */
+extern NPAGED_LOOKASIDE_LIST drbd_al_ext_cache;		/* activity log extents */
+#else
 extern struct kmem_cache *drbd_request_cache;
 extern struct kmem_cache *drbd_ee_cache;	/* peer requests */
 extern struct kmem_cache *drbd_bm_ext_cache;	/* bitmap extents */
 extern struct kmem_cache *drbd_al_ext_cache;	/* activity log extents */
 extern mempool_t *drbd_request_mempool;
 extern mempool_t *drbd_ee_mempool;
+#endif
 
 /* drbd's page pool, used to buffer data received from the peer,
  * or data requested by the peer.
@@ -1964,7 +1971,7 @@ extern mempool_t *drbd_ee_mempool;
  * frequent calls to alloc_page(), and still will be able to make progress even
  * under memory pressure.
  */
-#ifndef _WIN32 // DRBD_CHECK: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
+#ifndef _WIN32 // _WIN32_CHECK: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
 extern struct page *drbd_pp_pool;
 #endif
 
@@ -2106,24 +2113,13 @@ extern int w_send_out_of_sync(struct drbd_work *, int);
 extern int w_start_resync(struct drbd_work *, int);
 extern int w_send_uuids(struct drbd_work *, int);
 
+#ifdef _WIN32
+extern void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+extern void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+#else
 extern void resync_timer_fn(unsigned long data);
 extern void start_resync_timer_fn(unsigned long data);
-
-extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
-
-void __update_timing_details(
-		struct drbd_thread_timing_details *tdp,
-		unsigned int *cb_nr,
-		void *cb,
-		const char *fn, const unsigned int line);
-
-#define update_sender_timing_details(c, cb) \
-	__update_timing_details(c->s_timing_details, &c->s_cb_nr, cb, __func__ , __LINE__ )
-#define update_receiver_timing_details(c, cb) \
-	__update_timing_details(c->r_timing_details, &c->r_cb_nr, cb, __func__ , __LINE__ )
-#define update_worker_timing_details(r, cb) \
-	__update_timing_details(r->w_timing_details, &r->w_cb_nr, cb, __func__ , __LINE__ )
-
+#endif
 /* drbd_receiver.c */
 struct packet_info {
 	enum drbd_packet cmd;
@@ -2689,7 +2685,7 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
  *
  * You have to call put_ldev() when finished working with device->ldev.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // _WIN32_V9 // _WIN32_CHECK
 #define get_ldev_if_state(_device, _min_state)				\
 	(_get_ldev_if_state((_device), (_min_state)) ?			\
 	true : false)
