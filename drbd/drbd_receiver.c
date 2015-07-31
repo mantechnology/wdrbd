@@ -29,6 +29,7 @@
 #include "drbd_protocol.h"
 #include "drbd_req.h"
 #include "drbd_vli.h"
+#include "../wdrbd9/linux-compat/list.h"
 #else
 #include <linux/module.h>
 
@@ -150,10 +151,14 @@ static int page_chain_free(struct page *page)
 {
 	struct page *tmp;
 	int i = 0;
+
+#ifdef _WIN32_CHECK
 	page_chain_for_each_safe(page, tmp) {
 		put_page(page);
 		++i;
 	}
+#endif
+
 	return i;
 }
 
@@ -240,8 +245,12 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 	   they are sent in order over the wire, they have to finish
 	   in order. As soon as we see the first not finished we can
 	   stop to examine the list... */
-
-	list_for_each_entry_safe(peer_req, tmp, &connection->net_ee, w.list) {
+#ifdef _WIN32
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &connection->net_ee, w.list) {
+#else 
+	list_for_each_entry_safe( peer_req, tmp, &connection->net_ee, w.list) {
+#endif
 		if (drbd_peer_req_has_active_page(peer_req))
 			break;
 		list_move(&peer_req->w.list, to_be_freed);
@@ -257,9 +266,15 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 	spin_lock_irq(&resource->req_lock);
 	reclaim_finished_net_peer_reqs(connection, &reclaimed);
 	spin_unlock_irq(&resource->req_lock);
-
-	list_for_each_entry_safe(peer_req, t, &reclaimed, w.list)
+#ifdef _WIN32
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &reclaimed, w.list)
 		drbd_free_net_peer_req(peer_req);
+#else 
+	list_for_each_entry_safe( peer_req, t, &reclaimed, w.list)
+		drbd_free_net_peer_req(peer_req);
+#endif
+
 }
 
 static void conn_maybe_kick_lo(struct drbd_connection *connection)
@@ -437,8 +452,14 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
 	spin_lock_irq(&resource->req_lock);
 	list_splice_init(list, &work_list);
 	spin_unlock_irq(&resource->req_lock);
-
+#ifdef _WIN32
+	//list_for_each_entry_safe(struct drbd_peer_device, peer_req, t, &work_list, w.list) {
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	// struct drbd_peer_request 인자가 들어가야 하는데...이전 작업자의 실수인듯.
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
+#else
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
+#endif
 		__drbd_free_peer_req(peer_req, is_net_ee);
 		count++;
 	}
@@ -462,14 +483,26 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 	list_splice_init(&device->done_ee, &work_list);
 	spin_unlock_irq(&device->resource->req_lock);
 
+#ifdef _WIN32
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &reclaimed, w.list)
+		drbd_free_net_peer_req(peer_req);
+#else 
 	list_for_each_entry_safe(peer_req, t, &reclaimed, w.list)
 		drbd_free_net_peer_req(peer_req);
+#endif
+	
 
 	/* possible callbacks here:
 	 * e_end_block, and e_end_resync_block, e_send_discard_write.
 	 * all ignore the last argument.
 	 */
+#ifdef _WIN32
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
+#else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
+#endif
+	
 		int err2;
 
 		/* list_del not necessary, next/prev members not touched */
@@ -1901,7 +1934,14 @@ static bool overlapping_resync_write(struct drbd_device *device, struct drbd_pee
 	bool rv = 0;
 
 	spin_lock_irq(&device->resource->req_lock);
+
+#ifdef _WIN32
+	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry(struct drbd_peer_request, rs_req, &device->sync_ee, w.list) {
+#else
 	list_for_each_entry(rs_req, &device->sync_ee, w.list) {
+#endif
+	
 		if (overlaps(peer_req->i.sector, peer_req->i.size,
 			     rs_req->i.sector, rs_req->i.size)) {
 			rv = 1;
@@ -4682,7 +4722,14 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	bool was_empty, already_queued = false;
 
 	spin_lock_irq(&resource->queued_twopc_lock);
+
+#ifdef _WIN32
+	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
+#else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
+#endif
+	
 		if (q->reply.tid == twopc->tid &&
 		    q->reply.initiator_node_id == twopc->initiator_node_id)
 			already_queued = true;
@@ -4801,7 +4848,13 @@ static int abort_queued_twopc(struct drbd_resource *resource, struct twopc_reply
 	unsigned long irq_flags;
 
 	spin_lock_irqsave(&resource->queued_twopc_lock, irq_flags);
+
+#ifdef _WIN32
+	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
+#else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
+#endif
 		if (q->reply.tid == twopc->tid) {
 			list_del(&q->w.list);
 			goto found;
@@ -6953,7 +7006,13 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	in_sync = be64_to_cpu(p->mask);
 
 	spin_lock_irq(&resource->req_lock);
+#ifdef _WIN32
+	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->peer_requests, recv_order) {
+#else
 	list_for_each_entry(peer_req, &connection->peer_requests, recv_order) {
+#endif
+	
 		if (dagtag == peer_req->dagtag_sector)
 			goto found;
 	}
@@ -6966,7 +7025,13 @@ found:
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
+#ifdef _WIN32	
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
+#else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
+#endif
+	
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;
@@ -7009,8 +7074,12 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 	spin_lock_irq(&resource->req_lock);
 	list_splice_init(&connection->peer_requests, &work_list);
 	spin_unlock_irq(&resource->req_lock);
-
+#ifdef _WIN32
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
+#else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
+#endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 mask = ~(1 << peer_device->bitmap_index);
@@ -7041,7 +7110,12 @@ static void cleanup_peer_ack_list(struct drbd_connection *connection)
 
 	spin_lock_irq(&resource->req_lock);
 	idx = 1 + connection->peer_node_id;
+#ifdef _WIN32
+	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
+	list_for_each_entry_safe(struct drbd_request, req, tmp, &resource->peer_ack_list, tl_requests) {
+#else
 	list_for_each_entry_safe(req, tmp, &resource->peer_ack_list, tl_requests) {
+#endif
 		if (!(req->rq_state[idx] & RQ_PEER_ACK))
 			continue;
 		req->rq_state[idx] &= ~RQ_PEER_ACK;

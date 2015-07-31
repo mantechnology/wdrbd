@@ -240,12 +240,18 @@ static inline struct page *page_chain_next(struct page *page)
 	return (struct page *)page_private(page);
 }
 #ifdef _WIN32
+
 #define page_chain_for_each(page) \
 	for (; page ; page = page_chain_next(page))
-#else
+
+#endif
+
+#ifdef _WIN32_CHECK
+// page_chain_for_each_safe 매크로만 별도 재 검토 필요
 #define page_chain_for_each_safe(page, n) \
 	for (; page && ({ n = page_chain_next(page); 1; }); page = n)
 #endif
+
 #ifndef SK_CAN_REUSE
 /* This constant was introduced by Pavel Emelyanov <xemul@parallels.com> on
    Thu Apr 19 03:39:36 2012 +0000. Before the release of linux-3.5
