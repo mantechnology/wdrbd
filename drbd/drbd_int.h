@@ -2992,10 +2992,17 @@ struct bm_extent {
 #endif
 
 #ifndef idr_for_each_entry_continue
+#ifdef _WIN32
+#define idr_for_each_entry_continue(type, idp, entry, id)			\
+	for (entry = (type)idr_get_next((idp), &(id));		\
+	     entry;							\
+	     ++id, entry = (type)idr_get_next((idp), &(id)))
+#else
 #define idr_for_each_entry_continue(idp, entry, id)			\
 	for (entry = (typeof(entry))idr_get_next((idp), &(id));		\
 	     entry;							\
 	     ++id, entry = (typeof(entry))idr_get_next((idp), &(id)))
+#endif
 #endif
 
 static inline struct drbd_connection *first_connection(struct drbd_resource *resource)

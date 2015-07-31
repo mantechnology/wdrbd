@@ -1,4 +1,6 @@
-﻿#ifndef _WIN32
+﻿#ifdef _WIN32
+#include "linux-compat/kernel.h"
+#else
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>

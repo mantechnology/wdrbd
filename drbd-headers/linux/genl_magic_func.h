@@ -196,9 +196,9 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 			if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
 				pr_info("<< must not change invariant attr: %s\n", #name);	\
 				return -EEXIST;				\
-            			}						\
+			}						\
 			assignment;					\
-        		} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
+		} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
 			/* attribute missing from payload, */		\
 			/* which was expected */			\
 		} else if ((attr_flag) & DRBD_F_REQUIRED) {		\
@@ -324,7 +324,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 #else
 #include <linux/genl_magic_func-genl_register_mc_group.h>
 #endif
-
+#endif /* __KERNEL__ */
 /*
  * Magic: provide conversion functions					{{{1
  * populate skb from struct.
@@ -386,7 +386,7 @@ static inline int s_name ## _to_unpriv_skb(struct sk_buff *skb,		\
 
 #include GENL_MAGIC_INCLUDE_FILE
 
-#endif /* __KERNEL__ */
+
 /* Functions for initializing structs to default values.  */
 
 #undef __field
