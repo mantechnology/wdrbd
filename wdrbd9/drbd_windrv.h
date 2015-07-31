@@ -1240,4 +1240,10 @@ typedef struct _PTR_ENTRY
     void *              ptr;
 } PTR_ENTRY, * PPTR_ENTRY;
 
+
+#ifdef _WIN32_V9
+#define UINT_MAX	(~0U)
+#endif
+
+
 #endif __DRBD_WINDRV_H__

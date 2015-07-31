@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
+﻿#define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "linux-compat/spinlock.h"
 #else

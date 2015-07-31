@@ -1,4 +1,4 @@
-/*
+ï»¿/*
    drbd_receiver.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -29,7 +29,7 @@
 #include "drbd_protocol.h"
 #include "drbd_req.h"
 #include "drbd_vli.h"
-#include "../wdrbd9/linux-compat/list.h"
+#include <linux-compat/list.h>
 #else
 #include <linux/module.h>
 
@@ -246,7 +246,7 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 	   in order. As soon as we see the first not finished we can
 	   stop to examine the list... */
 #ifdef _WIN32
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &connection->net_ee, w.list) {
 #else 
 	list_for_each_entry_safe( peer_req, tmp, &connection->net_ee, w.list) {
@@ -267,7 +267,7 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 	reclaim_finished_net_peer_reqs(connection, &reclaimed);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &reclaimed, w.list)
 		drbd_free_net_peer_req(peer_req);
 #else 
@@ -454,8 +454,8 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
 	//list_for_each_entry_safe(struct drbd_peer_device, peer_req, t, &work_list, w.list) {
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
-	// struct drbd_peer_request ÀÎÀÚ°¡ µé¾î°¡¾ß ÇÏ´Âµ¥...ÀÌÀü ÀÛ¾÷ÀÚÀÇ ½Ç¼öÀÎµí.
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
+	// struct drbd_peer_request ì¸ìžê°€ ë“¤ì–´ê°€ì•¼ í•˜ëŠ”ë°...ì´ì „ ìž‘ì—…ìžì˜ ì‹¤ìˆ˜ì¸ë“¯.
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
 #else
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
@@ -497,7 +497,7 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 	 * all ignore the last argument.
 	 */
 #ifdef _WIN32
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
@@ -1936,7 +1936,7 @@ static bool overlapping_resync_write(struct drbd_device *device, struct drbd_pee
 	spin_lock_irq(&device->resource->req_lock);
 
 #ifdef _WIN32
-	// list_for_each_entry ÀÇ 4°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry ì˜ 4ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry(struct drbd_peer_request, rs_req, &device->sync_ee, w.list) {
 #else
 	list_for_each_entry(rs_req, &device->sync_ee, w.list) {
@@ -4724,7 +4724,7 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	spin_lock_irq(&resource->queued_twopc_lock);
 
 #ifdef _WIN32
-	// list_for_each_entry ÀÇ 4°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry ì˜ 4ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
 #else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
@@ -4850,7 +4850,7 @@ static int abort_queued_twopc(struct drbd_resource *resource, struct twopc_reply
 	spin_lock_irqsave(&resource->queued_twopc_lock, irq_flags);
 
 #ifdef _WIN32
-	// list_for_each_entry ÀÇ 4°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry ì˜ 4ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
 #else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
@@ -7007,7 +7007,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 
 	spin_lock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry ÀÇ 4°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry ì˜ 4ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->peer_requests, recv_order) {
 #else
 	list_for_each_entry(peer_req, &connection->peer_requests, recv_order) {
@@ -7026,7 +7026,7 @@ found:
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
@@ -7075,7 +7075,7 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 	list_splice_init(&connection->peer_requests, &work_list);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
@@ -7111,7 +7111,7 @@ static void cleanup_peer_ack_list(struct drbd_connection *connection)
 	spin_lock_irq(&resource->req_lock);
 	idx = 1 + connection->peer_node_id;
 #ifdef _WIN32
-	// list_for_each_entry_safe ÀÇ 5°³ ÀÎÀÚ¹Þ´Â wdrbd8.4ÀÇ ±âÁ¸ Win32 ¹öÀü ¸ÅÅ©·Î »ç¿ë
+	// list_for_each_entry_safe ì˜ 5ê°œ ì¸ìžë°›ëŠ” wdrbd8.4ì˜ ê¸°ì¡´ Win32 ë²„ì „ ë§¤í¬ë¡œ ì‚¬ìš©
 	list_for_each_entry_safe(struct drbd_request, req, tmp, &resource->peer_ack_list, tl_requests) {
 #else
 	list_for_each_entry_safe(req, tmp, &resource->peer_ack_list, tl_requests) {
