@@ -850,12 +850,16 @@ start:
 	rcu_read_unlock2();
 #endif
 	drbd_thread_start(&connection->ack_receiver);
+
+#ifdef _WIN32_TODO
 	connection->ack_sender =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
 		create_singlethread_workqueue("drbd_ack_sender");
 #endif
+#endif
+
 	if (!connection->ack_sender) {
 		drbd_err(connection, "Failed to create workqueue ack_sender\n");
 		goto abort;
@@ -893,7 +897,7 @@ abort:
 }
 #endif
 
-
+#ifdef _WIN32_V9
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
 {
 	unsigned int header_size = drbd_header_size(connection);
@@ -926,9 +930,15 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 			 connection->agreed_pro_version);
 		return -EINVAL;
 	}
+#ifdef _WIN32
+	pi->data = (LONG_PTR)header + header_size;
+#else
 	pi->data = header + header_size;
+#endif
+	
 	return 0;
 }
+#endif
 
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -967,7 +977,9 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			 */
 			device->flush_jif = jiffies;
 			set_bit(FLUSH_PENDING, &device->flags);
+			
 			rv = blkdev_issue_flush(device->ldev->backing_bdev, GFP_NOIO, NULL);
+
 			clear_bit(FLUSH_PENDING, &device->flags);
 			if (rv) {
 				drbd_info(device, "local disk flush failed with status %d\n", rv);
@@ -979,7 +991,11 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			put_ldev(device);
 			kref_put(&device->kref, drbd_destroy_device);
 
+#ifdef _WIN32
+			rcu_read_lock_w32_inner();
+#else
 			rcu_read_lock();
+#endif
 			if (rv)
 				break;
 		}

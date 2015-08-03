@@ -94,7 +94,10 @@ and BLKDEV_IFL_WAIT disappeared again.) */
 #ifndef BLKDEV_IFL_WAIT
 #ifndef BLKDEV_DISCARD_SECURE
 /* before fbd9b09a177 */
+#ifndef _WIN32
+// V8 구현 유지.
 #define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, s)
+#endif
 #endif
 /* after dd3932eddf4 no define at all */
 #else
