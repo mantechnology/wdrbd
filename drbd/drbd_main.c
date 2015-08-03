@@ -3825,7 +3825,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	BUG_ON(!mutex_is_locked(&resource->conf_update));
 #ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+	for_each_connection(struct drbd_connection, connection, resource) {
 #else
 	for_each_connection(connection, resource) {
 #endif
@@ -3971,8 +3971,8 @@ void drbd_unregister_device(struct drbd_device *device)
 	struct drbd_peer_device *peer_device;
 
 	spin_lock_irq(&resource->req_lock);
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#ifdef _WIN32_V9
+	for_each_connection(struct drbd_connection, connection, resource) {
 #else
 	for_each_connection(connection, resource) {
 #endif
