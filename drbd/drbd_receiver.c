@@ -3333,7 +3333,11 @@ static bool is_resync_running(struct drbd_device *device)
 	bool rv = false;
 
 	rcu_read_lock();
+#ifdef _WIN32
+	for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
+#else
 	for_each_peer_device_rcu(peer_device, device) {
+#endif
 		enum drbd_repl_state repl_state = peer_device->repl_state[NOW];
 		if (repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T) {
 			rv = true;
@@ -3701,10 +3705,13 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		goto disconnect;
 	}
 
+#ifdef _WIN32_TODO
+	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
 	if (mutex_lock_interruptible(&connection->resource->conf_update)) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		goto disconnect;
 	}
+#endif
 
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	old_net_conf = connection->transport.net_conf;
@@ -3730,13 +3737,19 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	if (strcmp(old_net_conf->integrity_alg, integrity_alg))
 		drbd_info(connection, "peer data-integrity-alg: %s\n",
 			  integrity_alg[0] ? integrity_alg : "(none)");
-
+#ifdef _WIN32_TODO
+	// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 	synchronize_rcu();
+#endif
 	kfree(old_net_conf);
 	return 0;
 
 disconnect_rcu_unlock:
+#ifdef _WIN32_TODO
+	// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 	rcu_read_unlock();
+#endif
+
 disconnect:
 	crypto_free_hash(peer_integrity_tfm);
 	kfree(int_dig_in);
@@ -3835,7 +3848,10 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	if (err)
 		return err;
 
+#ifdef _WIN32_TODO
+	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
 	err = mutex_lock_interruptible(&resource->conf_update);
+#endif
 	if (err) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		return err;
@@ -3959,7 +3975,12 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 		rcu_assign_pointer(peer_device->rs_plan_s, new_plan);
 
 	mutex_unlock(&resource->conf_update);
+
+#ifdef _WIN32_TODO
+	// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 	synchronize_rcu();
+#endif
+
 	if (new_net_conf)
 		kfree(old_net_conf);
 	kfree(old_peer_device_conf);
@@ -4094,8 +4115,10 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				err = -ENOMEM;
 				goto out;
 			}
-
+#ifdef _WIN32_TODO
+			// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
 			err = mutex_lock_interruptible(&connection->resource->conf_update);
+#endif
 			if (err) {
 				drbd_err(connection, "Interrupted while waiting for conf_update\n");
 				goto out;
@@ -4106,7 +4129,10 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 			rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
 			mutex_unlock(&connection->resource->conf_update);
+#ifdef _WIN32_TODO
+			// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 			synchronize_rcu();
+#endif
 			kfree(old_disk_conf);
 
 			drbd_info(device, "Peer sets u_size to %lu sectors\n",
