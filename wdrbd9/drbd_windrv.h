@@ -1277,7 +1277,33 @@ typedef struct _PTR_ENTRY
 
 #endif
 
-//#ifdef _WIN32_V9 CHECK!!
+#ifdef _WIN32_V9 // CHECK!!
+#if 0
+60 /* Common initializer macros and functions */
+61
+62 #ifdef CONFIG_DEBUG_LOCK_ALLOC
+63 # define __RWSEM_DEP_MAP_INIT(lockname), .dep_map = { .name = #lockname }
+64 #else
+65 # define __RWSEM_DEP_MAP_INIT(lockname)
+66 #endif
+67
+68 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+69 #define __RWSEM_OPT_INIT(lockname), .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
+70 #else
+71 #define __RWSEM_OPT_INIT(lockname)
+72 #endif
+73
+74 #define __RWSEM_INITIALIZER(name)                               \
+ 75         { .count = RWSEM_UNLOCKED_VALUE,                        \
+ 76           .wait_list = LIST_HEAD_INIT((name).wait_list),        \
+ 77           .wait_lock = __RAW_SPIN_LOCK_UNLOCKED(name.wait_lock) \
+ 78           __RWSEM_OPT_INIT(name)                                \
+ 79           __RWSEM_DEP_MAP_INIT(name) }
+80
+81 #define DECLARE_RWSEM(name) \
+ 82         struct rw_semaphore name = __RWSEM_INITIALIZER(name)
+#endif
+
 //semaphore 임시 포팅. 
 // mutex.h 가 사용안되는 듯. 일단 복잡하여 이곳에서 처리함. 
 struct semaphore {
@@ -1291,6 +1317,13 @@ struct semaphore {
 
 extern void down(struct semaphore *sem);
 extern void up(struct semaphore *sem);
+extern void down_write(struct semaphore *sem);
+extern void down_read(struct semaphore *sem);
+extern void up_write(struct semaphore *sem);
+extern void up_read(struct semaphore *sem);
+
+
+#endif
 
 #define snprintf(a, b, c,...) memset(a, 0, b); sprintf(a, c, ##__VA_ARGS__)
 

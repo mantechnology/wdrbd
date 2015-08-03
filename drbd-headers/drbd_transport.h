@@ -3,6 +3,7 @@
 #ifdef _WIN32
 #include "linux-compat/list.h"
 #include "linux-compat/wait.h"
+#include "drbd_windrv.h"
 #else
 #include <linux/kref.h>
 #include <linux/list.h>
@@ -90,8 +91,13 @@ enum drbd_tr_free_op {
 
 
 struct drbd_path {
+#ifdef _WIN32_V9
+	struct sockaddr_storage_win my_addr;
+	struct sockaddr_storage_win peer_addr;
+#else
 	struct sockaddr_storage my_addr;
 	struct sockaddr_storage peer_addr;
+#endif
 
 	int my_addr_len;
 	int peer_addr_len;
@@ -194,7 +200,7 @@ struct drbd_transport_class {
 	int (*init)(struct drbd_transport *);
 	struct list_head list;
 };
-#ifdef _WIN32_CHECK
+
 /* An "abstract base class" for transport implementations. I.e. it
    should be embedded into a transport specific representation of a
    listening "socket" */
@@ -238,7 +244,7 @@ extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 /* drbd_receiver.c*/
 extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
 extern void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net);
-#endif
+
 /* see also page_chain_add and friends in drbd_receiver.c */
 static inline struct page *page_chain_next(struct page *page)
 {

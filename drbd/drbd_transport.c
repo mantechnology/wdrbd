@@ -10,13 +10,21 @@
 #include <drbd_int.h>
 
 static LIST_HEAD(transport_classes);
+#ifdef _WIN32_V9
+struct semaphore transport_classes_lock; // 전역??
+#else
 static DECLARE_RWSEM(transport_classes_lock);
+#endif
 
 static struct drbd_transport_class *__find_transport_class(const char *transport_name)
 {
 	struct drbd_transport_class *transport_class;
 
+#ifdef _WIN32
+	list_for_each_entry(struct drbd_transport_class, transport_class, &transport_classes, list)
+#else
 	list_for_each_entry(transport_class, &transport_classes, list)
+#endif
 		if (!strcmp(transport_class->name, transport_name))
 			return transport_class;
 
@@ -65,7 +73,11 @@ static struct drbd_transport_class *get_transport_class(const char *name)
 
 	down_read(&transport_classes_lock);
 	tc = __find_transport_class(name);
+#ifdef _WIN32_V9
+	if (tc) // not support!
+#else
 	if (tc && !try_module_get(tc->module))
+#endif
 		tc = NULL;
 	up_read(&transport_classes_lock);
 	return tc;
@@ -76,7 +88,12 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 	struct drbd_transport_class *tc = get_transport_class(name);
 
 	if (!tc) {
+#ifdef _WIN32_V9
+		// not support
+		// 드라이버 의존 부분은 제거 !!!!
+#else
 		request_module("drbd_transport_%s", name);
+#endif
 		tc = get_transport_class(name);
 	}
 
@@ -89,7 +106,11 @@ void drbd_put_transport_class(struct drbd_transport_class *tc)
 	if (!tc)
 		return;
 	down_read(&transport_classes_lock);
+#ifdef _WIN32_V9
+	// not support
+#else
 	module_put(tc->module);
+#endif
 	up_read(&transport_classes_lock);
 }
 

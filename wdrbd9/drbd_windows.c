@@ -1071,6 +1071,34 @@ void up(struct semaphore *sem)
 	// mutex/spin lock 으로 대체 가능할 듯.
 }
 
+/*
+46 void __sched down_write(struct rw_semaphore *sem)
+47 {
+48         might_sleep();
+49         rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
+50
+51         LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+52         rwsem_set_owner(sem);
+53 }
+*/
+
+void down_write(struct semaphore *sem) // rw_semaphore *sem)
+{
+	// mutex/spin lock 으로 대체 가능할 듯.
+}
+void up_write(struct semaphore *sem) // rw_semaphore *sem)
+{
+	// mutex/spin lock 으로 대체 가능할 듯.
+}
+void down_read(struct semaphore *sem) // rw_semaphore *sem)
+{
+	// mutex/spin lock 으로 대체 가능할 듯.
+}
+void up_read(struct semaphore *sem) // rw_semaphore *sem)
+{
+	// mutex/spin lock 으로 대체 가능할 듯.
+}
+
 #endif
 
 
