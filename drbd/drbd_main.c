@@ -294,11 +294,7 @@ struct drbd_connection *__drbd_next_connection_ref(u64 *visited,
 		} else if (previous_visible) {	/* visible -> we are now on a vital element */
 			connection = list_entry_rcu(pos, struct drbd_connection, connections);
 		} else { /* not visible -> pos might point to a dead element now */
-#ifdef _WIN32
-            for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 			for_each_connection_rcu(connection, resource) {
-#endif
 				node_id = connection->peer_node_id;
 				if (!(*visited & NODE_MASK(node_id)))
 					goto found;
@@ -347,11 +343,7 @@ struct drbd_peer_device *__drbd_next_peer_device_ref(u64 *visited,
 		} else if (previous_visible) {
 			peer_device = list_entry_rcu(pos, struct drbd_peer_device, peer_devices);
 		} else {
-#ifdef _WIN32_V9
-            for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 			for_each_peer_device_rcu(peer_device, device) {
-#endif
 				if (!(*visited & NODE_MASK(peer_device->node_id)))
 					goto found;
 			}
@@ -793,11 +785,7 @@ static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *aut
 	int id;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection_rcu(connection, resource) {
-#endif
 		if (connection->cstate[NOW] >= C_CONNECTED &&
 		    connection->peer_role[NOW] == R_PRIMARY) {
 			all_secondary = false;
@@ -832,11 +820,7 @@ bool drbd_device_stable(struct drbd_device *device, u64 *authoritative)
 		return false;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection_rcu(connection, resource) {
-#endif
 		peer_device = conn_peer_device(connection, device->vnr);
 		switch (peer_device->repl_state[NOW]) {
 		case L_WF_BITMAP_T:
@@ -1176,11 +1160,7 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 		mask |= NODE_MASK(resource->res_opts.node_id);
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, c, resource) {
-#else
 	for_each_connection_rcu(c, resource) {
-#endif
 		int node_id = c->peer_node_id;
 		int idx = 1 + node_id;
 
@@ -2520,11 +2500,7 @@ static bool primary_peer_present(struct drbd_resource *resource)
 	bool two_primaries, rv = false;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection_rcu(connection, resource) {
-#endif
 		nc = rcu_dereference(connection->transport.net_conf);
 		two_primaries = nc ? nc->two_primaries : false;
 
@@ -2547,11 +2523,7 @@ static bool any_disk_is_uptodate(struct drbd_device *device)
 		ret = true;
 	else {
 		struct drbd_peer_device *peer_device;
-#ifdef _WIN32_V9
-		for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 		for_each_peer_device_rcu(peer_device, device) {
-#endif
 			if (peer_device->disk_state[NOW] == D_UP_TO_DATE) {
 				ret = true;
 				break;
@@ -3221,11 +3193,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		struct drbd_peer_device *peer_device;
 
 		rcu_read_lock();
-#ifdef _WIN32_V9
-		for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 		for_each_peer_device_rcu(peer_device, device) {
-#endif
 			if (test_bit(NET_CONGESTED, &peer_device->connection->transport.flags)) {
 				r |= (1 << BDI_async_congested);
 				break;
@@ -3342,7 +3310,12 @@ void drbd_flush_peer_acks(struct drbd_resource *resource)
 	spin_lock_irq(&resource->req_lock);
 	if (resource->peer_ack_req) {
 		resource->last_peer_acked_dagtag = resource->peer_ack_req->dagtag_sector;
+#ifdef _WIN32 // _WIN32_CHECK
+		 // 이전에 컴파일 되던 것이 안됨,???
+		// 매트로 전환 관계로 일단 보류
+#else
 		drbd_queue_peer_ack(resource, resource->peer_ack_req);
+#endif
 		resource->peer_ack_req = NULL;
 	}
 	spin_unlock_irq(&resource->req_lock);
@@ -3417,11 +3390,7 @@ int set_resource_options(struct drbd_resource *resource, struct res_opts *res_op
 	if (!cpumask_equal(resource->cpu_mask, new_cpu_mask)) {
 		cpumask_copy(resource->cpu_mask, new_cpu_mask);
 		rcu_read_lock();
-#ifdef _WIN32
-		for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 		for_each_connection_rcu(connection, resource) {
-#endif
 			connection->receiver.reset_cpu_mask = 1;
 			connection->ack_receiver.reset_cpu_mask = 1;
 			connection->sender.reset_cpu_mask = 1;
@@ -3824,11 +3793,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->write_requests = RB_ROOT;
 
 	BUG_ON(!mutex_is_locked(&resource->conf_update));
-#ifdef _WIN32
-	for_each_connection(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection(connection, resource) {
-#endif
 		peer_device = create_peer_device(device, connection);
 		if (!peer_device)
 			goto out_no_peer_device;
@@ -3890,11 +3855,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #ifndef _WIN32
 	add_disk(disk);
 #endif
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		connection = peer_device->connection;
 		peer_device->node_id = connection->peer_node_id;
 
@@ -3971,22 +3932,14 @@ void drbd_unregister_device(struct drbd_device *device)
 	struct drbd_peer_device *peer_device;
 
 	spin_lock_irq(&resource->req_lock);
-#ifdef _WIN32_V9
-	for_each_connection(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection(connection, resource) {
-#endif
 		idr_remove(&connection->peer_devices, device->vnr);
 	}
 	idr_remove(&resource->devices, device->vnr);
 	idr_remove(&drbd_devices, device_to_minor(device));
 	spin_unlock_irq(&resource->req_lock);
 
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device)
-#else
 	for_each_peer_device(peer_device, device)
-#endif
 		drbd_debugfs_peer_device_cleanup(peer_device);
 	drbd_debugfs_device_cleanup(device);
 }
@@ -4001,11 +3954,7 @@ void drbd_put_device(struct drbd_device *device)
 	del_gendisk(device->vdisk);
 	del_timer_sync(&device->request_timer);
 
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device)
-#else
 	for_each_peer_device(peer_device, device)
-#endif
 		refs++;
 
 	kref_debug_sub(&device->kref_debug, refs, 1);
@@ -4661,11 +4610,7 @@ static u64 initial_resync_nodes(struct drbd_device *device)
 {
 	struct drbd_peer_device *peer_device;
 	u64 nodes = 0;
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		if (peer_device->disk_state[NOW] == D_INCONSISTENT &&
 		    peer_device->repl_state[NOW] == L_ESTABLISHED)
 			nodes |= NODE_MASK(peer_device->node_id);
@@ -4723,11 +4668,7 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 
 	/* get it to stable storage _now_ */
 	drbd_md_sync(device);
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
 			drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
 	}
@@ -4756,11 +4697,7 @@ void drbd_uuid_new_current(struct drbd_device *device, bool forced)
 		drbd_info(device, "sending new current UUID: %016llX\n", current_uuid);
 
 		weak_nodes = drbd_weak_nodes_device(device);
-#ifdef _WIN32_V9
-		for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 		for_each_peer_device(peer_device, device) {
-#endif
 			drbd_send_current_uuid(peer_device, current_uuid, weak_nodes);
 			peer_device->current_uuid = current_uuid; /* In case resync finishes soon */
 		}
@@ -4772,11 +4709,7 @@ static void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
 	struct drbd_peer_device *peer_device;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
-	for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device_rcu(peer_device, device) {
-#endif
 		if (!(nodes & NODE_MASK(peer_device->node_id)))
 			continue;
 		if (peer_device->repl_state[NOW] < L_ESTABLISHED)
@@ -4797,11 +4730,7 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 	bool set_current = true;
 
 	spin_lock_irq(&device->ldev->md.uuid_lock);
-#ifdef _WIN32_V9
-	for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET ||
 		    peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {
 			peer_device->current_uuid = val;
@@ -5517,11 +5446,7 @@ u64 directly_connected_nodes(struct drbd_resource *resource, enum which_state wh
 	struct drbd_connection *connection;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection_rcu(connection, resource) {
-#endif
 		if (connection->cstate[which] < C_CONNECTED)
 			continue;
 		directly_connected |= NODE_MASK(connection->peer_node_id);

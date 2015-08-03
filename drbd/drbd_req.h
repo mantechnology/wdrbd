@@ -342,8 +342,12 @@ extern void complete_master_bio(struct drbd_device *device,
 #else
 extern void request_timer_fn(unsigned long data);
 #endif
+
+#ifdef _WIN32_CHECK // 이 소스는 V8 소스입니다. 정리가 덜 된 듯? 이전에 drbd_main.c 빌드는성공했는데...???
+//일단, for each 매크로 작업 관계로 코멘트!!!!
 extern void tl_restart(struct drbd_tconn *tconn, enum drbd_req_event what);
 extern void _tl_restart(struct drbd_tconn *tconn, enum drbd_req_event what);
+#endif
 
 /* this is in drbd_main.c */
 extern void drbd_restart_request(struct drbd_request *req);

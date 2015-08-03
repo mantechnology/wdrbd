@@ -34,6 +34,7 @@
 #include "drbd_req.h"
 #include "drbd_state_change.h"
 
+#if 0 // _WIN32_CHECK: 이 메크로를 루트 헤도로 옮깁니다~~~
 #ifdef _WIN32_V9
 #undef for_each_connection(connection, resource) 
 #define for_each_connection(connection, resource) list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
@@ -44,6 +45,9 @@
 #undef for_each_peer_device_rcu(peer_device, device)
 #define for_each_peer_device_rcu(peer_device, device) 	list_for_each_entry_rcu(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
 #endif
+#endif
+
+
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
