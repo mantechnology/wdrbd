@@ -436,9 +436,19 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 				peer_device->resync_susp_other_c[NEW];
 		}
 	}
+#ifdef _WIN32_V9
+	 // _WIN32_CHECK: 포팅 필요.
+#else
 	smp_wmb();
+#endif
 out:
+#ifdef _WIN32_V9 // RCU_처리건
+	// __begin_state_change 진입 시점에 락을 걸로 진입함.
+	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
+	DbgPrint("DRBD_CHECK: ___end_state_change: check unlock!!!\n");
+#else
 	rcu_read_unlock();
+#endif
 
 	if ((flags & CS_TWOPC) && !(flags & CS_PREPARE))
 		__clear_remote_state_change(resource);
@@ -553,7 +563,13 @@ void abort_state_change_locked(struct drbd_resource *resource)
 
 static void begin_remote_state_change(struct drbd_resource *resource, unsigned long *irq_flags)
 {
+#ifdef _WIN32_V9 // RCU_처리건
+	// __begin_state_change 진입 시점에 락을 걸로 진입함.
+	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
+	DbgPrint("DRBD_CHECK: begin_remote_state_change: check unlock!!!\n");
+#else
 	rcu_read_unlock();
+#endif
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
 }
 
