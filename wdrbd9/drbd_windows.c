@@ -525,9 +525,16 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 	return p;
 }
 
-void kref_put(struct kref *kref, void (*release)(struct kref *kref))
+#ifdef _WIN32_V9 
+int kref_put(struct kref *kref, void (*release)(struct kref *kref))
+#else
+void kref_put(struct kref *kref, void(*release)(struct kref *kref))
+#endif
 {
 	kref_sub(kref, 1, release); //_WIN32_CHECK
+#ifdef _WIN32_V9
+	return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
+#endif
 }
 
 int kref_get(struct kref *kref)

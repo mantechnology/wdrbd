@@ -500,11 +500,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 
 			seq_puts(m, "  peers reply's: ");
 			rcu_read_lock();
-#ifdef _WIN32
-            for_each_connection(struct drbd_connection, connection, resource) {
-#else
 			for_each_connection(connection, resource) {
-#endif
 				char *name = rcu_dereference((connection)->transport.net_conf)->name;
 				if (!test_bit(TWOPC_PREPARED, &connection->flags))
 					seq_printf(m, "%s n.p., ", name);
