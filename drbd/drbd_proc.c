@@ -37,7 +37,11 @@
 #endif
 #include "drbd_int.h"
 #include <drbd_transport.h>
+#ifdef _WIN32
+	// not support
+	// MVF ioctl 을 사용함
 
+#else
 static int drbd_proc_open(struct inode *inode, struct file *file);
 static int drbd_proc_release(struct inode *inode, struct file *file);
 
@@ -49,7 +53,7 @@ const struct file_operations drbd_proc_fops = {
 	.llseek		= seq_lseek,
 	.release	= drbd_proc_release,
 };
-
+#endif
 static int drbd_seq_show(struct seq_file *seq, void *v)
 {
 	seq_printf(seq, "version: " REL_VERSION " (api:%d/proto:%d-%d)\n%s\n",
@@ -62,6 +66,9 @@ static int drbd_seq_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
+#ifdef _WIN32
+	// not support
+#else
 static int drbd_proc_open(struct inode *inode, struct file *file)
 {
 	int err;
@@ -80,3 +87,4 @@ static int drbd_proc_release(struct inode *inode, struct file *file)
 	module_put(THIS_MODULE);
 	return single_release(inode, file);
 }
+#endif
