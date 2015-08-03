@@ -1625,11 +1625,22 @@ enum dds_flags {
 
 extern int  drbd_thread_start(struct drbd_thread *thi);
 extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
+
+#ifdef _WIN32
+//#define drbd_thread_current_set_cpu(A) ({})  // _WIN32_CHECK: VS2013 에서 컴파일이 되는가?
+// => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
+#define drbd_thread_current_set_cpu(A) 
+#define drbd_calc_cpu_mask(A)
+
+#else
+
 #ifdef CONFIG_SMP
 extern void drbd_thread_current_set_cpu(struct drbd_thread *thi);
 #else
-#define drbd_thread_current_set_cpu(A) ({})  // _WIN32_CHECK: VS2013 에서 컴파일이 되는가?
 #endif
+
+#endif
+
 extern void tl_release(struct drbd_connection *, unsigned int barrier_nr,
 		       unsigned int set_size);
 extern void tl_clear(struct drbd_connection *);
