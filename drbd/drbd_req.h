@@ -345,6 +345,8 @@ extern void request_timer_fn(unsigned long data);
 
 extern void tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
 extern void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
+extern void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *req);
+extern bool drbd_should_do_remote(struct drbd_peer_device *, enum which_state);
 
 /* this is in drbd_main.c */
 extern void drbd_restart_request(struct drbd_request *req);
