@@ -1293,6 +1293,11 @@ extern void up(struct semaphore *sem);
 
 int drbd_genl_multicast_events(void *mdev, const struct sib_info *sib);
 
-
+// _WIN32_V9: check later! scnprintf
+static int scnprintf(char *buffer, int size, char *str)
+{
+	//DbgPrintf("DRBD_CHECK:descnprintf!!!!");
+	return 0;
+}
 
 #endif __DRBD_WINDRV_H__
