@@ -1052,14 +1052,42 @@ static void drbd_bm_aio_ctx_destroy(struct kref *kref)
 }
 
 /* bv_page may be a copy, or may be the original */
+#ifdef _WIN32
+static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS
+#else
 static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
+#endif
 {
+#ifdef _WIN32
+    struct drbd_bm_aio_ctx *ctx = NULL;
+    struct drbd_device *device = NULL;
+    struct drbd_bitmap *b = NULL;
+    unsigned int idx = 0;
+    int uptodate = 0;
+    struct bio *bio = NULL;
+    int error = 0;
+    PIRP Irp = NULL;
+    PVOID Context = NULL;
+
+    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+    {
+        Irp = p2;
+        Context = p3;
+        error = Irp->IoStatus.Status;
+        bio = (struct bio *)Context;
+    }
+    else
+    {
+        error = (int)p3;
+        bio = (struct bio *)p2;
+    }
+#else
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
 	struct drbd_device *device = ctx->device;
 	struct drbd_bitmap *b = device->bitmap;
 	unsigned int idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
-
+#endif
 	BIO_ENDIO_FN_START;
 
 	/* strange behavior of some lower level drivers...
@@ -1068,7 +1096,13 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	 * do we want to WARN() on this? */
 	if (!error && !uptodate)
 		error = -EIO;
-
+#ifdef _WIN32
+        ctx = (struct drbd_bm_aio_ctx *)bio->bi_private;
+        device = ctx->device;
+        b = device->bitmap;
+        idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
+        uptodate = bio_flagged(bio, BIO_UPTODATE);
+#endif
 	if ((ctx->flags & BM_AIO_COPY_PAGES) == 0 &&
 	    !bm_test_page_unchanged(b->bm_pages[idx]))
 		drbd_warn(device, "bitmap page idx %u changed during IO!\n", idx);
@@ -1100,8 +1134,11 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		wake_up(&device->misc_wait);
 		kref_put(&ctx->kref, &drbd_bm_aio_ctx_destroy);
 	}
-
+#ifdef _WIN32
+    return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
 }
 
 static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_hold(local)

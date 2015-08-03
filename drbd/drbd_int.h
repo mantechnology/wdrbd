@@ -1902,8 +1902,8 @@ extern void drbd_bm_set_many_bits(struct drbd_peer_device *, unsigned long, unsi
 extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, unsigned long, unsigned long);
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, unsigned long, unsigned long);
 #ifdef _WIN32 // _WIN32_V9: 경민 차장  인자가 문제였나보죠? 제 생각엔 _WIN64 를 위한 리턴을 봐야할 것 같아  일단 코멘트 처리하고 한 줄 삽입합니다. 추후 확인
-//extern int drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long);
-extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long);
+// int return이라 64bit return과는 아무 상관 없습니다. 여기서는 인자로 인해 수정하였습니다.
+extern int drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long);
 #else
 extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
 #endif
