@@ -393,10 +393,14 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 * 따라서 여기서 page반환같은 실질적인 메모리 free를 하지 않는다.
 * 그점이 __drbd_free_peer_req() 과 다른 부분이다.
 */
-#ifdef _WIN32
-void drbd_free_pages(struct drbd_conf *mdev, int page_count, int is_net)
+#ifdef _WIN32_V9
+void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
 #else
+#ifdef _WIN32
 STATIC void drbd_free_pages(struct drbd_conf *mdev, struct page *page, int is_net)
+#else
+void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net)
+#endif
 #endif
 {
 
@@ -831,9 +835,13 @@ start:
 
 	if (drbd_send_protocol(connection) == -EOPNOTSUPP)
 		goto abort;
+
 #ifdef _WIN32
 	rcu_read_lock_w32_inner();
+#else
+	rcu_read_lock();
 #endif
+
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
@@ -846,12 +854,13 @@ start:
 		else
 			clear_bit(DISCARD_MY_DATA, &device->flags);
 	}
-#ifdef _WIN32
+
 	rcu_read_unlock();
-#endif
+
 	drbd_thread_start(&connection->ack_receiver);
 
 #ifdef _WIN32_TODO
+	// 일단 TODO
 	connection->ack_sender =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
@@ -2512,13 +2521,13 @@ bool drbd_rs_should_slow_down(struct drbd_peer_device *peer_device, sector_t sec
 
 	return !drbd_sector_has_priority(peer_device, sector);
 }
-#ifdef _WIN32_TODO
+
 bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
 	unsigned long db, dt, dbdt;
 	unsigned int c_min_rate;
-	int curr_events;
+	int curr_events = 0;
 
 	rcu_read_lock();
 	c_min_rate = rcu_dereference(peer_device->conf)->c_min_rate;
@@ -2528,8 +2537,10 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	if (c_min_rate == 0)
 		return false;
 
+#ifdef _WIN32_TODO
 	curr_events = drbd_backing_bdev_events(device->ldev->backing_bdev->bd_contains->bd_disk)
 		    - atomic_read(&device->rs_sect_ev);
+#endif
 
 	if (atomic_read(&device->ap_actlog_cnt) || curr_events - peer_device->rs_last_events > 64) {
 		unsigned long rs_left;
@@ -2557,7 +2568,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	}
 	return false;
 }
-#endif
+
 
 static int receive_DataRequest(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -4859,6 +4870,7 @@ static int abort_local_transaction(struct drbd_resource *resource)
 	wake_up(&resource->state_wait);
 
 #ifdef _WIN32
+	//_WIN32_CHECK t 인자 적용 맞는 지 확인 필요.
 	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
@@ -4895,10 +4907,10 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 #else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
 #endif
-	
-		if (q->reply.tid == twopc->tid &&
-		    q->reply.initiator_node_id == twopc->initiator_node_id)
+		if (q->reply.tid == twopc->tid 
+			&& q->reply.initiator_node_id == twopc->initiator_node_id) {
 			already_queued = true;
+		}
 	}
 	spin_unlock_irq(&resource->queued_twopc_lock);
 
