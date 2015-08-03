@@ -34,6 +34,12 @@
 #include "drbd_req.h"
 #include "drbd_state_change.h"
 
+#ifdef _WIN32_V9
+#undef for_each_connection(connection, resource) 
+#define for_each_connection(connection, resource) list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
+#undef for_each_peer_device(peer_device, device)
+#define for_each_peer_device(peer_device, device) list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
+#endif
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
@@ -399,7 +405,9 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	/* changes to local_cnt and device flags should be visible before
 	 * changes to state, which again should be visible before anything else
 	 * depending on that change happens. */
+#ifdef _WIN32_CHECK // smp_rmb 재활용?
 	smp_wmb();
+#endif
 	resource->role[NOW] = resource->role[NEW];
 	resource->susp[NOW] = resource->susp[NEW];
 	resource->susp_nod[NOW] = resource->susp_nod[NEW];
