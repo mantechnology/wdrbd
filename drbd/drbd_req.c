@@ -400,12 +400,115 @@ bool start_new_tl_epoch(struct drbd_resource *resource)
 	wake_all_senders(resource);
 	return true;
 }
-
+#ifdef _WIN32
+void complete_master_bio(struct drbd_device *device,
+struct bio_and_error *m, char *func, int line)
+#else
 void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
+#endif
 {
 	int rw = bio_data_dir(m->bio);
 	bio_endio(m->bio, m->error);
+#ifdef _WIN32
+    ASSERT(m->bio->pMasterIrp);
+
+    if (!m->bio->splitInfo)
+    {
+        if (m->bio->bi_size <= 0 || m->bio->bi_size > 1024 * 1024)
+        {
+            WDRBD_ERROR("szie 0x%x ERROR!\n", m->bio->bi_size);
+            BUG();
+        }
+
+        if (NT_SUCCESS(m->error))
+        {
+            m->bio->pMasterIrp->IoStatus.Information = m->bio->bi_size;
+        }
+        else
+        {
+            m->bio->pMasterIrp->IoStatus.Status = m->error;
+            m->bio->pMasterIrp->IoStatus.Information = 0;
+        }
+#ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
+        if (NT_SUCCESS(m->error) && (bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
+        {
+            PVOID	buffer = NULL;
+            buffer = MmGetSystemAddressForMdlSafe(m->bio->pMasterIrp->MdlAddress, NormalPagePriority);
+            if (buffer == NULL)
+            {
+                WDRBD_ERROR("MmGetSystemAddressForMdlSafe ERROR!\n");
+                BUG();
+            }
+
+            if (buffer)
+            {
+                memcpy(buffer, m->bio->win32_page_buf, m->bio->pMasterIrp->IoStatus.Information);
+            }
+        }
+#endif
+        NT_SUCCESS(m->bio->pMasterIrp->IoStatus.Status) ?
+            IoCompleteRequest(m->bio->pMasterIrp, IO_DISK_INCREMENT) :
+            IoCompleteRequest(m->bio->pMasterIrp, IO_NO_INCREMENT);
+    }
+    else
+    {
+
+#ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
+        if (NT_SUCCESS(m->error) && (bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
+        {
+            PVOID	buffer = NULL;
+            buffer = MmGetSystemAddressForMdlSafe(m->bio->pMasterIrp->MdlAddress, NormalPagePriority);
+            if (buffer == NULL)
+            {
+                WDRBD_ERROR("splitIO: MmGetSystemAddressForMdlSafe ERROR!\n");
+                BUG();
+            }
+
+            m->bio->pMasterIrp->IoStatus.Information = m->bio->bi_size;
+
+            // get offset and copy
+            memcpy((char *)buffer + (m->bio->split_id * MAX_SPILT_BLOCK_SZ), m->bio->win32_page_buf, m->bio->pMasterIrp->IoStatus.Information);
+        }
+#endif
+
+        if (atomic_inc_return(&m->bio->splitInfo->finished) == (long)m->bio->split_total_id)
+        {
+            if (m->bio->pMasterIrp->IoStatus.Status == 0)
+            {
+                m->bio->pMasterIrp->IoStatus.Information = m->bio->split_total_length;
+            }
+            else
+            {
+                WDRBD_ERROR("0x%x ERRROR!\n", m->bio->pMasterIrp->IoStatus.Status);
+                m->bio->pMasterIrp->IoStatus.Information = 0;
+            }
+
+            NT_SUCCESS(m->bio->pMasterIrp->IoStatus.Status) ?
+                IoCompleteRequest(m->bio->pMasterIrp, IO_DISK_INCREMENT) :
+                IoCompleteRequest(m->bio->pMasterIrp, IO_NO_INCREMENT);
+
+            //WDRBD_INFO("IoCompleteRequest! id(%d/%d/%d) setevent!(%d)\n", m->bio->split_id, m->bio->splitInfo->finished, m->bio->split_total_id, KeReadStateEvent(&mdev->this_bdev->bd_disk->pDeviceExtension->WorkThreadInfo.SplitIoDoneEvent));
+            //KeSetEvent(&mdev->this_bdev->bd_disk->pDeviceExtension->WorkThreadInfo.SplitIoDoneEvent, IO_NO_INCREMENT, FALSE); 
+
+            kfree(m->bio->splitInfo);
+        }
+
+        if (!NT_SUCCESS(m->error))
+        {
+            m->bio->pMasterIrp->IoStatus.Status = m->error;
+        }
+    }
+
+#ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
+    if ((bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
+    {
+        kfree(m->bio->win32_page_buf);
+    }
+#endif
+
+    kfree(m->bio);
+#endif
 	dec_ap_bio(device, rw);
 }
 
@@ -1690,7 +1793,11 @@ out:
 	drbd_plug_device(bdev_get_queue(device->this_bdev));
 
 	if (m.bio)
+#ifdef _WIN32
+        complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+#else
 		complete_master_bio(device, &m);
+#endif
 }
 
 #ifdef _WIN32
@@ -2042,8 +2149,11 @@ static bool net_timeout_reached(struct drbd_request *net_req,
  * ~198 days with 250 HZ, we have a window where the timeout would need
  * to expire twice (worst case) to become effective. Good enough.
  */
-
+#ifdef _WIN32
+void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2)
+#else
 void request_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_device *device = (struct drbd_device *) data;
 	struct drbd_connection *connection;
