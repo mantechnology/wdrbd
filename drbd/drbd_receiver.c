@@ -30,6 +30,8 @@
 #include "drbd_req.h"
 #include "drbd_vli.h"
 #include <linux-compat/list.h>
+#include <drbd_transport.h>
+
 #else
 #include <linux/module.h>
 
@@ -829,9 +831,8 @@ start:
 
 	if (drbd_send_protocol(connection) == -EOPNOTSUPP)
 		goto abort;
-#ifdef _WIN32_V9
-	// 임시 매크로. rcu_read_lock 이 함수안에 두번 사용되는 케이스. 일단 빌드되게... 
-	rcu_read_lock2();
+#ifdef _WIN32
+	rcu_read_lock_w32_inner();
 #endif
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
@@ -845,9 +846,8 @@ start:
 		else
 			clear_bit(DISCARD_MY_DATA, &device->flags);
 	}
-#ifdef _WIN32_V9
-	// 임시 매크로. rcu_read_lock 이 함수안에 두번 사용되는 케이스. 일단 빌드되게... 
-	rcu_read_unlock2();
+#ifdef _WIN32
+	rcu_read_unlock();
 #endif
 	drbd_thread_start(&connection->ack_receiver);
 
@@ -1561,6 +1561,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 
 /* used from receive_RSDataReply (recv_resync_read)
  * and from receive_Data */
+#ifdef _WIN32_V9
 static struct drbd_peer_request *
 read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	      struct packet_info *pi) __must_hold(local)
@@ -1648,6 +1649,7 @@ fail:
 	drbd_free_peer_req(peer_req);
 	return NULL;
 }
+#endif
 
 static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 {

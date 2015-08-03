@@ -1357,8 +1357,19 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr)
 #else
+
+// V8 의 기존 구현을 유지한다. 
+#ifndef _WIN32
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page, km)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr, km)
+#else
+#define drbd_kmap_atomic(page, km)	(page->addr)
+#define drbd_kunmap_atomic(addr, km)	(addr)
+#define kunmap_atomic(page)	(page->addr)	
+#define kmap(page)	(page->addr)	
+#define kunmap(page)	(page->addr)	
+#endif
+
 #endif
 
 #if !defined(for_each_set_bit) && defined(for_each_bit)

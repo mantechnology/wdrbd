@@ -2118,6 +2118,12 @@ extern void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, 
 extern void resync_timer_fn(unsigned long data);
 extern void start_resync_timer_fn(unsigned long data);
 #endif
+
+#ifdef _WIN32_V9
+//drbd_sender.c에 구현. drbd_receiver.c 에서 가져다 쓴다.(extern 선언)
+extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
+#endif
+
 /* drbd_receiver.c */
 struct packet_info {
 	enum drbd_packet cmd;
