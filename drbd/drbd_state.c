@@ -37,8 +37,12 @@
 #ifdef _WIN32_V9
 #undef for_each_connection(connection, resource) 
 #define for_each_connection(connection, resource) list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
+
 #undef for_each_peer_device(peer_device, device)
 #define for_each_peer_device(peer_device, device) list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
+
+#undef for_each_peer_device_rcu(peer_device, device)
+#define for_each_peer_device_rcu(peer_device, device) 	list_for_each_entry_rcu(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
 #endif
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
@@ -1285,7 +1289,11 @@ static void sanitize_state(struct drbd_resource *resource)
 		struct drbd_peer_device *peer_device;
 		enum drbd_disk_state *disk_state = device->disk_state;
 		bool lost_connection = false;
+#ifdef _WIN32_V9
+		int good_data_count[2] = { 0 };
+#else
 		int good_data_count[2] = { };
+#endif
 
 		if ((resource->state_change_flags & CS_IGN_OUTD_FAIL) &&
 		    disk_state[OLD] < D_OUTDATED && disk_state[NEW] == D_OUTDATED)
@@ -1936,6 +1944,9 @@ static void abw_start_sync(struct drbd_device *device,
 	case L_STARTING_SYNC_T:
 		/* Since the number of set bits changed and the other peer_devices are
 		   lready in L_PAUSED_SYNC_T state, we need to set rs_total here */
+#ifdef _WIN32_V9 // for rcu_read_lock
+	{ 
+#endif
 		rcu_read_lock();
 		for_each_peer_device_rcu(pd, device)
 			initialize_resync(pd);
@@ -1946,6 +1957,9 @@ static void abw_start_sync(struct drbd_device *device,
 		else
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		break;
+#ifdef _WIN32_V9
+	}
+#endif
 	case L_STARTING_SYNC_S:
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
 		break;
@@ -2091,6 +2105,10 @@ static void notify_state_change(struct drbd_state_change *state_change)
 	void *uninitialized_var(last_arg);
 
 #define HAS_CHANGED(state) ((state)[OLD] != (state)[NEW])
+#ifdef _WIN32_V9 
+#define FINAL_STATE_CHANGE(type)  DbgPrint("_WIN32_CHECK: FINAL_STATE_CHANGE\n"); // 함수로 변환이 필요할 듯!
+#define REMEMBER_STATE_CHANGE(func, arg, type)  DbgPrint("_WIN32_CHECK: REMEMBER_STATE_CHANGE");
+#else
 #define FINAL_STATE_CHANGE(type) \
 	({ if (last_func) \
 		last_func(NULL, 0, last_arg, type); \
@@ -2100,7 +2118,7 @@ static void notify_state_change(struct drbd_state_change *state_change)
 	   last_func = (typeof(last_func))func; \
 	   last_arg = arg; \
 	 })
-
+#endif
 	mutex_lock(&notification_mutex);
 
 	resource_state_has_changed =
@@ -2291,7 +2309,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		struct drbd_device *device = device_state_change->device;
 		enum drbd_disk_state *disk_state = device_state_change->disk_state;
 		bool effective_disk_size_determined = false;
+#ifdef _WIN32_V9
+		bool one_peer_disk_up_to_date[2] = { 0 };
+#else
 		bool one_peer_disk_up_to_date[2] = { };
+#endif
 		bool create_new_uuid = false;
 		bool device_stable[2];
 		enum which_state which;
