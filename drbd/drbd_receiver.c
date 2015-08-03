@@ -2178,8 +2178,13 @@ static void fail_postponed_requests(struct drbd_peer_request *peer_req)
 		req->rq_state[0] &= ~RQ_POSTPONED;
 		__req_mod(req, NEG_ACKED, peer_req->peer_device, &m);
 		spin_unlock_irq(&device->resource->req_lock);
-		if (m.bio)
+		if (m.bio) {
+#ifdef _WIN32
+			complete_master_bio(device, &m, __func__ , __LINE__ );
+#else
 			complete_master_bio(device, &m);
+#endif
+		}
 		spin_lock_irq(&device->resource->req_lock);
 		goto repeat;
 	}
@@ -3333,11 +3338,9 @@ static bool is_resync_running(struct drbd_device *device)
 	bool rv = false;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
+
 	for_each_peer_device_rcu(peer_device, device) {
-#endif
+
 		enum drbd_repl_state repl_state = peer_device->repl_state[NOW];
 		if (repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T) {
 			rv = true;
@@ -4042,7 +4045,7 @@ static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 	else
 		return DRBD_MAX_SIZE_H80_PACKET;
 }
-
+#ifdef _WIN32_V9
 static int receive_sizes(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device;
@@ -4072,8 +4075,15 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	 * However, if he sends a zero current size,
 	 * take his (user-capped or) backing disk size anyways.
 	 */
-	peer_device->max_size =
-		be64_to_cpu(p->c_size) ?: be64_to_cpu(p->u_size) ?: be64_to_cpu(p->d_size);
+	
+#ifdef _WIN32
+#ifdef _WIN32_CHECK
+		// ?: 의미가 정확히 적용됬는지 확인 필요.
+		peer_device->max_size = be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
+#endif
+#else 
+		peer_device->max_size = be64_to_cpu(p->c_size) ? : be64_to_cpu(p->u_size) ? : be64_to_cpu(p->d_size);
+#endif
 
 	if (get_ldev(device)) {
 		sector_t p_usize = be64_to_cpu(p->u_size), my_usize;
@@ -4168,7 +4178,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		/* I am diskless, need to accept the peer disk sizes. */
 
 		rcu_read_lock();
+
 		for_each_peer_device_rcu(peer_device, device) {
+
 			/* When a peer device is in L_OFF state, max_size is zero
 			 * until a P_SIZES packet is received.  */
 			size = min_not_zero(size, peer_device->max_size);
@@ -4224,6 +4236,7 @@ out:
 		put_ldev(device);
 	return err;
 }
+#endif
 
 void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -4844,7 +4857,13 @@ static int abort_local_transaction(struct drbd_resource *resource)
 	set_bit(TWOPC_ABORT_LOCAL, &resource->flags);
 	spin_unlock_irq(&resource->req_lock);
 	wake_up(&resource->state_wait);
+
+#ifdef _WIN32
+	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
+#else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
+#endif
+	
 	clear_bit(TWOPC_ABORT_LOCAL, &resource->flags);
 	return t ? 0 : -ETIMEDOUT;
 }
@@ -4964,7 +4983,11 @@ void queue_queued_twopc(struct drbd_resource *resource)
 	q = list_first_entry_or_null(&resource->queued_twopc, struct queued_twopc, w.list);
 	if (q) {
 		resource->starting_queued_twopc = q;
+#ifdef _WIN32
+		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 _WIN32_TODO
+#else
 		mb();
+#endif
 		list_del(&q->w.list);
 		arm_queue_twopc_timer(resource);
 	}
@@ -5073,7 +5096,7 @@ static int process_twopc(struct drbd_connection *connection,
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device = NULL;
 	struct p_twopc_request *p = pi->data;
-	union drbd_state mask = {}, val = {};
+	union drbd_state mask , val;
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
@@ -5804,7 +5827,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 	struct drbd_peer_device *peer_device;
 	struct drbd_device *device;
 	struct bm_xfer_ctx c;
-	int err;
+	int err, ret;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -5812,8 +5835,14 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 	device = peer_device->device;
 
 	/* Final repl_states become visible when the disk leaves NEGOTIATING state */
+#ifdef _WIN32
+	wait_event_interruptible(ret, device->resource->state_wait,
+		read_disk_state(device) != D_NEGOTIATING);
+#else
 	wait_event_interruptible(device->resource->state_wait,
-				 read_disk_state(device) != D_NEGOTIATING);
+		read_disk_state(device) != D_NEGOTIATING);
+#endif
+	
 
 	drbd_bm_slot_lock(peer_device, "receive bitmap", BM_LOCK_CLEAR | BM_LOCK_BULK);
 	/* you are supposed to send additional out-of-sync information
