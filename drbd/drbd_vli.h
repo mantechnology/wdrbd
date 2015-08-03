@@ -213,7 +213,11 @@ struct bitstream_cursor {
 /* initialize cursor to point to first bit of stream */
 static inline void bitstream_cursor_reset(struct bitstream_cursor *cur, void *s)
 {
+#ifdef _WIN32
+	cur->b = (unsigned char *) s; // _WIN32_CHECK: 캐스팅 재확인
+#else
 	cur->b = s;
+#endif
 	cur->bit = 0;
 }
 
@@ -240,7 +244,11 @@ struct bitstream {
 
 static inline void bitstream_init(struct bitstream *bs, void *s, size_t len, unsigned int pad_bits)
 {
+#ifdef _WIN32
+	bs->buf = (unsigned char *)s; // _WIN32_CHECK: 캐스팅 재확인
+#else
 	bs->buf = s;
+#endif
 	bs->buf_len = len;
 	bs->pad_bits = pad_bits;
 	bitstream_cursor_reset(&bs->cur, bs->buf);
@@ -342,7 +350,12 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
  */
 static inline int vli_encode_bits(struct bitstream *bs, u64 in)
 {
+#ifdef _WIN32
+	u64 code = 0; 
+#else
 	u64 code = code;
+#endif
+
 	int bits = __vli_encode_bits(&code, in);
 
 	if (bits <= 0)

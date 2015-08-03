@@ -541,13 +541,40 @@ void tl_abort_disk_io(struct drbd_device *device)
         spin_unlock_irq(&resource->req_lock);
 }
 
+#ifdef _WIN32
+VOID NTAPI drbd_thread_setup(void *arg)
+#else
 static int drbd_thread_setup(void *arg)
+#endif
 {
 	struct drbd_thread *thi = (struct drbd_thread *) arg;
 	struct drbd_resource *resource = thi->resource;
 	struct drbd_connection *connection = thi->connection;
 	unsigned long flags;
 	int retval;
+
+#ifdef _WIN32
+#ifdef _WIN32_CT
+    thi->nt = ct_add_thread(KeGetCurrentThread(), thi->name, TRUE, 'B0DW');
+    if (!thi->nt)
+    {
+        WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
+        // kref_put(&tconn->kref, &conn_destroy); // _WIN32_CHECK: V9에서 사용 안되는 이유 규명
+        PsTerminateSystemThread(STATUS_SUCCESS);
+        // BUG();
+    }
+
+    KeSetEvent(&thi->start_event, 0, FALSE);
+    KeWaitForSingleObject(&thi->wait_event, Executive, KernelMode, FALSE, NULL);
+#else // _WIN32_CHECK: V9.0에서는 포팅 종료 시 else의 old 방식은 삭제할 것
+	KeSetEvent(&thi->task->start_event, 0, FALSE);
+	KeWaitForSingleObject(&thi->task->wait_event, Executive, KernelMode, FALSE, NULL);
+
+	thi->task->current_thr = KeGetCurrentThread();
+	thi->task->pid = thi->task->current_thr;
+    thi->task->has_sig_event = TRUE;
+#endif
+#endif
 
 restart:
 	retval = thi->function(thi);
@@ -573,7 +600,13 @@ restart:
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		goto restart;
 	}
-
+#ifdef _WIN32
+#ifdef _WIN32_CT
+    ct_delete_thread(thi->task->pid);
+#else
+	kfree(thi->task);
+#endif
+#endif
 	thi->task = NULL;
 	thi->t_state = NONE;
 	smp_mb();
@@ -586,7 +619,12 @@ restart:
 	complete(&thi->stop);
 	spin_unlock_irqrestore(&thi->t_lock, flags);
 
+#ifdef _WIN32	
+    PsTerminateSystemThread(STATUS_SUCCESS); 
+	// not reached here
+#else
 	return retval;
+#endif
 }
 
 static void drbd_thread_init(struct drbd_resource *resource, struct drbd_thread *thi,
@@ -598,14 +636,16 @@ static void drbd_thread_init(struct drbd_resource *resource, struct drbd_thread 
 	thi->function = func;
 	thi->resource = resource;
 	thi->connection = NULL;
-	thi->name = name;
+	thi->name = name; // _WIN32_CHECK: V8에서는 strncopy 를 했는데, 이렇게 포인터만 넘겨도 복사효과가 있는지 확인
 }
 
 int drbd_thread_start(struct drbd_thread *thi)
 {
 	struct drbd_resource *resource = thi->resource;
 	struct drbd_connection *connection = thi->connection;
+#ifndef _WIN32_CT
 	struct task_struct *nt;
+#endif
 	unsigned long flags;
 
 	/* is used from state engine doing drbd_thread_stop_nowait,
@@ -620,6 +660,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 		else
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
+		// kref_get(&thi->tconn->kref); // _WIN32_CHECK: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함
 
 		init_completion(&thi->stop);
 		D_ASSERT(resource, thi->task == NULL);
@@ -627,10 +668,43 @@ int drbd_thread_start(struct drbd_thread *thi)
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		flush_signals(current); /* otherw. may get -ERESTARTNOINTR */
-#ifdef _WIN32_CHECK
+#ifdef _WIN32 //  _WIN32_CHECK
+#ifdef _WIN32_CT
+        thi->nt = NULL;
+        {
+            HANDLE		hThread = NULL;
+            NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+            //nt->has_sig_event = TRUE;
+
+            KeInitializeEvent(&thi->start_event, SynchronizationEvent, FALSE);
+            KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
+            Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
+            if (!NT_SUCCESS(Status)) {
+                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+                //kref_put(&tconn->kref, &conn_destroy);
+                return false;
+            }
+            ZwClose(hThread);
+        }
+
+        KeWaitForSingleObject(&thi->start_event, Executive, KernelMode, FALSE, NULL);
+        if (!thi->nt)
+        {
+            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");// _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+           // kref_put(&tconn->kref, &conn_destroy);
+            return false;
+        }
+        //sprintf(thi->nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name); // rename // _WIN32_CHECK: 스레드 이름 보관 방식이 달라졌는가?
+#else
+		nt = (struct task_struct *)kzalloc(sizeof(struct task_struct), 0);
+		if (!nt)
+		{
+#endif
+#else
 		nt = kthread_create(drbd_thread_setup, (void *) thi,
 				    "drbd_%c_%s", thi->name[0], resource->name);
-#endif
+
 		if (IS_ERR(nt)) {
 			if (connection)
 				drbd_err(connection, "Couldn't start thread\n");
@@ -639,11 +713,43 @@ int drbd_thread_start(struct drbd_thread *thi)
 
 			return false;
 		}
+#endif // _WIN32_CT
+
 		spin_lock_irqsave(&thi->t_lock, flags);
+#ifdef _WIN32_CT
+        thi->task = thi->nt;
+#else
 		thi->task = nt;
+#endif
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
+		
+#ifdef _WIN32
+#ifndef _WIN32_CT
+		{
+			HANDLE		hThread = NULL;
+			NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+            nt->has_sig_event = TRUE;
+			KeInitializeEvent(&nt->sig_event, SynchronizationEvent, FALSE);
+			KeInitializeEvent(&nt->start_event, SynchronizationEvent, FALSE);
+			KeInitializeEvent(&nt->wait_event, SynchronizationEvent, FALSE);
+			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
+			if (!NT_SUCCESS(Status)) {
+				//conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status);// _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+				//kref_put(&tconn->kref, &conn_destroy);
+				return false;
+			}
+			ZwClose(hThread);
+			sprintf(nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name);
+		}
+#endif
+#endif
+#ifdef _WIN32_CT
+        wake_up_process(thi);
+#else
 		wake_up_process(nt);
+#endif
 		break;
 	case EXITING:
 		thi->t_state = RESTARTING;
@@ -674,6 +780,12 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	/* may be called from state engine, holding the req lock irqsave */
 	spin_lock_irqsave(&thi->t_lock, flags);
 
+#ifdef _WIN32
+	WDRBD_INFO("thi(%s) ns(%s) state(%d) waitflag(%d) event(%d)-------------------!\n", 
+		thi->name, (ns == RESTARTING) ? "RESTARTING" : "EXITING", thi->t_state, wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
+#endif
+
+
 	if (thi->t_state == NONE) {
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		if (restart)
@@ -697,13 +809,67 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 		smp_mb();
 		init_completion(&thi->stop);
 		if (thi->task != current)
+#ifdef _WIN32
+		{
 			force_sig(DRBD_SIGKILL, thi->task);
+		}
+		else
+		{
+			WDRBD_INFO("cur=(%s) thi=(%s) stop myself\n", current->comm, thi->name ); //_WIN32
+		}
+#else
+			force_sig(DRBD_SIGKILL, thi->task);
+#endif
 	}
 	spin_unlock_irqrestore(&thi->t_lock, flags);
 
 	if (wait)
+#ifdef _WIN32
+	{ 
+		WDRBD_INFO("(%s) wait_for_completion. signaled(%d)\n", current->comm, KeReadStateEvent(&thi->stop.wait.wqh_event));
+
+		while (wait_for_completion(&thi->stop) == -DRBD_SIGKILL)
+		{
+			WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n"); // not happened.
+		}
+    }
+#else
 		wait_for_completion(&thi->stop);
+#endif
+
+	WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 }
+
+#ifdef _WIN32_CHECK
+#ifdef _WIN32_SEND_BUFFING // _WIN32_CHECK: send bufferring 파트 일단 복사함.
+struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
+#else
+static struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
+#endif
+
+{
+	struct drbd_thread *thi =
+		task == tconn->receiver.task ? &tconn->receiver :
+		task == tconn->asender.task  ? &tconn->asender :
+		task == tconn->worker.task   ? &tconn->worker : NULL;
+
+	return thi;
+}
+
+char *drbd_task_to_thread_name(struct drbd_tconn *tconn, struct task_struct *task)
+{
+	struct drbd_thread *thi = drbd_task_to_thread(tconn, task);
+#ifdef _WIN32
+    char * ret = thi ? thi->name : (task && task->comm) ? task->comm : "NULL";
+    if (!ret)
+        WDRBD_TRACE("return is null. tconn(0x%p), task(0x%p)\n", tconn, task);
+    return ret;
+#else
+    return thi ? thi->name : task->comm;
+#endif
+	
+}
+#endif
 
 int conn_lowest_minor(struct drbd_connection *connection)
 {
@@ -2573,10 +2739,10 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 
 static int drbd_open(struct block_device *bdev, fmode_t mode)
 {
-#ifdef _WIN32_CHECK
-	struct drbd_device *device = bdev->bd_disk->private_data;
+#ifdef _WIN32 // _WIN32_CHECK
+	struct drbd_device *device = 0;
 #else
-    struct drbd_device *device;
+	struct drbd_device *device = bdev->bd_disk->private_data;
 #endif
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
@@ -2642,8 +2808,8 @@ static int open_rw_count(struct drbd_resource *resource)
 
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 {
-#ifdef _WIN32
-    struct drbd_device *device;
+#ifdef _WIN32 // _WIN32_CHECK
+    struct drbd_device *device = 0;
 #else
 	struct drbd_device *device = gd->private_data;
 #endif
@@ -3870,10 +4036,14 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 out_remove_peer_device:
 	list_add_rcu(&tmp, &device->peer_devices);
 	list_del_init(&device->peer_devices);
-#ifdef _WIN32
+#ifdef _WIN32_V9
     unsigned char  oldIrql_wLock;
 #endif
+#ifdef _WIN32_V9
+	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n");
+#else
 	synchronize_rcu();
+#endif
 #ifdef _WIN32
     list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &tmp, peer_devices) {
 #else
@@ -3893,7 +4063,12 @@ out_idr_remove_minor:
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
+
+#ifdef _WIN32_V9
+	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n");
+#else
 	synchronize_rcu();
+#endif
 
 out_no_peer_device:
 #ifdef _WIN32
