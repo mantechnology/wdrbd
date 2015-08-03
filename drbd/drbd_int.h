@@ -2022,9 +2022,9 @@ extern void conn_free_crypto(struct drbd_connection *connection);
 /* drbd_req */
 extern void do_submit(struct work_struct *ws);
 #ifdef _WIN32
-extern void __drbd_make_request(struct drbd_conf *, struct bio *, ULONG_PTR);
+extern void __drbd_make_request(struct drbd_device *, struct bio *, ULONG_PTR);
 #else
-extern void __drbd_make_request(struct drbd_conf *, struct bio *, unsigned long);
+extern void __drbd_make_request(struct drbd_device *, struct bio *, unsigned long);
 #endif
 
 extern MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio);

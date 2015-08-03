@@ -44,7 +44,10 @@
 #define _drbd_start_io_acct(...) do {} while (0)
 #define _drbd_end_io_acct(...)   do {} while (0)
 #else
-
+#ifdef _WIN32
+#define _drbd_start_io_acct(...) do {} while (0)
+#define _drbd_end_io_acct(...)   do {} while (0)
+#else
 static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, int size);
 
 /* Update disk stats at start of I/O request */
@@ -103,14 +106,17 @@ static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *r
 }
 
 #endif
-
+#endif
 static struct drbd_request *drbd_req_new(struct drbd_device *device,
 					       struct bio *bio_src)
 {
 	struct drbd_request *req;
 	int i;
-
+#ifdef _WIN32
+    req = ExAllocateFromNPagedLookasideList(&drbd_request_mempool);
+#else
 	req = mempool_alloc(drbd_request_mempool, GFP_NOIO);
+#endif
 	if (!req)
 		return NULL;
 
@@ -154,7 +160,11 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	bool queued = false;
 
 	rcu_read_lock();
+#ifdef _WIN32
+    for_each_connection_rcu(struct drbd_connection, connection, resource) {
+#else
 	for_each_connection_rcu(connection, resource) {
+#endif
 		unsigned int node_id = connection->peer_node_id;
 		if (connection->agreed_pro_version < 110 ||
 		    connection->cstate[NOW] != C_CONNECTED ||
@@ -171,7 +181,11 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	rcu_read_unlock();
 
 	if (!queued)
+#ifdef _WIN32
+        ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+#else
 		mempool_free(req, drbd_request_mempool);
+#endif
 }
 
 static bool peer_ack_differs(struct drbd_request *req1, struct drbd_request *req2)
@@ -222,7 +236,11 @@ tail_recursion:
 	req_size = req->i.size;
 
 	/* paranoia */
+#ifdef _WIN32
+    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
+#else
 	for_each_peer_device(peer_device, device) {
+#endif
 		unsigned ns = drbd_req_state_by_peer_device(req, peer_device);
 		if (!(ns & RQ_NET_MASK))
 			continue;
@@ -323,7 +341,11 @@ tail_recursion:
 				drbd_queue_peer_ack(resource, peer_ack_req);
 				peer_ack_req = NULL;
 			} else
+#ifdef _WIN32
+                ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+#else
 				mempool_free(peer_ack_req, drbd_request_mempool);
+#endif
 		}
 		req->device = NULL;
 		resource->peer_ack_req = req;
@@ -333,10 +355,18 @@ tail_recursion:
 		if (!peer_ack_req)
 			resource->last_peer_acked_dagtag = req->dagtag_sector;
 	} else
+#ifdef _WIN32
+        ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+#else
 		mempool_free(req, drbd_request_mempool);
+#endif
 
 	if (s & RQ_WRITE && req_size) {
+#ifdef _WIN32
+        list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
+#else
 		list_for_each_entry(req, &device->resource->transfer_log, tl_requests) {
+#endif
 			if (req->rq_state[0] & RQ_WRITE) {
 				/*
 				 * Do the equivalent of:
@@ -361,7 +391,11 @@ static void wake_all_senders(struct drbd_resource *resource) {
 	 * threads that may check the values in their wait_event() condition.
 	 * Do we need smp_mb here? Or rather switch to atomic_t? */
 	rcu_read_lock();
+#ifdef _WIN32
+    for_each_connection_rcu(struct drbd_connection, connection, resource)
+#else
 	for_each_connection_rcu(connection, resource)
+#endif
 		wake_up(&connection->sender_work.q_wait);
 	rcu_read_unlock();
 }
@@ -419,8 +453,11 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	if (s & RQ_LOCAL_OK)
 		++ok;
 	error = PTR_ERR(req->private_bio);
-
+#ifdef _WIN32
+    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
+#else
 	for_each_peer_device(peer_device, device) {
+#endif
 		unsigned ns = drbd_req_state_by_peer_device(req, peer_device);
 		/* any net ok ok local ok is good enough to complete this bio as OK */
 		if (ns & RQ_NET_OK)
@@ -495,7 +532,11 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 		req->rq_state[0] |= RQ_POSTPONED;
 
 	if (!(req->rq_state[0] & RQ_POSTPONED)) {
+#ifdef _WIN32
+        m->error = ok ? 0 : (error ? error : -EIO);
+#else
 		m->error = ok ? 0 : (error ?: -EIO);
+#endif
 		m->bio = req->master_bio;
 		req->master_bio = NULL;
 		/* We leave it in the tree, to be able to verify later
@@ -551,7 +592,11 @@ static void advance_conn_req_next(struct drbd_peer_device *peer_device, struct d
 		return;
 	if (connection->todo.req_next != req)
 		return;
+#ifdef _WIN32
+    list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
+#else
 	list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+#endif
 		const unsigned s = drbd_req_state_by_peer_device(req, peer_device);
 		if (s & RQ_NET_QUEUED)
 			break;
@@ -577,7 +622,11 @@ static void advance_conn_req_ack_pending(struct drbd_peer_device *peer_device, s
 		return;
 	if (connection->req_ack_pending != req)
 		return;
+#ifdef _WIN32
+    list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
+#else
 	list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+#endif
 		const unsigned s = drbd_req_state_by_peer_device(req, peer_device);
 		if ((s & RQ_NET_SENT) && (s & RQ_NET_PENDING))
 			break;
@@ -603,7 +652,11 @@ static void advance_conn_req_not_net_done(struct drbd_peer_device *peer_device, 
 		return;
 	if (connection->req_not_net_done != req)
 		return;
+#ifdef _WIN32
+    list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
+#else
 	list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+#endif
 		const unsigned s = drbd_req_state_by_peer_device(req, peer_device);
 		if ((s & RQ_NET_SENT) && !(s & RQ_NET_DONE))
 			break;
@@ -765,8 +818,9 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 static void drbd_report_io_error(struct drbd_device *device, struct drbd_request *req)
 {
+#ifndef _WIN32
         char b[BDEVNAME_SIZE];
-
+#endif
 	if (!drbd_ratelimit())
 		return;
 
@@ -937,7 +991,11 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED|RQ_EXP_BARR_ACK);
 
 		/* close the epoch, in case it outgrew the limit */
+#ifdef _WIN32
+        rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 		nc = rcu_dereference(peer_device->connection->transport.net_conf);
 		p = nc->max_epoch_size;
 		rcu_read_unlock();
@@ -1118,7 +1176,11 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 
 	case QUEUE_AS_DRBD_BARRIER:
 		start_new_tl_epoch(device->resource);
+#ifdef _WIN32
+        for_each_peer_device(struct drbd_peer_device, peer_device, device)
+#else
 		for_each_peer_device(peer_device, device)
+#endif
 			mod_rq_state(req, m, peer_device, 0, RQ_NET_OK|RQ_NET_DONE);
 		break;
 	};
@@ -1177,8 +1239,18 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 
 	switch (rbm) {
 	case RB_CONGESTED_REMOTE:
+#ifdef _WIN32
+        // DRBD_DOC: DRBD_CONGESTED_PORTING
+        // Linux에서 아래 bdi_read_congested 에 의해 drbd_congested 함수가 콜백되는지 시험했으나 불려지지 않았다.
+        // drbd_seq_show 함수에서 시도했 듯이 직접 drbd_congested 콜백을 호출하여 효과를 볼 수 있겠으나
+        // 현재 디스크 혼잡 상태 판단 기능을 지원 못함으로 시도 자체가 의미없다.
+        // 따라서 WDRBD는 RB_CONGESTED_REMOTE(READ 시 로컬 디스크가 혼잡하면 원격 디스크에서 READ 하는 기능) 옵션을 지원 못함
+
+        return false;
+#else
 		bdi = &device->ldev->backing_bdev->bd_disk->queue->backing_dev_info;
 		return bdi_read_congested(bdi);
+#endif
 	case RB_LEAST_PENDING:
 		return atomic_read(&device->local_cnt) >
 			atomic_read(&peer_device->ap_pending_cnt) + atomic_read(&peer_device->rs_pending_cnt);
@@ -1229,7 +1301,11 @@ static void complete_conflicting_writes(struct drbd_request *req)
 		/* Indicate to wake up device->misc_wait on progress.  */
 		i->waiting = true;
 		spin_unlock_irq(&device->resource->req_lock);
+#ifdef _WIN32
+        schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#else
 		schedule();
+#endif
 		spin_lock_irq(&device->resource->req_lock);
 	}
 	finish_wait(&device->misc_wait, &wait);
@@ -1288,8 +1364,11 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 static void maybe_pull_ahead(struct drbd_device *device)
 {
 	struct drbd_connection *connection;
-
+#ifdef _WIN32
+    for_each_connection(struct drbd_connection, connection, device->resource)
+#else
 	for_each_connection(connection, device->resource)
+#endif
 		__maybe_pull_ahead(device, connection);
 }
 
@@ -1348,8 +1427,11 @@ static struct drbd_peer_device *find_peer_device_for_read(struct drbd_request *r
 
 	/* TODO: improve read balancing decisions, take into account drbd
 	 * protocol, all peers, pending requests etc. */
-
+#ifdef _WIN32
+    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
+#else
 	for_each_peer_device(peer_device, device) {
+#endif
 		if (peer_device->disk_state[NOW] != D_UP_TO_DATE)
 			continue;
 		if (req->private_bio == NULL ||
@@ -1391,8 +1473,11 @@ static int drbd_process_write_request(struct drbd_request *req)
 		_req_mod(req, QUEUE_AS_DRBD_BARRIER, NULL);
 		return 0;
 	}
-
+#ifdef _WIN32
+    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
+#else
 	for_each_peer_device(peer_device, device) {
+#endif
 		remote = drbd_should_do_remote(peer_device, NOW);
 		send_oos = drbd_should_send_out_of_sync(peer_device);
 
@@ -1566,7 +1651,11 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			struct drbd_request *req2;
 
 			resource->current_tle_writes++;
+#ifdef _WIN32
+            list_for_each_entry_reverse(struct drbd_request, req2, &resource->transfer_log, tl_requests) {
+#else
 			list_for_each_entry_reverse(req2, &resource->transfer_log, tl_requests) {
+#endif
 				if (req2->rq_state[0] & RQ_WRITE) {
 					/* Make the new write request depend on
 					 * the previous one. */
@@ -1636,7 +1725,11 @@ out:
 		complete_master_bio(device, &m);
 }
 
+#ifdef _WIN32
+void __drbd_make_request(struct drbd_device *device, struct bio *bio, ULONG_PTR start_jif)
+#else
 void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned long start_jif)
+#endif
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 	if (IS_ERR_OR_NULL(req))
@@ -1647,7 +1740,11 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 static void submit_fast_path(struct drbd_device *device, struct list_head *incoming)
 {
 	struct drbd_request *req, *tmp;
+#ifdef _WIN32
+    list_for_each_entry_safe(struct drbd_request, req, tmp, incoming, tl_requests) {
+#else
 	list_for_each_entry_safe(req, tmp, incoming, tl_requests) {
+#endif
 		const int rw = bio_data_dir(req->master_bio);
 
 		if (rw == WRITE && req->private_bio && req->i.size
@@ -1675,7 +1772,11 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 	int err;
 
 	spin_lock_irq(&device->al_lock);
+#ifdef _WIN32
+    list_for_each_entry_safe(struct drbd_request, req, tmp, incoming, tl_requests) {
+#else
 	list_for_each_entry_safe(req, tmp, incoming, tl_requests) {
+#endif
 		err = drbd_al_begin_io_nonblock(device, &req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -1695,8 +1796,11 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 void send_and_submit_pending(struct drbd_device *device, struct list_head *pending)
 {
 	struct drbd_request *req, *tmp;
-
+#ifdef _WIN32
+    list_for_each_entry_safe(struct drbd_request, req, tmp, pending, tl_requests) {
+#else
 	list_for_each_entry_safe(req, tmp, pending, tl_requests) {
+#endif
 		req->rq_state[0] |= RQ_IN_ACT_LOG;
 		req->in_actlog_jif = jiffies;
 		atomic_dec(&device->ap_actlog_cnt);
@@ -1746,9 +1850,11 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &incoming, &pending, &busy);
 			if (!list_empty(&pending))
 				break;
-
+#ifdef _WIN32_V9
+            schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#else
 			schedule();
-
+#endif
 			/* If all currently "hot" activity log extents are kept busy by
 			 * incoming requests, we still must not totally starve new
 			 * requests to "cold" extents.
@@ -1862,6 +1968,9 @@ int drbd_merge_bvec(struct request_queue *q,
 		struct bvec_merge_data *bvm,
 		struct bio_vec *bvec)
 {
+#ifdef _WIN32 // kmpak wdrbd 8 에서는 사용안한다고 함수정의 까지 없는데 9에서는 함수원형은 남겨둠
+    return 0;
+#else
 	struct drbd_device *device = (struct drbd_device *) q->queuedata;
 	unsigned int bio_size = bvm->bi_size;
 	int limit = DRBD_MAX_BIO_SIZE;
@@ -1881,6 +1990,7 @@ int drbd_merge_bvec(struct request_queue *q,
 			limit = max_hw_sectors << 9;
 	}
 	return limit;
+#endif
 }
 
 static unsigned long time_min_in_future(unsigned long now,
@@ -2010,7 +2120,11 @@ void request_timer_fn(unsigned long data)
 			__drbd_chk_io_error(device, DRBD_FORCE_DETACH);
 		}
 	}
+#ifdef _WIN32
+    for_each_connection(struct drbd_connection, connection, device->resource) {
+#else
 	for_each_connection(connection, device->resource) {
+#endif
 		struct net_conf *nc;
 		struct drbd_request *req;
 		unsigned long ent = 0;

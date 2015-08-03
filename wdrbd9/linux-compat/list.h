@@ -169,19 +169,67 @@ static __inline int list_empty_careful(const struct list_head *head)
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 		pos = n, n = pos->next)
 
+/**
+ * list_for_each_entry	-	iterate over list of given type
+ * @pos:	the type * to use as a loop cursor.
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
+ */
 #define list_for_each_entry(type, pos, head, member) \
 	for (pos = list_entry((head)->next, type, member);	\
 			&pos->member != (head); 	\
 			pos = list_entry(pos->member.next, type, member))
 
-#define list_for_each_entry_safe_from(type, pos, n, head, member) 			\
-	for (n = list_entry(pos->member.next, type, member);		\
-			&pos->member != (head);						\
-			pos = n, n = list_entry(n->member.next, type, member))
+/**
+ * list_for_each_entry_reverse - iterate backwards over list of given type.
+ * @pos:	the type * to use as a loop cursor.
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
+ */
+#define list_for_each_entry_reverse(type, pos, head, member)			\
+	for (pos = list_entry((head)->prev, type, member);	\
+	     prefetch(pos->member.prev), &pos->member != (head); 	\
+	     pos = list_entry(pos->member.prev, type, member))
 
+/**
+ * list_for_each_entry_continue - continue iteration over list of given type
+ * @pos:	the type * to use as a loop cursor.
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
+ *
+ * Continue to iterate over list of given type, continuing after
+ * the current position.
+ */
+#define list_for_each_entry_continue(type, pos, head, member) 		\
+	for (pos = list_entry(pos->member.next, type, member);	\
+	     prefetch(pos->member.next), &pos->member != (head);	\
+	     pos = list_entry(pos->member.next, type, member))
+
+/**
+ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
+ * @pos:	the type * to use as a loop cursor.
+ * @n:		another type * to use as temporary storage
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
+ */
 #define list_for_each_entry_safe(type, pos, n, head, member)                  \
 		for (pos = list_entry((head)->next, type, member),      \
 					n = list_entry(pos->member.next, type, member); \
 				&pos->member != (head);                                    \
 				pos = n, n = list_entry(n->member.next, type, member))
+
+/**
+ * list_for_each_entry_safe_from
+ * @pos:	the type * to use as a loop cursor.
+ * @n:		another type * to use as temporary storage
+ * @head:	the head for your list.
+ * @member:	the name of the list_struct within the struct.
+ *
+ * Iterate over list of given type from current point, safe against
+ * removal of list entry.
+ */
+#define list_for_each_entry_safe_from(type, pos, n, head, member) 			\
+	for (n = list_entry(pos->member.next, type, member);		\
+			&pos->member != (head);						\
+			pos = n, n = list_entry(n->member.next, type, member))
 #endif _LIST_H__
