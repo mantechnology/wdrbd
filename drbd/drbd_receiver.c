@@ -1667,6 +1667,7 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 	return 0;
 }
 
+#ifdef _WIN32_V9
 static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_request *req,
 			   sector_t sector, int data_size)
 {
@@ -1680,7 +1681,10 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	digest_size = 0;
 	if (peer_device->connection->peer_integrity_tfm) {
 		digest_size = crypto_hash_digestsize(peer_device->connection->peer_integrity_tfm);
+#ifdef _WIN32_V9
+		// V8에서 drbd_recv_all_warn 을 사용했었다.
 		err = drbd_recv_into(peer_device->connection, dig_in, digest_size);
+#endif
 		if (err)
 			return err;
 		data_size -= digest_size;
@@ -1690,6 +1694,23 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	 * we disconnect anyways, and counters will be reset. */
 	peer_device->recv_cnt += data_size >> 9;
 
+#ifdef _WIN32_V9
+#ifdef _WIN32_CHECK
+	D_ASSERT(sector == req->master_bio->bi_sector);
+
+	if (req->master_bio->win32_page_buf) {
+		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨.
+		err = drbd_recv_all_warn(mdev->tconn, req->master_bio->win32_page_buf, data_size);
+		if (err)
+			return err;
+		data_size = 0;
+	}
+	else {
+		return -EINVAL;
+	}
+#endif
+
+#else 
 	bio = req->master_bio;
 	D_ASSERT(peer_device->device, sector == DRBD_BIO_BI_SECTOR(bio));
 
@@ -1703,8 +1724,13 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 		data_size -= expect;
 	}
 
+#endif
+
 	if (digest_size) {
+#ifdef _WIN32_TODO
+		// drbd_csum_bio 의 인자가 V9에서 모두 변경되었다.
 		drbd_csum_bio(peer_device->connection->peer_integrity_tfm, bio, dig_vv);
+#endif
 		if (memcmp(dig_in, dig_vv, digest_size)) {
 			drbd_err(peer_device, "Digest integrity check FAILED. Broken NICs?\n");
 			return -EINVAL;
@@ -1714,6 +1740,7 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	D_ASSERT(peer_device->device, data_size == 0);
 	return 0;
 }
+#endif
 
 /*
  * e_end_resync_block() is called in ack_sender context via
@@ -2093,7 +2120,13 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 		/* Only need to wait if two_primaries is enabled */
 		prepare_to_wait(&peer_device->device->seq_wait, &wait, TASK_INTERRUPTIBLE);
 		spin_unlock(&peer_device->peer_seq_lock);
+
+#ifdef _WIN32
+		// V8의 기존 구현 유지.
+		rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 		timeout = rcu_dereference(connection->transport.net_conf)->ping_timeo*HZ/10;
 		rcu_read_unlock();
 		timeout = schedule_timeout(timeout);
@@ -2474,7 +2507,7 @@ bool drbd_rs_should_slow_down(struct drbd_peer_device *peer_device, sector_t sec
 
 	return !drbd_sector_has_priority(peer_device, sector);
 }
-
+#ifdef _WIN32_TODO
 bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
@@ -2519,6 +2552,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	}
 	return false;
 }
+#endif
 
 static int receive_DataRequest(struct drbd_connection *connection, struct packet_info *pi)
 {

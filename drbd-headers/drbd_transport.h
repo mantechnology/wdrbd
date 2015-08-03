@@ -21,7 +21,7 @@
    we can reuse these flags for our purposes */
 #define CALLER_BUFFER  MSG_DONTROUTE
 #define GROW_BUFFER    MSG_PROBE
-#ifdef _WIN32_CHECK
+
 /*
  * gfp_mask for allocating memory with no write-out.
  *
@@ -29,7 +29,12 @@
  * write-out because in a criss-cross setup, the write-out could lead to memory
  * pressure on the peer, eventually leading to deadlock.
  */
+#ifdef _WIN32_V9
+// V8 에서 GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN) 와 같이 define 되어 있었음. V9에서 __GFP_WAIT 가 추가되었다.
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
+#endif
+
+#ifdef _WIN32_CHECK
 
 #define tr_printk(level, transport, fmt, args...)  ({		\
 	rcu_read_lock();					\

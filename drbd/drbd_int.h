@@ -2122,6 +2122,21 @@ extern void start_resync_timer_fn(unsigned long data);
 #ifdef _WIN32_V9
 //drbd_sender.c에 구현. drbd_receiver.c 에서 가져다 쓴다.(extern 선언)
 extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
+
+// update_receiver_timing_details drbd_receiver.c 에서 사용. 관련 함수 헤더 선언 추가.
+void __update_timing_details(
+struct drbd_thread_timing_details *tdp,
+	unsigned int *cb_nr,
+	void *cb,
+	const char *fn, const unsigned int line);
+
+#define update_sender_timing_details(c, cb) \
+	__update_timing_details(c->s_timing_details, &c->s_cb_nr, cb, __func__ , __LINE__ )
+#define update_receiver_timing_details(c, cb) \
+	__update_timing_details(c->r_timing_details, &c->r_cb_nr, cb, __func__ , __LINE__ )
+#define update_worker_timing_details(r, cb) \
+	__update_timing_details(r->w_timing_details, &r->w_cb_nr, cb, __func__ , __LINE__ )
+
 #endif
 
 /* drbd_receiver.c */
