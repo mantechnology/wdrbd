@@ -33,6 +33,9 @@
 #include <linux/drbd.h>
 #endif
 #include "drbd_int.h"
+#ifdef _WIN32
+#undef NOTHING
+#endif
 
 /* The request callbacks will be called in irq context by the IDE drivers,
    and in Softirqs/Tasklets/BH context by the SCSI drivers,
@@ -277,16 +280,34 @@ enum drbd_req_state_bits {
 #define MR_WRITE       1
 #define MR_READ        2
 
+#ifdef _WIN32 //DV
+static inline int drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
+#else
 static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
+#endif
 {
 	struct bio *bio;
 	bio = bio_clone(bio_src, GFP_NOIO); /* XXX cannot fail?? */
+
+#ifdef _WIN32 // DV
+    if (!bio)
+    {
+        return NULL;
+    }
+#endif
+
+#ifdef _WIN32
+	bio->win32_page_buf = bio_src->win32_page_buf;
+#endif
 
 	req->private_bio = bio;
 
 	bio->bi_private  = req;
 	bio->bi_end_io   = drbd_request_endio;
 	bio->bi_next     = NULL;
+#ifdef _WIN32 // DV
+    return 1;
+#endif
 }
 
 static inline bool drbd_req_is_write(struct drbd_request *req)
@@ -309,13 +330,20 @@ extern void _req_may_be_done(struct drbd_request *req,
 extern int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		struct drbd_peer_device *peer_device,
 		struct bio_and_error *m);
+#ifdef _WIN32
+extern void complete_master_bio(struct drbd_device *device,
+		struct bio_and_error *m, char *func, int line); // _WIN32_CHECK: caller 확인 디버깅용, 일단 유지
+#else
 extern void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m);
+#endif
+#ifdef _WIN32
+		extern void request_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+#else
 extern void request_timer_fn(unsigned long data);
-extern void tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
-extern void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
-extern void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *req);
-extern bool drbd_should_do_remote(struct drbd_peer_device *, enum which_state);
+#endif
+extern void tl_restart(struct drbd_tconn *tconn, enum drbd_req_event what);
+extern void _tl_restart(struct drbd_tconn *tconn, enum drbd_req_event what);
 
 /* this is in drbd_main.c */
 extern void drbd_restart_request(struct drbd_request *req);
@@ -330,9 +358,16 @@ static inline int _req_mod(struct drbd_request *req, enum drbd_req_event what,
 	int rv;
 
 	/* __req_mod possibly frees req, do not touch req after that! */
+#ifdef DRBD_TRACE	// _WIN32_CHECK: 디버깅용 일단 유지
+	WDRBD_TRACE("(%s) _req_mod: call __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 	rv = __req_mod(req, what, peer_device, &m);
 	if (m.bio)
+#ifdef _WIN32 // _WIN32_CHECK:  디버깅용 일단 유지
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+#else
 		complete_master_bio(device, &m);
+#endif
 
 	return rv;
 }
@@ -349,11 +384,20 @@ static inline int req_mod(struct drbd_request *req,
 	int rv;
 
 	spin_lock_irq(&device->resource->req_lock);
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) req_mod: before __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 	rv = __req_mod(req, what, peer_device, &m);
 	spin_unlock_irq(&device->resource->req_lock);
-
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) req_mod: after __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 	if (m.bio)
+#ifdef _WIN32
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__); 
+#else
 		complete_master_bio(device, &m);
+#endif
 
 	return rv;
 }

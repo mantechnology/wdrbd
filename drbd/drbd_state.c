@@ -25,8 +25,8 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#ifndef _WIN32
 #include <linux/drbd_limits.h>
-#ifdef _WIN32_CHECK
 #include <linux/random.h>
 #endif
 #include "drbd_int.h"
