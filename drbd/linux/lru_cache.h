@@ -66,10 +66,17 @@ enum {
 #ifdef hlist_for_each_entry
 #undef hlist_for_each_entry
 #endif
+#ifdef _WIN32
+#define hlist_for_each_entry(type, pos, head, member)				\
+	for (pos = hlist_entry_safe((head)->first, type, member);\
+	     pos;							\
+	     pos = hlist_entry_safe((pos)->member.next, type, member))
+#else
 #define hlist_for_each_entry(pos, head, member)				\
 	for (pos = hlist_entry_safe((head)->first, typeof(*(pos)), member);\
 	     pos;							\
 	     pos = hlist_entry_safe((pos)->member.next, typeof(*(pos)), member))
+#endif
 #define COMPAT_HLIST_FOR_EACH_ENTRY_HAS_THREE_PARAMETERS
 #endif
 /* End of Compatibility code */

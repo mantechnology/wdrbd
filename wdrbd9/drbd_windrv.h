@@ -23,6 +23,8 @@
 
 //#define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
+#define _WIN32_V9	//_WIN32_V9 정의 
+
 #define WSK_EVENT_CALLBACK
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
@@ -428,14 +430,6 @@ struct hlist_head {
 struct hlist_node {
 	struct hlist_node *next, **pprev;
 };
-
-#define hlist_entry(ptr, type, member) container_of(ptr,type,member)
-#define hlist_entry_safe(ptr, type, member) (ptr ? hlist_entry(ptr, type, member) : NULL)
-
-#define hlist_for_each_entry(type, pos, head, member) \
-	 for (pos = hlist_entry_safe((head)->first, type, member);\
-	     pos; \
-	     pos = hlist_entry_safe((pos)->member.next, type, member))
 
 struct kobject { 
     const char          *name;

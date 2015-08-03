@@ -28,8 +28,6 @@
 
 #include "asm/types.h"
 
-#define _WIN32_V9	//_WIN32_V9 정의 
-
 #define __BYTE_ORDER __LITTLE_ENDIAN
 #define __LITTLE_ENDIAN_BITFIELD
 

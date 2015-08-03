@@ -1378,10 +1378,17 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY
 #undef hlist_for_each_entry
+#ifdef _WIN32
+#define hlist_for_each_entry(type, pos, head, member)				\
+	for (pos = hlist_entry((head)->first, type, member);	\
+	     pos;							\
+	     pos = hlist_entry((pos)->member.next, type, member))
+#else
 #define hlist_for_each_entry(pos, head, member)				\
 	for (pos = hlist_entry((head)->first, typeof(*(pos)), member);	\
 	     pos;							\
 	     pos = hlist_entry((pos)->member.next, typeof(*(pos)), member))
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_PRANDOM_U32
