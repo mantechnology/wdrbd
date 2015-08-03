@@ -160,11 +160,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	bool queued = false;
 
 	rcu_read_lock();
-#ifdef _WIN32
-    for_each_connection_rcu(struct drbd_connection, connection, resource) {
-#else
 	for_each_connection_rcu(connection, resource) {
-#endif
 		unsigned int node_id = connection->peer_node_id;
 		if (connection->agreed_pro_version < 110 ||
 		    connection->cstate[NOW] != C_CONNECTED ||
@@ -236,11 +232,7 @@ tail_recursion:
 	req_size = req->i.size;
 
 	/* paranoia */
-#ifdef _WIN32
-    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		unsigned ns = drbd_req_state_by_peer_device(req, peer_device);
 		if (!(ns & RQ_NET_MASK))
 			continue;
@@ -391,11 +383,7 @@ static void wake_all_senders(struct drbd_resource *resource) {
 	 * threads that may check the values in their wait_event() condition.
 	 * Do we need smp_mb here? Or rather switch to atomic_t? */
 	rcu_read_lock();
-#ifdef _WIN32
-    for_each_connection_rcu(struct drbd_connection, connection, resource)
-#else
 	for_each_connection_rcu(connection, resource)
-#endif
 		wake_up(&connection->sender_work.q_wait);
 	rcu_read_unlock();
 }
@@ -453,11 +441,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	if (s & RQ_LOCAL_OK)
 		++ok;
 	error = PTR_ERR(req->private_bio);
-#ifdef _WIN32
-    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		unsigned ns = drbd_req_state_by_peer_device(req, peer_device);
 		/* any net ok ok local ok is good enough to complete this bio as OK */
 		if (ns & RQ_NET_OK)
@@ -1176,11 +1160,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 
 	case QUEUE_AS_DRBD_BARRIER:
 		start_new_tl_epoch(device->resource);
-#ifdef _WIN32
-        for_each_peer_device(struct drbd_peer_device, peer_device, device)
-#else
 		for_each_peer_device(peer_device, device)
-#endif
 			mod_rq_state(req, m, peer_device, 0, RQ_NET_OK|RQ_NET_DONE);
 		break;
 	};
@@ -1364,11 +1344,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 static void maybe_pull_ahead(struct drbd_device *device)
 {
 	struct drbd_connection *connection;
-#ifdef _WIN32
-    for_each_connection(struct drbd_connection, connection, device->resource)
-#else
 	for_each_connection(connection, device->resource)
-#endif
 		__maybe_pull_ahead(device, connection);
 }
 
@@ -1427,11 +1403,7 @@ static struct drbd_peer_device *find_peer_device_for_read(struct drbd_request *r
 
 	/* TODO: improve read balancing decisions, take into account drbd
 	 * protocol, all peers, pending requests etc. */
-#ifdef _WIN32
-    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		if (peer_device->disk_state[NOW] != D_UP_TO_DATE)
 			continue;
 		if (req->private_bio == NULL ||
@@ -1473,11 +1445,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 		_req_mod(req, QUEUE_AS_DRBD_BARRIER, NULL);
 		return 0;
 	}
-#ifdef _WIN32
-    for_each_peer_device(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device(peer_device, device) {
-#endif
 		remote = drbd_should_do_remote(peer_device, NOW);
 		send_oos = drbd_should_send_out_of_sync(peer_device);
 
@@ -2120,11 +2088,7 @@ void request_timer_fn(unsigned long data)
 			__drbd_chk_io_error(device, DRBD_FORCE_DETACH);
 		}
 	}
-#ifdef _WIN32
-    for_each_connection(struct drbd_connection, connection, device->resource) {
-#else
 	for_each_connection(connection, device->resource) {
-#endif
 		struct net_conf *nc;
 		struct drbd_request *req;
 		unsigned long ent = 0;

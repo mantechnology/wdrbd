@@ -1,5 +1,8 @@
 ﻿#ifndef DRBD_GENL_STRUCT_H
 #define DRBD_GENL_STRUCT_H
+#ifdef _WIN32
+#include "windows/types.h"
+#endif
 
 /**
  * struct drbd_genlmsghdr - DRBD specific header used in NETLINK_GENERIC requests

@@ -15,6 +15,9 @@
 
 #ifdef _WIN32
 #include "windows/types.h"
+#ifndef inline
+#define inline __inline
+#endif
 #else
 #include <linux/netlink.h>
 #include <linux/genetlink.h>

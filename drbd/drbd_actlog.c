@@ -298,11 +298,7 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 	struct lc_element *tmp;
 
 	rcu_read_lock();
-#ifdef _WIN32
-    for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device_rcu(peer_device, device) {
-#endif
 #ifdef _WIN32_CHECK
 		if (peer_device == except)
 			continue;
@@ -333,11 +329,7 @@ set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
 	int wake = 0;
 
 	rcu_read_lock();
-#ifdef _WIN32
-    for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device_rcu(peer_device, device) {
-#endif
 #ifdef _WIN32_CHECK
 		if (peer_device == except)
 			continue;
@@ -1272,11 +1264,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		clear_end = BM_SECT_TO_BIT(esector + 1) - 1;
 
 	rcu_read_lock();
-#ifdef _WIN32
-    for_each_peer_device_rcu(struct drbd_peer_device, peer_device, device) {
-#else
 	for_each_peer_device_rcu(peer_device, device) {
-#endif
 		int bitmap_index = peer_device->bitmap_index;
 
 		if (!test_and_clear_bit(bitmap_index, &mask))
