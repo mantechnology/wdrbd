@@ -398,7 +398,7 @@ STATIC void drbd_free_pages(struct drbd_conf *mdev, struct page *page, int is_ne
 #endif
 {
 
-#ifdef _WIN32_TDODO 기존 mdev를 V9 형식으로 변경이 필요함.
+#ifdef _WIN32_TDODO //기존 mdev를 V9 형식으로 변경이 필요함.
 	atomic_t *a = is_net ? &mdev->pp_in_use_by_net : &mdev->pp_in_use;
 	int i;
 
@@ -450,6 +450,7 @@ You must not have the req_lock:
  drbd_wait_ee_list_empty()
 */
 
+#ifdef _WIN32_V9
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
 {
@@ -479,7 +480,9 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 
 	return peer_req;
 }
+#endif
 
+#ifdef _WIN32_V9
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
@@ -493,6 +496,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 	mempool_free(peer_req, drbd_ee_mempool);
 #endif
 }
+#endif
 
 int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, bool is_net_ee)
 {
@@ -616,8 +620,13 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 			rcu_read_lock();
 			t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 			rcu_read_unlock();
-
+#ifdef _WIN32_V9
+			//drbd_connection 의 ping_wait 인자 점검필요
+			wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
+#else
 			t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
+#endif
+	
 
 			if (t)
 				goto out;
@@ -758,6 +767,7 @@ int connect_work(struct drbd_work *work, int cancel)
 /*
  * Returns true if we have a valid connection.
  */
+#ifdef _WIN32_V9
 static bool conn_connect(struct drbd_connection *connection)
 {
 	struct drbd_transport *transport = &connection->transport;
@@ -819,8 +829,10 @@ start:
 
 	if (drbd_send_protocol(connection) == -EOPNOTSUPP)
 		goto abort;
-
-	rcu_read_lock();
+#ifdef _WIN32_V9
+	// 임시 매크로. rcu_read_lock 이 함수안에 두번 사용되는 케이스. 일단 빌드되게... 
+	rcu_read_lock2();
+#endif
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
@@ -833,8 +845,10 @@ start:
 		else
 			clear_bit(DISCARD_MY_DATA, &device->flags);
 	}
-	rcu_read_unlock();
-
+#ifdef _WIN32_V9
+	// 임시 매크로. rcu_read_lock 이 함수안에 두번 사용되는 케이스. 일단 빌드되게... 
+	rcu_read_unlock2();
+#endif
 	drbd_thread_start(&connection->ack_receiver);
 	connection->ack_sender =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
@@ -877,6 +891,8 @@ abort:
 	change_cstate(connection, C_DISCONNECTING, CS_HARD);
 	return false;
 }
+#endif
+
 
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
 {

@@ -1164,6 +1164,16 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define rcu_read_unlock() \
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);
 
+#ifdef _WIN32_V9
+// 임시 매크로. rcu_read_lock 이 함수안에 두번 사용되는 케이스. 일단 빌드되게... 
+#define rcu_read_lock2() \
+    unsigned char oldIrql_rLock2 = ExAcquireSpinLockShared(&g_rcuLock);
+
+#define rcu_read_unlock2() \
+    ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock2);
+#endif
+
+
 #define rcu_read_lock_w32_inner() \
 	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);
 
@@ -1242,8 +1252,23 @@ typedef struct _PTR_ENTRY
 
 
 #ifdef _WIN32_V9
+/////////////////////////////////////////////////////////////////////
+// linux-2.6.24 define 
+////////////////////////////////////////////////////////////////////
+
+// kernel.h 
 #define UINT_MAX	(~0U)
+
+// socket.h 
+#define MSG_DONTROUTE	4
+
+/////////////////////////////////////////////////////////////////////
+// linux-2.6.24 define end
+////////////////////////////////////////////////////////////////////
+
 #endif
+
+
 
 
 #endif __DRBD_WINDRV_H__
