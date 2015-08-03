@@ -28,25 +28,13 @@
 #ifndef _WIN32
 #include <linux/drbd_limits.h>
 #include <linux/random.h>
+#else
+#include "linux-compat/drbd_endian.h"
 #endif
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"
 #include "drbd_state_change.h"
-
-#if 0 // _WIN32_CHECK: 이 메크로를 루트 헤도로 옮깁니다~~~
-#ifdef _WIN32_V9
-#undef for_each_connection(connection, resource) 
-#define for_each_connection(connection, resource) list_for_each_entry(struct drbd_connection, connection, &resource->connections, connections)
-
-#undef for_each_peer_device(peer_device, device)
-#define for_each_peer_device(peer_device, device) list_for_each_entry(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
-
-#undef for_each_peer_device_rcu(peer_device, device)
-#define for_each_peer_device_rcu(peer_device, device) 	list_for_each_entry_rcu(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices)
-#endif
-#endif
-
 
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
@@ -2879,9 +2867,13 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 		begin_remote_state_change(resource, irq_flags);
 		for(;;) {
 			long t = twopc_timeout(resource);
-
+#ifdef _WIN32
+			wait_event_timeout(t, resource->twopc_wait,
+				   when_done_lock(resource, irq_flags), t);
+#else
 			t = wait_event_timeout(resource->twopc_wait,
 				   when_done_lock(resource, irq_flags), t);
+#endif
 			if (t)
 				break;
 			if (when_done_lock(resource, irq_flags)) {
@@ -3286,13 +3278,16 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 				    &request, reach_immediately);
 	have_peers = rv == SS_CW_SUCCESS;
 	if (have_peers) {
+#ifdef _WIN32_V9 // _WIN32_CHECK
+		DbgPrint("_WIN32_CHECK: resolve do while(0) macro at if condition!!!!\n");
+#else
 		if (wait_event_timeout(resource->state_wait,
-				       cluster_wide_reply_ready(resource),
-				       twopc_timeout(resource)))
+			cluster_wide_reply_ready(resource),
+			twopc_timeout(resource)))
 			rv = get_cluster_wide_reply(resource);
 		else
 			rv = SS_TIMEOUT;
-
+#endif
 		if (rv == SS_CW_SUCCESS) {
 			u64 directly_reachable =
 				directly_connected_nodes(resource, NOW) |
@@ -3678,8 +3673,13 @@ enum drbd_state_rv change_from_consistent(struct drbd_resource *resource,
 	struct change_context context = {
 		.resource = resource,
 		.vnr = -1,
+#ifdef _WIN32_V9
+		.mask = { 0 },
+		.val = { 0 },
+#else
 		.mask = { },
 		.val = { },
+#endif
 		.target_node_id = -1,
 		.flags = flags,
 		.change_local_state_last = false,

@@ -1200,6 +1200,19 @@ int mod_timer(struct timer_list *t, unsigned long expires_ms)
 	return 1;
 }
 
+#ifdef _WIN32_V9
+/*
+830 int mod_timer_pending(struct timer_list *timer, unsigned long expires)
+831 {
+832         return __mod_timer(timer, expires, true, TIMER_NOT_PINNED);
+833 }
+*/
+int mod_timer_pending(struct timer_list *timer, unsigned long expires)
+{
+	DbgPrint("_WIN32_CHECK: mod_timer_pending!\n");
+}
+#endif
+
 void kobject_put(struct kobject *kobj)
 {
     if (kobj) 

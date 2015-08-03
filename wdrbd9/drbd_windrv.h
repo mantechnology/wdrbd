@@ -497,6 +497,10 @@ extern int del_timer_sync(struct timer_list *t);
 extern void del_timer(struct timer_list *t);
 extern int mod_timer(struct timer_list *t, unsigned long expires);
 
+#ifdef _WIN32_V9
+extern int mod_timer_pending(struct timer_list *timer, unsigned long expires); 
+#endif
+
 struct work_struct {
 	struct list_head entry;
 	void (*func)(struct work_struct *work);

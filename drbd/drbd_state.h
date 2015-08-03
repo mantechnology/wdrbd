@@ -65,6 +65,9 @@ extern union drbd_state drbd_get_device_state(struct drbd_device *, enum which_s
 extern union drbd_state drbd_get_peer_device_state(struct drbd_peer_device *, enum which_state);
 extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum which_state);
 
+#ifdef _WIN32_V9 // _WIN32_CHECK: conversion!!!!
+#define stable_state_change(resource, change_state) ( 0 )
+#else
 #define stable_state_change(resource, change_state) ({				\
 		enum drbd_state_rv rv;						\
 		int err;							\
@@ -76,6 +79,7 @@ extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum
 			err = rv;						\
 		err;								\
 	})
+#endif
 
 extern int nested_twopc_work(struct drbd_work *work, int cancel);
 extern enum drbd_state_rv nested_twopc_request(struct drbd_resource *, int, enum drbd_packet, struct p_twopc_request *);
