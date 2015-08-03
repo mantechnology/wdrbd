@@ -1267,6 +1267,7 @@ typedef struct _PTR_ENTRY
 
 // socket.h 
 #define MSG_DONTROUTE	4
+#define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end

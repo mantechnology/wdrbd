@@ -457,7 +457,7 @@ struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
-	struct drbd_peer_request *peer_req;
+	struct drbd_peer_request *peer_req = NULL;
 
 #ifdef _WIN32_TODO // drbd_alloc_peer_req 의 인자가 변경되어 V9 포팅 필요.
 
@@ -4056,7 +4056,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	enum dds_flags ddsf;
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
-	int err;
+	int err = 0; //일단 0 초기화 _WIN32_CHECK
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -6312,7 +6312,13 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	wake_up(&device->misc_wait);
 
 	del_timer_sync(&peer_device->resync_timer);
+#ifdef _WIN32
+	// resync_timer_fn 기존 구현 유지.
+	resync_timer_fn((PKDPC)0,(unsigned long)peer_device, 0, 0);
+#else
 	resync_timer_fn((unsigned long)peer_device);
+#endif
+	
 	del_timer_sync(&peer_device->start_resync_timer);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
@@ -6686,14 +6692,16 @@ int drbd_receiver(struct drbd_thread *thi)
 }
 
 /* ********* acknowledge sender ******** */
-
+#ifdef _WIN32_V9
 void req_destroy_after_send_peer_ack(struct kref *kref)
 {
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
 	list_del(&req->tl_requests);
+#ifdef _WIN32_TODO
 	mempool_free(req, drbd_request_mempool);
+#endif
 }
-
+#endif
 static int process_peer_ack_list(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -6841,8 +6849,10 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 void twopc_connection_down(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
-
+#ifdef _WIN32_TODO
+	//linux spinlock func. 포팅필요.
 	assert_spin_locked(&resource->req_lock);
+#endif
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
 		set_bit(TWOPC_RETRY, &connection->flags);
@@ -6921,8 +6931,13 @@ validate_req_change_req_state(struct drbd_peer_device *peer_device, u64 id, sect
 	__req_mod(req, what, peer_device, &m);
 	spin_unlock_irq(&device->resource->req_lock);
 
-	if (m.bio)
+	if (m.bio) {
+#ifdef _WIN32
+		complete_master_bio(device, &m, __func__, __LINE__ );
+#else
 		complete_master_bio(device, &m);
+#endif
+	}
 	return 0;
 }
 
@@ -7155,28 +7170,32 @@ static int got_skip(struct drbd_connection *connection, struct packet_info *pi)
 	return 0;
 }
 
+#ifdef _WIN32_V9
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_hold(local)
 {
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
 	int node_id;
-
-	for_each_set_bit(node_id, (unsigned long *)&node_ids,
-			 sizeof(node_ids) * BITS_PER_BYTE) {
+#ifdef _WIN32_TODO
+	// for_each_set_bit V9 포팅 필요.
+	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)
 			bitmap_bits |= NODE_MASK(bitmap_bit);
 	}
+#endif
 	return bitmap_bits;
 }
+#endif
 
+#ifdef _WIN32_V9
 static int got_peer_ack(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
-	struct list_head work_list;
+	struct list_head work_list = { 0, };//일단 0 초기화 _WIN32_CHECK
 
 	dagtag = be64_to_cpu(p->dagtag);
 	in_sync = be64_to_cpu(p->mask);
@@ -7198,7 +7217,10 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
+#ifdef _WIN32_TODO
+	// list_cut_position linux kernel func. V9 포팅 필요.
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
+#endif
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
@@ -7225,13 +7247,17 @@ found:
 	}
 	return 0;
 }
+#endif
 
 /* Caller has to hold resource->req_lock */
 void apply_unacked_peer_requests(struct drbd_connection *connection)
 {
 	struct drbd_peer_request *peer_req;
-
+#ifdef _WIN32
+	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->peer_requests, recv_order) {
+#else
 	list_for_each_entry(peer_req, &connection->peer_requests, recv_order) {
+#endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 mask = ~(1 << peer_device->bitmap_index);
@@ -7275,7 +7301,10 @@ static void destroy_request(struct kref *kref)
 		container_of(kref, struct drbd_request, kref);
 
 	list_del(&req->tl_requests);
+#ifdef _WIN32_TODO
+	// mempool_free V9 포팅 필요.
 	mempool_free(req, drbd_request_mempool);
+#endif
 }
 
 static void cleanup_peer_ack_list(struct drbd_connection *connection)
@@ -7359,24 +7388,29 @@ static struct meta_sock_cmd ack_receiver_tbl[] = {
 	[P_TWOPC_NO]        = { sizeof(struct p_twopc_reply), got_twopc_reply },
 	[P_TWOPC_RETRY]     = { sizeof(struct p_twopc_reply), got_twopc_reply },
 };
-
+#ifdef _WIN32_V9
 int drbd_ack_receiver(struct drbd_thread *thi)
 {
 	struct drbd_connection *connection = thi->connection;
 	struct meta_sock_cmd *cmd = NULL;
 	struct packet_info pi;
 	unsigned long pre_recv_jif;
-	int rv;
+	int rv = 0; //일단 0 초기화._WIN32_CHECK
 	void *buffer;
 	int received = 0, rflags = 0;
 	unsigned int header_size = drbd_header_size(connection);
 	int expect   = header_size;
 	bool ping_timeout_active = false;
+#ifdef _WIN32_TODO
+	// linux kernel data type V9 포팅 필요
 	struct sched_param param = { .sched_priority = 2 };
+#endif
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
-
+#ifdef _WIN32_TODO
+	// linux kernel func. V9 포팅 필요
 	rv = sched_setscheduler(current, SCHED_RR, &param);
+#endif
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);
 
@@ -7419,12 +7453,15 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 				rcu_read_lock();
 				t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 				rcu_read_unlock();
-
-				t = wait_event_timeout(connection->ping_wait,
-						       connection->cstate[NOW] < C_CONNECTED,
-						       t);
-				if (t)
+#ifdef _WIN32
+				// 첫번째 인자 t, 마지막 인자 t 맞는지 추후 확인 필요.
+				wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
+#else
+				t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
+#endif
+				if (t) {
 					break;
+				}
 			}
 			drbd_err(connection, "meta connection shut down by peer.\n");
 			goto reconnect;
@@ -7506,6 +7543,7 @@ disconnect:
 
 	return 0;
 }
+#endif
 
 void drbd_send_acks_wf(struct work_struct *ws)
 {
