@@ -232,4 +232,9 @@ static __inline int list_empty_careful(const struct list_head *head)
 	for (n = list_entry(pos->member.next, type, member);		\
 			&pos->member != (head);						\
 			pos = n, n = list_entry(n->member.next, type, member))
+
+
+
+
+#define hlist_entry(ptr, type, member) container_of(ptr,type,member)
 #endif _LIST_H__

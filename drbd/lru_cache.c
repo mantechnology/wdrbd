@@ -115,13 +115,15 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	struct lc_element **element = NULL;
 	struct lru_cache *lc;
 	struct lc_element *e;
+#ifndef _WIN32_V9
 	unsigned cache_obj_size = kmem_cache_size(cache);
+#endif
 	unsigned i;
-
+#ifndef _WIN32_V9
 	WARN_ON(cache_obj_size < e_size);
 	if (cache_obj_size < e_size)
 		return NULL;
-
+#endif
 	/* e_count too big; would probably fail the allocation below anyways.
 	 * for typical use cases, e_count should be few thousand at most. */
 	if (e_count > LC_MAX_ACTIVE)
@@ -214,10 +216,11 @@ static void lc_free_by_index(struct lru_cache *lc, unsigned i)
 	void *p = lc->lc_element[i];
 	WARN_ON(!p);
 	if (p) {
-		p -= lc->element_off; // _WIN32_CHECK: p 를 (size_t) 캐스팅 해야하는지 재확인
 #ifdef _WIN32
-		ExFreeToNPagedLookasideList(lc->lc_cache, p);
+        (size_t)p -= lc->element_off;
+        ExFreeToNPagedLookasideList(lc->lc_cache, p);
 #else
+		p -= lc->element_off;
 		kmem_cache_free(lc->lc_cache, p);
 #endif
 	}
@@ -267,7 +270,11 @@ void lc_reset(struct lru_cache *lc)
 	for (i = 0; i < lc->nr_elements; i++) {
 		struct lc_element *e = lc->lc_element[i];
 		void *p = e;
-		p -= lc->element_off; // _WIN32_CHECK: p 를 (size_t) 캐스팅 해야하는지 재확인
+#ifdef _WIN32
+        (size_t)p -= lc->element_off;
+#else
+		p -= lc->element_off;
+#endif
 		memset(p, 0, lc->element_size);
 		/* re-init it */
 		e->lc_index = i;
