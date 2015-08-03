@@ -1193,7 +1193,11 @@ static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 * 17c157c8.  We replace the compat_genlmsg_put() from 482a8524.
 */
 #ifdef _WIN32
+
+extern void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
+		           struct genl_family *family, int flags, u8 cmd);
 #define genlmsg_put compat_genlmsg_put
+
 extern void *genlmsg_put_reply(struct msg_buff *skb,
                          struct genl_info *info,
                          struct genl_family *family,
@@ -1378,7 +1382,11 @@ static inline u32 prandom_u32(void)
 #ifdef COMPAT_HAVE_NETLINK_CB_PORTID
 #define NETLINK_CB_PORTID(skb) NETLINK_CB(skb).portid
 #else
+#ifdef _WIN32
+#define NETLINK_CB_PORTID(skb) ((struct netlink_callback *)((void *)&skb))->nlh->nlmsg_pid
+#else
 #define NETLINK_CB_PORTID(skb) NETLINK_CB(skb).pid
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_PROC_PDE_DATA

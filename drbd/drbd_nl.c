@@ -80,6 +80,13 @@ err_out:
 }
 #endif
 
+#ifdef _WIN32_V9
+__inline int capable(int cap)
+{
+    return false;
+}
+#endif
+
 /* .doit */
 // int drbd_adm_create_resource(struct sk_buff *skb, struct genl_info *info);
 // int drbd_adm_delete_resource(struct sk_buff *skb, struct genl_info *info);
@@ -3020,7 +3027,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 		drbd_msg_put_info(adm_ctx->reply_skb, from_attrs_err_to_txt(err));
 		goto fail;
 	}
-#ifdef _WIN32_V9
+#ifdef _WIN32_CHECK
 	transport_name = new_net_conf->transport_name[0] ? new_net_conf->transport_name : "tcp";
 	tr_class = drbd_get_transport_class(transport_name);
 	if (!tr_class) {
@@ -3207,7 +3214,7 @@ fail_free_connection:
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
-#ifdef _WIN32_V9
+#ifdef _WIN32_CHECK
 	drbd_put_transport_class(tr_class);
 #endif
 fail:
@@ -3913,7 +3920,11 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&resource->adm_mutex);
 
 	if (info->attrs[DRBD_NLA_INVALIDATE_PARMS]) {
+#ifdef _WIN32
+        struct invalidate_parms inv = { 0 };
+#else
 		struct invalidate_parms inv = {};
+#endif
 		int err;
 
 		inv.sync_from_peer_node_id = -1;
@@ -4101,11 +4112,11 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 		return retcode;
 	resource = adm_ctx.device->resource;
 	mutex_lock(&resource->adm_mutex);
-
+#ifdef _WIN32_CHECK
 	retcode = stable_state_change(resource,
 		change_io_susp_user(resource, true,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-
+#endif
 	mutex_unlock(&resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -4166,11 +4177,11 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-
+#ifdef _WIN32_CHECK
 	retcode = stable_state_change(adm_ctx.device->resource,
 		change_disk_state(adm_ctx.device, D_OUTDATED,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-
+#endif
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -4235,7 +4246,11 @@ int drbd_adm_dump_resources(struct sk_buff *skb, struct netlink_callback *cb)
 
 	rcu_read_lock();
 	if (cb->args[0]) {
+#ifdef _WIN32
+        for_each_resource_rcu(struct drbd_resource, resource, &drbd_resources)
+#else
 		for_each_resource_rcu(resource, &drbd_resources)
+#endif
 			if (resource == (struct drbd_resource *)cb->args[0])
 				goto found_resource;
 		err = 0;  /* resource was probably deleted */
@@ -4263,6 +4278,7 @@ put_result:
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL);
 	if (err)
 		goto out;
+#ifdef _WIN32_CHECK
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
@@ -4274,6 +4290,7 @@ put_result:
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
+#endif
 	cb->args[0] = (long)resource;
 	genlmsg_end(skb, dh);
 	err = 0;
@@ -4306,10 +4323,12 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
+#ifdef _WIN32_CHECK
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << BDI_async_congested) |
 				      (1 << BDI_sync_congested));
+#endif
 		put_ldev(device);
 	}
 	s->dev_size = drbd_get_capacity(device->this_bdev);
@@ -4346,7 +4365,11 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
+#ifdef _WIN32
+    struct drbd_device *device;
+#else
 	struct drbd_device *uninitialized_var(device);
+#endif
 	int minor, err, retcode;
 	struct drbd_genlmsghdr *dh;
 	struct device_info device_info;
@@ -4374,7 +4397,11 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		err = 0;
 		goto out;
 	}
+#ifdef _WIN32
+    idr_for_each_entry_continue(struct idr *, idr_to_search, device, minor) {
+#else
 	idr_for_each_entry_continue(idr_to_search, device, minor) {
+#endif
 		retcode = NO_ERROR;
 		goto put_result;  /* only one iteration */
 	}
@@ -4441,7 +4468,11 @@ int connection_paths_to_skb(struct sk_buff *skb, struct drbd_connection *connect
 		goto nla_put_failure;
 
 	/* array of such paths. */
+#ifdef _WIN32
+    list_for_each_entry(struct drbd_path, path, &connection->transport.paths, list) {
+#else
 	list_for_each_entry(path, &connection->transport.paths, list) {
+#endif
 		if (nla_put(skb, T_my_addr, path->my_addr_len, &path->my_addr))
 			goto nla_put_failure;
 		if (nla_put(skb, T_peer_addr, path->peer_addr_len, &path->peer_addr))
@@ -4462,7 +4493,11 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource = NULL, *next_resource;
+#ifdef _WIN32
+    struct drbd_connection *connection;
+#else
 	struct drbd_connection *uninitialized_var(connection);
+#endif
 	int err = 0, retcode;
 	struct drbd_genlmsghdr *dh;
 	struct connection_info connection_info;
@@ -4495,7 +4530,11 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
     next_resource:
 	rcu_read_unlock();
 	mutex_lock(&resource->conf_update);
+#ifdef _WIN32
+    rcu_read_lock_w32_inner();
+#else
 	rcu_read_lock();
+#endif
 	if (cb->args[2]) {
 #ifdef _WIN32
         for_each_connection_rcu(struct drbd_connection, connection, resource)
@@ -4517,7 +4556,11 @@ found_connection:
 
 no_more_connections:
 	if (cb->args[1] == ITERATE_RESOURCES) {
+#ifdef _WIN32
+        for_each_resource_rcu(struct drbd_resource, next_resource, &drbd_resources) {
+#else
 		for_each_resource_rcu(next_resource, &drbd_resources) {
+#endif
 			if (next_resource == resource)
 				goto found_resource;
 		}
@@ -4617,7 +4660,11 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
+#ifdef _WIN32
+    struct drbd_device *device;
+#else
 	struct drbd_device *uninitialized_var(device);
+#endif
 	struct drbd_peer_device *peer_device = NULL;
 	int minor, err, retcode;
 	struct drbd_genlmsghdr *dh;
@@ -4823,7 +4870,9 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
+#ifndef _WIN32_V9
 	down(&device->resource->state_sem);
+#endif
 
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
@@ -4888,7 +4937,9 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 out_dec:
 	put_ldev(device);
 out:
+#ifndef _WIN32_V9
 	up(&device->resource->state_sem);
+#endif
 out_nolock:
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
@@ -4947,19 +4998,22 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 
 	if (adm_ctx.resource)
 		goto out;
-
+#ifdef _WIN32
+    if (res_opts.node_id >= DRBD_NODE_ID_MAX) {
+#else
 	if (res_opts.node_id < 0 || res_opts.node_id >= DRBD_NODE_ID_MAX) {
+#endif
 		pr_err("drbd: invalid node id (%d)\n", res_opts.node_id);
 		retcode = ERR_INVALID_REQUEST;
 		goto out;
 	}
-
+#ifndef _WIN32_V9
 	if (!try_module_get(THIS_MODULE)) {
 		pr_err("drbd: Could not get a module reference\n");
 		retcode = ERR_INVALID_REQUEST;
 		goto out;
 	}
-
+#endif
 	mutex_lock(&resources_mutex);
 	resource = drbd_create_resource(adm_ctx.resource_name, &res_opts);
 	mutex_unlock(&resources_mutex);
@@ -4972,7 +5026,9 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		notify_resource_state(NULL, 0, resource, &resource_info, NOTIFY_CREATE);
 		mutex_unlock(&notification_mutex);
 	} else {
+#ifndef _WIN32_V9
 		module_put(THIS_MODULE);
+#endif
 		retcode = ERR_NOMEM;
 	}
 
@@ -5107,6 +5163,9 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
+#ifdef _WIN32
+    unsigned char  oldIrql_wLock;
+#endif
 	synchronize_rcu();
 	drbd_put_device(device);
 
@@ -5156,6 +5215,9 @@ static int adm_del_resource(struct drbd_resource *resource)
 
 	list_del_rcu(&resource->resources);
 	drbd_debugfs_resource_cleanup(resource);
+#ifdef _WIN32
+    unsigned char  oldIrql_wLock;
+#endif
 	synchronize_rcu();
 	drbd_free_resource(resource);
 out:
@@ -5187,7 +5249,11 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	mutex_lock(&resource->conf_update);
+#ifdef _WIN32
+    for_each_connection_safe(struct drbd_connection, connection, tmp, resource) {
+#else
 	for_each_connection_safe(connection, tmp, resource) {
+#endif
 		retcode = conn_try_disconnect(connection, 0);
 		if (retcode >= SS_SUCCESS) {
 			del_connection(connection);
@@ -5617,7 +5683,11 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 
 	cb->args[5] = 2;  /* number of iterations */
 	mutex_lock(&resources_mutex);
+#ifdef _WIN32
+    for_each_resource(struct drbd_resource, resource, &drbd_resources) {
+#else
 	for_each_resource(resource, &drbd_resources) {
+#endif
 		struct drbd_state_change *state_change;
 
 		state_change = remember_state_change(resource, GFP_KERNEL);
@@ -5650,7 +5720,11 @@ int drbd_adm_forget_peer(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_config_context adm_ctx;
 	struct drbd_resource *resource;
 	struct drbd_device *device;
+#ifdef _WIN32
+    struct forget_peer_parms parms = { 0 };
+#else
 	struct forget_peer_parms parms = { };
+#endif
 	enum drbd_state_rv retcode;
 	int vnr, peer_node_id, err;
 
