@@ -2582,7 +2582,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 			unsigned char digest[64];
 #ifdef _WIN32_V9
 			// if (req->win32_page_buf)
-			drbd_csum_bio(peer_device, peer_device->connection->integrity_tfm, req, digest);
+			drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest);
 #else
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest);
 #endif
