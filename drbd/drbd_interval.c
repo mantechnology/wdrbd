@@ -148,6 +148,9 @@ drbd_find_overlap(struct rb_root *root, sector_t sector, unsigned int size)
 			node = node->rb_left;
 		} else if (here->sector < end &&
 			   sector < here->sector + (here->size >> 9)) {
+#ifdef _WIN32 // V8에서 기록했던 코멘트임. 추후 성능개선에 참고를 위해 기록을 남김.		
+            // _WIN32: DRBD_DOC: crystal 32QD 시험시 진입 됨. 작은 크기 I/O 성능에 영향을 주는지 파악 필요
+#endif
 			overlap = here;
 			break;
 		} else if (sector >= here->sector) {
