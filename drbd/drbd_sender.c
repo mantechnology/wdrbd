@@ -2257,7 +2257,7 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
 {
-	unsigned long old, new;
+	unsigned long old = 0, new = 0; //_WIN32_CHECK 임시 0으로 초기화.
 #ifdef _WIN32_TODO // cmpxchg linux kernel func. V9 포팅 필요.
 	do {
 		old = *flags;
@@ -2359,7 +2359,7 @@ static struct drbd_request *__next_request_for_connection(
 static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connection *connection)
 {
 	struct bio_and_error m;
-	struct drbd_request *req;
+	struct drbd_request *req = NULL; //_WIN32_CHECK 임시 NULL 로 초기화.
 	struct drbd_request *req_oldest = NULL;
 	struct drbd_request *tmp = NULL;
 	struct drbd_device *device;
@@ -2635,8 +2635,13 @@ static int process_one_request(struct drbd_connection *connection)
 
 	spin_unlock_irq(&connection->resource->req_lock);
 
-	if (m.bio)
+	if (m.bio) {
+#ifdef _WIN32
+		complete_master_bio(device, &m, __func__, __LINE__ );
+#else
 		complete_master_bio(device, &m);
+#endif
+	}
 
 	maybe_send_write_hint(connection);
 
@@ -2749,8 +2754,13 @@ int drbd_sender(struct drbd_thread *thi)
 		tl_next_request_for_connection(connection);
 		__req_mod(req, SEND_CANCELED, peer_device, &m);
 		spin_unlock_irq(&connection->resource->req_lock);
-		if (m.bio)
+		if (m.bio) {
+#ifdef _WIN32
+			complete_master_bio(device, &m, __func__, __LINE__ );
+#else
 			complete_master_bio(device, &m);
+#endif
+		}
 	}
 
 	/* cancel all still pending works */
@@ -2776,16 +2786,29 @@ int drbd_worker(struct drbd_thread *thi)
 		drbd_thread_current_set_cpu(thi);
 
 		if (list_empty(&work_list)) {
-			bool w, r, d, p;
+
+#ifdef _WIN32_V9 // V8에서 wait_for_work 로 구현되었다가 V9에서 wait_event_interruptible 로 구현변경.
+			bool w, r, d, p; int sig;
 
 			update_worker_timing_details(resource, dequeue_work_batch);
+
+#ifdef _WIN32
+			wait_event_interruptible(sig, resource->work.q_wait,
+				(w = dequeue_work_batch(&resource->work, &work_list),
+				r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
+				d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
+				p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
+				w || r || d || p));
+
+#else
 			wait_event_interruptible(resource->work.q_wait,
 				(w = dequeue_work_batch(&resource->work, &work_list),
-				 r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
-				 d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
-				 p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
-				 w || r || d || p));
+				r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
+				d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
+				p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
+				w || r || d || p));
 
+#endif
 			if (p) {
 				update_worker_timing_details(resource, do_unqueued_peer_device_work);
 				do_unqueued_peer_device_work(resource);
@@ -2799,6 +2822,7 @@ int drbd_worker(struct drbd_thread *thi)
 				update_worker_timing_details(resource, do_unqueued_resource_work);
 				do_unqueued_resource_work(resource);
 			}
+#endif
 		}
 
 		if (signal_pending(current)) {
