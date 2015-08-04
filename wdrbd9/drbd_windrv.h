@@ -1281,6 +1281,9 @@ typedef struct _PTR_ENTRY
 #define BIO_MAX_PAGES		256		//_WIN32_CHECK Windows환경으로 포팅필요
 #define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //_WIN32_CHECK Windows환경으로 포팅필요
 
+//asm-x86 , asm-generic 
+#define	EDESTADDRREQ	89	/* Destination address required */
+
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end
 ////////////////////////////////////////////////////////////////////

@@ -26,6 +26,8 @@
 #include <drbd_transport.h>
 #include "drbd_wrappers.h"
 #include <wsk2.h>
+#include <linux-compat\drbd_endian.h>
+
 #else
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -325,10 +327,12 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		buffer = *buf;
 		rv = dtt_recv_short(socket, buffer, size, flags & ~CALLER_BUFFER);
 	} else if (flags & GROW_BUFFER) {
+
+#ifdef _WIN32_CHECK 
 		TR_ASSERT(transport, *buf == tcp_transport->rbuf[stream].base);
 		buffer = tcp_transport->rbuf[stream].pos;
 		TR_ASSERT(transport, (buffer - *buf) + size <= PAGE_SIZE);
-
+#endif
 		rv = dtt_recv_short(socket, buffer, size, flags & ~GROW_BUFFER);
 	} else {
 		buffer = tcp_transport->rbuf[stream].base;
@@ -338,8 +342,11 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 			*buf = buffer;
 	}
 
-	if (rv > 0)
-		tcp_transport->rbuf[stream].pos = buffer + rv;
+	if (rv > 0) {
+#ifdef _WIN32_CHECK
+		tcp_transport->rbuf[stream].pos = buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.
+#endif
+	}
 
 	return rv;
 }
@@ -382,6 +389,7 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 
 	if (socket) {
+#ifdef _WIN32_TODO // 일단 TODO
 		struct sock *sk = socket->sk;
 		struct tcp_sock *tp = tcp_sk(sk);
 
@@ -389,12 +397,14 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 		stats->unacked_send = tp->write_seq - tp->snd_una;
 		stats->send_buffer_size = sk->sk_sndbuf;
 		stats->send_buffer_used = sk->sk_wmem_queued;
+#endif
 	}
 }
 
 static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 			   unsigned int rcv)
 {
+#ifdef _WIN32_TODO //socket 의 WSK Socket 이 send buffer, rcv buffer size 필드를 가지고 있지 않다. V9 포팅 필요.
 	/* open coded SO_SNDBUF, SO_RCVBUF */
 	if (snd) {
 		socket->sk->sk_sndbuf = snd;
@@ -404,13 +414,19 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 		socket->sk->sk_rcvbuf = rcv;
 		socket->sk->sk_userlocks |= SOCK_RCVBUF_LOCK;
 	}
+#endif
 }
 
 static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret_socket)
 {
 	const char *what;
 	struct socket *socket;
+#ifdef _WIN32
+	struct sockaddr_storage_win my_addr, peer_addr;
+#else
 	struct sockaddr_storage my_addr, peer_addr;
+#endif
+	
 	struct net_conf *nc;
 	int err;
 	int sndbuf_size, rcvbuf_size, connect_int;
@@ -436,6 +452,8 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	   peer_addr.ss_family, so use a copy here. */
 	peer_addr = dtt_path(transport)->peer_addr;
 
+#ifdef _WIN32_TODO //V9 포팅 필요
+
 	what = "sock_create_kern";
 	err = sock_create_kern(my_addr.ss_family, SOCK_STREAM, IPPROTO_TCP, &socket);
 	if (err < 0) {
@@ -443,8 +461,10 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 		goto out;
 	}
 
+
 	socket->sk->sk_rcvtimeo =
 	socket->sk->sk_sndtimeo = connect_int * HZ;
+
 	dtt_setbufsize(socket, sndbuf_size, rcvbuf_size);
 
 	/* explicitly bind to the configured IP as source IP
@@ -487,7 +507,7 @@ out:
 	} else {
 		*ret_socket = socket;
 	}
-
+#endif
 	return err;
 }
 
@@ -516,21 +536,44 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
+#ifdef _WIN32
+	SIZE_T		out = 0;
+	NTSTATUS	Status;
+#else
 	int rr;
 	char tb[4];
-
+#endif
 	if (!*socket)
 		return false;
 
-	rr = dtt_recv_short(*socket, tb, 4, MSG_DONTWAIT | MSG_PEEK);
-
-	if (rr > 0 || rr == -EAGAIN) {
+#ifdef _WIN32 // 기존 구현 유지 ??? 소켓의 상태를 확인하고 상태가 유효하지 않으면 free 시키는 로직 => 소켓 상태 확인이...BACKLOG 정보 확인으로 가능한가?... history 를 알려주세요~...
+	
+	Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
+	if (NT_SUCCESS(Status))	{
+		if (out > 0) {
+			WDRBD_INFO("socket(0x%p), ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->name, out); // _WIN32
+		}
 		return true;
-	} else {
+	}
+	else {
+		WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
 		sock_release(*socket);
 		*socket = NULL;
 		return false;
 	}
+#else
+	rr = dtt_recv_short(*socket, tb, 4, MSG_DONTWAIT | MSG_PEEK);
+
+	if (rr > 0 || rr == -EAGAIN) {
+		return true;
+	}
+	else {
+		sock_release(*socket);
+		*socket = NULL;
+		return false;
+	}
+#endif
+
 }
 
 static bool dtt_connection_established(struct drbd_transport *transport,
@@ -545,7 +588,13 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 
 	rcu_read_lock();
 	nc = rcu_dereference(transport->net_conf);
-	timeout = (nc->sock_check_timeo ?: nc->ping_timeo) * HZ / 10;
+
+#ifdef _WIN32
+	timeout = (nc->sock_check_timeo ? nc->sock_check_timeo : nc->ping_timeo) * HZ / 10;
+#else
+	timeout = (nc->sock_check_timeo ? : nc->ping_timeo) * HZ / 10;
+#endif
+
 	rcu_read_unlock();
 	schedule_timeout_interruptible(timeout);
 
@@ -562,7 +611,10 @@ static bool dtt_wait_connect_cond(struct dtt_waiter *waiter)
 
 	spin_lock_bh(&listener->waiters_lock);
 	rv = waiter->waiter.listener->pending_accepts > 0 || waiter->socket != NULL;
+
+#ifdef _WIN32_TODO // 일단 TODO
 	spin_unlock_bh(&listener->waiters_lock);
+#endif
 
 	return rv;
 }
@@ -599,7 +651,15 @@ static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socke
 	timeo += (prandom_u32() & 1) ? timeo / 7 : -timeo / 7; /* 28.5% random jitter */
 
 retry:
+
+#ifdef _WIN32
+	wait_event_interruptible_timeout(timeo, waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
+#else
 	timeo = wait_event_interruptible_timeout(waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
+#endif	
+
+#ifdef _WIN32_TODO //V9 포팅 필요
+
 	if (timeo <= 0)
 		return -EAGAIN;
 
@@ -609,7 +669,10 @@ retry:
 		waiter->socket = NULL;
 	} else if (listener->listener.pending_accepts > 0) {
 		listener->listener.pending_accepts--;
+
+#ifdef _WIN32_TODO // 일단 TODO
 		spin_unlock_bh(&listener->listener.waiters_lock);
+#endif
 
 		s_estab = NULL;
 		err = kernel_accept(listener->s_listen, &s_estab, 0);
@@ -667,15 +730,21 @@ retry:
 	}
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	*socket = s_estab;
+#endif
 	return 0;
 
 retry_locked:
+
+#ifdef _WIN32_TODO
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	if (s_estab) {
 		sock_release(s_estab);
 		s_estab = NULL;
 	}
+#endif
 	goto retry;
+
+
 }
 
 static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, struct socket *socket)
@@ -692,7 +761,10 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 		rcu_read_unlock();
 		return -EIO;
 	}
+#ifdef _WIN32_TODO // V9 포팅 필요.
 	socket->sk->sk_rcvtimeo = nc->ping_timeo * 4 * HZ / 10;
+#endif
+
 	rcu_read_unlock();
 
 	err = dtt_recv_short(socket, h, header_size, 0);
@@ -702,8 +774,10 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 		return err;
 	}
 	if (h->magic != cpu_to_be32(DRBD_MAGIC)) {
+#ifdef _WIN32_TODO // V9 포팅 필요.
 		tr_err(transport, "Wrong magic value 0x%08x in receive_first_packet\n",
 			 be32_to_cpu(h->magic));
+#endif
 		return -EINVAL;
 	}
 	return be16_to_cpu(h->command);
@@ -715,6 +789,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	void (*state_change)(struct sock *sock);
 
 	state_change = listener->original_sk_state_change;
+#ifdef _WIN32_TODO // sock V9 포팅필요
 	if (sock->sk_state == TCP_ESTABLISHED) {
 		struct drbd_waiter *waiter;
 
@@ -724,6 +799,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		wake_up(&waiter->wait);
 		spin_unlock(&listener->listener.waiters_lock);
 	}
+#endif
 	state_change(sock);
 }
 
@@ -740,7 +816,12 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 static int dtt_create_listener(struct drbd_transport *transport, struct drbd_listener **ret_listener)
 {
 	int err, sndbuf_size, rcvbuf_size;
+#ifdef _WIN32
+	struct sockaddr_storage_win my_addr;
+#else
 	struct sockaddr_storage my_addr;
+#endif
+	
 	struct dtt_listener *listener = NULL;
 	struct socket *s_listen;
 	struct net_conf *nc;
@@ -758,12 +839,14 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 
 	my_addr = dtt_path(transport)->my_addr;
 
+#ifdef _WIN32_TODO // 일단 TODO V9 포팅 필요.
 	what = "sock_create_kern";
 	err = sock_create_kern(my_addr.ss_family, SOCK_STREAM, IPPROTO_TCP, &s_listen);
 	if (err) {
 		s_listen = NULL;
 		goto out;
 	}
+
 
 	s_listen->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 	dtt_setbufsize(s_listen, sndbuf_size, rcvbuf_size);
@@ -806,6 +889,7 @@ out:
 		tr_err(transport, "%s failed, err = %d\n", what, err);
 
 	kfree(listener);
+#endif
 
 	return err;
 }
@@ -859,7 +943,9 @@ static int dtt_connect(struct drbd_transport *transport)
 				csocket = s;
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
 			} else {
+#ifdef _WIN32_TODO //V9 포팅 필요.
 				tr_err(transport, "Logic error in conn_connect()\n");
+#endif
 				goto out_eagain;
 			}
 		}
@@ -881,7 +967,9 @@ retry:
 			switch (fp) {
 			case P_INITIAL_DATA:
 				if (dsocket) {
+#ifdef _WIN32_TODO //V9 포팅 필요.
 					tr_warn(transport, "initial packet S crossed\n");
+#endif
 					sock_release(dsocket);
 					dsocket = s;
 					goto randomize;
@@ -891,7 +979,9 @@ retry:
 			case P_INITIAL_META:
 				set_bit(RESOLVE_CONFLICTS, &transport->flags);
 				if (csocket) {
+#ifdef _WIN32_TODO //V9 포팅 필요.
 					tr_warn(transport, "initial packet M crossed\n");
+#endif
 					sock_release(csocket);
 					csocket = s;
 					goto randomize;
@@ -899,7 +989,9 @@ retry:
 				csocket = s;
 				break;
 			default:
+#ifdef _WIN32_TODO //V9 포팅 필요.
 				tr_warn(transport, "Error receiving initial packet\n");
+#endif
 				sock_release(s);
 randomize:
 				if (prandom_u32() & 1)
@@ -915,6 +1007,7 @@ randomize:
 
 	dtt_put_listener(&waiter);
 
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	dsocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 	csocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 
@@ -923,7 +1016,7 @@ randomize:
 
 	dsocket->sk->sk_priority = TC_PRIO_INTERACTIVE_BULK;
 	csocket->sk->sk_priority = TC_PRIO_INTERACTIVE;
-
+#endif
 	/* NOT YET ...
 	 * sock.socket->sk->sk_sndtimeo = transport->net_conf->timeout*HZ/10;
 	 * sock.socket->sk->sk_rcvtimeo = MAX_SCHEDULE_TIMEOUT;
@@ -944,9 +1037,10 @@ randomize:
 	timeout = nc->timeout * HZ / 10;
 	rcu_read_unlock();
 
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	dsocket->sk->sk_sndtimeo = timeout;
 	csocket->sk->sk_sndtimeo = timeout;
-
+#endif
 	return 0;
 
 out_eagain:
@@ -967,8 +1061,9 @@ static void dtt_set_rcvtimeo(struct drbd_transport *transport, enum drbd_stream 
 		container_of(transport, struct drbd_tcp_transport, transport);
 
 	struct socket *socket = tcp_transport->stream[stream];
-
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	socket->sk->sk_rcvtimeo = timeout;
+#endif
 }
 
 static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream)
@@ -977,8 +1072,9 @@ static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream 
 		container_of(transport, struct drbd_tcp_transport, transport);
 
 	struct socket *socket = tcp_transport->stream[stream];
-
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	return socket->sk->sk_rcvtimeo;
+#endif
 }
 
 static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream stream)
@@ -994,9 +1090,10 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk;
-
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
+#endif
 }
 
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
