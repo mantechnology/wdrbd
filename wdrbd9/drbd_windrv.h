@@ -80,6 +80,10 @@
 
 #define __init                  NTAPI
 
+#ifdef _WIN32_V9
+#define __exit                  NTAPI
+#endif
+
 #define NANOSECONDS(nanos) \
 (((signed __int64)(nanos)) / 100L)
 

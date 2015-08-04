@@ -20,7 +20,7 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 #ifdef _WIN32
-
+#include "windows/drbd.h"
 #include <linux/drbd_genl_api.h>
 #include <drbd_protocol.h>
 #include <drbd_transport.h>
@@ -320,7 +320,7 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
-	void *buffer;
+	void *buffer = NULL; //임시 NULL 초기화
 	int rv;
 
 	if (flags & CALLER_BUFFER) {
@@ -428,7 +428,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 #endif
 	
 	struct net_conf *nc;
-	int err;
+	int err = 0;//임시 NULL 초기화
 	int sndbuf_size, rcvbuf_size, connect_int;
 
 	rcu_read_lock();
@@ -815,7 +815,7 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 static int dtt_create_listener(struct drbd_transport *transport, struct drbd_listener **ret_listener)
 {
-	int err, sndbuf_size, rcvbuf_size;
+	int err = 0/*임시 0 초기화*/, sndbuf_size, rcvbuf_size;
 #ifdef _WIN32
 	struct sockaddr_storage_win my_addr;
 #else
@@ -1096,6 +1096,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 #endif
 }
 
+#ifdef _WIN32_V9 // 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다.
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
 			 struct page *page, int offset, size_t size, unsigned msg_flags)
 {
@@ -1103,6 +1104,9 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
 
+	int err = -EIO; // 임시 정의.
+
+#ifdef _WIN32_TODO
 	mm_segment_t oldfs = get_fs();
 	int len = size;
 	int err = -EIO;
@@ -1134,9 +1138,10 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 
 	if (len == 0)
 		err = 0;
-
+#endif
 	return err;
 }
+#endif
 
 static void dtt_cork(struct socket *socket)
 {
@@ -1184,8 +1189,10 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 		dtt_nodelay(socket);
 		break;
 	case NOSPACE:
+#ifdef _WIN32_TODO //V9 포팅 필요.
 		if (socket->sk->sk_socket)
 			set_bit(SOCK_NOSPACE, &socket->sk->sk_socket->flags);
+#endif
 		break;
 	case QUICKACK:
 		dtt_quickack(socket);
@@ -1199,6 +1206,7 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 
 static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 {
+#ifdef _WIN32_TODO //V9 포팅 필요.
 	struct sock *sk = socket->sk;
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -1208,6 +1216,7 @@ static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 		   tp->write_seq - tp->snd_una);
 	seq_printf(m, "send buffer size: %u Byte\n", sk->sk_sndbuf);
 	seq_printf(m, "send buffer used: %u Byte\n", sk->sk_wmem_queued);
+#endif
 }
 
 static void dtt_debugfs_show(struct drbd_transport *transport, struct seq_file *m)
@@ -1217,13 +1226,17 @@ static void dtt_debugfs_show(struct drbd_transport *transport, struct seq_file *
 	enum drbd_stream i;
 
 	/* BUMP me if you change the file format/content/presentation */
+#ifdef _WIN32_TODO // V9 포팅 필요
 	seq_printf(m, "v: %u\n\n", 0);
+#endif
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		struct socket *socket = tcp_transport->stream[i];
 
 		if (socket) {
+#ifdef _WIN32_TODO // V9 포팅 필요
 			seq_printf(m, "%s stream\n", i == DATA_STREAM ? "data" : "control");
+#endif
 			dtt_debugfs_show_stream(m, socket);
 		}
 	}
@@ -1269,5 +1282,7 @@ static void __exit dtt_cleanup(void)
 	drbd_unregister_transport_class(&tcp_transport_class);
 }
 
+#ifndef _WIN32
 module_init(dtt_initialize)
 module_exit(dtt_cleanup)
+#endif
