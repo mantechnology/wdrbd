@@ -592,7 +592,10 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 		prepare_to_wait(&device->ee_wait, &wait, TASK_UNINTERRUPTIBLE);
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_kick_lo(device);
-#ifdef _WIN32_TODO // schedule 의 인자 v9 형식으로 변경 필요.
+
+#ifdef _WIN32 //drbd_req.c 포팅부를 보고 따라함.
+		schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#else
 		schedule();
 #endif
 		finish_wait(&device->ee_wait, &wait);

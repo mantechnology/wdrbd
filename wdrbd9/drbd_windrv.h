@@ -1271,6 +1271,16 @@ typedef struct _PTR_ENTRY
 #define MSG_DONTROUTE	4
 #define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
+// asm-x86
+#define PAGE_SHIFT	12		//_WIN32_CHECK Windows환경으로 포팅필요
+
+//pagemap.h
+#define PAGE_CACHE_SHIFT	PAGE_SHIFT //_WIN32_CHECK Windows환경으로 포팅필요
+
+// Bio.h
+#define BIO_MAX_PAGES		256		//_WIN32_CHECK Windows환경으로 포팅필요
+#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //_WIN32_CHECK Windows환경으로 포팅필요
+
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end
 ////////////////////////////////////////////////////////////////////

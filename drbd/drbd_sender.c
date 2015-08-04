@@ -24,8 +24,12 @@
 */
 #ifdef _WIN32
 #include "windows/drbd.h"
-#include "linux-compat/sched.h"
-#include "linux-compat/wait.h"
+#include <linux-compat/sched.h>
+#include <linux-compat/wait.h>
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
+
 #else
 #include <linux/module.h>
 #include <linux/drbd.h>
@@ -38,9 +42,7 @@
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #endif
-#include "drbd_int.h"
-#include "drbd_protocol.h"
-#include "drbd_req.h"
+
 
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
@@ -578,7 +580,11 @@ int w_send_uuids(struct drbd_work *w, int cancel)
 	return 0;
 }
 
+#ifdef _WIN32
+void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2)
+#else
 void resync_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
 
@@ -1806,8 +1812,11 @@ void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->rs_sect_in, 0);
 	atomic_set(&peer_device->device->rs_sect_ev, 0);  /* FIXME: ??? */
 	peer_device->rs_in_flight = 0;
+
+#ifdef _WIN32_CHECK	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.
 	peer_device->rs_last_events =
 		drbd_backing_bdev_events(peer_device->device->ldev->backing_bdev->bd_contains->bd_disk);
+#endif
 
 	/* Updating the RCU protected object in place is necessary since
 	   this function gets called from atomic context.
@@ -1820,7 +1829,11 @@ void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
 	rcu_read_unlock();
 }
 
+#ifdef _WIN32
+void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2)
+#else
 void start_resync_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
 	drbd_peer_device_post_work(peer_device, RS_START);
@@ -1958,6 +1971,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		}
 	}
 
+#ifdef _WIN32_TODO // down_trylock V9 포팅 필요.
 	if (down_trylock(&device->resource->state_sem)) {
 		/* Retry later and let the worker make progress in the
 		 * meantime; two-phase commits depend on that.  */
@@ -1967,6 +1981,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
+#endif
+
 	lock_all_resources();
 	clear_bit(B_RS_H_DONE, &peer_device->flags);
 	if (connection->cstate[NOW] < C_CONNECTED ||
@@ -2242,10 +2258,12 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
 {
 	unsigned long old, new;
+#ifdef _WIN32_TODO // cmpxchg linux kernel func. V9 포팅 필요.
 	do {
 		old = *flags;
 		new = old & ~mask;
 	} while (cmpxchg(flags, old, new) != old);
+#endif
 	return old & mask;
 }
 
@@ -2318,8 +2336,15 @@ static bool dequeue_work_batch(struct drbd_work_queue *queue, struct list_head *
 static struct drbd_request *__next_request_for_connection(
 		struct drbd_connection *connection, struct drbd_request *r)
 {
+#ifdef _WIN32_TODO //list_prepare_entry V9 포팅 필요.
 	r = list_prepare_entry(r, &connection->resource->transfer_log, tl_requests);
+#endif
+
+#ifdef _WIN32 //V8 기존 구현 유지.
+	list_for_each_entry_continue(struct drbd_request, r, &connection->resource->transfer_log, tl_requests) {
+#else
 	list_for_each_entry_continue(r, &connection->resource->transfer_log, tl_requests) {
+#endif
 		int vnr = r->device->vnr;
 		struct drbd_peer_device *peer_device = conn_peer_device(connection, vnr);
 		unsigned s = drbd_req_state_by_peer_device(r, peer_device);
@@ -2350,8 +2375,12 @@ static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connect
 	 * without it disappearing.
 	 */
 restart:
+
+#ifdef _WIN32_TODO // list_prepare_entry V9 포팅 필요.
 	req = list_prepare_entry(tmp, &connection->resource->transfer_log, tl_requests);
-	list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+#endif
+
+	list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
 		/* potentially needed in complete_master_bio below */
 		device = req->device;
 		peer_device = conn_peer_device(connection, device->vnr);
@@ -2394,8 +2423,13 @@ restart:
 		 * complete the master bio, outside of the lock. */
 		if (m.bio || need_resched()) {
 			spin_unlock_irq(&connection->resource->req_lock);
-			if (m.bio)
+			if (m.bio) {
+#ifdef _WIN32
+				complete_master_bio(device, &m, __func__, __LINE__ );
+#else
 				complete_master_bio(device, &m);
+#endif
+			}
 			cond_resched();
 			spin_lock_irq(&connection->resource->req_lock);
 			goto restart;
@@ -2498,7 +2532,9 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 		if (get_t_state(&connection->sender) != RUNNING)
 			break;
 
+#ifdef _WIN32_TODO //schedule V9 포팅 필요.
 		schedule();
+#endif
 		/* may be woken up for other things but new work, too,
 		 * e.g. if the current epoch got closed.
 		 * In which case we send the barrier above. */
@@ -2506,7 +2542,11 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 	finish_wait(&connection->sender_work.q_wait, &wait);
 
 	/* someone may have changed the config while we have been waiting above. */
+#ifdef _WIN32 //V8 구현 유지.
+	rcu_read_lock_w32_inner();
+#else
 	rcu_read_lock();
+#endif
 	nc = rcu_dereference(connection->transport.net_conf);
 	cork = nc ? nc->tcp_cork : 0;
 	rcu_read_unlock();
