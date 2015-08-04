@@ -121,15 +121,21 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 	down_read(&transport_classes_lock);
 
 	seq_puts(seq, "Transports (api:" __stringify(DRBD_TRANSPORT_API_VERSION) "):");
+#ifdef _WIN32
+	list_for_each_entry(struct drbd_transport_class, tc, &transport_classes, list) {
+#else
 	list_for_each_entry(tc, &transport_classes, list) {
+#endif
+#ifdef _WIN32_CHECK // drbd_transport_class 의 module 필드 어떻게 처리할 지 추후 검토 필요.
 		seq_printf(seq, " %s (%s)", tc->name,
 				tc->module->version ? tc->module->version : "NONE");
+#endif
 	}
 	seq_putc(seq, '\n');
 
 	up_read(&transport_classes_lock);
 }
-
+#ifdef _WIN32_V9 //addr_equal 함수 V9 버전으로 새롭게 변경.
 static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
 {
 	if (addr1->ss_family != addr2->ss_family)
@@ -139,10 +145,12 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		const struct sockaddr_in6 *v6a1 = (const struct sockaddr_in6 *)addr1;
 		const struct sockaddr_in6 *v6a2 = (const struct sockaddr_in6 *)addr2;
 
+#ifdef _WIN32_TODO //ipv6 addr 비교 함수 V9 포팅필요... V9에서 ipv6 지원하는가?...???
 		if (!ipv6_addr_equal(&v6a1->sin6_addr, &v6a2->sin6_addr))
 			return false;
 		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
 			return v6a1->sin6_scope_id == v6a2->sin6_scope_id;
+#endif
 		return true;
 	} else /* AF_INET, AF_SSOCKS, AF_SDP */ {
 		const struct sockaddr_in *v4a1 = (const struct sockaddr_in *)addr1;
@@ -151,6 +159,7 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		return v4a1->sin_addr.s_addr == v4a2->sin_addr.s_addr;
 	}
 }
+#endif
 
 static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
 {
@@ -177,9 +186,13 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection)
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_listener *listener;
 	struct drbd_path *path;
-
+#ifdef _WIN32
+	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+		list_for_each_entry(struct drbd_path, path, &connection->transport.paths, list) {
+#else
 	list_for_each_entry(listener, &resource->listeners, list) {
 		list_for_each_entry(path, &connection->transport.paths, list) {
+#endif
 			if (addr_and_port_equal(&listener->listen_addr, &path->my_addr)) {
 				kref_get(&listener->kref);
 				return listener;
@@ -212,8 +225,10 @@ int drbd_get_listener(struct drbd_waiter *waiter,
 			list_add(&waiter->list, &listener->waiters);
 			waiter->listener = listener;
 		}
-		spin_unlock_bh(&resource->listeners_lock);
 
+#ifdef _WIN32_TODO // spin_unlock_bh linux kernel func. V9 포팅 필요.
+		spin_unlock_bh(&resource->listeners_lock);
+#endif
 		if (new_listener)
 			new_listener->destroy(new_listener);
 
@@ -239,7 +254,10 @@ static void drbd_listener_destroy(struct kref *kref)
 
 	spin_lock_bh(&resource->listeners_lock);
 	list_del(&listener->list);
+
+#ifdef _WIN32_TODO //spin_unlock_bh V9 포팅 필요.
 	spin_unlock_bh(&resource->listeners_lock);
+#endif
 
 	listener->destroy(listener);
 }
@@ -262,7 +280,11 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 		ad2 = list_entry(waiter->listener->waiters.next, struct drbd_waiter, list);
 		wake_up(&ad2->wait);
 	}
+
+#ifdef _WIN32_TODO //spin_unlock_bh V9 포팅 필요.
 	spin_unlock_bh(&resource->listeners_lock);
+#endif
+
 	kref_put(&waiter->listener->kref, drbd_listener_destroy);
 	waiter->listener = NULL;
 }
@@ -272,8 +294,13 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 	struct drbd_waiter *waiter;
 	struct drbd_path *path;
 
+#ifdef _WIN32
+	list_for_each_entry(struct drbd_waiter, waiter, &listener->waiters, list) {
+		list_for_each_entry(struct drbd_path, path, &waiter->transport->paths, list) {
+#else
 	list_for_each_entry(waiter, &listener->waiters, list) {
 		list_for_each_entry(path, &waiter->transport->paths, list) {
+#endif
 			if (addr_equal(&path->peer_addr, addr))
 				return waiter;
 		}
