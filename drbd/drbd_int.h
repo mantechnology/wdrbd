@@ -2117,7 +2117,12 @@ static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 }
 
 
+#ifdef _WIN32_V9 //기존 V8 의 mdev 인자 제거.
+extern void drbd_csum_bio(struct crypto_hash *, struct drbd_request *, void *);
+#else
 extern void drbd_csum_bio(struct crypto_hash *, struct bio *, void *);
+#endif
+
 extern void drbd_csum_ee(struct crypto_hash *, struct drbd_peer_request *, void *);
 /* worker callbacks */
 extern int w_e_end_data_req(struct drbd_work *, int);

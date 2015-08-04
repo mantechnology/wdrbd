@@ -64,10 +64,14 @@ struct mutex resources_mutex;
 /* used for synchronous meta data and bitmap IO
  * submitted by drbd_md_sync_page_io()
  */
+#ifdef _WIN32_V9
+BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS //V8에 없는 함수 V9 포팅필요
+#else 
 BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
+#endif
 {
 	struct drbd_device *device;
-
+#ifdef _WIN32_TODO
 	BIO_ENDIO_FN_START;
 
 	device = bio->bi_private;
@@ -90,8 +94,20 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	bio_put(bio);
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
+#endif
 
+#ifdef _WIN32
+#ifdef DRBD_TRACE
+	{
+		static int cnt = 0;
+		WDRBD_TRACE("drbd_md_endio done.(%d).............!!!\n", cnt++);
+	}
+#endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
+
 }
 
 /* reads on behalf of the partner,
@@ -177,8 +193,12 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	if (connection->cstate[NOW] == C_CONNECTED) {
 		kref_get(&device->kref); /* put is in drbd_send_acks_wf() */
+
+#ifdef _WIN32_TODO	//queue_work 리턴형요구..기존 V8 포팅된 함수와 맞지 않다. queue_work linux kerenl func.	
 		if (!queue_work(connection->ack_sender, &peer_device->send_acks_work))
 			kref_put(&device->kref, drbd_destroy_device);
+#endif
+
 	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
@@ -194,8 +214,14 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 /* writes on behalf of the partner, or resync writes,
  * "submitted" by the receiver.
  */
+#ifdef _WIN32
+BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS
+#else
 BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
+#endif
 {
+
+#ifdef _WIN32_TODO
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
@@ -229,7 +255,20 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		else
 			drbd_endio_read_sec_final(peer_req);
 	}
+#endif
+
+#ifdef _WIN32
+#ifdef DRBD_TRACE
+	{
+		static int cnt = 0;
+		WDRBD_TRACE("drbd_peer_request_endio done.(%d).............!!!\n", cnt++);
+	}
+#endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
+
 }
 
 void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *device)
@@ -241,8 +280,13 @@ void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *
 
 /* read, readA or write requests on R_PRIMARY coming from drbd_make_request
  */
+#ifdef _WIN32
+BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS
+#else
 BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
+#endif
 {
+#ifdef _WIN32_TODO
 	unsigned long flags;
 	struct drbd_request *req = bio->bi_private;
 	struct drbd_device *device = req->device;
@@ -322,17 +366,40 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	if (m.bio)
 		complete_master_bio(device, &m);
+#endif
+
+#ifdef _WIN32
+#ifdef DRBD_TRACE	
+	{
+		static int cnt = 0;
+		WDRBD_TRACE("drbd_request_endio done.(%d).................IRQL(%d)!!!\n", cnt++, KeGetCurrentIrql());
+	}
+#endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
 }
 
+//v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.
 void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, void *digest)
 {
+#ifdef _WIN32
 	struct hash_desc desc;
-	struct scatterlist sg;
 	struct page *page = peer_req->pages;
-	struct page *tmp;
 	unsigned len;
-
+#else
+	struct scatterlist sg;
+	struct page *tmp;
+#endif
+	
+#ifdef _WIN32 //V8 구현 유지.
+	// DRBD_UPGRADE: CRYPTO
+	// discard typecasting and support other type such as md4, sha.
+	// use int 4 bytes in desc variable
+	crypto_hash_update(&desc, peer_req->win32_big_page, peer_req->i.size); // ignore comple warning
+	crypto_hash_final(&desc, digest);
+#else
 	desc.tfm = tfm;
 	desc.flags = 0;
 
@@ -347,18 +414,31 @@ void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, v
 	}
 	/* and now the last, possibly only partially used page */
 	len = peer_req->i.size & (PAGE_SIZE - 1);
-	sg_set_page(&sg, page, len ?: PAGE_SIZE, 0);
+	sg_set_page(&sg, page, len ? : PAGE_SIZE, 0);
 	crypto_hash_update(&desc, &sg, sg.length);
 	crypto_hash_final(&desc, digest);
+#endif
 }
 
+#ifdef _WIN32
+void drbd_csum_bio(struct crypto_hash *tfm, struct drbd_request *req, void *digest)
+#else
 void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
+#endif
 {
+#ifdef _WIN32
+	struct hash_desc desc;
+#else
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
-	struct hash_desc desc;
 	struct scatterlist sg;
-
+#endif
+	
+#ifdef _WIN32 //V8 구현 유지.
+	if (req->win32_page_buf)
+		crypto_hash_update(&desc, req->win32_page_buf, req->i.size); // ignore compile warning
+	crypto_hash_final(&desc, digest);
+#else
 	desc.tfm = tfm;
 	desc.flags = 0;
 
@@ -370,6 +450,7 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 		crypto_hash_update(&desc, &sg, sg.length);
 	}
 	crypto_hash_final(&desc, digest);
+#endif
 }
 
 /* MAYBE merge common code with w_e_end_ov_req */
