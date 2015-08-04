@@ -81,8 +81,27 @@ err_out:
 #endif
 
 #ifdef _WIN32_V9
-__inline int capable(int cap)
+#if 0
+/**
+392  * capable - Determine if the current task has a superior capability in effect
+393  * @cap: The capability to be tested for
+394  *
+395  * Return true if the current task has the given superior capability currently
+396  * available for use, false if not.
+397  *
+398  * This sets PF_SUPERPRIV on the task if the capability is available on the
+399  * assumption that it's about to be used.
+400  */
+401 bool capable(int cap)
+402 {
+403         return ns_capable(&init_user_ns, cap);
+404 }
+#endif
+
+bool capable(int cap)
 {
+	// only used here drbd_nl.c
+	// 
     return false;
 }
 #endif
@@ -145,9 +164,28 @@ DEFINE_MUTEX(notification_mutex);
 /* used blkdev_get_by_path, to claim our meta data device(s) */
 static char *drbd_m_holder = "Hands off! this is DRBD's meta data device.";
 
+#ifdef _WIN32 // _WIN32_CHECK: netlink에서도 불려짐으로 전역함수로 처리.
+void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
+#else
 static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
+#endif
 {
 	genlmsg_end(skb, genlmsg_data(nlmsg_data(nlmsg_hdr(skb))));
+#ifdef NL_PACKET_MSG
+    {
+        struct nlmsghdr * pnlh = (struct nlmsghdr *)skb->data;
+        struct genlmsghdr * pgenlh = nlmsg_data(pnlh);
+
+        WDRBD_TRACE("len(%d), type(0x%x), flags(0x%x), seq(%d), pid(%d), cmd(%d), version(%d)\n",
+            pnlh->nlmsg_len, pnlh->nlmsg_type, pnlh->nlmsg_flags, pnlh->nlmsg_seq, pnlh->nlmsg_pid, pgenlh->cmd, pgenlh->version);
+
+        if(pnlh->nlmsg_flags & NLM_F_ECHO)
+        {
+            WDRBD_TRACE("done\n", 0);
+            return;
+        }
+    }
+#endif
 	if (genlmsg_reply(skb, info))
 		pr_err("error sending genl reply\n");
 }
@@ -436,6 +474,9 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 
 	adm_ctx->reply_dh->ret_code = retcode;
 	drbd_adm_send_reply(adm_ctx->reply_skb, info);
+#ifdef _WIN32_V9 // _WIN32_CHECK: V8에서 free 가 삽입되었는데 V9에서도 필요한지 확인 필요
+	//nlmsg_free(adm_ctx.reply_skb);
+#endif
 	adm_ctx->reply_skb = NULL;
 	return 0;
 }
@@ -790,6 +831,9 @@ static int _try_outdate_peer_async(void *data)
 
 	kref_debug_put(&connection->kref_debug, 4);
 	kref_put(&connection->kref, drbd_destroy_connection);
+#ifdef _WIN32 // _WIN32_CHECK; CLI 스레드 종결지점 재확인.
+	PsTerminateSystemThread(STATUS_SUCCESS); 
+#endif
 	return 0;
 }
 
@@ -798,7 +842,18 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 	struct task_struct *opa;
 
 	kref_get(&connection->kref);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+	HANDLE		hThread = NULL;
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+	Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, _try_outdate_peer_async, (void *)connection);
+	if (!NT_SUCCESS(Status))
+	{
+		WDRBD_ERROR("PsCreateSystemThread(_try_outdate_peer_async) failed with status 0x%08X\n", Status);
+
+		//kref_put(&tconn->kref, &conn_destroy); //_WIN32_CHECK: 미사용 규명.
+	}
+#else
 	kref_debug_get(&connection->kref_debug, 4);
 	/* We may just have force_sig()'ed this thread
 	 * to get it out of some blocking network function.
@@ -812,17 +867,6 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 		kref_debug_put(&connection->kref_debug, 4);
 		kref_put(&connection->kref, drbd_destroy_connection);
 	}
-#else
-    HANDLE		hThread = NULL;
-    NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
-    Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, _try_outdate_peer_async, (void *)connection);
-    if (!NT_SUCCESS(Status))
-    {
-        WDRBD_ERROR("PsCreateSystemThread(_try_outdate_peer_async) failed with status 0x%08X\n", Status);
-
-        //kref_put(&tconn->kref, &conn_destroy);
-    }
 #endif
 }
 
@@ -843,7 +887,7 @@ static bool barrier_pending(struct drbd_resource *resource)
 	return rv;
 }
 
-#ifdef _WIN32
+#ifdef _WIN32_V9
 #define try try_val
 #endif
 enum drbd_state_rv
@@ -859,9 +903,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force)
 
 
 retry:
-#ifdef _WIN32_CHECK
 	down(&resource->state_sem);
-#endif
 	if (role == R_PRIMARY) {
 		struct drbd_connection *connection;
 
@@ -907,9 +949,7 @@ retry:
 			/* It might be that the receiver tries to start resync, and
 			   sleeps on state_sem. Give it up, and retry in a short
 			   while */
-#ifdef _WIN32_CHECK
 			up(&resource->state_sem);
-#endif
 			schedule_timeout_interruptible(timeout);
 			goto retry;
 		}
@@ -1065,12 +1105,10 @@ retry:
 	}
 
 out:
-#ifdef _WIN32_CHECK
 	up(&resource->state_sem);
-#endif
 	return rv;
 }
-#ifdef _WIN32
+#ifdef _WIN32_V9
 #undef try
 #endif
 
@@ -1102,7 +1140,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock();
+	genl_unlock(); // _WIN32_CHECK: 언제 lock 되는가?
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
@@ -1777,6 +1815,9 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	struct disk_conf *new_disk_conf, *old_disk_conf;
 	struct drbd_peer_device *peer_device;
 	int err;
+#ifdef _WIN32
+	KIRQL oldIrql;
+#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -1830,12 +1871,20 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		goto fail_unlock;
 	}
 
+	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
 	lock_all_resources();
 	retcode = drbd_resync_after_valid(device, new_disk_conf->resync_after);
 	if (retcode == NO_ERROR) {
+#ifdef _WIN32
+		synchronize_rcu_w32_wlock();
+#endif
 		rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
+#ifdef _WIN32
+		synchronize_rcu();
+#endif
 		drbd_resync_after_changed(device);
 	}
+	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
 	unlock_all_resources();
 
 	if (retcode != NO_ERROR)
@@ -1863,9 +1912,10 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	}
 
 #ifdef _WIN32
-    unsigned char  oldIrql_wLock;
-#endif
+	// moved // _WIN32_CHECK: V8에서는 이곳 도달 이전에 synchronize_rcu가 모두 처리되었다는 의미로 기억됨. null처리 시 락이 모두 처리되었느지 확인
+#else
 	synchronize_rcu();
+#endif
 	kfree(old_disk_conf);
 	mod_timer(&device->request_timer, jiffies + HZ);
 	goto success;
@@ -1876,7 +1926,12 @@ fail_unlock:
 	kfree(new_disk_conf);
 success:
 	if (retcode != NO_ERROR)
+#ifdef _WIN32_V9
+		{} // dummy
+	// _WIN32_CHECK: 이곳 도달 이전에 synchronize_rcu가 처리되어여 할 것으로 보임. null처리 시 락이 모두 처리되는지 확인
+#else
 		synchronize_rcu();
+#endif
 	put_ldev(device);
  out:
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
@@ -2131,7 +2186,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			    drbd_suspended(device)));
 	/* and for other previously queued resource work */
 	drbd_flush_workqueue(&resource->work);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 // _WIN32_CHECK
+	rv = 1; // dummy test!!!
+#else
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
 #endif
@@ -2717,8 +2774,14 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
+#ifdef _WIN32
+	synchronize_rcu_w32_wlock();
+#endif
 	rcu_assign_pointer(connection->transport.net_conf, new_net_conf);
 	connection->fencing_policy = new_net_conf->fencing_policy;
+#ifdef _WIN32
+	synchronize_rcu();
+#endif
 
 	if (!rsr) {
 		crypto_free_hash(connection->csums_tfm);
@@ -2742,10 +2805,10 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 
 	mutex_unlock(&connection->mutex[DATA_STREAM]);
 	mutex_unlock(&connection->resource->conf_update);
-#ifdef _WIN32
-    unsigned char  oldIrql_wLock;
-#endif
+#ifndef _WIN32
+
 	synchronize_rcu();
+#endif
 	kfree(old_net_conf);
 
 	if (connection->cstate[NOW] >= C_CONNECTED) {
@@ -2837,11 +2900,10 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	err = adjust_resync_fifo(peer_device, new_peer_device_conf, &old_plan);
 	if (err)
 		goto fail;
-
-	rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
-#ifdef _WIN32
-    unsigned char  oldIrql_wLock;
+#ifdef _WIN32_V9
+	synchronize_rcu_w32_wlock();
 #endif
+	rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
 	synchronize_rcu();
 	kfree(old_peer_device_conf);
 	kfree(old_plan);
@@ -3473,8 +3535,8 @@ void del_connection(struct drbd_connection *connection)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifdef _WIN32
-    unsigned char  oldIrql_wLock;
+#ifdef _WIN32_V9
+	synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
 #endif
 	synchronize_rcu();
 	drbd_put_connection(connection);
@@ -3667,11 +3729,11 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		old_disk_conf = device->ldev->disk_conf;
 		*new_disk_conf = *old_disk_conf;
 		new_disk_conf->disk_size = (sector_t)rs.resize_size;
+#ifdef _WIN32_V9
+		synchronize_rcu_w32_wlock();
+#endif
 		rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
 		mutex_unlock(&device->resource->conf_update);
-#ifdef _WIN32
-        unsigned char  oldIrql_wLock;
-#endif
 		synchronize_rcu();
 		kfree(old_disk_conf);
 	}
@@ -4257,8 +4319,9 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
-#ifdef _WIN32
+#ifdef _WIN32_V9
     struct drbd_device *device;
+	device = 0; // _WIN32_CHECK: 미 초기화 오류 회피
 #else
 	struct drbd_device *uninitialized_var(device);
 #endif
@@ -4385,8 +4448,9 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource = NULL, *next_resource;
-#ifdef _WIN32
+#ifdef _WIN32_V9
     struct drbd_connection *connection;
+	connection = 0; // _WIN32_CHECK: 미 초기화 오류 회피
 #else
 	struct drbd_connection *uninitialized_var(connection);
 #endif
@@ -4548,8 +4612,9 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
-#ifdef _WIN32
+#ifdef _WIN32_V9
     struct drbd_device *device;
+	device = 0; // WIN32_CHECK: 미 초기화 오류 회피
 #else
 	struct drbd_device *uninitialized_var(device);
 #endif

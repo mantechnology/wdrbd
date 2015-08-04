@@ -1322,6 +1322,7 @@ extern void down_read(struct semaphore *sem);
 extern void up_write(struct semaphore *sem);
 extern void up_read(struct semaphore *sem);
 
+//uninitialized_va 매트로 처리!
 
 #endif
 
