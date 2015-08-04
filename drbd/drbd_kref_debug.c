@@ -1,5 +1,9 @@
 ﻿#include <drbd_kref_debug.h>
 
+#ifdef _WIN32_V9
+// _WIN32_CHECK: CONFIG_KREF_DEBUG 디버깅을 하지 않겠다는 의도로 일단 회피처리
+// #ifdef CONFIG_KREF_DEBUG // && _WIN32
+#else
 struct kref_debug_class kref_class_resource = {
 	"resource", {
 		[1] = "kthread",
@@ -46,3 +50,4 @@ struct kref_debug_class kref_class_device = {
 };
 
 
+#endif
