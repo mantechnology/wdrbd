@@ -20,6 +20,12 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 #ifdef _WIN32
+
+#include <linux/drbd_genl_api.h>
+#include <drbd_protocol.h>
+#include <drbd_transport.h>
+#include "drbd_wrappers.h"
+#include <wsk2.h>
 #else
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -29,16 +35,13 @@
 #include <linux/tcp.h>
 #include <linux/highmem.h>
 #endif
-#include <linux/drbd_genl_api.h>
-#include <drbd_protocol.h>
-#include <drbd_transport.h>
-#include "drbd_wrappers.h"
 
-
+#ifndef _WIN32
 MODULE_AUTHOR("Roland Kammerer <roland.kammerer@linbit.com>");
 MODULE_DESCRIPTION("TCP (SDP, SSOCKS) transport layer for DRBD");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");
+#endif
 
 struct buffer {
 	void *base;
@@ -83,7 +86,9 @@ static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 static struct drbd_transport_class tcp_transport_class = {
 	.name = "tcp",
 	.instance_size = sizeof(struct drbd_tcp_transport),
+#ifdef _WIN32_CHECK // tcp_transport_class 의 module 필드 어떻게 처리할지 검토필요.
 	.module = THIS_MODULE,
+#endif
 	.init = dtt_init,
 	.list = LIST_HEAD_INIT(tcp_transport_class.list),
 };
@@ -108,7 +113,9 @@ static struct drbd_transport_ops dtt_ops = {
 static void dtt_nodelay(struct socket *socket)
 {
 	int val = 1;
+#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_NODELAY, (char *)&val, sizeof(val));
+#endif
 }
 
 int dtt_init(struct drbd_transport *transport)
@@ -120,7 +127,11 @@ int dtt_init(struct drbd_transport *transport)
 	tcp_transport->transport.ops = &dtt_ops;
 	tcp_transport->transport.class = &tcp_transport_class;
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
+#ifdef _WIN32 // V8 구현 유지. 적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요.
+		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // _WIN32_CHECK 임시 Tag '009D'
+#else 
 		void *buffer = (void *)__get_free_page(GFP_KERNEL);
+#endif
 		if (!buffer)
 			goto fail;
 		tcp_transport->rbuf[i].base = buffer;
@@ -130,7 +141,13 @@ int dtt_init(struct drbd_transport *transport)
 
 	return 0;
 fail:
+
+#ifdef _WIN32 //V8구현 유지.
+	kfree((void *)tcp_transport->rbuf[0].base);
+#else
 	free_page((unsigned long)tcp_transport->rbuf[0].base);
+#endif
+	
 	return -ENOMEM;
 }
 
@@ -142,7 +159,10 @@ static struct drbd_path* dtt_path(struct drbd_transport *transport)
 static void dtt_free_one_sock(struct socket *socket)
 {
 	if (socket) {
+#ifdef _WIN32_TODO
+		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 		synchronize_rcu();
+#endif
 		kernel_sock_shutdown(socket, SHUT_RDWR);
 		sock_release(socket);
 	}
@@ -168,7 +188,11 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 
 	if (free_op == DESTROY_TRANSPORT) {
 		for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
+#ifdef _WIN32 //V8 구현 유지.
+			kfree((void *)tcp_transport->rbuf[i].base);
+#else
 			free_page((unsigned long)tcp_transport->rbuf[i].base);
+#endif	
 			tcp_transport->rbuf[i].base = NULL;
 		}
 		path = dtt_path(transport);
@@ -179,23 +203,37 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 	}
 }
 
+#ifdef _WIN32_V9 //한번더 재 검토 필요.
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 		      void *buf, size_t size, unsigned msg_flags)
 {
+#ifdef _WIN32
+	size_t iov_len = size;
+#else
 	struct kvec iov;
 	struct msghdr msg;
+#endif
+	
 	int rv, sent = 0;
 
-	/* THINK  if (signal_pending) return ... ? */
-
+#ifdef _WIN32 
+	// not support. V8 기존 구현 유지.
+#else
 	iov.iov_base = buf;
-	iov.iov_len  = size;
+	iov.iov_len = size;
 
-	msg.msg_name       = NULL;
-	msg.msg_namelen    = 0;
-	msg.msg_control    = NULL;
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
-	msg.msg_flags      = msg_flags | MSG_NOSIGNAL;
+	msg.msg_flags = msg_flags | MSG_NOSIGNAL;
+#endif
+	
+
+	/* THINK  if (signal_pending) return ... ? */
+#ifdef _WIN32_CHECK
+	// 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
+#endif
 
 	do {
 		/* STRANGE
@@ -207,7 +245,11 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
  * do we need to block DRBD_SIG if sock == &meta.socket ??
  * otherwise wake_asender() might interrupt some send_*Ack !
  */
+#ifdef _WIN32
+		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo);
+#else
 		rv = kernel_sendmsg(socket, &msg, &iov, 1, size);
+#endif
 		if (rv == -EAGAIN) {
 			struct drbd_transport *transport = &tcp_transport->transport;
 			enum drbd_stream stream =
@@ -226,18 +268,33 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 		if (rv < 0)
 			break;
 		sent += rv;
+#ifdef _WIN32 //기존 구현 유지
+		(char*)buf += rv;
+		iov_len -= rv;
+#else
 		iov.iov_base += rv;
-		iov.iov_len  -= rv;
+		iov.iov_len -= rv;
+#endif
 	} while (sent < size);
 
-	if (rv <= 0)
+#ifdef _WIN32_CHECK
+	// 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
+#endif
+
+	if (rv <= 0) {
+#ifdef _WIN32_CHECK
+		// 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
+#endif
 		return rv;
+	}
 
 	return sent;
 }
+#endif
 
 static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int flags)
 {
+#ifndef _WIN32
 	struct kvec iov = {
 		.iov_base = buf,
 		.iov_len = size,
@@ -245,8 +302,15 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 	struct msghdr msg = {
 		.msg_flags = (flags ? flags : MSG_WAITALL | MSG_NOSIGNAL)
 	};
+#endif
 
-	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags);
+#ifdef _WIN32
+	flags = WSK_FLAG_WAITALL;
+	return Receive(socket->sk, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
+#else
+	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_WIN32_CHECK 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
+#endif
+
 }
 
 static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, void **buf, size_t size, int flags)
@@ -980,19 +1044,25 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 static void dtt_cork(struct socket *socket)
 {
 	int val = 1;
+#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
+#endif
 }
 
 static void dtt_uncork(struct socket *socket)
 {
 	int val = 0;
+#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
+#endif
 }
 
 static void dtt_quickack(struct socket *socket)
 {
 	int val = 2;
+#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_QUICKACK, (char *)&val, sizeof(val));
+#endif
 }
 
 static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
