@@ -1,8 +1,7 @@
 ﻿#include "drbd_windrv.h"	/// SEO:
 #include "wsk2.h"		/// SEO:
 #include "drbd_wingenl.h"	/// SEO:
-#include "idr.h"
-//#include "../user/libgenl.h"
+#include "linux-compat/idr.h"
 #include "Drbd_int.h"
 
 extern int drbd_tla_parse(struct nlmsghdr *nlh);
@@ -37,39 +36,6 @@ extern int drbd_adm_get_status_all(struct sk_buff *skb, struct netlink_callback 
 extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
-
-static struct genl_ops drbd_genl_ops[]  = {
-#ifdef _WIN32_V9
-	// _WIN32_CHECK: JHKIM: 컴파일 오류 회피
-#else
-	{ _drbd_adm_get_status, DRBD_ADM_GET_STATUS,},
-#endif
-	{ drbd_adm_add_minor, DRBD_ADM_NEW_MINOR,},
-	{ drbd_adm_delete_minor, DRBD_ADM_DEL_MINOR,},
-	{ drbd_adm_new_resource, DRBD_ADM_NEW_RESOURCE,},
-	{ drbd_adm_del_resource, DRBD_ADM_DEL_RESOURCE,},
-	{ drbd_adm_resource_opts, DRBD_ADM_RESOURCE_OPTS,},
-	{ drbd_adm_connect, DRBD_ADM_CONNECT,},
-	{ drbd_adm_net_opts, DRBD_ADM_CHG_NET_OPTS,},
-	{ drbd_adm_disconnect, DRBD_ADM_DISCONNECT,},
-	{ drbd_adm_attach, DRBD_ADM_ATTACH,},
-	{ drbd_adm_disk_opts, DRBD_ADM_CHG_DISK_OPTS,},
-	{ drbd_adm_resize, DRBD_ADM_RESIZE,},
-	{ drbd_adm_set_role, DRBD_ADM_PRIMARY,},
-	{ drbd_adm_set_role, DRBD_ADM_SECONDARY,},
-	{ drbd_adm_new_c_uuid, DRBD_ADM_NEW_C_UUID,},
-	{ drbd_adm_start_ov, DRBD_ADM_START_OV,},
-	{ drbd_adm_detach, DRBD_ADM_DETACH,},
-	{ drbd_adm_invalidate, DRBD_ADM_INVALIDATE,},
-	{ drbd_adm_invalidate_peer, DRBD_ADM_INVAL_PEER,},
-	{ drbd_adm_pause_sync, DRBD_ADM_PAUSE_SYNC,},
-	{ drbd_adm_resume_sync, DRBD_ADM_RESUME_SYNC,},
-	{ drbd_adm_suspend_io, DRBD_ADM_SUSPEND_IO,},
-	{ drbd_adm_resume_io, DRBD_ADM_RESUME_IO,},
-	{ drbd_adm_outdate, DRBD_ADM_OUTDATE,},
-	{ drbd_adm_get_timeout_type, DRBD_ADM_GET_TIMEOUT_TYPE,},
-	{ drbd_adm_down, DRBD_ADM_DOWN,},
-};
 
 static const char *drbd_genl_cmd_to_str(__u8 cmd)
 {
@@ -107,6 +73,46 @@ static const char *drbd_genl_cmd_to_str(__u8 cmd)
 	}
 }
 
+/*
+static struct genl_ops drbd_genl_ops[] = {
+{ .doit = drbd_adm_new_minor, .flags = 0x01, .cmd = DRBD_ADM_NEW_MINOR, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_del_minor, .flags = 0x01, .cmd = DRBD_ADM_DEL_MINOR, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_new_resource, .flags = 0x01, .cmd = DRBD_ADM_NEW_RESOURCE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_del_resource, .flags = 0x01, .cmd = DRBD_ADM_DEL_RESOURCE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_resource_opts, .flags = 0x01, .cmd = DRBD_ADM_RESOURCE_OPTS, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_new_peer, .flags = 0x01, .cmd = DRBD_ADM_NEW_PEER, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_new_path, .flags = 0x01, .cmd = DRBD_ADM_NEW_PATH, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_del_peer, .flags = 0x01, .cmd = DRBD_ADM_DEL_PEER, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_del_path, .flags = 0x01, .cmd = DRBD_ADM_DEL_PATH, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_connect, .flags = 0x01, .cmd = DRBD_ADM_CONNECT, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_net_opts, .flags = 0x01, .cmd = DRBD_ADM_CHG_NET_OPTS, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_disconnect, .flags = 0x01, .cmd = DRBD_ADM_DISCONNECT, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_attach, .flags = 0x01, .cmd = DRBD_ADM_ATTACH, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_disk_opts, .flags = 0x01, .cmd = DRBD_ADM_CHG_DISK_OPTS, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_resize, .flags = 0x01, .cmd = DRBD_ADM_RESIZE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_set_role, .flags = 0x01, .cmd = DRBD_ADM_PRIMARY, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_set_role, .flags = 0x01, .cmd = DRBD_ADM_SECONDARY, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_new_c_uuid, .flags = 0x01, .cmd = DRBD_ADM_NEW_C_UUID, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_start_ov, .flags = 0x01, .cmd = DRBD_ADM_START_OV, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_detach, .flags = 0x01, .cmd = DRBD_ADM_DETACH, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_invalidate, .flags = 0x01, .cmd = DRBD_ADM_INVALIDATE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_invalidate_peer, .flags = 0x01, .cmd = DRBD_ADM_INVAL_PEER, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_pause_sync, .flags = 0x01, .cmd = DRBD_ADM_PAUSE_SYNC, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_resume_sync, .flags = 0x01, .cmd = DRBD_ADM_RESUME_SYNC, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_suspend_io, .flags = 0x01, .cmd = DRBD_ADM_SUSPEND_IO, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_resume_io, .flags = 0x01, .cmd = DRBD_ADM_RESUME_IO, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_outdate, .flags = 0x01, .cmd = DRBD_ADM_OUTDATE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_get_timeout_type, .flags = 0x01, .cmd = DRBD_ADM_GET_TIMEOUT_TYPE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_down, .flags = 0x01, .cmd = DRBD_ADM_DOWN, .policy = drbd_tla_nl_policy, },
+{ .dumpit = drbd_adm_dump_resources, .cmd = DRBD_ADM_GET_RESOURCES, .policy = drbd_tla_nl_policy, },
+{ .dumpit = drbd_adm_dump_devices, .done = drbd_adm_dump_devices_done, .cmd = DRBD_ADM_GET_DEVICES, .policy = drbd_tla_nl_policy, },
+{ .dumpit = drbd_adm_dump_connections, .done = drbd_adm_dump_connections_done, .cmd = DRBD_ADM_GET_CONNECTIONS, .policy = drbd_tla_nl_policy, },
+{ .dumpit = drbd_adm_dump_peer_devices, .done = drbd_adm_dump_peer_devices_done, .cmd = DRBD_ADM_GET_PEER_DEVICES, .policy = drbd_tla_nl_policy, },
+{ .dumpit = drbd_adm_get_initial_state, .cmd = DRBD_ADM_GET_INITIAL_STATE, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_forget_peer, .flags = 0x01, .cmd = DRBD_ADM_FORGET_PEER, .policy = drbd_tla_nl_policy, },
+{ .doit = drbd_adm_peer_device_opts, .flags = 0x01, .cmd = DRBD_ADM_CHG_PEER_DEVICE_OPTS, .policy = drbd_tla_nl_policy, },
+};
+*/
 // globals
 
 struct nlattr *global_attrs[128];
@@ -181,7 +187,7 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
 * @brief    multicast를 위한 전역 소켓 리스트 변수(gSocketList)를 활용하여
 *           리스트내에 있는 socket으로 모두 send를 보내는 일을 한다.
 */
-int drbd_genl_multicast_events(struct msg_buff * skb, const struct sib_info *sib)
+int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 {
     int ret = 0;
 
@@ -352,7 +358,7 @@ VOID NTAPI NetlinkClientThread(PVOID p)
             struct drbd_genlmsghdr * gmh = info.userhdr;
             if (gmh)
             {
-                struct drbd_conf * mdev = minor_to_mdev(gmh->minor);
+                struct drbd_conf * mdev = minor_to_device(gmh->minor);
                 if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
                 {
                     reply_error(NLMSG_ERROR, NLM_F_MULTI, EIO, &info);
@@ -561,7 +567,7 @@ VOID NTAPI NetlinkServerThread(PVOID p)
 }
 #endif
 
-int genlmsg_unicast_wrapper(struct msg_buff *skb, struct genl_info *info)
+int genlmsg_unicast_wrapper(struct sk_buff *skb, struct genl_info *info)
 {
 	int sent;
 
@@ -661,7 +667,7 @@ void NTAPI NetlinkThread(void * pctx)
             struct drbd_genlmsghdr * gmh = info.userhdr;
             if (gmh)
             {
-                struct drbd_conf * mdev = minor_to_mdev(gmh->minor);
+                struct drbd_conf * mdev = minor_to_device(gmh->minor);
                 if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
                 {
                     reply_error(NLMSG_ERROR, NLM_F_MULTI, EIO, &info);
@@ -852,7 +858,7 @@ struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
 }
 
 __inline
-void _genlmsg_init(struct msg_buff * pmsg, size_t size)
+void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 {
     RtlZeroMemory(pmsg, size);
 
@@ -860,9 +866,9 @@ void _genlmsg_init(struct msg_buff * pmsg, size_t size)
     pmsg->end = size - sizeof(*pmsg);
 }
 
-struct msg_buff *genlmsg_new(size_t payload, gfp_t flags, ULONG Tag)
+struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 {
-    struct msg_buff *skb;
+    struct sk_buff *skb;
 
     if (NLMSG_GOODSIZE == payload)
     {
@@ -871,7 +877,7 @@ struct msg_buff *genlmsg_new(size_t payload, gfp_t flags, ULONG Tag)
     }
     else
     {
-        skb = kcalloc(1, sizeof(*skb) + payload, GFP_KERNEL, Tag);
+        skb = kcalloc(1, sizeof(*skb) + payload, GFP_KERNEL, 'lneg');
     }
 
     if (!skb)
@@ -1065,7 +1071,7 @@ NetlinkWorkThread(PVOID context)
         if (gmh)
         {
             minor = gmh->minor;
-            struct drbd_conf * mdev = minor_to_mdev(minor);
+            struct drbd_conf * mdev = minor_to_device(minor);
             if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
             {
                 reply_error(NLMSG_ERROR, NLM_F_MULTI, EIO, pinfo);

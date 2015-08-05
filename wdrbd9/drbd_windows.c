@@ -1916,42 +1916,6 @@ unsigned char *skb_put(struct msg_buff *skb, unsigned int len)
 }     
 #endif // _WIN32_CHECK: JHKIM: 헤더를 맞춰가는 도중 일단 보류. 헤더 분리를 하기 전 버전이 빠를 듯??
 
-struct nlmsghdr *
-	__nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq, int type, int len, int flags)
-{
-	struct nlmsghdr *nlh;
-	int size = nlmsg_msg_size(len);
-
-	nlh = (struct nlmsghdr*)skb_put(skb, NLMSG_ALIGN(size));
-	nlh->nlmsg_type = type;
-	nlh->nlmsg_len = size;
-	nlh->nlmsg_flags = flags;
-	nlh->nlmsg_pid = portid;
-	nlh->nlmsg_seq = seq;
-
-#ifdef _WIN32
-	if (NLMSG_ALIGN(size) - size != 0)
-	{
-#ifdef _WIN32
-		memset((LONG_PTR) nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
-#else
-		memset((long) nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
-#endif
-	}
-#else
-	if (!__builtin_constant_p(size) || NLMSG_ALIGN(size) - size != 0)
-		memset((int) nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
-#endif
-
-	return nlh;
-}
-
-struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32 seq,
-	int type, int payload, int flags)
-{
-	return __nlmsg_put(skb, portid, seq, type, payload, flags);
-}
-
 void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
 				       struct genl_family *family, int flags, u8 cmd)
 {
@@ -2206,7 +2170,7 @@ struct drbd_conf *get_targetdev_by_md(char letter)
                 query_targetdev(pvext);
             }
 
-            struct drbd_conf *mdev = minor_to_mdev(pvext->VolIndex);
+            struct drbd_conf *mdev = minor_to_device(pvext->VolIndex);
             if (mdev && mdev->ldev)
             {
                 if (mdev->ldev->md_bdev->bd_disk->pDeviceExtension->Letter == letter)

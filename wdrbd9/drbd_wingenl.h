@@ -889,6 +889,33 @@ static inline int nla_validate_nested(struct nlattr *start, int maxtype,
 #define nla_for_each_nested(pos, nla, rem) \
 	nla_for_each_attr(pos, nla_data(nla), nla_len(nla), rem)
 
+struct nlmsghdr *
+	__nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq, int type, int len, int flags)
+{
+	struct nlmsghdr *nlh;
+	int size = nlmsg_msg_size(len);
+
+	nlh = (struct nlmsghdr*)skb_put(skb, NLMSG_ALIGN(size));
+	nlh->nlmsg_type = type;
+	nlh->nlmsg_len = size;
+	nlh->nlmsg_flags = flags;
+	nlh->nlmsg_pid = portid;
+	nlh->nlmsg_seq = seq;
+
+	if (NLMSG_ALIGN(size) - size != 0)
+	{
+		memset((int)nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
+	}
+
+	return nlh;
+}
+
+static __inline struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32 seq,
+	int type, int payload, int flags)
+{
+	return __nlmsg_put(skb, portid, seq, type, payload, flags);
+}
+
 static __inline int nlmsg_end(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
     nlh->nlmsg_len = skb_tail_pointer(skb) - (unsigned char *)nlh;

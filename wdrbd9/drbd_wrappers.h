@@ -1184,7 +1184,7 @@ static inline int genlmsg_total_size(int payload)
 * (v2.6.20-rc2).
 */
 #ifndef COMPAT_HAVE_GENLMSG_NEW
-extern void *genlmsg_new(size_t payload, gfp_t flags);
+extern struct sk_buff *genlmsg_new(size_t payload, gfp_t flags);
 #else
 #include <net/genetlink.h>
 

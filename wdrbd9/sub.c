@@ -112,7 +112,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     struct drbd_conf *mdev;
     if (VolumeExtension->Active)
     {
-        mdev = minor_to_mdev(VolumeExtension->VolIndex);
+        mdev = minor_to_device(VolumeExtension->VolIndex);
     }
     else
     {
@@ -264,7 +264,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 		length = irpSp->Parameters.Read.Length;
 	}
 
-	mdev = minor_to_mdev(VolumeExtension->VolIndex);
+	mdev = minor_to_device(VolumeExtension->VolIndex);
 	if (mdev/* && (mdev->state.role == R_PRIMARY)*/)
 	{
 		struct splitInfo *splitInfo = 0;

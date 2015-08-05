@@ -284,7 +284,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
 #ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
+        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
         if (mdev && (R_PRIMARY != mdev->state.role))
         {
             //PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -324,7 +324,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
 #ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
+        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
         if (mdev && (mdev->state.role == R_PRIMARY))
         {
             if (g_read_filter)
@@ -381,7 +381,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
 #ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
+        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
 
         if (mdev/* && (mdev->state.role == R_PRIMARY)*/)
         {
