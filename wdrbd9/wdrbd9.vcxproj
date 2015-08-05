@@ -299,7 +299,6 @@
     <ClCompile Include="..\drbd\drbd_strings_WIN32_V9_CHECK.c" />
     <ClCompile Include="..\drbd\drbd_transport.c" />
     <ClCompile Include="..\drbd\drbd_transport_tcp.c" />
-    <ClCompile Include="..\drbd\drbd_transport_template.c" />
     <ClCompile Include="..\drbd\kref_debug.c" />
     <ClCompile Include="..\drbd\lru_cache.c" />
     <ClCompile Include="data.c" />
