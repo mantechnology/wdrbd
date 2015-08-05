@@ -1340,6 +1340,10 @@ extern void up_read(struct semaphore *sem);
 
 //uninitialized_va 매트로 처리!
 
+// JHKIM:너무 많아서 매트로 처리 
+#define minor_to_mdev minor_to_device
+#define drbd_conf drbd_device
+
 #endif
 
 #define snprintf(a, b, c,...) memset(a, 0, b); sprintf(a, c, ##__VA_ARGS__)

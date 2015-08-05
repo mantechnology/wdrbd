@@ -5226,6 +5226,92 @@ out:
 	return 0;
 }
 
+#ifdef _WIN32_V9
+
+int drbd_adm_down_from_engine(struct drbd_connection *connection)
+{
+	// _WIN32_TODO : dummy 
+	
+	return 0;
+}
+
+#else
+// DRBD_DOC: CLI를 통한 down 이 아니라 엔진에서 직접 불리는 down 명령
+
+int drbd_adm_down_from_engine(struct drbd_tconn *tconn)
+{
+	int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+	struct drbd_conf *mdev;
+	unsigned i;
+
+	if (!tconn) {
+		retcode = ERR_RES_NOT_KNOWN;
+		goto out;
+	}
+
+	/* demote */
+	idr_for_each_entry(&tconn->volumes, mdev, i) {
+		retcode = drbd_set_role(mdev, R_SECONDARY, 0);
+		if (retcode < SS_SUCCESS) {
+			WDRBD_ERROR("failed to demote\n");
+			goto out;
+		}
+	}
+
+	retcode = conn_try_disconnect(tconn, 0);
+	if (retcode < SS_SUCCESS) {
+		WDRBD_ERROR("failed to disconnect\n");
+		goto out;
+	}
+
+	/* detach */
+	idr_for_each_entry(&tconn->volumes, mdev, i) {
+		retcode = adm_detach(mdev, 0);
+		if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
+			WDRBD_ERROR("failed to detach\n");
+			goto out;
+		}
+	}
+
+	/* If we reach this, all volumes (of this tconn) are Secondary,
+	* Disconnected, Diskless, aka Unconfigured. Make sure all threads have
+	* actually stopped, state handling only does drbd_thread_stop_nowait(). */
+	drbd_thread_stop(&tconn->worker);
+
+	/* Now, nothing can fail anymore */
+
+	/* delete volumes */
+	idr_for_each_entry(&tconn->volumes, mdev, i) {
+		retcode = adm_delete_minor(mdev);
+		if (retcode != NO_ERROR) {
+			/* "can not happen" */
+			WDRBD_ERROR("failed to delete volume\n");
+			goto out;
+		}
+	}
+
+	/* delete connection */
+	if (conn_lowest_minor(tconn) < 0) {
+#ifdef _WIN32
+		synchronize_rcu_w32_wlock();
+#endif
+		list_del_rcu(&tconn->all_tconn);
+		synchronize_rcu();
+		kref_put(&tconn->kref, &conn_destroy);
+
+		retcode = NO_ERROR;
+	}
+	else {
+		/* "can not happen" */
+		retcode = ERR_RES_IN_USE;
+		WDRBD_ERROR("failed to delete connection\n");
+	}
+
+out:
+	return  retcode;
+}
+#endif
+
 int drbd_adm_del_resource(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;

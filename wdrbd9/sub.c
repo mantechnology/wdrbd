@@ -7,6 +7,9 @@
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
+#ifdef _WIN32_V9 //헤더파일이 지정해야할 이유 파악
+#include <ntdddisk.h>
+#endif
 
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
@@ -119,6 +122,21 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (mdev)
     {
         // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
+#ifdef _WIN32_V9
+		struct drbd_resource *resource = mdev->resource;
+		struct drbd_connection *connection, *tmp;
+		int ret; 
+
+		for_each_connection_safe(struct drbd_connection, connection, tmp, resource)
+		{
+			ret = drbd_adm_down_from_engine(connection);
+			if (ret != NO_ERROR)
+			{
+				WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
+				// error ignored.
+			}
+		}
+#else
         int ret = drbd_adm_down_from_engine(mdev->tconn);
 
         if (ret != NO_ERROR)
@@ -126,6 +144,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
             // error ignored.
         }
+#endif
         drbdFreeDev(VolumeExtension);
     }
 

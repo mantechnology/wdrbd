@@ -1,4 +1,5 @@
-﻿#ifndef _DRBD_WRAPPERS_H
+﻿// _WIN32_CHECK: JHKIM: 이 파일은 drbd 오리지널인데  wdrbd9 폴더로 이동한 이유는? 확인 후 원복
+#ifndef _DRBD_WRAPPERS_H
 #define _DRBD_WRAPPERS_H
 
 #ifdef _WIN32
@@ -1318,10 +1319,15 @@ static inline void kref_sub(struct kref *kref, unsigned int count,
 
 #ifndef COMPAT_HAVE_IS_ERR_OR_NULL
 #ifdef _WIN32
+#ifdef _WIN32_V9 // JHKIM: V8에서 windows.h 로 이동시킨 이유는 기억이 안남. 일단 V8 방식으로 처리!!!
+//#define	IS_ERR_OR_NULL(p) (!p)
+// windfows.h 로 이동
+#else
 static __inline long IS_ERR_OR_NULL(const void *ptr)
 {
     return !ptr || IS_ERR_VALUE((unsigned long) ptr); 
 }
+#endif
 #else
 static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
 {

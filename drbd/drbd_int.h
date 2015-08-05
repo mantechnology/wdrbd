@@ -1344,11 +1344,11 @@ struct submit_worker {
 	/* protected by ..->resource->req_lock */
 	struct list_head writes;
 
-#ifdef _WIN32_CHECK: 	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
+#ifdef _WIN32 // _WIN32_CHECK: JHKIM:	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
 #ifdef _WIN32_CT
     struct drbd_thread thi;
 #else
-	struct task_struct task; //DRBD_DEBUG
+	struct task_struct task; //DRBD_DEBUG // _WIN32_CHECK:JHKIM: 최종 시점에 _WIN32_CT 매크로를 제거하고 관련 else 파트도 모두 제거 정리!!!
 #endif
 #endif
 };
@@ -1379,7 +1379,11 @@ struct drbd_device {
 	struct kref_debug_info kref_debug;
 
 	/* things that are stored as / read from meta data on disk */
+#ifdef _WIN32_V9 // JHKIM: 이 플랙그는 32비트 용도임. 함수 인자로 전달 시 64 요구됨. 일단 선언을 변경함.
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
 
 	/* configured by drbdsetup */
 	struct drbd_backing_dev *ldev __protected_by(local);
@@ -1506,7 +1510,11 @@ static inline struct drbd_device *minor_to_device(unsigned int minor)
 static inline struct drbd_peer_device *
 conn_peer_device(struct drbd_connection *connection, int volume_number)
 {
+#ifdef _WIN32_V9
+	return (struct drbd_peer_device *)idr_find(&connection->peer_devices, volume_number);
+#else
 	return idr_find(&connection->peer_devices, volume_number);
+#endif
 }
 
 static inline unsigned drbd_req_state_by_peer_device(struct drbd_request *req,
@@ -2377,7 +2385,11 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+	ep = EP_PASS_ON; // _WIN32_CHECK: JHKIM: 컴파일 오류 회피
+#else
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+#endif
 	rcu_read_unlock();
 	switch (ep) {
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */

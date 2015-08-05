@@ -1803,6 +1803,9 @@ uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length)
 	return crc;
 }
 
+#ifdef _WIN32_V9 // JHKIM: move to list.h ???
+// JHKIM: move to list.h ???
+#else
 inline void __list_add_rcu(struct list_head *new, struct list_head *prev, struct list_head *next)
 {
 	new->next = next;
@@ -1821,6 +1824,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 {
      __list_add_rcu(new, head->prev, head);
 }
+#endif
 
  struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
  {
@@ -1869,11 +1873,14 @@ struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 //
 // porting netlink interface 
 //
-
+#ifdef _WIN32_V9
+ // _WIN32_CHECK: JHKIM: move to drbd_wingenl.h !!!
+#else
 void nlmsg_free(struct msg_buff *skb)
 {
 	kfree(skb);
 }
+
 
 int nla_len(const struct nlattr *nla)
 {
@@ -1978,7 +1985,7 @@ void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 {
 
 }
-
+#endif
 #ifdef _WIN32 // _WIN32_V9
 int _DRBD_ratelimit(char * __FILE, int __LINE)
 { 
@@ -2040,6 +2047,9 @@ int _DRBD_ratelimit(size_t ratelimit_jiffies, size_t ratelimit_burst, struct drb
 }
 #endif
 
+#ifdef _WIN32_V9
+ // _WIN32_CHECK: JHKIM: disable!
+#else
 bool _expect(long exp, struct drbd_conf *mdev, char *file, int line)
 {
 	if (!exp)
@@ -2049,7 +2059,7 @@ bool _expect(long exp, struct drbd_conf *mdev, char *file, int line)
 	}
 	return exp;
 }
-
+#endif
 static int idr_max(int layers)
 {
 	int bits = min_t(int, layers * IDR_BITS, MAX_IDR_SHIFT);
