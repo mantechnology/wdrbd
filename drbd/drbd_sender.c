@@ -2257,7 +2257,12 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
 {
+#ifdef _WIN32_V9
 	unsigned long old = 0, new = 0; //_WIN32_CHECK 임시 0으로 초기화.
+#else
+	unsigned long old, new; 
+#endif
+	
 #ifdef _WIN32_TODO // cmpxchg linux kernel func. V9 포팅 필요.
 	do {
 		old = *flags;
@@ -2359,7 +2364,11 @@ static struct drbd_request *__next_request_for_connection(
 static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connection *connection)
 {
 	struct bio_and_error m;
+#ifdef _WIN32_V9
 	struct drbd_request *req = NULL; //_WIN32_CHECK 임시 NULL 로 초기화.
+#else
+	struct drbd_request *req; 
+#endif
 	struct drbd_request *req_oldest = NULL;
 	struct drbd_request *tmp = NULL;
 	struct drbd_device *device;

@@ -7603,5 +7603,7 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
 }
 
+#ifdef _WIN32_V9
 EXPORT_SYMBOL(drbd_alloc_pages); /* for transports */
 EXPORT_SYMBOL(drbd_free_pages);
+#endif

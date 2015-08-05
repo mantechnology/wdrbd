@@ -320,7 +320,11 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
+#ifdef _WIN32_V9
 	void *buffer = NULL; //임시 NULL 초기화
+#else
+	void *buffer;
+#endif
 	int rv;
 
 	if (flags & CALLER_BUFFER) {
@@ -428,7 +432,11 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 #endif
 	
 	struct net_conf *nc;
+#ifdef _WIN32_V9
 	int err = 0;//임시 NULL 초기화
+#else
+	int err;
+#endif
 	int sndbuf_size, rcvbuf_size, connect_int;
 
 	rcu_read_lock();
@@ -815,10 +823,12 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 static int dtt_create_listener(struct drbd_transport *transport, struct drbd_listener **ret_listener)
 {
-	int err = 0/*임시 0 초기화*/, sndbuf_size, rcvbuf_size;
+	
 #ifdef _WIN32
+	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
 #else
+	int err , sndbuf_size, rcvbuf_size;
 	struct sockaddr_storage my_addr;
 #endif
 	
@@ -1104,7 +1114,9 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
 
+#ifdef _WIN32_V9
 	int err = -EIO; // 임시 정의.
+#endif
 
 #ifdef _WIN32_TODO
 	mm_segment_t oldfs = get_fs();
@@ -1282,7 +1294,7 @@ static void __exit dtt_cleanup(void)
 	drbd_unregister_transport_class(&tcp_transport_class);
 }
 
-#ifndef _WIN32
+#ifdef _WIN32_CHECK
 module_init(dtt_initialize)
 module_exit(dtt_cleanup)
 #endif

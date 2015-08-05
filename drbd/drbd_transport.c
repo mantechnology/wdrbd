@@ -362,7 +362,7 @@ bool drbd_should_abort_listening(struct drbd_transport *transport)
 }
 
 
-
+#ifdef _WIN32_V9 // 
 /* Network transport abstractions */
 EXPORT_SYMBOL_GPL(drbd_register_transport_class);
 EXPORT_SYMBOL_GPL(drbd_unregister_transport_class);
@@ -371,3 +371,4 @@ EXPORT_SYMBOL_GPL(drbd_put_listener);
 EXPORT_SYMBOL_GPL(drbd_find_waiter_by_addr);
 EXPORT_SYMBOL_GPL(drbd_stream_send_timed_out);
 EXPORT_SYMBOL_GPL(drbd_should_abort_listening);
+#endif
