@@ -1914,6 +1914,7 @@ unsigned char *skb_put(struct msg_buff *skb, unsigned int len)
 
 	return tmp;
 }     
+#endif // _WIN32_CHECK: JHKIM: 헤더를 맞춰가는 도중 일단 보류. 헤더 분리를 하기 전 버전이 빠를 듯??
 
 struct nlmsghdr *
 	__nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq, int type, int len, int flags)
@@ -1985,7 +1986,7 @@ void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 {
 
 }
-#endif
+
 #ifdef _WIN32 // _WIN32_V9
 int _DRBD_ratelimit(char * __FILE, int __LINE)
 { 

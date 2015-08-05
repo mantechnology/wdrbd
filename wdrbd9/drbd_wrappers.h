@@ -180,12 +180,15 @@ void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 #endif
 }
 #endif
+#ifdef _WIN32
+// move to windows.c // _WIN32_CHECK: JHKIM: V8에서 이동.이유는 기억이 안남. 일단 이동.
+#else
 static inline struct block_device *blkdev_get_by_path(const char *path,
     fmode_t mode, void *holder)
 {
     return open_bdev_exclusive(path, mode, holder);
 }
-
+#endif
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 {
 #ifdef _WIN32

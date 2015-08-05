@@ -39,7 +39,11 @@ extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
 static struct genl_ops drbd_genl_ops[]  = {
+#ifdef _WIN32_V9
+	// _WIN32_CHECK: JHKIM: 컴파일 오류 회피
+#else
 	{ _drbd_adm_get_status, DRBD_ADM_GET_STATUS,},
+#endif
 	{ drbd_adm_add_minor, DRBD_ADM_NEW_MINOR,},
 	{ drbd_adm_delete_minor, DRBD_ADM_DEL_MINOR,},
 	{ drbd_adm_new_resource, DRBD_ADM_NEW_RESOURCE,},
@@ -196,12 +200,16 @@ int drbd_genl_multicast_events(struct msg_buff * skb, const struct sib_info *sib
 
         if (socket_entry)
         {
+#ifdef _WIN32_V9
+			// WIN32_CHECK: JHKIM: 컴퍼일 회피
+#else
             //WDRBD_TRACE("send socket(0x%p), data(0x%p), len(%d)\n", socket_entry->ptr, skb->data, skb->len);
             int sent = Send(socket_entry->ptr, skb->data, skb->len, 0, 0);
             if (sent != skb->len)
             {
                 WDRBD_WARN("Failed to send socket(0x%x)\n", socket_entry->ptr);
             }
+#endif
         }
 
         iter = iter->Next;

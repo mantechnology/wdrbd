@@ -25,6 +25,12 @@
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define _WIN32_V9	//_WIN32_V9 정의 
 
+#ifdef _WIN32_V9
+// JHKIM:너무 많아서 매트로 처리 
+#define minor_to_mdev minor_to_device
+#define drbd_conf drbd_device
+#endif
+
 #define WSK_EVENT_CALLBACK
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
@@ -1340,9 +1346,6 @@ extern void up_read(struct semaphore *sem);
 
 //uninitialized_va 매트로 처리!
 
-// JHKIM:너무 많아서 매트로 처리 
-#define minor_to_mdev minor_to_device
-#define drbd_conf drbd_device
 
 #endif
 
