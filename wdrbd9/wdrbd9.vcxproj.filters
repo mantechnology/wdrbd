@@ -114,9 +114,6 @@
     <ClCompile Include="..\drbd\drbd_transport_tcp.c">
       <Filter>Source Files\drbd</Filter>
     </ClCompile>
-    <ClCompile Include="..\drbd\drbd_transport_template.c">
-      <Filter>Source Files\drbd</Filter>
-    </ClCompile>
     <ClCompile Include="..\drbd\kref_debug.c">
       <Filter>Source Files\drbd</Filter>
     </ClCompile>

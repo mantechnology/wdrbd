@@ -7,7 +7,7 @@
 //#include <stdbool.h>
 //#include "windows/types.h"
 
-#define _WIN32_SEND_BUFFING	// BAB 송신버퍼링 사용. cygwin 빌드시 사용. 최종 안정화 후 제거
+//#define _WIN32_SEND_BUFFING	// V9 포팅을 위해 임시 제거. // BAB 송신버퍼링 사용. cygwin 빌드시 사용. 최종 안정화 후 제거
 #define _WIN32_MVFL
 
 #define pid_t				int
