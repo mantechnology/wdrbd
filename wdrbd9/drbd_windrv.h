@@ -1082,7 +1082,6 @@ extern uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length);
 extern bool lc_is_used(struct lru_cache *lc, unsigned int enr);
 extern void get_random_bytes(void *buf, int nbytes);
 extern int fls(int x);
-struct msg_buff;
 extern unsigned char *skb_put(struct msg_buff *skb, unsigned int len);
 extern char *kstrdup(const char *s, int gfp);
 extern void panic(char *msg);

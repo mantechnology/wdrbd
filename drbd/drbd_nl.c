@@ -904,6 +904,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force)
 
 retry:
 	down(&resource->state_sem);
+
 	if (role == R_PRIMARY) {
 		struct drbd_connection *connection;
 
@@ -1598,7 +1599,10 @@ static int drbd_check_al_size(struct drbd_device *device, struct disk_conf *dc)
 
 	in_use = 0;
 	t = device->act_log;
-#ifdef _WIN32_CHECK
+#ifdef _WIN32
+    n = lc_create("act_log", &drbd_al_ext_cache, AL_UPDATES_PER_TRANSACTION,
+        dc->al_extents, sizeof(struct lc_element), 0);
+#else
 	n = lc_create("act_log", drbd_al_ext_cache, AL_UPDATES_PER_TRANSACTION,
 		dc->al_extents, sizeof(struct lc_element), 0);
 #endif
@@ -1906,6 +1910,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		drbd_bump_write_ordering(device->resource, NULL, WO_BIO_BARRIER);
 
 	drbd_md_sync(device);
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
 			drbd_send_sync_param(peer_device);
@@ -2304,6 +2309,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	device->ldev = nbc;
 	nbc = NULL;
 	new_disk_conf = NULL;
+
 	for_each_peer_device(peer_device, device) {
 		err = drbd_attach_peer_device(peer_device);
 		if (err) {
@@ -2390,6 +2396,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_IO_MD_DISK;
 		goto force_diskless_dec;
 	}
+
 	for_each_peer_device(peer_device, device) {
 		if ((test_bit(CRASHED_PRIMARY, &device->flags) &&
 		     drbd_md_test_flag(device->ldev, MDF_AL_DISABLED)) ||
@@ -2478,11 +2485,9 @@ static int adm_detach(struct drbd_device *device, int force)
 	}
 
 	drbd_suspend_io(device, READ_AND_WRITE); /* so no-one is stuck in drbd_al_begin_io */
-#ifdef _WIN32_CHECK
 	retcode = stable_state_change(device->resource,
 		change_disk_state(device, D_DETACHING,
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#endif
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
 #ifdef _WIN32
@@ -2806,7 +2811,6 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	mutex_unlock(&connection->mutex[DATA_STREAM]);
 	mutex_unlock(&connection->resource->conf_update);
 #ifndef _WIN32
-
 	synchronize_rcu();
 #endif
 	kfree(old_net_conf);
@@ -2904,6 +2908,7 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	synchronize_rcu_w32_wlock();
 #endif
 	rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
+
 	synchronize_rcu();
 	kfree(old_peer_device_conf);
 	kfree(old_plan);
@@ -2961,6 +2966,7 @@ static bool is_resync_target_in_other_connection(struct drbd_peer_device *peer_d
 {
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_device *p;
+
 	for_each_peer_device(p, device) {
 		if (p == peer_device)
 			continue;
@@ -3009,14 +3015,14 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 		drbd_msg_put_info(adm_ctx->reply_skb, from_attrs_err_to_txt(err));
 		goto fail;
 	}
-#ifdef _WIN32_CHECK
+
 	transport_name = new_net_conf->transport_name[0] ? new_net_conf->transport_name : "tcp";
 	tr_class = drbd_get_transport_class(transport_name);
 	if (!tr_class) {
 		retcode = ERR_CREATE_TRANSPORT;
 		goto fail;
 	}
-#endif
+
 	connection = drbd_create_connection(adm_ctx->resource, tr_class);
 	if (!connection) {
 		retcode = ERR_NOMEM;
@@ -3189,10 +3195,9 @@ fail_free_connection:
 
 	if (!list_empty(&connection->connections)) {
 		drbd_unregister_connection(connection);
-#ifdef _WIN32
-        unsigned char  oldIrql_wLock;
-#endif
+#ifdef _WIN32_CHECK
 		synchronize_rcu();
+#endif
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
@@ -3684,6 +3689,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_PRIMARY;
 		goto fail_ldev;
 	}
+
 	for_each_peer_device(peer_device, device) {
 		if (rs.no_resync && peer_device->connection->agreed_pro_version < 93) {
 			retcode = ERR_NEED_APV_93;
@@ -3752,6 +3758,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_IMPLICIT_SHRINK;
 		goto fail;
 	}
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] == L_ESTABLISHED) {
 			if (dd == DS_GREW)
@@ -3916,6 +3923,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		int retry = 3;
 		do {
 			struct drbd_connection *connection;
+
 			for_each_connection(connection, resource) {
 				struct drbd_peer_device *peer_device;
 
@@ -4105,6 +4113,7 @@ int drbd_adm_resume_io(struct sk_buff *skb, struct genl_info *info)
 	retcode = end_state_change(resource, &irq_flags);
 	if (retcode == SS_SUCCESS) {
 		struct drbd_peer_device *peer_device;
+
 		for_each_peer_device(peer_device, device) {
 			struct drbd_connection *connection = peer_device->connection;
 
@@ -4837,6 +4846,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 			goto out_dec;
 		}
 	}
+
 	for_each_peer_device(peer_device, device)
 		drbd_uuid_set_bitmap(peer_device, 0); /* Rotate UI_BITMAP to History 1, etc... */
 	drbd_uuid_new_current(device, false); /* New current, previous to UI_BITMAP */
@@ -5026,6 +5036,7 @@ int drbd_adm_new_minor(struct sk_buff *skb, struct genl_info *info)
 		struct device_info info;
 		unsigned int peer_devices = 0;
 		enum drbd_notification_type flags;
+
 		for_each_peer_device(peer_device, device)
 			peer_devices++;
 
@@ -5088,10 +5099,9 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifdef _WIN32
-    unsigned char  oldIrql_wLock;
-#endif
+#ifndef _WIN32
 	synchronize_rcu();
+#endif
 	drbd_put_device(device);
 
 	return ret;
@@ -5140,10 +5150,9 @@ static int adm_del_resource(struct drbd_resource *resource)
 
 	list_del_rcu(&resource->resources);
 	drbd_debugfs_resource_cleanup(resource);
-#ifdef _WIN32
-    unsigned char  oldIrql_wLock;
-#endif
+#ifndef _WIN32
 	synchronize_rcu();
+#endif
 	drbd_free_resource(resource);
 out:
 	mutex_unlock(&resources_mutex);
