@@ -2,6 +2,8 @@
 #define __DRBD_WINGENL_H__
 #include <wdm.h>
 #include <wsk.h>
+#include "linux-compat/list.h"
+#include "drbd_windrv.h"
 
 struct sk_buff
 {
@@ -11,6 +13,22 @@ struct sk_buff
 
     unsigned char data[0];
 };
+
+static inline int skb_is_nonlinear(const struct sk_buff *skb)
+{
+	return skb->len;
+}
+
+/**
+ *	skb_tailroom - bytes at buffer end
+ *	@skb: buffer to check
+ *
+ *	Return the number of bytes of free space at the tail of an sk_buff
+ */
+static inline int skb_tailroom(const struct sk_buff *skb)
+{
+	return skb_is_nonlinear(skb) ? 0 : skb->end - skb->tail;
+}
 
 struct nlattr
 {
@@ -61,6 +79,10 @@ struct genl_ops
 
 #ifndef __read_mostly
 #define __read_mostly
+#endif
+
+#ifndef inline
+#define inline __inline
 #endif
 
 #define BLKSSZGET			1
@@ -256,21 +278,21 @@ extern int		nla_memcpy(void *dest, const struct nlattr *src, int count);
 extern int		nla_memcmp(const struct nlattr *nla, const void *data,
     size_t size);
 extern int		nla_strcmp(const struct nlattr *nla, const char *str);
-extern struct nlattr *	__nla_reserve(struct msg_buff *msg, int attrtype,
+extern struct nlattr *	__nla_reserve(struct sk_buff *msg, int attrtype,
     int attrlen);
-extern void *		__nla_reserve_nohdr(struct msg_buff *msg, int attrlen);
-extern struct nlattr *	nla_reserve(struct msg_buff *msg, int attrtype,
+extern void *		__nla_reserve_nohdr(struct sk_buff *msg, int attrlen);
+extern struct nlattr *	nla_reserve(struct sk_buff *msg, int attrtype,
     int attrlen);
-extern void *		nla_reserve_nohdr(struct msg_buff *msg, int attrlen);
-extern void		__nla_put(struct msg_buff *msg, int attrtype,
+extern void *		nla_reserve_nohdr(struct sk_buff *msg, int attrlen);
+extern void		__nla_put(struct sk_buff *msg, int attrtype,
     int attrlen, const void *data);
-extern void		__nla_put_nohdr(struct msg_buff *msg, int attrlen,
+extern void		__nla_put_nohdr(struct sk_buff *msg, int attrlen,
     const void *data);
-extern int		nla_put(struct msg_buff *msg, int attrtype,
+extern int		nla_put(struct sk_buff *msg, int attrtype,
     int attrlen, const void *data);
-extern int		nla_put_nohdr(struct msg_buff *msg, int attrlen,
+extern int		nla_put_nohdr(struct sk_buff *msg, int attrlen,
     const void *data);
-extern int		nla_append(struct msg_buff *msg, int attrlen,
+extern int		nla_append(struct sk_buff *msg, int attrlen,
     const void *data);
 
 /**************************************************************************
@@ -597,7 +619,7 @@ static inline int nla_parse_nested(struct nlattr *tb[], int maxtype,
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u8(struct msg_buff *msg, int attrtype, __u8 value)
+static inline int nla_put_u8(struct sk_buff *msg, int attrtype, __u8 value)
 {
     return nla_put(msg, attrtype, sizeof(__u8), &value);
 }
@@ -608,7 +630,7 @@ static inline int nla_put_u8(struct msg_buff *msg, int attrtype, __u8 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u16(struct msg_buff *msg, int attrtype, __u16 value)
+static inline int nla_put_u16(struct sk_buff *msg, int attrtype, __u16 value)
 {
     return nla_put(msg, attrtype, sizeof(__u16), &value);
 }
@@ -619,7 +641,7 @@ static inline int nla_put_u16(struct msg_buff *msg, int attrtype, __u16 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u32(struct msg_buff *msg, int attrtype, __u32 value)
+static inline int nla_put_u32(struct sk_buff *msg, int attrtype, __u32 value)
 {
     return nla_put(msg, attrtype, sizeof(__u32), &value);
 }
@@ -630,7 +652,7 @@ static inline int nla_put_u32(struct msg_buff *msg, int attrtype, __u32 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u64(struct msg_buff *msg, int attrtype, __u64 value)
+static inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 {
     return nla_put(msg, attrtype, sizeof(__u64), &value);
 }
@@ -641,7 +663,7 @@ static inline int nla_put_u64(struct msg_buff *msg, int attrtype, __u64 value)
 * @attrtype: attribute type
 * @str: NUL terminated string
 */
-static inline int nla_put_string(struct msg_buff *msg, int attrtype,
+static inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
     return nla_put(msg, attrtype, strlen(str) + 1, str);
@@ -652,7 +674,7 @@ static inline int nla_put_string(struct msg_buff *msg, int attrtype,
 * @msg: message buffer to add attribute to
 * @attrtype: attribute type
 */
-static inline int nla_put_flag(struct msg_buff *msg, int attrtype)
+static inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 {
     return nla_put(msg, attrtype, 0, NULL);
 }
@@ -791,7 +813,7 @@ static inline int nla_get_flag(const struct nlattr *nla)
  *
  * Returns the container attribute
  */
-static inline struct nlattr *nla_nest_start(struct msg_buff *msg, int attrtype)
+static inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
 {
 #ifndef _WIN32_APP
 	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);

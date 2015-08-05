@@ -68,7 +68,7 @@ static int validate_nla(struct nlattr *nla, int maxtype,
                 break;
             if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN)
                 return -ERANGE;
-            nla = nla_data(nla) + NLA_ALIGN(pt->len);
+            nla = (int)nla_data(nla) + NLA_ALIGN(pt->len);
             if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN + nla_len(nla))
                 return -ERANGE;
             break;
@@ -226,7 +226,7 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
 *
 * Returns the number of bytes copied.
 */
-int nla_memcpy(void *dest, struct nlattr *src, int count)
+int nla_memcpy(void *dest, const struct nlattr *src, int count)
 {
     int minlen = min_t(int, count, nla_len(src));
 

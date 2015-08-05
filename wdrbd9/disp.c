@@ -283,6 +283,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #ifdef _WIN32_MVFL
     if (VolumeExtension->Active)
     {
+#ifdef _WIN32_CHECK
         struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
         if (mdev && (R_PRIMARY != mdev->state.role))
         {
@@ -294,6 +295,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             return STATUS_INVALID_DEVICE_REQUEST;
         }
+#endif
     }
 #endif
     IoSkipCurrentIrpStackLocation(Irp);
@@ -321,6 +323,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active)
     {
+#ifdef _WIN32_CHECK
         struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
         if (mdev && (mdev->state.role == R_PRIMARY))
         {
@@ -333,6 +336,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         {
             goto invalid_device;
         }
+#endif
     }
 
     IoSkipCurrentIrpStackLocation(Irp);
@@ -376,6 +380,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active)
     {
+#ifdef _WIN32_CHECK
         struct drbd_conf *mdev = minor_to_mdev(VolumeExtension->VolIndex);
 
         if (mdev/* && (mdev->state.role == R_PRIMARY)*/)
@@ -420,6 +425,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             return STATUS_INVALID_DEVICE_REQUEST;
         }
+#endif
     }
     else
     {
