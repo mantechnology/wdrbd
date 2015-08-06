@@ -1347,6 +1347,7 @@ extern void up_read(struct semaphore *sem);
 
 //uninitialized_va 매트로 처리!
 
+extern struct mutex notification_mutex;
 
 #endif
 

@@ -4194,6 +4194,14 @@ static int __init drbd_init(void)
 {
 	int err;
 
+#ifdef _WIN32_V9
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+	mutex_init(&notification_mutex, "notification_mutex");
+#else
+	mutex_init(&notification_mutex);
+#endif
+#endif
+
 	initialize_kref_debugging();
 
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {

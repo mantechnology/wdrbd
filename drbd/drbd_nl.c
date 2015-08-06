@@ -159,7 +159,12 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 
 atomic_t drbd_genl_seq = ATOMIC_INIT(2); /* two. */
 
+#ifdef _WIN32_V9 
+// _WIN32_CHECK:JHKIM: __MUTEX_INITIALIZER 무시, 전역으로 정의하고 엔진 시작부에서 mutex_init로 초기화하는 것으로 대체해도 무방. 재확인 필요.
+struct mutex notification_mutex;
+#else
 DEFINE_MUTEX(notification_mutex);
+#endif
 
 /* used blkdev_get_by_path, to claim our meta data device(s) */
 static char *drbd_m_holder = "Hands off! this is DRBD's meta data device.";
