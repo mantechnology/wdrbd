@@ -14,7 +14,7 @@ struct sk_buff
     unsigned char data[0];
 };
 
-static inline int skb_is_nonlinear(const struct sk_buff *skb)
+static __inline int skb_is_nonlinear(const struct sk_buff *skb)
 {
 	return skb->len;
 }
@@ -25,7 +25,7 @@ static inline int skb_is_nonlinear(const struct sk_buff *skb)
  *
  *	Return the number of bytes of free space at the tail of an sk_buff
  */
-static inline int skb_tailroom(const struct sk_buff *skb)
+static __inline int skb_tailroom(const struct sk_buff *skb)
 {
 	return skb_is_nonlinear(skb) ? 0 : skb->end - skb->tail;
 }
@@ -79,10 +79,6 @@ struct genl_ops
 
 #ifndef __read_mostly
 #define __read_mostly
-#endif
-
-#ifndef inline
-#define inline __inline
 #endif
 
 #define BLKSSZGET			1
@@ -303,7 +299,7 @@ extern int		nla_append(struct sk_buff *msg, int attrlen,
 * nlmsg_msg_size - length of netlink message not including padding
 * @payload: length of message payload
 */
-static inline int nlmsg_msg_size(int payload)
+static __inline int nlmsg_msg_size(int payload)
 {
     return NLMSG_HDRLEN + payload;
 }
@@ -312,7 +308,7 @@ static inline int nlmsg_msg_size(int payload)
 * nlmsg_total_size - length of netlink message including padding
 * @payload: length of message payload
 */
-static inline int nlmsg_total_size(int payload)
+static __inline int nlmsg_total_size(int payload)
 {
     return NLMSG_ALIGN(nlmsg_msg_size(payload));
 }
@@ -321,7 +317,7 @@ static inline int nlmsg_total_size(int payload)
 * nlmsg_padlen - length of padding at the message's tail
 * @payload: length of message payload
 */
-static inline int nlmsg_padlen(int payload)
+static __inline int nlmsg_padlen(int payload)
 {
     return nlmsg_total_size(payload) - nlmsg_msg_size(payload);
 }
@@ -330,7 +326,7 @@ static inline int nlmsg_padlen(int payload)
 * nlmsg_data - head of message payload
 * @nlh: netlink messsage header
 */
-static inline void *nlmsg_data(const struct nlmsghdr *nlh)
+static __inline void *nlmsg_data(const struct nlmsghdr *nlh)
 {
     return (unsigned char *)nlh + NLMSG_HDRLEN;
 }
@@ -339,7 +335,7 @@ static inline void *nlmsg_data(const struct nlmsghdr *nlh)
 * nlmsg_len - length of message payload
 * @nlh: netlink message header
 */
-static inline int nlmsg_len(const struct nlmsghdr *nlh)
+static __inline int nlmsg_len(const struct nlmsghdr *nlh)
 {
     return nlh->nlmsg_len - NLMSG_HDRLEN;
 }
@@ -349,7 +345,7 @@ static inline int nlmsg_len(const struct nlmsghdr *nlh)
 * @nlh: netlink message header
 * @hdrlen: length of family specific header
 */
-static inline struct nlattr *nlmsg_attrdata(const struct nlmsghdr *nlh,
+static __inline struct nlattr *nlmsg_attrdata(const struct nlmsghdr *nlh,
     int hdrlen)
 {
     unsigned char *data = nlmsg_data(nlh);
@@ -361,7 +357,7 @@ static inline struct nlattr *nlmsg_attrdata(const struct nlmsghdr *nlh,
 * @nlh: netlink message header
 * @hdrlen: length of family specific header
 */
-static inline int nlmsg_attrlen(const struct nlmsghdr *nlh, int hdrlen)
+static __inline int nlmsg_attrlen(const struct nlmsghdr *nlh, int hdrlen)
 {
     return nlmsg_len(nlh) - NLMSG_ALIGN(hdrlen);
 }
@@ -371,7 +367,7 @@ static inline int nlmsg_attrlen(const struct nlmsghdr *nlh, int hdrlen)
 * @nlh: netlink message header
 * @remaining: number of bytes remaining in message stream
 */
-static inline int nlmsg_ok(const struct nlmsghdr *nlh, int remaining)
+static __inline int nlmsg_ok(const struct nlmsghdr *nlh, int remaining)
 {
     return (remaining >= (int) sizeof(struct nlmsghdr) &&
         nlh->nlmsg_len >= sizeof(struct nlmsghdr) &&
@@ -386,7 +382,7 @@ static inline int nlmsg_ok(const struct nlmsghdr *nlh, int remaining)
 * Returns the next netlink message in the message stream and
 * decrements remaining by the size of the current message.
 */
-static inline struct nlmsghdr *nlmsg_next(struct nlmsghdr *nlh, int *remaining)
+static __inline struct nlmsghdr *nlmsg_next(struct nlmsghdr *nlh, int *remaining)
 {
     int totlen = NLMSG_ALIGN(nlh->nlmsg_len);
 
@@ -405,7 +401,7 @@ static inline struct nlmsghdr *nlmsg_next(struct nlmsghdr *nlh, int *remaining)
 *
 * See nla_parse()
 */
-static inline int nlmsg_parse(const struct nlmsghdr *nlh, int hdrlen,
+static __inline int nlmsg_parse(const struct nlmsghdr *nlh, int hdrlen,
 struct nlattr *tb[], int maxtype,
     const struct nla_policy *policy)
 {
@@ -424,7 +420,7 @@ struct nlattr *tb[], int maxtype,
 *
 * Returns the first attribute which matches the specified type.
 */
-static inline struct nlattr *nlmsg_find_attr(struct nlmsghdr *nlh,
+static __inline struct nlattr *nlmsg_find_attr(struct nlmsghdr *nlh,
     int hdrlen, int attrtype)
 {
     return nla_find(nlmsg_attrdata(nlh, hdrlen),
@@ -438,7 +434,7 @@ static inline struct nlattr *nlmsg_find_attr(struct nlmsghdr *nlh,
 * @maxtype: maximum attribute type to be expected
 * @policy: validation policy
 */
-static inline int nlmsg_validate(struct nlmsghdr *nlh, int hdrlen, int maxtype,
+static __inline int nlmsg_validate(struct nlmsghdr *nlh, int hdrlen, int maxtype,
     const struct nla_policy *policy)
 {
     if (nlh->nlmsg_len < (__u32)nlmsg_msg_size(hdrlen))
@@ -454,7 +450,7 @@ static inline int nlmsg_validate(struct nlmsghdr *nlh, int hdrlen, int maxtype,
 *
 * Returns 1 if a report back to the application is requested.
 */
-static inline int nlmsg_report(const struct nlmsghdr *nlh)
+static __inline int nlmsg_report(const struct nlmsghdr *nlh)
 {
     return !!(nlh->nlmsg_flags & NLM_F_ECHO);
 }
@@ -475,7 +471,7 @@ static inline int nlmsg_report(const struct nlmsghdr *nlh)
 * nlmsg_free - free a netlink message
 * @skb: socket buffer of netlink message
 */
-static inline void nlmsg_free(struct sk_buff *skb)
+static __inline void nlmsg_free(struct sk_buff *skb)
 {
     kfree(skb);
 }
@@ -500,7 +496,7 @@ static inline void nlmsg_free(struct sk_buff *skb)
 * nla_attr_size - length of attribute not including padding
 * @payload: length of payload
 */
-static inline int nla_attr_size(int payload)
+static __inline int nla_attr_size(int payload)
 {
     return NLA_HDRLEN + payload;
 }
@@ -509,7 +505,7 @@ static inline int nla_attr_size(int payload)
 * nla_total_size - total length of attribute including padding
 * @payload: length of payload
 */
-static inline int nla_total_size(int payload)
+static __inline int nla_total_size(int payload)
 {
     return NLA_ALIGN(nla_attr_size(payload));
 }
@@ -518,7 +514,7 @@ static inline int nla_total_size(int payload)
 * nla_padlen - length of padding at the tail of attribute
 * @payload: length of payload
 */
-static inline int nla_padlen(int payload)
+static __inline int nla_padlen(int payload)
 {
     return nla_total_size(payload) - nla_attr_size(payload);
 }
@@ -531,7 +527,7 @@ static inline int nla_padlen(int payload)
 * nla_type - attribute type
 * @nla: netlink attribute
 */
-static inline int nla_type(const struct nlattr *nla)
+static __inline int nla_type(const struct nlattr *nla)
 {
     return nla->nla_type & NLA_TYPE_MASK;
 }
@@ -540,7 +536,7 @@ static inline int nla_type(const struct nlattr *nla)
 * nla_data - head of payload
 * @nla: netlink attribute
 */
-static inline void *nla_data(const struct nlattr *nla)
+static __inline void *nla_data(const struct nlattr *nla)
 {
     return (char *)nla + NLA_HDRLEN;
 }
@@ -551,7 +547,7 @@ static inline void *nla_data(const struct nlattr *nla)
 * @nla: netlink attribute
 */
 
-static inline int nla_len(const struct nlattr *nla)
+static __inline int nla_len(const struct nlattr *nla)
 {
     return nla->nla_len - NLA_HDRLEN;
 }
@@ -562,7 +558,7 @@ static inline int nla_len(const struct nlattr *nla)
 * @nla: netlink attribute
 * @remaining: number of bytes remaining in attribute stream
 */
-static inline int nla_ok(const struct nlattr *nla, int remaining)
+static __inline int nla_ok(const struct nlattr *nla, int remaining)
 {
     return remaining >= (int) sizeof(*nla) &&
         nla->nla_len >= sizeof(*nla) &&
@@ -577,7 +573,7 @@ static inline int nla_ok(const struct nlattr *nla, int remaining)
 * Returns the next netlink attribute in the attribute stream and
 * decrements remaining by the size of the current attribute.
 */
-static inline struct nlattr *nla_next(const struct nlattr *nla, int *remaining)
+static __inline struct nlattr *nla_next(const struct nlattr *nla, int *remaining)
 {
     int totlen = NLA_ALIGN(nla->nla_len);
 
@@ -592,7 +588,7 @@ static inline struct nlattr *nla_next(const struct nlattr *nla, int *remaining)
 *
 * Returns the first attribute which matches the specified type.
 */
-static inline struct nlattr *nla_find_nested(struct nlattr *nla, int attrtype)
+static __inline struct nlattr *nla_find_nested(struct nlattr *nla, int attrtype)
 {
     return nla_find(nla_data(nla), nla_len(nla), attrtype);
 }
@@ -606,7 +602,7 @@ static inline struct nlattr *nla_find_nested(struct nlattr *nla, int attrtype)
 *
 * See nla_parse()
 */
-static inline int nla_parse_nested(struct nlattr *tb[], int maxtype,
+static __inline int nla_parse_nested(struct nlattr *tb[], int maxtype,
     const struct nlattr *nla,
     const struct nla_policy *policy)
 {
@@ -619,7 +615,7 @@ static inline int nla_parse_nested(struct nlattr *tb[], int maxtype,
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u8(struct sk_buff *msg, int attrtype, __u8 value)
+static __inline int nla_put_u8(struct sk_buff *msg, int attrtype, __u8 value)
 {
     return nla_put(msg, attrtype, sizeof(__u8), &value);
 }
@@ -630,7 +626,7 @@ static inline int nla_put_u8(struct sk_buff *msg, int attrtype, __u8 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u16(struct sk_buff *msg, int attrtype, __u16 value)
+static __inline int nla_put_u16(struct sk_buff *msg, int attrtype, __u16 value)
 {
     return nla_put(msg, attrtype, sizeof(__u16), &value);
 }
@@ -641,7 +637,7 @@ static inline int nla_put_u16(struct sk_buff *msg, int attrtype, __u16 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u32(struct sk_buff *msg, int attrtype, __u32 value)
+static __inline int nla_put_u32(struct sk_buff *msg, int attrtype, __u32 value)
 {
     return nla_put(msg, attrtype, sizeof(__u32), &value);
 }
@@ -652,7 +648,7 @@ static inline int nla_put_u32(struct sk_buff *msg, int attrtype, __u32 value)
 * @attrtype: attribute type
 * @value: numeric value
 */
-static inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
+static __inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 {
     return nla_put(msg, attrtype, sizeof(__u64), &value);
 }
@@ -663,7 +659,7 @@ static inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 * @attrtype: attribute type
 * @str: NUL terminated string
 */
-static inline int nla_put_string(struct sk_buff *msg, int attrtype,
+static __inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
     return nla_put(msg, attrtype, strlen(str) + 1, str);
@@ -674,7 +670,7 @@ static inline int nla_put_string(struct sk_buff *msg, int attrtype,
 * @msg: message buffer to add attribute to
 * @attrtype: attribute type
 */
-static inline int nla_put_flag(struct sk_buff *msg, int attrtype)
+static __inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 {
     return nla_put(msg, attrtype, 0, NULL);
 }
@@ -725,7 +721,7 @@ static inline int nla_put_flag(struct sk_buff *msg, int attrtype)
  * nla_get_u32 - return payload of u32 attribute
  * @nla: u32 netlink attribute
  */
-static inline __u32 nla_get_u32(const struct nlattr *nla)
+static __inline __u32 nla_get_u32(const struct nlattr *nla)
 {
 	return *(__u32 *) nla_data(nla);
 }
@@ -734,7 +730,7 @@ static inline __u32 nla_get_u32(const struct nlattr *nla)
  * nla_get_be32 - return payload of __be32 attribute
  * @nla: __be32 netlink attribute
  */
-static inline __be32 nla_get_be32(const struct nlattr *nla)
+static __inline __be32 nla_get_be32(const struct nlattr *nla)
 {
 	return *(__be32 *) nla_data(nla);
 }
@@ -743,7 +739,7 @@ static inline __be32 nla_get_be32(const struct nlattr *nla)
  * nla_get_u16 - return payload of u16 attribute
  * @nla: u16 netlink attribute
  */
-static inline __u16 nla_get_u16(const struct nlattr *nla)
+static __inline __u16 nla_get_u16(const struct nlattr *nla)
 {
 	return *(__u16 *) nla_data(nla);
 }
@@ -752,7 +748,7 @@ static inline __u16 nla_get_u16(const struct nlattr *nla)
  * nla_get_be16 - return payload of __be16 attribute
  * @nla: __be16 netlink attribute
  */
-static inline __be16 nla_get_be16(const struct nlattr *nla)
+static __inline __be16 nla_get_be16(const struct nlattr *nla)
 {
 	return *(__be16 *) nla_data(nla);
 }
@@ -761,7 +757,7 @@ static inline __be16 nla_get_be16(const struct nlattr *nla)
  * nla_get_le16 - return payload of __le16 attribute
  * @nla: __le16 netlink attribute
  */
-static inline __le16 nla_get_le16(const struct nlattr *nla)
+static __inline __le16 nla_get_le16(const struct nlattr *nla)
 {
 	return *(__le16 *) nla_data(nla);
 }
@@ -770,7 +766,7 @@ static inline __le16 nla_get_le16(const struct nlattr *nla)
  * nla_get_u8 - return payload of u8 attribute
  * @nla: u8 netlink attribute
  */
-static inline __u8 nla_get_u8(const struct nlattr *nla)
+static __inline __u8 nla_get_u8(const struct nlattr *nla)
 {
 	return *(__u8 *) nla_data(nla);
 }
@@ -779,7 +775,7 @@ static inline __u8 nla_get_u8(const struct nlattr *nla)
  * nla_get_u64 - return payload of u64 attribute
  * @nla: u64 netlink attribute
  */
-static inline __u64 nla_get_u64(const struct nlattr *nla)
+static __inline __u64 nla_get_u64(const struct nlattr *nla)
 {
 	__u64 tmp;
 
@@ -792,7 +788,7 @@ static inline __u64 nla_get_u64(const struct nlattr *nla)
  * nla_get_be64 - return payload of __be64 attribute
  * @nla: __be64 netlink attribute
  */
-static inline __be64 nla_get_be64(const struct nlattr *nla)
+static __inline __be64 nla_get_be64(const struct nlattr *nla)
 {
 	return *(__be64 *) nla_data(nla);
 }
@@ -801,7 +797,7 @@ static inline __be64 nla_get_be64(const struct nlattr *nla)
  * nla_get_flag - return payload of flag attribute
  * @nla: flag netlink attribute
  */
-static inline int nla_get_flag(const struct nlattr *nla)
+static __inline int nla_get_flag(const struct nlattr *nla)
 {
 	return !!nla;
 }
@@ -813,7 +809,7 @@ static inline int nla_get_flag(const struct nlattr *nla)
  *
  * Returns the container attribute
  */
-static inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
+static __inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
 {
 #ifndef _WIN32_APP
 	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
@@ -843,7 +839,7 @@ static inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
  *
  * Returns the total data length of the msg.
  */
-static inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
+static __inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
 {
 	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
 	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
@@ -862,7 +858,7 @@ static inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
  *
  * Returns 0 on success or a negative error code.
  */
-static inline int nla_validate_nested(struct nlattr *start, int maxtype,
+static __inline int nla_validate_nested(struct nlattr *start, int maxtype,
 				      const struct nla_policy *policy)
 {
 	return nla_validate(nla_data(start), nla_len(start), maxtype, policy);
@@ -889,7 +885,7 @@ static inline int nla_validate_nested(struct nlattr *start, int maxtype,
 #define nla_for_each_nested(pos, nla, rem) \
 	nla_for_each_attr(pos, nla_data(nla), nla_len(nla), rem)
 
-struct nlmsghdr *
+static __inline struct nlmsghdr *
 	__nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq, int type, int len, int flags)
 {
 	struct nlmsghdr *nlh;

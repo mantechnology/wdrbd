@@ -1,6 +1,7 @@
 ﻿#ifndef __HWEIGHT_H__
 #define __HWEIGHT_H__
 #include "linux-compat/bitops.h"
+#include "windows/types.h"
 
 /**
 * hweightN - returns the hamming weight of a N-bit word

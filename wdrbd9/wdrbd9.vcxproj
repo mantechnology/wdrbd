@@ -305,6 +305,7 @@
     <ClCompile Include="disp.c" />
     <ClCompile Include="drbd_windows.c" />
     <ClCompile Include="linux-compat\Attr.c" />
+    <ClCompile Include="linux-compat\hweight.c" />
     <ClCompile Include="linux-compat\idr.c" />
     <ClCompile Include="linux-compat\netlink.c" />
     <ClCompile Include="linux-compat\rbtree.c" />
@@ -331,7 +332,6 @@
     <ClInclude Include="..\drbd\linux\genl_magic_func-genl_register_family_with_ops_groups.h" />
     <ClInclude Include="..\drbd\linux\genl_magic_func-genl_register_mc_group.h" />
     <ClInclude Include="..\drbd\linux\lru_cache.h" />
-    <ClInclude Include="Bitops.h" />
     <ClInclude Include="comm.h" />
     <ClInclude Include="disp.h" />
     <ClInclude Include="drbd_windows.h" />
@@ -339,6 +339,7 @@
     <ClInclude Include="drbd_wingenl.h" />
     <ClInclude Include="drbd_wrappers.h" />
     <ClInclude Include="linux-compat\Backing-dev.h" />
+    <ClInclude Include="linux-compat\Bitops.h" />
     <ClInclude Include="linux-compat\drbd_endian.h" />
     <ClInclude Include="linux-compat\hweight.h" />
     <ClInclude Include="linux-compat\idr.h" />

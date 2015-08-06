@@ -135,6 +135,9 @@
     <ClCompile Include="linux-compat\Attr.c">
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
+    <ClCompile Include="linux-compat\hweight.c">
+      <Filter>Source Files\linux-compat</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drbd_windows.h">
@@ -233,9 +236,6 @@
     <ClInclude Include="..\drbd\linux\lru_cache.h">
       <Filter>Header Files\drbd\linux</Filter>
     </ClInclude>
-    <ClInclude Include="Bitops.h">
-      <Filter>Header Files\linux-compat</Filter>
-    </ClInclude>
     <ClInclude Include="linux-compat\hweight.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
@@ -249,6 +249,9 @@
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
     <ClInclude Include="linux-compat\drbd_endian.h">
+      <Filter>Header Files\linux-compat</Filter>
+    </ClInclude>
+    <ClInclude Include="linux-compat\Bitops.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
   </ItemGroup>
