@@ -6,8 +6,6 @@
 
 extern int drbd_tla_parse(struct nlmsghdr *nlh);
 
-extern int drbd_adm_add_minor(struct sk_buff *skb, struct genl_info *info);
-extern int drbd_adm_delete_minor(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_del_resource(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_down(struct sk_buff *skb, struct genl_info *info);
@@ -73,6 +71,7 @@ static const char *drbd_genl_cmd_to_str(__u8 cmd)
 	}
 }
 
+extern struct genl_ops drbd_genl_ops[];
 /*
 static struct genl_ops drbd_genl_ops[] = {
 { .doit = drbd_adm_new_minor, .flags = 0x01, .cmd = DRBD_ADM_NEW_MINOR, .policy = drbd_tla_nl_policy, },
@@ -113,6 +112,9 @@ static struct genl_ops drbd_genl_ops[] = {
 { .doit = drbd_adm_peer_device_opts, .flags = 0x01, .cmd = DRBD_ADM_CHG_PEER_DEVICE_OPTS, .policy = drbd_tla_nl_policy, },
 };
 */
+
+#define cli_info(_minor, _fmt, ...)
+
 // globals
 
 struct nlattr *global_attrs[128];
@@ -1072,14 +1074,18 @@ NetlinkWorkThread(PVOID context)
         {
             minor = gmh->minor;
             struct drbd_conf * mdev = minor_to_device(minor);
+#ifdef _WIN32_V9
+            if (mdev && drbd_suspended(mdev))
+#else
             if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
+#endif
             {
                 reply_error(NLMSG_ERROR, NLM_F_MULTI, EIO, pinfo);
                 WDRBD_WARN("minor(%d) suspended\n", gmh->minor);
                 goto cleanup;
             }
         }
-
+#ifdef _WIN32_CHECK
         int i;
         u8 cmd = pinfo->genlhdr->cmd;
         struct genl_ops * pops = NULL;
@@ -1123,6 +1129,7 @@ NetlinkWorkThread(PVOID context)
         {
             WDRBD_WARN("Not validated cmd(%d)\n", cmd);
         }
+#endif
     }
 
     // wait for peer socket close 
@@ -1145,7 +1152,7 @@ cleanup:
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
     if (psock_buf)
         ExFreeToNPagedLookasideList(&genl_msg_mempool, psock_buf);
-
+#ifdef _WIN32_CHECK
     if (err)
     {
         cli_info(minor, "done. error(%d)\n", err);
@@ -1154,6 +1161,7 @@ cleanup:
     {
         cli_info(minor, "done\n");
     }
+#endif
 }
 
 // Listening socket callback which is invoked whenever a new connection arrives.
