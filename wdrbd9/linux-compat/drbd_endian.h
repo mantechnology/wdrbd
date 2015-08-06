@@ -146,8 +146,13 @@ static inline unsigned int generic_hweight32(unsigned int w)
     res = (res & 0x00FF00FF) + ((res >> 8) & 0x00FF00FF);
     return (res & 0x0000FFFF) + ((res >> 16) & 0x0000FFFF);
 }
-
+#ifdef _WIN32
+// WIN32_CHECK:JHKIM: 64 비트용 커버전 부분 일단 마킹. 추후 전수 조사로 일괄 반영/검증필요 (ULONG 돠 WIN64 두 가지로 검색하면 될 듯)
+//static inline ULONG_PTR generic_hweight64(uint64_t w) // ULONG_PTR 헤더 연결 오류인 듯, 일단 원본 유지, 추후 보강
 static inline unsigned long generic_hweight64(uint64_t w)
+#else
+static inline unsigned long generic_hweight64(uint64_t w)
+#endif
 {
 #if BITS_PER_LONG < 64
     return generic_hweight32((unsigned int)(w >> 32)) +
