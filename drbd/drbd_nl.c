@@ -5815,3 +5815,24 @@ out_no_adm:
 	return 0;
 
 }
+
+#ifdef _WIN32
+
+int drbd_tla_parse(struct nlmsghdr *nlh)
+{
+    extern struct genl_family drbd_genl_family;
+    extern struct nlattr *global_attrs[];
+
+    return nla_parse(global_attrs, ARRAY_SIZE(drbd_tla_nl_policy) - 1,
+        nlmsg_attrdata(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),
+        nlmsg_attrlen(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),
+        drbd_tla_nl_policy);
+}
+
+void nl_policy_init_by_manual()
+{
+    extern void manual_nl_policy_init(void);
+    manual_nl_policy_init();
+}
+
+#endif
