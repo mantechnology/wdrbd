@@ -106,6 +106,11 @@ bool capable(int cap)
 }
 #endif
 
+#ifdef _WIN32 
+// _WIN32_CHECK:JHKIM: V8에서는 이 전역이 이곳에 정의됨. 빌드 오류로 일단 다시 코멘트
+// struct genl_family drbd_genl_family;
+#endif
+
 /* .doit */
 // int drbd_adm_create_resource(struct sk_buff *skb, struct genl_info *info);
 // int drbd_adm_delete_resource(struct sk_buff *skb, struct genl_info *info);

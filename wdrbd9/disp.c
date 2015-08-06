@@ -119,7 +119,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
-        extern VOID NTAPI drbd_init(void);
+        extern VOID NTAPI drbd_init(void); // _WIN32_CHECK: 함수 타입 체크
         HANDLE		hThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 

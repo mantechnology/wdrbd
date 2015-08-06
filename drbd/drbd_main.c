@@ -4259,14 +4259,43 @@ static int __init drbd_init(void)
 {
 	int err;
     
+#ifdef _WIN32
+	extern void nl_policy_init_by_manual(void);
+	extern struct genl_family drbd_genl_family;
+	extern struct nlattr *global_attrs[];
+
+	memset(&drbd_genl_family, 0, sizeof(struct genl_family));
+	strcpy(drbd_genl_family.name, "drbd");
+	drbd_genl_family.version = GENL_MAGIC_VERSION;
+	drbd_genl_family.hdrsize = GENL_MAGIC_FAMILY_HDRSZ;
+
+	nl_policy_init_by_manual();
+	g_rcuLock = 0; // init RCU lock
+
+	//extern void init_drbd_bdev_kobj_type();
+	//init_drbd_bdev_kobj_type(); // _WIN32_V9: V8에서 사용된 sysfs 는 제거ㄷ괴어 일단 코멘트. 대체된 것이 있는가?
+
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+	mutex_init(&g_genl_mutex, "genl_mutex");
+#else
+	mutex_init(&g_genl_mutex);
+#endif
+	//extern union drbd_state g_mask_null;// _WIN32_V9: V9에서는 설정 방식이 달라짐. 확인 후 코멘트 삭제
+	//extern union drbd_state g_val_null;
+	//g_mask_null.i = 0;
+	//g_val_null.i = 0;
+#endif
+
+#ifdef _WIN32_CT
+	ct_init_thread_list();
+#endif
+
 #ifdef _WIN32_V9
 #ifdef _WIN32_TMP_DEBUG_MUTEX
 	mutex_init(&notification_mutex, "notification_mutex");
 #else
 	mutex_init(&notification_mutex);
 #endif
-    extern void nl_policy_init_by_manual(void);
-    nl_policy_init_by_manual();
 #endif
 
 	initialize_kref_debugging();
@@ -4279,17 +4308,23 @@ static int __init drbd_init(void)
 		minor_count = DRBD_MINOR_COUNT_DEF;
 #endif
 	}
-#ifdef _WIN32_CHECK // register_blkdev(), drbd_genl_register(), proc_create_data() 검토 필요. create_singlethread_workqueue 인자 검토
+#ifdef _WIN32
+	// not supported
+#else
 	err = register_blkdev(DRBD_MAJOR, "drbd");
 	if (err) {
 		pr_err("unable to register block device major %d\n",
 		       DRBD_MAJOR);
 		return err;
 	}
-
+#endif
 	/*
 	 * allocate all necessary structs
 	 */
+#ifdef _WIN32 
+	memset(drbd_pp_wait.eventName, 0, Q_NAME_SZ);
+	strcpy(drbd_pp_wait.eventName, "drbd_pp_wait");
+#endif
 	init_waitqueue_head(&drbd_pp_wait);
 
 	drbd_proc = NULL; /* play safe for drbd_cleanup */
@@ -4297,25 +4332,35 @@ static int __init drbd_init(void)
 
 	mutex_init(&resources_mutex);
 	INIT_LIST_HEAD(&drbd_resources);
-
+#ifdef _WIN32
+	// not supported
+#else
 	err = drbd_genl_register();
 	if (err) {
 		pr_err("unable to register generic netlink family\n");
 		goto fail;
 	}
+#endif
 
 	err = drbd_create_mempools();
 	if (err)
 		goto fail;
 
 	err = -ENOMEM;
+#ifdef _WIN32
+	// not supported
+#else
 	drbd_proc = proc_create_data("drbd", S_IFREG | S_IRUGO , NULL, &drbd_proc_fops, NULL);
 	if (!drbd_proc)	{
 		pr_err("unable to register proc file\n");
 		goto fail;
 	}
-
+#endif
+#ifdef _WIN32
+	retry.wq = create_singlethread_workqueue("drbd_reissue", &retry, do_retry, '31DW');
+#else
 	retry.wq = create_singlethread_workqueue("drbd-reissue");
+#endif
 	if (!retry.wq) {
 		pr_err("unable to create retry workqueue\n");
 		goto fail;
@@ -4326,7 +4371,7 @@ static int __init drbd_init(void)
 
 	if (drbd_debugfs_init())
 		pr_notice("failed to initialize debugfs -- will not be available\n");
-#endif
+
 	pr_info("initialized. "
 	       "Version: " REL_VERSION " (api:%d/proto:%d-%d)\n",
 	       GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX);
