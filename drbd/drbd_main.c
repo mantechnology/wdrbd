@@ -4246,13 +4246,7 @@ static int __init drbd_init(void)
     
 #ifdef _WIN32
 	extern void nl_policy_init_by_manual(void);
-	extern struct genl_family drbd_genl_family;
 	extern struct nlattr *global_attrs[];
-
-	memset(&drbd_genl_family, 0, sizeof(struct genl_family));
-	strcpy(drbd_genl_family.name, "drbd");
-	drbd_genl_family.version = GENL_MAGIC_VERSION;
-	drbd_genl_family.hdrsize = GENL_MAGIC_FAMILY_HDRSZ;
 
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
