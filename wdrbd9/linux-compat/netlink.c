@@ -30,7 +30,6 @@ extern int drbd_adm_resource_opts(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_status(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_timeout_type(struct sk_buff *skb, struct genl_info *info);
 /* .dumpit */
-extern int drbd_adm_get_status_all(struct sk_buff *skb, struct netlink_callback *cb);
 extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
@@ -38,8 +37,6 @@ extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 static const char *drbd_genl_cmd_to_str(__u8 cmd)
 {
 	switch (cmd) {
-	case 2: return "DRBD_ADM_GET_STATUS";
-		/* add DRBD minor devices as volumes to resources */
 	case 5: return "DRBD_ADM_NEW_MINOR";
 	case 6: return "DRBD_ADM_DEL_MINOR";
 		/* add or delete resources */
@@ -259,6 +256,7 @@ NTSTATUS reply_error(int type, int flags, int error, struct genl_info * pinfo)
 
 int reply_status(struct sk_buff * reply_skb, struct netlink_callback * cb, struct genl_info * info)
 {
+#ifdef _WIN32_CHECK // kmpak 20150806 drbd9에서 adm_get_status_all 이 없어짐. 다른 대체 관련 코드 살펴볼 필요 있음
     int err = drbd_adm_get_status_all(reply_skb, cb);
     struct nlmsghdr * nlh = NULL;
 
@@ -286,6 +284,9 @@ int reply_status(struct sk_buff * reply_skb, struct netlink_callback * cb, struc
     WDRBD_TRACE_NETLINK("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
 
     return err;
+#else
+    return 1;
+#endif
 }
 
 #ifndef WSK_EVENT_CALLBACK

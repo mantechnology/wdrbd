@@ -46,6 +46,13 @@ static struct nla_policy s_name ## _nl_policy[] __read_mostly =		\
 
 #include GENL_MAGIC_INCLUDE_FILE
 
+#ifdef _WIN32
+static void manual_nl_policy_init(void) 
+{  
+#include GENL_MAGIC_INCLUDE_FILE	
+}
+#endif
+
 #ifndef __KERNEL__
 #ifndef pr_info
 #define pr_info(args...)	fprintf(stderr, args);

@@ -1347,7 +1347,15 @@ extern void up_read(struct semaphore *sem);
 
 //uninitialized_va 매트로 처리!
 
-extern struct mutex notification_mutex;
+//extern struct mutex notification_mutex; // kmpak 불필요
+
+static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
+	sector_t nr_sects, gfp_t gfp_mask, bool discard)
+{
+	// _WIN32_CHECK: zero fill bio 관련 linux 의존 기능인 듯. 구현이 불필요 할 수도 있을 듯.
+	DbgPrint("WIN32_CHECK: blkdev_issue_zeroout!\n");
+}
+
 
 #endif
 
