@@ -105,9 +105,6 @@
     <ClCompile Include="..\drbd\drbd_state.c">
       <Filter>Source Files\drbd</Filter>
     </ClCompile>
-    <ClCompile Include="..\drbd\drbd_strings_WIN32_V9_CHECK.c">
-      <Filter>Source Files\drbd</Filter>
-    </ClCompile>
     <ClCompile Include="..\drbd\drbd_transport.c">
       <Filter>Source Files\drbd</Filter>
     </ClCompile>
@@ -140,6 +137,9 @@
     </ClCompile>
     <ClCompile Include="..\drbd\drbd_buildtag.c">
       <Filter>Source Files\drbd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\drbd-headers\drbd_strings.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
