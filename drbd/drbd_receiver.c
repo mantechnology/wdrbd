@@ -2269,8 +2269,8 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 					  (unsigned long long)sector, size,
 					  discard ? "local" : "remote");
 
-#ifdef _WIN32_CHECK // V8에 존재했던 inc_unacked 가 제거됨. 의미 파악 필요.
-			inc_unacked(mdev);
+#ifdef _WIN32_CHECK //V8에 존재했던 inc_unacked 가 제거됨. 의미 파악 필요.
+			//inc_unacked(mdev);
 #endif
 			peer_req->w.cb = discard ? e_send_discard_write :
 						   e_send_retry_write;
