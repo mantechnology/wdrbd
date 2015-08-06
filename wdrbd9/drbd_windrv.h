@@ -649,6 +649,7 @@ extern void spin_lock_init(spinlock_t *lock);
 ///extern void spin_lock_irqsave(spinlock_t *lock, long flags);
 extern void spin_lock_irq(spinlock_t *lock);
 extern void spin_lock_bh(spinlock_t *lock);
+extern void spin_unlock_bh(spinlock_t *lock); // _WIN32_V9
 extern void spin_lock(spinlock_t *lock);
 extern void spin_unlock(spinlock_t *lock);
 extern void spin_unlock_irq(spinlock_t *lock);

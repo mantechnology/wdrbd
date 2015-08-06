@@ -1150,6 +1150,19 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 	releaseSpinLock(&lock->spinLock, (KIRQL) flags);
 }
 
+#ifdef _WIN32_V9
+void spin_lock_bh(spinlock_t *lock)
+{
+	//_WIN32_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
+}
+
+void spin_unlock_bh(spinlock_t *lock)
+{
+	//_WIN32_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
+}
+#endif
+
+
 int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,  sector_t *error_sector)
 {
 	// DRBD_UPGRADE: IRP_MJ_FLUSH_BUFFERS

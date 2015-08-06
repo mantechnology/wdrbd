@@ -620,9 +620,7 @@ static bool dtt_wait_connect_cond(struct dtt_waiter *waiter)
 	spin_lock_bh(&listener->waiters_lock);
 	rv = waiter->waiter.listener->pending_accepts > 0 || waiter->socket != NULL;
 
-#ifdef _WIN32_TODO // 일단 TODO
 	spin_unlock_bh(&listener->waiters_lock);
-#endif
 
 	return rv;
 }
@@ -678,9 +676,7 @@ retry:
 	} else if (listener->listener.pending_accepts > 0) {
 		listener->listener.pending_accepts--;
 
-#ifdef _WIN32_TODO // 일단 TODO
 		spin_unlock_bh(&listener->listener.waiters_lock);
-#endif
 
 		s_estab = NULL;
 		err = kernel_accept(listener->s_listen, &s_estab, 0);
@@ -742,14 +738,11 @@ retry:
 	return 0;
 
 retry_locked:
-
-#ifdef _WIN32_TODO
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	if (s_estab) {
 		sock_release(s_estab);
 		s_estab = NULL;
 	}
-#endif
 	goto retry;
 
 

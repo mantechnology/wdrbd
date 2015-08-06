@@ -230,9 +230,7 @@ int drbd_get_listener(struct drbd_waiter *waiter,
 			waiter->listener = listener;
 		}
 
-#ifdef _WIN32_TODO // spin_unlock_bh linux kernel func. V9 포팅 필요.
 		spin_unlock_bh(&resource->listeners_lock);
-#endif
 		if (new_listener)
 			new_listener->destroy(new_listener);
 
@@ -259,9 +257,7 @@ static void drbd_listener_destroy(struct kref *kref)
 	spin_lock_bh(&resource->listeners_lock);
 	list_del(&listener->list);
 
-#ifdef _WIN32_TODO //spin_unlock_bh V9 포팅 필요.
 	spin_unlock_bh(&resource->listeners_lock);
-#endif
 
 	listener->destroy(listener);
 }
@@ -285,9 +281,7 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 		wake_up(&ad2->wait);
 	}
 
-#ifdef _WIN32_TODO //spin_unlock_bh V9 포팅 필요.
 	spin_unlock_bh(&resource->listeners_lock);
-#endif
 
 	kref_put(&waiter->listener->kref, drbd_listener_destroy);
 	waiter->listener = NULL;
