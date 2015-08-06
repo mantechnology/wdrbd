@@ -138,6 +138,9 @@
     <ClCompile Include="linux-compat\hweight.c">
       <Filter>Source Files\linux-compat</Filter>
     </ClCompile>
+    <ClCompile Include="..\drbd\drbd_buildtag.c">
+      <Filter>Source Files\drbd</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drbd_windows.h">

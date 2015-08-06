@@ -3313,6 +3313,67 @@ static void drbd_cleanup(void)
 
 }
 
+#ifdef _WIN32
+void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
+{
+    unsigned int i;
+    struct drbd_conf *mdev;
+
+    struct mdev_list {
+        struct drbd_conf *mdev;
+        struct list_head list;
+    } mdev_list;
+    struct mdev_list *mdev_list_p, *p;
+
+    WDRBD_INFO("Shutdown: IRQL(%d) vol(%ws) letter(%c:)\n",
+        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter ? VolumeExtension->Letter : ' ');
+
+    if (retry.wq)
+        destroy_workqueue(retry.wq);
+    retry.wq = 0;
+
+    INIT_LIST_HEAD(&mdev_list.list);
+
+    rcu_read_lock();
+#ifdef _WIN32_CHECK // kmpak 20150806 minors 라는 변수가 없음.
+    idr_for_each_entry(&minors, mdev, i)
+    {
+        if ((mdev_list_p = kmalloc(sizeof(struct mdev_list), GFP_KERNEL, 'C0DW')) == NULL)
+        {
+            WDRBD_ERROR("DRBD_PANIC: No memory\n");
+            rcu_read_unlock();
+            return; // ignore DV error
+        }
+        mdev_list_p->mdev = mdev;
+        list_add(&mdev_list_p->list, &mdev_list.list);
+    }
+#endif
+    rcu_read_unlock();
+
+    list_for_each_entry(struct mdev_list, mdev_list_p, &mdev_list.list, list)
+    {
+        PVOLUME_EXTENSION VolExt;
+        VolExt = mdev_list_p->mdev->this_bdev->bd_disk->pDeviceExtension;
+#ifdef _WIN32_CHECK // kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요
+        extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
+        int ret = drbd_adm_down_from_engine(mdev_list_p->mdev->tconn);
+        if (ret != NO_ERROR)
+        {
+            WDRBD_ERROR("failed. ret=%d\n", ret);
+            // error ignored.
+        }
+#endif
+        drbdFreeDev(VolExt);
+    }
+
+    list_for_each_entry_safe(struct mdev_list, mdev_list_p, p, &mdev_list.list, list)
+    {
+        list_del(&mdev_list_p->list);
+        kfree(mdev_list_p);
+    }
+}
+#endif
+
 /**
  * drbd_congested() - Callback for the flusher thread
  * @congested_data:	User data
@@ -4189,8 +4250,11 @@ void drbd_put_connection(struct drbd_connection *connection)
 	kref_debug_put(&connection->kref_debug, 10);
 	kref_sub(&connection->kref, refs, drbd_destroy_connection);
 }
-
+#ifdef _WIN32
+int __init drbd_init(void)
+#else
 static int __init drbd_init(void)
+#endif
 {
 	int err;
 

@@ -206,6 +206,9 @@
       <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
     </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <ClCompile>
@@ -285,6 +288,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\drbd\drbd_bitmap.c" />
+    <ClCompile Include="..\drbd\drbd_buildtag.c" />
     <ClCompile Include="..\drbd\drbd_debugfs.c" />
     <ClCompile Include="..\drbd\drbd_interval.c" />
     <ClCompile Include="..\drbd\drbd_kref_debug.c" />
