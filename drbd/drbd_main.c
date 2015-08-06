@@ -3228,9 +3228,11 @@ static void do_retry(struct work_struct *ws)
 		 * frozen local req->private_bio, in case we force-detached.
 		 */
 #ifdef _WIN32_V9
-		extern void drbd_req_destroy_lock(struct kref *kref);
-#endif
+		// 보강! 
+		//extern void drbd_req_destroy_lock(struct kref *kref);
+#else
 		kref_put(&req->kref, drbd_req_destroy_lock);
+#endif
 
 		/* A single suspended or otherwise blocking device may stall
 		 * all others as well.  Fortunately, this code path is to
@@ -3278,7 +3280,9 @@ static void drbd_cleanup(void)
 	 * some drbdsetup commands may wait forever
 	 * for an answer.
 	 */
-#ifdef _WIN32_CHECK
+#ifdef _WIN32
+	// not support
+#else
 	if (drbd_proc)
 		remove_proc_entry("drbd", NULL);
 #endif
@@ -4305,8 +4309,11 @@ static int __init drbd_init(void)
 	strcpy(drbd_pp_wait.eventName, "drbd_pp_wait");
 #endif
 	init_waitqueue_head(&drbd_pp_wait);
-
+#ifdef _WIN32
+	// not support
+#else
 	drbd_proc = NULL; /* play safe for drbd_cleanup */
+#endif
 	idr_init(&drbd_devices);
 
 	mutex_init(&resources_mutex);
