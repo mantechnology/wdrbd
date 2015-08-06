@@ -930,6 +930,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	UCHAR aucTemp[255] = { 0 };
 	NTSTATUS status;
 
+#ifndef _WIN32_V9
 	// set proc_details
 	status = GetRegistryValue(L"proc_details", &ulLength, &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
@@ -939,6 +940,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		proc_details = 1;
 	}
+#endif
 
 	// set bypass_level
 	status = GetRegistryValue(L"bypass_level", &ulLength, &aucTemp, RegPath_unicode);
@@ -1001,11 +1003,11 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		RtlCopyMemory(g_ver, "test", 4 * 2); 
 	}
 
-    WDRBD_INFO("registry_path[%wZ]\nproc_details=%d, "
+	// _WIN32_V9: proc_details 제거함.
+    WDRBD_INFO("registry_path[%wZ]\n"
         "bypass_level=%d, read_filter=%d, use_volume_lock=%d, netlink_tcp_port=%d, "
         "netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
         RegPath_unicode,
-        proc_details,
         g_bypass_level,
         g_read_filter,
         g_use_volume_lock,

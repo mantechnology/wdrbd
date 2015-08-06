@@ -1275,7 +1275,11 @@ static int dtt_remove_path(struct drbd_transport *transport, struct drbd_path *p
 	return -ENOENT;
 }
 
+#ifdef _WIN32_V9
+int __init dtt_initialize(void)
+#else
 static int __init dtt_initialize(void)
+#endif
 {
 	return drbd_register_transport_class(&tcp_transport_class,
 					     DRBD_TRANSPORT_API_VERSION,
