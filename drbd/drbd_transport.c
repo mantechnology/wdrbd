@@ -90,7 +90,10 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 	if (!tc) {
 #ifdef _WIN32_V9
 		// not support
-		// 드라이버 의존 부분은 제거 !!!!
+		// 드라이버 사용안함!
+		// 드라이버 로드 요청은 무시하고 직접 초기화, 최종 버전에서는 class 부분을 통째로 무시해도 될 듯
+		extern int __init dtt_initialize(void);
+		dtt_initialize();
 #else
 		request_module("drbd_transport_%s", name);
 #endif
