@@ -3257,15 +3257,12 @@ check_path_usable(const struct drbd_config_context *adm_ctx,
 	/* No need for _rcu here. All reconfiguration is
 	 * strictly serialized on genl_lock(). We are protected against
 	 * concurrent reconfiguration/addition/deletion */
-#ifdef _WIN32
-    for_each_resource(struct drbd_resource, resource, &drbd_resources) {
-        for_each_connection(connection, resource) {
-            struct drbd_path *path;
-            list_for_each_entry(struct drbd_path, path, &connection->transport.paths, list) {
-#else
 	for_each_resource(resource, &drbd_resources) {
 		for_each_connection(connection, resource) {
 			struct drbd_path *path;
+#ifdef _WIN32
+            list_for_each_entry(struct drbd_path, path, &connection->transport.paths, list) {
+#else
 			list_for_each_entry(path, &connection->transport.paths, list) {
 #endif
 				retcode = check_path_against_nla(path, my_addr, peer_addr);
@@ -4223,11 +4220,7 @@ int drbd_adm_dump_resources(struct sk_buff *skb, struct netlink_callback *cb)
 
 	rcu_read_lock();
 	if (cb->args[0]) {
-#ifdef _WIN32
-        for_each_resource_rcu(struct drbd_resource, resource, &drbd_resources)
-#else
 		for_each_resource_rcu(resource, &drbd_resources)
-#endif
 			if (resource == (struct drbd_resource *)cb->args[0])
 				goto found_resource;
 		err = 0;  /* resource was probably deleted */
@@ -4531,11 +4524,7 @@ found_connection:
 
 no_more_connections:
 	if (cb->args[1] == ITERATE_RESOURCES) {
-#ifdef _WIN32
-        for_each_resource_rcu(struct drbd_resource, next_resource, &drbd_resources) {
-#else
 		for_each_resource_rcu(next_resource, &drbd_resources) {
-#endif
 			if (next_resource == resource)
 				goto found_resource;
 		}
@@ -5197,11 +5186,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	mutex_lock(&resource->conf_update);
-#ifdef _WIN32
-    for_each_connection_safe(struct drbd_connection, connection, tmp, resource) {
-#else
 	for_each_connection_safe(connection, tmp, resource) {
-#endif
 		retcode = conn_try_disconnect(connection, 0);
 		if (retcode >= SS_SUCCESS) {
 			del_connection(connection);
@@ -5722,11 +5707,7 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 
 	cb->args[5] = 2;  /* number of iterations */
 	mutex_lock(&resources_mutex);
-#ifdef _WIN32
-    for_each_resource(struct drbd_resource, resource, &drbd_resources) {
-#else
 	for_each_resource(resource, &drbd_resources) {
-#endif
 		struct drbd_state_change *state_change;
 
 		state_change = remember_state_change(resource, GFP_KERNEL);
@@ -5820,9 +5801,7 @@ out_no_adm:
 	return 0;
 
 }
-
 #ifdef _WIN32
-
 int drbd_tla_parse(struct nlmsghdr *nlh)
 {
     extern struct genl_family drbd_genl_family;

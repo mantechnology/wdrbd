@@ -714,7 +714,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 			return false;
 		}
 #endif // _WIN32_CT
-
 		spin_lock_irqsave(&thi->t_lock, flags);
 #ifdef _WIN32_CT
         thi->task = thi->nt;
@@ -784,8 +783,6 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	WDRBD_INFO("thi(%s) ns(%s) state(%d) waitflag(%d) event(%d)-------------------!\n", 
 		thi->name, (ns == RESTARTING) ? "RESTARTING" : "EXITING", thi->t_state, wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 #endif
-
-
 	if (thi->t_state == NONE) {
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		if (restart)
@@ -836,7 +833,6 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 #else
 		wait_for_completion(&thi->stop);
 #endif
-
 	WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 }
 
@@ -1682,8 +1678,8 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 			       offsetof(struct bm_extent, lce));
 #else
 	resync_lru = lc_create("resync", drbd_bm_ext_cache,
-		1, 61, sizeof(struct bm_extent),
-		offsetof(struct bm_extent, lce));
+			       1, 61, sizeof(struct bm_extent),
+			       offsetof(struct bm_extent, lce));
 #endif
 	if (!resync_lru)
 		goto out;
@@ -1911,7 +1907,6 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 				struct bm_xfer_ctx *c)
 {
 	struct bitstream bs;
-
 #ifdef _WIN32
 	ULONG_PTR plain_bits;
 	ULONG_PTR tmp;
@@ -1921,7 +1916,6 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	unsigned long tmp;
 	unsigned long rl;
 #endif
-
 	unsigned len;
 	unsigned toggle;
 	int bits, use_rle;
@@ -2403,7 +2397,6 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 			return err;
 	}
 #endif
-
 	return 0;
 }
 
@@ -2456,7 +2449,6 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 		len -= l;
 	}
 #endif
-
 	return 0;
 }
 
@@ -2562,7 +2554,6 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #else
 			err = _drbd_send_bio(peer_device, req->master_bio);
 #endif
-
 		else
 #ifdef _WIN32_V9
 		{
@@ -2689,6 +2680,7 @@ static bool any_disk_is_uptodate(struct drbd_device *device)
 		ret = true;
 	else {
 		struct drbd_peer_device *peer_device;
+
 		for_each_peer_device_rcu(peer_device, device) {
 			if (peer_device->disk_state[NOW] == D_UP_TO_DATE) {
 				ret = true;
@@ -2761,8 +2753,11 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 		}
 	} else if (resource->role[NOW] != R_PRIMARY && !(mode & FMODE_WRITE) && !allow_oos)
 		return -EMEDIUMTYPE;
+
+
 	down(&resource->state_sem);
 	/* drbd_set_role() should be able to rely on nobody increasing rw_cnt */
+
 	spin_lock_irqsave(&resource->req_lock, flags);
 	/* to have a stable role and no race with updating open_cnt */
 
@@ -2903,7 +2898,6 @@ void drbd_cleanup_device(struct drbd_device *device)
 
 static void drbd_destroy_mempools(void)
 {
-
 #ifndef _WIN32
 	struct page *page;
 
@@ -2916,7 +2910,7 @@ static void drbd_destroy_mempools(void)
 #else
     drbd_pp_vacant = 0;
 #endif
-	/* D_ASSERT(atomic_read(&drbd_pp_vacant)==0); */
+	/* D_ASSERT(device, atomic_read(&drbd_pp_vacant)==0); */
 
 #ifndef _WIN32
 	if (drbd_md_io_bio_set)
@@ -3045,7 +3039,6 @@ static int drbd_create_mempools(void)
 		drbd_pp_pool = page;
 	}
 #endif
-
 	drbd_pp_vacant = number;
 
 	return 0;
@@ -3108,11 +3101,7 @@ void drbd_destroy_device(struct kref *kref)
 	drbd_release_all_peer_reqs(device);
 
 	lc_destroy(device->act_log);
-#ifdef _WIN32_V9
-	for_each_peer_device_safe(struct drbd_peer_device, peer_device, tmp, device) {
-#else
 	for_each_peer_device_safe(peer_device, tmp, device) {
-#endif
 		kref_debug_put(&peer_device->connection->kref_debug, 3);
 		kref_put(&peer_device->connection->kref, drbd_destroy_connection);
 		free_peer_device(peer_device);
@@ -3482,11 +3471,7 @@ struct drbd_resource *drbd_find_resource(const char *name)
 		return NULL;
 
 	rcu_read_lock();
-#ifdef _WIN32
-	for_each_resource_rcu(struct drbd_resource, resource, &drbd_resources) {
-#else
 	for_each_resource_rcu(resource, &drbd_resources) {
-#endif
 		if (!strcmp(resource->name, name)) {
 			kref_get(&resource->kref);
 			goto found;
@@ -5660,11 +5645,8 @@ void lock_all_resources(void)
 void unlock_all_resources(void)
 {
 	struct drbd_resource *resource;
-#ifdef _WIN32_V9
-	for_each_resource(struct drbd_resource, resource, &drbd_resources)
-#else
+
 	for_each_resource(resource, &drbd_resources)
-#endif
 		spin_unlock(&resource->req_lock);
 #ifdef _WIN32_CHECK
 	local_irq_enable();

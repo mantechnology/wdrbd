@@ -127,7 +127,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		struct drbd_connection *connection, *tmp;
 		int ret; 
 
-		for_each_connection_safe(struct drbd_connection, connection, tmp, resource)
+		for_each_connection_safe(connection, tmp, resource)
 		{
 			ret = drbd_adm_down_from_engine(connection);
 			if (ret != NO_ERROR)
