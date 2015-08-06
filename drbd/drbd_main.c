@@ -4250,6 +4250,7 @@ void drbd_put_connection(struct drbd_connection *connection)
 	kref_debug_put(&connection->kref_debug, 10);
 	kref_sub(&connection->kref, refs, drbd_destroy_connection);
 }
+
 #ifdef _WIN32
 int __init drbd_init(void)
 #else
@@ -4257,13 +4258,15 @@ static int __init drbd_init(void)
 #endif
 {
 	int err;
-
+    
 #ifdef _WIN32_V9
 #ifdef _WIN32_TMP_DEBUG_MUTEX
 	mutex_init(&notification_mutex, "notification_mutex");
 #else
 	mutex_init(&notification_mutex);
 #endif
+    extern void nl_policy_init_by_manual(void);
+    nl_policy_init_by_manual();
 #endif
 
 	initialize_kref_debugging();
