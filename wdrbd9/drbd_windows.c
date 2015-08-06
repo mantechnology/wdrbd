@@ -604,7 +604,7 @@ void bio_endio(struct bio *bio, int error)
 
 struct bio *bio_clone(struct bio * bio_src, int flag)
 {
-	struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs, '24DW'); 
+	struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs); 
 
     if (!bio)
     {

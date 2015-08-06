@@ -331,7 +331,7 @@ static inline int drbd_ratelimit(void)
  * Unlike the assert macro, this macro returns a boolean result.
  */
 #ifdef _WIN32
-#define expect(exp) (exp)
+#define expect(x, exp) (exp)
 #else
 #define expect(x, exp) ({							\
 		bool _bool = (exp);						\

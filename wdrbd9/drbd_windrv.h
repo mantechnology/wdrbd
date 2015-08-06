@@ -69,9 +69,6 @@
 #define smp_rmb()				KeMemoryBarrier()
 
 
-#define false					FALSE
-#define true					TRUE
-
 #define GFP_KERNEL              1
 #define GFP_ATOMIC              2
 #define GFP_NOIO				(__GFP_WAIT)
@@ -824,7 +821,6 @@ struct scatterlist {
 };
 
 #define MINORMASK				26
-#define LC_STARVING				10
 
 #define BUG()   WDRBD_FATAL("BUG: failure\n")
 
@@ -1283,7 +1279,7 @@ typedef struct _PTR_ENTRY
 #define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
 // asm-x86
-#define PAGE_SHIFT	12		//_WIN32_CHECK Windows환경으로 포팅필요
+//#define PAGE_SHIFT	12		//_WIN32_CHECK Windows환경으로 포팅필요 // kmpak 불필요
 
 //pagemap.h
 #define PAGE_CACHE_SHIFT	PAGE_SHIFT //_WIN32_CHECK Windows환경으로 포팅필요

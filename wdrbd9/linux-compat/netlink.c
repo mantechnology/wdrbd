@@ -229,7 +229,7 @@ int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 
 NTSTATUS reply_error(int type, int flags, int error, struct genl_info * pinfo)
 {
-    struct sk_buff * reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL, '07DW');
+    struct sk_buff * reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 
     if (reply_skb)
     {
@@ -981,7 +981,7 @@ static int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo)
         return 0;
     }
 
-    struct sk_buff * reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL, '35DW');
+    struct sk_buff * reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 
     if (reply_skb)
     {
