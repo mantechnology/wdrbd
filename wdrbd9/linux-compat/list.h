@@ -212,44 +212,6 @@ static __inline void list_add_tail(struct list_head *new, struct list_head *head
 	__list_add(new, head->prev, head);
 }
 
-/*
-* Insert a new entry between two known consecutive entries.
-*
-* This is only for internal list manipulation where we know
-* the prev/next entries already!
-*/
-static __inline void __list_add_rcu(struct list_head * new,
-struct list_head * prev, struct list_head * next)
-{
-    new->next = next;
-    new->prev = prev;
-    //smp_wmb();
-    next->prev = new;
-    prev->next = new;
-}
-
-/**
-* list_add_rcu - add a new entry to rcu-protected list
-* @new: new entry to be added
-* @head: list head to add it after
-*
-* Insert a new entry after the specified head.
-* This is good for implementing stacks.
-*
-* The caller must take whatever precautions are necessary
-* (such as holding appropriate locks) to avoid racing
-* with another list-mutation primitive, such as list_add_rcu()
-* or list_del_rcu(), running on this same list.
-* However, it is perfectly legal to run concurrently with
-* the _rcu list-traversal primitives, such as
-* list_for_each_entry_rcu().
-*/
-// kmpak 20150729 wdrbd9에서 신규 추가
-static __inline void list_add_rcu(struct list_head *new, struct list_head *head)
-{
-    __list_add_rcu(new, head, head->next);
-}
-
 static __inline void list_move(struct list_head *list, struct list_head *head)
 {
 	__list_del(list->prev, list->next);

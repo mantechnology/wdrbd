@@ -19,6 +19,11 @@ static __inline int skb_is_nonlinear(const struct sk_buff *skb)
 	return skb->len;
 }
 
+static __inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
+{
+	return (size_t)skb->data + (size_t) skb->tail;
+}
+
 /**
  *	skb_tailroom - bytes at buffer end
  *	@skb: buffer to check
@@ -841,7 +846,6 @@ static __inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
  */
 static __inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
 {
-	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
 	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
 	return msg->len;
 }

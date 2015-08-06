@@ -518,7 +518,11 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 	if (pos < 0)
 		return pos;
 	va_start(args, fmt);
+#ifdef _WIN32
+    ret = _vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
+#else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
+#endif
 	va_end(args);
 	if (ret < 0) {
 		env->pos = ret;

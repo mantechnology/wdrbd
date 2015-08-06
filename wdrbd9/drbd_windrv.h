@@ -1088,7 +1088,7 @@ extern uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length);
 extern bool lc_is_used(struct lru_cache *lc, unsigned int enr);
 extern void get_random_bytes(void *buf, int nbytes);
 extern int fls(int x);
-extern unsigned char *skb_put(struct msg_buff *skb, unsigned int len);
+extern unsigned char *skb_put(struct sk_buff *skb, unsigned int len);
 extern char *kstrdup(const char *s, int gfp);
 extern void panic(char *msg);
 ///
@@ -1170,6 +1170,7 @@ extern PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src
 extern void ucsfree(IN PUNICODE_STRING str);
 
 /// SEO: RCU 관련 함수 묶음, 제거 대상
+extern void list_add_rcu(struct list_head *new, struct list_head *head);
 extern void list_add_tail_rcu(struct list_head *new,   struct list_head *head);
 extern void list_del_rcu(struct list_head *entry);
 

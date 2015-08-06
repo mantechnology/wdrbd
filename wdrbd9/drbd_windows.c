@@ -1803,9 +1803,6 @@ uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length)
 	return crc;
 }
 
-#ifdef _WIN32_V9 // JHKIM: move to list.h ???
-// JHKIM: move to list.h ???
-#else
 inline void __list_add_rcu(struct list_head *new, struct list_head *prev, struct list_head *next)
 {
 	new->next = next;
@@ -1820,11 +1817,15 @@ void list_del_rcu(struct list_head *entry)
      entry->prev = LIST_POISON2;
 }
 
+void list_add_rcu(struct list_head *new, struct list_head *head)
+{
+    __list_add_rcu(new, head, head->next);
+}
+
 void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 {
      __list_add_rcu(new, head->prev, head);
 }
-#endif
 
  struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
  {
@@ -1873,30 +1874,7 @@ struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 //
 // porting netlink interface 
 //
-#ifdef _WIN32_V9
- // _WIN32_CHECK: JHKIM: move to drbd_wingenl.h !!!
-#else
-void nlmsg_free(struct msg_buff *skb)
-{
-	kfree(skb);
-}
-
-
-int nla_len(const struct nlattr *nla)
-{
-	return nla->nla_len - NLA_HDRLEN;
-}
-
-unsigned char *skb_tail_pointer(const struct msg_buff *skb)
-{
-#ifdef _WIN32
-	return (ULONG_PTR) skb->data + (unsigned int) skb->tail;
-#else
-	return (unsigned int) skb->data + (unsigned int) skb->tail;
-#endif
-}
-
-unsigned char *skb_put(struct msg_buff *skb, unsigned int len)
+unsigned char *skb_put(struct sk_buff *skb, unsigned int len)
 {
 	unsigned char *tmp = skb_tail_pointer(skb);
 	// SKB_LINEAR_ASSERT(skb);
@@ -1913,9 +1891,7 @@ unsigned char *skb_put(struct msg_buff *skb, unsigned int len)
 	}
 
 	return tmp;
-}     
-#endif // _WIN32_CHECK: JHKIM: 헤더를 맞춰가는 도중 일단 보류. 헤더 분리를 하기 전 버전이 빠를 듯??
-
+}
 void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
 				       struct genl_family *family, int flags, u8 cmd)
 {
