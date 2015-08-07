@@ -8,14 +8,12 @@
  *
  * sk_buff -> "msg_buff"
  */
-#ifdef _WIN32_APP
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
-#endif
-
+#include "windows/wingenl.h"
 #ifndef _WIN32
 #include <linux/types.h>
 #include <linux/netlink.h>

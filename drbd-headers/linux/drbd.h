@@ -29,8 +29,8 @@
 #include <asm/types.h>
 
 #ifdef __KERNEL__
-#include "windows/types.h"
-#include "asm/byteorder.h"
+#include <linux/types.h>
+#include <asm/byteorder.h>
 #else
 #include <sys/types.h>
 #include <sys/wait.h>

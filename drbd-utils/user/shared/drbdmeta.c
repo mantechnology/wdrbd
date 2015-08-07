@@ -26,18 +26,15 @@
 /* have the <sys/....h> first, otherwise you get e.g. "redefined" types from
  * sys/types.h and other weird stuff */
 
-
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
 #define INITIALIZE_BITMAP 0
 
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include "windows/types.h"
+#else
 #include <sys/types.h>
 #endif
 #include <sys/stat.h>

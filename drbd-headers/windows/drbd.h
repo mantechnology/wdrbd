@@ -26,14 +26,11 @@
 #ifndef DRBD_H
 #define DRBD_H
 
-#include "asm/types.h"
-
 #define __BYTE_ORDER __LITTLE_ENDIAN
 #define __LITTLE_ENDIAN_BITFIELD
 
 #ifdef __KERNEL__
 #include "windows/types.h"
-#include "asm/byteorder.h"
 #else
 #include <sys/types.h>
 #include <sys/wait.h>

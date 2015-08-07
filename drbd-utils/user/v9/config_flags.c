@@ -9,7 +9,9 @@
 
 #include <sys/socket.h>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include "windows/wingenl.h"
+#else
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
 #endif

@@ -13,9 +13,9 @@
 #define be_u16 struct { uint16_t be; }
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(__KERNEL__)
 #pragma pack (push, 1)
-#define __packed // _WIN32_CHECK: �� ������ ���ǵǵ��� ��ġ�ʿ�
+#define __packed
 #endif
 
 struct peer_dev_md_on_disk_9 {
@@ -51,16 +51,16 @@ struct meta_data_on_disk_9
 
     struct peer_dev_md_on_disk_9 peers[DRBD_PEERS_MAX];
     be_u64 history_uuids[HISTORY_UUIDS];
-#ifdef _WIN32_CHECK // GCC가 아닌 MS 스타일의 패딩 방식 알아보기
+#if defined(_WIN32) && !defined(__KERNEL__) // _WIN32_CHECK // GCC가 아닌 MS 스타일의 패딩 방식 알아보기
     char padding[0]; __attribute__((aligned(4096)));
 #endif
-#ifdef __KERNEL__
+#if defined(_WIN32) && defined(__KERNEL__)
 };
 #else
 } __packed;
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(__KERNEL__)
 #pragma pack (pop) 
 #endif
 

@@ -1,9 +1,7 @@
 ﻿#ifndef GENL_MAGIC_FUNC_H
 #define GENL_MAGIC_FUNC_H
 
-#ifndef __KERNEL__
 #include <linux/genl_magic_struct.h>
-#endif
 
 /*
  * Magic: declare tla policy						{{{1
@@ -257,8 +255,6 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
  * Magic: define op number to op name mapping				{{{1
  *									{{{2
  */
-#ifndef __KERNEL__
-#else
 static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 __attribute__ ((unused));
 static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
@@ -272,9 +268,9 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
 		     return "unknown";
 	}
 }
-#endif
 
-#ifndef __KERNEL__
+#ifdef __KERNEL__
+#ifndef _WIN32
 #include <linux/stringify.h>
 #endif
 /*
@@ -313,12 +309,12 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 #endif
 	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy)-1,
 };
-#ifndef __KERNEL__
+
 /*
  * Magic: define multicast groups
  * Magic: define multicast group registration helper
  */
-
+#ifdef _WIN32_CHECK
 /* COMPAT
  * See linux 3.13,
  * genetlink: make multicast groups const, prevent abuse
@@ -331,7 +327,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 #else
 #include <linux/genl_magic_func-genl_register_mc_group.h>
 #endif
-#endif /* __KERNEL__ */
+#endif
 /*
  * Magic: provide conversion functions					{{{1
  * populate skb from struct.
@@ -424,6 +420,7 @@ s_fields								\
 
 #include GENL_MAGIC_INCLUDE_FILE
 
+#endif /* __KERNEL__ */
 
 /* }}}1 */
 #endif /* GENL_MAGIC_FUNC_H */

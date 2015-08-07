@@ -48,5 +48,5 @@ typedef		__s64		int64_t;
 
 
 ///
-
+#define BLKSSZGET			1
 #endif

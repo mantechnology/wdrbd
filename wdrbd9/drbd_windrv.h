@@ -243,7 +243,6 @@ enum rq_flag_bits {
 #define unlikely(_X)			(_X)
 
 #define pid_t					int
-#define BLKSSZGET				1
 
 #define PAGE_KERNEL				1
 #define TASK_INTERRUPTIBLE		1

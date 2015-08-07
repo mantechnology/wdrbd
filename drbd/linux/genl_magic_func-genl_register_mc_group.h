@@ -15,7 +15,7 @@ static int CONCAT_(GENL_MAGIC_FAMILY, _genl_multicast_ ## group)(	\
 }
 
 #include GENL_MAGIC_INCLUDE_FILE
-
+#ifndef _WIN32
 int CONCAT_(GENL_MAGIC_FAMILY, _genl_register)(void)
 {
 	int err = genl_register_family_with_ops(&ZZZ_genl_family,
@@ -47,3 +47,4 @@ void CONCAT_(GENL_MAGIC_FAMILY, _genl_unregister)(void)
 {
 	genl_unregister_family(&ZZZ_genl_family);
 }
+#endif

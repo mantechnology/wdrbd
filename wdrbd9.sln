@@ -26,13 +26,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "windows", "windows", "{BA66DA84-532C-47FB-8BEB-9E7BD40A464C}"
 	ProjectSection(SolutionItems) = preProject
 		drbd-headers\windows\drbd.h = drbd-headers\windows\drbd.h
+		drbd-headers\windows\ioctl.h = drbd-headers\windows\ioctl.h
 		drbd-headers\windows\types.h = drbd-headers\windows\types.h
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "asm", "asm", "{47540863-36DF-442E-9A53-2E66D466D8A2}"
-	ProjectSection(SolutionItems) = preProject
-		drbd-headers\asm\byteorder.h = drbd-headers\asm\byteorder.h
-		drbd-headers\asm\types.h = drbd-headers\asm\types.h
+		drbd-headers\windows\wingenl.h = drbd-headers\windows\wingenl.h
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "linux", "linux", "{5C0D1E4A-5996-4145-A53E-13744259BF5C}"
@@ -231,7 +227,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{BA66DA84-532C-47FB-8BEB-9E7BD40A464C} = {A28F3892-083A-4E86-8175-ADE77023671B}
-		{47540863-36DF-442E-9A53-2E66D466D8A2} = {A28F3892-083A-4E86-8175-ADE77023671B}
 		{5C0D1E4A-5996-4145-A53E-13744259BF5C} = {A28F3892-083A-4E86-8175-ADE77023671B}
 	EndGlobalSection
 EndGlobal
