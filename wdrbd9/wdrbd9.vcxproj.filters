@@ -34,11 +34,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="wdrbd9.inf">
-      <Filter>Driver Files</Filter>
-    </Inf>
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="data.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -257,5 +252,10 @@
     <ClInclude Include="linux-compat\Bitops.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="drbd.inf">
+      <Filter>Driver Files</Filter>
+    </Inf>
   </ItemGroup>
 </Project>

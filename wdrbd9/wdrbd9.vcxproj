@@ -201,6 +201,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -316,7 +317,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Inf Include="wdrbd9.inf" />
+    <Inf Include="drbd.inf" />
   </ItemGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
