@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include "windows/wingenl.h"
 #ifndef _WIN32
+#include <linux/socket.h>
 #include <linux/types.h>
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
@@ -34,10 +35,7 @@ do {							\
 				lvl , ##arg);		\
 } while (0)
 
-#ifndef _WIN32_APP
-
-#else
-#define BUG_ON(cond)				\
+#define BUG_ON(cond)						\
 	do {							\
 		int __cond = (cond);				\
 		if (!__cond)					\
@@ -47,29 +45,11 @@ do {							\
 				#cond, __cond);			\
 		abort();				\
 	} while (0)
-#endif
 
-#ifndef _WIN32
 #define min_t(type, x, y) ({                    \
         type __min1 = (x);                      \
         type __min2 = (y);                      \
         __min1 < __min2 ? __min1: __min2; })
-#else 
-// for Cygwin
-#ifdef min_t
-#undef min_t
-#endif
-#define min_t(type, x, y)  (((type)x < (type)y) ? (type)x: (type)y)
-#ifdef max_t
-#undef max_t
-#endif
-#define max_t(type, x, y)  (((type)x < (type)y) ? (type)y: (type)x)
-#endif
-
-#ifndef __unused
-//#define __unused __attribute((unused))
-#define __unused unused
-#endif
 
 #ifndef __read_mostly
 #define __read_mostly
@@ -100,9 +80,6 @@ static inline int msg_tailroom(struct msg_buff *msg)
 	return msg->end - msg->tail;
 }
 
-#ifndef _WIN32_APP
-// unused!
-#else
 static inline struct msg_buff *msg_new(size_t size)
 {
 	struct msg_buff *m = calloc(1, sizeof(*m) + size);
@@ -119,7 +96,6 @@ static inline void msg_free(struct msg_buff *m)
 {
 	free(m);
 }
-#endif
 
 static inline void *msg_put(struct msg_buff *msg, unsigned int len)
 {
@@ -601,7 +577,6 @@ static inline void *nla_data(const struct nlattr *nla)
 	return (char *) nla + NLA_HDRLEN;
 }
 
-#ifndef _WIN32 // _WIN32_V9_CHECK: [choi] drbd_wingenl.h에 선언되어있음. 
 /**
  * nla_len - length of payload
  * @nla: netlink attribute
@@ -610,7 +585,7 @@ static inline int nla_len(const struct nlattr *nla)
 {
 	return nla->nla_len - NLA_HDRLEN;
 }
-#endif
+
 /**
  * nla_ok - check if the netlink attribute fits into the remaining bytes
  * @nla: netlink attribute
@@ -869,22 +844,12 @@ static inline int nla_get_flag(const struct nlattr *nla)
  */
 static inline struct nlattr *nla_nest_start(struct msg_buff *msg, int attrtype)
 {
-#ifndef _WIN32_APP
-	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
-	struct nlattr *start = (struct nlattr *)skb_tail_pointer(msg);
-
-	if (nla_put(msg, attrtype, 0, NULL) < 0)
-		return NULL;
-
-	return start;
-#else
 	struct nlattr *start = (struct nlattr *)msg->tail;
 
 	if (nla_put(msg, attrtype, 0, NULL) < 0)
 		return NULL;
 
 	return start;
-#endif
 }
 
 /**
@@ -899,14 +864,8 @@ static inline struct nlattr *nla_nest_start(struct msg_buff *msg, int attrtype)
  */
 static inline int nla_nest_end(struct msg_buff *msg, struct nlattr *start)
 {
-//#ifndef _WIN32_APP //[choi] 엔진은 drbd_wingenl.h의 nla_nest_end를 탐. 이부분 불필요함으로 주석처리.
-//	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
-//	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
-//	return msg->len;
-//#else
 	start->nla_len = msg->tail - (unsigned char *)start;
 	return msg->tail - msg->data;
-//#endif
 }
 
 /**
@@ -999,12 +958,6 @@ struct genl_info
 	struct genlmsghdr *	genlhdr;
 	void *			userhdr;
 	struct nlattr **	attrs;
-#ifndef _WIN32_APP
-	u32             snd_seq;
-	u32			    snd_portid;
-	PWSK_SOCKET		NetlinkSock;
-    LIST_ENTRY      ListEntry;
-#endif
 };
 
 /**

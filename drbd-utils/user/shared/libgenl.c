@@ -1012,11 +1012,3 @@ int nla_append(struct msg_buff *msg, int attrlen, const void *data)
 	memcpy(msg_put(msg, attrlen), data, attrlen);
 	return 0;
 }
-#ifndef _WIN32
-//
-#else
-int nla_len(const struct nlattr *nla)
-{
-    return nla->nla_len - NLA_HDRLEN;
-}
-#endif
