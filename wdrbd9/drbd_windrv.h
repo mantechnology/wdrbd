@@ -392,7 +392,7 @@ do { \
 #else
 #define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
 #endif
-#define WDRBD_TRACE_NETLINK
+#define WDRBD_TRACE_NETLINK WDRBD_TRACE
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -415,8 +415,6 @@ do { \
 	((type *)( \
 	(PCHAR)(ptr) - \
 	(ULONG_PTR)(&((type *)0)->member)))
-
-#define offsetof(_type, _field)			(&((_type *)0)->_field)
 
 struct mutex {
 	KMUTEX mtx;

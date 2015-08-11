@@ -1,10 +1,4 @@
-﻿#ifdef _WIN32
-#include "windows/types.h"
-//#include "drbd_windows.h"
-
-#endif
-
-#define _GNU_SOURCE
+﻿#define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
 
@@ -13,16 +7,13 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
-#include <getopt.h>
 #endif
-
 #include <fcntl.h>
-
+#include <unistd.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
-
+#include <getopt.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <linux/drbd.h>
@@ -36,7 +27,6 @@
 #else
 #include <linux/fs.h>           /* for BLKGETSIZE64 */
 #endif
-
 #include <string.h>
 #include <netdb.h>
 

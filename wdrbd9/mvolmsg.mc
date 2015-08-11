@@ -329,41 +329,41 @@ Language		= English
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 MessageID		= 15001
 Severity		= Error
+SymbolicName	= MSG_CLI_EMERG
+Language		= English
+<Emerge>CLI %2
+.
+
+MessageID		= 15002
+Severity		= Error
 SymbolicName	= MSG_CLI_ALERT
 Language		= English
 <Alert>CLI %2
 .
 
-MessageID		= 15002
+MessageID		= 15003
 Severity		= Error
 SymbolicName	= MSG_CLI_CRITICAL
 Language		= English
 <Critical>CLI %2
 .
 
-MessageID		= 15003
+MessageID		= 15004
 Severity		= Error
 SymbolicName	= MSG_CLI_ERROR
 Language		= English
 <Error>CLI %2
 .
 
-MessageID		= 15004
+MessageID		= 15005
 Severity		= Warning
 SymbolicName	= MSG_CLI_WARNING
 Language		= English
 <Warning>CLI %2
 .
 
-MessageID		= 15005
-Severity		= Warning
-SymbolicName	= MSG_CLI_NOTICE
-Language		= English
-<Notice>CLI %2
-.
-
 MessageID		= 15006
-Severity		= Informational
+Severity		= Warning
 SymbolicName	= MSG_CLI_NOTICE
 Language		= English
 <Notice>CLI %2

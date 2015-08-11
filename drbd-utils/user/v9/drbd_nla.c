@@ -1,8 +1,4 @@
-﻿#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
-#include <stdbool.h>
+﻿#include <stdbool.h>
 #include "libgenl.h"
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"

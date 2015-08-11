@@ -31,12 +31,10 @@
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
-
 #ifdef _WIN32
 #include "windows/types.h"
-#else
-#include <sys/types.h>
 #endif
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/utsname.h>
@@ -2698,7 +2696,10 @@ int v07_style_md_open(struct format *cfg)
 #else
 	cfg->bd_size = bdev_size(cfg->md_fd);
 #endif
-	if ((cfg->bd_size >> 9) < MD_BM_OFFSET_07) {
+	/* check_for_existing_data() wants to read that much,
+	 * so having less than that doesn't make sense.
+	 * It's only 68kB anyway! */
+	if (cfg->bd_size < SO_MUCH) {
 		fprintf(stderr, "%s is only %llu bytes. That's not enough.\n",
 			cfg->md_device_name, (long long unsigned)cfg->bd_size);
 		exit(10);
@@ -4905,6 +4906,7 @@ static enum drbd_disk_state drbd_str_disk(const char *str)
 	fprintf(stderr, "Unexpected output from drbdsetup >%s<\n", str);
 	exit(20);
 }
+
 
 int is_attached(int minor)
 {

@@ -27,6 +27,7 @@
 #define _DRBD_INT_H
 
 #ifdef _WIN32
+#include "stddef.h"
 #include "windows/types.h"
 #include "linux-compat/list.h"
 #include "linux-compat/sched.h"

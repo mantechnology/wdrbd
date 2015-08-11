@@ -1,4 +1,4 @@
-﻿//
+//
 //  Values are 32 bit values laid out as follows:
 //
 //   3 3 2 2 2 2 2 2 2 2 2 2 1 1 1 1 1 1 1 1 1 1
@@ -452,13 +452,22 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 //
+// MessageId: MSG_CLI_EMERG
+//
+// MessageText:
+//
+// <Emerge>CLI %2
+//
+#define MSG_CLI_EMERG                    0xC0003A99L
+
+//
 // MessageId: MSG_CLI_ALERT
 //
 // MessageText:
 //
 // <Alert>CLI %2
 //
-#define MSG_CLI_ALERT                    0xC0003A99L
+#define MSG_CLI_ALERT                    0xC0003A9AL
 
 //
 // MessageId: MSG_CLI_CRITICAL
@@ -467,7 +476,7 @@
 //
 // <Critical>CLI %2
 //
-#define MSG_CLI_CRITICAL                 0xC0003A9AL
+#define MSG_CLI_CRITICAL                 0xC0003A9BL
 
 //
 // MessageId: MSG_CLI_ERROR
@@ -476,7 +485,7 @@
 //
 // <Error>CLI %2
 //
-#define MSG_CLI_ERROR                    0xC0003A9BL
+#define MSG_CLI_ERROR                    0xC0003A9CL
 
 //
 // MessageId: MSG_CLI_WARNING
@@ -485,7 +494,7 @@
 //
 // <Warning>CLI %2
 //
-#define MSG_CLI_WARNING                  0x80003A9CL
+#define MSG_CLI_WARNING                  0x80003A9DL
 
 //
 // MessageId: MSG_CLI_NOTICE
@@ -494,16 +503,7 @@
 //
 // <Notice>CLI %2
 //
-#define MSG_CLI_NOTICE                   0x80003A9DL
-
-//
-// MessageId: MSG_CLI_NOTICE
-//
-// MessageText:
-//
-// <Notice>CLI %2
-//
-#define MSG_CLI_NOTICE                   0x40003A9EL
+#define MSG_CLI_NOTICE                   0x80003A9EL
 
 //
 // MessageId: MSG_CLI_INFO

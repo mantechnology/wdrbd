@@ -63,11 +63,9 @@
 #include "drbd_protocol.h"
 #include "drbd_req.h" /* only for _req_mod in tl_release and tl_clear */
 #include "drbd_vli.h"
-
 #ifdef _WIN32_SEND_BUFFING
 #include "send_buf.h"		
 #endif
-
 #include "drbd_debugfs.h"
 #include "drbd_meta_data.h"
 #ifndef _WIN32 // _WIN32_V9: not used
@@ -209,7 +207,6 @@ DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT
 EX_SPIN_LOCK g_rcuLock;
 struct mutex g_genl_mutex;
 #endif
-
 static const struct block_device_operations drbd_ops = {
 #ifndef _WIN32 //_WIN32_V9
 	.owner =   THIS_MODULE,
@@ -552,7 +549,6 @@ static int drbd_thread_setup(void *arg)
 	struct drbd_connection *connection = thi->connection;
 	unsigned long flags;
 	int retval;
-
 #ifdef _WIN32
 #ifdef _WIN32_CT
     thi->nt = ct_add_thread(KeGetCurrentThread(), thi->name, TRUE, 'B0DW');
@@ -722,7 +718,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 #endif
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
-		
 #ifdef _WIN32
 #ifndef _WIN32_CT
 		{
@@ -3303,7 +3298,6 @@ static void drbd_cleanup(void)
 	idr_destroy(&drbd_devices);
 
 	pr_info("module cleanup done.\n");
-
 }
 
 #ifdef _WIN32
@@ -3871,7 +3865,6 @@ static int init_submitter(struct drbd_device *device)
 		alloc_ordered_workqueue("drbd%u_submit", WQ_MEM_RECLAIM, device->minor);
 #else
 		create_singlethread_workqueue("drbd_submit");
-
 #endif
 	if (!device->submit.wq)
 		return -ENOMEM;
@@ -4113,7 +4106,6 @@ out_idr_remove_minor:
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
-
 #ifdef _WIN32_V9
 	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n");
 #else
@@ -4247,11 +4239,8 @@ static int __init drbd_init(void)
 #endif
 {
 	int err;
-    
 #ifdef _WIN32
 	extern void nl_policy_init_by_manual(void);
-	extern struct nlattr *global_attrs[];
-
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
 
@@ -4260,8 +4249,10 @@ static int __init drbd_init(void)
 
 #ifdef _WIN32_TMP_DEBUG_MUTEX
 	mutex_init(&g_genl_mutex, "genl_mutex");
+    mutex_init(&notification_mutex, "notification_mutex");  // _WIN32_V9
 #else
 	mutex_init(&g_genl_mutex);
+    mutex_init(&notification_mutex);    //_WIN32_V9
 #endif
 	//extern union drbd_state g_mask_null;// _WIN32_V9: V9에서는 설정 방식이 달라짐. 확인 후 코멘트 삭제
 	//extern union drbd_state g_val_null;
@@ -4273,16 +4264,10 @@ static int __init drbd_init(void)
 	ct_init_thread_list();
 #endif
 
-#ifdef _WIN32_V9
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-	mutex_init(&notification_mutex, "notification_mutex");
-#else
-	mutex_init(&notification_mutex);
-#endif
-#endif
-
 	initialize_kref_debugging();
-
+#ifdef _WIN32
+	// not supported
+#else
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
 		pr_err("invalid minor_count (%d)\n", minor_count);
 #ifdef MODULE
@@ -4291,9 +4276,7 @@ static int __init drbd_init(void)
 		minor_count = DRBD_MINOR_COUNT_DEF;
 #endif
 	}
-#ifdef _WIN32
-	// not supported
-#else
+
 	err = register_blkdev(DRBD_MAJOR, "drbd");
 	if (err) {
 		pr_err("unable to register block device major %d\n",
@@ -4305,7 +4288,6 @@ static int __init drbd_init(void)
 	 * allocate all necessary structs
 	 */
 #ifdef _WIN32 
-	memset(drbd_pp_wait.eventName, 0, Q_NAME_SZ);
 	strcpy(drbd_pp_wait.eventName, "drbd_pp_wait");
 #endif
 	init_waitqueue_head(&drbd_pp_wait);
@@ -4354,10 +4336,10 @@ static int __init drbd_init(void)
 	INIT_WORK(&retry.worker, do_retry);
 	spin_lock_init(&retry.lock);
 	INIT_LIST_HEAD(&retry.writes);
-
+#ifndef _WIN32
 	if (drbd_debugfs_init())
 		pr_notice("failed to initialize debugfs -- will not be available\n");
-
+#endif
 	pr_info("initialized. "
 	       "Version: " REL_VERSION " (api:%d/proto:%d-%d)\n",
 	       GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX);
@@ -4450,9 +4432,8 @@ void drbd_md_sync(struct drbd_device *device)
 	/* Don't accidentally change the DRBD meta data layout. */
 	BUILD_BUG_ON(DRBD_PEERS_MAX != 32);
 	BUILD_BUG_ON(HISTORY_UUIDS != 32);
-#ifdef _WIN32_CHECK // kmpak 현재 meta_data_on_disk_9 구조체 사이즈가 4096으로 align되어 있지 않다.
 	BUILD_BUG_ON(sizeof(struct meta_data_on_disk_9) != 4096);
-#endif
+
 	del_timer(&device->md_sync_timer);
 	/* timer may be rearmed by drbd_md_mark_dirty() now. */
 	if (!test_and_clear_bit(MD_DIRTY, &device->flags))
@@ -4891,6 +4872,7 @@ static u64 initial_resync_nodes(struct drbd_device *device)
 {
 	struct drbd_peer_device *peer_device;
 	u64 nodes = 0;
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->disk_state[NOW] == D_INCONSISTENT &&
 		    peer_device->repl_state[NOW] == L_ESTABLISHED)
@@ -4949,6 +4931,7 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 
 	/* get it to stable storage _now_ */
 	drbd_md_sync(device);
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
 			drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
@@ -5011,6 +4994,7 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 	bool set_current = true;
 
 	spin_lock_irq(&device->ldev->md.uuid_lock);
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET ||
 		    peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {

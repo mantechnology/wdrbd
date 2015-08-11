@@ -95,4 +95,5 @@ extern KMUTEX				eventlogMutex;
 
 NTSTATUS GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING pDriveLetter);
 extern char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid);
+extern int drbd_init(void);
 #endif MVF_DISP_H

@@ -24,11 +24,6 @@
 
  */
 
-#ifdef _WIN32
-//_WIN32_V9_CHECK: 이전버잔에서 필요성 재확인
-#include "windows/types.h"
-#endif
-
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64

@@ -6,7 +6,6 @@
 #include "mvolmsg.h"
 #include "proto.h"
 
-#include "linux-compat/idr.h"
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
@@ -96,6 +95,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
 
+    // Init DRBD engine
+    drbd_init();
+
     WDRBD_INFO("MVF Driver loaded.\n");
 
     return STATUS_SUCCESS;
@@ -119,7 +121,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
-        extern VOID NTAPI drbd_init(void); // _WIN32_CHECK: 함수 타입 체크
         HANDLE		hThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
@@ -143,9 +144,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
             WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
             return Status;
         }
-
-        // Init DRBD engine
-        drbd_init();
     }
 
     ReferenceDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);

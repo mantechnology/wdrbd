@@ -22,22 +22,15 @@
  * the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
 
 #include <stdbool.h>
 #include <errno.h>
-
-#include <fcntl.h>
-#ifndef _WIN32
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
-#endif
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -104,7 +97,6 @@ static struct nlattr *global_attrs[128];
 /* I'm to lazy to check the maximum possible nlmsg length by hand */
 int main(void)
 {
-#ifndef _WIN32
 	static __u16 nla_attr_minlen[NLA_TYPE_MAX+1] __read_mostly = {
 		[NLA_U8]        = sizeof(__u8),
 		[NLA_U16]       = sizeof(__u16),
@@ -139,7 +131,6 @@ int main(void)
 		+ sizeof(struct drbd_genlmsghdr);
 	printf("sum total inclusive hdr overhead: %4u\n", sum_total);
 	return 0;
-#endif
 }
 #else
 
@@ -711,11 +702,6 @@ static int conv_block_dev(struct drbd_argument *ad, struct msg_buff *msg,
 	struct stat sb;
 	int device_fd;
 
-#ifdef _WIN32
-	// check true!
-	nla_put_string(msg, ad->nla_type, arg);
-	return NO_ERROR;
-#endif
 	if ((device_fd = open(arg,O_RDWR))==-1) {
 		PERROR("Can not open device '%s'", arg);
 		return OTHER_ERROR;
@@ -1727,7 +1713,6 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 				/* Ignore netlink control messages. */
 				continue;
 			}
-#ifndef _WIN32 //_WIN32_V9_CHECK
 			if (nlh->nlmsg_type == GENL_ID_CTRL) {
 #ifdef HAVE_CTRL_CMD_DELMCAST_GRP
 				if (info.genlhdr->cmd == CTRL_CMD_DELMCAST_GRP) {
@@ -1743,7 +1728,6 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 				/* Ignore other generic netlink control messages. */
 				continue;
 			}
-#endif
 			if (nlh->nlmsg_type != drbd_genl_family.id) {
 				/* Ignore messages for all other netlink families. */
 				continue;
@@ -3889,10 +3873,11 @@ static void print_usage_and_exit(const char* addinfo)
 }
 
 static int modprobe_drbd(void)
-{	
+{
 #ifndef _WIN32 //_WIN32_V9_CHECK : modprobe 필요성 확인
-    struct stat sb;
-    int ret, retries = 10;
+	struct stat sb;
+	int ret, retries = 10;
+
 	ret = stat("/proc/drbd", &sb);
 	if (ret && errno == ENOENT) {
 		ret = system("/sbin/modprobe drbd");
@@ -3916,7 +3901,7 @@ static int modprobe_drbd(void)
 		fprintf(stderr, "Make sure that the DRBD kernel module is installed "
 				"and can be loaded!\n");
 	}
-    return ret == 0;
+	return ret == 0;
 #else
     return 0;
 #endif //_WIN32_V9_CHECK_END
@@ -4048,8 +4033,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");
 		return 20;
 	}
-#ifdef _WIN32
-#else
+
 	if (drbd_genl_family.version != GENL_MAGIC_VERSION ||
 	    drbd_genl_family.hdrsize != sizeof(struct drbd_genlmsghdr)) {
 		fprintf(stderr, "API mismatch!\n\t"
@@ -4060,7 +4044,7 @@ int main(int argc, char **argv)
 			drbd_genl_family.hdrsize);
 		return 20;
 	}
-#endif
+
 	context = 0;
 	enum cfg_ctx_key ctx_key = cmd->ctx_key, next_arg;
 	for (next_arg = ctx_next_arg(&ctx_key);

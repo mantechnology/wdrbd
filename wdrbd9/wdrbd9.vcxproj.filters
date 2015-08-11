@@ -258,4 +258,19 @@
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="MSG00001.bin">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="mvolmsg.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MessageCompile Include="mvolmsg.mc">
+      <Filter>Resource Files</Filter>
+    </MessageCompile>
+  </ItemGroup>
 </Project>

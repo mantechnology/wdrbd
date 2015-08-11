@@ -1,7 +1,4 @@
 %{
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
 
 #include "drbd_endian.h"
 #include "drbdmeta_parser.h"

@@ -401,6 +401,15 @@
     <ClInclude Include="send_buf.h" />
     <ClInclude Include="wsk2.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="MSG00001.bin" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="mvolmsg.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <MessageCompile Include="mvolmsg.mc" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -17,7 +17,6 @@
 #pragma pack (push, 1)
 #define __packed
 #endif
-
 struct peer_dev_md_on_disk_9 {
 	be_u64 bitmap_uuid;
 	be_u64 bitmap_dagtag;
@@ -25,43 +24,40 @@ struct peer_dev_md_on_disk_9 {
 	be_s32 bitmap_index;
 	be_u32 reserved_u32[2];
 } __packed;
-
-struct meta_data_on_disk_9
-{
-    be_u64 effective_size;    /* last agreed size */
-    be_u64 current_uuid;
-    be_u64 reserved_u64[4];   /* to have the magic at the same position as in v07, and v08 */
-    be_u64 device_uuid;
-    be_u32 flags;             /* MDF */
-    be_u32 magic;
-    be_u32 md_size_sect;
-    be_u32 al_offset;         /* offset to this block */
-    be_u32 al_nr_extents;     /* important for restoring the AL */
-    be_u32 bm_offset;         /* offset to the bitmap, from here */
-    be_u32 bm_bytes_per_bit;  /* BM_BLOCK_SIZE */
-    be_u32 la_peer_max_bio_size;   /* last peer max_bio_size */
-    be_u32 bm_max_peers;
-    be_s32 node_id;
-
-    /* see al_tr_number_to_on_disk_sector() */
-    be_u32 al_stripes;
-    be_u32 al_stripe_size_4k;
-
-    be_u32 reserved_u32[2];
-
-    struct peer_dev_md_on_disk_9 peers[DRBD_PEERS_MAX];
-    be_u64 history_uuids[HISTORY_UUIDS];
-#if defined(_WIN32) && !defined(__KERNEL__) // _WIN32_CHECK // GCC가 아닌 MS 스타일의 패딩 방식 알아보기
-    char padding[0]; __attribute__((aligned(4096)));
+#if defined(_WIN32) && defined(__KERNEL__) && !defined(__INTELLISENSE__)
+__declspec(align(4096))
 #endif
-#if defined(_WIN32) && defined(__KERNEL__)
+struct meta_data_on_disk_9 {
+	be_u64 effective_size;    /* last agreed size */
+	be_u64 current_uuid;
+	be_u64 reserved_u64[4];   /* to have the magic at the same position as in v07, and v08 */
+	be_u64 device_uuid;
+	be_u32 flags;             /* MDF */
+	be_u32 magic;
+	be_u32 md_size_sect;
+	be_u32 al_offset;         /* offset to this block */
+	be_u32 al_nr_extents;     /* important for restoring the AL */
+	be_u32 bm_offset;         /* offset to the bitmap, from here */
+	be_u32 bm_bytes_per_bit;  /* BM_BLOCK_SIZE */
+	be_u32 la_peer_max_bio_size;   /* last peer max_bio_size */
+	be_u32 bm_max_peers;
+	be_s32 node_id;
+
+	/* see al_tr_number_to_on_disk_sector() */
+	be_u32 al_stripes;
+	be_u32 al_stripe_size_4k;
+
+	be_u32 reserved_u32[2];
+
+	struct peer_dev_md_on_disk_9 peers[DRBD_PEERS_MAX];
+	be_u64 history_uuids[HISTORY_UUIDS];
+#if defined(_WIN32) && defined(__KERNEL__) // _WIN32_CHECK // GCC가 아닌 MS 스타일의 패딩 방식 알아보기
+    char padding[1];
 };
+#pragma pack (pop)
 #else
+	char padding[0] __attribute__((aligned(4096)));
 } __packed;
-#endif
-
-#if defined(_WIN32) && defined(__KERNEL__)
-#pragma pack (pop) 
 #endif
 
 #undef be_u64

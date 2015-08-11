@@ -23,10 +23,6 @@
 
  */
 
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
@@ -3114,7 +3110,6 @@ int main(int argc, char **argv)
 	initialize_deferred_cmds();
 #ifdef _WIN32 //_WIN32_V9_CHECK
 	{
-		
         extern void manual_nl_policy_init_by_app(void);
         manual_nl_policy_init_by_app();
 	}

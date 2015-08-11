@@ -8,6 +8,7 @@
  *
  * sk_buff -> "msg_buff"
  */
+
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
@@ -84,17 +85,11 @@ do {							\
 
 
 struct msg_buff {
-//#ifdef _WIN32_APP // _WIN32_V9_CHECK: 확인! [choi] -> sk_buff으로 선언됨. 매크로 삭제해도 될듯.
-    /* housekeeping */
-    unsigned char *tail;
-    unsigned char *end;
-    /* start of data to be send(),
-    * or received into */
-//#else
-//	int len;		// DRBD_DOC: app, kernel간 msg_buff 교환시 자료구조 일치를 위함. len 을 제외하고 app 로 전송 
-//	unsigned int tail;
-//	unsigned int end;
-//#endif
+	/* housekeeping */
+	unsigned char *tail;
+	unsigned char *end;
+	/* start of data to be send(),
+	 * or received into */
 	unsigned char data[0];
 };
 

@@ -1,7 +1,4 @@
-﻿#ifdef _WIN32
-#include "windows/types.h"
-#endif
-#include <stdbool.h>
+﻿#include <stdbool.h>
 #include "drbdtool_common.h"
 #include "drbdsetup_colors.h"
 

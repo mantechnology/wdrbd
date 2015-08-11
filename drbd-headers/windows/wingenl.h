@@ -108,6 +108,8 @@ struct nlattr
 
 
 /////////////////////////////////////////////////////////////
+// Genetlink.h
+/////////////////////////////////////////////////////////////
 #define GENL_NAMSIZ			    16      /* length of family name */
 
 struct genlmsghdr
@@ -128,6 +130,7 @@ struct genlmsghdr
  * List of reserved static generic netlink identifiers:
  */
 #define GENL_ID_GENERATE	0
+#define GENL_ID_CTRL		NLMSG_MIN_TYPE
 
 #define nla_nest_cancel(_X,_Y)	__noop
 
