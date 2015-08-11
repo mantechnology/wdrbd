@@ -91,7 +91,7 @@ static FILE *m_popen(int *pid,char** argv)
 	return fdopen(pipes[0],"r");
 }
 
-//__attribute__((format(printf, 2, 3))) _WIN32_V9_CHECK
+__attribute__((format(printf, 2, 3)))
 void report_compare(bool differs, const char *fmt, ...)
 {
 	va_list ap;

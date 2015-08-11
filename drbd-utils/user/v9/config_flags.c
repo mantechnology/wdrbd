@@ -36,11 +36,11 @@
 
 /* ============================================================================================== */
 
-#ifdef _WIN32 // _WIN32_V9_CHECK :
+#ifdef _WIN32
 void manual_nl_policy_init_by_app()
 {
 	extern void manual_nl_policy_init(void);
-	//manual_nl_policy_init();
+	manual_nl_policy_init();
 }
 #endif
 static int enum_string_to_int(const char **map, int size, const char *value,

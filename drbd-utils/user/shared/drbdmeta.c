@@ -2580,7 +2580,7 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 			(unsigned long long)cfg->max_usable_sect);
 		cfg->md.effective_size = cfg->max_usable_sect;
 	}
-//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : 64bit check!  [choi] 8.4.3코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
+//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : 64bit check!  [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
 //	cfg->bm_bytes = sizeof(long long) *
 //printf("DRBD_TEST: V9 check please!\n");
 
@@ -3234,7 +3234,7 @@ int meta_dump_md(struct format *cfg, char **argv __attribute((unused)), int argc
 
 		cfg->al_offset = cfg->md_offset + cfg->md.al_offset * 512LL;
 		cfg->bm_offset = cfg->md_offset + cfg->md.bm_offset * 512LL;
-//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : [choi] 8.4.3코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
+//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
 //		cfg->bm_bytes = sizeof(long long) * bm_words(cfg->md.la_sect, cfg->md.bm_bytes_per_bit);
 		cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 	}
@@ -5070,7 +5070,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Where did you get this broken build!?\n"
 				"sizeof(meta_data_on_disk_9) == %lu, should be 4096\n",
 				(unsigned long)sizeof(struct meta_data_on_disk_9));
-		//exit(111); _V9_CHECK [choi] meta_data_on_disk_9 구조체 사이즈가 4096으로 align되어 있지 않다. 일단 패스
+		exit(111);
 	}
 #if 0
 	printf("v07: al_offset: %u\n", (int)&(((struct md_on_disk_07*)0)->al_offset));

@@ -24,12 +24,6 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <ctype.h>
-//#ifdef _WIN32 // _WIN32_V9_CHECK [choi] #include <linux/fs.h>와 관련있는것이었음. 필요없으므로 삭제.
-//#include <cygwin/fs.h>   
-//#define  BLKGETSIZE64 1
-
-//#define  BLKGETSIZE   2
-//#endif
 #include <string.h>
 #include <stdarg.h>
 #include <arpa/inet.h>
