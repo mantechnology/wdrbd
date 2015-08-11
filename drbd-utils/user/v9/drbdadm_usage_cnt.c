@@ -85,16 +85,18 @@ void maybe_exec_legacy_drbdadm(char **argv)
 	}
 	if (driver_version->version.major == 8 &&
 	    driver_version->version.minor == 4) {
+        // _WIN32_V9_CHECK [choi] drbdadm-84 에러 회피. 임시로 주석처리 
 #ifdef DRBD_LEGACY_84
 		/* This drbdadm warned already... */
-		setenv("DRBD_DONT_WARN_ON_VERSION_MISMATCH", "1", 0);
-		add_lib_drbd_to_path();
-		execvp(drbdadm_84, argv);
-		err("execvp() failed to exec %s: %m\n", drbdadm_84);
+		//setenv("DRBD_DONT_WARN_ON_VERSION_MISMATCH", "1", 0); 
+		//add_lib_drbd_to_path();
+		//execvp(drbdadm_84, argv);
+		//err("execvp() failed to exec 1 %s: %m argv: %s\n", drbdadm_84, *argv);
 #else
-		config_help_legacy("drbdadm", driver_version);
+		//config_help_legacy("drbdadm", driver_version);
 #endif
-		exit(E_EXEC_ERROR);
+		//exit(E_EXEC_ERROR);
+        // _WIN32_V9_CHECK_END
 	}
 }
 

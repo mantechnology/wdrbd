@@ -604,11 +604,11 @@ static int validate_nla(struct nlattr *nla, int maxtype,
 			break;
 		if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN)
 			return -ERANGE;
-#ifndef _WIN32 // _WIN32_V9_CHECK: needed?
+//#ifndef _WIN32 // _WIN32_V9_CHECK: needed? [choi] int로 캐스팅 했던 이유를 모르겠음.
 		nla = nla_data(nla) + NLA_ALIGN(pt->len);
-#else
-		nla = (int) nla_data(nla) + NLA_ALIGN(pt->len);
-#endif
+//#else
+//		nla = (int) nla_data(nla) + NLA_ALIGN(pt->len);
+//#endif
 		if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN + nla_len(nla))
 			return -ERANGE;
 		break;
@@ -1012,3 +1012,11 @@ int nla_append(struct msg_buff *msg, int attrlen, const void *data)
 	memcpy(msg_put(msg, attrlen), data, attrlen);
 	return 0;
 }
+#ifndef _WIN32
+//
+#else
+int nla_len(const struct nlattr *nla)
+{
+    return nla->nla_len - NLA_HDRLEN;
+}
+#endif

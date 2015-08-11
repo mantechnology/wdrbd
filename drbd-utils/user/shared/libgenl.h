@@ -84,17 +84,17 @@ do {							\
 
 
 struct msg_buff {
-#ifdef _WIN32_APP // _WIN32_V9_CHECK: 확인!
+//#ifdef _WIN32_APP // _WIN32_V9_CHECK: 확인! [choi] -> sk_buff으로 선언됨. 매크로 삭제해도 될듯.
     /* housekeeping */
     unsigned char *tail;
     unsigned char *end;
     /* start of data to be send(),
     * or received into */
-#else
-	int len;		// DRBD_DOC: app, kernel간 msg_buff 교환시 자료구조 일치를 위함. len 을 제외하고 app 로 전송
-	unsigned int tail;
-	unsigned int end;
-#endif
+//#else
+//	int len;		// DRBD_DOC: app, kernel간 msg_buff 교환시 자료구조 일치를 위함. len 을 제외하고 app 로 전송 
+//	unsigned int tail;
+//	unsigned int end;
+//#endif
 	unsigned char data[0];
 };
 
@@ -606,18 +606,16 @@ static inline void *nla_data(const struct nlattr *nla)
 	return (char *) nla + NLA_HDRLEN;
 }
 
+#ifndef _WIN32 // _WIN32_V9_CHECK: [choi] drbd_wingenl.h에 선언되어있음. 
 /**
  * nla_len - length of payload
  * @nla: netlink attribute
  */
-
-//#ifndef _WIN32 // _WIN32_V9_CHECK: 
 static inline int nla_len(const struct nlattr *nla)
 {
 	return nla->nla_len - NLA_HDRLEN;
 }
-
-//#endif
+#endif
 /**
  * nla_ok - check if the netlink attribute fits into the remaining bytes
  * @nla: netlink attribute
@@ -906,14 +904,14 @@ static inline struct nlattr *nla_nest_start(struct msg_buff *msg, int attrtype)
  */
 static inline int nla_nest_end(struct msg_buff *msg, struct nlattr *start)
 {
-#ifndef _WIN32_APP
-	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
-	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
-	return msg->len;
-#else
+//#ifndef _WIN32_APP //[choi] 엔진은 drbd_wingenl.h의 nla_nest_end를 탐. 이부분 불필요함으로 주석처리.
+//	extern unsigned char *skb_tail_pointer(const struct sk_buff *skb);
+//	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
+//	return msg->len;
+//#else
 	start->nla_len = msg->tail - (unsigned char *)start;
 	return msg->tail - msg->data;
-#endif
+//#endif
 }
 
 /**
