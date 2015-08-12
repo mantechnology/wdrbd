@@ -611,6 +611,7 @@ You must not have the req_lock:
 #ifdef _WIN32_V9 // drbd_alloc_peer_req 의 함수 인자를 V8 포맷으로 일단 맞춰둔다. 메모리 할당 방식도 기존의 lookaside list 방식으로. _WIN32_CHECK
 // 기존의 V8 drbd_alloc_peer_req 는 내부에서 drbd_alloc_pages를 호출하는 방식으로 구현되었으나, V9에서는 drbd_alloc_peer_req 를 호출하고 drbd_alloc_pages 를 별도로 다시 호출하여 구성되었다.
 // 이런식으로 V9에서는 함수가 하는 일이 많은 경우 기능을 쪼개어서 하나의 함수에서 처리할 내용을 두세개의 함수로 나누어 놓은 내용이 많이 보인다. 따라서 drbd_alloc_peer_req 의 V9 버전은 V8버전의 인자에서 조정이 필요하다. 
+// => drbd_alloc_peer_req 와 drbd_alloc_pages 를 쪼개어 놓은 이유가 있다. drbd_alloc_pages 를 transport 계층 ops 함수에서 호출할 때가 있기 때문에 분리될 필요가 있었다. 보기 좋으라고 분리시킨게 아님.
 //<완료>
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask ) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
@@ -702,10 +703,34 @@ fail:
 }
 
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 // drbd_alloc_peer_req 는 alloc page 관련을 분리시켰지만... __drbd_free_peer_req 는 free page 를 함게 수행하는 듯 하다. <완료>
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
+
+#ifdef _WIN32_V9
+	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
+#ifdef  _WIN32_CHECK
+	might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... 
+#endif
+	if (peer_req->flags & EE_HAS_DIGEST)
+		kfree(peer_req->digest);
+	drbd_free_pages(&peer_device->connection->transport, peer_req->pages, is_net);
+	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
+	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
+	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
+#else
+	might_sleep();
+	if (peer_req->flags & EE_HAS_DIGEST)
+		kfree(peer_req->digest);
+	drbd_free_pages(&peer_device->connection->transport, peer_req->pages, is_net);
+	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
+	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
+	mempool_free(peer_req, drbd_ee_mempool);
+#endif
+	
+
+#if 0
 #ifdef _WIN32_TODO // __drbd_free_peer_req 인자 변경. V9 형식으로 변경 필요.
 	might_sleep();
 	if (peer_req->flags & EE_HAS_DIGEST)
@@ -715,9 +740,10 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	mempool_free(peer_req, drbd_ee_mempool);
 #endif
+#endif
 }
 #endif
-
+// <완료>
 int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, bool is_net_ee)
 {
 	LIST_HEAD(work_list);
@@ -1852,8 +1878,14 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 		return peer_req;
 
 	err = tr_ops->recv_pages(transport, &peer_req->pages, data_size);
-	if (err)
+#ifdef _WIN32_V9 //recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
+	if (err) {
 		goto fail;
+	}
+	else {
+		peer_req->win32_big_page = peer_req->pages;
+	}
+#endif
 
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
 		unsigned long *data;
@@ -1875,6 +1907,9 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	return peer_req;
 
 fail:
+#ifdef _WIN32_V9
+	peer_req->win32_big_page = NULL;
+#endif
 	drbd_free_peer_req(peer_req);
 	return NULL;
 }
@@ -2891,7 +2926,13 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 		if (!peer_req->pages)
 			goto fail2;
+
+		peer_req->win32_big_page = peer_req->pages; //V8의 구현을 따라간다.
 	}
+	else {
+		peer_req->win32_big_page = NULL; //V8의 구현을 따라간다.
+	}
+
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = p->block_id;

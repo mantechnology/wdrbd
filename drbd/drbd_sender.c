@@ -521,6 +521,11 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 						   GFP_TRY & ~__GFP_WAIT);
 		if (!peer_req->pages)
 			goto defer2;
+		
+		peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다.
+	}
+	else {
+		peer_req->win32_big_page = NULL;
 	}
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
