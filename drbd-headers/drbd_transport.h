@@ -242,8 +242,13 @@ extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum dr
 extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 
 /* drbd_receiver.c*/
+#ifdef _WIN32_V9
+extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
+extern void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net);
+#else
 extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
 extern void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net);
+#endif
 
 /* see also page_chain_add and friends in drbd_receiver.c */
 static inline struct page *page_chain_next(struct page *page)

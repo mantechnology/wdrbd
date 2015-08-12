@@ -341,6 +341,7 @@ static void * __drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 /* kick lower level device, if we have more than (arbitrary number)
  * reference counts on it, which typically are locally submitted io
  * requests.  don't use unacked_cnt, so we speed up proto A and B, too. */
+// V9 형식의 인자와 watermark 연산방식 변경. 특별히 검토할 부분은 없는듯.<완료>
 static void maybe_kick_lo(struct drbd_device *device)
 {
 	struct disk_conf *dc;
@@ -356,6 +357,7 @@ static void maybe_kick_lo(struct drbd_device *device)
 		drbd_kick_lo(device);
 }
 
+//V8에서 list_for_each_safe 후 list_entry를 통해 얻어오던 방식을 list_for_each_entry_safe 매크로 하나로 처리하는 방식으로 변경됨.<완료>
 static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 					   struct list_head *to_be_freed)
 {
@@ -365,7 +367,7 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 	   they are sent in order over the wire, they have to finish
 	   in order. As soon as we see the first not finished we can
 	   stop to examine the list... */
-#ifdef _WIN32
+#ifdef _WIN32_V9
 	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &connection->net_ee, w.list) {
 #else 
@@ -377,6 +379,8 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 	}
 }
 
+//기존 drbd_kick_lo_and_reclaim_net 함수가 두개의 함수 drbd_reclaim_net_peer_reqs, conn_maybe_kick_lo 로 분리된 듯 하다.
+// <완료>
 static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 {
 	LIST_HEAD(reclaimed);
@@ -397,6 +401,7 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 
 }
 
+// <완료>
 static void conn_maybe_kick_lo(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -417,6 +422,7 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
  * the kernel.
  * Possibly retry until DRBD frees sufficient pages somewhere else.
  *
+ * // V9에 추가된 주석.
  * If this allocation would exceed the max_buffers setting, we throttle
  * allocation (schedule_timeout) to give the system some room to breathe.
  *
@@ -427,6 +433,7 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
  *
  * Returns a page chain linked via page->private.
  */
+// V9형식의 drbd_alloc_pages 구현, gfp_mask 인자는 우선 남겨놓는다. <완료>
 struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int number,
 			      gfp_t gfp_mask)
 {
@@ -495,10 +502,11 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 /* wdrbd에서는 실질적으로 page pool 할당을 해주진 않는다.
 * 다만 pool_size의 영향을 받게 하기 위해 page_count 관리를 받도록만 하며
 * 따라서 여기서 page반환같은 실질적인 메모리 free를 하지 않는다.
-* 그점이 __drbd_free_peer_req() 과 다른 부분이다.
+* 그점이 __drbd_free_peer_req() 과 다른 부분이다. ===========> 이 주석이 의미하는 바를 정확히 이해 못함... 추후 확인 요망???... _WIN32_CHECK
 */
 #ifdef _WIN32_V9
-void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
+//void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
+void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net) //V9 형식으로 재정의 (page_count 인자받게 재정의)
 #else
 #ifdef _WIN32
 STATIC void drbd_free_pages(struct drbd_conf *mdev, struct page *page, int is_net)
@@ -507,10 +515,49 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 #endif
 {
+	struct drbd_connection *connection =
+		container_of(transport, struct drbd_connection, transport);
+	
+	atomic_t *a = is_net ? &connection->pp_in_use_by_net : &connection->pp_in_use;
+	int i;
 
+#ifdef _WIN32_V9
+	
+	//if (page_count == NULL)
+	if (page_count <= 0) // int 형 변수를 NULL 비교하는 것은 적절치 않아 기존 V8코드 수정.
+		return;
+
+	spin_lock(&drbd_pp_lock);
+	drbd_pp_vacant += page_count;  // drbd_pp_vacant 변수가 있는 이유?..이해가 안됨. 추후 확인 요망???. _WIN32_CHECK
+	spin_unlock(&drbd_pp_lock);
+	i = page_count;
+
+#else
+	if (page == NULL)
+		return;
+
+	if (drbd_pp_vacant > (DRBD_MAX_BIO_SIZE / PAGE_SIZE) * minor_count)
+		i = page_chain_free(page);
+	else {
+		struct page *tmp;
+		tmp = page_chain_tail(page, &i);
+		spin_lock(&drbd_pp_lock);
+		page_chain_add(&drbd_pp_pool, page, tmp);
+		drbd_pp_vacant += i;
+		spin_unlock(&drbd_pp_lock);
+	}
+#endif
+
+	i = atomic_sub_return(i, a);
+	if (i < 0)
+		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
+		is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+	wake_up(&drbd_pp_wait);
+
+#if 0 // TODO 를 그냥 제거하기는 그래서 ... 일단 주석처리.
 #ifdef _WIN32_TDODO //기존 mdev를 V9 형식으로 변경이 필요함.
 	atomic_t *a = is_net ? &mdev->pp_in_use_by_net : &mdev->pp_in_use;
-	int i;
+	int i; 
 
 #ifdef _WIN32
 	if (page_count == NULL)
@@ -543,7 +590,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 
 	wake_up(&drbd_pp_wait);
 #endif
-
+#endif
 }
 
 /*
