@@ -63,7 +63,9 @@
 
 struct flush_work {
 	struct drbd_work w;
+#ifdef _WIN32_V9 //기존 flush_work 구조체에 새롭게 drbd_device* 필드가 추가됨.
 	struct drbd_device *device;
+#endif
 	struct drbd_epoch *epoch;
 };
 
@@ -79,11 +81,15 @@ static int drbd_disconnected(struct drbd_peer_device *);
 
 static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *, struct drbd_epoch *, enum epoch_event);
 static int e_end_block(struct drbd_work *, int);
+
+#ifdef _WIN32_V9 //V9 에 새롭게 추가된 함수들.
 static void cleanup_unacked_peer_requests(struct drbd_connection *connection);
 static void cleanup_peer_ack_list(struct drbd_connection *connection);
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids);
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, unsigned long);
+#endif
 
+// tconn이 connection 으로 변경된 부분외에 V8과 동일하다. 더 볼것 없음. <완료>
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	struct drbd_epoch *prev;
@@ -104,10 +110,16 @@ static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, str
  * Otherwise, don't modify head, and return NULL.
  * Locking is the responsibility of the caller.
  */
+// tmp 변수를 NULL 초기화 하는 부분만 다르다. 나머지는 V8,V9 동일. NULL 초기화가 안되어 있어서 문제가 있었는지?... 확인 요망. <완료>
 static struct page *page_chain_del(struct page **head, int n)
 {
 	struct page *page;
+#ifdef _WIN32
+	struct page *tmp = NULL;
+#else
 	struct page *tmp;
+#endif
+	
 
 	BUG_ON(!n);
 	BUG_ON(!head);
@@ -138,6 +150,7 @@ static struct page *page_chain_del(struct page **head, int n)
 /* may be used outside of locks to find the tail of a (usually short)
  * "private" page chain, before adding it back to a global chain head
  * with page_chain_add() under a spinlock. */
+// 변경사항 없음. <완료>
 static struct page *page_chain_tail(struct page *page, int *len)
 {
 	struct page *tmp;
@@ -149,17 +162,22 @@ static struct page *page_chain_tail(struct page *page, int *len)
 	return page;
 }
 
+//<완료>
 static int page_chain_free(struct page *page)
 {
 	struct page *tmp;
 	int i = 0;
 
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK // page_chain_for_each_safe v8에 사용되었던 매크로를 그대로 적용한다.
 	page_chain_for_each_safe(page, tmp) {
+#ifdef _WIN32 //V8에 사용된 코드를 적용.
+		__free_page(page);
+#else
 		put_page(page);
+#endif
 		++i;
 	}
-#endif
+//#endif
 
 	return i;
 }

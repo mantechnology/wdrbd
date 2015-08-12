@@ -250,6 +250,8 @@ static inline struct page *page_chain_next(struct page *page)
 {
 	return (struct page *)page_private(page);
 }
+
+#if 0 // V8에 사용되었던 page_chain_for_each, page_chain_for_each_safe 와 동일한 매크로로 하단에 정리하여 다시 선언함. 특별히 재검토가 필요하지는 않아 보인다.
 #ifdef _WIN32
 
 #define page_chain_for_each(page) \
@@ -262,6 +264,21 @@ static inline struct page *page_chain_next(struct page *page)
 #define page_chain_for_each_safe(page, n) \
 	for (; page && ({ n = page_chain_next(page); 1; }); page = n)
 #endif
+#endif
+
+#ifndef _WIN32
+#define page_chain_for_each(page) \
+	for (; page && ({ prefetch(page_chain_next(page)); 1; }); \
+			page = page_chain_next(page))
+#define page_chain_for_each_safe(page, n) \
+	for (; page && ({ n = page_chain_next(page); 1; }); page = n)
+#else
+#define page_chain_for_each(page) \
+	for (; page ; page = page_chain_next(page))
+#define page_chain_for_each_safe(page, n) \
+	for (; page && ( n = page_chain_next(page)); page = n) // DRBD-CHECK!!!!
+#endif
+
 
 #ifndef SK_CAN_REUSE
 /* This constant was introduced by Pavel Emelyanov <xemul@parallels.com> on
