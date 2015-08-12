@@ -3903,7 +3903,7 @@ static int modprobe_drbd(void)
 	}
 	return ret == 0;
 #else
-    return 0;
+    return 1; // [choi] return true.
 #endif //_WIN32_V9_CHECK_END
 	
 }
@@ -3937,7 +3937,7 @@ static void maybe_exec_legacy_drbdsetup(char **argv)
 #else
 		config_help_legacy("drbdsetup", driver_version);
 #endif
-		exit(20);
+		//exit(20); [choi] execvp() failed to exec drbdsetup-84: No such file or directory 에러 회피를 위해 임시로 주석처리.
 	}
 }
 
