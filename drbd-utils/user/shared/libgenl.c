@@ -1,22 +1,15 @@
-﻿
-#ifdef _WIN32
+﻿#ifdef _WIN32
 #include "drbd_windows.h"
 #include <errno.h>
 #include "drbdtool_common.h"
-#ifdef _WIN32_APP
 #include <arpa/inet.h>
 #endif
-
-#endif
-
 #include "libgenl.h"
 
-#ifndef _WIN32
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
 #include <poll.h>
-#endif
 
 int genl_join_mc_group(struct genl_sock *s, const char *name) {
 #ifdef _WIN32
@@ -107,8 +100,6 @@ static struct genl_sock *genl_connect(__u32 nl_groups)
 	 */
 	s->s_local.nl_groups = nl_groups;
 	s->s_peer.nl_family = AF_NETLINK;
-#else
-//
 #endif
 	/* start with some sane sequence number */
 	s->s_seq_expect = s->s_seq_next = time(0);
@@ -170,11 +161,7 @@ static int do_send(int fd, const void *buf, int len)
 				continue;
 			return -1;
 		}
-#ifndef _WIN32
 		buf += c;
-#else
-		buf += c;
-#endif
 		len -= c;
 	}
 	return 0;
@@ -246,7 +233,6 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 		.msg_flags = 0,
 	};
 #endif
-
 	int n;
 
 	if (!iov->iov_len) {
@@ -266,7 +252,7 @@ retry:
 	 * is large enough.  But for those few other cases, we now have a
 	 * chance to realloc before the rest of the datagram is discarded.
 	 */
-	n = recvmsg(s->s_fd, &msg, flags); 
+	n = recvmsg(s->s_fd, &msg, flags);
 #else
 	if ((n = recv(s->s_fd, iov->iov_base, iov->iov_len, 0)) < 0){
 		perror("recv");
@@ -274,7 +260,6 @@ retry:
 	}
 
 #endif
-
 	if (!n)
 		return 0;
 	else if (n < 0) {
