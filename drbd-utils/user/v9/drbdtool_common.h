@@ -3,10 +3,9 @@
 
 #include "drbd_endian.h"
 #include <stdio.h>
-#include <unistd.h> // _WIN32_V9_CHECK : STDERR_FILENO error!
 #include <stdarg.h>
 #ifndef _WIN32 
-// #include <unistd.h> // _WIN32_V9_CHECK_END
+#include <unistd.h>
 #include <linux/major.h>
 #endif
 #include "shared_tool.h"

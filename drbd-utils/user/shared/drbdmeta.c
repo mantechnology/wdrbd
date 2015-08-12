@@ -4910,7 +4910,7 @@ static enum drbd_disk_state drbd_str_disk(const char *str)
 
 int is_attached(int minor)
 {
-    //_WIN32_V9_TODO
+    //_WIN32_V9_TODO [choi] V8.4.3는 /proc/drbd를 파싱해서 attach 상태를 파악했는데, V9는 dstate 명령으로 확인하고 있는 것으로 보임. 포팅이 필요 없을듯.
 	char minor_string[7], result[40];
 	char *argv[] = { "drbdsetup", minor_string, "dstate", NULL };
 	int pipes[2];
@@ -5034,11 +5034,7 @@ struct format *new_cfg()
 		fprintf(stderr, "could not calloc() cfg\n");
 		exit(20);
 	}
-#ifdef _WIN32_APP
 	err = posix_memalign(&on_disk_buffer, pagesize, ALIGN(buffer_size, pagesize));
-#else
-    err = _aligned_malloc(&on_disk_buffer, pagesize, ALIGN(buffer_size, pagesize)); //_WIN32_V9_CHECK : 필요없으면 삭제.
-#endif
 	if (err) {
 		fprintf(stderr, "could not posix_memalign() on_disk_buffer\n");
 		exit(20);

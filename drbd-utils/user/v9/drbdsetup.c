@@ -4033,8 +4033,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");
 		return 20;
 	}
-#ifdef _WIN32
-#else
+#ifndef _WIN32 // [choi] V8.4.3 포팅부분 적용
 	if (drbd_genl_family.version != GENL_MAGIC_VERSION ||
 	    drbd_genl_family.hdrsize != sizeof(struct drbd_genlmsghdr)) {
 		fprintf(stderr, "API mismatch!\n\t"
