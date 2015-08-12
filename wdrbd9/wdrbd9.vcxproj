@@ -161,42 +161,52 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -206,6 +216,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <ClCompile>
