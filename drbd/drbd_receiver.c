@@ -506,6 +506,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 */
 #ifdef _WIN32_V9
 //void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
+// <완료>
 void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net) //V9 형식으로 재정의 (page_count 인자받게 재정의)
 #else
 #ifdef _WIN32
@@ -607,13 +608,67 @@ You must not have the req_lock:
  drbd_wait_ee_list_empty()
 */
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 // drbd_alloc_peer_req 의 함수 인자를 V8 포맷으로 일단 맞춰둔다. 메모리 할당 방식도 기존의 lookaside list 방식으로. _WIN32_CHECK
+// 기존의 V8 drbd_alloc_peer_req 는 내부에서 drbd_alloc_pages를 호출하는 방식으로 구현되었으나, V9에서는 drbd_alloc_peer_req 를 호출하고 drbd_alloc_pages 를 별도로 다시 호출하여 구성되었다.
+// 이런식으로 V9에서는 함수가 하는 일이 많은 경우 기능을 쪼개어서 하나의 함수에서 처리할 내용을 두세개의 함수로 나누어 놓은 내용이 많이 보인다. 따라서 drbd_alloc_peer_req 의 V9 버전은 V8버전의 인자에서 조정이 필요하다. 
+//<완료>
+struct drbd_peer_request *
+drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask ) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
+#else
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
+#endif
 {
-	struct drbd_device *device = peer_device->device;
+	struct drbd_device *device = peer_device->device; 
 	struct drbd_peer_request *peer_req = NULL;
 
+#ifdef _WIN32_V9
+	void* page = NULL;
+	//unsigned nr_pages = (data_size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+
+	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
+		return NULL;
+	
+	peer_req = ExAllocateFromNPagedLookasideList(&drbd_ee_mempool);
+	if (!peer_req) {
+		drbd_err(device, "%s: allocation failed\n", __func__);
+		return NULL;
+	}
+	// drbd_alloc_pages 는 V9 에서 별도로 호출이 이루어 진다. _WIN32_CHECK
+	//if (data_size) {
+	//	page = drbd_alloc_pages(&peer_device->connection->transport, nr_pages, (gfp_mask & __GFP_WAIT));
+	//	if (!page) {
+	//		drbd_err("win32_big_page alloc failed\n");
+	//		goto fail;
+	//	}
+	//	peer_req->win32_big_page = page;
+	//}
+	//else {
+	//	peer_req->win32_big_page = 0;
+	//}
+#else
+	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
+		return NULL;
+
+	peer_req = mempool_alloc(drbd_ee_mempool, gfp_mask & ~__GFP_HIGHMEM);
+	if (!peer_req) {
+		if (!(gfp_mask & __GFP_NOWARN))
+			drbd_err(device, "%s: allocation failed\n", __func__);
+		return NULL;
+	}
+#endif
+
+	memset(peer_req, 0, sizeof(*peer_req));
+	INIT_LIST_HEAD(&peer_req->w.list);
+	drbd_clear_interval(&peer_req->i);
+	INIT_LIST_HEAD(&peer_req->recv_order);
+	peer_req->submit_jif = jiffies;
+	peer_req->peer_device = peer_device;
+	peer_req->pages = NULL;
+
+	return peer_req;
+
+#if 0 //TODO 처리된 부분을 일단 주석.
 #ifdef _WIN32_TODO // drbd_alloc_peer_req 의 인자가 변경되어 V9 포팅 필요.
 
 	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
@@ -634,10 +689,18 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	peer_req->peer_device = peer_device;
 	peer_req->pages = NULL;
 #endif
-
-	return peer_req;
-}
 #endif
+
+	// 예외처리 부분은 일단 V8의 구현을 따라간다.
+fail:
+#ifdef _WIN32
+	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
+#else
+	mempool_free(peer_req, drbd_ee_mempool);
+#endif
+	return NULL;
+}
+
 
 #ifdef _WIN32_V9
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
@@ -1773,8 +1836,11 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 			(unsigned long long)sector, data_size);
 		return NULL;
 	}
-
+#ifdef _WIN32_V9
+	peer_req = drbd_alloc_peer_req(peer_device, id, sector, GFP_TRY);
+#else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
+#endif
 	if (!peer_req)
 		return NULL;
 	peer_req->i.size = data_size;
@@ -2810,8 +2876,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		/* drain possibly payload */
 		return ignore_remaining_packet(connection, pi->size);
 	}
-
+#ifdef _WIN32_V9
+	peer_req = drbd_alloc_peer_req(peer_device, p->block_id, sector, GFP_TRY);
+#else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
+#endif
+	
 #ifdef _WIN32_V9 // V8에 비해 변경됨.
 	err = -ENOMEM;
 	if (!peer_req)

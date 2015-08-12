@@ -506,7 +506,11 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 		return -EIO;
 
 	/* Do not wait if no memory is immediately available.  */
+#ifdef _WIN32_V9
+	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, GFP_TRY & ~__GFP_WAIT); //V8의 구현을 적용. _WIN32_CHECK
+#else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
+#endif
 	if (!peer_req)
 		goto defer;
 
