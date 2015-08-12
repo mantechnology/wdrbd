@@ -87,7 +87,11 @@ struct version {
 };
 
 enum driver_version_policy {
-	STRICT_XXX, // _WIN32_V9_CHECK: rename! check later!!!!
+#ifdef _WIN32_V9
+    FALLBACK_STRICT, // rename.
+#else
+	STRICT,
+#endif
 	FALLBACK_TO_UTILS
 };
 extern const struct version *drbd_driver_version(enum driver_version_policy fallback);

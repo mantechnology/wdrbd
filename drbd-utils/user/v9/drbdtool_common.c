@@ -125,8 +125,8 @@ const char *get_hostname(void)
 	static char *s_hostname;
 
 	if (!s_hostname) {
-#ifdef _WIN32 // _WIN32_V9_CHECK
-		char hostname[512];
+#ifdef _WIN32_V9
+		char hostname[256]; // HOST_NAME_MAX = 255
 #else
 		char hostname[HOST_NAME_MAX];
 #endif
@@ -363,7 +363,11 @@ const struct version *drbd_utils_version(void)
 
 int version_code_kernel(void)
 {
-	const struct version *driver_version = drbd_driver_version(STRICT_XXX); // _WIN32_V9_CHECK: rename! check later!!!!
+#ifdef _WIN32_V9
+    const struct version *driver_version = drbd_driver_version(FALLBACK_STRICT);
+#else
+    const struct version *driver_version = drbd_driver_version(STRICT);
+#endif
 	return driver_version ? driver_version->version_code : 0;
 }
 

@@ -4033,7 +4033,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");
 		return 20;
 	}
-
+#ifdef _WIN32
+#else
 	if (drbd_genl_family.version != GENL_MAGIC_VERSION ||
 	    drbd_genl_family.hdrsize != sizeof(struct drbd_genlmsghdr)) {
 		fprintf(stderr, "API mismatch!\n\t"
@@ -4044,7 +4045,7 @@ int main(int argc, char **argv)
 			drbd_genl_family.hdrsize);
 		return 20;
 	}
-
+#endif
 	context = 0;
 	enum cfg_ctx_key ctx_key = cmd->ctx_key, next_arg;
 	for (next_arg = ctx_next_arg(&ctx_key);
