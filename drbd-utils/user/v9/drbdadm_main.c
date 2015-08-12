@@ -2602,12 +2602,6 @@ int pushd(const char *path)
 		err("open(\".\") failed: %m\n");
 		exit(E_USAGE);
 	}
-#ifdef _WIN32 //_WIN32_V9_CHECK
-        if (strcmp(path, "") == 0)
-        {
-            strcpy(path, "/");
-        }
-#endif //_WIN32_V9_CHECK_END
 	if (path && path[0] && chdir(path)) {
 		err("chdir(\"%s\") failed: %m\n", path);
 		exit(E_USAGE);
@@ -3108,12 +3102,12 @@ int main(int argc, char **argv)
 
 	initialize_err();
 	initialize_deferred_cmds();
-#ifdef _WIN32 //_WIN32_V9_CHECK
+#ifdef _WIN32
 	{
         extern void manual_nl_policy_init_by_app(void);
         manual_nl_policy_init_by_app();
 	}
-#endif //_WIN32_V9_CHECK_END
+#endif
 	yyin = NULL;
 	hostname = get_hostname();
 	no_tty = (!isatty(fileno(stdin)) || !isatty(fileno(stdout)));

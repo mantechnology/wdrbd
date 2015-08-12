@@ -1834,8 +1834,20 @@ static int pushd_to_current_config_file_unless_stdin(void)
 	char *last_slash, *tmp;
 
 	/* config_save was canonicalized before, unless it is STDIN */
-	tmp = strdupa(config_save);
-	last_slash = strrchr(tmp, '/');
+#ifdef _WIN32_V9
+    tmp = strdupa(config_file);
+    if (strncmp(tmp, "/", strlen("/")) == 0)
+    {
+        last_slash = strrchr(tmp, '/');
+    }
+    else
+    {
+        last_slash = strrchr(tmp, '\\');
+    }
+#else
+    tmp = strdupa(config_save);
+    last_slash = strrchr(tmp, '/');
+#endif
 	if (!last_slash)
 		/* Currently parsing stdin, stay where we are.
 		 * FIXME introduce DRBD_INCLUDE_PATH?
@@ -1897,7 +1909,6 @@ void include_stmt(char *str)
 	FILE *f;
 	size_t i;
 	int r;
-// _WIN32_V9_TODO
 	cwd = pushd_to_current_config_file_unless_stdin();
 
 	r = glob(str, 0, NULL, &glob_buf);
@@ -1911,16 +1922,26 @@ void include_stmt(char *str)
 				include_file(f, strdup(glob_buf.gl_pathv[i]));
 				fclose(f);
 			} else {
+#ifdef _WIN32_V9
+                err("%s:%d: Failed to open include file 1 '%s'.\n",
+                    config_file, line, yylval.txt);
+#else
 				err("%s:%d: Failed to open include file '%s'.\n",
 				    config_save, line, yylval.txt);
+#endif
 				config_valid = 0;
 			}
 		}
 		globfree(&glob_buf);
 	} else if (r == GLOB_NOMATCH) {
 		if (!strchr(str, '?') && !strchr(str, '*') && !strchr(str, '[')) {
+#ifdef _WIN32_V9
+            err("%s:%d: Failed to open include file '%s'.\n",
+                config_file, line, yylval.txt);
+#else
 			err("%s:%d: Failed to open include file '%s'.\n",
 			    config_save, line, yylval.txt);
+#endif
 			config_valid = 0;
 		}
 	} else {
@@ -1929,7 +1950,6 @@ void include_stmt(char *str)
 	}
 
 	popd(cwd);
-// _WIN32_V9_TODO_END
 }
 
 void my_parse(void)

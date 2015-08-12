@@ -60,10 +60,11 @@ DESTDIR ?= /
 
 CFLAGS += -Wall -I../../../drbd-headers -I.. -I. -I../shared -I../../../wdrbd9
 # _WIN32
+# _WIN32_V9 for 9.0.0 porting.
 ifdef x64
-	CFLAGS += -gdwarf-2 -g3 -D_WIN32 -Dx64  -D_WIN32_APP
+	CFLAGS += -gdwarf-2 -g3 -D_WIN32 -Dx64  -D_WIN32_APP  -D_WIN32_V9
 else
-	CFLAGS += -gdwarf-2 -g3 -D_WIN32  -D_WIN32_APP
+	CFLAGS += -gdwarf-2 -g3 -D_WIN32  -D_WIN32_APP  -D_WIN32_V9
 endif
 
 #ifndef _WIN32
