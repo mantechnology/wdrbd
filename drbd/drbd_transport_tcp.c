@@ -368,6 +368,8 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 		return -ENOMEM;
 
 	page = all_pages;
+	
+	
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
 		void *data = kmap(page);
