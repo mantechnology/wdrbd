@@ -110,6 +110,7 @@ static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, str
  * Otherwise, don't modify head, and return NULL.
  * Locking is the responsibility of the caller.
  */
+#ifndef _WIN32 //V8의 구현 적용
 // tmp 변수를 NULL 초기화 하는 부분만 다르다. 나머지는 V8,V9 동일. NULL 초기화가 안되어 있어서 문제가 있었는지?... 확인 요망. <완료>
 static struct page *page_chain_del(struct page **head, int n)
 {
@@ -181,22 +182,29 @@ static int page_chain_free(struct page *page)
 
 	return i;
 }
-
+//<완료>
 static void page_chain_add(struct page **head,
 		struct page *chain_first, struct page *chain_last)
 {
-#if 1
+//#if 1 //의미없는 조건부컴파일 지시자 제거.
 	struct page *tmp;
 	tmp = page_chain_tail(chain_first, NULL);
 	BUG_ON(tmp != chain_last);
-#endif
+//#endif
 
 	/* add chain to head */
+#ifdef _WIN32 //V8의 구현 적용.
+	set_page_private(chain_last, *head);
+#else
 	set_page_private(chain_last, (unsigned long)*head);
+#endif
+	
 	*head = chain_first;
 }
+#endif
 
-#ifdef _WIN32
+#if 0 //__drbd_alloc_pages 를 V9 형식으로 재 정의한다.
+#ifdef _WIN32 
 static void * __drbd_alloc_pages(struct drbd_conf *mdev, unsigned int number)
 {
 	/* Yes, testing drbd_pp_vacant outside the lock is racy.
@@ -261,6 +269,74 @@ static struct page *__drbd_alloc_pages(struct drbd_conf *mdev,
 	return NULL;
 }
 #endif
+#endif
+
+#ifdef _WIN32_V9 
+// __drbd_alloc_pages 를 V9 형식으로 재정의. page 를 할당하는 개념이 Windows 에서 없어서 V8에서 단순히 pool 할당하는 방식으로 포팅이 된듯. V8의 구현을 적용한다. drbd_pp_vacant 용도 의미파악 안됨??? <완료>
+static void * __drbd_alloc_pages(unsigned int number)
+{
+	/* Yes, testing drbd_pp_vacant outside the lock is racy.
+	* So what. It saves a spin_lock. */
+	if (drbd_pp_vacant >= (int)number) {
+		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
+		if (mem)
+		{
+			spin_lock(&drbd_pp_lock);
+			drbd_pp_vacant -= (int)number;
+			spin_unlock(&drbd_pp_lock);
+			return mem;
+		}
+	}
+
+	return NULL;
+}
+#else
+
+static void * __drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
+
+{
+	struct page *page = NULL;
+	struct page *tmp = NULL;
+	unsigned int i = 0;
+
+	/* Yes, testing drbd_pp_vacant outside the lock is racy.
+	* So what. It saves a spin_lock. */
+	if (drbd_pp_vacant >= number) {
+		spin_lock(&drbd_pp_lock);
+		page = page_chain_del(&drbd_pp_pool, number);
+		if (page)
+			drbd_pp_vacant -= number;
+		spin_unlock(&drbd_pp_lock);
+		if (page)
+			return page;
+	}
+
+	for (i = 0; i < number; i++) {
+		tmp = alloc_page(gfp_mask);
+		if (!tmp)
+			break;
+		set_page_private(tmp, (unsigned long)page);
+		page = tmp;
+	}
+
+	if (i == number)
+		return page;
+
+	/* Not enough pages immediately available this time.
+	* No need to jump around here, drbd_alloc_pages will retry this
+	* function "soon". */
+	if (page) {
+		tmp = page_chain_tail(page, NULL);
+		spin_lock(&drbd_pp_lock);
+		page_chain_add(&drbd_pp_pool, page, tmp);
+		drbd_pp_vacant += i;
+		spin_unlock(&drbd_pp_lock);
+	}
+	return NULL;
+}
+
+#endif
+
 
 /* kick lower level device, if we have more than (arbitrary number)
  * reference counts on it, which typically are locally submitted io
@@ -364,8 +440,14 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 	mxb = rcu_dereference(transport->net_conf)->max_buffers;
 	rcu_read_unlock();
 
-	if (atomic_read(&connection->pp_in_use) < mxb)
+	if (atomic_read(&connection->pp_in_use) < mxb) {
+#ifdef _WIN32_V9
+		page = __drbd_alloc_pages(number);
+#else
 		page = __drbd_alloc_pages(number, gfp_mask & ~__GFP_WAIT);
+#endif
+		
+	}
 
 	/* Try to keep the fast path fast, but occasionally we need
 	 * to reclaim the pages we lended to the network stack. */
@@ -379,7 +461,11 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 		drbd_reclaim_net_peer_reqs(connection);
 
 		if (atomic_read(&connection->pp_in_use) < mxb) {
+#ifdef _WIN32_V9
+			page = __drbd_alloc_pages(number);
+#else
 			page = __drbd_alloc_pages(number, gfp_mask);
+#endif
 			if (page)
 				break;
 		}
