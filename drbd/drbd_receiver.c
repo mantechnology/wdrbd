@@ -954,6 +954,7 @@ static int decode_header(struct drbd_connection *, void *, struct packet_info *)
 
 /* Gets called if a connection is established, or if a new minor gets created
    in a connection */
+// mutex 관련 내용들을 제외하고 V8과 동일 <완료>
 int drbd_connected(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
@@ -961,6 +962,12 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 
 	atomic_set(&peer_device->packet_seq, 0);
 	peer_device->peer_seq = 0;
+
+#ifdef _WIN32_CHECK //V8 의 state_mutex 관련 mutex 들이 V9에서 제거되었다.
+	//mdev->state_mutex = mdev->tconn->agreed_pro_version < 100 ?
+	//	&mdev->tconn->cstate_mutex :
+	//	&mdev->own_state_mutex;
+#endif
 
 	err = drbd_send_sync_param(peer_device);
 	if (!err)
@@ -977,7 +984,7 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 	mod_timer(&device->request_timer, jiffies + HZ); /* just start it here. */
 	return err;
 }
-
+#ifdef _WIN32_V9 //v9에 새롭게 추가된 구현. connect 시 timer 를 구동시키는 것으로 예상됨.
 void connect_timer_fn(unsigned long data)
 {
 	struct drbd_connection *connection = (struct drbd_connection *) data;
@@ -988,7 +995,9 @@ void connect_timer_fn(unsigned long data)
 	drbd_queue_work(&connection->sender_work, &connection->connect_timer_work);
 	spin_unlock_irqrestore(&resource->req_lock, irq_flags);
 }
+#endif
 
+#ifdef _WIN32_V9 //V9에 새롭게 추가된 구현. conn_connect 와의 차이점과 어떤 시점에서 구동되는지에 대해 추후 분석이 필요하다. <완료>
 void conn_connect2(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -1008,9 +1017,11 @@ void conn_connect2(struct drbd_connection *connection)
 	}
 	rcu_read_unlock();
 }
+#endif
 
 void conn_disconnect(struct drbd_connection *connection);
-
+ 
+#ifdef _WIN32_V9 // connect 시 timer 핸들러. V9에서 connect 시 타이머를 구동시키는 것이 V8과 어떤 차이점이 있는지 확인 필요. 구현부에서 conn_connect2를 부르는 모습이 보인다.<완료>
 int connect_work(struct drbd_work *work, int cancel)
 {
 	struct drbd_connection *connection =
@@ -1034,7 +1045,7 @@ int connect_work(struct drbd_work *work, int cancel)
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
 }
-
+#endif
 /*
  * Returns true if we have a valid connection.
  */
