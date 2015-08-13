@@ -940,6 +940,16 @@ static int drbd_recv_all_warn(struct drbd_connection *connection, void **buf, si
 	return err;
 }
 
+//V8의 drbd_setbufsize 는 dtt_setbufsize 로 대체되었다.
+//V8의 drbd_try_connect 는 dtt_try_connect 로 대체
+//V8의 drbd_incoming_connection 은 dtt_incoming_connection 으로 대체
+//V8의 prepare_listen_socket 은 V9에서 제거됨. => 아마도 dtt_create_listener 인듯.
+//V8의 unregister_state_change 는 transport_tcp 쪽으로 이동.
+//V8의 drbd_wait_for_connect 는 dtt_wait_for_connect 로 대체
+//V8의 send_first_packet 은 dtt_send_first_packet 으로 대체
+//V8의 receive_first_packet 은 dtt_receive_first_packet 으로 대체
+//V8의 drbd_socket_okay 는 dtt_socket_ok_or_free 로 대체.
+
 static int decode_header(struct drbd_connection *, void *, struct packet_info *);
 
 /* Gets called if a connection is established, or if a new minor gets created
