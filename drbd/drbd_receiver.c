@@ -770,6 +770,7 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
 /*
  * See also comments in _req_mod(,BARRIER_ACKED) and receive_Barrier.
  */
+// <완료>
 static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 {
 	struct drbd_connection *connection = peer_device->connection;
@@ -810,26 +811,32 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 		err2 = peer_req->w.cb(&peer_req->w, !!err);
 		if (!err)
 			err = err2;
+#ifdef _WIN32_V9 //기존 V8에서는 단순히 drbd_free_peer_req 를 호출했으나 V9에서는 recv_order 리스트가 비어있는지 확인한후 drbd_free_pages 를 호출하는 분기 코드가 추가 되었다. 버그수정인가?.. 구조상의 변화인가 확인 필요.
 		if (!list_empty(&peer_req->recv_order)) {
 			drbd_free_pages(&connection->transport, peer_req->pages, 0);
 			peer_req->pages = NULL;
 		} else
 			drbd_free_peer_req(peer_req);
+#endif
 	}
 	wake_up(&device->ee_wait);
 
 	return err;
 }
 
+// <완료>
 static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 				     struct list_head *head)
 {
+#ifndef _WIN32 //V8 구현 적용.
 	DEFINE_WAIT(wait);
-
+#endif
 	/* avoids spin_lock/unlock
 	 * and calling prepare_to_wait in the fast path */
 	while (!list_empty(head)) {
+#ifndef _WIN32 //V8 구현 적용.
 		prepare_to_wait(&device->ee_wait, &wait, TASK_UNINTERRUPTIBLE);
+#endif
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_kick_lo(device);
 
@@ -838,11 +845,13 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 #else
 		schedule();
 #endif
+#ifndef _WIN32 //V8 구현 적용.
 		finish_wait(&device->ee_wait, &wait);
+#endif
 		spin_lock_irq(&device->resource->req_lock);
 	}
 }
-
+//v9 형식으로 인자만 바뀜 <완료>
 static void drbd_wait_ee_list_empty(struct drbd_device *device,
 				    struct list_head *head)
 {
@@ -851,6 +860,9 @@ static void drbd_wait_ee_list_empty(struct drbd_device *device,
 	spin_unlock_irq(&device->resource->req_lock);
 }
 
+//V8의 drbd_recv_short 는 transport ops 핸들러 recv 로 대체되었다.
+
+//<완료>
 static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size, int flags)
 {
 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
@@ -864,19 +876,17 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 		else if (rv != -ERESTARTSYS)
 			drbd_info(connection, "sock_recvmsg returned %d\n", rv);
 	} else if (rv == 0) {
-		if (test_bit(DISCONNECT_EXPECTED, &connection->flags)) {
+		if (test_bit(DISCONNECT_EXPECTED, &connection->flags)) { //V8 DISCONNECT_SENT 에서 DISCONNECT_EXPECTED 로 변경.
 			long t;
 			rcu_read_lock();
 			t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 			rcu_read_unlock();
 #ifdef _WIN32_V9
-			//drbd_connection 의 ping_wait 인자 점검필요
+			//drbd_connection 의 ping_wait 인자 점검필요 => ping_wait 인자가 맞다.
 			wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
 #else
 			t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
 #endif
-	
-
 			if (t)
 				goto out;
 		}
@@ -884,12 +894,13 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 	}
 
 	if (rv != size)
-		change_cstate(connection, C_BROKEN_PIPE, CS_HARD);
+		change_cstate(connection, C_BROKEN_PIPE, CS_HARD); // v8 conn_request_state에서 change_cstate 로 변경.
 
 out:
 	return rv;
 }
 
+// V9에 새롭게 추가된 drbd_recv_into: drbd_recv_into 호출자의 사용자 버퍼를 rx 버퍼로 재공하게 할 수 있는 함수. 특이점은 없는듯. <완료>
 static int drbd_recv_into(struct drbd_connection *connection, void *buf, size_t size)
 {
 	int err;
@@ -904,6 +915,7 @@ static int drbd_recv_into(struct drbd_connection *connection, void *buf, size_t 
 	return err;
 }
 
+//drbd_recv 을 호출할 때 마지막 인자를 0으로 준다. <완료> 
 static int drbd_recv_all(struct drbd_connection *connection, void **buf, size_t size)
 {
 	int err;
@@ -917,7 +929,7 @@ static int drbd_recv_all(struct drbd_connection *connection, void **buf, size_t 
 		err = 0;
 	return err;
 }
-
+// drbd_recv_all 의 호출결과에 따라 waring 로그를 기록하는 함수. <완료>
 static int drbd_recv_all_warn(struct drbd_connection *connection, void **buf, size_t size)
 {
 	int err;

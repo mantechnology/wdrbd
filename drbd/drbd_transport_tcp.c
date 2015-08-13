@@ -315,6 +315,7 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 
 }
 
+// V8의 drbd_recv_short 가 dtt_recv , dtt_recv_short 로 대체 되었다. 추후 V8의 drbd_recv_short 를 참고하여 포팅한다.
 static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, void **buf, size_t size, int flags)
 {
 	struct drbd_tcp_transport *tcp_transport =
