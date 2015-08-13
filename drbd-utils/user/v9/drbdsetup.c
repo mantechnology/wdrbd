@@ -702,6 +702,21 @@ static int conv_block_dev(struct drbd_argument *ad, struct msg_buff *msg,
 	struct stat sb;
 	int device_fd;
 
+
+#ifdef _WIN32 //_WIN32_V9_CHECK [choi] v8.4.3에서는 여기서 무조건 return NO_ERROR; 하도록 되있음. 아래 루틴을 타지않아도 되는건지 확인필요.
+    // check true!
+    nla_put_string(msg, ad->nla_type, arg);
+    return NO_ERROR;
+#endif
+
+#ifdef _WIN32
+    //char *vol = "\\\\.\\Volume{606d8688-83b7-4625-8a41-3c5e39a3e618}";
+    // char *buf = malloc(strlen(cfg->md_device_name) + 20); // additional space 20 bytes are enough
+    char buf[1024];
+    sprintf(buf, "\\\\.\\Volume{%s}", arg);
+    arg = buf;
+#endif
+
 	if ((device_fd = open(arg,O_RDWR))==-1) {
 		PERROR("Can not open device '%s'", arg);
 		return OTHER_ERROR;
