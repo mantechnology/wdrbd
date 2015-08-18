@@ -1,7 +1,6 @@
-﻿#if 0 // JHKIM: _WIN32_V9: 오리지널과 충돌? 시험중! 다시 원복.
-#ifndef __DRBD_WINLIST_H__
+﻿#ifndef __DRBD_WINLIST_H__
 #define __DRBD_WINLIST_H__
-
+// JHKIM: _WIN32_V9: 오리지널과 충돌? 시험중! 다시 원복.
 
 #ifdef CONFIG_ILLEGAL_POINTER_VALUE
 #define POISON_POINTER_DELTA _AC(CONFIG_ILLEGAL_POINTER_VALUE, UL)
@@ -248,4 +247,4 @@ static __inline int list_empty_careful(const struct list_head *head)
 #endif
 
 #define hlist_entry(ptr, type, member) container_of(ptr,type,member)
-#endif __DRBD_WINLIST_H__
+#endif

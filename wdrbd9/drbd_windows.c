@@ -525,15 +525,25 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 	return p;
 }
 
-#ifdef _WIN32_V9 
+// _WIN32_V9
+// kmpak 이 부분은 linux 2.6.32 에서 가져왔다.
+// linux 3.x 이후에는 이부분 내용이 kref_sub로 옮겨가서 kref_sub에서 처리해주는데
+// drbd 9 오리지널에서는 linux 커널 버전별 차이를 맞춰주기 위해 kref_sub를 새로 정의해준다.
+// 하지만 wdrbd에서는 그럴 필요없이 kref_put 에서 처리해준다.
 int kref_put(struct kref *kref, void (*release)(struct kref *kref))
-#else
-void kref_put(struct kref *kref, void(*release)(struct kref *kref))
-#endif
 {
-	kref_sub(kref, 1, release); //_WIN32_CHECK
 #ifdef _WIN32_V9
-	return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
+    WARN_ON(release == NULL);
+    WARN_ON(release == (void (*)(struct kref *))kfree);
+
+    if (atomic_dec_and_test(&kref->refcount))
+    {
+        release(kref);
+        return 1;
+    }
+    return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
+#else
+	kref_sub(kref, 1, release); //_WIN32_CHECK
 #endif
 }
 
