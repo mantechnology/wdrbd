@@ -197,7 +197,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	struct request_queue	*q;
 
 	nr_pages = (length + PAGE_SIZE - 1) >> PAGE_SHIFT;
-	bio = bio_alloc(GFP_NOIO, nr_pages);
+	bio = bio_alloc(GFP_NOIO, nr_pages, '75DW');
 	if (!bio) 
 	{
 		return STATUS_INSUFFICIENT_RESOURCES;

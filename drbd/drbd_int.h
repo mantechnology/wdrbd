@@ -929,7 +929,11 @@ struct fifo_buffer {
 	int total; /* sum of all values */
 	int values[0];
 };
+#ifdef _WIN32
+extern struct fifo_buffer *fifo_alloc(int fifo_size, ULONG Tag);
+#else
 extern struct fifo_buffer *fifo_alloc(int fifo_size);
+#endif
 
 /* flag bits per connection */
 enum {
@@ -2009,7 +2013,12 @@ extern mempool_t *drbd_md_io_page_pool;
  * when we need it for housekeeping purposes */
 extern struct bio_set *drbd_md_io_bio_set;
 /* to allocate from that set */
+#ifdef _WIN32
+extern struct bio *bio_alloc_drbd(gfp_t gfp_mask, ULONG Tag);
+#else
 extern struct bio *bio_alloc_drbd(gfp_t gfp_mask);
+#endif
+
 
 #ifdef _WIN32_CHECK
 extern EX_SPIN_LOCK global_state_lock; 이 사용 안되는지 확인. 안되면 삭제. 중요한 전역이었기에 일단 기록함.
@@ -2194,7 +2203,7 @@ extern int drbd_submit_peer_request(struct drbd_device *,
 				    const int);
 extern int drbd_free_peer_reqs(struct drbd_resource *, struct list_head *, bool is_net_ee);
 #ifdef _WIN32_V9 //drbd_alloc_peer_req 내부에서 수행하던 drbd_alloc_pages가 V9에선 분리 수행된다.따라서 기존 V8의 인자에서 alloc 관련 인자가 제거됨.
-extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask) __must_hold(local);
+extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask, ULONG Tag) __must_hold(local);
 #else
 extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *, gfp_t) __must_hold(local);
 #endif

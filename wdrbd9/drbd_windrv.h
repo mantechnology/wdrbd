@@ -603,7 +603,7 @@ extern struct bio_pair *bio_split(struct bio *bi, int first_sectors);
 extern void bio_pair_release(struct bio_pair *dbio);
 extern struct bio_set *bioset_create(unsigned int, unsigned int);
 extern void bioset_free(struct bio_set *);
-extern struct bio *bio_alloc(gfp_t, int);
+extern struct bio *bio_alloc(gfp_t, int, ULONG);
 extern struct bio *bio_kmalloc(gfp_t, int);
 extern struct bio *bio_alloc_bioset(gfp_t, int, struct bio_set *);
 extern void bio_put(struct bio *);
@@ -681,7 +681,7 @@ extern void kref_init(struct kref *kref);
 
 extern struct request_queue *bdev_get_queue(struct block_device *bdev);
 extern void blk_cleanup_queue(struct request_queue *q);
-extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask);
+extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag);
 typedef void (make_request_fn) (struct request_queue *q, struct bio *bio);
 extern void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn);
 extern void blk_queue_flush(struct request_queue *q, unsigned int flush);
@@ -838,12 +838,12 @@ extern void kobject_get(struct kobject *kobj);
 extern void kobject_del(struct kobject *kobj);
 
 extern void * kcalloc(int e_count, int x, int flag, ULONG Tag);
-extern void * kzalloc(int x, int flag);
-extern void * kmalloc(int size, int flag);
+extern void * kzalloc(int x, int flag, ULONG Tag);
+extern void * kmalloc(int size, int flag, ULONG Tag);
 extern void kfree(void * x);
 extern void * kmem_cache_alloc(void * cache, int flag, ULONG Tag);
 extern void kmem_cache_destroy(struct kmem_cache *s);
-extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *));
+extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *), ULONG Tag);
 extern void kmem_cache_free(void * cache, void * x);
 
 

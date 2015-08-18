@@ -614,7 +614,7 @@ You must not have the req_lock:
 // => drbd_alloc_peer_req 와 drbd_alloc_pages 를 쪼개어 놓은 이유가 있다. drbd_alloc_pages 를 transport 계층 ops 함수에서 호출할 때가 있기 때문에 분리될 필요가 있었다. 보기 좋으라고 분리시킨게 아님.
 //<완료>
 struct drbd_peer_request *
-drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask ) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
+drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask, ULONG Tag ) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
 #else
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
@@ -1411,7 +1411,11 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 
 	if (schedule_flush) {
 		struct flush_work *fw;
+#ifdef _WIN32
+        fw = kmalloc(sizeof(*fw), GFP_ATOMIC, 'F1DW');
+#else
 		fw = kmalloc(sizeof(*fw), GFP_ATOMIC);
+#endif
 		if (fw) {
 			fw->w.cb = w_flush;
 			fw->epoch = epoch;
@@ -1558,7 +1562,11 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	 * generated bio, but a bio allocated on behalf of the peer.
 	 */
 next_bio:
-	bio = bio_alloc(GFP_NOIO, nr_pages);
+#ifdef _WIN32
+    bio = bio_alloc(GFP_NOIO, nr_pages, '02DW');
+#else
+    bio = bio_alloc(GFP_NOIO, nr_pages);
+#endif
 	if (!bio) {
 		drbd_err(device, "submit_ee: Allocation of a bio failed (nr_pages=%u)\n", nr_pages);
 		goto fail;
@@ -1810,7 +1818,11 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 
 	/* receiver context, in the writeout path of the other node.
 	 * avoid potential distributed deadlock */
+#ifdef _WIN32
+    epoch = kmalloc(sizeof(struct drbd_epoch), GFP_NOIO, '12DW');
+#else
 	epoch = kmalloc(sizeof(struct drbd_epoch), GFP_NOIO);
+#endif
 	if (!epoch) {
 		drbd_warn(connection, "Allocation of an epoch failed, slowing down\n");
 		issue_flush = !test_and_set_bit(DE_BARRIER_IN_NEXT_EPOCH_ISSUED, &connection->current_epoch->flags);
@@ -1896,7 +1908,7 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 		return NULL;
 	}
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, id, sector, GFP_TRY);
+	peer_req = drbd_alloc_peer_req(peer_device, id, sector, GFP_TRY, '22DW');
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif
@@ -2945,7 +2957,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		return ignore_remaining_packet(connection, pi->size);
 	}
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, p->block_id, sector, GFP_TRY);
+	peer_req = drbd_alloc_peer_req(peer_device, p->block_id, sector, GFP_TRY, '32DW');
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif
@@ -2990,7 +3002,11 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	case P_OV_REPLY:
 	case P_CSUM_RS_REQUEST:
 		fault_type = DRBD_FAULT_RS_RD;
+#ifdef _WIN32
+        di = kmalloc(sizeof(*di) + pi->size, GFP_NOIO, '42DW');
+#else
 		di = kmalloc(sizeof(*di) + pi->size, GFP_NOIO);
+#endif
 		err = -ENOMEM;
 		if (!di)
 			goto fail2;
@@ -4065,8 +4081,11 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		 * tell between which packets the algorithm should
 		 * change.
 		 */
-
+#ifdef _WIN32
+        peer_integrity_tfm = crypto_alloc_hash(integrity_alg, 0, CRYPTO_ALG_ASYNC, '52DW');
+#else
 		peer_integrity_tfm = crypto_alloc_hash(integrity_alg, 0, CRYPTO_ALG_ASYNC);
+#endif
 		if (!peer_integrity_tfm) {
 			drbd_err(connection, "peer data-integrity-alg %s not supported\n",
 				 integrity_alg);
@@ -4074,15 +4093,24 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		}
 
 		hash_size = crypto_hash_digestsize(peer_integrity_tfm);
+#ifdef _WIN32
+        int_dig_in = kmalloc(hash_size, GFP_KERNEL, '62DW');
+        int_dig_vv = kmalloc(hash_size, GFP_KERNEL, '72DW');
+#else
 		int_dig_in = kmalloc(hash_size, GFP_KERNEL);
 		int_dig_vv = kmalloc(hash_size, GFP_KERNEL);
+#endif
 		if (!(int_dig_in && int_dig_vv)) {
 			drbd_err(connection, "Allocation of buffers for data integrity checking failed\n");
 			goto disconnect;
 		}
 	}
 
+#ifdef _WIN32
+    new_net_conf = kmalloc(sizeof(struct net_conf), GFP_KERNEL, '82DW');
+#else
 	new_net_conf = kmalloc(sizeof(struct net_conf), GFP_KERNEL);
+#endif
 	if (!new_net_conf) {
 		drbd_err(connection, "Allocation of new net_conf failed\n");
 		goto disconnect;
@@ -4171,7 +4199,11 @@ static struct crypto_hash *drbd_crypto_alloc_digest_safe(const struct drbd_devic
 	if (!alg[0])
 		return NULL;
 
+#ifdef _WIN32
+    tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC, '92DW');
+#else
 	tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC);
+#endif
 	if (IS_ERR(tfm)) {
 		drbd_err(device, "Can not allocate \"%s\" as %s (reason: %ld)\n",
 			alg, name, PTR_ERR(tfm));
@@ -4265,7 +4297,11 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	}
 	old_net_conf = connection->transport.net_conf;
 	if (get_ldev(device)) {
+#ifdef _WIN32
+        new_peer_device_conf = kzalloc(sizeof(struct peer_device_conf), GFP_KERNEL, 'A2DW');
+#else
 		new_peer_device_conf = kzalloc(sizeof(struct peer_device_conf), GFP_KERNEL);
+#endif
 		if (!new_peer_device_conf) {
 			put_ldev(device);
 			mutex_unlock(&resource->conf_update);
@@ -4343,7 +4379,11 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 			old_plan = rcu_dereference_protected(peer_device->rs_plan_s,
 				lockdep_is_held(&resource->conf_update));
 			if (!old_plan || fifo_size != old_plan->size) {
+#ifdef _WIN32
+                new_plan = fifo_alloc(fifo_size, 'B2DW');
+#else
 				new_plan = fifo_alloc(fifo_size);
+#endif
 				if (!new_plan) {
 					drbd_err(device, "kmalloc of fifo_buffer failed");
 					goto disconnect;
@@ -4352,7 +4392,11 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 		}
 
 		if (verify_tfm || csums_tfm) {
+#ifdef _WIN32
+            new_net_conf = kzalloc(sizeof(struct net_conf), GFP_KERNEL, 'C2DW');
+#else
 			new_net_conf = kzalloc(sizeof(struct net_conf), GFP_KERNEL);
+#endif
 			if (!new_net_conf) {
 				drbd_err(device, "Allocation of new net_conf failed\n");
 				goto disconnect;
@@ -4545,8 +4589,11 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 		if (my_usize != p_usize) {
 			struct disk_conf *old_disk_conf, *new_disk_conf;
-
+#ifdef _WIN32
+            new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL, 'D2DW');
+#else
 			new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL);
+#endif
 			if (!new_disk_conf) {
 				drbd_err(device, "Allocation of new disk_conf failed\n");
 				err = -ENOMEM;
@@ -5353,7 +5400,11 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	if (already_queued)
 		return 0;
 
+#ifdef _WIN32
+    q = kmalloc(sizeof(*q), GFP_NOIO, 'E2DW');
+#else
 	q = kmalloc(sizeof(*q), GFP_NOIO);
+#endif
 	if (!q)
 		return -ENOMEM;
 
@@ -7665,7 +7716,11 @@ static int got_OVResult(struct drbd_connection *connection, struct packet_info *
 		drbd_advance_rs_marks(peer_device, peer_device->ov_left);
 
 	if (peer_device->ov_left == 0) {
+#ifdef _WIN32
+        struct drbd_peer_device_work *dw = kmalloc(sizeof(*dw), GFP_NOIO, 'F2DW');
+#else
 		struct drbd_peer_device_work *dw = kmalloc(sizeof(*dw), GFP_NOIO);
+#endif
 		if (dw) {
 			dw->w.cb = w_ov_finished;
 			dw->peer_device = peer_device;

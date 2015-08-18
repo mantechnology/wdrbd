@@ -644,7 +644,7 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
     }
     else
     {
-        skb = kmalloc(sizeof(*skb) + payload, GFP_KERNEL);
+        skb = kmalloc(sizeof(*skb) + payload, GFP_KERNEL, '67DW');
     }
 
     if (!skb)

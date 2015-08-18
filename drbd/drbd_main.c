@@ -222,10 +222,14 @@ static void bio_destructor_drbd(struct bio *bio)
 }
 #endif
 
+#ifdef _WIN32
+struct bio *bio_alloc_drbd(gfp_t gfp_mask, ULONG Tag)
+#else
 struct bio *bio_alloc_drbd(gfp_t gfp_mask)
+#endif
 {
 #ifdef _WIN32 // _WIN32_V9
-	return bio_alloc(gfp_mask, 1);
+	return bio_alloc(gfp_mask, 1, Tag);
 #else
 	struct bio *bio;
 
@@ -3620,7 +3624,11 @@ struct drbd_resource *drbd_create_resource(const char *name,
 {
 	struct drbd_resource *resource;
 
+#ifdef _WIN32
+    resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
+#else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
+#endif
 	if (!resource)
 		goto fail;
 	resource->name = kstrdup(name, GFP_KERNEL);
@@ -3687,14 +3695,22 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	int size;
 
 	size = sizeof(*connection) - sizeof(connection->transport) + tc->instance_size;
+#ifdef _WIN32
+    connection = kzalloc(size, GFP_KERNEL, 'D0DW');
+#else
 	connection = kzalloc(size, GFP_KERNEL);
+#endif
 	if (!connection)
 		return NULL;
 
 	if (drbd_alloc_send_buffers(connection))
 		goto fail;
 
+#ifdef _WIN32
+    connection->current_epoch = kzalloc(sizeof(struct drbd_epoch), GFP_KERNEL, 'E0DW');
+#else
 	connection->current_epoch = kzalloc(sizeof(struct drbd_epoch), GFP_KERNEL);
+#endif
 	if (!connection->current_epoch)
 		goto fail;
 
@@ -3811,8 +3827,11 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 {
 	struct drbd_peer_device *peer_device;
 	int err;
-
+#ifdef _WIN32
+    peer_device = kzalloc(sizeof(struct drbd_peer_device), GFP_KERNEL, 'F0DW');
+#else
 	peer_device = kzalloc(sizeof(struct drbd_peer_device), GFP_KERNEL);
+#endif
 	if (!peer_device)
 		return NULL;
 
@@ -3895,7 +3914,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 		return ERR_MINOR_OR_VOLUME_EXISTS;
 
 	/* GFP_KERNEL, we are outside of all write-out paths */
+#ifdef _WIN32
+    device = kzalloc(sizeof(struct drbd_device), GFP_KERNEL, '01DW');
+#else
 	device = kzalloc(sizeof(struct drbd_device), GFP_KERNEL);
+#endif
 	if (!device)
 		return ERR_NOMEM;
 	kref_init(&device->kref);
@@ -3949,7 +3972,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
 
+#ifdef _WIN32
+    q = blk_alloc_queue(GFP_KERNEL, '11DW');
+#else
 	q = blk_alloc_queue(GFP_KERNEL);
+#endif
 	if (!q)
 		goto out_no_q;
 	device->rq_queue = q;
@@ -5409,8 +5436,11 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	struct bm_io_work *bm_io_work;
 
 	D_ASSERT(device, current == device->resource->worker.task);
-
+#ifdef _WIN32
+    bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+#else
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO);
+#endif
 	bm_io_work->w.cb = w_bitmap_io;
 	bm_io_work->device = device;
 	bm_io_work->peer_device = peer_device;

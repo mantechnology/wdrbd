@@ -507,7 +507,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	/* Do not wait if no memory is immediately available.  */
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, GFP_TRY & ~__GFP_WAIT); //V8의 구현을 적용. _WIN32_CHECK
+	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. _WIN32_CHECK
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
 #endif
@@ -637,12 +637,18 @@ static void fifo_add_val(struct fifo_buffer *fb, int value)
 	for (i = 0; i < fb->size; i++)
 		fb->values[i] += value;
 }
-
+#ifdef _WIN32
+struct fifo_buffer *fifo_alloc(int fifo_size, ULONG Tag)
+#else
 struct fifo_buffer *fifo_alloc(int fifo_size)
+#endif
 {
 	struct fifo_buffer *fb;
-
+#ifdef _WIN32
+    fb = kzalloc(sizeof(struct fifo_buffer) + sizeof(int) * fifo_size, GFP_NOIO, Tag);
+#else
 	fb = kzalloc(sizeof(struct fifo_buffer) + sizeof(int) * fifo_size, GFP_NOIO);
+#endif
 	if (!fb)
 		return NULL;
 
@@ -1143,8 +1149,12 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 
 		drbd_kick_lo(device);
 		schedule_timeout_interruptible(HZ / 10);
-	queue_on_sender_workq:
+    queue_on_sender_workq:
+#ifdef _WIN32
+        rfw = kmalloc(sizeof(*rfw), GFP_ATOMIC, '13DW');
+#else
 		rfw = kmalloc(sizeof(*rfw), GFP_ATOMIC);
+#endif
 		if (rfw) {
 			rfw->pdw.w.cb = w_resync_finished;
 			rfw->pdw.peer_device = peer_device;
@@ -1451,7 +1461,11 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 		if (peer_device->connection->csums_tfm) {
 			digest_size = crypto_hash_digestsize(peer_device->connection->csums_tfm);
 			D_ASSERT(device, digest_size == di->digest_size);
+#ifdef _WIN32
+            digest = kmalloc(digest_size, GFP_NOIO, '23DW');
+#else
 			digest = kmalloc(digest_size, GFP_NOIO);
+#endif
 		}
 		if (digest) {
 			drbd_csum_ee(peer_device->connection->csums_tfm, peer_req, digest);
@@ -1575,7 +1589,11 @@ int w_e_end_ov_reply(struct drbd_work *w, int cancel)
 
 	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		digest_size = crypto_hash_digestsize(peer_device->connection->verify_tfm);
+#ifdef _WIN32
+        digest = kmalloc(digest_size, GFP_NOIO, '33DW');
+#else
 		digest = kmalloc(digest_size, GFP_NOIO);
+#endif
 		if (digest) {
 			drbd_csum_ee(peer_device->connection->verify_tfm, peer_req, digest);
 

@@ -313,23 +313,23 @@ int atomic_read(const atomic_t *v)
 	return InterlockedAnd((atomic_t *)v, 0xffffffff);
 }
 
-void * kmalloc(int size, int flag)
+void * kmalloc(int size, int flag, ULONG Tag)
 {
-	return kcalloc(1, size, flag, 'lamk');
+	return kcalloc(1, size, flag, Tag);
 }
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
 {
-	return kzalloc(size * count, 0);
+	return kzalloc(size * count, 0, Tag);
 }
 
-void * kzalloc(int size, int flag)
+void * kzalloc(int size, int flag, ULONG Tag)
 {
 	void *mem;
     static int fail_count = 0; // DV
 
 retry: // DV
-	mem = ExAllocatePoolWithTag(NonPagedPool, size, 'lazk');
+	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
 	if (!mem)
 	{
         WDRBD_WARN("kzalloc: no memory! fail_count=%d\n", fail_count); 
@@ -512,9 +512,9 @@ void kmem_cache_destroy(struct kmem_cache *s)
 }
 
 struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
-                  unsigned long flags, void (*ctor)(void *))
+                  unsigned long flags, void (*ctor)(void *), ULONG Tag)
 {
-	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0);	
+	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, Tag);	
 	if (!p)
 	{
 		WDRBD_ERROR("kzalloc failed\n");
@@ -568,10 +568,10 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
 }
 
-struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs)
+struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
 {
 	struct bio *bio;
-	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask);
+	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask, Tag);
 	if (!bio)
 	{
 		return 0;
@@ -614,7 +614,7 @@ void bio_endio(struct bio *bio, int error)
 
 struct bio *bio_clone(struct bio * bio_src, int flag)
 {
-	struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs); 
+    struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs, '24DW');
 
     if (!bio)
     {
@@ -1850,9 +1850,9 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      __list_add_rcu(new, head->prev, head);
 }
 
- struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
+ struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag)
  {
-     return kzalloc(sizeof(struct request_queue), 0);
+     return kzalloc(sizeof(struct request_queue), 0, Tag);
  }
 
 /**

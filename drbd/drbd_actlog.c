@@ -204,8 +204,11 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #endif
 	device->md_io.done = 0;
 	device->md_io.error = -ENODEV;
-
+#ifdef _WIN32
+    bio = bio_alloc_drbd(GFP_NOIO, '30DW');
+#else
 	bio = bio_alloc_drbd(GFP_NOIO);
+#endif
 	bio->bi_bdev = bdev->md_bdev;
 	DRBD_BIO_BI_SECTOR(bio) = sector;
 	err = -EIO;
@@ -1024,8 +1027,11 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 
 		if (ext->rs_left <= ext->rs_failed) {
 			struct update_peers_work *upw;
-
+#ifdef _WIN32
+            upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
+#else
 			upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN);
+#endif
 			if (upw) {
 				upw->enr = ext->lce.lc_number;
 				upw->w.cb = w_update_peers;

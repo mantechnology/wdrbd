@@ -393,8 +393,13 @@ struct hash_desc
     u32 flags;
 };
 
+#ifdef _WIN32
+static inline struct crypto_hash *
+crypto_alloc_hash(char *alg_name, u32 type, u32 mask, ULONG Tag)
+#else
 static inline struct crypto_hash *
 crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
+#endif
 {
 #ifndef _WIN32_CHECK
     return NULL;

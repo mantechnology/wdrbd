@@ -285,7 +285,11 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	    drbd_security_netlink_recv(skb, CAP_SYS_ADMIN))
 		return -EPERM;
 #endif
+#ifdef _WIN32
+    adm_ctx->reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL, 'D1DW');
+#else
 	adm_ctx->reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+#endif
 	if (!adm_ctx->reply_skb) {
 		err = -ENOMEM;
 		goto fail;
@@ -1851,8 +1855,11 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_DISK;
 		goto out;
 	}
-
+#ifdef _WIN32
+    new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL, '51DW');
+#else
 	new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL);
+#endif
 	if (!new_disk_conf) {
 		retcode = ERR_NOMEM;
 		goto fail;
@@ -2039,14 +2046,22 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&resource->adm_mutex);
 
 	/* allocation not in the IO path, drbdsetup context */
+#ifdef _WIN32
+    nbc = kzalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL, '61DW');
+#else
 	nbc = kzalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL);
+#endif
 	if (!nbc) {
 		retcode = ERR_NOMEM;
 		goto fail;
 	}
 	spin_lock_init(&nbc->md.uuid_lock);
 
+#ifdef _WIN32
+    new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL, '71DW');
+#else
 	new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL);
+#endif
 	if (!new_disk_conf) {
 		retcode = ERR_NOMEM;
 		goto fail;
@@ -2671,8 +2686,11 @@ alloc_hash(struct crypto_hash **tfm, char *tfm_name, int err_alg)
 {
 	if (!tfm_name[0])
 		return NO_ERROR;
-
+#ifdef _WIN32
+    *tfm = crypto_alloc_hash(tfm_name, 0, CRYPTO_ALG_ASYNC, '41DW');
+#else
 	*tfm = crypto_alloc_hash(tfm_name, 0, CRYPTO_ALG_ASYNC);
+#endif
 	if (IS_ERR(*tfm)) {
 		*tfm = NULL;
 		return err_alg;
@@ -2741,8 +2759,11 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-
+#ifdef _WIN32
+    new_net_conf = kzalloc(sizeof(struct net_conf), GFP_KERNEL, 'A1DW');
+#else
 	new_net_conf = kzalloc(sizeof(struct net_conf), GFP_KERNEL);
+#endif
 	if (!new_net_conf) {
 		retcode = ERR_NOMEM;
 		goto out;
@@ -2862,7 +2883,11 @@ static int adjust_resync_fifo(struct drbd_peer_device *peer_device,
 	old_plan = rcu_dereference_protected(peer_device->rs_plan_s,
 			     lockdep_is_held(&peer_device->connection->resource->conf_update));
 	if (!old_plan || fifo_size != old_plan->size) {
+#ifdef _WIN32
+        new_plan = fifo_alloc(fifo_size, '81DW');
+#else
 		new_plan = fifo_alloc(fifo_size);
+#endif
 		if (!new_plan) {
 			drbd_err(peer_device, "kmalloc of fifo_buffer failed");
 			return -ENOMEM;
@@ -2893,7 +2918,11 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	mutex_lock(&adm_ctx.resource->conf_update);
 
+#ifdef _WIN32
+    new_peer_device_conf = kzalloc(sizeof(struct peer_device_conf), GFP_KERNEL, '91DW');
+#else
 	new_peer_device_conf = kzalloc(sizeof(struct peer_device_conf), GFP_KERNEL);
+#endif
 	if (!new_peer_device_conf)
 		goto fail;
 
@@ -2945,7 +2974,11 @@ int drbd_create_peer_device_default_config(struct drbd_peer_device *peer_device)
 	struct peer_device_conf *conf;
 	int err;
 
+#ifdef _WIN32
+    conf = kzalloc(sizeof(*conf), GFP_KERNEL, 'B1DW');
+#else
 	conf = kzalloc(sizeof(*conf), GFP_KERNEL);
+#endif
 	if (!conf)
 		return -ENOMEM;
 
@@ -3017,7 +3050,11 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	}
 
 	/* allocation not in the IO path, drbdsetup / netlink process context */
+#ifdef _WIN32
+    new_net_conf = kzalloc(sizeof(*new_net_conf), GFP_KERNEL, 'E1DW');
+#else
 	new_net_conf = kzalloc(sizeof(*new_net_conf), GFP_KERNEL);
+#endif
 	if (!new_net_conf)
 		return ERR_NOMEM;
 
@@ -3302,7 +3339,11 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	if (retcode != NO_ERROR)
 		return retcode;
 
+#ifdef _WIN32
+    path = kzalloc(sizeof(struct drbd_path), GFP_KERNEL, '57DW');
+#else
 	path = kzalloc(sizeof(struct drbd_path), GFP_KERNEL);
+#endif
 	if (!path)
 		return ERR_NOMEM;
 
@@ -3709,7 +3750,11 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	if (u_size != (sector_t)rs.resize_size) {
+#ifdef _WIN32
+        new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL, 'C1DW');
+#else
 		new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL);
+#endif
 		if (!new_disk_conf) {
 			retcode = ERR_NOMEM;
 			goto fail_ldev;
