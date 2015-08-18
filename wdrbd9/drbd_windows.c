@@ -320,7 +320,7 @@ void * kmalloc(int size, int flag)
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
 {
-	return kzalloc(size * count, 0, Tag);
+	return kzalloc(size * count, 0);
 }
 
 void * kzalloc(int size, int flag)
@@ -514,7 +514,7 @@ void kmem_cache_destroy(struct kmem_cache *s)
 struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
                   unsigned long flags, void (*ctor)(void *))
 {
-	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, 'memk');	
+	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0);	
 	if (!p)
 	{
 		WDRBD_ERROR("kzalloc failed\n");

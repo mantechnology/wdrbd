@@ -333,7 +333,12 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 
 static void bm_vk_free(void *ptr, int v)
 {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32//[choi] _WIN32_V8 적용
+    if (v)
+        ;
+    else
+        kfree(ptr);
+#else
 	if (v)
 		vfree(ptr);
 	else
