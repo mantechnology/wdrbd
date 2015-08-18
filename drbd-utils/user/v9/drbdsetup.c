@@ -3952,7 +3952,7 @@ static void maybe_exec_legacy_drbdsetup(char **argv)
 #else
 		config_help_legacy("drbdsetup", driver_version);
 #endif
-		//exit(20); [choi] execvp() failed to exec drbdsetup-84: No such file or directory 에러 회피를 위해 임시로 주석처리.
+		exit(20);
 	}
 }
 

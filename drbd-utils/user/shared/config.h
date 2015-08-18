@@ -5,10 +5,12 @@
 #define DRBD_CONFIG_DIR "/etc"
 
 /* Include support for drbd-8.3 kernel code */
+#ifndef _WIN32_V9
 #define DRBD_LEGACY_83 1
 
 /* Include support for drbd-8.4 kernel code */
 #define DRBD_LEGACY_84 1
+#endif
 
 /* Local state directory. Commonly /var/lib/drbd or /usr/local/var/lib/drbd */
 #define DRBD_LIB_DIR "/var/lib/drbd"
