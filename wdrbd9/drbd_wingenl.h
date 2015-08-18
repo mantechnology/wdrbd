@@ -8,7 +8,7 @@
 
 struct sk_buff
 {
-    int len;		// DRBD_DOC: app, kernel媛?msg_buff 援먰솚???먮즺援ъ“ ?쇱튂瑜??꾪븿. len ???쒖쇅?섍퀬 app 濡??꾩넚
+    int len;
     unsigned int tail;
     unsigned int end;
 
@@ -33,7 +33,7 @@ static __inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
  */
 static __inline int skb_tailroom(const struct sk_buff *skb)
 {
-	return skb_is_nonlinear(skb) ? 0 : skb->end - skb->tail;
+	return skb->end - skb->tail;
 }
 
 struct netlink_callback
@@ -51,6 +51,7 @@ struct genl_ops
     int (*doit)(struct sk_buff *skb, struct genl_info *info);
     int (*dumpit)(struct sk_buff *skb, struct netlink_callback *cb);
     int (*done)(struct netlink_callback *cb);
+    const char *  str;
 };
 
 #ifndef __read_mostly

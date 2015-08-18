@@ -4925,7 +4925,7 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	enum drbd_ret_code retcode;
 	struct res_opts res_opts;
 	int err;
-
+WDRBD_TRACE("start\n");
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, 0);
 	if (!adm_ctx.reply_skb)
 		return retcode;
@@ -5817,6 +5817,20 @@ void nl_policy_init_by_manual()
 {
     extern void manual_nl_policy_init(void);
     manual_nl_policy_init();
+}
+
+struct genl_ops * get_drbd_genl_ops(u8 cmd)
+{
+    struct genl_ops * pops = NULL;
+    for (int i = 0; i < sizeof(drbd_genl_ops) / sizeof((drbd_genl_ops)[0]); i++)
+    {
+        if (drbd_genl_ops[i].cmd == cmd)
+        {
+            return &drbd_genl_ops[i];
+        }
+    }
+
+    return NULL;
 }
 
 #endif

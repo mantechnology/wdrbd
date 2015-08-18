@@ -279,12 +279,22 @@ static const char *CONCAT_(GENL_MAGIC_FAMILY, _genl_cmd_to_str)(__u8 cmd)
  */
 
 #undef GENL_op
+#if defined(_WIN32) && defined(__KERNEL__)
+#define GENL_op(op_name, op_num, handler, tla_list)		\
+{								\
+	handler							\
+	.cmd = op_name,						\
+	.policy	= CONCAT_(GENL_MAGIC_FAMILY, _tla_nl_policy),	\
+    .str = #op_name, \
+},
+#else
 #define GENL_op(op_name, op_num, handler, tla_list)		\
 {								\
 	handler							\
 	.cmd = op_name,						\
 	.policy	= CONCAT_(GENL_MAGIC_FAMILY, _tla_nl_policy),	\
 },
+#endif
 
 #define ZZZ_genl_ops		CONCAT_(GENL_MAGIC_FAMILY, _genl_ops)
 static struct genl_ops ZZZ_genl_ops[] __read_mostly = {

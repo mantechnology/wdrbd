@@ -2987,6 +2987,8 @@ static inline int drbd_queue_order_type(struct drbd_device *device)
 	return QUEUE_ORDERED_NONE;
 }
 
+extern struct genl_ops * get_drbd_genl_ops(u8 cmd);
+
 #ifdef blk_queue_plugged
 static inline void drbd_blk_run_queue(struct request_queue *q)
 {
