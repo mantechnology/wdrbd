@@ -79,6 +79,12 @@
 #endif
 /* }}} pr_* macros */
 
+#ifdef _WIN32
+#define REQ_SYNC		(1ULL << __REQ_SYNC)
+#define REQ_DISCARD		(1ULL << __REQ_DISCARD)
+#define REQ_FUA			(1ULL << __REQ_FUA)
+#define REQ_FLUSH		(1ULL << __REQ_FLUSH)
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
 # error "At least kernel version 2.6.18 (with patches) required"
@@ -1156,8 +1162,7 @@ static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
 #ifndef _WIN32
     return genlmsg_unicast(skb, info->snd_pid);
 #else
-	extern int genlmsg_unicast_wrapper(struct sk_buff *skb, struct genl_info *info);
-	return genlmsg_unicast_wrapper(skb, info);
+	return genlmsg_unicast(skb, info);
 #endif
 }
 #endif

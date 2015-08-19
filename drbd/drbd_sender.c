@@ -26,10 +26,6 @@
 #include "windows/drbd.h"
 #include <linux-compat/sched.h>
 #include <linux-compat/wait.h>
-#include "drbd_int.h"
-#include "drbd_protocol.h"
-#include "drbd_req.h"
-
 #else
 #include <linux/module.h>
 #include <linux/drbd.h>
@@ -42,7 +38,9 @@
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #endif
-
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
 
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
@@ -73,7 +71,24 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 	struct drbd_device *device;
-#ifdef _WIN32_TODO
+#ifdef _WIN32
+    struct bio *bio = NULL;
+    int error = 0;
+    PIRP Irp = NULL;
+
+    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG)
+    {
+        Irp = p2;
+        error = Irp->IoStatus.Status;
+        bio = (struct bio *)p3;
+    }
+    else
+    {
+        error = (int)p3;
+        bio = (struct bio *)p2;
+    }
+#endif
+
 	BIO_ENDIO_FN_START;
 
 	device = bio->bi_private;
@@ -93,23 +108,33 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	drbd_md_put_buffer(device);
 	device->md_io.done = 1;
 	wake_up(&device->misc_wait);
+ #ifdef _WIN32
+    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+    {
+        if (Irp->MdlAddress != NULL) {
+            PMDL mdl, nextMdl;
+            for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+                nextMdl = mdl->Next;
+                MmUnlockPages(mdl);
+                IoFreeMdl(mdl); // This function will also unmap pages.
+            }
+            Irp->MdlAddress = NULL;
+        }
+
+        IoFreeIrp(Irp);
+        bio_put(bio);
+    }
+ #else
 	bio_put(bio);
+ #endif
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
-#endif
 
 #ifdef _WIN32
-#ifdef DRBD_TRACE
-	{
-		static int cnt = 0;
-		WDRBD_TRACE("drbd_md_endio done.(%d).............!!!\n", cnt++);
-	}
-#endif
 	return STATUS_MORE_PROCESSING_REQUIRED;
 #else
 	BIO_ENDIO_FN_RETURN;
 #endif
-
 }
 
 /* reads on behalf of the partner,
@@ -195,12 +220,10 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	if (connection->cstate[NOW] == C_CONNECTED) {
 		kref_get(&device->kref); /* put is in drbd_send_acks_wf() */
-
 #ifdef _WIN32_TODO	//queue_work 리턴형요구..기존 V8 포팅된 함수와 맞지 않다. queue_work linux kerenl func.	
 		if (!queue_work(connection->ack_sender, &peer_device->send_acks_work))
 			kref_put(&device->kref, drbd_destroy_device);
 #endif
-
 	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
