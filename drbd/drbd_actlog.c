@@ -253,6 +253,9 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 		goto retry;
 	}
 #endif
+#ifdef _WIN32
+	return err;
+#endif
  out:
 	bio_put(bio);
 	return err;

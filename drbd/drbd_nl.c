@@ -192,7 +192,7 @@ static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
         WDRBD_TRACE("len(%d), type(0x%x), flags(0x%x), seq(%d), pid(%d), cmd(%d), version(%d)\n",
             pnlh->nlmsg_len, pnlh->nlmsg_type, pnlh->nlmsg_flags, pnlh->nlmsg_seq, pnlh->nlmsg_pid, pgenlh->cmd, pgenlh->version);
 
-        if(pnlh->nlmsg_flags & NLM_F_ECHO)
+        if (pnlh->nlmsg_flags & NLM_F_ECHO)
         {
             WDRBD_TRACE("done\n", 0);
             return;
@@ -4469,7 +4469,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		goto out;
 	}
 #ifdef _WIN32
-    idr_for_each_entry_continue(struct idr *, idr_to_search, device, minor) {
+    idr_for_each_entry_continue(struct drbd_device *, idr_to_search, device, minor) {
 #else
 	idr_for_each_entry_continue(idr_to_search, device, minor) {
 #endif
@@ -5025,7 +5025,7 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	enum drbd_ret_code retcode;
 	struct res_opts res_opts;
 	int err;
-WDRBD_TRACE("start\n");
+
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, 0);
 	if (!adm_ctx.reply_skb)
 		return retcode;

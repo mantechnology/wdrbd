@@ -381,14 +381,7 @@ static __inline int nlmsg_report(const struct nlmsghdr *nlh)
 	nla_for_each_attr(pos, nlmsg_attrdata(nlh, hdrlen), \
 			  nlmsg_attrlen(nlh, hdrlen), rem)
 
-/**
-* nlmsg_free - free a netlink message
-* @skb: socket buffer of netlink message
-*/
-static __inline void nlmsg_free(struct sk_buff *skb)
-{
-    kfree(skb);
-}
+extern void nlmsg_free(struct sk_buff *skb);
 
 /**
 * nlmsg_for_each_msg - iterate over a stream of messages
@@ -844,4 +837,6 @@ static __inline void *genlmsg_data(const struct genlmsghdr *gnlh)
 {
     return ((unsigned char *)gnlh + GENL_HDRLEN);
 }
+
+extern int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info);
 #endif __DRBD_WINGENL_H__

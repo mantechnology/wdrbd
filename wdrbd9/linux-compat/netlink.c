@@ -75,6 +75,17 @@ static struct genl_ops drbd_genl_ops[] = {
 };
 */
 
+/*
+static struct genl_family drbd_genl_family  = {
+	.id = 0,
+	.name = "drbd",
+	.version = 2,
+
+	.hdrsize = (((sizeof(struct drbd_genlmsghdr)) + 4 - 1) & ~(4 - 1)),
+	.maxattr = (sizeof(drbd_tla_nl_policy) / sizeof((drbd_tla_nl_policy)[0]))-1,
+};
+*/
+
 #define cli_info(_minor, _fmt, ...)
 
 // globals
@@ -87,7 +98,6 @@ struct task_struct g_nlThread;
 extern struct mutex g_genl_mutex;
 
 static ERESOURCE    genl_multi_socket_res_lock;
-static ERESOURCE    genl_info_res_lock;
 
 PTR_ENTRY gSocketList =
 {
@@ -219,19 +229,18 @@ NTSTATUS reply_error(int type, int flags, int error, struct genl_info * pinfo)
     return STATUS_SUCCESS;
 }
 
-int reply_status(struct sk_buff * reply_skb, struct netlink_callback * cb, struct genl_info * info)
+static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netlink_callback * cb, struct genl_info * info)
 {
-#ifdef _WIN32_CHECK // kmpak 20150806 drbd9에서 adm_get_status_all 이 없어짐. 다른 대체 관련 코드 살펴볼 필요 있음
-    int err = drbd_adm_get_status_all(reply_skb, cb);
     struct nlmsghdr * nlh = NULL;
+    int err = pops->dumpit(skb, cb);
 
     if (0 == err)
     {
-        nlh = nlmsg_put(reply_skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
+        nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
     }
     else if (err < 0)
     {
-        nlh = nlmsg_put(reply_skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
+        nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
         // -ENODEV : occured by first drbdadm adjust. response?
         WDRBD_WARN("drbd_adm_get_status_all err = %d\n", err);
     }
@@ -244,14 +253,11 @@ int reply_status(struct sk_buff * reply_skb, struct netlink_callback * cb, struc
         hdr->reserved = 0;
     }
 
-    drbd_adm_send_reply(reply_skb, info);
+    drbd_adm_send_reply(skb, info);
 
     WDRBD_TRACE_NETLINK("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
 
     return err;
-#else
-    return 1;
-#endif
 }
 
 #ifndef WSK_EVENT_CALLBACK
@@ -265,12 +271,6 @@ VOID NTAPI NetlinkClientThread(PVOID p)
 #ifdef _WIN32_CT
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
     WDRBD_INFO("Netlink Client Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), p);
-#else
-    g_nlThread.pid = g_nlThread.current_thr = KeGetCurrentThread();
-    g_nlThread.has_sig_event = FALSE;
-	strcpy(g_nlThread.comm, "drbdcmd");
-    DbgPrint("\n");
-	WDRBD_INFO("Netlink Client Thread(%p:%s) IRQL(%d)-------- start!\n", g_nlThread.current_thr, g_nlThread.comm, KeGetCurrentIrql());
 #endif
 
     size_t sock_buf_size = NLMSG_GOODSIZE;
@@ -318,10 +318,6 @@ VOID NTAPI NetlinkClientThread(PVOID p)
                 continue;
             }
 
-#ifdef NL_PACKET_MSG
-            WDRBD_TRACE("rx(%d), cmd(%d), len(%d), flags(0x%x), type(0x%x), seq(%d), pid(%d)\n",
-                readcount, cmd, nlh->nlmsg_len, nlh->nlmsg_flags, nlh->nlmsg_type, nlh->nlmsg_seq, nlh->nlmsg_pid);
-#endif
             // check whether resource suspended
             struct drbd_genlmsghdr * gmh = info.userhdr;
             if (gmh)
@@ -434,8 +430,6 @@ cleanup:
 	CloseSocket(Socket);
 #ifdef _WIN32_CT
     ct_delete_thread(KeGetCurrentThread());
-#else
-    g_nlThread.current_thr = 0;
 #endif
 
 	WDRBD_INFO("done\n");
@@ -535,24 +529,24 @@ VOID NTAPI NetlinkServerThread(PVOID p)
 }
 #endif
 
-int genlmsg_unicast_wrapper(struct sk_buff *skb, struct genl_info *info)
+int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
 {
-	int sent;
+    int sent;
 
-	if (info->NetlinkSock == 0)
-	{
-		return -1; // return non-zero!
-	}
+    if (info->NetlinkSock == 0)
+    {
+        return -1; // return non-zero!
+    }
 
-	if ((sent = Send(info->NetlinkSock, skb->data, skb->len, 0, 0)) == (skb->len))
-	{
-		return 0; // success
-	}
-	else
-	{
+    if ((sent = Send(info->NetlinkSock, skb->data, skb->len, 0, 0)) == (skb->len))
+    {
+        return 0; // success
+    }
+    else
+    {
         WDRBD_WARN("sent Error=0x%x. sock=%p, data=%p sz=%d\n", sent, info->NetlinkSock, skb->data, skb->len);
-		return -2; // return non-zero!
-	}
+        return -2; // return non-zero!
+    }
 }
 
 #ifdef WSK_EVENT_CALLBACK
@@ -560,44 +554,10 @@ NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
 NPAGED_LOOKASIDE_LIST genl_info_mempool;
 NPAGED_LOOKASIDE_LIST genl_msg_mempool;
 
-LIST_ENTRY  genl_info_list_head;
-
 typedef struct _NETLINK_WORK_ITEM{
     WORK_QUEUE_ITEM Item;
     PWSK_SOCKET Socket;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
-
-void _add_genl_info_list(struct genl_info * pinfo)
-{
-    MvfAcquireResourceExclusive(&genl_info_res_lock);
-
-    if (!IsListEmpty(&genl_info_list_head))
-    {
-        for (PLIST_ENTRY entry = genl_info_list_head.Flink;
-            entry != &genl_info_list_head;
-            entry = entry->Flink)
-        {
-            struct genl_info * pinfo = (struct genl_info *)CONTAINING_RECORD(entry, struct genl_info, ListEntry);
-            WDRBD_TRACE_NETLINK("left socket(0x%p)\n", pinfo->NetlinkSock);
-        }
-    }
-
-    InsertTailList(&genl_info_list_head, &pinfo->ListEntry);
-
-    MvfReleaseResource(&genl_info_res_lock);
-}
-
-void _remove_genl_info_list(struct genl_info * pinfo)
-{
-    MvfAcquireResourceExclusive(&genl_info_res_lock);
-
-    if (!IsListEmpty(&genl_info_list_head))
-    {
-        RemoveEntryList(&pinfo->ListEntry);
-    }
-
-    MvfReleaseResource(&genl_info_res_lock);
-}
 
 struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
 {
@@ -641,6 +601,7 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
     {
         payload = NLMSG_GOODSIZE - sizeof(*skb);
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
+        RtlZeroMemory(skb, NLMSG_GOODSIZE);
     }
     else
     {
@@ -653,6 +614,15 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
     _genlmsg_init(skb, sizeof(*skb) + payload);
 
     return skb;
+}
+
+/**
+* nlmsg_free - free a netlink message
+* @skb: socket buffer of netlink message
+*/
+__inline void nlmsg_free(struct sk_buff *skb)
+{
+    ExFreeToNPagedLookasideList(&genl_msg_mempool, skb);
 }
 
 void
@@ -711,8 +681,6 @@ InitWskNetlink(void * pctx)
     ExInitializeNPagedLookasideList(&genl_msg_mempool, NULL, NULL,
         0, NLMSG_GOODSIZE, '47DW', 0);
 
-    InitializeListHead(&genl_info_list_head);
-    ExInitializeResourceLite(&genl_info_res_lock);
     ExInitializeResourceLite(&genl_multi_socket_res_lock);
 
 end:
@@ -728,45 +696,50 @@ ReleaseWskNetlink()
     ExDeleteNPagedLookasideList(&genl_info_mempool);
     ExDeleteNPagedLookasideList(&genl_msg_mempool);
 
-    ExDeleteResourceLite(&genl_info_res_lock);
     ExDeleteResourceLite(&genl_multi_socket_res_lock);
     
     return CloseWskEventSocket();
 }
 
-static int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo)
+static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 {
-    NT_ASSERT(pinfo);
-
-    struct nlmsghdr * nlh = pinfo->nlhdr;
-
-    if (nlh->nlmsg_flags != (NLM_F_DUMP | NLM_F_REQUEST))
+    if (pops->doit)
     {
-        return 0;
+        return pops->doit(NULL, pinfo);
     }
 
-    struct sk_buff * reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-
-    if (reply_skb)
+    if (pinfo->nlhdr->nlmsg_flags && NLM_F_DUMP)
     {
-        struct netlink_callback cb;
-        RtlZeroMemory(&cb, sizeof(struct netlink_callback));
-        cb.nlh = nlh;
+        struct sk_buff * skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 
-        int ret = reply_status(reply_skb, &cb, pinfo);
-
-        while (ret > 0)
+        if (skb)
         {
-            RtlZeroMemory(reply_skb, NLMSG_GOODSIZE);
-            _genlmsg_init(reply_skb, NLMSG_GOODSIZE);
+            struct netlink_callback ncb = {
+                .skb = skb,
+                .nlh = pinfo->nlhdr,
+                .args = { 0, }
+            };
+            
+            int ret = _genl_dump(pops, skb, &ncb, pinfo);
 
-            ret = reply_status(reply_skb, &cb, pinfo);
+            while (ret > 0)
+            {
+                RtlZeroMemory(skb, NLMSG_GOODSIZE);
+                _genlmsg_init(skb, NLMSG_GOODSIZE);
+
+                ret = _genl_dump(pops, skb, &ncb, pinfo);
+            }
+
+            if (pops->done)
+            {
+                pops->done(&ncb);
+            }
+
+            nlmsg_free(skb);
         }
 
-        nlmsg_free(reply_skb);
+        return 0;
     }
-
-    return 0;
 }
 
 VOID
@@ -830,8 +803,8 @@ NetlinkWorkThread(PVOID context)
             goto cleanup;
         }
 
-        WDRBD_TRACE_NETLINK("rx(%d), cmd(%d), len(%d), flags(0x%x), type(0x%x), seq(%d), pid(%d)\n",
-            readcount, pinfo->genlhdr->cmd, nlh->nlmsg_len, nlh->nlmsg_flags, nlh->nlmsg_type, nlh->nlmsg_seq, nlh->nlmsg_pid);
+        WDRBD_TRACE_NETLINK("rx(%d), len(%d), cmd(%d), flags(0x%x), type(0x%x), seq(%d), pid(%d)\n",
+            readcount, nlh->nlmsg_len, pinfo->genlhdr->cmd, nlh->nlmsg_flags, nlh->nlmsg_type, nlh->nlmsg_seq, nlh->nlmsg_pid);
 
         // check whether resource suspended
         struct drbd_genlmsghdr * gmh = pinfo->userhdr;
@@ -862,22 +835,12 @@ NetlinkWorkThread(PVOID context)
             
             if (mutex_trylock(&g_genl_mutex))
             {
-                _add_genl_info_list(pinfo);
-                err = pops->doit(NULL, pinfo);
+                err = _genl_ops(pops, pinfo);
                 mutex_unlock(&g_genl_mutex);
-                _remove_genl_info_list(pinfo);
             }
             else
             {
                 WDRBD_WARN("Failed to acquire the mutex\n");
-                for (PLIST_ENTRY entry = genl_info_list_head.Flink;
-                    entry != &genl_info_list_head;
-                    entry = entry->Flink)
-                {
-                    struct genl_info * pinfo = (struct genl_info *)CONTAINING_RECORD(entry, struct genl_info, ListEntry);
-                    WDRBD_WARN("cmd(%s:%d), flags(0x%x), pid(%d)\n",
-                        pops->str, pinfo->genlhdr->cmd, pinfo->nlhdr->nlmsg_flags, pinfo->nlhdr->nlmsg_pid);
-                }
             }
 
             goto cleanup;
