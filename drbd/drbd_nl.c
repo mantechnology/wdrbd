@@ -610,7 +610,7 @@ static char **make_envp(struct env *env)
 }
 
 /* Macro refers to local variables peer_device, device and connection! */
-#ifdef _WIN32 //_WIN32_CHECK
+#ifdef _WIN32_V9
 #define magic_printk(level, fmt, args, ...)				\
 	if (peer_device)						\
 		__drbd_printk_peer_device(level, peer_device, fmt, args); \
@@ -639,7 +639,9 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	int ret;
 
     enlarge_buffer:
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] kmalloc으로 대체
+    env.buffer = (char *)kmalloc(env.size, 0, '77DW');
+#else
 	env.buffer = (char *)__get_free_pages(GFP_NOIO, get_order(env.size));
 #endif
 	if (!env.buffer) {
@@ -695,7 +697,9 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	envp = make_envp(&env);
 	if (!envp) {
 		if (env.pos == -ENOMEM) {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 //_WIN32_CHECK [choi] kfree로 대체
+            kfree(env.buffer);
+#else
 			free_pages((unsigned long)env.buffer, get_order(env.size));
 #endif
 			env.size += PAGE_SIZE;
@@ -732,7 +736,9 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 
 	if (ret < 0) /* Ignore any ERRNOs we got. */
 		ret = 0;
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 //_WIN32_CHECK [choi] kfree로 대체
+    kfree(env.buffer);
+#else
 	free_pages((unsigned long)env.buffer, get_order(env.size));
 #endif
 	return ret;
@@ -880,7 +886,7 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 	{
 		WDRBD_ERROR("PsCreateSystemThread(_try_outdate_peer_async) failed with status 0x%08X\n", Status);
 
-		//kref_put(&tconn->kref, &conn_destroy); //_WIN32_CHECK: 미사용 규명.
+        kref_put(&connection->kref, drbd_destroy_connection); //_WIN32_CHECK: 미사용 규명. [choi] ? V8에서 사용됨.
 	}
 #else
 	kref_debug_get(&connection->kref_debug, 4);
@@ -965,7 +971,12 @@ retry:
 	}
 
 	while (try++ < max_tries) {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+        stable_state_change(rv, resource,
+            change_role(resource, role,
+                CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
+                with_force));
+#else
 		rv = stable_state_change(resource,
 			change_role(resource, role,
 				    CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
@@ -1066,7 +1077,13 @@ retry:
 		}
 
 		if (rv < SS_SUCCESS) {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+            stable_state_change(rv, resource,
+                change_role(resource, role,
+                    CS_VERBOSE | CS_ALREADY_SERIALIZED |
+                    CS_DONT_RETRY | CS_WAIT_COMPLETE,
+                    with_force));
+#else
 			rv = stable_state_change(resource,
 				change_role(resource, role,
 					    CS_VERBOSE | CS_ALREADY_SERIALIZED |
@@ -2044,7 +2061,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_backing_dev *nbc; /* new_backing_conf */
 	struct disk_conf *new_disk_conf = NULL;
 	struct block_device *bdev;
+#ifdef _WIN32_V9 //초기화
+    enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
+#else
 	enum drbd_state_rv rv;
+#endif
 	struct drbd_peer_device *peer_device;
 	unsigned int slots_needed = 0;
 	bool have_conf_update = false;
@@ -2231,8 +2252,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			    drbd_suspended(device)));
 	/* and for other previously queued resource work */
 	drbd_flush_workqueue(&resource->work);
-#ifdef _WIN32_V9 // _WIN32_CHECK
-	rv = 1; // dummy test!!!
+#ifdef _WIN32_V9
+    stable_state_change(rv, resource,
+        change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
 #else
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
@@ -2463,7 +2485,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
 	   necessary, and falls back to a local state change */
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    stable_state_change(rv, resource,
+        change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE));
+#else
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE));
 #endif
@@ -2514,7 +2539,11 @@ static enum drbd_disk_state get_disk_state(struct drbd_device *device)
 
 static int adm_detach(struct drbd_device *device, int force)
 {
+#ifdef _WIN32_V9 //초기화
+    enum drbd_state_rv retcode = SS_UNKNOWN_ERROR;
+#else
 	enum drbd_state_rv retcode;
+#endif
 	int ret;
 
 	if (force) {
@@ -2525,9 +2554,15 @@ static int adm_detach(struct drbd_device *device, int force)
 	}
 
 	drbd_suspend_io(device, READ_AND_WRITE); /* so no-one is stuck in drbd_al_begin_io */
+#ifdef _WIN32_V9
+    stable_state_change(retcode, device->resource,
+        change_disk_state(device, D_DETACHING,
+        CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+#else
 	retcode = stable_state_change(device->resource,
 		change_disk_state(device, D_DETACHING,
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+#endif
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
 #ifdef _WIN32
@@ -4145,7 +4180,11 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 		return retcode;
 	resource = adm_ctx.device->resource;
 	mutex_lock(&resource->adm_mutex);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    stable_state_change(retcode, resource,
+        change_io_susp_user(resource, true,
+        CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+#else
 	retcode = stable_state_change(resource,
 		change_io_susp_user(resource, true,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
@@ -4207,7 +4246,11 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    stable_state_change(retcode, adm_ctx.device->resource,
+        change_disk_state(adm_ctx.device, D_OUTDATED,
+            CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+#else
 	retcode = stable_state_change(adm_ctx.device->resource,
 		change_disk_state(adm_ctx.device, D_OUTDATED,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));

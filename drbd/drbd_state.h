@@ -65,8 +65,18 @@ extern union drbd_state drbd_get_device_state(struct drbd_device *, enum which_s
 extern union drbd_state drbd_get_peer_device_state(struct drbd_peer_device *, enum which_state);
 extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum which_state);
 
-#ifdef _WIN32_V9 // _WIN32_CHECK: conversion!!!!
-#define stable_state_change(resource, change_state) ( 0 )
+#ifdef _WIN32_V9 // _WIN32_CHECK: [choi] return 값 확인 필요
+#define stable_state_change(ret, resource, change_state)    \
+    do{				\
+            enum drbd_state_rv rv;						\
+            int err;                    \
+            wait_event_interruptible(err, (resource)->state_wait,		\
+                (rv = (change_state)) != SS_IN_TRANSIENT_STATE);	\
+            if (ret)							\
+			    ret = -SS_UNKNOWN_ERROR;				\
+            else								\
+			    ret = rv;						\
+    } while (0) 
 #else
 #define stable_state_change(resource, change_state) ({				\
 		enum drbd_state_rv rv;						\

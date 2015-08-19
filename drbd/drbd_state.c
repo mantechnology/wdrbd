@@ -3958,8 +3958,15 @@ enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device
 					    enum drbd_repl_state repl_state,
 					    enum chg_state_flags flags)
 {
+#ifdef _WIN32_V9
+    enum drbd_state_rv retcode = SS_UNKNOWN_ERROR;
+    stable_state_change(retcode, peer_device->device->resource,
+        change_repl_state(peer_device, repl_state, flags));
+    return retcode;
+#else
 	return stable_state_change(peer_device->device->resource,
 		change_repl_state(peer_device, repl_state, flags));
+#endif
 }
 
 void __change_peer_disk_state(struct drbd_peer_device *peer_device, enum drbd_disk_state disk_state)

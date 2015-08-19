@@ -138,39 +138,39 @@ struct drbd_connection;
 * and get all relevant log lines. */
 #ifdef _WIN32
 #define __drbd_printk_device(level, device, fmt, ...)		\
-do{								\
-		const struct drbd_device *__d = (device);		\
-		const struct drbd_resource *__r = __d->resource;	\
-		printk(level "drbd %s/%u drbd%u: " fmt,			\
-			__r->name, __d->vnr, __d->minor, __VA_ARGS__);	\
-}while(0)
+    do {								\
+        const struct drbd_device *__d = (device);		\
+        const struct drbd_resource *__r = __d->resource;	\
+        printk(level "drbd %s/%u drbd%u: " fmt,			\
+            __r->name, __d->vnr, __d->minor, __VA_ARGS__);	\
+    } while (0)
 
 #define __drbd_printk_peer_device(level, peer_device, fmt, ...)	\
-do{								\
-		const struct drbd_device *__d;				\
-		const struct drbd_connection *__c;			\
-		const struct drbd_resource *__r;			\
-		const char *__cn;					\
-		rcu_read_lock();					\
-		__d = (peer_device)->device;				\
-		__c = (peer_device)->connection;			\
-		__r = __d->resource;					\
-		__cn = rcu_dereference(__c->transport.net_conf)->name;	\
-		printk(level "drbd %s/%u drbd%u %s: " fmt,		\
-			__r->name, __d->vnr, __d->minor, __cn, __VA_ARGS__);\
-		rcu_read_unlock();					\
-}while(0)
+    do {								\
+        const struct drbd_device *__d;				\
+        const struct drbd_connection *__c;			\
+        const struct drbd_resource *__r;			\
+        const char *__cn;					\
+        rcu_read_lock();					\
+        __d = (peer_device)->device;				\
+        __c = (peer_device)->connection;			\
+        __r = __d->resource;					\
+        __cn = rcu_dereference(__c->transport.net_conf)->name;	\
+        printk(level "drbd %s/%u drbd%u %s: " fmt,		\
+            __r->name, __d->vnr, __d->minor, __cn, __VA_ARGS__);\
+        rcu_read_unlock();					\
+    } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
 	printk(level "drbd %s: " fmt, (resource)->name, __VA_ARGS__)
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
-do{	                    \
+    do {	                    \
         rcu_read_lock(); \
-		printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
-		       rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
-		rcu_read_unlock(); \
-}while(0)
+        printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
+        rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
+        rcu_read_unlock(); \
+    } while(0)
 
 void drbd_printk_with_wrong_object_type(void);
 
