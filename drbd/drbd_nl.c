@@ -108,6 +108,7 @@ bool capable(int cap)
 
 #ifdef _WIN32 
 // _WIN32_CHECK:JHKIM: V8에서는 이 전역이 이곳에 정의됨. 빌드 오류로 일단 다시 코멘트
+// [choi] genl_magic_func.h 의 ZZZ_genl_family 사용. 동작에 문제없다면 삭제할것.
 // struct genl_family drbd_genl_family;
 #endif
 
@@ -165,7 +166,8 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 atomic_t drbd_genl_seq = ATOMIC_INIT(2); /* two. */
 
 #ifdef _WIN32_V9 
-// _WIN32_CHECK:JHKIM: __MUTEX_INITIALIZER 무시, 전역으로 정의하고 엔진 시작부에서 mutex_init로 초기화하는 것으로 대체해도 무방. 재확인 필요.
+// _WIN32_CHECK:JHKIM: __MUTEX_INITIALIZER 무시, 전역으로 정의하고 엔진 시작부에서 mutex_init로 초기화하는 것으로 대체해도 무방. 재확인 필요. 
+// [choi] noti mutex 동작 확인 필요.
 struct mutex notification_mutex;
 #else
 DEFINE_MUTEX(notification_mutex);
@@ -174,7 +176,8 @@ DEFINE_MUTEX(notification_mutex);
 /* used blkdev_get_by_path, to claim our meta data device(s) */
 static char *drbd_m_holder = "Hands off! this is DRBD's meta data device.";
 
-#ifdef _WIN32 // _WIN32_CHECK: netlink에서도 불려짐으로 전역함수로 처리.
+#ifdef _WIN32 // _WIN32_CHECK: netlink에서도 불려짐으로 전역함수로 처리. 
+//[choi] netlink에서 불려지고 있다. 전역 처리 유지
 void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
 #else
 static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
@@ -488,8 +491,9 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 
 	adm_ctx->reply_dh->ret_code = retcode;
 	drbd_adm_send_reply(adm_ctx->reply_skb, info);
-#ifdef _WIN32_V9 // _WIN32_CHECK: V8에서 free 가 삽입되었는데 V9에서도 필요한지 확인 필요
-	//nlmsg_free(adm_ctx.reply_skb);
+#ifdef _WIN32_V9 // _WIN32_CHECK: V8에서 free 가 삽입되었는데 V9에서도 필요한지 확인 필요 
+    // [choi] DW-211 memory leak 해결을 위한 보강코드임. 일단 유지.
+	nlmsg_free(adm_ctx->reply_skb);
 #endif
 	adm_ctx->reply_skb = NULL;
 	return 0;
@@ -606,8 +610,8 @@ static char **make_envp(struct env *env)
 }
 
 /* Macro refers to local variables peer_device, device and connection! */
-#ifdef _WIN32_CHECK
-#define magic_printk(level, fmt, args...)				\
+#ifdef _WIN32 //_WIN32_CHECK
+#define magic_printk(level, fmt, args, ...)				\
 	if (peer_device)						\
 		__drbd_printk_peer_device(level, peer_device, fmt, args); \
 	else if (device)						\
@@ -615,7 +619,14 @@ static char **make_envp(struct env *env)
 	else								\
 		__drbd_printk_connection(level, connection, fmt, args);
 #else
-#define magic_printk(level, fmt, args, ...)
+
+#define magic_printk(level, fmt, args...)				\
+	if (peer_device)						\
+		__drbd_printk_peer_device(level, peer_device, fmt, args); \
+    	else if (device)						\
+		__drbd_printk_device(level, device, fmt, args);		\
+    	else								\
+		__drbd_printk_connection(level, connection, fmt, args);
 #endif
 
 int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection, char *cmd)
