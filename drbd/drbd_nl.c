@@ -1187,7 +1187,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock(); // _WIN32_CHECK: 언제 lock 되는가?
+	genl_unlock(); // _WIN32_CHECK: 언제 lock 되는가? [choi] role 변경 후 genl_lock().
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
@@ -1707,9 +1707,9 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 		b = bdev->backing_bdev->bd_disk->queue;
 
 		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK [choi] 구조체 변수 limits 추가
 		blk_set_stacking_limits(&q->limits);
-#endif
+//#endif
 #ifdef REQ_WRITE_SAME
 		blk_queue_max_write_same_sectors(q, 0);
 #endif
@@ -1724,7 +1724,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 	if (b) {
 		struct request_queue * const b = device->ldev->backing_bdev->bd_disk->queue;
 		u32 agreed_featurs = common_connection_features(device->resource);
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK [choi] queue_limits 구조체 추가.
 		q->limits.max_discard_sectors = DRBD_MAX_DISCARD_SECTORS;
 
 		if (blk_queue_discard(b) && (agreed_featurs & FF_TRIM)) {
@@ -1739,7 +1739,8 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 			q->limits.discard_granularity = 0;
 		}
-
+//#endif
+#ifndef _WIN32 // _WIN32_CHECK [choi] V8에서 disable 돼 있음.
 		blk_queue_stack_limits(q, b);
 #endif
 		if (q->backing_dev_info.ra_pages != b->backing_dev_info.ra_pages) {
@@ -1749,14 +1750,14 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			q->backing_dev_info.ra_pages = b->backing_dev_info.ra_pages;
 		}
 	}
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK [choi] queue_limits 구조체 추가.
 	/* To avoid confusion, if this queue does not support discard, clear
 	 * max_discard_sectors, which is what lsblk -D reports to the user.  */
 	if (!blk_queue_discard(q)) {
 		q->limits.max_discard_sectors = 0;
 		q->limits.discard_granularity = 0;
 	}
-#endif
+//#endif
 }
 
 void drbd_reconsider_max_bio_size(struct drbd_device *device, struct drbd_backing_dev *bdev)
@@ -4347,7 +4348,7 @@ put_result:
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL);
 	if (err)
 		goto out;
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK //[choi] capable 확인필요. V8에서는 capable 부분이 disable 되어있다.
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;

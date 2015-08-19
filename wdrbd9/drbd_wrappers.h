@@ -1482,6 +1482,19 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
+#ifdef _WIN32_V9
+# define queue_flag_set_unlocked(F, Q)				\
+    do {							\
+        if ((F) != -1)					\
+            __set_bit(F, Q);		/* _WIN32_CHECK __set_bit로 대체 */\
+    } while(0)
+
+# define queue_flag_clear_unlocked(F, Q)			\
+    do {							\
+        if ((F) != -1)					\
+            clear_bit(F, Q);	/* _WIN32_CHECK clear_bit로 대체 */\
+    } while (0)
+#else
 # define queue_flag_set_unlocked(F, Q)				\
 	({							\
 		if ((F) != -1)					\
@@ -1493,7 +1506,7 @@ static inline void genl_unlock(void) {}
 		if ((F) != -1)					\
 			queue_flag_clear_unlocked(F, Q);	\
 	})
-
+#endif
 # ifndef blk_queue_discard
 #  define blk_queue_discard(q)   (0)
 #  define QUEUE_FLAG_DISCARD    (-1)
