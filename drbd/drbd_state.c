@@ -377,7 +377,22 @@ static void __clear_remote_state_change(struct drbd_resource *resource) {
 	wake_up(&resource->twopc_wait);
 	queue_queued_twopc(resource);
 }
+#ifdef _WIN32_V9
+__inline
+int stable_state_change(struct drbd_resource * resource, int change_state)
+{
+    enum drbd_state_rv rv;
+    int err;
+    wait_event_interruptible(err, resource->state_wait,
+        ((rv = (change_state)) != SS_IN_TRANSIENT_STATE));
+    if (err)
+	    err = -SS_UNKNOWN_ERROR;
+    else
+	    err = rv;
 
+    return err;
+}
+#endif
 static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, struct completion *done,
 					      enum drbd_state_rv rv)
 {
@@ -3290,8 +3305,8 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 		DbgPrint("_WIN32_CHECK: resolve do while(0) macro at if condition!!!!\n");
 #else
 		if (wait_event_timeout(resource->state_wait,
-			cluster_wide_reply_ready(resource),
-			twopc_timeout(resource)))
+				       cluster_wide_reply_ready(resource),
+				       twopc_timeout(resource)))
 			rv = get_cluster_wide_reply(resource);
 		else
 			rv = SS_TIMEOUT;
@@ -3962,15 +3977,8 @@ enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device
 					    enum drbd_repl_state repl_state,
 					    enum chg_state_flags flags)
 {
-#ifdef _WIN32_V9
-    enum drbd_state_rv retcode = SS_UNKNOWN_ERROR;
-    stable_state_change(retcode, peer_device->device->resource,
-        change_repl_state(peer_device, repl_state, flags));
-    return retcode;
-#else
 	return stable_state_change(peer_device->device->resource,
 		change_repl_state(peer_device, repl_state, flags));
-#endif
 }
 
 void __change_peer_disk_state(struct drbd_peer_device *peer_device, enum drbd_disk_state disk_state)

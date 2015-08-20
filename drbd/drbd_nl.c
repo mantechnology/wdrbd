@@ -623,9 +623,9 @@ static char **make_envp(struct env *env)
 #define magic_printk(level, fmt, args...)				\
 	if (peer_device)						\
 		__drbd_printk_peer_device(level, peer_device, fmt, args); \
-    	else if (device)						\
+	else if (device)						\
 		__drbd_printk_device(level, device, fmt, args);		\
-    	else								\
+	else								\
 		__drbd_printk_connection(level, connection, fmt, args);
 #endif
 
@@ -971,17 +971,11 @@ retry:
 	}
 
 	while (try++ < max_tries) {
-#ifdef _WIN32_V9
-        stable_state_change(rv, resource,
-            change_role(resource, role,
-                CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
-                with_force));
-#else
 		rv = stable_state_change(resource,
 			change_role(resource, role,
 				    CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
 				    with_force));
-#endif
+
 		if (rv == SS_CONCURRENT_ST_CHG)
 			continue;
 
@@ -1077,19 +1071,11 @@ retry:
 		}
 
 		if (rv < SS_SUCCESS) {
-#ifdef _WIN32_V9
-            stable_state_change(rv, resource,
-                change_role(resource, role,
-                    CS_VERBOSE | CS_ALREADY_SERIALIZED |
-                    CS_DONT_RETRY | CS_WAIT_COMPLETE,
-                    with_force));
-#else
 			rv = stable_state_change(resource,
 				change_role(resource, role,
 					    CS_VERBOSE | CS_ALREADY_SERIALIZED |
 					    CS_DONT_RETRY | CS_WAIT_COMPLETE,
 					    with_force));
-#endif
 			if (rv < SS_SUCCESS)
 				goto out;
 		}
@@ -2064,11 +2050,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_backing_dev *nbc; /* new_backing_conf */
 	struct disk_conf *new_disk_conf = NULL;
 	struct block_device *bdev;
-#ifdef _WIN32_V9 //초기화
-    enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
-#else
 	enum drbd_state_rv rv;
-#endif
 	struct drbd_peer_device *peer_device;
 	unsigned int slots_needed = 0;
 	bool have_conf_update = false;
@@ -2255,13 +2237,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			    drbd_suspended(device)));
 	/* and for other previously queued resource work */
 	drbd_flush_workqueue(&resource->work);
-#ifdef _WIN32_V9
-    stable_state_change(rv, resource,
-        change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
-#else
+
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
-#endif
 	retcode = rv;  /* FIXME: Type mismatch. */
 	if (rv >= SS_SUCCESS)
 		update_resource_dagtag(resource, nbc);
@@ -2488,13 +2466,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
 	   necessary, and falls back to a local state change */
-#ifdef _WIN32_V9
-    stable_state_change(rv, resource,
-        change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE));
-#else
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE));
-#endif
+
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
 
@@ -2542,11 +2516,7 @@ static enum drbd_disk_state get_disk_state(struct drbd_device *device)
 
 static int adm_detach(struct drbd_device *device, int force)
 {
-#ifdef _WIN32_V9 //초기화
-    enum drbd_state_rv retcode = SS_UNKNOWN_ERROR;
-#else
 	enum drbd_state_rv retcode;
-#endif
 	int ret;
 
 	if (force) {
@@ -2557,15 +2527,9 @@ static int adm_detach(struct drbd_device *device, int force)
 	}
 
 	drbd_suspend_io(device, READ_AND_WRITE); /* so no-one is stuck in drbd_al_begin_io */
-#ifdef _WIN32_V9
-    stable_state_change(retcode, device->resource,
-        change_disk_state(device, D_DETACHING,
-        CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#else
 	retcode = stable_state_change(device->resource,
 		change_disk_state(device, D_DETACHING,
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#endif
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
 #ifdef _WIN32
@@ -4203,15 +4167,11 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 		return retcode;
 	resource = adm_ctx.device->resource;
 	mutex_lock(&resource->adm_mutex);
-#ifdef _WIN32_V9
-    stable_state_change(retcode, resource,
-        change_io_susp_user(resource, true,
-        CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#else
+
 	retcode = stable_state_change(resource,
 		change_io_susp_user(resource, true,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#endif
+
 	mutex_unlock(&resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -4269,15 +4229,11 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-#ifdef _WIN32_V9
-    stable_state_change(retcode, adm_ctx.device->resource,
-        change_disk_state(adm_ctx.device, D_OUTDATED,
-            CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#else
+
 	retcode = stable_state_change(adm_ctx.device->resource,
 		change_disk_state(adm_ctx.device, D_OUTDATED,
 			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
-#endif
+
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -4464,8 +4420,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
 #ifdef _WIN32_V9
-    struct drbd_device *device;
-	device = 0; // _WIN32_CHECK: 미 초기화 오류 회피
+    struct drbd_device *device = NULL; // _WIN32_CHECK: 미 초기화 오류 회피
 #else
 	struct drbd_device *uninitialized_var(device);
 #endif
@@ -4671,7 +4626,7 @@ found_resource:
 #ifdef _WIN32_V9
     list_for_each_entry_continue_rcu(struct drbd_resource, next_resource, &drbd_resources, resources) {
 #else
-    list_for_each_entry_continue_rcu(next_resource, &drbd_resources, resources) {
+	list_for_each_entry_continue_rcu(next_resource, &drbd_resources, resources) {
 #endif
 		mutex_unlock(&resource->conf_update);
 		kref_debug_put(&resource->kref_debug, 6);
@@ -4818,7 +4773,7 @@ found_peer_device:
         goto put_result;  /* only one iteration */
     }
 #else
-    list_for_each_entry_continue_rcu(peer_device, &device->peer_devices, peer_devices) {
+	list_for_each_entry_continue_rcu(peer_device, &device->peer_devices, peer_devices) {
 		retcode = NO_ERROR;
 		goto put_result;  /* only one iteration */
 	}

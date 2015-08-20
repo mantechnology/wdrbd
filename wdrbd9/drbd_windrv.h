@@ -290,7 +290,7 @@ extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
 #define printk(format, ...)   \
-    _printk(format, __VA_ARGS__)
+    _printk(__FUNCTION__, format, __VA_ARGS__)
 #else
 #define printk(format, ...)
 #endif
