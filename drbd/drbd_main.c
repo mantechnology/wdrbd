@@ -4001,6 +4001,10 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
 #endif
+#ifdef _WIN32
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+	device->this_bdev = (pvext) ? pvext->dev : NULL;
+#endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
 
