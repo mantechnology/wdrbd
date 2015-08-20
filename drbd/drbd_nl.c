@@ -3294,16 +3294,17 @@ fail_free_connection:
 	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 
 	if (!list_empty(&connection->connections)) {
-		drbd_unregister_connection(connection);
-#ifdef _WIN32_CHECK
-		synchronize_rcu();
+#ifdef _WIN32_V9
+        synchronize_rcu_w32_wlock();
 #endif
+		drbd_unregister_connection(connection);
+		synchronize_rcu();
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK
 	drbd_put_transport_class(tr_class);
-#endif
+//#endif
 fail:
 	free_crypto(&crypto);
 	kfree(new_net_conf);
@@ -3625,7 +3626,9 @@ void del_connection(struct drbd_connection *connection)
 	 * handling only does drbd_thread_stop_nowait().
 	 */
 	drbd_thread_stop(&connection->sender);
-
+#ifdef _WIN32_V9
+    synchronize_rcu_w32_wlock();
+#endif
 	drbd_unregister_connection(connection);
 
 	/*
@@ -3641,9 +3644,10 @@ void del_connection(struct drbd_connection *connection)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifdef _WIN32_V9
-	synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
-#endif
+//#ifdef _WIN32_V9
+	//synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
+    // [choi] 3630 라인으로 이동.
+//#endif
 	synchronize_rcu();
 	drbd_put_connection(connection);
 }
@@ -4356,7 +4360,7 @@ put_result:
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL);
 	if (err)
 		goto out;
-#ifdef _WIN32_CHECK //[choi] capable 확인필요. V8에서는 capable 부분이 disable 되어있다.
+//#ifdef _WIN32_CHECK //[choi] capable 확인필요. V8에서는 capable 부분이 disable 되어있다.
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
@@ -4368,7 +4372,7 @@ put_result:
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
-#endif
+//#endif
 	cb->args[0] = (long)resource;
 	genlmsg_end(skb, dh);
 	err = 0;
@@ -4401,7 +4405,7 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << BDI_async_congested) |
