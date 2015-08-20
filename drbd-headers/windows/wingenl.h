@@ -1,7 +1,7 @@
 ﻿#ifndef __NETLINK_H__
 #define __NETLINK_H__
 #include "windows/types.h"
-
+#include "linux-compat/jiffies.h"
 #define NETLINK_PORT			5678
 
 struct nlmsghdr

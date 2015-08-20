@@ -646,8 +646,12 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 /* still holds resource->req_lock */
 static int drbd_req_put_completion_ref(struct drbd_request *req, struct bio_and_error *m, int put)
 {
+#ifdef _WIN32
+    struct drbd_device * device = req->device;
+    D_ASSERT(device, m || (req->rq_state[0] & RQ_POSTPONED));
+#else
 	D_ASSERT(req->device, m || (req->rq_state[0] & RQ_POSTPONED));
-
+#endif
 	if (!atomic_sub_and_test(put, &req->completion_ref))
 		return 0;
 
@@ -766,7 +770,9 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	int c_put = 0;
 	int k_put = 0;
 	const int idx = peer_device ? 1 + peer_device->node_id : 0;
-
+#ifdef _WIN32
+    struct drbd_device * device = req->device;
+#endif
 	/* FIXME n_connections, when this request was created/scheduled. */
 	BUG_ON(idx > DRBD_NODE_ID_MAX);
 	BUG_ON(idx < 0);
@@ -836,7 +842,11 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		++c_put;
 
 	if (!(old_local & RQ_LOCAL_ABORTED) && (set_local & RQ_LOCAL_ABORTED)) {
+#ifdef _WIN32
+        D_ASSERT(device, req->rq_state[0] & RQ_LOCAL_PENDING);
+#else
 		D_ASSERT(req->device, req->rq_state[0] & RQ_LOCAL_PENDING);
+#endif
 		/* local completion may still come in later,
 		 * we need to keep the req object around. */
 		kref_get(&req->kref);
@@ -886,11 +896,19 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		int at_least = k_put + !!c_put;
 		int refcount = atomic_read(&req->kref.refcount);
 		if (refcount < at_least)
+#ifdef _WIN32
+            drbd_err(device,
+            "mod_rq_state: Logic BUG: 0: %x -> %x, %d: %x -> %x: refcount = %d, should be >= %d\n",
+            old_local, req->rq_state[0],
+            idx, old_net, req->rq_state[idx],
+            refcount, at_least);
+#else
 			drbd_err(req->device,
 				"mod_rq_state: Logic BUG: 0: %x -> %x, %d: %x -> %x: refcount = %d, should be >= %d\n",
 				old_local, req->rq_state[0],
 				idx, old_net, req->rq_state[idx],
 				refcount, at_least);
+#endif
 	}
 
 	/* If we made progress, retry conflicting peer requests, if any. */
@@ -1767,9 +1785,17 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		submit_private_bio = true;
 	} else if (no_remote) {
 nodata:
-		if (drbd_ratelimit())
+        if (drbd_ratelimit())
+#ifdef _WIN32
+        {
+            struct drbd_device * device = req->device;
+            drbd_err(device, "IO ERROR: neither local nor remote data, sector %llu+%u\n",
+                (unsigned long long)req->i.sector, req->i.size >> 9);
+        }
+#else
 			drbd_err(req->device, "IO ERROR: neither local nor remote data, sector %llu+%u\n",
 					(unsigned long long)req->i.sector, req->i.size >> 9);
+#endif
 		/* A write may have been queued for send_oos, however.
 		 * So we can not simply free it, we must go through drbd_req_put_completion_ref() */
 	}

@@ -2006,6 +2006,7 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	peer_device->recv_cnt += data_size >> 9;
 
 #ifdef _WIN32_V9
+    struct drbd_device * device = peer_device->device;
 #ifdef _WIN32_CHECK
 	D_ASSERT(sector == req->master_bio->bi_sector);
 
@@ -2047,8 +2048,11 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 			return -EINVAL;
 		}
 	}
-
+#ifdef _WIN32
+    D_ASSERT(device, data_size == 0);
+#else
 	D_ASSERT(peer_device->device, data_size == 0);
+#endif
 	return 0;
 }
 #endif

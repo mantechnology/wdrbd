@@ -116,10 +116,17 @@ static void __bm_print_lock_info(struct drbd_device *device, const char *func)
 	struct drbd_bitmap *b = device->bitmap;
 	if (!drbd_ratelimit())
 		return;
-	drbd_err(device, "FIXME %s[%d] in %s, bitmap locked for '%s' by %s[%d]\n",
+#ifdef _WIN32
+    drbd_err(device, "FIXME %s[0x%p] in %s, bitmap locked for '%s' by %s[0x%p]\n",
+        current->comm, current->pid,
+        func, b->bm_why ? b->bm_why : "?",
+        b->bm_task->comm, b->bm_task->pid);
+#else
+    drbd_err(device, "FIXME %s[%d] in %s, bitmap locked for '%s' by %s[%d]\n",
 		 current->comm, task_pid_nr(current),
 		 func, b->bm_why ?: "?",
 		 b->bm_task->comm, task_pid_nr(b->bm_task));
+#endif
 }
 
 /* drbd_bm_lock() was introduced before drbd-9.0 to ensure that access to
@@ -155,10 +162,17 @@ _drbd_bm_lock(struct drbd_device *device, struct drbd_peer_device *peer_device,
 	}
 
 	if (trylock_failed) {
+#ifdef _WIN32
+        drbd_warn(device, "%s[0x%p] going to '%s' but bitmap already locked for '%s' by %s[0x%p]\n",
+            current->comm, current->pid,
+            why, b->bm_why ? b->bm_why : "?",
+            b->bm_task->comm, b->bm_task->pid);
+#else
 		drbd_warn(device, "%s[%d] going to '%s' but bitmap already locked for '%s' by %s[%d]\n",
 			  current->comm, task_pid_nr(current),
 			  why, b->bm_why ?: "?",
 			  b->bm_task->comm, task_pid_nr(b->bm_task));
+#endif
 		mutex_lock(&b->bm_change);
 	}
 	if (b->bm_flags & BM_LOCK_ALL)

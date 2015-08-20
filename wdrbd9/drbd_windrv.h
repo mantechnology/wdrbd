@@ -1212,6 +1212,8 @@ extern void ct_delete_thread(PKTHREAD id);
 extern struct task_struct* ct_find_thread(PKTHREAD id);
 #endif
 
+#define bdevname(dev, buf)  \
+    dev->bd_disk->disk_name
 //
 //  Lock primitives
 //
