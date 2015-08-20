@@ -1926,6 +1926,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
+    // [choi] lock_all_resources() 수정 필요
 	lock_all_resources();
 	retcode = drbd_resync_after_valid(device, new_disk_conf->resync_after);
 	if (retcode == NO_ERROR) {
@@ -1939,6 +1940,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		drbd_resync_after_changed(device);
 	}
 	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
+    // [choi] unlock_all_resources() 수정 필요
 	unlock_all_resources();
 
 	if (retcode != NO_ERROR)
@@ -4330,9 +4332,15 @@ int drbd_adm_dump_resources(struct sk_buff *skb, struct netlink_callback *cb)
 			      struct drbd_resource, resources);
 
 found_resource:
+#ifdef _WIN32_V9
+    list_for_each_entry_continue_rcu(struct drbd_resource, resource, &drbd_resources, resources) {
+        goto put_result;
+    }
+#else
 	list_for_each_entry_continue_rcu(resource, &drbd_resources, resources) {
 		goto put_result;
 	}
+#endif
 	err = 0;
 	goto out;
 
@@ -4617,10 +4625,17 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 	connection = list_entry(&resource->connections, struct drbd_connection, connections);
 
 found_connection:
+#ifdef _WIN32_V9
+    list_for_each_entry_continue_rcu(struct drbd_connection, connection, &resource->connections, connections) {
+        retcode = NO_ERROR;
+        goto put_result;  /* only one iteration */
+    }
+#else
 	list_for_each_entry_continue_rcu(connection, &resource->connections, connections) {
 		retcode = NO_ERROR;
 		goto put_result;  /* only one iteration */
 	}
+#endif
 
 no_more_connections:
 	if (cb->args[1] == ITERATE_RESOURCES) {
@@ -4633,7 +4648,11 @@ no_more_connections:
 	goto out;
 
 found_resource:
-	list_for_each_entry_continue_rcu(next_resource, &drbd_resources, resources) {
+#ifdef _WIN32_V9
+    list_for_each_entry_continue_rcu(struct drbd_resource, next_resource, &drbd_resources, resources) {
+#else
+    list_for_each_entry_continue_rcu(next_resource, &drbd_resources, resources) {
+#endif
 		mutex_unlock(&resource->conf_update);
 		kref_debug_put(&resource->kref_debug, 6);
 		kref_put(&resource->kref, drbd_destroy_resource);
@@ -4773,10 +4792,17 @@ next_device:
 	peer_device = list_entry(&device->peer_devices, struct drbd_peer_device, peer_devices);
 
 found_peer_device:
-	list_for_each_entry_continue_rcu(peer_device, &device->peer_devices, peer_devices) {
+#ifdef _WIN32_V9
+    list_for_each_entry_continue_rcu(struct drbd_peer_device, peer_device, &device->peer_devices, peer_devices) {
+        retcode = NO_ERROR;
+        goto put_result;  /* only one iteration */
+    }
+#else
+    list_for_each_entry_continue_rcu(peer_device, &device->peer_devices, peer_devices) {
 		retcode = NO_ERROR;
 		goto put_result;  /* only one iteration */
 	}
+#endif
 	goto next_device;
 
 put_result:

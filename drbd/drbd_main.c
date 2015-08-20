@@ -5651,7 +5651,7 @@ void lock_all_resources(void)
 
 	mutex_lock(&resources_mutex);
 #ifdef _WIN32_CHECK // kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규
-	local_irq_disable();
+	local_irq_disable(); //프로세서의 인터럽트 처리 금지
 	for_each_resource(resource, &drbd_resources)
 		spin_lock_nested(&resource->req_lock, i++);
 #endif

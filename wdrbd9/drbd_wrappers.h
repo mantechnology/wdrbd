@@ -1077,13 +1077,14 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 /* see c26d34a rcu: Add lockdep-enabled variants of rcu_dereference() */
 #define rcu_dereference_raw(p) rcu_dereference(p)
 #endif
-#ifdef _WIN32_CHECK
+#ifndef _WIN32 // [choi]V8 적용
 #define list_entry_rcu(ptr, type, member) \
 	({typeof (*ptr) *__ptr = (typeof (*ptr) __force *)ptr; \
 	 container_of((typeof(ptr))rcu_dereference_raw(__ptr), type, member); \
 	})
 #else
-#define list_entry_rcu(ptr, type, member)   NULL
+#define list_entry_rcu(ptr, type, member)   \
+	 container_of((type *)rcu_dereference_raw(ptr), type, member)
 #endif
 #endif
 
@@ -1323,11 +1324,17 @@ static inline void kref_sub(struct kref *kref, unsigned int count,
 * 254245d2 (v2.6.33-rc1).
 */
 #ifndef list_for_each_entry_continue_rcu
+#ifdef _WIN32_V9
+#define list_for_each_entry_continue_rcu(type, pos, head, member)             \
+	for (pos = list_entry_rcu(pos->member.next, type, member); \
+	     &pos->member != (head);    \
+	     pos = list_entry_rcu(pos->member.next, type, member))
+#else
 #define list_for_each_entry_continue_rcu(pos, head, member)             \
 	for (pos = list_entry_rcu(pos->member.next, typeof(*pos), member); \
 	     &pos->member != (head);    \
 	     pos = list_entry_rcu(pos->member.next, typeof(*pos), member))
-
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_IS_ERR_OR_NULL
