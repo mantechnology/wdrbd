@@ -1487,17 +1487,30 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 //_WIN32_CHECK 
+/*
+[choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
+
+static inline void queue_flag_set_unlocked(unsigned int flag, struct request_queue *q)
+{
+       __set_bit(flag, &q->queue_flags);
+}
+
+static inline void queue_flag_clear_unlocked(unsigned int flag, struct request_queue *q)
+{
+        __clear_bit(flag, &q->queue_flags);
+}
+*/
 # define queue_flag_set_unlocked(F, Q)				\
     do {							\
         if ((F) != -1)					\
-            __set_bit(F, Q);		/* _WIN32_CHECK __set_bit로 대체 */\
+            __set_bit(F, Q);		\
     } while(0)
 
 # define queue_flag_clear_unlocked(F, Q)			\
     do {							\
         if ((F) != -1)					\
-            clear_bit(F, Q);	/* _WIN32_CHECK clear_bit로 대체 */\
+            clear_bit(F, Q);	\
     } while (0)
 #else
 # define queue_flag_set_unlocked(F, Q)				\

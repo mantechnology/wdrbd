@@ -639,7 +639,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	int ret;
 
     enlarge_buffer:
-#ifdef _WIN32_V9 // _WIN32_CHECK [choi] kmalloc으로 대체
+#ifdef _WIN32_V9 // kmalloc으로 대체
     env.buffer = (char *)kmalloc(env.size, 0, '77DW');
 #else
 	env.buffer = (char *)__get_free_pages(GFP_NOIO, get_order(env.size));
@@ -697,7 +697,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	envp = make_envp(&env);
 	if (!envp) {
 		if (env.pos == -ENOMEM) {
-#ifdef _WIN32_V9 //_WIN32_CHECK [choi] kfree로 대체
+#ifdef _WIN32_V9 // kfree로 대체
             kfree(env.buffer);
 #else
 			free_pages((unsigned long)env.buffer, get_order(env.size));
@@ -736,7 +736,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 
 	if (ret < 0) /* Ignore any ERRNOs we got. */
 		ret = 0;
-#ifdef _WIN32_V9 //_WIN32_CHECK [choi] kfree로 대체
+#ifdef _WIN32_V9 // kfree로 대체
     kfree(env.buffer);
 #else
 	free_pages((unsigned long)env.buffer, get_order(env.size));
@@ -877,6 +877,7 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 	struct task_struct *opa;
 
 	kref_get(&connection->kref);
+    kref_debug_get(&connection->kref_debug, 4);
 #ifdef _WIN32_V9
 	HANDLE		hThread = NULL;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
@@ -886,10 +887,9 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 	{
 		WDRBD_ERROR("PsCreateSystemThread(_try_outdate_peer_async) failed with status 0x%08X\n", Status);
 
-        kref_put(&connection->kref, drbd_destroy_connection); //_WIN32_CHECK: 미사용 규명. [choi] ? V8에서 사용됨.
+        kref_put(&connection->kref, drbd_destroy_connection);
 	}
 #else
-	kref_debug_get(&connection->kref_debug, 4);
 	/* We may just have force_sig()'ed this thread
 	 * to get it out of some blocking network function.
 	 * Clear signals; otherwise kthread_run(), which internally uses
@@ -1707,7 +1707,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 		b = bdev->backing_bdev->bd_disk->queue;
 
 		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
-//#ifdef _WIN32_CHECK [choi] 구조체 변수 limits 추가
+//#ifdef _WIN32_CHECK [choi] 구조체 변수 limits 추가. 기능 불필요시 삭제.
 		blk_set_stacking_limits(&q->limits);
 //#endif
 #ifdef REQ_WRITE_SAME

@@ -304,7 +304,7 @@ static struct genl_ops ZZZ_genl_ops[] __read_mostly = {
 #undef GENL_op
 #define GENL_op(op_name, op_num, handler, tla_list)
 
-#ifdef _WIN32 //_WIN32_CHECK [choi] V8에서 disable.
+//_WIN32_CHECK [choi] V8에서는 genl_family가 #ifndef _WIN32로 묶어있었다. 동작에 문제 없다면 유지.
 /*
  * Define the genl_family, multicast groups,				{{{1
  * and provide register/unregister functions.
@@ -320,7 +320,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 #endif
 	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy)-1,
 };
-#endif
+
 /*
  * Magic: define multicast groups
  * Magic: define multicast group registration helper
