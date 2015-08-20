@@ -517,7 +517,7 @@ char * printk_str(const char *fmt, ...)
 	return buf;
 }
 
-void _printk(const char * format, ...)
+void _printk(const char * func, const char * format, ...)
 {
     int ret = 0;
 	va_list args;
@@ -549,8 +549,9 @@ void _printk(const char * format, ...)
     ASSERT((level_index >= 0) && (level_index < 8));
 
     WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
+    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf);
 
-    ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+    ExFreeToNPagedLookasideList(&drbd_printk_msg, buf + 3);
 }
 #endif
 

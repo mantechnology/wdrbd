@@ -2228,11 +2228,29 @@ extern void queued_twopc_timer_fn(unsigned long data);
 
 static inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
-	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
-#ifdef _WIN32_CHECK
-	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
+#ifdef _WIN32
+    if (bdev && bdev->d_size)
+    {
+        return bdev->d_size >> 9;
+    }
+
+    if (!bdev->bd_disk || !bdev->bd_disk->pDeviceExtension)
+    {
+        WDRBD_WARN("Bad argument\n");
+        return 0;
+    }
+
+    if (1 < KeGetCurrentIrql())
+    {
+        WDRBD_ERROR("Failed to get size. higher irql problem\n");
+        return 0;
+    }
+
+    bdev->d_size = get_targetdev_volsize(bdev->bd_disk->pDeviceExtension);
+    return bdev->d_size >> 9;
 #else
-    return 0;
+	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
+	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
 #endif
 }
 
