@@ -176,14 +176,17 @@ void drbd_printk_with_wrong_object_type(void);
 
 #define __drbd_printk_if_same_type(obj, type, func, level, fmt, ...) 
 
-#define drbd_printk(level, obj, fmt, ...)
+#define drbd_printk(level, obj, fmt, ...)   \
+    do {    \
+        __drbd_printk_##obj(level, obj, fmt, __VA_ARGS__);  \
+    } while(0)
 
 #if defined(disk_to_dev)
 #define drbd_dbg(device, fmt, args...) \
 	dev_dbg(disk_to_dev(device->vdisk), fmt, ## args)
-#elif defined(DEBUG)
-#define drbd_dbg(device, fmt, args...) \
-	drbd_printk(KERN_DEBUG, device, fmt, ## args)
+#elif defined(DBG)
+#define drbd_dbg(device, fmt, ...) \
+	drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__)
 #else
 #define drbd_dbg(device, fmt, ...) \
 	do { if (0) drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__); } while (0)
@@ -208,9 +211,9 @@ void drbd_printk_with_wrong_object_type(void);
 #define drbd_info(device, fmt, ...) \
 	drbd_printk(KERN_INFO, device, fmt, __VA_ARGS__)
 
-#if defined(DEBUG)
-#define drbd_debug(obj, fmt, args...) \
-	drbd_printk(KERN_DEBUG, obj, fmt, ## args)
+#if defined(DBG)
+#define drbd_debug(obj, fmt, ...) \
+	drbd_printk(KERN_DEBUG, obj, fmt, __VA_ARGS__)
 #else
 #define drbd_debug(obj, fmt, ...)
 #endif

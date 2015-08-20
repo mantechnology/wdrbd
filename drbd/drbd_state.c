@@ -3420,10 +3420,14 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 
 	if (!twopc_reply.tid || !expect(resource, twopc_parent))
 		return;
-
+#ifdef _WIN32
+    struct drbd_connection * connection = twopc_parent;
+    drbd_debug(connection, "Nested state change %u result: %s\n",
+        twopc_reply.tid, drbd_packet_name(cmd));
+#else
 	drbd_debug(twopc_parent, "Nested state change %u result: %s\n",
 		   twopc_reply.tid, drbd_packet_name(cmd));
-
+#endif
 	if (cmd == P_TWOPC_NO) {
 		del_timer(&resource->twopc_timer);
 		abort_nested_twopc_work(&resource->twopc_work, false);

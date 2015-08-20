@@ -3093,8 +3093,14 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 
 	*ret_conn = NULL;
 	if (adm_ctx->connection) {
+#ifdef _WIN32
+        struct drbd_resource * resource = adm_ctx->resource;
+        drbd_err(resource, "Connection for peer node id %d already exists\n",
+            adm_ctx->peer_node_id);
+#else
 		drbd_err(adm_ctx->resource, "Connection for peer node id %d already exists\n",
 			 adm_ctx->peer_node_id);
+#endif
 		return ERR_INVALID_REQUEST;
 	}
 
@@ -3404,7 +3410,12 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	err = transport->ops->add_path(transport, path);
 	if (err) {
 		kfree(path);
+#ifdef _WIN32
+        struct drbd_connection * connection = adm_ctx->connection;
+        drbd_err(connection, "add_path() failed with %d\n", err);
+#else
 		drbd_err(adm_ctx->connection, "add_path() failed with %d\n", err);
+#endif
 		drbd_msg_put_info(adm_ctx->reply_skb, "add_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
@@ -3537,7 +3548,12 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		break;
 	}
 	if (err) {
+#ifdef _WIN32
+        struct drbd_connection * connection = adm_ctx->connection;
+        drbd_err(connection, "del_path() failed with %d\n", err);
+#else
 		drbd_err(adm_ctx->connection, "del_path() failed with %d\n", err);
+#endif
 		drbd_msg_put_info(adm_ctx->reply_skb, "del_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
