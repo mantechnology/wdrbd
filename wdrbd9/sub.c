@@ -108,7 +108,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
-	extern int drbd_adm_down_from_engine(struct drbd_tconn *tconn);
+	extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
     struct drbd_conf *mdev;
     if (VolumeExtension->Active)
     {
