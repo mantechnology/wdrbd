@@ -1,23 +1,10 @@
 ﻿#ifndef DRBDADM_H
 #define DRBDADM_H
 
-#ifdef _WIN32_APP //_WIN32
-struct utsname
-{
-  char sysname[20];
-  char nodename[20];
-  char release[20];
-  char version[20];
-  char machine[20];
-};
-#endif
-
-
-#ifndef _WIN32 
+#include <stdbool.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <net/if.h>
-#endif
 /* We carry a copy of <sys/queue.h> around,
  * some older versions of it don't have the STAILQ_* variants */
 #include "sys_queue.h"

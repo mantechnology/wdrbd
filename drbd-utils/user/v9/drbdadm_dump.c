@@ -21,9 +21,6 @@
    along with drbd; see the file COPYING.  If not, write to
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -617,7 +614,7 @@ void print_dump_xml_header(void)
 #ifdef _WIN32
     printf("<config file=\"%s\">\n", config_file);
 #else
-    printf("<config file=\"%s\">\n", config_save);
+	printf("<config file=\"%s\">\n", config_save);
 #endif    
 	++indent;
 	dump_global_info_xml();
@@ -629,7 +626,7 @@ void print_dump_header(void)
 #ifdef _WIN32
     printf("# %s\n", config_file);
 #else
-    printf("# %s\n", config_save);
+	printf("# %s\n", config_save);
 #endif
 	dump_global_info();
 	dump_common_info();

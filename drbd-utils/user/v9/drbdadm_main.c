@@ -36,7 +36,6 @@
 #include <search.h>
 #include <assert.h>
 
-#ifndef _WIN32
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/poll.h>
@@ -44,16 +43,6 @@
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#else
-// CygWin
-#include <sys/poll.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
-#endif
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -784,7 +773,6 @@ static int sh_resources_list(const struct cfg_ctx *ctx)
 	return 0;
 }
 #endif
-
 static int sh_resources(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res;

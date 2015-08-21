@@ -1,21 +1,15 @@
-﻿#ifdef _WIN32
-#include "windows/types.h"
-#endif
+﻿/* These are common functions that are used across _all_ userspace,
+ * ie. even across 9, 84, and 83.
+ *
+ * Deduplicated here for easier maintenance. */
 
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef _WIN32_APP
-#include <sys/sysmacros.h>
-#endif
 #include <sys/ioctl.h>
-
-
-
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>

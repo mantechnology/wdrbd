@@ -20,9 +20,6 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
  */
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>

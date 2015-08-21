@@ -22,10 +22,6 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
@@ -701,11 +697,7 @@ int adm_adjust(const struct cfg_ctx *ctx)
 	yyin = m_popen(&pid,argv);
 	running = parse_resource_for_adjust(ctx);
 	fclose(yyin);
-#ifndef _WIN32 
 	waitpid(pid, 0, 0);
-#else
-
-#endif
 
 	if (running) {
 		struct resources running_as_list;
@@ -752,10 +744,8 @@ int adm_adjust(const struct cfg_ctx *ctx)
 			r = !parse_proxy_options_section(&conn->my_proxy);
 			can_do_proxy &= r;
 			fclose(yyin);
-#ifndef _WIN32
+
 			waitpid(pid,0,0);
-#else		
-#endif	
 		}
 	}
 

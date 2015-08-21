@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include "linux-compat/list.h"
 #include "linux-compat/Wait.h"
+#include "linux-compat/drbd_endian.h"
 #include "windows/types.h"
 #include "mvolmsg.h"
 #include "disp.h"
@@ -35,12 +36,6 @@
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
-
-#ifdef _WIN64
-#define BITS_PER_LONG				64 
-#else
-#define BITS_PER_LONG				32
-#endif
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// SEO: NETLINK에서 사용
 

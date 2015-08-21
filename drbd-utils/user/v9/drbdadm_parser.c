@@ -1845,8 +1845,8 @@ static int pushd_to_current_config_file_unless_stdin(void)
         last_slash = strrchr(tmp, '\\');
     }
 #else
-    tmp = strdupa(config_save);
-    last_slash = strrchr(tmp, '/');
+	tmp = strdupa(config_save);
+	last_slash = strrchr(tmp, '/');
 #endif
 	if (!last_slash)
 		/* Currently parsing stdin, stay where we are.
@@ -1909,6 +1909,7 @@ void include_stmt(char *str)
 	FILE *f;
 	size_t i;
 	int r;
+
 	cwd = pushd_to_current_config_file_unless_stdin();
 
 	r = glob(str, 0, NULL, &glob_buf);

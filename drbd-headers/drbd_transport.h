@@ -30,13 +30,10 @@
  * write-out because in a criss-cross setup, the write-out could lead to memory
  * pressure on the peer, eventually leading to deadlock.
  */
-#ifdef _WIN32_V9
 // V8 에서 GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN) 와 같이 define 되어 있었음. V9에서 __GFP_WAIT 가 추가되었다.
+// kmpak GFP 무슨 flag든 윈도우즈에선 어차피 관련 없음.
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
-#endif
-
 #ifdef _WIN32_CHECK
-
 #define tr_printk(level, transport, fmt, args...)  ({		\
 	rcu_read_lock();					\
 	printk(level "drbd %s %s:%s: " fmt,			\
@@ -201,6 +198,7 @@ struct drbd_transport_class {
 	struct list_head list;
 };
 
+
 /* An "abstract base class" for transport implementations. I.e. it
    should be embedded into a transport specific representation of a
    listening "socket" */
@@ -255,7 +253,6 @@ static inline struct page *page_chain_next(struct page *page)
 {
 	return (struct page *)page_private(page);
 }
-
 #if 0 // V8에 사용되었던 page_chain_for_each, page_chain_for_each_safe 와 동일한 매크로로 하단에 정리하여 다시 선언함. 특별히 재검토가 필요하지는 않아 보인다.
 #ifdef _WIN32
 
@@ -284,12 +281,11 @@ static inline struct page *page_chain_next(struct page *page)
 	for (; page && ( n = page_chain_next(page)); page = n) // DRBD-CHECK!!!!
 #endif
 
-
 #ifndef SK_CAN_REUSE
 /* This constant was introduced by Pavel Emelyanov <xemul@parallels.com> on
    Thu Apr 19 03:39:36 2012 +0000. Before the release of linux-3.5
    commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #define SK_CAN_REUSE   1
 #endif
-#endif
 
+#endif

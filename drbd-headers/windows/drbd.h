@@ -29,9 +29,8 @@
 #define __BYTE_ORDER __LITTLE_ENDIAN
 #define __LITTLE_ENDIAN_BITFIELD
 
-#ifdef __KERNEL__
 #include "windows/types.h"
-#else
+#ifndef __KERNEL__
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <limits.h>

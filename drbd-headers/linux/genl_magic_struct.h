@@ -24,8 +24,6 @@
 #include <linux/types.h>
 #endif
 
-
-
 #define CONCAT__(a,b)	a ## b
 #define CONCAT_(a,b)	CONCAT__(a,b)
 

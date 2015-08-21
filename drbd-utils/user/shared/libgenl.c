@@ -369,9 +369,7 @@ int genl_recv_msgs(struct genl_sock *s, struct iovec *iov, char **err_desc, int 
 		}
 		return -E_RCV_ERROR_REPLY;
 	}
-#ifdef NL_PACKET_MSG
-    UTRACE("finished\n");
-#endif
+
 	/* good reply message(s) */
 	dbg(3, "received a good message for seq:%u", s->s_seq_expect);
 	return c;
@@ -391,7 +389,6 @@ static struct genl_family genl_ctrl;
 struct genl_sock *genl_connect_to_family(struct genl_family *family)
 {
 	struct genl_sock *s = NULL;
-
 #ifndef _WIN32
 	struct msg_buff *msg;
 	struct nlmsghdr *nlh;

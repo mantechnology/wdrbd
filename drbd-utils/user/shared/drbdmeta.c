@@ -31,9 +31,7 @@
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -49,13 +47,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
-
-#ifndef _WIN32
+#ifdef _WIN32
+#include "windows/drbd.h"		/* only use DRBD_MAGIC from here! */
+#else
 #include <linux/major.h>
 #include <linux/kdev_t.h>
-#endif
 #include <linux/drbd.h>		/* only use DRBD_MAGIC from here! */
-#ifndef _WIN32
 #include <linux/fs.h>           /* for BLKFLSBUF */
 #endif
 
@@ -2580,10 +2577,8 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 			(unsigned long long)cfg->max_usable_sect);
 		cfg->md.effective_size = cfg->max_usable_sect;
 	}
-//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : 64bit check!  [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
-//	cfg->bm_bytes = sizeof(long long) *
-//printf("DRBD_TEST: V9 check please!\n");
-
+// _WIN64 _WIN32_V9_CHECK : 64bit check!  [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
+// kmpak [choi]맞음
 	cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 }
 
@@ -2672,17 +2667,13 @@ int v07_style_md_open(struct format *cfg)
 		exit(20);
 	}
 #endif
-	if (is_v08(cfg)) {
+	if (format_version(cfg) >= DRBD_V08) {
 		ASSERT(cfg->md_index != DRBD_MD_INDEX_INTERNAL);
 	}
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
 	if (ioctl_err) {
-#ifdef _WIN32
-		// ignore!
-#else
 		fprintf(stderr, "ioctl(md_fd, BLKSSZGET) returned %d, "
 			"assuming hard_sect_size is 512 Byte\n", ioctl_err);
-#endif
 		cfg->md_hard_sect_size = 512;
 	} else {
 		cfg->md_hard_sect_size = hard_sect_size;
@@ -3234,8 +3225,6 @@ int meta_dump_md(struct format *cfg, char **argv __attribute((unused)), int argc
 
 		cfg->al_offset = cfg->md_offset + cfg->md.al_offset * 512LL;
 		cfg->bm_offset = cfg->md_offset + cfg->md.bm_offset * 512LL;
-//#ifdef x64 // _WIN64 _WIN32_V9_CHECK : [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
-//		cfg->bm_bytes = sizeof(long long) * bm_words(cfg->md.la_sect, cfg->md.bm_bytes_per_bit);
 		cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 	}
 	printf("# md_offset %llu\n", (long long unsigned)cfg->md_offset);
@@ -4184,19 +4173,11 @@ void check_for_existing_data(struct format *cfg)
 
 	PREAD(cfg, on_disk_buffer, SO_MUCH, 0);
 
-#ifdef x64 // _WIN64
-	for (i = 0; i < SO_MUCH/sizeof(long long); i++) { 
-		if (((long long*)(on_disk_buffer))[i] != 0LLU) break;
-	}
-	/* all zeros? no message */
-	if (i == SO_MUCH/sizeof(long long)) return;
-#else
 	for (i = 0; i < SO_MUCH/sizeof(long); i++) {
 		if (((long*)(on_disk_buffer))[i] != 0LU) break;
 	}
 	/* all zeros? no message */
 	if (i == SO_MUCH/sizeof(long)) return;
-#endif
 
 	f.type = "some data";
 	f.bnum = 0;
@@ -4883,15 +4864,7 @@ static enum drbd_disk_state drbd_str_disk(const char *str)
 	int n;
 
 	if (slash)
-#ifndef _WIN32 // _WIN32_V9_CHECK : [choi] 에러 안남. 매크로 삭제해도 될듯
 		tmp = strndupa(str, slash - str);
-#else
-        tmp = strndupa(str, slash - str);
-    //{
-	//	printf("DRBD_TEST: V9: check strndupa link error!!!!!\n");
-	//	exit(0);
-	//}
-#endif
 	else
 		tmp = str;
 

@@ -22,10 +22,6 @@
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
  */
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,10 +83,10 @@ void maybe_exec_legacy_drbdadm(char **argv)
 	    driver_version->version.minor == 4) {
 #ifdef DRBD_LEGACY_84
 		/* This drbdadm warned already... */
-		setenv("DRBD_DONT_WARN_ON_VERSION_MISMATCH", "1", 0); 
+		setenv("DRBD_DONT_WARN_ON_VERSION_MISMATCH", "1", 0);
 		add_lib_drbd_to_path();
 		execvp(drbdadm_84, argv);
-		err("execvp() failed to exec 1 %s: %m argv: %s\n", drbdadm_84, *argv);
+		err("execvp() failed to exec %s: %m\n", drbdadm_84);
 #else
 		config_help_legacy("drbdadm", driver_version);
 #endif

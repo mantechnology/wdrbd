@@ -11,7 +11,7 @@
 
 #ifndef __IDR_H__
 #define __IDR_H__
-#include "drbd_windrv.h"
+#include "drbd_endian.h"
 
 
 #if BITS_PER_LONG == 32
@@ -105,7 +105,7 @@ struct idr {
 */
 
 extern void *idr_find(struct idr *idp, int id);
-extern int idr_pre_get(struct idr *idp, gfp_t gfp_mask);
+extern int idr_pre_get(struct idr *idp, int gfp_mask);
 extern int idr_get_new(struct idr *idp, void *ptr, int *id);
 extern int idr_get_new_above(struct idr *idp, void *ptr, int starting_id, int *id);
 extern int idr_for_each(struct idr *idp,

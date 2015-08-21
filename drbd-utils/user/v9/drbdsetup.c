@@ -49,12 +49,10 @@
 #include <libgen.h>
 #include <time.h>
 #include <search.h>
-
 #ifndef _WIN32
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
 #endif
-
 #define EXIT_NOMEM 20
 #define EXIT_NO_FAMILY 20
 #define EXIT_SEND_ERR 20
@@ -702,7 +700,6 @@ static int conv_block_dev(struct drbd_argument *ad, struct msg_buff *msg,
 	struct stat sb;
 	int device_fd;
 
-
 #ifdef _WIN32 //_WIN32_V9_CHECK [choi] v8.4.3에서는 여기서 무조건 return NO_ERROR; 하도록 되있음. 아래 루틴을 타지않아도 되는건지 확인필요.
     // check true!
     nla_put_string(msg, ad->nla_type, arg);
@@ -716,7 +713,6 @@ static int conv_block_dev(struct drbd_argument *ad, struct msg_buff *msg,
     sprintf(buf, "\\\\.\\Volume{%s}", arg);
     arg = buf;
 #endif
-
 	if ((device_fd = open(arg,O_RDWR))==-1) {
 		PERROR("Can not open device '%s'", arg);
 		return OTHER_ERROR;
@@ -3920,7 +3916,6 @@ static int modprobe_drbd(void)
 #else
     return 1; // [choi] return true.
 #endif //_WIN32_V9_CHECK_END
-	
 }
 
 static void maybe_exec_legacy_drbdsetup(char **argv)
@@ -4048,7 +4043,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");
 		return 20;
 	}
-#ifndef _WIN32 // [choi] V8.4.3 포팅부분 적용
+
 	if (drbd_genl_family.version != GENL_MAGIC_VERSION ||
 	    drbd_genl_family.hdrsize != sizeof(struct drbd_genlmsghdr)) {
 		fprintf(stderr, "API mismatch!\n\t"
@@ -4059,7 +4054,7 @@ int main(int argc, char **argv)
 			drbd_genl_family.hdrsize);
 		return 20;
 	}
-#endif
+
 	context = 0;
 	enum cfg_ctx_key ctx_key = cmd->ctx_key, next_arg;
 	for (next_arg = ctx_next_arg(&ctx_key);

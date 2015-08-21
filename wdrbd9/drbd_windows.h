@@ -1,7 +1,6 @@
 ﻿#ifndef DRBD_WINDOWS_H
 #define DRBD_WINDOWS_H
 
-
 #include <windows.h>
 #include <stdio.h>
 //#include <stdbool.h>
@@ -15,14 +14,6 @@
 #define true				TRUE
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"
-
-#ifdef x64                  // for x64 app build(make x64=1)
-#define BITS_PER_LONG		64
-#else
-#define BITS_PER_LONG		32
-#endif
-
-
 
 #define strdupa				strdup
 

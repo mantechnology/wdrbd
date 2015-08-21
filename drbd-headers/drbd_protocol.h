@@ -118,9 +118,6 @@ enum drbd_packet {
  * NOTE that the payload starts at a long aligned offset,
  * regardless of 32 or 64 bit arch!
  */
-
-
-
 struct p_header80 {
 	uint32_t magic;
 	uint16_t command;
@@ -417,5 +414,4 @@ struct p_peer_dagtag {
 #pragma pack(pop)
 #undef __packed
 #endif
-
 #endif  /* __DRBD_PROTOCOL_H */

@@ -3,9 +3,9 @@
 
 #include "drbd_endian.h"
 #include <stdio.h>
+#include <unistd.h>
 #include <stdarg.h>
 #ifndef _WIN32 
-#include <unistd.h>
 #include <linux/major.h>
 #endif
 #include "shared_tool.h"
@@ -87,7 +87,7 @@ struct version {
 
 enum driver_version_policy {
 #ifdef _WIN32_V9
-    FALLBACK_STRICT, // rename.
+    _STRICT,    // kmpak 의미상 fallback이란 표현이 맞지 않음.
 #else
 	STRICT,
 #endif

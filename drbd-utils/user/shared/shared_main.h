@@ -97,9 +97,7 @@ struct d_globals
 
 #define IFI_HADDR 8
 #define IFI_ALIAS 1
-#ifdef _WIN32 //_WIN32_V9
-#define IFNAMSIZ			16
-#endif
+
 struct ifi_info {
 	char ifi_name[IFNAMSIZ];      /* interface name, nul terminated */
 	uint8_t ifi_haddr[IFI_HADDR]; /* hardware address */
@@ -109,9 +107,7 @@ struct ifi_info {
 	struct sockaddr *ifi_addr;    /* primary address */
 	struct ifi_info *ifi_next;    /* next ifi_info structure */
 };
-#ifdef _WIN32 //_WIN32_V9
-#undef IFNAMSIZ
-#endif
+
 extern int dry_run;
 extern int verbose;
 extern int adjust_with_progress;

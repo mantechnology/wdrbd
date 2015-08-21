@@ -25,9 +25,6 @@
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
 
-#ifdef _WIN32
-#include "drbd_windows.h"
-#endif
 
 #include <stdio.h>
 #include <stdarg.h>

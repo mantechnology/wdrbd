@@ -1,14 +1,8 @@
-﻿
-
-#include <stdbool.h>
-#ifdef _WIN32
-#include "windows/types.h"
-#endif
+﻿#include <stdbool.h>
 #include <string.h>
 #include <assert.h>
 
 #include <sys/socket.h>
-
 #ifdef _WIN32
 #include "windows/wingenl.h"
 #else
