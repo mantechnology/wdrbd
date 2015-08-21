@@ -1782,7 +1782,11 @@ static bool drbd_pause_after(struct drbd_device *device)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &drbd_devices, other_device, vnr) {
+#else
 	idr_for_each_entry(&drbd_devices, other_device, vnr) {
+#endif
 		struct drbd_peer_device *other_peer_device;
 
 		begin_state_change_locked(other_device->resource, CS_HARD);
@@ -1816,7 +1820,11 @@ static bool drbd_resume_next(struct drbd_device *device)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &drbd_devices, other_device, vnr) {
+#else
 	idr_for_each_entry(&drbd_devices, other_device, vnr) {
+#endif
 		struct drbd_peer_device *other_peer_device;
 
 		begin_state_change_locked(other_device->resource, CS_HARD);
@@ -2396,7 +2404,11 @@ static void __do_unqueued_peer_device_work(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 		unsigned long todo = get_work_bits(DRBD_PEER_DEVICE_WORK_MASK, &peer_device->flags);
 		if (!todo)
@@ -2426,7 +2438,11 @@ static void do_unqueued_device_work(struct drbd_resource *resource)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
 	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
 		unsigned long todo = get_work_bits(DRBD_DEVICE_WORK_MASK, &device->flags);
 		if (!todo)
 			continue;
@@ -2838,7 +2854,11 @@ int drbd_sender(struct drbd_thread *thi)
 
 	/* Should we drop this? Or reset even more stuff? */
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		peer_device->send_cnt = 0;
 		peer_device->recv_cnt = 0;
 	}

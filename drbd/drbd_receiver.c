@@ -408,7 +408,11 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
 	struct drbd_device *device;
 	int vnr;
 
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+#else
 	idr_for_each_entry(&resource->devices, device, vnr)
+#endif
 		maybe_kick_lo(device);
 }
 
@@ -1006,7 +1010,11 @@ void conn_connect2(struct drbd_connection *connection)
 	atomic_set(&connection->ap_in_flight, 0);
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 		kref_get(&device->kref);
 		/* connection cannot go away: caller holds a reference. */
@@ -1118,11 +1126,19 @@ start:
 	rcu_read_lock();
 #endif
 
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	}
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 
 		if (discard_my_data)
@@ -1249,7 +1265,11 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
 		rcu_read_lock();
+#ifdef _WIN32_V9
+        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
 		idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
 			if (!get_ldev(device))
 				continue;
 			kref_get(&device->kref);
@@ -1472,7 +1492,11 @@ void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backin
 	if (wo != WO_BIO_BARRIER)
 		wo = min(pwo, wo);
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
 	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
 		if (i++ == 1 && wo == WO_BIO_BARRIER)
 			wo = WO_BDEV_FLUSH; /* WO = barrier does not handle multiple volumes */
 
@@ -1721,7 +1745,11 @@ void conn_wait_active_ee_empty(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 
 		kref_get(&device->kref);
@@ -1739,7 +1767,11 @@ static void conn_wait_done_ee_empty(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 
 		kref_get(&device->kref);
@@ -5113,7 +5145,11 @@ change_connection_state(struct drbd_connection *connection,
 	val = convert_state(val);
 
 	begin_state_change(resource, &irq_flags, flags);
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		rv = __change_peer_device_state(peer_device, mask, val);
 		if (rv < SS_SUCCESS)
 			goto fail;
@@ -5814,7 +5850,11 @@ static int process_twopc(struct drbd_connection *connection,
 			    mask.conn == conn_MASK && val.conn == C_CONNECTED)
 				conn_connect2(connection);
 
+#ifdef _WIN32_V9
+            idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
 			idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
 				u64 nedu = device->next_exposed_data_uuid;
 				if (!nedu)
 					continue;
@@ -6559,7 +6599,11 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			goto out;
 	}
 
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		if (peer_device->repl_state[NOW] > L_ESTABLISHED)
 			goto out;
 		if (peer_device->current_uuid != drbd_current_uuid(peer_device->device))
@@ -6586,7 +6630,11 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			  lost_peer->transport.net_conf->name, (int)dagtag_offset);
 
 		begin_state_change(resource, &irq_flags, CS_VERBOSE);
+#ifdef _WIN32_V9
+        idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 			__change_repl_state(peer_device, new_repl_state);
 			set_bit(RECONCILIATION_RESYNC, &peer_device->flags);
 		}
@@ -6595,7 +6643,11 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		drbd_info(connection, "No reconciliation resync even though \'%s\' disappeared. (o=%d)\n",
 			  lost_peer->transport.net_conf->name, (int)dagtag_offset);
 
+#ifdef _WIN32_V9
+        idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
+#else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
+#endif
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 	}
 
@@ -6770,7 +6822,11 @@ void conn_disconnect(struct drbd_connection *connection)
 	drbd_drop_unsent(connection);
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 
 		kref_get(&device->kref);
@@ -7669,7 +7725,11 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 	tl_release(connection, p->barrier, be32_to_cpu(p->set_size));
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *,  &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		struct drbd_device *device = peer_device->device;
 		if (peer_device->repl_state[NOW] == L_AHEAD &&
 		    atomic_read(&connection->ap_in_flight) == 0 &&

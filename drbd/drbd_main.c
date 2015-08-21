@@ -2794,7 +2794,11 @@ static int open_rw_count(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr, count = 0;
 
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+#else
 	idr_for_each_entry(&resource->devices, device, vnr)
+#endif
 		count += device->open_rw_cnt;
 
 	return count;
@@ -3806,7 +3810,11 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		kref_debug_put(&peer_device->device->kref_debug, 1);
 		kref_put(&peer_device->device->kref, drbd_destroy_device);
 		free_peer_device(peer_device);
@@ -4227,7 +4235,11 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 #ifdef _WIN32_CHECK // kmpak 20150729 신규
 	smp_wmb();
 #endif
-	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
+    idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
 		list_del_rcu(&peer_device->peer_devices);
 		list_add(&peer_device->peer_devices, &work_list);
 	}
@@ -4256,7 +4268,11 @@ void drbd_put_connection(struct drbd_connection *connection)
 	int vnr, refs = 1;
 
 	del_connect_timer(connection);
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
+#endif
 		refs++;
 	kref_debug_sub(&connection->kref_debug, refs - 1, 3);
 	kref_debug_put(&connection->kref_debug, 10);

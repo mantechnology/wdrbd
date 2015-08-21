@@ -3064,11 +3064,11 @@ struct bm_extent {
  * @id:      id entry's key
  */
 #ifndef idr_for_each_entry
-#ifdef _WIN32
-#define idr_for_each_entry(idp, entry, id)				\
-	for (id = 0, entry = (struct drbd_resource*)idr_get_next((idp), &(id)); \
+#ifdef _WIN32_V9 //[choi] type 인자 추가. 
+#define idr_for_each_entry(type, idp, entry, id)				\
+	for (id = 0, entry = (type)idr_get_next((idp), &(id)); \
 	     entry != NULL;						\
-	     ++id, entry = (struct drbd_resource*)idr_get_next((idp), &(id))) 
+	     ++id, entry = (type)idr_get_next((idp), &(id))) 
 #else
 #define idr_for_each_entry(idp, entry, id)				\
 	for (id = 0, entry = (typeof(entry))idr_get_next((idp), &(id)); \

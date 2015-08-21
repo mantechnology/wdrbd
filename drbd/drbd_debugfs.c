@@ -163,7 +163,11 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 
 	seq_puts(m, "minor\tvnr\tstart\tsubmit\tintent\n");
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
 	idr_for_each_entry(&resource->devices, device, i) {
+#endif
 		struct drbd_md_io tmp;
 		/* In theory this is racy,
 		 * in the sense that there could have been a
@@ -191,7 +195,11 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 
 	seq_puts(m, "minor\tvnr\tage\t#waiting\n");
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
 	idr_for_each_entry(&resource->devices, device, i) {
+#endif
 		unsigned long jif;
 		struct drbd_request *req;
 		int n = atomic_read(&device->ap_actlog_cnt);
@@ -251,7 +259,11 @@ static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd
 
 	seq_puts(m, "minor\tvnr\trw\tage\t#in-flight\n");
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
 	idr_for_each_entry(&resource->devices, device, i) {
+#endif
 		seq_print_device_bitmap_io(m, device, now);
 	}
 	rcu_read_unlock();
@@ -333,7 +345,11 @@ static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 	unsigned int i;
 
 	rcu_read_lock();
+#ifdef _WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
 	idr_for_each_entry(&resource->devices, device, i) {
+#endif
 		seq_print_device_peer_requests(m, device, now);
 	}
 	rcu_read_unlock();
