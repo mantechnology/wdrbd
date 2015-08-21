@@ -3180,7 +3180,7 @@ void drbd_free_resource(struct drbd_resource *resource)
  * reinserted through our make request function.
  */
  #ifdef _WIN32
-// move to window.h // _WIN32_CHECK 이동되었는지 확인!!!!!! -> 헤더를 다시 생성함.
+// move to drbd_windrv.h // _WIN32_CHECK 이동되었는지 확인!!!!!! -> 헤더를 다시 생성함.
 struct retry_worker retry;
 #else
 static struct retry_worker {
@@ -3308,17 +3308,17 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     unsigned int i;
-    struct drbd_conf *mdev;
+    struct drbd_device *device;
 
-    struct mdev_list {
-        struct drbd_conf *mdev;
+    struct device_list {
+        struct drbd_device *device;
         struct list_head list;
-    } mdev_list;
-    struct mdev_list *mdev_list_p, *p;
+    } device_list;
+    struct device_list *device_list_p, *p;
 
     WDRBD_INFO("Shutdown: IRQL(%d) vol(%ws) letter(%c:)\n",
         KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter ? VolumeExtension->Letter : ' ');
@@ -3327,7 +3327,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         destroy_workqueue(retry.wq);
     retry.wq = 0;
 
-    INIT_LIST_HEAD(&mdev_list.list);
+    INIT_LIST_HEAD(&device_list.list);
 
     rcu_read_lock();
 #ifdef _WIN32_CHECK // kmpak 20150806 minors 라는 변수가 없음.
@@ -3342,29 +3342,46 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         mdev_list_p->mdev = mdev;
         list_add(&mdev_list_p->list, &mdev_list.list);
     }
+#else //_WIN32_V9
+    idr_for_each_entry(struct drbd_device *, &drbd_devices, device, i)
+    {
+        if ((device_list_p = kmalloc(sizeof(struct device_list), GFP_KERNEL, 'C0DW')) == NULL)
+        {
+            WDRBD_ERROR("DRBD_PANIC: No memory\n");
+            rcu_read_unlock();
+            return; // ignore DV error
+        }
+        device_list_p->device = device;
+        list_add(&device_list_p->list, &device_list.list);
+    }
 #endif
     rcu_read_unlock();
 
-    list_for_each_entry(struct mdev_list, mdev_list_p, &mdev_list.list, list)
+    list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
     {
         PVOLUME_EXTENSION VolExt;
-        VolExt = mdev_list_p->mdev->this_bdev->bd_disk->pDeviceExtension;
-#ifdef _WIN32_CHECK // kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요
+        struct drbd_connection *connection, *tmp;
+        VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
+//#ifdef _WIN32_CHECK // kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요 [choi] 동작확인 필요.
         extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
-        int ret = drbd_adm_down_from_engine(mdev_list_p->mdev->tconn);
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("failed. ret=%d\n", ret);
-            // error ignored.
+
+        for_each_connection_safe(connection, tmp, device_list_p->device->resource) {
+            int ret = drbd_adm_down_from_engine(connection);
+            if (ret != NO_ERROR)
+            {
+                WDRBD_ERROR("failed. ret=%d\n", ret);
+                // error ignored.
+            }
         }
-#endif
+        
+//#endif
         drbdFreeDev(VolExt);
     }
 
-    list_for_each_entry_safe(struct mdev_list, mdev_list_p, p, &mdev_list.list, list)
+    list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
     {
-        list_del(&mdev_list_p->list);
-        kfree(mdev_list_p);
+        list_del(&device_list_p->list);
+        kfree(device_list_p);
     }
 }
 #endif

@@ -109,21 +109,21 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 	extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
-    struct drbd_conf *mdev;
+    struct drbd_device *device;
     if (VolumeExtension->Active)
     {
-        mdev = minor_to_device(VolumeExtension->VolIndex);
+        device = minor_to_device(VolumeExtension->VolIndex);
     }
     else
     {
-        mdev = get_targetdev_by_md(VolumeExtension->Letter);
+        device = get_targetdev_by_md(VolumeExtension->Letter);
     }
 
-    if (mdev)
+    if (device)
     {
         // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
 #ifdef _WIN32_V9
-		struct drbd_resource *resource = mdev->resource;
+        struct drbd_resource *resource = device->resource;
 		struct drbd_connection *connection, *tmp;
 		int ret; 
 
