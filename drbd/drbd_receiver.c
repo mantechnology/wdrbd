@@ -1584,13 +1584,18 @@ void conn_wait_active_ee_empty(struct drbd_connection *connection);
  *  reference is released when the request completes.
  */
 /* TODO allocate from our own bio_set. */
+//
 int drbd_submit_peer_request(struct drbd_device *device,
 			     struct drbd_peer_request *peer_req,
 			     const unsigned rw, const int fault_type)
 {
 	struct bio *bios = NULL;
 	struct bio *bio;
+#ifdef _WIN32
+	struct page *page = NULL;
+#else
 	struct page *page = peer_req->pages;
+#endif
 	sector_t sector = peer_req->i.sector;
 	unsigned data_size = peer_req->i.size;
 	unsigned n_bios = 0;
@@ -1639,6 +1644,17 @@ next_bio:
 		drbd_err(device, "submit_ee: Allocation of a bio failed (nr_pages=%u)\n", nr_pages);
 		goto fail;
 	}
+
+#ifdef _WIN32 // page 관련 v8 의 구현을 따라간다.
+	//ASSERT(ds <= (1024 * 1024));
+	//ASSERT(peer_req->win32_big_page);
+	if (peer_req->win32_big_page) {
+		bio->win32_page_buf = peer_req->win32_big_page;
+	}
+#else
+	struct page *page = peer_req->pages;
+#endif
+
 	/* > peer_req->i.sector, unless this is the first bio */
 	DRBD_BIO_BI_SECTOR(bio) = sector;
 	bio->bi_bdev = device->ldev->backing_bdev;
@@ -1656,13 +1672,15 @@ next_bio:
 		DRBD_BIO_BI_SIZE(bio) = data_size;
 		goto submit;
 	}
-
+#ifdef _WIN32 //V8 의 구현을 따라간다.
+	bio->bi_size = data_size;
+#else
 	page_chain_for_each(page) {
 		unsigned len = min_t(unsigned, data_size, PAGE_SIZE);
 		if (!bio_add_page(bio, page, len, 0)) {
 			/* A single page must always be possible!
-			 * But in case it fails anyways,
-			 * we deal with it, and complain (below). */
+			* But in case it fails anyways,
+			* we deal with it, and complain (below). */
 			if (bio->bi_vcnt == 0) {
 				drbd_err(device,
 					"bio_add_page failed for len=%u, "
@@ -1677,6 +1695,8 @@ next_bio:
 		sector += len >> 9;
 		--nr_pages;
 	}
+#endif
+
 	D_ASSERT(device, data_size == 0);
 submit:
 	D_ASSERT(device, page == NULL);
@@ -1711,7 +1731,8 @@ fail:
 	}
 	return err;
 }
-
+#ifdef _WIN32_V9 // drbd_remove_epoch_entry_interval 에서 drbd_remove_peer_req_interval 로 rename 됨.
+//
 static void drbd_remove_peer_req_interval(struct drbd_device *device,
 					  struct drbd_peer_request *peer_req)
 {
@@ -1724,6 +1745,7 @@ static void drbd_remove_peer_req_interval(struct drbd_device *device,
 	if (i->waiting)
 		wake_up(&device->misc_wait);
 }
+#endif
 
 /**
  * w_e_reissue() - Worker callback; Resubmit a bio, without REQ_HARDBARRIER set
