@@ -1753,6 +1753,7 @@ static void drbd_remove_peer_req_interval(struct drbd_device *device,
  * @dw:		work object.
  * @cancel:	The connection will be closed anyways (unused in this callback)
  */
+//
 int w_e_reissue(struct drbd_work *w, int cancel) __releases(local)
 {
 	struct drbd_peer_request *peer_req =
@@ -1805,6 +1806,7 @@ int w_e_reissue(struct drbd_work *w, int cancel) __releases(local)
 	}
 }
 
+//
 void conn_wait_active_ee_empty(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -1822,11 +1824,16 @@ void conn_wait_active_ee_empty(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_wait_ee_list_empty(device, &device->active_ee);
 		kref_put(&device->kref, drbd_destroy_device);
+#ifdef _WIN32
+		rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 	}
 	rcu_read_unlock();
 }
 
+//
 static void conn_wait_done_ee_empty(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -1844,7 +1851,11 @@ static void conn_wait_done_ee_empty(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_wait_ee_list_empty(device, &device->done_ee);
 		kref_put(&device->kref, drbd_destroy_device);
+#ifdef _WIN32
+		rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 	}
 	rcu_read_unlock();
 }
@@ -1871,6 +1882,7 @@ void drbd_unplug_all_devices(struct drbd_resource *resource)
 }
 #endif
 
+//
 static int receive_Barrier(struct drbd_connection *connection, struct packet_info *pi)
 {
 	int rv, issue_flush;
@@ -1956,7 +1968,8 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 
 /* used from receive_RSDataReply (recv_resync_read)
  * and from receive_Data */
-#ifdef _WIN32_V9
+//#ifdef _WIN32_V9 // V8에도 있었던 함수 이므로 주석 제거.
+//
 static struct drbd_peer_request *
 read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	      struct packet_info *pi) __must_hold(local)
@@ -2033,9 +2046,11 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
 		unsigned long *data;
 		drbd_err(device, "Fault injection: Corrupting data on receive\n");
+#ifndef _WIN32 // peer_req->pages 의 kmap 부분은 제거=> V8의 구현
 		data = kmap(peer_req->pages);
 		data[0] = ~data[0];
 		kunmap(peer_req->pages);
+#endif
 	}
 
 	if (digest_size) {
@@ -2050,15 +2065,17 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	return peer_req;
 
 fail:
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 //기존 V8 에서 예외처리되던 부분이 V9에서는 goto 분기로 예외처리한다.
 	peer_req->win32_big_page = NULL;
 #endif
 	drbd_free_peer_req(peer_req);
 	return NULL;
 }
-#endif
+//#endif
 
-#ifdef _WIN32_V9 // V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요.
+#ifdef _WIN32_V9 // V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요. 
+// => rename 된 것이 맞고, 구현도 변경됨(기존 메모리 해제 연산이 포함되어 있었는데... 제거됨.)
+//
 static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 {
 	void *data_to_ignore;
@@ -2076,7 +2093,8 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 }
 #endif
 
-#ifdef _WIN32_V9
+//#ifdef _WIN32_V9 // V9에 추가된 함수 아니므로 주석 제거.
+//
 static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_request *req,
 			   sector_t sector, int data_size)
 {
@@ -2103,14 +2121,14 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	 * we disconnect anyways, and counters will be reset. */
 	peer_device->recv_cnt += data_size >> 9;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     struct drbd_device * device = peer_device->device;
-#ifdef _WIN32_CHECK
-	D_ASSERT(sector == req->master_bio->bi_sector);
+//#ifdef _WIN32_CHECK
+	//D_ASSERT(sector == req->master_bio->bi_sector);
 
 	if (req->master_bio->win32_page_buf) {
-		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨.
-		err = drbd_recv_all_warn(mdev->tconn, req->master_bio->win32_page_buf, data_size);
+		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨. => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  _WIN32_CHECK !!!!!!!!!!!!!!
+		err = drbd_recv_all_warn(peer_device->connection, req->master_bio->win32_page_buf, data_size);
 		if (err)
 			return err;
 		data_size = 0;
@@ -2118,7 +2136,7 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	else {
 		return -EINVAL;
 	}
-#endif
+//#endif
 
 #else 
 	bio = req->master_bio;
@@ -2133,14 +2151,17 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 			return err;
 		data_size -= expect;
 	}
-
 #endif
 
 	if (digest_size) {
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 		// drbd_csum_bio 의 인자가 V9에서 모두 변경되었다.
+#ifdef _WIN32 // V8의 구현을 따라간다.
+		drbd_csum_bio(peer_device->connection->peer_integrity_tfm, req, dig_vv);
+#else
 		drbd_csum_bio(peer_device->connection->peer_integrity_tfm, bio, dig_vv);
 #endif
+//#endif
 		if (memcmp(dig_in, dig_vv, digest_size)) {
 			drbd_err(peer_device, "Digest integrity check FAILED. Broken NICs?\n");
 			return -EINVAL;
@@ -2153,7 +2174,7 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 #endif
 	return 0;
 }
-#endif
+//#endif
 
 /*
  * e_end_resync_block() is called in ack_sender context via
