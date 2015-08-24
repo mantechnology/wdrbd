@@ -33,6 +33,7 @@
 #include "drbd_debugfs.h"
 #include "drbd_transport.h"
 #include "linux/drbd_limits.h"
+#include "Proto.h"
 #else
 #include <linux/module.h>
 #include <linux/drbd.h>
@@ -1205,7 +1206,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock(); // _WIN32_CHECK: 언제 lock 되는가? [choi] role 변경 후 genl_lock().
+	genl_unlock();
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
@@ -2086,6 +2087,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_peer_device *peer_device;
 	unsigned int slots_needed = 0;
 	bool have_conf_update = false;
+#ifdef _WIN32
+    KIRQL oldIrql;
+#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -2138,7 +2142,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	bdev = blkdev_get_by_path(new_disk_conf->backing_dev,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, device);
-	if (IS_ERR(bdev)) {
+#ifdef _WIN32
+    if (IS_ERR_OR_NULL(bdev)) {
+#else
+    if (IS_ERR(bdev)) {
+#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->backing_dev,
 			PTR_ERR(bdev));
 		retcode = ERR_OPEN_DISK;
@@ -2146,6 +2154,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	}
 	nbc->backing_bdev = bdev;
 
+#ifdef _WIN32 // [choi]V8 적용. mdev 부분만 바꿔서 적용
+    device->this_bdev = nbc->backing_bdev;
+#endif
 	/*
 	 * meta_dev_idx >= 0: external fixed size, possibly multiple
 	 * drbd sharing one meta device.  TODO in that case, paranoia
@@ -2158,7 +2169,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL,
 				  (new_disk_conf->meta_dev_idx < 0) ?
 				  (void *)device : (void *)drbd_m_holder);
-	if (IS_ERR(bdev)) {
+#ifdef _WIN32
+    if (IS_ERR_OR_NULL(bdev)) {
+#else
+    if (IS_ERR(bdev)) {
+#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->meta_dev,
 			PTR_ERR(bdev));
 		retcode = ERR_OPEN_MD_DISK;
@@ -2489,12 +2504,22 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	drbd_try_suspend_al(device); /* IO is still suspended here... */
 
-	rcu_read_lock();
+#ifdef _WIN32
+    unsigned char oldIrql_rLock1; // RCU_SPECIAL_CASE
+    oldIrql_rLock1 = ExAcquireSpinLockShared(&g_rcuLock);
+#else
+    rcu_read_lock();
+#endif
 	if (rcu_dereference(device->ldev->disk_conf)->al_updates)
 		device->ldev->md.flags &= ~MDF_AL_DISABLED;
 	else
 		device->ldev->md.flags |= MDF_AL_DISABLED;
-	rcu_read_unlock();
+#ifdef _WIN32
+    // RCU_SPECIAL_CASE
+    ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1);
+#else
+    rcu_read_unlock();
+#endif
 
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
 	   necessary, and falls back to a local state change */
@@ -2503,6 +2528,49 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
+
+#ifdef _WIN32_MVFL
+    struct drbd_genlmsghdr *dh = info->userhdr;
+    if (do_add_minor(dh->minor))
+    {
+        PVOLUME_EXTENSION pvolext = NULL;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        pvolext = get_targetdev_by_minor(dh->minor);
+        if (pvolext == NULL)
+        {
+            WDRBD_WARN("get_targetdev_by_minor failed.");
+        }
+        else
+        {
+            status = mvolInitializeThread(pvolext, &pvolext->WorkThreadInfo, mvolWorkThread);
+            if (NT_SUCCESS(status))
+            {
+                if (NT_SUCCESS(FsctlLockVolume(dh->minor)))
+                {
+                    pvolext->Active = TRUE;
+                    status = FsctlDismountVolume(dh->minor);
+                    FsctlUnlockVolume(dh->minor);
+
+                    if (!NT_SUCCESS(status))
+                    {
+                        retcode = ERR_RES_NOT_KNOWN;
+                        goto force_diskless_dec;
+                    }
+                }
+                else
+                {
+                    retcode = ERR_RES_IN_USE;
+                    goto force_diskless_dec;
+                }
+            }
+            else if (STATUS_DEVICE_ALREADY_ATTACHED != status)
+            {
+                WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+            }
+        }
+    }
+#endif
 
 	mod_timer(&device->request_timer, jiffies + HZ);
 
@@ -4500,7 +4568,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct nlattr *resource_filter;
 	struct drbd_resource *resource;
 #ifdef _WIN32_V9
-    struct drbd_device *device = NULL; // _WIN32_CHECK: 미 초기화 오류 회피
+    struct drbd_device *device = NULL; // 미 초기화 오류 회피
 #else
 	struct drbd_device *uninitialized_var(device);
 #endif
@@ -4629,7 +4697,7 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 	struct drbd_resource *resource = NULL, *next_resource;
 #ifdef _WIN32_V9
     struct drbd_connection *connection;
-	connection = 0; // _WIN32_CHECK: 미 초기화 오류 회피
+	connection = 0; // 미 초기화 오류 회피
 #else
 	struct drbd_connection *uninitialized_var(connection);
 #endif
@@ -4800,7 +4868,7 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct drbd_resource *resource;
 #ifdef _WIN32_V9
     struct drbd_device *device;
-	device = 0; // WIN32_CHECK: 미 초기화 오류 회피
+	device = 0; // 미 초기화 오류 회피
 #else
 	struct drbd_device *uninitialized_var(device);
 #endif
