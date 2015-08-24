@@ -2781,6 +2781,11 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	u32 dp_flags;
 	int err, tp;
 
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("seq=0x%x sect:0x%llx pi->size:%d\n", peer_seq, be64_to_cpu(p->sector), pi->size);
+#endif
+	// DRBD_DOC: linux 에서 1MB 파일 시험시 이곳 에서 식별되는 크기는 1024크기 10개로 분할 수신됨. // V8 주석 가져옴.
+
 #ifdef _WIN32_V9 // V8 vnr_to_mdev 에서 conn_peer_device 로 변경.
 	peer_device = conn_peer_device(connection, pi->vnr);
 #endif
@@ -2981,7 +2986,7 @@ bool drbd_rs_should_slow_down(struct drbd_peer_device *peer_device, sector_t sec
 
 	if (!throttle || throttle_if_app_is_waiting)
 		return throttle;
-#ifdef _WIN32_V9 // V8에 비해 변경점이 많음.
+#ifdef _WIN32_V9 // V8에 비해 변경점이 많음. => 기존 로직을 drbd_sector_has_priority 로 묶어서 처리.
 	return !drbd_sector_has_priority(peer_device, sector);
 #endif
 }
@@ -3002,10 +3007,11 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	if (c_min_rate == 0)
 		return false;
 
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
+	// struct block_device 선언 변경. V9 에 새롭게 추가. bd_contains 가 유효하도록 추가 포팅 필요 _WIN32_CHECK
 	curr_events = drbd_backing_bdev_events(device->ldev->backing_bdev->bd_contains->bd_disk)
 		    - atomic_read(&device->rs_sect_ev);
-#endif
+//#endif
 
 	if (atomic_read(&device->ap_actlog_cnt) || curr_events - peer_device->rs_last_events > 64) {
 		unsigned long rs_left;
