@@ -2534,14 +2534,17 @@ static bool overlapping_resync_write(struct drbd_device *device, struct drbd_pee
 static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, const u32 peer_seq)
 {
 	struct drbd_connection *connection = peer_device->connection;
+#ifndef _WIN32
 	DEFINE_WAIT(wait);
+#endif
+
 	long timeout;
 	int ret = 0, tp;
 #ifdef _WIN32_V9 // V8의 need_peer_seq제거되고 test_bit 로 변경.
 	if (!test_bit(RESOLVE_CONFLICTS, &connection->transport.flags))
 		return 0;
 #endif
-#ifdef _WIN32_TODO // spinlock unlock 의 관계가 복잡하다. 검토 필요... IRQL 문제로 lock, unlock 을 반복해야 하지만... 개선이 필요...
+//#ifdef _WIN32_TODO // spinlock unlock 의 관계가 복잡하다. 검토 필요... IRQL 문제로 lock, unlock 을 반복해야 하지만... 개선이 필요...
 	spin_lock(&peer_device->peer_seq_lock);
 	for (;;) {
 		if (!seq_greater(peer_seq - 1, peer_device->peer_seq)) {
@@ -2553,18 +2556,19 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 			ret = -ERESTARTSYS;
 			break;
 		}
-#ifdef _WIN32_V9 // V8의 구현, 
-		spin_unlock(&peer_device->peer_seq_lock);
-#endif
+//#ifdef _WIN32_V9 // V8의 구현, => 초기 포팅시 V8에서 구현부를 가져오면서 착오(제거함.)
+//		spin_unlock(&peer_device->peer_seq_lock);
+//#endif
 		rcu_read_lock();
 		tp = rcu_dereference(connection->transport.net_conf)->two_primaries;
 		rcu_read_unlock();
 
 		if (!tp)
 			break;
-
+#ifndef _WIN32
 		/* Only need to wait if two_primaries is enabled */
 		prepare_to_wait(&peer_device->device->seq_wait, &wait, TASK_INTERRUPTIBLE);
+#endif
 		spin_unlock(&peer_device->peer_seq_lock);
 
 #ifdef _WIN32
@@ -2575,7 +2579,12 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 #endif
 		timeout = rcu_dereference(connection->transport.net_conf)->ping_timeo*HZ/10;
 		rcu_read_unlock();
+
+#ifdef _WIN32_V9 // V8 기존 구현을 따라간다.
+		timeout = schedule(&peer_device->device->seq_wait, timeout, __FUNCTION__, __LINE__);
+#else
 		timeout = schedule_timeout(timeout);
+#endif
 		spin_lock(&peer_device->peer_seq_lock);
 		if (!timeout) {
 			ret = -ETIMEDOUT;
@@ -2584,8 +2593,10 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 		}
 	}
 	spin_unlock(&peer_device->peer_seq_lock);
+#ifndef _WIN32
 	finish_wait(&peer_device->device->seq_wait, &wait);
 #endif
+//#endif
 
 	return ret;
 }
