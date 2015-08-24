@@ -75,6 +75,9 @@ enum finish_epoch {
 	FE_RECYCLED,
 };
 
+
+struct submit_worker ack_sender;
+int drbd_ack_sender(struct drbd_thread *thi); //drbd_asender => drbd_ack_sender rename
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 static int drbd_disconnected(struct drbd_peer_device *);
@@ -1057,7 +1060,7 @@ int connect_work(struct drbd_work *work, int cancel)
 /*
  * Returns true if we have a valid connection.
  */
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 //기존 conn_connect 함수가 V9 형식으로 재편됨. <완료>
 static bool conn_connect(struct drbd_connection *connection)
 {
 	struct drbd_transport *transport = &connection->transport;
@@ -1151,15 +1154,21 @@ start:
 
 	drbd_thread_start(&connection->ack_receiver);
 
-#ifdef _WIN32_TODO
-	// 일단 TODO
+//#ifdef _WIN32_TODO
 	connection->ack_sender =
+#ifdef _WIN32_V9
+		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_ack_sender, '31DW');
+	// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
+#else
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
 		create_singlethread_workqueue("drbd_ack_sender");
 #endif
+
 #endif
+//#endif
 
 	if (!connection->ack_sender) {
 		drbd_err(connection, "Failed to create workqueue ack_sender\n");
@@ -1198,7 +1207,7 @@ abort:
 }
 #endif
 
-#ifdef _WIN32_V9
+//#ifdef _WIN32_V9 // V9 형식의 인자. <완료>
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
 {
 	unsigned int header_size = drbd_header_size(connection);
@@ -1239,11 +1248,15 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 	
 	return 0;
 }
-#endif
-
+//#endif
+// <완료>
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
-	void *buffer;
+#ifdef _WIN32_V9
+	void *buffer; 
+#else
+	void *buffer = tconn->data.rbuf; //기존 V8은 tconn->data.rbuf 를 버퍼로 사용.
+#endif
 	int err;
 
 	err = drbd_recv_all_warn(connection, &buffer, drbd_header_size(connection));
@@ -8222,6 +8235,220 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 
 	if (process_peer_ack_list(connection))
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+}
+
+
+
+int drbd_ack_sender(struct drbd_thread *thi)
+{
+#ifdef _WIN32_CHECK 
+	struct drbd_tconn *tconn = thi->tconn;
+	struct asender_cmd *cmd = NULL;
+	struct packet_info pi;
+	int rv;
+	void *buf = tconn->meta.rbuf;
+	int received = 0;
+	unsigned int header_size = drbd_header_size(tconn);
+	int expect = header_size;
+	bool ping_timeout_active = false;
+	struct net_conf *nc;
+	int ping_timeo, tcp_cork, ping_int;
+
+#ifdef _WIN32
+	// KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
+#else
+	current->policy = SCHED_RR;  /* Make this a realtime task! */
+	current->rt_priority = 2;    /* more important than all other tasks */
+#endif
+
+	while (get_t_state(thi) == RUNNING) {
+		drbd_thread_current_set_cpu(thi);
+		rcu_read_lock();
+		nc = rcu_dereference(tconn->net_conf);
+		ping_timeo = nc->ping_timeo;
+		tcp_cork = nc->tcp_cork;
+		ping_int = nc->ping_int;
+		rcu_read_unlock();
+
+		if (test_and_clear_bit(SEND_PING, &tconn->flags)) {
+			if (drbd_send_ping(tconn)) {
+				conn_err(tconn, "drbd_send_ping has failed\n");
+				goto reconnect;
+			}
+
+#ifdef _WIN32
+			tconn->meta.socket->sk_linux_attr->sk_rcvtimeo = ping_timeo * HZ / 10;
+#else
+			tconn->meta.socket->sk->sk_rcvtimeo = ping_timeo * HZ / 10;
+#endif
+			ping_timeout_active = true;
+		}
+
+		/* TODO: conditionally cork; it may hurt latency if we cork without
+		much to send */
+		if (tcp_cork)
+			drbd_tcp_cork(tconn->meta.socket);
+
+		if (tconn_finish_peer_reqs(tconn)) {
+			conn_err(tconn, "tconn_finish_peer_reqs() failed\n");
+			goto reconnect;
+		}
+
+		/* but unconditionally uncork unless disabled */
+		if (tcp_cork)
+			drbd_tcp_uncork(tconn->meta.socket);
+
+		/* short circuit, recv_msg would return EINTR anyways. */
+		if (signal_pending(current))
+#ifdef _WIN32
+		{
+			WDRBD_INFO("asender: signal(%d) pending. continue.\n", current->sig);
+			continue;
+		}
+#else
+			continue;
+#endif
+
+#ifdef _WIN32 
+		rv = Receive(tconn->meta.socket->sk, buf, expect - received, 0, tconn->meta.socket->sk_linux_attr->sk_rcvtimeo);
+#else
+		rv = drbd_recv_short(tconn->meta.socket, buf, expect - received, 0);
+#endif
+		clear_bit(SIGNAL_ASENDER, &tconn->flags);
+		flush_signals(current);
+
+		/* Note:
+		* -EINTR	 (on meta) we got a signal
+		* -EAGAIN	 (on meta) rcvtimeo expired
+		* -ECONNRESET	 other side closed the connection
+		* -ERESTARTSYS  (on data) we got a signal
+		* rv <  0	 other than above: unexpected error!
+		* rv == expected: full header or command
+		* rv <  expected: "woken" by signal during receive
+		* rv == 0	 : "connection shut down by peer"
+		*/
+		if (likely(rv > 0)) {
+			received += rv;
+#ifdef _WIN32
+			(ULONG_PTR) buf += rv;
+#else
+			buf += rv;
+#endif
+		}
+		else if (rv == 0) {
+			if (test_bit(DISCONNECT_SENT, &tconn->flags)) {
+				long t;
+				rcu_read_lock();
+				t = rcu_dereference(tconn->net_conf)->ping_timeo * HZ / 10;
+				rcu_read_unlock();
+
+#ifdef _WIN32
+				wait_event_timeout(t, tconn->ping_wait,
+					tconn->cstate < C_WF_REPORT_PARAMS,
+					t);
+#else
+				t = wait_event_timeout(tconn->ping_wait,
+					tconn->cstate < C_WF_REPORT_PARAMS,
+					t);
+#endif
+				if (t)
+					break;
+			}
+			conn_err(tconn, "meta connection shut down by peer.\n");
+			goto reconnect;
+		}
+		else if (rv == -EAGAIN) {
+			/* If the data socket received something meanwhile,
+			* that is good enough: peer is still alive. */
+
+#ifdef _WIN32
+
+			if (time_after(tconn->last_received,
+				jiffies - tconn->meta.socket->sk_linux_attr->sk_rcvtimeo))
+				continue;
+#else
+			if (time_after(tconn->last_received,
+				jiffies - tconn->meta.socket->sk->sk_rcvtimeo))
+				continue;
+#endif
+			if (ping_timeout_active) {
+				conn_err(tconn, "PingAck did not arrive in time.\n"); // DRBD_BOSD_TEST park vm에서 발생!!! 불특정이나 약 3분 간격
+				goto reconnect;
+			}
+			set_bit(SEND_PING, &tconn->flags);
+			continue;
+		}
+		else if (rv == -EINTR) {
+			continue;
+		}
+		else {
+			conn_err(tconn, "sock_recvmsg returned %d\n", rv);
+			goto reconnect;
+		}
+
+		if (received == expect && cmd == NULL) {
+			if (decode_header(tconn, tconn->meta.rbuf, &pi))
+				goto reconnect;
+
+			cmd = &asender_tbl[pi.cmd];
+			if (pi.cmd >= ARRAY_SIZE(asender_tbl) || !cmd->fn) {
+				conn_err(tconn, "Unexpected meta packet %s (0x%04x)\n",
+					cmdname(pi.cmd), pi.cmd);
+				goto disconnect;
+			}
+			expect = header_size + cmd->pkt_size;
+			if (pi.size != expect - header_size) {
+				conn_err(tconn, "Wrong packet size on meta (c: %d, l: %d)\n",
+					pi.cmd, pi.size);
+				goto reconnect;
+			}
+		}
+		if (received == expect) {
+			bool err;
+#ifdef DRBD_TRACE1
+			if (pi.cmd != P_PING && pi.cmd != P_PING_ACK)
+				WDRBD_TRACE("cmd->fn(%s) pi.cmd=0x%x pi->size=%d start.\n", cmdname(pi.cmd), pi.cmd, pi.size);
+#endif		
+			err = cmd->fn(tconn, &pi);
+
+			if (err) {
+				conn_err(tconn, "%pf failed\n", cmd->fn);
+				goto reconnect;
+			}
+
+			tconn->last_received = jiffies;
+
+			if (cmd == &asender_tbl[P_PING_ACK]) {
+				/* restore idle timeout */
+#ifdef _WIN32
+				tconn->meta.socket->sk_linux_attr->sk_rcvtimeo = ping_int * HZ;
+#else
+				tconn->meta.socket->sk->sk_rcvtimeo = ping_int * HZ;
+#endif
+				ping_timeout_active = false;
+			}
+
+			buf = tconn->meta.rbuf;
+			received = 0;
+			expect = header_size;
+			cmd = NULL;
+		}
+	}
+
+	if (0) {
+	reconnect:
+		conn_request_state(tconn, NS(conn, C_NETWORK_FAILURE), CS_HARD);
+		conn_md_sync(tconn);
+	}
+	if (0) {
+	disconnect:
+		conn_request_state(tconn, NS(conn, C_DISCONNECTING), CS_HARD);
+	}
+	clear_bit(SIGNAL_ASENDER, &tconn->flags);
+
+	conn_info(tconn, "asender terminated\n");
+#endif
+	return 0;
 }
 
 #ifdef _WIN32_V9
