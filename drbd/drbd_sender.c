@@ -122,19 +122,13 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         }
 
         IoFreeIrp(Irp);
-        bio_put(bio);
     }
- #else
+#endif
 	bio_put(bio);
- #endif
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
 
-#ifdef _WIN32
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 /* reads on behalf of the partner,
@@ -282,18 +276,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-#ifdef _WIN32
 #ifdef DRBD_TRACE
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_peer_request_endio done.(%d).............!!!\n", cnt++);
 	}
 #endif
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
-
 }
 
 void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *device)
@@ -393,17 +382,13 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		complete_master_bio(device, &m);
 #endif
 
-#ifdef _WIN32
 #ifdef DRBD_TRACE	
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_request_endio done.(%d).................IRQL(%d)!!!\n", cnt++, KeGetCurrentIrql());
 	}
 #endif
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.

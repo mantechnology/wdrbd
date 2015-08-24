@@ -238,19 +238,11 @@ See 6712ecf8f648118c3363c142196418f89a510b90 */
 #define BIO_ENDIO_FN_RETURN return 0
 #else
 #ifdef _WIN32
-#define BIO_ENDIO_TYPE NTSTATUS
+typedef NTSTATUS BIO_ENDIO_TYPE;
 #define FAULT_TEST_FLAG     (ULONG_PTR)0x11223344
 #define BIO_ENDIO_ARGS (void *p1, void *p2, void *p3)
 #define BIO_ENDIO_FN_START 
-
-#define BIO_ENDIO_FN_RETURN \
-	if (Irp->MdlAddress != NULL) { \
-		MmUnlockPages(Irp->MdlAddress); \
-		IoFreeMdl(Irp->MdlAddress); \
-		Irp->MdlAddress = NULL; \
-	} \
-	IoFreeIrp(Irp); \
-	return STATUS_MORE_PROCESSING_REQUIRED;
+#define BIO_ENDIO_FN_RETURN     return STATUS_MORE_PROCESSING_REQUIRED	
 #else
 #define BIO_ENDIO_TYPE void
 #define BIO_ENDIO_ARGS(b,e) (b,e)

@@ -471,9 +471,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 				peer_device->resync_susp_other_c[NEW];
 		}
 	}
-#ifdef _WIN32_V9
-	 // _WIN32_CHECK: 포팅 필요.
-#else
+#ifdef _WIN32_CHECK // smp_rmb 재활용?
 	smp_wmb();
 #endif
 out:
@@ -2201,12 +2199,22 @@ static void notify_state_change(struct drbd_state_change *state_change)
 	unsigned int n_device, n_connection, n_peer_device, n_peer_devices;
 	void (*last_func)(struct sk_buff *, unsigned int, void *,
 			  enum drbd_notification_type) = NULL;
+#ifdef _WIN32_V9
+    void * last_arg = NULL;
+#else
 	void *uninitialized_var(last_arg);
-
+#endif
 #define HAS_CHANGED(state) ((state)[OLD] != (state)[NEW])
 #ifdef _WIN32_V9 
-#define FINAL_STATE_CHANGE(type)  DbgPrint("_WIN32_CHECK: FINAL_STATE_CHANGE\n"); // 함수로 변환이 필요할 듯!
-#define REMEMBER_STATE_CHANGE(func, arg, type)  DbgPrint("_WIN32_CHECK: REMEMBER_STATE_CHANGE");
+#define FINAL_STATE_CHANGE(type) \
+	{ if (last_func) \
+		last_func(NULL, 0, last_arg, type); \
+	}
+#define REMEMBER_STATE_CHANGE(func, arg, type) \
+	{ FINAL_STATE_CHANGE(type | NOTIFY_CONTINUES); \
+	   last_func = func; \
+	   last_arg = arg; \
+	}
 #else
 #define FINAL_STATE_CHANGE(type) \
 	({ if (last_func) \

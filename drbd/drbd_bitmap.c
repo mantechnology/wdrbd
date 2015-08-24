@@ -21,8 +21,9 @@
    along with drbd; see the file COPYING.  If not, write to
    the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
+
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
- 
+
 #ifdef _WIN32
 #include "linux-compat/bitops.h"
 #include "windows/drbd.h"
@@ -122,7 +123,7 @@ static void __bm_print_lock_info(struct drbd_device *device, const char *func)
         func, b->bm_why ? b->bm_why : "?",
         b->bm_task->comm, b->bm_task->pid);
 #else
-    drbd_err(device, "FIXME %s[%d] in %s, bitmap locked for '%s' by %s[%d]\n",
+	drbd_err(device, "FIXME %s[%d] in %s, bitmap locked for '%s' by %s[%d]\n",
 		 current->comm, task_pid_nr(current),
 		 func, b->bm_why ?: "?",
 		 b->bm_task->comm, task_pid_nr(b->bm_task));
@@ -925,8 +926,11 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 			goto out;
 		}
 	}
-
+#ifdef _WIN32
+    want = ALIGN(words*sizeof(LONG_PTR), PAGE_SIZE) >> PAGE_SHIFT;
+#else
 	want = ALIGN(words*sizeof(long), PAGE_SIZE) >> PAGE_SHIFT;
+#endif
 	have = b->bm_number_of_pages;
 	if (want == have) {
 		D_ASSERT(device, b->bm_pages != NULL);
@@ -1079,41 +1083,34 @@ static void drbd_bm_aio_ctx_destroy(struct kref *kref)
 
 /* bv_page may be a copy, or may be the original */
 #ifdef _WIN32
-static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS
+static BIO_ENDIO_TYPE drbd_bm_endio(void *p1, void *p2, void *p3)
 #else
 static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
-    struct drbd_bm_aio_ctx *ctx = NULL;
-    struct drbd_device *device = NULL;
-    struct drbd_bitmap *b = NULL;
-    unsigned int idx = 0;
-    int uptodate = 0;
     struct bio *bio = NULL;
     int error = 0;
     PIRP Irp = NULL;
-    PVOID Context = NULL;
 
     if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
     {
         Irp = p2;
-        Context = p3;
         error = Irp->IoStatus.Status;
-        bio = (struct bio *)Context;
+        bio = (struct bio *)p3;
     }
     else
     {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
-#else
+#endif
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
 	struct drbd_device *device = ctx->device;
 	struct drbd_bitmap *b = device->bitmap;
 	unsigned int idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
-#endif
+
 	BIO_ENDIO_FN_START;
 
 	/* strange behavior of some lower level drivers...
@@ -1122,13 +1119,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	 * do we want to WARN() on this? */
 	if (!error && !uptodate)
 		error = -EIO;
-#ifdef _WIN32
-        ctx = (struct drbd_bm_aio_ctx *)bio->bi_private;
-        device = ctx->device;
-        b = device->bitmap;
-        idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
-        uptodate = bio_flagged(bio, BIO_UPTODATE);
-#endif
+
 	if ((ctx->flags & BM_AIO_COPY_PAGES) == 0 &&
 	    !bm_test_page_unchanged(b->bm_pages[idx]))
 		drbd_warn(device, "bitmap page idx %u changed during IO!\n", idx);
@@ -1160,11 +1151,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		wake_up(&device->misc_wait);
 		kref_put(&ctx->kref, &drbd_bm_aio_ctx_destroy);
 	}
-#ifdef _WIN32
-    return STATUS_MORE_PROCESSING_REQUIRED;
-#else
+
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_hold(local)
@@ -1246,7 +1234,11 @@ static int bm_rw_range(struct drbd_device *device,
 	struct drbd_bm_aio_ctx *ctx;
 	struct drbd_bitmap *b = device->bitmap;
 	unsigned int i, count = 0;
+#ifdef _WIN32
+	ULONG_PTR now;
+#else
 	unsigned long now;
+#endif
 	int err = 0;
 
 	/*

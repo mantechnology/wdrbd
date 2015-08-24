@@ -2670,6 +2670,7 @@ int v07_style_md_open(struct format *cfg)
 	if (format_version(cfg) >= DRBD_V08) {
 		ASSERT(cfg->md_index != DRBD_MD_INDEX_INTERNAL);
 	}
+#ifndef _WIN32  // kmpak Windows용에 맞는 sector 크기 구해오는 방식으로 대체 필요
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
 	if (ioctl_err) {
 		fprintf(stderr, "ioctl(md_fd, BLKSSZGET) returned %d, "
@@ -2681,7 +2682,7 @@ int v07_style_md_open(struct format *cfg)
 			fprintf(stderr, "hard_sect_size is %d Byte\n",
 				cfg->md_hard_sect_size);
 	}
-
+#endif
 #ifdef _WIN32
 	cfg->bd_size = bdev_size(cfg->md_fd, cfg->md_device_name);
 #else
