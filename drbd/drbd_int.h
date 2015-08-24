@@ -2223,7 +2223,11 @@ extern struct drbd_connection *drbd_connection_by_node_id(struct drbd_resource *
 extern struct drbd_connection *drbd_get_connection_by_node_id(struct drbd_resource *, int);
 extern void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __must_hold(local);
 extern void queue_queued_twopc(struct drbd_resource *resource);
+#ifdef _WIN32_V9
+extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+#else
 extern void queued_twopc_timer_fn(unsigned long data);
+#endif
 
 
 static inline sector_t drbd_get_capacity(struct block_device *bdev)
@@ -2297,10 +2301,13 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 
 void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backing_dev *bdev,
 			      enum write_ordering_e wo);
-
+#ifdef _WIN32_V9
+extern void twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+extern void connect_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+#else
 extern void twopc_timer_fn(unsigned long);
 extern void connect_timer_fn(unsigned long);
-
+#endif
 /* drbd_proc.c */
 extern struct proc_dir_entry *drbd_proc;
 extern const struct file_operations drbd_proc_fops;
