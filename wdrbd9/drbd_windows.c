@@ -1213,7 +1213,19 @@ void init_timer(struct timer_list *t)
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 }
-
+#ifdef _WIN32_V9
+// kmpak 20150824
+// lock dependency에 따른 작업을 위해 key 값이 존재하나 아직 이것을
+// 활용하진 못하겠다. key 외에 나머지는 timer init 시켜준다.
+void init_timer_key(struct timer_list *timer, const char *name,
+    struct lock_class_key *key)
+{
+    //debug_init(timer);
+    UNREFERENCED_PARAMETER(key);
+    UNREFERENCED_PARAMETER(name);
+    init_timer(timer);
+}
+#endif
 void add_timer(struct timer_list *t)
 {
 	mod_timer(t, t->expires);
@@ -1237,39 +1249,41 @@ int del_timer_sync(struct timer_list *t)
 	}
 #endif
 }
-
-int mod_timer(struct timer_list *t, unsigned long expires_ms)
+// kmpak pending_only 처리 필요
+static inline int
+__mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
-	LARGE_INTEGER nWaitTime;
+    LARGE_INTEGER nWaitTime;
 
-	unsigned long current_milisec = jiffies; 
-	nWaitTime.QuadPart = 0;
+    unsigned long current_milisec = jiffies;
+    nWaitTime.QuadPart = 0;
 
-	if(current_milisec >= expires_ms)
-	{
-		nWaitTime.LowPart = 1;
-		KeSetTimer(&t->ktimer, nWaitTime, &t->dpc);
-		return 0;
-	}
-	expires_ms -= current_milisec;
-	nWaitTime = RtlConvertLongToLargeInteger(-1 * (expires_ms) * 1000 * 10);
+    if (current_milisec >= expires)
+    {
+        nWaitTime.LowPart = 1;
+        KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
+        return 0;
+    }
+    expires -= current_milisec;
+    nWaitTime = RtlConvertLongToLargeInteger(-1 * (expires)* 1000 * 10);
 
-	KeSetTimer(&t->ktimer, nWaitTime, &t->dpc);
-	return 1;
+    KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
+    return 1;
 }
-
 #ifdef _WIN32_V9
-/*
-830 int mod_timer_pending(struct timer_list *timer, unsigned long expires)
-831 {
-832         return __mod_timer(timer, expires, true, TIMER_NOT_PINNED);
-833 }
-*/
-int mod_timer_pending(struct timer_list *timer, unsigned long expires)
+int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 {
-	DbgPrint("_WIN32_CHECK: mod_timer_pending!\n");
+    return __mod_timer(timer, expires, true);
 }
 #endif
+int mod_timer(struct timer_list *timer, ULONG_PTR expires)
+{
+    //if (timer_pending(timer) && timer->expires == expires)
+    if (timer->expires == expires)
+    	return 1;
+
+    return __mod_timer(timer, expires, false);
+}
 
 void kobject_put(struct kobject *kobj)
 {

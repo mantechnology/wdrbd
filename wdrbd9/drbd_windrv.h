@@ -273,7 +273,7 @@ typedef unsigned int                fmode_t;
 
 #define MAX_SPILT_BLOCK_SZ			(1 << 20)
 
-//#define WDRBD_THREAD_POINTER
+#define WDRBD_THREAD_POINTER
 #define WDRBD_FUNC_NAME
 
 #define FLTR_COMPONENT              DPFLTR_DEFAULT_ID
@@ -494,12 +494,29 @@ extern void init_timer(struct timer_list *t);
 extern void add_timer(struct timer_list *t);
 extern int del_timer_sync(struct timer_list *t);
 extern void del_timer(struct timer_list *t);
-extern int mod_timer(struct timer_list *t, unsigned long expires);
-
+extern int mod_timer(struct timer_list *t, ULONG_PTR expires);
 #ifdef _WIN32_V9
-extern int mod_timer_pending(struct timer_list *timer, unsigned long expires); 
-#endif
+extern int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires);
 
+struct lock_class_key { char __one_byte; };
+extern void init_timer_key(struct timer_list *timer, const char *name, struct lock_class_key *key);
+
+static __inline void setup_timer_key(_In_ struct timer_list * timer,
+    const char *name,
+    struct lock_class_key *key,
+    void(*function)(void *),
+    void * data)
+{
+    timer->function = function;
+    timer->data = data;
+    init_timer_key(timer, name, key);
+}
+
+#define setup_timer(timer, fn, data)                            \
+    do {                                                        \
+        setup_timer_key((timer), #timer, NULL, (fn), (data));   \
+    } while (0)
+#endif
 struct work_struct {
 	struct list_head entry;
 	void (*func)(struct work_struct *work);
@@ -1375,5 +1392,4 @@ static int scnprintf(char *buffer, int size, char *str)
 	//DbgPrintf("DRBD_CHECK:descnprintf!!!!");
 	return 0;
 }
-
 #endif __DRBD_WINDRV_H__

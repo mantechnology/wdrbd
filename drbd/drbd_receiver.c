@@ -992,7 +992,10 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 	return err;
 }
 #ifdef _WIN32_V9 //v9에 새롭게 추가된 구현. connect 시 timer 를 구동시키는 것으로 예상됨.
+void connect_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else
 void connect_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_connection *connection = (struct drbd_connection *) data;
 	struct drbd_resource *resource = connection->resource;
@@ -1002,8 +1005,6 @@ void connect_timer_fn(unsigned long data)
 	drbd_queue_work(&connection->sender_work, &connection->connect_timer_work);
 	spin_unlock_irqrestore(&resource->req_lock, irq_flags);
 }
-#endif
-
 #ifdef _WIN32_V9 //V9에 새롭게 추가된 구현. conn_connect 와의 차이점과 어떤 시점에서 구동되는지에 대해 추후 분석이 필요하다. <완료>
 void conn_connect2(struct drbd_connection *connection)
 {
@@ -5420,12 +5421,19 @@ int abort_nested_twopc_work(struct drbd_work *work, int cancel)
 		abort_prepared_state_change(resource);
 	return 0;
 }
-
+#ifdef _WIN32_V9
+void twopc_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else
 void twopc_timer_fn(unsigned long data)
+#endif
 {
+#ifdef _WIN32_V9
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(arg1);
+    UNREFERENCED_PARAMETER(arg2);
+#endif
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	unsigned long irq_flags;
-
 	spin_lock_irqsave(&resource->req_lock, irq_flags);
 	if (resource->twopc_work.cb == NULL) {
 		drbd_err(resource, "Two-phase commit %u timeout\n",
@@ -5599,8 +5607,11 @@ static int queued_twopc_work(struct drbd_work *w, int cancel)
 
 	return 0;
 }
-
+#ifdef _WIN32_V9
+void queued_twopc_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else
 void queued_twopc_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	struct queued_twopc *q;
@@ -7015,7 +7026,7 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	del_timer_sync(&peer_device->resync_timer);
 #ifdef _WIN32
 	// resync_timer_fn 기존 구현 유지.
-	resync_timer_fn((PKDPC)0,(unsigned long)peer_device, 0, 0);
+	resync_timer_fn(NULL, peer_device, 0, 0);
 #else
 	resync_timer_fn((unsigned long)peer_device);
 #endif

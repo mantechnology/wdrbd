@@ -2346,7 +2346,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
 
 	if (!err) {
-		sbuf->unsent = // _WIN32_CHECK: 원본 재확인
+		sbuf->unsent =
 		sbuf->pos += size;
 	}
 
@@ -3555,8 +3555,11 @@ void drbd_flush_peer_acks(struct drbd_resource *resource)
 	}
 	spin_unlock_irq(&resource->req_lock);
 }
-
+#ifdef _WIN32_V9
+static void peer_ack_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else
 static void peer_ack_timer_fn(unsigned long data)
+#endif
 {
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 
@@ -3665,8 +3668,12 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	INIT_LIST_HEAD(&resource->connections);
 	INIT_LIST_HEAD(&resource->transfer_log);
 	INIT_LIST_HEAD(&resource->peer_ack_list);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, resource);
+#else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
+#endif
+#ifdef _WIN32_CHECK
 	sema_init(&resource->state_sem, 1);
 #endif
 	resource->role[NOW] = R_SECONDARY;
@@ -3682,13 +3689,17 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	init_waitqueue_head(&resource->state_wait);
 	init_waitqueue_head(&resource->twopc_wait);
 	init_waitqueue_head(&resource->barrier_wait);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    setup_timer(&resource->twopc_timer, twopc_timer_fn, resource);
+#else
 	setup_timer(&resource->twopc_timer, twopc_timer_fn, (unsigned long) resource);
 #endif
 	INIT_LIST_HEAD(&resource->twopc_work.list);
 	INIT_LIST_HEAD(&resource->queued_twopc);
 	spin_lock_init(&resource->queued_twopc_lock);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+    setup_timer(&resource->queued_twopc_timer, queued_twopc_timer_fn, resource);
+#else
 	setup_timer(&resource->queued_twopc_timer, queued_twopc_timer_fn, (unsigned long) resource);
 #endif
 	drbd_init_workqueue(&resource->work);
@@ -3758,7 +3769,11 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	mutex_init(&connection->mutex[CONTROL_STREAM]);
 
 	INIT_LIST_HEAD(&connection->connect_timer_work.list);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+	setup_timer(&connection->connect_timer,
+		    connect_timer_fn,
+		    connection);
+#else
 	setup_timer(&connection->connect_timer,
 		    connect_timer_fn,
 		    (unsigned long) connection);
@@ -3874,14 +3889,21 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 
 	init_timer(&peer_device->start_resync_timer);
 	peer_device->start_resync_timer.function = start_resync_timer_fn;
+#ifdef _WIN32_V9
+    peer_device->start_resync_timer.data = peer_device;
+#else
 	peer_device->start_resync_timer.data = (unsigned long) peer_device;
+#endif
 
 	INIT_LIST_HEAD(&peer_device->resync_work.list);
 	peer_device->resync_work.cb  = w_resync_timer;
 	init_timer(&peer_device->resync_timer);
 	peer_device->resync_timer.function = resync_timer_fn;
+#ifdef _WIN32
+    peer_device->resync_timer.data = peer_device;
+#else
 	peer_device->resync_timer.data = (unsigned long) peer_device;
-
+#endif
 	INIT_LIST_HEAD(&peer_device->propagate_uuids_work.list);
 	peer_device->propagate_uuids_work.cb = w_send_uuids;
 
@@ -3988,9 +4010,17 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_timer(&device->md_sync_timer);
 	init_timer(&device->request_timer);
 	device->md_sync_timer.function = md_sync_timer_fn;
+#ifdef _WIN32
+    device->md_sync_timer.data = device;
+#else
 	device->md_sync_timer.data = (unsigned long) device;
+#endif
 	device->request_timer.function = request_timer_fn;
+#ifdef _WIN32
+    device->request_timer.data = device;
+#else
 	device->request_timer.data = (unsigned long) device;
+#endif
 
 	init_waitqueue_head(&device->misc_wait);
 	init_waitqueue_head(&device->ee_wait);
