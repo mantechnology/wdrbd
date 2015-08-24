@@ -1268,7 +1268,7 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 
 	return err;
 }
-
+//
 static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	int rv;
@@ -1293,9 +1293,10 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			 * We may want to make those asynchronous,
 			 * or at least parallelize the flushes to the volume devices.
 			 */
+#ifdef _WIN32_V9
 			device->flush_jif = jiffies;
 			set_bit(FLUSH_PENDING, &device->flags);
-			
+#endif			
 			rv = blkdev_issue_flush(device->ldev->backing_bdev, GFP_NOIO, NULL);
 
 			clear_bit(FLUSH_PENDING, &device->flags);
@@ -1307,8 +1308,12 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 				drbd_bump_write_ordering(resource, NULL, WO_DRAIN_IO);
 			}
 			put_ldev(device);
+#ifdef _WIN32_V9
 			kref_put(&device->kref, drbd_destroy_device);
-
+#else
+			kobject_put(&mdev->kobj);
+#endif
+			
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
 #else
@@ -1323,6 +1328,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
+//
 static int w_flush(struct drbd_work *w, int cancel)
 {
 	struct flush_work *fw = container_of(w, struct flush_work, w);
@@ -1335,7 +1341,7 @@ static int w_flush(struct drbd_work *w, int cancel)
 		drbd_flush_after_epoch(connection, epoch);
 
 	drbd_may_finish_epoch(connection, epoch, EV_PUT |
-			      (connection->cstate[NOW] < C_CONNECTED ? EV_CLEANUP : 0));
+			      (connection->cstate[NOW] < C_CONNECTED ? EV_CLEANUP : 0)); //C_WF_REPORT_PARAMS => C_CONNECTED 로 변경.
 
 	return 0;
 }
@@ -1346,6 +1352,7 @@ static int w_flush(struct drbd_work *w, int cancel)
  * @epoch:	Epoch object.
  * @ev:		Epoch event.
  */
+//
 static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connection,
 					       struct drbd_epoch *epoch,
 					       enum epoch_event ev)
@@ -1452,7 +1459,11 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 		if (fw) {
 			fw->w.cb = w_flush;
 			fw->epoch = epoch;
+#ifdef _WIN32_V9
 			fw->device = NULL; /* FIXME drop this member, it is unused. */
+#else
+			fw->w.tconn = tconn;
+#endif
 			drbd_queue_work(&resource->work, &fw->w);
 		} else {
 			drbd_warn(resource, "Could not kmalloc a flush_work obj\n");
@@ -1466,6 +1477,8 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 	return rv;
 }
 
+#ifdef _WIN32_V9
+//
 static enum write_ordering_e
 max_allowed_wo(struct drbd_backing_dev *bdev, enum write_ordering_e wo)
 {
@@ -1482,12 +1495,14 @@ max_allowed_wo(struct drbd_backing_dev *bdev, enum write_ordering_e wo)
 
 	return wo;
 }
+#endif
 
 /**
  * drbd_bump_write_ordering() - Fall back to an other write ordering method
  * @resource:	DRBD resource.
  * @wo:		Write ordering method to try.
  */
+//
 void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backing_dev *bdev,
 			      enum write_ordering_e wo) __must_hold(local)
 {
@@ -1513,16 +1528,32 @@ void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backin
 		if (i++ == 1 && wo == WO_BIO_BARRIER)
 			wo = WO_BDEV_FLUSH; /* WO = barrier does not handle multiple volumes */
 
+#ifdef _WIN32_V9
 		if (get_ldev(device)) {
 			wo = max_allowed_wo(device->ldev, wo);
 			if (device->ldev == bdev)
 				bdev = NULL;
 			put_ldev(device);
 		}
+#else
+		if (!get_ldev_if_state(mdev, D_ATTACHING))
+			continue;
+
+		dc = rcu_dereference(mdev->ldev->disk_conf);
+		if (wo == WO_bio_barrier && !dc->disk_barrier)
+			wo = WO_bdev_flush;
+		if (wo == WO_bdev_flush && !dc->disk_flushes)
+			wo = WO_drain_io;
+		if (wo == WO_drain_io && !dc->disk_drain)
+			wo = WO_none;
+		put_ldev(mdev);
+#endif
 	}
 
+#ifdef _WIN32_V9
 	if (bdev)
 		wo = max_allowed_wo(bdev, wo);
+#endif
 
 	rcu_read_unlock();
 
