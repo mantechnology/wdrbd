@@ -2257,8 +2257,13 @@ find_request(struct drbd_device *device, struct rb_root *root, u64 id,
 {
 	struct drbd_request *req;
 
+#ifdef _WIN32 //V8 구현
+	req = (struct drbd_request *)id;
+#else
 	/* Request object according to our peer */
 	req = (struct drbd_request *)(unsigned long)id;
+#endif
+
 	if (drbd_contains_interval(root, sector, &req->i) && req->i.local)
 		return req;
 	if (!missing_ok) {
@@ -2322,12 +2327,13 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	if (get_ldev(device)) {
 		err = recv_resync_read(peer_device, sector, pi);
 		if (err)
-			put_ldev(device);
+			put_ldev(device); // V9에서 put_ldev 의 위치 변경...recv_resync_read 에서도 put_ldev 호출 관계가 변경됨. 변경된 의도 파악 필요. 
 	} else {
 		if (drbd_ratelimit())
 			drbd_err(device, "Can not write resync data to local disk.\n");
 
-		err = ignore_remaining_packet(connection, pi->size);
+		// drbd_drain_block 에서 ignore_remaining_packet 으로 rename. 따라서 drbd에서 drain 의 의미는 버려버린다는 의미로 해석가능한가?... 버려도 되나?(무엇을?)...
+		err = ignore_remaining_packet(connection, pi->size); 
 
 		drbd_send_ack_dp(peer_device, P_NEG_ACK, p, pi->size);
 	}
@@ -2399,7 +2405,7 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	if (peer_req->flags & EE_IN_INTERVAL_TREE) {
 		spin_lock_irq(&device->resource->req_lock);
 		D_ASSERT(device, !drbd_interval_empty(&peer_req->i));
-		drbd_remove_peer_req_interval(device, peer_req);
+		drbd_remove_peer_req_interval(device, peer_req); // drbd_remove_epoch_entry_interval 에서 drbd_remove_peer_req_interval 로 rename
 		if (peer_req->flags & EE_RESTART_REQUESTS)
 			restart_conflicting_writes(peer_req);
 		spin_unlock_irq(&device->resource->req_lock);
@@ -2426,7 +2432,7 @@ static int e_send_ack(struct drbd_work *w, enum drbd_packet ack)
 #ifdef _WIN32_V9 // e_send_superseded 에서 e_send_discard_write 으로 이름 변경.
 static int e_send_discard_write(struct drbd_work *w, int unused)
 {
-	return e_send_ack(w, P_SUPERSEDED);
+	return e_send_ack(w, P_SUPERSEDED); //P_SUPERSEDED 는 그대로 사용되었다.
 }
 #endif
 
