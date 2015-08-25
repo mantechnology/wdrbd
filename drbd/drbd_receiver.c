@@ -3109,7 +3109,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif
 	
-//#ifdef _WIN32_V9 // V8에 비해 변경됨.
+//#ifdef _WIN32_V9 
 	err = -ENOMEM;
 	if (!peer_req)
 		goto fail;
@@ -3165,7 +3165,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		peer_req->digest = di;
 		peer_req->flags |= EE_HAS_DIGEST;
 
-		err = drbd_recv_into(connection, di->digest, pi->size); // drbd_recv_all 에서 drbd_recv_into 로 변경.
+		err = drbd_recv_into(connection, di->digest, pi->size); // V9. drbd_recv_all 에서 drbd_recv_into 로 변경.
 		if (err)
 			goto fail2;
 
@@ -3251,7 +3251,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	    drbd_rs_should_slow_down(peer_device, sector, false))
 		schedule_timeout_uninterruptible(HZ/10);
 
-	if (connection->agreed_pro_version >= 110) { //agreed_pro_version 체크를 하는 이유가 무엇인가?... 프로토콜 버전??? 이 있는지 확인 요망.
+	if (connection->agreed_pro_version >= 110) { //V9 agreed_pro_version 체크를 하는 이유가 무엇인가?... 프로토콜 버전??? 이 있는지 확인 요망.
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
 		   Instruct the SyncSource to retry */
 		err = drbd_try_rs_begin_io(peer_device, sector, false);
@@ -3274,7 +3274,7 @@ submit_for_resync:
 
 submit:
 //#ifdef _WIN32_V9
-	update_receiver_timing_details(connection, drbd_submit_peer_request); // update_receiver_timing_details 이 종종 불려진다. 무슨 의미?
+	update_receiver_timing_details(connection, drbd_submit_peer_request); // V9.update_receiver_timing_details 이 종종 불려진다. 무슨 의미?
 //#endif
 	inc_unacked(peer_device);
 	// 기존의 list_add_tail(&peer_req->w.list, &mdev->read_ee); 코드가 상단으로 올라감. 의미?
@@ -3474,9 +3474,7 @@ static int drbd_asb_recover_2p(struct drbd_peer_device *peer_device) __must_hold
 			 /* drbd_change_state() does not sleep while in SS_IN_TRANSIENT_STATE,
 			  * we might be here in L_OFF which is transient.
 			  * we do not need to wait for the after state change work either. */
-#ifdef _WIN32_V9 // drbd_change_state 에서 change_role 로 변경.
-			rv2 = change_role(device->resource, R_SECONDARY, CS_VERBOSE, false);
-#endif
+			rv2 = change_role(device->resource, R_SECONDARY, CS_VERBOSE, false); // V9. drbd_change_state 에서 change_role 로 변경.
 			if (rv2 != SS_SUCCESS) {
 				drbd_khelper(device, connection, "pri-lost-after-sb");
 			} else {
@@ -3708,7 +3706,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 	if (peer == UUID_JUST_CREATED)
 		return 3;
 
-#ifdef _WIN32_V9 // UUID compare 하는 구현이 많이 변경됨.
+//#ifdef _WIN32_V9 // UUID compare 하는 구현이 많이 변경됨.
 	if (self == peer) {
 		if (connection->agreed_pro_version < 110) {
 			int rv = uuid_fixup_resync_end(peer_device, rule_nr);
@@ -3822,7 +3820,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 				return -100;
 		}
 	}
-#endif
+//#endif
 	return -1000;
 }
 
@@ -3995,7 +3993,7 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 /* drbd_sync_handshake() returns the new replication state on success, and -1
  * on failure.
  */
-#ifdef _WIN32_V9 // 로직에 대한 분석과 이해 필요. 변경점 많음.
+//#ifdef _WIN32_V9 // 로직에 대한 분석과 이해 필요. 변경점 많음 => 착오인듯(drbd_handshake와 혼동한 듯). => disk_states_to_goodness 에 대한 랩퍼 호출 정도. 변경사항 크지 않음.
 static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_device,
 						enum drbd_role peer_role,
 						enum drbd_disk_state peer_disk_state) __must_hold(local)
@@ -4110,7 +4108,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 
 	return goodness_to_repl_state(peer_device, peer_role, hg);
 }
-#endif
+//#endif
 
 static enum drbd_after_sb_p convert_after_sb(enum drbd_after_sb_p peer)
 {
@@ -4152,9 +4150,8 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 
 		if (pi->size > sizeof(integrity_alg))
 			return -EIO;
-#ifdef _WIN32_V9 // drbd_recv_all 에서 drbd_recv_into 로 변경.
-		err = drbd_recv_into(connection, integrity_alg, pi->size);
-#endif
+
+		err = drbd_recv_into(connection, integrity_alg, pi->size); // V9. drbd_recv_all 에서 drbd_recv_into 로 변경.
 		if (err)
 			return err;
 		integrity_alg[SHARED_SECRET_MAX - 1] = 0;
@@ -4192,9 +4189,8 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 			drbd_err(connection, "incompatible %s settings\n", "after-sb-2pri");
 			goto disconnect_rcu_unlock;
 		}
-#ifdef _WIN32_V9 // 기존 if (p_discard_my_data && nc->discard_my_data) { 에서 test_bit 로 변경.
-		if (p_discard_my_data && test_bit(CONN_DISCARD_MY_DATA, &connection->flags)) {
-#endif
+
+		if (p_discard_my_data && test_bit(CONN_DISCARD_MY_DATA, &connection->flags)) { // V9. 기존 if (p_discard_my_data && nc->discard_my_data) { 에서 test_bit 로 변경.
 			drbd_err(connection, "incompatible %s settings\n", "discard-my-data");
 			goto disconnect_rcu_unlock;
 		}
