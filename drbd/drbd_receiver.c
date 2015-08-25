@@ -31,7 +31,7 @@
 #include "drbd_vli.h"
 #include <linux-compat/list.h>
 #include <drbd_transport.h>
-
+#include <drbd_windows.h>
 #else
 #include <linux/module.h>
 
@@ -6003,7 +6003,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	peer_state.i = be32_to_cpu(p->state);
 
-#ifdef _WIN32_V9 // V9에서 추가됨.
+	// V9에서 추가됨.
 	if (connection->agreed_pro_version < 110) {
 		/* Before drbd-9.0 there was no D_DETACHING it was D_FAILED... */
 		if (peer_state.disk >= D_DETACHING)
@@ -6023,8 +6023,8 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				goto fail;
 		}
 		return 0;
-        }
-#endif
+    }
+
 
 	peer_disk_state = peer_state.disk;
 	if (peer_state.disk == D_NEGOTIATING) {
@@ -6376,9 +6376,7 @@ recv_bm_rle_bits(struct drbd_peer_device *peer_device,
 				drbd_err(peer_device, "bitmap overflow (e:%lu) while decoding bm RLE packet\n", e);
 				return -EIO;
 			}
-#ifdef _WIN32_V9 // 	_drbd_bm_set_bits(mdev, s, e); 에서 변경됨.
-			drbd_bm_set_many_bits(peer_device, s, e);
-#endif
+			drbd_bm_set_many_bits(peer_device, s, e); // V9. _drbd_bm_set_bits(mdev, s, e); 에서 변경됨.
 		}
 
 		if (have < bits) {
@@ -6388,13 +6386,13 @@ recv_bm_rle_bits(struct drbd_peer_device *peer_device,
 				(unsigned int)bs.buf_len);
 			return -EIO;
 		}
-#ifdef _WIN32_V9
+		// V9. 새롭게 추가된 부분.
 		/* if we consumed all 64 bits, assign 0; >> 64 is "undefined"; */
 		if (likely(bits < 64))
 			look_ahead >>= bits;
 		else
 			look_ahead = 0;
-#endif
+
 		have -= bits;
 
 		bits = bitstream_get_bits(&bs, &tmp, 64 - have);
@@ -6440,7 +6438,7 @@ void INFO_bm_xfer_stats(struct drbd_peer_device *peer_device,
 	/* what would it take to transfer it "plaintext" */
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	unsigned int data_size = DRBD_SOCKET_BUFFER_SIZE - header_size;
-#ifdef _WIN32 // 기존 구현을 가져왔는데... 뭔가 이상하다.... _WIN32_CHECK
+#ifdef _WIN32 // 기존 구현을 가져왔는데... 뭔가 이상하다.... => ULONG_PTR size 관련 포팅 확인.
 	unsigned int plain =
 		header_size * (DIV_ROUND_UP(c->bm_words, data_size) + 1) +
 		c->bm_words * sizeof(ULONG_PTR);
@@ -6476,7 +6474,7 @@ void INFO_bm_xfer_stats(struct drbd_peer_device *peer_device,
 			c->bytes[0], c->packets[0],
 			total, r/10, r % 10);
 }
-#ifdef _WIN32_V9 // 새롭게 추가된 함수.
+// V9. 새롭게 추가된 함수.
 static enum drbd_disk_state read_disk_state(struct drbd_device *device)
 {
 	struct drbd_resource *resource = device->resource;
@@ -6488,7 +6486,7 @@ static enum drbd_disk_state read_disk_state(struct drbd_device *device)
 
 	return disk_state;
 }
-#endif
+
 
 /* Since we are processing the bitfield from lower addresses to higher,
    it does not matter if the process it in 32 bit chunks or 64 bit
@@ -6522,9 +6520,9 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		read_disk_state(device) != D_NEGOTIATING);
 #endif
 	
-#ifdef _WIN32_V9 // V9에서 추가됨.
+	// V9. V9에서 추가됨.
 	drbd_bm_slot_lock(peer_device, "receive bitmap", BM_LOCK_CLEAR | BM_LOCK_BULK);
-#endif
+
 	/* you are supposed to send additional out-of-sync information
 	 * if you actually set bits during this phase */
 
@@ -6584,14 +6582,14 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 			goto out;
 		/* Omit CS_WAIT_COMPLETE and CS_SERIALIZE with this state
 		 * transition to avoid deadlocks. */
-#ifdef _WIN32_V9 // 기존 _drbd_request_state 로 상태만 변경하던 구현에서 변경됨.
+		// 기존 _drbd_request_state 로 상태만 변경하던 구현에서 변경됨. 의미 파악 필요.
 		if (connection->agreed_pro_version < 110) {
 			rv = stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
 			D_ASSERT(device, rv == SS_SUCCESS);
 		} else {
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		}
-#endif
+
 	} else if (peer_device->repl_state[NOW] != L_WF_BITMAP_S) {
 		/* admin may have requested C_DISCONNECTING,
 		 * other threads may have noticed network errors */
@@ -6624,9 +6622,9 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 
 	/* Make sure we've acked all the data associated
 	 * with the data requests being unplugged */
-#ifdef _WIN32_V9 // drbd_tcp_quickack 기존 구현에서 변경.
+	// 기존 V8 drbd_tcp_quickack 구현에서 hint 로 변경.
 	transport->ops->hint(transport, DATA_STREAM, QUICKACK);
-#endif
+
 	return 0;
 }
 
@@ -6835,7 +6833,7 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_OUT_OF_SYNC]     = { 0, sizeof(struct p_block_desc), receive_out_of_sync },
 	[P_CONN_ST_CHG_REQ] = { 0, sizeof(struct p_req_state), receive_req_state },
 	[P_PROTOCOL_UPDATE] = { 1, sizeof(struct p_protocol), receive_protocol },
-#ifdef _WIN32_V9 //V9에서 추가ㅣ됨.
+	//이후 V9에서 추가된 항목.
 	[P_TWOPC_PREPARE] = { 0, sizeof(struct p_twopc_request), receive_twopc },
 	[P_TWOPC_ABORT] = { 0, sizeof(struct p_twopc_request), receive_twopc },
 	[P_DAGTAG]	    = { 0, sizeof(struct p_dagtag), receive_dagtag },
@@ -6844,9 +6842,10 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_CURRENT_UUID]    = { 0, sizeof(struct p_current_uuid), receive_current_uuid },
 	[P_TWOPC_COMMIT]    = { 0, sizeof(struct p_twopc_request), receive_twopc },
 	[P_TRIM]	    = { 0, sizeof(struct p_trim), receive_Data },
-#endif
+
 };
 
+// V9. 변경점. update_receiver_timing_details 이 중간 중간 들어가 있다. 의미 파악 필요.
 static void drbdd(struct drbd_connection *connection)
 {
 	struct packet_info pi;
@@ -6857,9 +6856,7 @@ static void drbdd(struct drbd_connection *connection)
 		struct data_cmd *cmd;
 
 		drbd_thread_current_set_cpu(&connection->receiver);
-#ifdef _WIN32_V9
 		update_receiver_timing_details(connection, drbd_recv_header);
-#endif
 		if (drbd_recv_header(connection, &pi))
 			goto err_out;
 
@@ -7099,13 +7096,13 @@ static int drbd_send_features(struct drbd_connection *connection)
 	memset(p, 0, sizeof(*p));
 	p->protocol_min = cpu_to_be32(PRO_VERSION_MIN);
 	p->protocol_max = cpu_to_be32(PRO_VERSION_MAX);
-#ifdef _WIN32_V9
+	// V9. 새롭게 추가된 부분.
 	p->sender_node_id = cpu_to_be32(connection->resource->res_opts.node_id);
 	p->receiver_node_id = cpu_to_be32(connection->peer_node_id);
 	p->feature_flags = cpu_to_be32(PRO_FEATURES);
 
 	return send_command(connection, -1, P_CONNECTION_FEATURES, DATA_STREAM);
-#endif
+
 }
 
 /*
@@ -7144,7 +7141,7 @@ int drbd_do_features(struct drbd_connection *connection)
 		return -1;
 	}
 
-	// p = pi.data; 기존 의 코드가 제거됨. 뭐지???
+	// p = pi.data; 기존 의 코드가 제거됨. 뭐지??? => 내부 버퍼를 사용하는 V9 구현.
 	
 	err = drbd_recv_all_warn(connection, (void **)&p, expect);
 	if (err)
@@ -7164,7 +7161,6 @@ int drbd_do_features(struct drbd_connection *connection)
 		return -1;
 	}
 
-#ifdef _WIN32_V9 // 새롭게 추가된 부분.
 	connection->agreed_pro_version = min_t(int, PRO_VERSION_MAX, p->protocol_max);
 	connection->agreed_features = PRO_FEATURES & be32_to_cpu(p->feature_flags);
 
@@ -7206,7 +7202,7 @@ int drbd_do_features(struct drbd_connection *connection)
 
 	drbd_info(connection, "Agreed to%ssupport TRIM on protocol level\n",
 		  connection->agreed_features & FF_TRIM ? " " : " not ");
-#endif
+
 
 	return 1;
 }
@@ -7426,16 +7422,20 @@ int drbd_receiver(struct drbd_thread *thi)
 }
 
 /* ********* acknowledge sender ******** */
-#ifdef _WIN32_V9
+// V9 에 새롭게 추가된 구현.
 void req_destroy_after_send_peer_ack(struct kref *kref)
 {
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
 	list_del(&req->tl_requests);
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
+#ifdef _WIN32_V9
+	mempool_free(req, &drbd_request_mempool);
+#else
 	mempool_free(req, drbd_request_mempool);
 #endif
+//#endif
 }
-#endif
+
 static int process_peer_ack_list(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -7663,8 +7663,16 @@ validate_req_change_req_state(struct drbd_peer_device *peer_device, u64 id, sect
 		spin_unlock_irq(&device->resource->req_lock);
 		return -EIO;
 	}
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) validate_req_change_req_state: before __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
+
 	__req_mod(req, what, peer_device, &m);
 	spin_unlock_irq(&device->resource->req_lock);
+
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) validate_req_change_req_state: after __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 
 	if (m.bio) {
 #ifdef _WIN32
@@ -7684,6 +7692,10 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 	sector_t sector = be64_to_cpu(p->sector);
 	int blksize = be32_to_cpu(p->blksize);
 	enum drbd_req_event what;
+
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("pi-cmd 0x%x(%s) sect:0x%llx sz:%d\n", pi->cmd, cmdname(pi->cmd), sector, blksize);
+#endif
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -7810,7 +7822,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			drbd_rs_failed_io(peer_device, sector, size);
 			break;
 		case P_RS_CANCEL:
-#ifdef _WIN32_V9
+			// V9. V9에 추가된 부분.
 			bit = BM_SECT_TO_BIT(sector);
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = min(device->bm_resync_fo, bit);
@@ -7818,7 +7830,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 
 			atomic_add(size >> 9, &peer_device->rs_sect_in);
 			mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
-#endif
+
 			break;
 		default:
 			BUG();
@@ -7834,6 +7846,10 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 	struct drbd_peer_device *peer_device;
 	struct p_barrier_ack *p = pi->data;
 	int vnr;
+
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("do tl_release\n");
+#endif
 
 	tl_release(connection, p->barrier, be32_to_cpu(p->set_size));
 
@@ -7917,14 +7933,14 @@ static int got_skip(struct drbd_connection *connection, struct packet_info *pi)
 	return 0;
 }
 
-#ifdef _WIN32_V9
+// V9. 추가된 함수.
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_hold(local)
 {
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
 	int node_id;
 #ifdef _WIN32_TODO
-	// for_each_set_bit V9 포팅 필요.
+	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)
@@ -7933,9 +7949,9 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 #endif
 	return bitmap_bits;
 }
-#endif
 
-#ifdef _WIN32_V9
+
+
 static int got_peer_ack(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -7964,10 +7980,10 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 	// list_cut_position linux kernel func. V9 포팅 필요.
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
-#endif
+//#endif
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
@@ -7994,7 +8010,7 @@ found:
 	}
 	return 0;
 }
-#endif
+
 
 /* Caller has to hold resource->req_lock */
 void apply_unacked_peer_requests(struct drbd_connection *connection)

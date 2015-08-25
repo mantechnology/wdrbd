@@ -1319,6 +1319,8 @@ typedef struct _PTR_ENTRY
 //asm-x86 , asm-generic 
 #define	EDESTADDRREQ	89	/* Destination address required */
 
+// Bitops.h
+#define BITS_PER_BYTE		8
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end
 ////////////////////////////////////////////////////////////////////
@@ -1395,4 +1397,13 @@ static int scnprintf(char *buffer, int size, char *str)
 	return 0;
 }
 
+#ifdef _WIN32_V9
+
+void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry);
+
+#endif
+
+
+
 #endif // DRBD_WINDOWS_H
+
