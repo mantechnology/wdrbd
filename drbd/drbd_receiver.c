@@ -31,7 +31,7 @@
 #include "drbd_vli.h"
 #include <linux-compat/list.h>
 #include <drbd_transport.h>
-
+#include <drbd_windows.h>
 #else
 #include <linux/module.h>
 
@@ -7663,8 +7663,16 @@ validate_req_change_req_state(struct drbd_peer_device *peer_device, u64 id, sect
 		spin_unlock_irq(&device->resource->req_lock);
 		return -EIO;
 	}
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) validate_req_change_req_state: before __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
+
 	__req_mod(req, what, peer_device, &m);
 	spin_unlock_irq(&device->resource->req_lock);
+
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) validate_req_change_req_state: after __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 
 	if (m.bio) {
 #ifdef _WIN32
@@ -7684,6 +7692,10 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 	sector_t sector = be64_to_cpu(p->sector);
 	int blksize = be32_to_cpu(p->blksize);
 	enum drbd_req_event what;
+
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("pi-cmd 0x%x(%s) sect:0x%llx sz:%d\n", pi->cmd, cmdname(pi->cmd), sector, blksize);
+#endif
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -7810,7 +7822,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			drbd_rs_failed_io(peer_device, sector, size);
 			break;
 		case P_RS_CANCEL:
-#ifdef _WIN32_V9
+			// V9. V9에 추가된 부분.
 			bit = BM_SECT_TO_BIT(sector);
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = min(device->bm_resync_fo, bit);
@@ -7818,7 +7830,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 
 			atomic_add(size >> 9, &peer_device->rs_sect_in);
 			mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
-#endif
+
 			break;
 		default:
 			BUG();
@@ -7834,6 +7846,10 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 	struct drbd_peer_device *peer_device;
 	struct p_barrier_ack *p = pi->data;
 	int vnr;
+
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("do tl_release\n");
+#endif
 
 	tl_release(connection, p->barrier, be32_to_cpu(p->set_size));
 
@@ -7917,14 +7933,14 @@ static int got_skip(struct drbd_connection *connection, struct packet_info *pi)
 	return 0;
 }
 
-#ifdef _WIN32_V9
+// V9. 추가된 함수.
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_hold(local)
 {
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
 	int node_id;
 #ifdef _WIN32_TODO
-	// for_each_set_bit V9 포팅 필요.
+	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)
@@ -7933,9 +7949,9 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 #endif
 	return bitmap_bits;
 }
-#endif
 
-#ifdef _WIN32_V9
+
+
 static int got_peer_ack(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -7964,10 +7980,10 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 	// list_cut_position linux kernel func. V9 포팅 필요.
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
-#endif
+//#endif
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
@@ -7994,7 +8010,7 @@ found:
 	}
 	return 0;
 }
-#endif
+
 
 /* Caller has to hold resource->req_lock */
 void apply_unacked_peer_requests(struct drbd_connection *connection)
