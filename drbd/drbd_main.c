@@ -3787,7 +3787,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 #endif
 	drbd_thread_init(resource, &connection->receiver, drbd_receiver, "receiver");
 	connection->receiver.connection = connection;
-	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender");
+	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender"); // _WIN32_CHECK [choi] bsod남.
 	connection->sender.connection = connection;
 	drbd_thread_init(resource, &connection->ack_receiver, drbd_ack_receiver, "ack_recv");
 	connection->ack_receiver.connection = connection;
