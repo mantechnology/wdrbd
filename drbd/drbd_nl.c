@@ -102,14 +102,14 @@ err_out:
 bool capable(int cap)
 {
 	// only used here drbd_nl.c
-	// 
+    // CAP_SYS_ADMIN 설정을 확인한다.
+    // [choi] wdrbd에서는 해당 설정 확인이 의미 없어 보여서 무조건 false를 return 하도록 함.
     return false;
 }
 #endif
 
 #ifdef _WIN32 
-// _WIN32_CHECK:JHKIM: V8에서는 이 전역이 이곳에 정의됨. 빌드 오류로 일단 다시 코멘트
-// [choi] genl_magic_func.h 의 ZZZ_genl_family 사용. 동작에 문제없다면 삭제할것.
+// [choi] genl_magic_func.h 의 ZZZ_genl_family 사용.
 // struct genl_family drbd_genl_family;
 #endif
 
@@ -167,8 +167,8 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 atomic_t drbd_genl_seq = ATOMIC_INIT(2); /* two. */
 
 #ifdef _WIN32_V9 
-// _WIN32_CHECK:JHKIM: __MUTEX_INITIALIZER 무시, 전역으로 정의하고 엔진 시작부에서 mutex_init로 초기화하는 것으로 대체해도 무방. 재확인 필요. 
-// [choi] noti mutex 동작 확인 필요.
+// JHKIM: __MUTEX_INITIALIZER 무시, 전역으로 정의하고 엔진 시작부에서 mutex_init로 초기화하는 것으로 대체해도 무방. 재확인 필요. 
+// [choi] noti mutex 동작 확인함. 대체해도 무방.
 struct mutex notification_mutex;
 #else
 DEFINE_MUTEX(notification_mutex);
@@ -177,8 +177,7 @@ DEFINE_MUTEX(notification_mutex);
 /* used blkdev_get_by_path, to claim our meta data device(s) */
 static char *drbd_m_holder = "Hands off! this is DRBD's meta data device.";
 
-#ifdef _WIN32 // _WIN32_CHECK: netlink에서도 불려짐으로 전역함수로 처리. 
-//[choi] netlink에서 불려지고 있다. 전역 처리 유지
+#ifdef _WIN32 // netlink에서도 불려짐으로 전역함수로 처리. 
 void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
 #else
 static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
@@ -492,8 +491,7 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 
 	adm_ctx->reply_dh->ret_code = retcode;
 	drbd_adm_send_reply(adm_ctx->reply_skb, info);
-#ifdef _WIN32_V9 // _WIN32_CHECK: V8에서 free 가 삽입되었는데 V9에서도 필요한지 확인 필요 
-    // [choi] DW-211 memory leak 해결을 위한 보강코드임. 일단 유지.
+#ifdef _WIN32_V9 // DW-211 memory leak 해결을 위한 보강코드. 
 	nlmsg_free(adm_ctx->reply_skb);
 #endif
 	adm_ctx->reply_skb = NULL;
@@ -879,7 +877,7 @@ static int _try_outdate_peer_async(void *data)
 
 	kref_debug_put(&connection->kref_debug, 4);
 	kref_put(&connection->kref, drbd_destroy_connection);
-#ifdef _WIN32 // _WIN32_CHECK; CLI 스레드 종결지점 재확인.
+#ifdef _WIN32 // CLI 스레드 종결지점 재확인. [choi] 여기서 종결시키는게 맞음.
 	PsTerminateSystemThread(STATUS_SUCCESS); 
 #endif
 	return 0;
@@ -1726,9 +1724,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 		b = bdev->backing_bdev->bd_disk->queue;
 
 		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
-//#ifdef _WIN32_CHECK [choi] 구조체 변수 limits 추가. 기능 불필요시 삭제.
-		blk_set_stacking_limits(&q->limits);
-//#endif
+		blk_set_stacking_limits(&q->limits); // [choi] 구조체 변수 limits 추가. 기능 불필요시 삭제.
 #ifdef REQ_WRITE_SAME
 		blk_queue_max_write_same_sectors(q, 0);
 #endif
@@ -1743,9 +1739,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 	if (b) {
 		struct request_queue * const b = device->ldev->backing_bdev->bd_disk->queue;
 		u32 agreed_featurs = common_connection_features(device->resource);
-//#ifdef _WIN32_CHECK [choi] queue_limits 구조체 추가.
 		q->limits.max_discard_sectors = DRBD_MAX_DISCARD_SECTORS;
-
 		if (blk_queue_discard(b) && (agreed_featurs & FF_TRIM)) {
 			/* We don't care, stacking below should fix it for the local device.
 			 * Whether or not it is a suitable granularity on the remote device
@@ -1758,8 +1752,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 			q->limits.discard_granularity = 0;
 		}
-//#endif
-#ifndef _WIN32 // _WIN32_CHECK [choi] V8에서 disable 돼 있음.
+#ifndef _WIN32 // [choi] V8에서 disable 돼 있음.
 		blk_queue_stack_limits(q, b);
 #endif
 		if (q->backing_dev_info.ra_pages != b->backing_dev_info.ra_pages) {
@@ -1769,14 +1762,12 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			q->backing_dev_info.ra_pages = b->backing_dev_info.ra_pages;
 		}
 	}
-//#ifdef _WIN32_CHECK [choi] queue_limits 구조체 추가.
 	/* To avoid confusion, if this queue does not support discard, clear
 	 * max_discard_sectors, which is what lsblk -D reports to the user.  */
 	if (!blk_queue_discard(q)) {
 		q->limits.max_discard_sectors = 0;
 		q->limits.discard_granularity = 0;
 	}
-//#endif
 }
 
 void drbd_reconsider_max_bio_size(struct drbd_device *device, struct drbd_backing_dev *bdev)
@@ -1989,6 +1980,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 
 #ifdef _WIN32
 	// moved // _WIN32_CHECK: V8에서는 이곳 도달 이전에 synchronize_rcu가 모두 처리되었다는 의미로 기억됨. null처리 시 락이 모두 처리되었느지 확인
+    // [choi] 1955 라인으로 moved 된듯.
 #else
 	synchronize_rcu();
 #endif
@@ -3416,9 +3408,9 @@ fail_free_connection:
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
-//#ifdef _WIN32_CHECK
+#ifndef _WIN32_V9 // [choi] drbd_put_transport_class not support.
 	drbd_put_transport_class(tr_class);
-//#endif
+#endif
 fail:
 	free_crypto(&crypto);
 	kfree(new_net_conf);
@@ -3774,7 +3766,7 @@ void del_connection(struct drbd_connection *connection)
 	mutex_unlock(&notification_mutex);
 //#ifdef _WIN32_V9
 	//synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
-    // [choi] 3630 라인으로 이동.
+    // [choi] drbd_unregister_connection() 위로 이동.
 //#endif
 	synchronize_rcu();
 	drbd_put_connection(connection);
@@ -4480,7 +4472,6 @@ put_result:
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL);
 	if (err)
 		goto out;
-//#ifdef _WIN32_CHECK //[choi] capable 확인필요. V8에서는 capable 부분이 disable 되어있다.
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
@@ -4525,7 +4516,7 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
-#ifdef _WIN32_CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
+#ifndef _WIN32_V9 //CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << BDI_async_congested) |

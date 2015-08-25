@@ -504,7 +504,14 @@ static void __state_change_unlock(struct drbd_resource *resource, unsigned long 
 	resource->state_change_flags = 0;
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
 	if (done && expect(resource, current != resource->worker.task))
+#ifdef _WIN32 // V8 적용
+        while (wait_for_completion(done) == -DRBD_SIGKILL)
+        {
+            WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+        }
+#else
 		wait_for_completion(done);
+#endif
 	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARE)))
 		up(&resource->state_sem);
 }
