@@ -95,6 +95,33 @@ int fls(int x)
 
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
+ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
+{
+	const ULONG_PTR* p = addr;
+	ULONG_PTR result = 0;
+	ULONG_PTR tmp;
+
+	while (size & ~(BITS_PER_LONG - 1)) {
+		if ((tmp = *(p++)))
+			goto found;
+		result += BITS_PER_LONG;
+		size -= BITS_PER_LONG;
+	}
+	if (!size)
+		return result;
+#ifdef _WIN64
+	tmp = (*p) & (~0ULL >> (BITS_PER_LONG - size));
+	if (tmp == 0ULL)	{	/* Are any bits set? */
+#else
+	tmp = (*p) & (~0UL >> (BITS_PER_LONG - size));
+	if (tmp == 0UL)	{	/* Are any bits set? */
+#endif
+		return result + size;	/* Nope. */
+	}
+found:
+	return result + __ffs(tmp);
+}
+
 #pragma warning ( disable : 4706 )
 ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 {
@@ -142,6 +169,8 @@ found_first:
 found_middle:
 	return result + __ffs(tmp);
 }
+
+
 
 const char _zb_findmap [] = {
     0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,
@@ -2580,5 +2609,6 @@ void list_cut_position(struct list_head *list, struct list_head *head, struct li
 	else
 		__list_cut_position(list, head, entry);
 }
+
 
 #endif

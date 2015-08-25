@@ -1156,22 +1156,20 @@ start:
 	drbd_thread_start(&connection->ack_receiver);
 
 //#ifdef _WIN32_TODO
-	
+	connection->ack_sender =
 #ifdef _WIN32_V9
 	
-#ifdef _WIN32_TODO //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
+//#ifdef _WIN32_TODO //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
 		// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
-	connection->ack_sender =
-		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_ack_sender, '31DW');
-#endif
+		// 일반 쓰레드로 포팅: drbd_send_peer_ack_wf 로 대체된 작업자 워커함수를 지정하고 일단 마무리 한다.
+		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_send_peer_ack_wf, '31DW');
+//#endif
 #else
-	connection->ack_sender =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
 		create_singlethread_workqueue("drbd_ack_sender");
 #endif
-
 #endif
 //#endif
 
@@ -7943,14 +7941,14 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
 	int node_id;
-#ifdef _WIN32_TODO
-	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass
+//#ifdef _WIN32_TODO
+	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass => 포팅 완료.
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)
 			bitmap_bits |= NODE_MASK(bitmap_bit);
 	}
-#endif
+//#endif
 	return bitmap_bits;
 }
 
@@ -8368,6 +8366,7 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 
 
 #ifdef _WIN32_CHECK //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
+// V9에서 drbd_send_peer_ack_wf 함수로 대체.
 int drbd_ack_sender(struct drbd_thread *thi)
 {
 

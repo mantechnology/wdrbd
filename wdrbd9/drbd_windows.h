@@ -991,6 +991,7 @@ extern int wake_up_process(struct task_struct *nt);
 extern void _wake_up(wait_queue_head_t *q, char *__func, int __line);
 
 extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
+extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //linux 3.x 커널 구현 참고.+ 64비트 대응 추가 sekim
 extern size_t find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
 extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
 
@@ -1408,6 +1409,12 @@ static int scnprintf(char *buffer, int size, char *str)
 #ifdef _WIN32_V9
 
 void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry);
+
+// find_first_bit 구현 추가 + find_next_bit 조합 => linux 3.x 커널 구현 참고. sekim
+#define for_each_set_bit(bit, addr, size) \
+	for ((bit) = find_first_bit((addr), (size));		\
+	     (bit) < (size);					\
+	     (bit) = find_next_bit((addr), (size), (bit) + 1))
 
 #endif
 
