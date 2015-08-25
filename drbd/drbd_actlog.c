@@ -24,7 +24,7 @@
  */
 
 #ifdef _WIN32
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 #include "drbd_wingenl.h"
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"

@@ -21,7 +21,7 @@
 */
  
 #ifdef _WIN32
-#include "drbd_windrv.h"	/// SEO:
+#include "drbd_windows.h"
 #include "rbtree.h"
 #else
 //#include<linux/rbtree.h>

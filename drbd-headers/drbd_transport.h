@@ -3,7 +3,7 @@
 #ifdef _WIN32
 #include "linux-compat/list.h"
 #include "linux-compat/wait.h"
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 #else
 #include <linux/kref.h>
 #include <linux/list.h>

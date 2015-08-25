@@ -6,7 +6,7 @@
 #include "linux-compat/rbtree.h"
 #include "linux-compat/idr.h"
 #include "drbd_wingenl.h"
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 
 #include "linux-compat/Backing-dev.h"
 #else

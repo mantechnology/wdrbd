@@ -4,7 +4,6 @@
 #else
 //#define _WIN32_APP
 #define _WIN32
-#include "../wrapper/drbd_windows.h"
 #include <linux/drbd.h>
 #endif
 

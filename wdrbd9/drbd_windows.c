@@ -1,7 +1,7 @@
 ﻿#include <stdint.h>
 #include <stdarg.h>
 #include <intrin.h>
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 #include "wsk2.h"
 #include "drbd_wingenl.h"
 #include "linux-compat/idr.h"

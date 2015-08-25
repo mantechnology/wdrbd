@@ -4,7 +4,7 @@
 #include <wsk.h>
 #include "linux-compat/list.h"
 #include "windows/wingenl.h"
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 
 struct sk_buff
 {

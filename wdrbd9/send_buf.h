@@ -1,7 +1,7 @@
 ﻿#ifndef __WIN32_SEND_BUFFING_H
 #define __WIN32_SEND_BUFFING_H
 
-#include "drbd_windrv.h"	
+#include "drbd_windows.h"	
 #include "wsk2.h"	
 
 #define SENDER_IS_RECV			0

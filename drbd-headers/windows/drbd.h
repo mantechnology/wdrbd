@@ -420,4 +420,5 @@ enum drbd_notification_type {
 
 #define DRBD_MAX_BIO_SIZE (1U << 20)
 
+#define _WIN32_MVFL
 #endif

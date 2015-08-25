@@ -2,7 +2,7 @@
 #include <ntddk.h>
 #include <stdlib.h>
 #include <Mountmgr.h> 
-#include "drbd_windrv.h"	/// SEO:
+#include "drbd_windows.h"
 #include "drbd_wingenl.h"	/// SEO:
 #include "proto.h"
 #include "drbd_int.h"

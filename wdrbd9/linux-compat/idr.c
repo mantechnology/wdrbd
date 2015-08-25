@@ -26,7 +26,7 @@
 */
 
 #ifdef _WIN32
-#include "drbd_windrv.h"	/// SEO:
+#include "drbd_windows.h"
 #include "drbd_wingenl.h"	/// SEO:
 #include "idr.h"
 #else

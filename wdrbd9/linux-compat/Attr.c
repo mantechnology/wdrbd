@@ -1,6 +1,6 @@
 ﻿#include "windows/types.h"
 #include "drbd_wingenl.h"
-#include "drbd_windrv.h"
+#include "drbd_windows.h"
 
 static u16 nla_attr_minlen[NLA_TYPE_MAX + 1] __read_mostly = {
     [NLA_U8] = sizeof(u8),

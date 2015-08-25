@@ -1,8 +1,9 @@
 ﻿#ifdef _WIN32
-#include "drbd_windows.h"
+#include <windows.h>
 #include <errno.h>
 #include "drbdtool_common.h"
 #include <arpa/inet.h>
+#define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"
 #endif
 #include "libgenl.h"
 
