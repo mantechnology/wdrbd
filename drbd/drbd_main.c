@@ -3787,7 +3787,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 #endif
 	drbd_thread_init(resource, &connection->receiver, drbd_receiver, "receiver");
 	connection->receiver.connection = connection;
-	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender");
+	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender"); // _WIN32_CHECK [choi] bsod남.
 	connection->sender.connection = connection;
 	drbd_thread_init(resource, &connection->ack_receiver, drbd_ack_receiver, "ack_recv");
 	connection->ack_receiver.connection = connection;
@@ -3894,7 +3894,9 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 		return NULL;
 	}
 
+#ifndef _WIN32_V9
 	init_timer(&peer_device->start_resync_timer);
+#endif
 	peer_device->start_resync_timer.function = start_resync_timer_fn;
 #ifdef _WIN32_V9
     peer_device->start_resync_timer.data = peer_device;
@@ -3904,13 +3906,21 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 
 	INIT_LIST_HEAD(&peer_device->resync_work.list);
 	peer_device->resync_work.cb  = w_resync_timer;
+#ifndef _WIN32_V9
 	init_timer(&peer_device->resync_timer);
+#endif
 	peer_device->resync_timer.function = resync_timer_fn;
 #ifdef _WIN32
     peer_device->resync_timer.data = peer_device;
 #else
 	peer_device->resync_timer.data = (unsigned long) peer_device;
 #endif
+
+#ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
+    init_timer(&peer_device->start_resync_timer);
+    init_timer(&peer_device->resync_timer);
+#endif
+
 	INIT_LIST_HEAD(&peer_device->propagate_uuids_work.list);
 	peer_device->propagate_uuids_work.cb = w_send_uuids;
 
@@ -4014,8 +4024,10 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	spin_lock_init(&device->pending_bitmap_work.q_lock);
 	INIT_LIST_HEAD(&device->pending_bitmap_work.q);
 
+#ifndef _WIN32_V9
 	init_timer(&device->md_sync_timer);
 	init_timer(&device->request_timer);
+#endif
 	device->md_sync_timer.function = md_sync_timer_fn;
 #ifdef _WIN32
     device->md_sync_timer.data = device;
@@ -4027,6 +4039,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     device->request_timer.data = device;
 #else
 	device->request_timer.data = (unsigned long) device;
+#endif
+
+#ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
+    init_timer(&device->md_sync_timer);
+    init_timer(&device->request_timer);
 #endif
 
 	init_waitqueue_head(&device->misc_wait);
@@ -4052,16 +4069,29 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	set_disk_ro(disk, true);
 
 	disk->queue = q;
-#ifdef _WIN32_CHECK
+#ifdef _WIN32 // V8 적용
+    //unused
+#else
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
 	disk->fops = &drbd_ops;
-	sprintf(disk->disk_name, "drbd%d", minor);
-	disk->private_data = device;
+#endif
+    sprintf(disk->disk_name, "drbd%d", minor);
+#ifndef _WIN32 // V8 적용
+    disk->private_data = device;
 
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
+#else
+    {
+        char *buf[2];
+        buf[0] = minor + 'C';
+        buf[1] = 0;
+        device->this_bdev = blkdev_get_by_path(buf, 0, 0);
+        if (!device->this_bdev)
+            goto out_no_disk;
+    }
 #endif
 #ifdef _WIN32
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
@@ -4091,8 +4121,13 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->bitmap = drbd_bm_alloc();
 	if (!device->bitmap)
 		goto out_no_bitmap;
+#ifdef _WIN32 // V8 적용
+    memset(&device->read_requests, 0, sizeof(struct rb_root));
+    memset(&device->write_requests, 0, sizeof(struct rb_root));
+#else
 	device->read_requests = RB_ROOT;
 	device->write_requests = RB_ROOT;
+#endif
 
 	BUG_ON(!mutex_is_locked(&resource->conf_update));
 	for_each_connection(connection, resource) {

@@ -2568,6 +2568,7 @@ void panic(char *msg)
 	KeBugCheckEx(0xddbd, __FILE__, __func__, 0x12345678, 0xd8bdd8bd);
 }
 
+// [choi] 사용되는 곳 없음.
 int kobject_init_and_add(struct kobject *kobj, struct kobj_type *ktype, struct kobject *parent, const char *name)
 {
     kobj->name = name;

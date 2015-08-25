@@ -74,11 +74,11 @@ static struct drbd_transport_class *get_transport_class(const char *name)
 	down_read(&transport_classes_lock);
 	tc = __find_transport_class(name);
 #ifdef _WIN32_V9
-	if (tc) // not support!
+    // try_module_get() not support!
 #else
 	if (tc && !try_module_get(tc->module))
-#endif
 		tc = NULL;
+#endif
 	up_read(&transport_classes_lock);
 	return tc;
 }
@@ -93,8 +93,8 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 		// 드라이버 사용안함!
 		// 드라이버 로드 요청은 무시하고 직접 초기화, 이 작업으로 drbd_transport_ops 사용가능.
 		// 최종 버전에서는 class 부분을 통째로 무시해도 될 듯
-		//extern int __init dtt_initialize(void);
-		//dtt_initialize(); =>>>>>>>>>> link 에러 임시 주석 처리... 
+		extern int __init dtt_initialize(void);
+		dtt_initialize();
 #else
 		request_module("drbd_transport_%s", name);
 #endif
