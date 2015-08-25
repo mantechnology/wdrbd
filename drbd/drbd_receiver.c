@@ -2076,7 +2076,7 @@ fail:
 
 #ifdef _WIN32_V9 // V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요. 
 // => rename 된 것이 맞고, 구현도 변경됨(기존 메모리 해제 연산이 포함되어 있었는데... 제거됨.)
-//
+// => 착오 : rename 된 것이 아니고, 기존 V8 ignore_remaining_packet 으로 대체된 것... 분석 해 놓고도 다시 삽질을 하였다.
 static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 {
 	void *data_to_ignore;
@@ -2334,6 +2334,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 			drbd_err(device, "Can not write resync data to local disk.\n");
 
 		// drbd_drain_block 에서 ignore_remaining_packet 으로 rename. 따라서 drbd에서 drain 의 의미는 버려버린다는 의미로 해석가능한가?... 버려도 되나?(무엇을?)...
+		// rename 된것이 아니고 기존 ignore_remaining_packet 으로 대체된 것.
 		err = ignore_remaining_packet(connection, pi->size); 
 
 		drbd_send_ack_dp(peer_device, P_NEG_ACK, p, pi->size);
@@ -4320,7 +4321,6 @@ disconnect:
 #endif
 	kfree(int_dig_vv);
 
-
 	change_cstate(connection, C_DISCONNECTING, CS_HARD); // V9. conn_request_state 에서 change_cstate 로 변경.
 
 	return -EIO;
@@ -4352,9 +4352,9 @@ static struct crypto_hash *drbd_crypto_alloc_digest_safe(const struct drbd_devic
 	return tfm;
 }
 
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK
 // ignore_remaining_packet 사라짐. => 구현 위치 변경됨.
-#endif
+//#endif
 /*
  * config_unknown_volume  -  device configuration command for unknown volume
  *
@@ -4420,17 +4420,17 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	}
 
 
-	// V8 에 있던 아래 코드 제거됨.
+	// V8 에 있던 아래 코드 제거됨. => 내부 버퍼를 사용하도록 V9에서 수정된 사항.
 	//p = pi->data;
 	//memset(p->verify_alg, 0, 2 * SHARED_SECRET_MAX);
 	err = drbd_recv_all(connection, (void **)&p, header_size + data_size);
 	if (err)
 		return err;
 
-#ifdef _WIN32_TODO
-	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
+//#ifdef _WIN32_TODO
+	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => mutex_lock_interruptible 포팅 됨. 
 	err = mutex_lock_interruptible(&resource->conf_update);
-#endif
+//#endif
 	if (err) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		return err;
@@ -4581,10 +4581,9 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 
 	mutex_unlock(&resource->conf_update);
 
-#ifdef _WIN32_TODO
-	// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-	synchronize_rcu();
-#endif
+//#ifdef _WIN32_TODO
+	synchronize_rcu(); // 함수 scope 를 벗어난 rcu 해제... V9 포팅필요. => synchronize_rcu 의미 파악 착오. 포팅 완료.
+//#endif
 
 	if (new_net_conf)
 		kfree(old_net_conf);
@@ -4636,7 +4635,7 @@ static void warn_if_differ_considerably(struct drbd_device *device,
 		drbd_warn(device, "Considerable difference in %s: %llus vs. %llus\n", s,
 		     (unsigned long long)a, (unsigned long long)b);
 }
-#ifdef _WIN32_V9 //V9 에 새롭게 추가됨.
+//#ifdef _WIN32_V9 //V9 에 새롭게 추가됨.
 /* Maximum bio size that a protocol version supports. */
 static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 {
@@ -4647,9 +4646,9 @@ static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 	else
 		return DRBD_MAX_SIZE_H80_PACKET;
 }
-#endif
+//#endif
 
-#ifdef _WIN32_V9
+//#ifdef _WIN32_V9
 static int receive_sizes(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device;
@@ -4684,19 +4683,20 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	 * take his (user-capped or) backing disk size anyways.
 	 */
 	
-#ifdef _WIN32
-#ifdef _WIN32_CHECK
-		// ?: 의미가 정확히 적용됬는지 확인 필요.
-		peer_device->max_size = be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
-#endif
+#ifdef _WIN32_V9
+//#ifdef _WIN32_CHECK
+		// ?: 의미가 정확히 적용됬는지 확인 필요. => 일단 ? : C99 문법 의미대로 풀어서 포팅. 추후 런타임 동작 시 값 추적 필요.
+		peer_device->max_size = 
+			be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
+//#endif
 #else 
-		peer_device->max_size = be64_to_cpu(p->c_size) ? : be64_to_cpu(p->u_size) ? : be64_to_cpu(p->d_size);
+		peer_device->max_size = 
+			be64_to_cpu(p->c_size) ? : be64_to_cpu(p->u_size) ? : be64_to_cpu(p->d_size);
 #endif
 
 	if (get_ldev(device)) {
-#ifdef _WIN32_V9
 		sector_t p_usize = be64_to_cpu(p->u_size), my_usize;
-#endif
+		
 		have_ldev = true;
 
 		rcu_read_lock();
@@ -4715,12 +4715,11 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 		/* Never shrink a device with usable data during connect.
 		   But allow online shrinking if we are connected. */
-#ifdef _WIN32_V9 // 기존 mdev->state.conn < C_CONNECTED 에서 L_ESTABLISHED 로 변경.
+
 		if (drbd_new_dev_size(device, p_usize, 0) <
 		    drbd_get_capacity(device->this_bdev) &&
 		    device->disk_state[NOW] >= D_OUTDATED &&
-		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
-#endif
+		    peer_device->repl_state[NOW] < L_ESTABLISHED) { // 기존 mdev->state.conn < C_CONNECTED 에서 L_ESTABLISHED 로 변경.
 			drbd_err(device, "The peer's disk size is too small!\n");
 			change_cstate(connection, C_DISCONNECTING, CS_HARD);
 			err = -EIO;
@@ -4739,10 +4738,11 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				err = -ENOMEM;
 				goto out;
 			}
-#ifdef _WIN32_TODO
-			// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
-			err = mutex_lock_interruptible(&connection->resource->conf_update);
-#endif
+
+//#ifdef _WIN32_TODO
+			// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => 포팅 완료.
+			err = mutex_lock_interruptible(&connection->resource->conf_update); 
+//#endif
 			if (err) {
 				drbd_err(connection, "Interrupted while waiting for conf_update\n");
 				goto out;
@@ -4750,13 +4750,14 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			old_disk_conf = device->ldev->disk_conf;
 			*new_disk_conf = *old_disk_conf;
 			new_disk_conf->disk_size = p_usize;
-
+#ifdef _WIN32
+			synchronize_rcu_w32_wlock(); // 기초스스 빌드 누락 분 추가.
+#endif
 			rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
 			mutex_unlock(&connection->resource->conf_update);
-#ifdef _WIN32_TODO
-			// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-			synchronize_rcu(); // lock 획득 코드 확인 필요.
-#endif
+///#ifdef _WIN32_TODO
+			synchronize_rcu(); // lock 획득 코드 확인 필요. => 확인.상단 synchronize_rcu_w32_wlock 추가.
+//#endif
 			kfree(old_disk_conf);
 
 			drbd_info(device, "Peer sets u_size to %lu sectors\n",
@@ -4768,10 +4769,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	 * peers before protocol version 94 cannot split large requests into
 	 * multiple bios; their reported max_bio_size is a hard limit.
 	 */
-#ifdef _WIN32_V9 
+
 	protocol_max_bio_size = conn_max_bio_size(connection);
 	peer_device->max_bio_size = min(be32_to_cpu(p->max_bio_size), protocol_max_bio_size);
-#endif
 	ddsf = be16_to_cpu(p->dds_flags);
 
 	/* Leave drbd_reconsider_max_bio_size() before drbd_determine_dev_size().
@@ -4788,7 +4788,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		}
 		drbd_md_sync(device);
 	} else {
-#ifdef _WIN32_V9 //V9에 새롭게 추가된 부분.
+		// V9 에 새롭게 추가된 부분.
 		struct drbd_peer_device *peer_device;
 		sector_t size = 0;
 
@@ -4804,12 +4804,12 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			size = min_not_zero(size, peer_device->max_size);
 		}
 		rcu_read_unlock();
-#endif
+
 		if (size)
 			drbd_set_my_capacity(device, size);
 	}
 
-#ifdef _WIN32_V9 // V9 에 추가된 부분.
+	// V9 에 추가된 부분.
 	if (device->device_conf.max_bio_size > protocol_max_bio_size ||
 	    (connection->agreed_pro_version < 94 &&
 	     device->device_conf.max_bio_size > peer_device->max_bio_size)) {
@@ -4820,7 +4820,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		err = -EIO;
 		goto out;
 	}
-#endif
+
 	
 	// get_ldev 에서 have_ldev 로 변경. _WIN32_V9
 	if (have_ldev) { 
@@ -4855,16 +4855,15 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	}
 	err = 0;
 
-#ifdef _WIN32_V9 // 결국 여기서 put_ldev 한다. 
 out:
 	if (have_ldev)
-		put_ldev(device);
-#endif
+		put_ldev(device);// 결국 여기서 put_ldev 한다. 
+
 	return err;
 }
-#endif
+//#endif
 
-#ifdef _WIN32_V9 //새롬게 추가된 함수.
+
 void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __must_hold(local)
 {
 	enum drbd_role peer_role = peer_device->connection->peer_role[NOW];
@@ -4893,9 +4892,9 @@ void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __must_hol
 		drbd_info(peer_device, "...postponing this until current resync finished\n");
 	}
 }
-#endif
 
-#ifdef _WIN32_V9 // 새롭게 추가된 함수.
+
+
 static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 {
 	enum drbd_repl_state repl_state = peer_device->repl_state[NOW];
@@ -4986,9 +4985,9 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 
 	return err;
 }
-#endif
 
-#ifdef _WIN32_V9 // 기존 receive_uuids 에서 다 구현하던 것을 __receive_uuids 로 배분한듯.
+
+// 기존 receive_uuids 에서 다 구현하던 것을 __receive_uuids 로 배분한듯.
 static int receive_uuids(struct drbd_connection *connection, struct packet_info *pi)
 {
 	const int node_id = connection->resource->res_opts.node_id;
@@ -5015,9 +5014,9 @@ static int receive_uuids(struct drbd_connection *connection, struct packet_info 
 
 	return __receive_uuids(peer_device, 0);
 }
-#endif
 
-#ifdef _WIN32_V9 // V9에 새롭게 추가된 함수.
+
+// V9에 새롭게 추가된 함수.
 static int receive_uuids110(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device;
@@ -5101,7 +5100,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	return err;
 }
-#endif
+
 
 /**
  * convert_state() - Converts the peer's view of the cluster state to our point of view
