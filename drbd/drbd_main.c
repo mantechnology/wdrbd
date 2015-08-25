@@ -3483,7 +3483,14 @@ void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
+#ifdef _WIN32 // V8 적용
+    while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL)
+    {
+        WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+    }
+#else
 	wait_for_completion(&completion_work.done);
+#endif
 }
 
 struct drbd_resource *drbd_find_resource(const char *name)
@@ -5720,7 +5727,7 @@ void lock_all_resources(void)
 #ifdef _WIN32_CHECK // kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규
 	local_irq_disable(); //프로세서의 인터럽트 처리 금지
 	for_each_resource(resource, &drbd_resources)
-		spin_lock_nested(&resource->req_lock, i++);
+		spin_lock_nested(&resource->req_lock, i++); // [choi] drbd: Use spin_lock_nested() for taking resource->req_lock recursively
 #endif
 }
 
