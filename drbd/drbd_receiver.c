@@ -3109,7 +3109,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif
 	
-#ifdef _WIN32_V9 // V8에 비해 변경됨.
+//#ifdef _WIN32_V9 // V8에 비해 변경됨.
 	err = -ENOMEM;
 	if (!peer_req)
 		goto fail;
@@ -3118,26 +3118,27 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 		if (!peer_req->pages)
 			goto fail2;
-
+#ifdef _WIN32
 		peer_req->win32_big_page = peer_req->pages; //V8의 구현을 따라간다.
+#endif
 	}
 	else {
+#ifdef _WIN32
 		peer_req->win32_big_page = NULL; //V8의 구현을 따라간다.
+#endif
 	}
 
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = p->block_id;
-#endif
+//#endif
 
 	switch (pi->cmd) {
 	case P_DATA_REQUEST:
 		peer_req->w.cb = w_e_end_data_req;
 		fault_type = DRBD_FAULT_DT_RD;
 		/* application IO, don't drbd_rs_begin_io */
-#ifdef _WIN32_V9
-		peer_req->flags |= EE_APPLICATION;
-#endif
+		peer_req->flags |= EE_APPLICATION; //V9 에 추가된 부분.
 		goto submit;
 
 	case P_RS_DATA_REQUEST:
@@ -3164,9 +3165,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		peer_req->digest = di;
 		peer_req->flags |= EE_HAS_DIGEST;
 
-#ifdef _WIN32_V9 // drbd_recv_all 에서 drbd_recv_into 로 변경.
-		err = drbd_recv_into(connection, di->digest, pi->size);
-#endif
+		err = drbd_recv_into(connection, di->digest, pi->size); // drbd_recv_all 에서 drbd_recv_into 로 변경.
 		if (err)
 			goto fail2;
 
@@ -3194,7 +3193,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 #else
 				unsigned long now = jiffies;
 #endif
-#ifdef _WIN32_CHECK // 포팅중 실수해서 다시 붙여 넣음... 틀린부분 없는지 한번 더 재검토 요망.
+//#ifdef _WIN32_CHECK // 포팅 중 실수해서 다시 붙여 넣음... 틀린부분 없는지 한번 더 재검토 요망. => 재확인 완료.
 				int i;
 				peer_device->ov_start_sector = sector;
 				peer_device->ov_position = sector;
@@ -3206,7 +3205,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 				}
 				drbd_info(device, "Online Verify start sector: %llu\n",
 					(unsigned long long)sector);
-#endif
+//#endif
 		}
 		peer_req->w.cb = w_e_end_ov_req;
 		fault_type = DRBD_FAULT_RS_RD;
@@ -3238,7 +3237,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	 * we would also throttle its application reads.
 	 * In that case, throttling is done on the SyncTarget only.
 	 */
-#ifdef _WIN32_V9  // 기존에 비해 뭔가 많이 추가 됬다.
+//#ifdef _WIN32_V9  // 기존에 비해 뭔가 많이 추가 됬다. peer_req 의 w.list 에 read_ee 를 삽입, update_receiver_timing_details, agreed_pro_version 에 따라 동작을 달리한다.
 	/* Even though this may be a resync request, we do add to "read_ee";
 	 * "sync_ee" is only used for resync WRITEs.
 	 * Add to list early, so debugfs can find this request
@@ -3252,7 +3251,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	    drbd_rs_should_slow_down(peer_device, sector, false))
 		schedule_timeout_uninterruptible(HZ/10);
 
-	if (connection->agreed_pro_version >= 110) {
+	if (connection->agreed_pro_version >= 110) { //agreed_pro_version 체크를 하는 이유가 무엇인가?... 프로토콜 버전??? 이 있는지 확인 요망.
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
 		   Instruct the SyncSource to retry */
 		err = drbd_try_rs_begin_io(peer_device, sector, false);
@@ -3268,17 +3267,17 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			goto fail3;
 		}
 	}
-#endif
+//#endif
 
 submit_for_resync:
 	atomic_add(size >> 9, &device->rs_sect_ev);
 
 submit:
-#ifdef _WIN32_V9
-	update_receiver_timing_details(connection, drbd_submit_peer_request);
-#endif
+//#ifdef _WIN32_V9
+	update_receiver_timing_details(connection, drbd_submit_peer_request); // update_receiver_timing_details 이 종종 불려진다. 무슨 의미?
+//#endif
 	inc_unacked(peer_device);
-	// 기존의 list_add_tail(&peer_req->w.list, &mdev->read_ee); 코드가 상단으로 올라감.
+	// 기존의 list_add_tail(&peer_req->w.list, &mdev->read_ee); 코드가 상단으로 올라감. 의미?
 	if (drbd_submit_peer_request(device, peer_req, READ, fault_type) == 0)
 		return 0;
 
