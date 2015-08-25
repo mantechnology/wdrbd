@@ -995,6 +995,14 @@ NTSTATUS mutex_lock(struct mutex *m)
     return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, FALSE, NULL);
 }
 
+#ifdef _WIN32_V9
+__inline
+NTSTATUS mutex_lock_interruptible(struct mutex *m)
+{
+	return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, TRUE, NULL); //Alertable 인자가 TRUE
+}
+#endif
+
 // Returns 1 if the mutex is locked, 0 if unlocked.
 int mutex_is_locked(struct mutex *m)
 {

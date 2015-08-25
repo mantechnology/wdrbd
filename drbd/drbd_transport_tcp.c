@@ -163,7 +163,7 @@ static void dtt_free_one_sock(struct socket *socket)
 	if (socket) {
 #ifdef _WIN32_TODO
 		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-		synchronize_rcu();
+		synchronize_rcu(); // lock 획득이 제대로 되고 있는지...dtt_free_one_sock 호출 부 확인 필요
 #endif
 		kernel_sock_shutdown(socket, SHUT_RDWR);
 		sock_release(socket);

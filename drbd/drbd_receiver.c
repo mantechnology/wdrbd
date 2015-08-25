@@ -4206,7 +4206,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		}
 #ifdef _WIN32
 		// RCU_SPECIAL_CASE
-		ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1);
+		ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1); 
 #else
 		rcu_read_unlock();
 #endif
@@ -4258,13 +4258,13 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		goto disconnect;
 	}
 
-#ifdef _WIN32_TODO
-	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. 
-	if (mutex_lock_interruptible(&connection->resource->conf_update)) {
+//#ifdef _WIN32_TODO
+	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => alertable mutex_lock 으로 구현 완료.
+	if (mutex_lock_interruptible(&connection->resource->conf_update)) { 
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		goto disconnect;
 	}
-#endif
+//#endif
 
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	old_net_conf = connection->transport.net_conf;
@@ -4276,7 +4276,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	new_net_conf->after_sb_2p = convert_after_sb(p_after_sb_2p);
 	new_net_conf->two_primaries = p_two_primaries;
 
-#ifdef _WIN32 // V8 의 코드를 가져옴.로직 상 맞는지 확인 필요. _WIN32_CHECK
+#ifdef _WIN32 // V8 의 코드를 가져옴.로직 상 맞는지 확인 필요. _WIN32_CHECK // 이 부분이 V8 기존 구현에 왜 들어갔는지? 이해가 안됨. 이유가?? => 하단부 synchronize_rcu 와 짝을 맞추기 위한 lock 획득 코드로 보인다.
 	synchronize_rcu_w32_wlock();
 #endif
 	rcu_assign_pointer(connection->transport.net_conf, new_net_conf);
@@ -4293,20 +4293,17 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	if (strcmp(old_net_conf->integrity_alg, integrity_alg))
 		drbd_info(connection, "peer data-integrity-alg: %s\n",
 			  integrity_alg[0] ? integrity_alg : "(none)");
-#ifdef _WIN32_TODO
-	// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-	synchronize_rcu();
-#endif
+//#ifdef _WIN32_TODO
+	synchronize_rcu(); // 함수 scope 를 벗어난 rcu 해제... V9 포팅필요. => synchronize 이름으로 인한 착오... 락 획득함수로 오인. 해제함수 이다.
+//#endif
 	kfree(old_net_conf);
 	return 0;
 
 disconnect_rcu_unlock:
 
-
-
-#ifdef _WIN32 // 로직이 맞는지 확인 필요하다. _WIN32_CHECK
+#ifdef _WIN32 // 로직이 맞는지 확인 필요하다. _WIN32_CHECK => 확인되었음.
 	// RCU_SPECIAL_CASE
-	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1);
+	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1); 
 #else
 	rcu_read_unlock();
 #endif
@@ -4317,14 +4314,15 @@ disconnect:
 	if (int_dig_in)
 #endif
 	kfree(int_dig_in);
+
 #ifdef _WIN32
 	if (int_dig_vv)
 #endif
 	kfree(int_dig_vv);
 
-#ifdef _WIN32_V9 // conn_request_state 에서 change_cstate 로 변경.
-	change_cstate(connection, C_DISCONNECTING, CS_HARD);
-#endif
+
+	change_cstate(connection, C_DISCONNECTING, CS_HARD); // V9. conn_request_state 에서 change_cstate 로 변경.
+
 	return -EIO;
 }
 
@@ -4757,7 +4755,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			mutex_unlock(&connection->resource->conf_update);
 #ifdef _WIN32_TODO
 			// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-			synchronize_rcu();
+			synchronize_rcu(); // lock 획득 코드 확인 필요.
 #endif
 			kfree(old_disk_conf);
 

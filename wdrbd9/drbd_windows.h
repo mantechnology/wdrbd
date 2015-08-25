@@ -684,6 +684,9 @@ extern void mutex_init(struct mutex *m);
 #endif
 
 extern NTSTATUS mutex_lock(struct mutex *m);
+#ifdef _WIN32_V9
+extern NTSTATUS mutex_lock_interruptible(struct mutex *m);
+#endif
 extern int mutex_is_locked(struct mutex *m);
 extern void mutex_unlock(struct mutex *m);
 extern int mutex_trylock(struct mutex *m);
