@@ -1156,12 +1156,16 @@ start:
 	drbd_thread_start(&connection->ack_receiver);
 
 //#ifdef _WIN32_TODO
-	connection->ack_sender =
+	
 #ifdef _WIN32_V9
+	
+#ifdef _WIN32_TODO //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
+		// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
+	connection->ack_sender =
 		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_ack_sender, '31DW');
-	// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
+#endif
 #else
-
+	connection->ack_sender =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
@@ -7981,7 +7985,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 
 found:
 //#ifdef _WIN32_TODO
-	// list_cut_position linux kernel func. V9 포팅 필요.
+	// list_cut_position linux kernel func. V9 포팅 필요. => linux kernel 3.14 의 구현부 가져와서 포팅.
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 //#endif
 	spin_unlock_irq(&resource->req_lock);
@@ -8064,10 +8068,15 @@ static void destroy_request(struct kref *kref)
 		container_of(kref, struct drbd_request, kref);
 
 	list_del(&req->tl_requests);
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 	// mempool_free V9 포팅 필요.
+#ifdef _WIN32_V9
+	mempool_free(req, &drbd_request_mempool);
+#else
 	mempool_free(req, drbd_request_mempool);
 #endif
+	
+//#endif
 }
 
 static void cleanup_peer_ack_list(struct drbd_connection *connection)
@@ -8145,40 +8154,44 @@ static struct meta_sock_cmd ack_receiver_tbl[] = {
 	[P_RS_CANCEL]       = { sizeof(struct p_block_ack), got_NegRSDReply },
 	[P_CONN_ST_CHG_REPLY]={ sizeof(struct p_req_state_reply), got_RqSReply }, // 기존 got_conn_RqSReply에서 변경.
 	[P_RETRY_WRITE]	    = { sizeof(struct p_block_ack), got_BlockAck },
-#ifdef _WIN32_V9 //새로 추가.
+	//이하 V9에 새로 추가됨.
 	[P_PEER_ACK]	    = { sizeof(struct p_peer_ack), got_peer_ack },
 	[P_PEERS_IN_SYNC]   = { sizeof(struct p_peer_block_desc), got_peers_in_sync },
 	[P_TWOPC_YES]       = { sizeof(struct p_twopc_reply), got_twopc_reply },
 	[P_TWOPC_NO]        = { sizeof(struct p_twopc_reply), got_twopc_reply },
 	[P_TWOPC_RETRY]     = { sizeof(struct p_twopc_reply), got_twopc_reply },
-#endif
+
 };
-#ifdef _WIN32_V9
+
 int drbd_ack_receiver(struct drbd_thread *thi)
 {
 	struct drbd_connection *connection = thi->connection;
 	struct meta_sock_cmd *cmd = NULL;
 	struct packet_info pi;
 	unsigned long pre_recv_jif;
-	int rv = 0; //일단 0 초기화._WIN32_CHECK
+	int rv;
 	void *buffer;
 	int received = 0, rflags = 0;
 	unsigned int header_size = drbd_header_size(connection);
 	int expect   = header_size;
 	bool ping_timeout_active = false;
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 	// linux kernel data type V9 포팅 필요
+#ifndef _WIN32
 	struct sched_param param = { .sched_priority = 2 };
 #endif
+//#endif
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
-#ifdef _WIN32_TODO
+//#ifdef _WIN32_TODO
 	// linux kernel func. V9 포팅 필요
+#ifndef _WIN32 //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
 	rv = sched_setscheduler(current, SCHED_RR, &param);
-#endif
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);
-
+#endif
+//#endif
+	
 	while (get_t_state(thi) == RUNNING) {
 		drbd_thread_current_set_cpu(thi);
 
@@ -8219,7 +8232,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 				t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 				rcu_read_unlock();
 #ifdef _WIN32
-				// 첫번째 인자 t, 마지막 인자 t 맞는지 추후 확인 필요.
+				// 첫번째 인자 t, 마지막 인자 t 맞는지 추후 확인 필요. => 확인완료.
 				wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
 #else
 				t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
@@ -8308,7 +8321,7 @@ disconnect:
 
 	return 0;
 }
-#endif
+
 
 void drbd_send_acks_wf(struct work_struct *ws)
 {
@@ -8354,10 +8367,10 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 }
 
 
-
+#ifdef _WIN32_CHECK //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
 int drbd_ack_sender(struct drbd_thread *thi)
 {
-#ifdef _WIN32_CHECK 
+
 	struct drbd_tconn *tconn = thi->tconn;
 	struct asender_cmd *cmd = NULL;
 	struct packet_info pi;
@@ -8563,11 +8576,12 @@ int drbd_ack_sender(struct drbd_thread *thi)
 	clear_bit(SIGNAL_ASENDER, &tconn->flags);
 
 	conn_info(tconn, "asender terminated\n");
-#endif
+
 	return 0;
 }
+#endif
 
-#ifdef _WIN32_V9
+#ifndef _WIN32
 EXPORT_SYMBOL(drbd_alloc_pages); /* for transports */
 EXPORT_SYMBOL(drbd_free_pages);
 #endif

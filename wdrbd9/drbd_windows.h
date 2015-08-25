@@ -1321,6 +1321,14 @@ typedef struct _PTR_ENTRY
 
 // Bitops.h
 #define BITS_PER_BYTE		8
+
+#ifndef _WIN32
+// Sched.h 
+// 스케줄 관련 선언 추가하였다가 Windows 에서 불필요하여 주석 처리.
+struct sched_param {
+	int sched_priority;
+};
+#endif
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end
 ////////////////////////////////////////////////////////////////////
