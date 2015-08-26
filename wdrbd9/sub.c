@@ -883,7 +883,7 @@ VOID drbdCreateDev()
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {
-	if (VolumeExtension->dev == NULL)
+    if (VolumeExtension == NULL || VolumeExtension->dev == NULL)
 	{
 		WDRBD_WARN("(%c:)'s PVOLUME_EXTENSION->dev already freed\n",
 			VolumeExtension->Letter);

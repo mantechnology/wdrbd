@@ -3412,16 +3412,22 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 				    &request, reach_immediately);
 	have_peers = rv == SS_CW_SUCCESS;
 	if (have_peers) {
-#ifdef _WIN32_V9 // _WIN32_CHECK
-		DbgPrint("_WIN32_CHECK: resolve do while(0) macro at if condition!!!!\n");
+#ifdef _WIN32_V9
+        long t;
+        wait_event_timeout(t, resource->state_wait,
+            cluster_wide_reply_ready(resource),
+            twopc_timeout(resource));
+        if (t)
 #else
+        
 		if (wait_event_timeout(resource->state_wait,
 				       cluster_wide_reply_ready(resource),
 				       twopc_timeout(resource)))
+#endif
 			rv = get_cluster_wide_reply(resource);
 		else
 			rv = SS_TIMEOUT;
-#endif
+
 		if (rv == SS_CW_SUCCESS) {
 			u64 directly_reachable =
 				directly_connected_nodes(resource, NOW) |

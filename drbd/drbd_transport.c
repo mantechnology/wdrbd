@@ -145,8 +145,12 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 
 	up_read(&transport_classes_lock);
 }
-//addr_equal 함수 V9 버전으로 새롭게 변경.
+
+#ifdef _WIN32_V9 //addr_equal 함수 V9 버전으로 새롭게 변경.
+static bool addr_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
+#else
 static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
+#endif
 {
 	if (addr1->ss_family != addr2->ss_family)
 		return false;
@@ -179,7 +183,11 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 }
 
 
+#ifdef _WIN32_V9
+static bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
+#else
 static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
+#endif
 {
 	if (!addr_equal(addr1, addr2))
 		return false;
@@ -301,7 +309,11 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 	waiter->listener = NULL;
 }
 
+#ifdef _WIN32_V9
+struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, struct sockaddr_storage_win *addr)
+#else
 struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, struct sockaddr_storage *addr)
+#endif
 {
 	struct drbd_waiter *waiter;
 	struct drbd_path *path;

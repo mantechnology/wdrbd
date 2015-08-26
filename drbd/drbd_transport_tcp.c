@@ -431,7 +431,21 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 			   unsigned int rcv)
 {
-#ifdef _WIN32_TODO //socket 의 WSK Socket 이 send buffer, rcv buffer size 필드를 가지고 있지 않다. V9 포팅 필요.
+// [choi] V8 drbd_setbufsize 적용
+#ifdef _WIN32
+#ifdef _WIN32_SEND_BUFFING
+    if (snd) 
+    { 
+        sock->sk_linux_attr->sk_sndbuf = snd;
+    }
+#endif
+
+    if( rcv != 0 )
+    {
+        ControlSocket(socket->sk, WskSetOption, SO_RCVBUF, SOL_SOCKET,
+            sizeof(unsigned int), &rcv, 0, NULL, NULL);
+    }
+#else
 	/* open coded SO_SNDBUF, SO_RCVBUF */
 	if (snd) {
 		socket->sk->sk_sndbuf = snd;
@@ -658,7 +672,11 @@ static void unregister_state_change(struct sock *sock, struct dtt_listener *list
 
 static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socket)
 {
-	struct sockaddr_storage peer_addr;
+#ifdef _WIN32_V9
+	struct sockaddr_storage_win peer_addr;
+#else
+    struct sockaddr_storage peer_addr;
+#endif
 	int connect_int, peer_addr_len, err = 0;
 	long timeo;
 	struct socket *s_estab;
@@ -837,12 +855,22 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 	kfree(listener);
 }
 
+
+// [choi] V8 prepare_listen_socket() 적용. WSK_ACCEPT_EVENT_CALLBACK은 disable 시켜둠. 
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
+    AcceptEvent,
+    NULL, // WskInspectEvent is required only if conditional-accept is used.
+    NULL  // WskAbortEvent is required only if conditional-accept is used.
+};
+#endif
 static int dtt_create_listener(struct drbd_transport *transport, struct drbd_listener **ret_listener)
 {
 	
 #ifdef _WIN32
 	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	int err , sndbuf_size, rcvbuf_size;
 	struct sockaddr_storage my_addr;
@@ -865,31 +893,94 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 
 	my_addr = dtt_path(transport)->my_addr;
 
-#ifdef _WIN32_TODO // 일단 TODO V9 포팅 필요.
 	what = "sock_create_kern";
+#ifdef _WIN32
+    s_listen = kzalloc(sizeof(struct socket), 0, '62DW');
+    if (!s_listen)
+    {
+        err = -ENOMEM;
+        goto out;
+    }
+    sprintf(s_listen->name, "listen_sock\0");
+    s_listen->sk_linux_attr = 0;
+    err = 0;
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+    ad->s_accept = kzalloc(sizeof(struct socket), 0, '82DW');
+    if (!ad->s_accept)
+    {
+        err = -ENOMEM;
+        goto out;
+    }
+    s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, ad, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+#else
+    s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+#endif
+    if (s_listen->sk == NULL) {
+        err = -1;
+        goto out;
+    }
+    s_listen->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '72DW');
+    if (!s_listen->sk_linux_attr)
+    {
+        err = -ENOMEM;
+        goto out;
+    }
+#else
 	err = sock_create_kern(my_addr.ss_family, SOCK_STREAM, IPPROTO_TCP, &s_listen);
 	if (err) {
 		s_listen = NULL;
 		goto out;
 	}
+#endif
 
-
+#ifdef _WIN32
+    s_listen->sk_linux_attr->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
+#else
 	s_listen->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
+#endif
 	dtt_setbufsize(s_listen, sndbuf_size, rcvbuf_size);
 
 	what = "bind before listen";
+#ifdef _WIN32
+    status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
+    if (!NT_SUCCESS(status))
+    {
+        err = status;
+    }
+#else
 	err = s_listen->ops->bind(s_listen, (struct sockaddr *)&my_addr, dtt_path(transport)->my_addr_len);
+#endif
 	if (err < 0)
 		goto out;
 
 	what = "kmalloc";
+#ifdef _WIN32_V9
+    listener = kmalloc(sizeof(*listener), GFP_KERNEL, "87DW");
+#else
 	listener = kmalloc(sizeof(*listener), GFP_KERNEL);
+#endif
 	if (!listener) {
 		err = -ENOMEM;
 		goto out;
 	}
 
 	listener->s_listen = s_listen;
+
+#ifdef _WIN32
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+    what = "enable event callbacks";
+    NTSTATUS s = STATUS_UNSUCCESSFUL;
+    s = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
+    if (!NT_SUCCESS(s))
+    {
+        err = s;
+        goto out;
+    }
+#endif
+    //tconn->s_listen = s_listen; //_WIN32_CHECK
+#endif
+
+#ifndef _WIN32
 	write_lock_bh(&s_listen->sk->sk_callback_lock);
 	listener->original_sk_state_change = s_listen->sk->sk_state_change;
 	s_listen->sk->sk_state_change = dtt_incoming_connection;
@@ -900,22 +991,31 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 	err = s_listen->ops->listen(s_listen, 5);
 	if (err < 0)
 		goto out;
-
-	listener->listener.listen_addr = my_addr;
-	listener->listener.destroy = dtt_destroy_listener;
+#endif
+	//listener->listener.listen_addr = my_addr;  //_WIN32_CHECK
+	//listener->listener.destroy = dtt_destroy_listener;  //_WIN32_CHECK
 
 	*ret_listener = &listener->listener;
+
 	return 0;
 out:
 	if (s_listen)
-		sock_release(s_listen);
+#ifdef _WIN32
+    {
+        sock_release(s_listen);
+        //tconn->s_listen = 0; //_WIN32_CHECK
+    }
+#else
+        sock_release(s_listen);
+#endif
 
 	if (err < 0 &&
 	    err != -EAGAIN && err != -EINTR && err != -ERESTARTSYS && err != -EADDRINUSE)
-		tr_err(transport, "%s failed, err = %d\n", what, err);
+#ifdef _WIN32_TODO // V9 포팅 필요.
+		//tr_err(transport, "%s failed, err = %d\n", what, err); 
+#endif
 
 	kfree(listener);
-#endif
 
 	return err;
 }
