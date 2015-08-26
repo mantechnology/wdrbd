@@ -88,7 +88,7 @@ static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 static struct drbd_transport_class tcp_transport_class = {
 	.name = "tcp",
 	.instance_size = sizeof(struct drbd_tcp_transport),
-#ifdef _WIN32_CHECK // tcp_transport_class 의 module 필드 어떻게 처리할지 검토필요.
+#ifndef _WIN32_V9 // tcp_transport_class 의 module 필드 어떻게 처리할지 검토필요. => module 필드 제거
 	.module = THIS_MODULE,
 #endif
 	.init = dtt_init,
@@ -115,7 +115,9 @@ static struct drbd_transport_ops dtt_ops = {
 static void dtt_nodelay(struct socket *socket)
 {
 	int val = 1;
-#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
+#ifdef _WIN32_V9 // kernel_setsockopt linux kernel func. V9 포팅 필요.
+	// nagle disable 은 기존 V8 방식으로 처리.
+#else
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_NODELAY, (char *)&val, sizeof(val));
 #endif
 }
@@ -128,14 +130,20 @@ int dtt_init(struct drbd_transport *transport)
 
 	tcp_transport->transport.ops = &dtt_ops;
 	tcp_transport->transport.class = &tcp_transport_class;
-	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
-#ifdef _WIN32 // V8 구현 유지. 적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요.
+	for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
+#ifdef _WIN32_V9 //적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요. => 해제 관련 문제 확인, 수정 완료.
 		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // _WIN32_CHECK 임시 Tag '009D'
+		if (!buffer) {
+			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
+			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
+			tcp_transport->rbuf[i].base = NULL; // base가 NULL 초기화 보장이 되는지 모르겠다. 확실히 하기 위해.
+			goto fail;
+		}
 #else 
 		void *buffer = (void *)__get_free_page(GFP_KERNEL);
-#endif
 		if (!buffer)
 			goto fail;
+#endif
 		tcp_transport->rbuf[i].base = buffer;
 		tcp_transport->rbuf[i].pos = buffer;
 	}
@@ -144,7 +152,7 @@ int dtt_init(struct drbd_transport *transport)
 	return 0;
 fail:
 
-#ifdef _WIN32 //V8구현 유지.
+#ifdef _WIN32_V9 // 
 	kfree((void *)tcp_transport->rbuf[0].base);
 #else
 	free_page((unsigned long)tcp_transport->rbuf[0].base);
@@ -160,14 +168,26 @@ static struct drbd_path* dtt_path(struct drbd_transport *transport)
 
 static void dtt_free_one_sock(struct socket *socket)
 {
-	if (socket) {
-#ifdef _WIN32_TODO
-		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
-		synchronize_rcu(); // lock 획득이 제대로 되고 있는지...dtt_free_one_sock 호출 부 확인 필요
+#ifdef _WIN32_V9
+	synchronize_rcu_w32_wlock();
 #endif
+	if (socket) {
+
+		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
+		// lock 획득이 제대로 되고 있는지...dtt_free_one_sock 호출 부 확인 필요 => rcu lock 에 대한 이해 부족으로 인한 주석.
+		// synchronize_rcu_w32_wlock 방식의 V8 구현 반영 
+		synchronize_rcu();
+
 		kernel_sock_shutdown(socket, SHUT_RDWR);
 		sock_release(socket);
+#ifdef _WIN32_V9
+		return;
+#endif
 	}
+#ifdef _WIN32_V9
+	synchronize_rcu();
+#endif
+
 }
 
 static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free_op)
