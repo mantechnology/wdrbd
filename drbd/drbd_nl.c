@@ -559,8 +559,13 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 }
 
 /* Put env variables for an address into an env buffer. */
+#ifdef _WIN32_V9
+static void env_print_address(struct env *env, const char *prefix,
+            struct sockaddr_storage_win *storage)
+#else
 static void env_print_address(struct env *env, const char *prefix,
 			      struct sockaddr_storage *storage)
+#endif
 {
 	const char *afs;
 
@@ -3418,7 +3423,11 @@ fail:
 	return retcode;
 }
 
+#ifdef _WIN32_V9
+bool addr_eq_nla(const struct sockaddr_storage_win *addr, const int addr_len, const struct nlattr *nla)
+#else
 bool addr_eq_nla(const struct sockaddr_storage *addr, const int addr_len, const struct nlattr *nla)
+#endif
 {
 	return	nla_len(nla) == addr_len && memcmp(nla_data(nla), addr, addr_len) == 0;
 }

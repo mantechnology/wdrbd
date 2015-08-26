@@ -32,7 +32,7 @@
 #endif
 
 #define WSK_EVENT_CALLBACK
-#define WSK_ACCEPT_EVENT_CALLBACK     
+//#define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
@@ -202,7 +202,7 @@ enum rq_flag_bits {
 #define EHOSTDOWN				29
 #define EHOSTUNREACH			30
 #define EBADR					31
-
+#define EADDRINUSE              32 //_WIN32_V9
 #define	ESTALE		116	/* Stale NFS file handle */
 
 #define SIGXCPU					100
@@ -978,7 +978,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 // _WIN32_V9 : CHECK
 #define wait_event_interruptible_timeout(t, wq, cond, to) \
 	do {\
-			DbgPrint("_WIN32_CHECK: make wait_event_interruptible_timeout body!!\n"); \
+			/*DbgPrint("_WIN32_CHECK: make wait_event_interruptible_timeout body!!\n");*/ \
 		} while (0)
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)

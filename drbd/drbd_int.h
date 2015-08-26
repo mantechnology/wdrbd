@@ -1106,9 +1106,17 @@ struct drbd_connection {
 	enum drbd_fencing_policy fencing_policy;
 	wait_queue_head_t ping_wait;	/* Woken upon reception of a ping, and a state change */
 
+#ifdef _WIN32_V9
+    struct sockaddr_storage_win my_addr;
+#else
 	struct sockaddr_storage my_addr;
+#endif
 	int my_addr_len;
+#ifdef _WIN32_V9
+    struct sockaddr_storage_win peer_addr;
+#else
 	struct sockaddr_storage peer_addr;
+#endif
 	int peer_addr_len;
 
 	struct drbd_send_buffer send_buffer[2];

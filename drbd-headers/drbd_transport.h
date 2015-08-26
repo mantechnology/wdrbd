@@ -209,7 +209,11 @@ struct drbd_listener {
 	struct list_head waiters; /* list head for waiter structs*/
 	spinlock_t waiters_lock;
 	int pending_accepts;
+#ifdef _WIN32_V9
+    struct sockaddr_storage_win listen_addr;
+#else
 	struct sockaddr_storage listen_addr;
+#endif
 	void (*destroy)(struct drbd_listener *);
 };
 
@@ -235,7 +239,11 @@ extern void drbd_print_transports_loaded(struct seq_file *seq);
 extern int drbd_get_listener(struct drbd_waiter *waiter,
 			     int (*create_fn)(struct drbd_transport *, struct drbd_listener **));
 extern void drbd_put_listener(struct drbd_waiter *waiter);
+#ifdef _WIN32_V9
+extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage_win *);
+#else
 extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage *);
+#endif
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 

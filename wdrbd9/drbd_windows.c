@@ -1200,12 +1200,12 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 #ifdef _WIN32_V9
 void spin_lock_bh(spinlock_t *lock)
 {
-	//_WIN32_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
+    spin_lock(lock); //_WIN32_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯. [choi] 일단 spin_lock 적용.
 }
 
 void spin_unlock_bh(spinlock_t *lock)
 {
-	//_WIN32_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
+    spin_unlock(lock); //_WIN32_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯. [choi] spin_unlock 적용
 }
 #endif
 
