@@ -539,11 +539,13 @@ struct gendisk
 };
 
 struct block_device {
+#ifndef _WIN32 // drbd_create_device 에서 이미 V8 형식으로 구현이 되었다. 우선 V9에서 추가된 bd_contains 필드는 사용하지 않는다.
 #ifdef _WIN32_V9 
 	// 만약 block_device 가 디스크 파티션을 기술하는 장치이면, bd_contains 는 전체 disk 와 연관된 block_device descriptor 를 가리키고,
 	// 만약 block_device 가 전체 디스크를 기술하는 장치이면, 자기 자신을 가리킨다. from Understanding the Linux Kernel [sekim] 2015.08.24
 	// bd_contains 가 유효한 값을 가리키도록 연관된 초기화 작업 포팅 필요하며, 우선 헤더에 필드로 기술만 해 둔다.
 	struct block_device *	bd_contains;
+#endif
 #endif
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
