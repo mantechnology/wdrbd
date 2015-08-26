@@ -95,6 +95,7 @@ int fls(int x)
 
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
+#ifdef _WIN32_V9
 ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 {
 	const ULONG_PTR* p = addr;
@@ -121,6 +122,7 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 found:
 	return result + __ffs(tmp);
 }
+#endif
 
 #pragma warning ( disable : 4706 )
 ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
@@ -1128,22 +1130,39 @@ void up(struct semaphore *sem)
 52         rwsem_set_owner(sem);
 53 }
 */
+KIRQL du_OldIrql;
 
-void down_write(struct semaphore *sem) // rw_semaphore *sem)
+void downup_rwlock_init(KSPIN_LOCK* lock)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
+	KeInitializeSpinLock(lock);
 }
-void up_write(struct semaphore *sem) // rw_semaphore *sem)
+
+//void down_write(struct semaphore *sem) // rw_semaphore *sem)
+void down_write(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
+	return KeAcquireSpinLock(lock, &du_OldIrql);
 }
-void down_read(struct semaphore *sem) // rw_semaphore *sem)
+
+//void up_write(struct semaphore *sem) // rw_semaphore *sem)
+void up_write(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
+	return KeReleaseSpinLock(lock, du_OldIrql);
 }
-void up_read(struct semaphore *sem) // rw_semaphore *sem)
+
+//void down_read(struct semaphore *sem) // rw_semaphore *sem)
+void down_read(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
+	return KeAcquireSpinLock(lock, &du_OldIrql);
+}
+
+//void up_read(struct semaphore *sem) // rw_semaphore *sem)
+void up_read(KSPIN_LOCK* lock)
+{
+	// mutex/spin lock 으로 대체 가능할 듯.
+	return KeReleaseSpinLock(lock, du_OldIrql);
 }
 
 #endif

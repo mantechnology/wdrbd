@@ -94,7 +94,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
-
+#ifdef _WIN32_V9
+	downup_rwlock_init(&transport_classes_lock); //transport 에서 사용할 spinlock 초기화.
+#endif
     // Init DRBD engine
     drbd_init();
 

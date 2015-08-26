@@ -993,7 +993,9 @@ extern int wake_up_process(struct task_struct *nt);
 extern void _wake_up(wait_queue_head_t *q, char *__func, int __line);
 
 extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
+#ifdef _WIN32_V9
 extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //linux 3.x 커널 구현 참고.+ 64비트 대응 추가 sekim
+#endif
 extern size_t find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
 extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
 
@@ -1378,10 +1380,19 @@ struct semaphore {
 
 extern void down(struct semaphore *sem);
 extern void up(struct semaphore *sem);
-extern void down_write(struct semaphore *sem);
-extern void down_read(struct semaphore *sem);
-extern void up_write(struct semaphore *sem);
-extern void up_read(struct semaphore *sem);
+
+// down_up RW lock 을 spinlock 으로 포팅
+extern KSPIN_LOCK transport_classes_lock;
+
+extern void downup_rwlock_init(KSPIN_LOCK* lock); // 스핀락 초기화 함수 추가 => driverentry 에서 한번 초기화.
+//extern void down_write(struct semaphore *sem);
+extern void down_write(KSPIN_LOCK* lock);
+//extern void down_read(struct semaphore *sem);
+extern void down_read(KSPIN_LOCK* lock);
+//extern void up_write(struct semaphore *sem);
+extern void up_write(KSPIN_LOCK* lock);
+//extern void up_read(struct semaphore *sem);
+extern void up_read(KSPIN_LOCK* lock);
 
 //uninitialized_va 매트로 처리!
 

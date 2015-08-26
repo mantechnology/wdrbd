@@ -11,7 +11,8 @@
 
 static LIST_HEAD(transport_classes);
 #ifdef _WIN32_V9
-struct semaphore transport_classes_lock; // 전역??
+//struct semaphore transport_classes_lock; // 전역??
+KSPIN_LOCK	transport_classes_lock;	//spinlock 으로 포팅.
 #else
 static DECLARE_RWSEM(transport_classes_lock);
 #endif
