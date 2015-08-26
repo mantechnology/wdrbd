@@ -1220,11 +1220,13 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 void spin_lock_bh(spinlock_t *lock)
 {
 	//_WIN32_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
+	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
 }
 
 void spin_unlock_bh(spinlock_t *lock)
 {
 	//_WIN32_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
+	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 }
 #endif
 
