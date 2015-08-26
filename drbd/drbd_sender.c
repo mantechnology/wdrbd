@@ -2462,7 +2462,9 @@ static bool dequeue_work_batch(struct drbd_work_queue *queue, struct list_head *
 static struct drbd_request *__next_request_for_connection(
 		struct drbd_connection *connection, struct drbd_request *r)
 {
-#ifdef _WIN32_TODO //list_prepare_entry V9 포팅 필요.
+#ifdef _WIN32_V9
+    r = list_prepare_entry(struct drbd_request, r, &connection->resource->transfer_log, tl_requests);
+#else
 	r = list_prepare_entry(r, &connection->resource->transfer_log, tl_requests);
 #endif
 
@@ -2506,7 +2508,9 @@ static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connect
 	 */
 restart:
 
-#ifdef _WIN32_TODO // list_prepare_entry V9 포팅 필요.
+#ifdef _WIN32_V9
+    req = list_prepare_entry(struct drbd_request, tmp, &connection->resource->transfer_log, tl_requests);
+#else
 	req = list_prepare_entry(tmp, &connection->resource->transfer_log, tl_requests);
 #endif
 
