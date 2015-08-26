@@ -137,6 +137,7 @@ int dtt_init(struct drbd_transport *transport)
 			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
 			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
 			tcp_transport->rbuf[i].base = NULL; // base가 NULL 초기화 보장이 되는지 모르겠다. 확실히 하기 위해.
+			WDRBD_WARN("dtt_init kzalloc %s allocation fail\n", i ? "CONTROL_STREAM" : "DATA_STREAM" );
 			goto fail;
 		}
 #else 
@@ -210,7 +211,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 
 	if (free_op == DESTROY_TRANSPORT) {
 		for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
-#ifdef _WIN32 //V8 구현 유지.
+#ifdef _WIN32_V9 
 			kfree((void *)tcp_transport->rbuf[i].base);
 #else
 			free_page((unsigned long)tcp_transport->rbuf[i].base);
@@ -225,7 +226,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 	}
 }
 
-#ifdef _WIN32_V9 //한번더 재 검토 필요.
+//한번 더 재 검토 필요.
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 		      void *buf, size_t size, unsigned msg_flags)
 {
@@ -312,7 +313,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 
 	return sent;
 }
-#endif
+
 
 static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int flags)
 {
@@ -342,7 +343,7 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
 #ifdef _WIN32_V9
-	void *buffer = NULL; //임시 NULL 초기화
+	void *buffer = NULL; 
 #else
 	void *buffer;
 #endif
@@ -352,10 +353,17 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		buffer = *buf;
 		rv = dtt_recv_short(socket, buffer, size, flags & ~CALLER_BUFFER);
 	} else if (flags & GROW_BUFFER) {
-
-#ifdef _WIN32_CHECK 
+#ifdef _WIN32_V9
+		ASSERT(*buf == tcp_transport->rbuf[stream].base);
+#else
 		TR_ASSERT(transport, *buf == tcp_transport->rbuf[stream].base);
+#endif	
+
 		buffer = tcp_transport->rbuf[stream].pos;
+
+#ifdef _WIN32_V9
+		ASSERT(((UCHAR*)buffer - (UCHAR*)*buf) + size <= PAGE_SIZE);//gcc void* 연산은 기본 1바이트 연산.
+#else
 		TR_ASSERT(transport, (buffer - *buf) + size <= PAGE_SIZE);
 #endif
 		rv = dtt_recv_short(socket, buffer, size, flags & ~GROW_BUFFER);
@@ -368,8 +376,10 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	}
 
 	if (rv > 0) {
-#ifdef _WIN32_CHECK
-		tcp_transport->rbuf[stream].pos = buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.
+#ifdef _WIN32_V9
+		tcp_transport->rbuf[stream].pos = (UCHAR*)buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.=> gcc 에서 void* 증감연산은 기본 1바이트 연산.
+#else
+		tcp_transport->rbuf[stream].pos = buffer + rv; 
 #endif
 	}
 
