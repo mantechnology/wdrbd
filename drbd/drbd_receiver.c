@@ -7593,10 +7593,12 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 void twopc_connection_down(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
-#ifdef _WIN32_TODO
-	//linux spinlock func. 포팅필요.
+//#ifdef _WIN32_TODO
+	//linux spinlock func. 포팅필요. =>spinlock 이 걸려 있는지 체크하는 구현... 굳이 포팅될 필요는 없어 보여서 우선 pass
+#ifndef _WIN32
 	assert_spin_locked(&resource->req_lock);
 #endif
+//#endif
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
 		set_bit(TWOPC_RETRY, &connection->flags);
