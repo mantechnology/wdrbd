@@ -183,6 +183,11 @@ static __inline int list_empty_careful(const struct list_head *head)
 	     pos = list_entry(pos->member.prev, typeof(*pos), member))
 #endif
 
+#ifdef _WIN32 // V9
+#define list_prepare_entry(type, pos, head, member) \
+         ((pos) ? pos : list_entry(head, type, member))
+#endif
+
 /**
  * list_for_each_entry_continue - continue iteration over list of given type
  * @pos:	the type * to use as a loop cursor.
