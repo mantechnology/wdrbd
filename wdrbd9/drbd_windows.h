@@ -1423,7 +1423,7 @@ static int scnprintf(char *buffer, int size, char *str)
 
 void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry);
 
-// find_first_bit 구현 추가 + find_next_bit 조합 => linux 3.x 커널 구현 참고. sekim
+// for_each_set_bit 구현 추가 find_first_bit + find_next_bit 조합 => linux 3.x 커널 구현 참고. sekim
 #define for_each_set_bit(bit, addr, size) \
 	for ((bit) = find_first_bit((addr), (size));		\
 	     (bit) < (size);					\

@@ -7952,7 +7952,12 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	int node_id;
 //#ifdef _WIN32_TODO
 	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass => 포팅 완료.
+#ifdef _WIN32_V9
+	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, sizeof(ULONG_PTR) * BITS_PER_BYTE) {
+#else
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
+#endif
+	
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)
 			bitmap_bits |= NODE_MASK(bitmap_bit);

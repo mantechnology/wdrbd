@@ -1390,8 +1390,10 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 
 #endif
 
+#if 0 //for_each_set_bit 포팅되어 불필요한 매크로 정의 제거.
 #if !defined(for_each_set_bit) && defined(for_each_bit)
 #define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY
