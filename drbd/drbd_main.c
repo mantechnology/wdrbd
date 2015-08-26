@@ -1555,10 +1555,14 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		if (peer_md[i].bitmap_index != -1 || peer_md[i].flags & MDF_NODE_EXISTS)
 			bitmap_uuids_mask |= NODE_MASK(i);
 	}
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, sizeof(ULONG_PTR))
+#else
 	for_each_set_bit(i, (unsigned long *)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
-		p->other_uuids[pos++] = cpu_to_be64(__bitmap_uuid(device, i));
 #endif
+		p->other_uuids[pos++] = cpu_to_be64(__bitmap_uuid(device, i));
+//#endif
 	for (i = 0; i < HISTORY_UUIDS; i++)
 		p->other_uuids[pos++] = cpu_to_be64(drbd_history_uuid(device, i));
 	spin_unlock_irq(&device->ldev->md.uuid_lock);

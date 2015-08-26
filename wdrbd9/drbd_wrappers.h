@@ -1390,8 +1390,10 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 
 #endif
 
+#ifndef _WIN32_V9
 #if !defined(for_each_set_bit) && defined(for_each_bit)
 #define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY

@@ -11,7 +11,8 @@
 
 static LIST_HEAD(transport_classes);
 #ifdef _WIN32_V9
-struct semaphore transport_classes_lock; // 전역??
+//struct semaphore transport_classes_lock; // 전역??
+KSPIN_LOCK	transport_classes_lock;	//spinlock 으로 포팅.
 #else
 static DECLARE_RWSEM(transport_classes_lock);
 #endif
@@ -130,17 +131,26 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 #else
 	list_for_each_entry(tc, &transport_classes, list) {
 #endif
-#ifdef _WIN32_CHECK // drbd_transport_class 의 module 필드 어떻게 처리할 지 추후 검토 필요.
+//#ifdef _WIN32_CHECK // drbd_transport_class 의 module 필드 어떻게 처리할 지 추후 검토 필요. => module 필드 제거.
+#ifdef _WIN32_V9
+		// tc->name 만 출력.
+		seq_printf(seq, " %s ", tc->name);
+#else
 		seq_printf(seq, " %s (%s)", tc->name,
-				tc->module->version ? tc->module->version : "NONE");
+			tc->module->version ? tc->module->version : "NONE");
 #endif
+//#endif
 	}
 	seq_putc(seq, '\n');
 
 	up_read(&transport_classes_lock);
 }
+
 #ifdef _WIN32_V9 //addr_equal 함수 V9 버전으로 새롭게 변경.
 static bool addr_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
+#else
+static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
+#endif
 {
 	if (addr1->ss_family != addr2->ss_family)
 		return false;
@@ -149,12 +159,20 @@ static bool addr_equal(const struct sockaddr_storage_win *addr1, const struct so
 		const struct sockaddr_in6 *v6a1 = (const struct sockaddr_in6 *)addr1;
 		const struct sockaddr_in6 *v6a2 = (const struct sockaddr_in6 *)addr2;
 
-#ifdef _WIN32_TODO //ipv6 addr 비교 함수 V9 포팅필요... V9에서 ipv6 지원하는가?...???
+//#ifdef _WIN32_TODO //ipv6 addr 비교 함수 V9 포팅 필요... V9에서 ipv6 지원하는가?...??? => ipv6 도 고려하여 포팅한다.
+#ifdef _WIN32_V9
+		if (!IN6_ADDR_EQUAL(&v6a1->sin6_addr, &v6a2->sin6_addr))
+#else
 		if (!ipv6_addr_equal(&v6a1->sin6_addr, &v6a2->sin6_addr))
-			return false;
-		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
-			return v6a1->sin6_scope_id == v6a2->sin6_scope_id;
 #endif
+			return false;
+#ifdef _WIN32_V9
+		else if (IN6_IS_ADDR_LINKLOCAL(&v6a1->sin6_addr))
+#else
+		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
+#endif
+			return v6a1->sin6_scope_id == v6a2->sin6_scope_id;
+//#endif
 		return true;
 	} else /* AF_INET, AF_SSOCKS, AF_SDP */ {
 		const struct sockaddr_in *v4a1 = (const struct sockaddr_in *)addr1;
@@ -163,7 +181,7 @@ static bool addr_equal(const struct sockaddr_storage_win *addr1, const struct so
 		return v4a1->sin_addr.s_addr == v4a2->sin_addr.s_addr;
 	}
 }
-#endif
+
 
 #ifdef _WIN32_V9
 static bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
@@ -368,7 +386,7 @@ bool drbd_should_abort_listening(struct drbd_transport *transport)
 }
 
 
-#ifdef _WIN32_V9 // 
+#ifndef _WIN32_V9 // 
 /* Network transport abstractions */
 EXPORT_SYMBOL_GPL(drbd_register_transport_class);
 EXPORT_SYMBOL_GPL(drbd_unregister_transport_class);

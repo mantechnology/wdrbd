@@ -191,9 +191,11 @@ struct drbd_transport_ops {
 struct drbd_transport_class {
 	const char *name;
 	const int instance_size;
-#ifdef _WIN32_CHECK
+//#ifdef _WIN32_CHECK
+#ifndef _WIN32_V9 // module 필드 필요 없으므로 제거.
 	struct module *module;
 #endif
+//#endif
 	int (*init)(struct drbd_transport *);
 	struct list_head list;
 };
