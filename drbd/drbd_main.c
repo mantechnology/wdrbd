@@ -2787,9 +2787,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 			device->open_ro_cnt++;
 	}
 	spin_unlock_irqrestore(&resource->req_lock, flags);
-#ifdef _WIN32_CHECK
 	up(&resource->state_sem);
-#endif
 	return rv;
 }
 
@@ -3684,16 +3682,28 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
 #endif
-#ifdef _WIN32_CHECK
-	sema_init(&resource->state_sem, 1);
+
+#ifdef _WIN32_V9 // [choi] count를 1로 초기화 하기 때문에 mutex를 사용해도 문제 없을 것으로 예상.
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&resource->state_sem, "res_state_mutex"); 
+#else
+    mutex_init(&resource->state_sem); 
+#endif
+#else
+    sema_init(&resource->state_sem, 1);
 #endif
 	resource->role[NOW] = R_SECONDARY;
 	if (set_resource_options(resource, res_opts))
 		goto fail_free_name;
 	resource->max_node_id = res_opts->node_id;
 	resource->twopc_reply.initiator_node_id = -1;
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&resource->conf_update, "res_conf_update");
+    mutex_init(&resource->adm_mutex, "res_adm_mutex");
+#else
 	mutex_init(&resource->conf_update);
 	mutex_init(&resource->adm_mutex);
+#endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
 	spin_lock_init(&resource->listeners_lock);
@@ -3776,8 +3786,13 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	idr_init(&connection->peer_devices);
 
 	drbd_init_workqueue(&connection->sender_work);
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&connection->mutex[DATA_STREAM], "conn_data_stream");
+    mutex_init(&connection->mutex[CONTROL_STREAM], "conn_control_stream");
+#else
 	mutex_init(&connection->mutex[DATA_STREAM]);
 	mutex_init(&connection->mutex[CONTROL_STREAM]);
+#endif
 
 	INIT_LIST_HEAD(&connection->connect_timer_work.list);
 #ifdef _WIN32_V9
@@ -4013,7 +4028,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	atomic_set(&device->md_io.in_use, 0);
 
 	spin_lock_init(&device->al_lock);
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&device->bm_resync_fo_mutex, "dev_bm_resync_fo_mutex");
+#else
 	mutex_init(&device->bm_resync_fo_mutex);
+#endif
 
 	INIT_LIST_HEAD(&device->active_ee);
 	INIT_LIST_HEAD(&device->sync_ee);
@@ -4438,7 +4457,11 @@ static int __init drbd_init(void)
 #endif
 	idr_init(&drbd_devices);
 
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&resources_mutex, "resources_mutex");
+#else
 	mutex_init(&resources_mutex);
+#endif
 	INIT_LIST_HEAD(&drbd_resources);
 #ifdef _WIN32
 	// not supported

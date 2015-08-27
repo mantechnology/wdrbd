@@ -5080,9 +5080,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-#ifndef _WIN32_V9
 	down(&device->resource->state_sem);
-#endif
 
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
@@ -5132,9 +5130,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 out_dec:
 	put_ldev(device);
 out:
-#ifndef _WIN32_V9
 	up(&device->resource->state_sem);
-#endif
 out_nolock:
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);

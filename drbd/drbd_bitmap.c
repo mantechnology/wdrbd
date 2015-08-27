@@ -442,7 +442,11 @@ struct drbd_bitmap *drbd_bm_alloc(void)
 		return NULL;
 
 	spin_lock_init(&b->bm_lock);
+#ifdef _WIN32_TMP_DEBUG_MUTEX
+    mutex_init(&b->bm_change, "bm_change");
+#else
 	mutex_init(&b->bm_change);
+#endif
 	init_waitqueue_head(&b->bm_io_wait);
 
 	b->bm_max_peers = 1;

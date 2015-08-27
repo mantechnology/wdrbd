@@ -21,7 +21,7 @@
  
 #define _WIN32_EVENTLOG			        // Windows Eventlog 포팅지점
 
-//#define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
+#define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define _WIN32_V9	//_WIN32_V9 정의 
 
@@ -1367,19 +1367,8 @@ struct sched_param {
  82         struct rw_semaphore name = __RWSEM_INITIALIZER(name)
 #endif
 
-//semaphore 임시 포팅. 
-// mutex.h 가 사용안되는 듯. 일단 복잡하여 이곳에서 처리함. 
-struct semaphore {
-	//17         raw_spinlock_t          lock;
-	//18         unsigned int            count;
-	//19         struct list_head        wait_list;
-	//20 
-
-	int dummy;
-};
-
-extern void down(struct semaphore *sem);
-extern void up(struct semaphore *sem);
+extern void down(struct mutex *m);
+extern void up(struct mutex *);
 
 // down_up RW lock 을 spinlock 으로 포팅
 extern KSPIN_LOCK transport_classes_lock;
