@@ -391,16 +391,37 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
+#ifdef _WIN32
+	void** win32_big_page = pages;
+	void* all_pages = NULL, *page = NULL;
+#else
 	struct page *all_pages, *page;
+#endif
 	int err;
 
+#ifdef _WIN32
+	if (size) {
+		all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+		if (!all_pages)
+			return -ENOMEM;
+
+		*win32_big_page = page = all_pages;
+	}
+	else {
+		*win32_big_page = NULL;
+	}
+	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
+	err = dtt_recv_short(socket, *win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+	if (err < 0) {
+		goto fail;
+	}
+#else
 	all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	if (!all_pages)
 		return -ENOMEM;
-
+	
 	page = all_pages;
-	
-	
+
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
 		void *data = kmap(page);
@@ -412,6 +433,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 	}
 
 	*pages = all_pages;
+#endif
 	return 0;
 fail:
 	drbd_free_pages(transport, all_pages, 0);
