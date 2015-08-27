@@ -958,7 +958,9 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 		rcu_read_unlock();
 		return -EIO;
 	}
-#ifdef _WIN32_TODO // V9 포팅 필요.
+#ifdef _WIN32_V9
+	socket->sk_linux_attr->sk_rcvtimeo = nc->ping_timeo * 4 * HZ / 10;
+#else
 	socket->sk->sk_rcvtimeo = nc->ping_timeo * 4 * HZ / 10;
 #endif
 
@@ -971,7 +973,9 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 		return err;
 	}
 	if (h->magic != cpu_to_be32(DRBD_MAGIC)) {
-#ifdef _WIN32_TODO // V9 포팅 필요.
+#ifdef _WIN32_V9
+		WDRBD_ERROR("Wrong magic value 0x%08x in receive_first_packet\n", be32_to_cpu(h->magic));
+#else
 		tr_err(transport, "Wrong magic value 0x%08x in receive_first_packet\n",
 			 be32_to_cpu(h->magic));
 #endif
@@ -982,11 +986,11 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 
 static void dtt_incoming_connection(struct sock *sock)
 {
+#ifndef _WIN32 // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요._WIN32_CHECK
 	struct dtt_listener *listener = sock->sk_user_data;
 	void (*state_change)(struct sock *sock);
 
 	state_change = listener->original_sk_state_change;
-#ifdef _WIN32_TODO // sock V9 포팅필요
 	if (sock->sk_state == TCP_ESTABLISHED) {
 		struct drbd_waiter *waiter;
 
@@ -996,8 +1000,8 @@ static void dtt_incoming_connection(struct sock *sock)
 		wake_up(&waiter->wait);
 		spin_unlock(&listener->listener.waiters_lock);
 	}
-#endif
 	state_change(sock);
+#endif
 }
 
 static void dtt_destroy_listener(struct drbd_listener *generic_listener)
