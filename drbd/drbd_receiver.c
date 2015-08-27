@@ -496,11 +496,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 	rcu_read_unlock();
 
 	if (atomic_read(&connection->pp_in_use) < mxb)
-#ifdef _WIN32_V9
-		page = __drbd_alloc_pages(number);
-#else
 		page = __drbd_alloc_pages(number, gfp_mask & ~__GFP_WAIT);
-#endif
 
 	/* Try to keep the fast path fast, but occasionally we need
 	* to reclaim the pages we lended to the network stack. */
@@ -514,11 +510,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 		drbd_reclaim_net_peer_reqs(connection);
 
 		if (atomic_read(&connection->pp_in_use) < mxb) {
-#ifdef _WIN32_V9
-			page = __drbd_alloc_pages(number);
-#else
 			page = __drbd_alloc_pages(number, gfp_mask);
-#endif
 			if (page)
 				break;
 		}
@@ -531,7 +523,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 			break;
 		}
 
-		if (schedule_timeout(HZ / 10) == 0)
+		if (schedule_timeout(HZ/10) == 0)
 			mxb = UINT_MAX;
 	}
 	finish_wait(&drbd_pp_wait, &wait);
@@ -1104,7 +1096,7 @@ int connect_work(struct drbd_work *work, int cancel)
 /*
  * Returns true if we have a valid connection.
  */
-#ifdef _WIN32_V9 //기존 conn_connect 함수가 V9 형식으로 재편됨. <완료>
+
 static bool conn_connect(struct drbd_connection *connection)
 {
 	struct drbd_transport *transport = &connection->transport;
@@ -1251,7 +1243,7 @@ abort:
 	change_cstate(connection, C_DISCONNECTING, CS_HARD);
 	return false;
 }
-#endif
+
 
 //#ifdef _WIN32_V9 // V9 형식의 인자. <완료>
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
@@ -2082,7 +2074,7 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
 #ifdef _WIN32_V9
-	err = tr_ops->recv_pages(transport, (void**)&peer_req->win32_big_page, data_size); // peer_req->win32_big_page 포인터를 dtt_recv_pages 인자로 넘겨서 dtt_recv_pages 안에서 처리.
+	err = tr_ops->recv_pages(transport, (void*)peer_req->win32_big_page, data_size); // peer_req->win32_big_page 포인터를 dtt_recv_pages 인자로 넘겨서 dtt_recv_pages 안에서 처리.
 	if ( err || ( peer_req->win32_big_page == NULL) ) { //err 처리와 win32_big_page 할당 실패 같이 처리.
 		goto fail;
 	}
