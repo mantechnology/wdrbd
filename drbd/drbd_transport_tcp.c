@@ -1005,7 +1005,11 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 	struct dtt_listener *listener =
 		container_of(generic_listener, struct dtt_listener, listener);
 
+#ifdef _WIN32_V9
+    unregister_state_change(listener->s_listen->sk_linux_attr, listener);
+#else
 	unregister_state_change(listener->s_listen->sk, listener);
+#endif
 	sock_release(listener->s_listen);
 	kfree(listener);
 }
@@ -1147,9 +1151,8 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 	if (err < 0)
 		goto out;
 #endif
-	//listener->listener.listen_addr = my_addr;  //_WIN32_CHECK
-	//listener->listener.destroy = dtt_destroy_listener;  //_WIN32_CHECK
-
+	listener->listener.listen_addr = my_addr; 
+	listener->listener.destroy = dtt_destroy_listener;  
 	*ret_listener = &listener->listener;
 
 	return 0;

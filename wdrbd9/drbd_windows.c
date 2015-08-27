@@ -1063,61 +1063,19 @@ void mutex_unlock(struct mutex *m)
 }
 
 #ifdef _WIN32_V9 // __WIN32_CHECK
-#if 0 // 참조용임. 정리되면 제거!
-// http://lxr.free-electrons.com/source/kernel/locking/semaphore.c
-42 /**
-43  * down - acquire the semaphore
-44  * @sem: the semaphore to be acquired
-45  *
-46  * Acquires the semaphore.  If no more tasks are allowed to acquire the
-47  * semaphore, calling this function will put the task to sleep until the
-48  * semaphore is released.
-49  *
-50  * Use of this function is deprecated, please use down_interruptible() or
-51  * down_killable() instead.
-52  */
-53 void down(struct semaphore *sem)
-54 {
-	55         unsigned long flags;
-	56
-		57         raw_spin_lock_irqsave(&sem->lock, flags);
-	58         if (likely(sem->count > 0))
-		59                 sem->count--;
-	60         else
-		61                 __down(sem);
-	62         raw_spin_unlock_irqrestore(&sem->lock, flags);
-	63 }
-64 EXPORT_SYMBOL(down);
 
-171 /**
-	172  * up - release the semaphore
-	173  * @sem: the semaphore to release
-	174  *
-	175  * Release the semaphore.  Unlike mutexes, up() may be called from any
-	176  * context and even by tasks which have never called down().
-	177  */
-	178 void up(struct semaphore *sem)
-	179 {
-	180         unsigned long flags;
-	181
-		182         raw_spin_lock_irqsave(&sem->lock, flags);
-	183         if (likely(list_empty(&sem->wait_list)))
-		184                 sem->count++;
-	185         else
-		186                 __up(sem);
-	187         raw_spin_unlock_irqrestore(&sem->lock, flags);
-	188 }
-*/
-#endif
-
-void down(struct semaphore *sem)
+void down(struct mutex *m)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
+    mutex_lock(m);
+    DbgPrint("down() : mutex_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
 }
 
-void up(struct semaphore *sem)
+void up(struct mutex *m)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
+    // mutex/spin lock 으로 대체 가능할 듯.
+    DbgPrint("up() : mutex_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    mutex_unlock(m);
 }
 
 /*
