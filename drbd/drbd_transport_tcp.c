@@ -1418,38 +1418,49 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 }
 
-#ifdef _WIN32_V9 // 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다.
+// 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다. => BUG 처리하고, _drbd_no_send_page 로 유도한다.
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
 			 struct page *page, int offset, size_t size, unsigned msg_flags)
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
-
-#ifdef _WIN32_V9
-	int err = -EIO; // 임시 정의.
-#endif
-
-#ifdef _WIN32_TODO
+#ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
+#else
+	WDRBD_ERROR("not reached here\n"); //_WIN32
+	BUG();
+#endif
 	int len = size;
 	int err = -EIO;
-
+#ifdef _WIN32
+	// not support
+#else
 	msg_flags |= MSG_NOSIGNAL;
+#endif
 	dtt_update_congested(tcp_transport);
+#ifndef _WIN32
 	set_fs(KERNEL_DS);
+#endif
 	do {
 		int sent;
-
+#ifdef _WIN32
+		sent = Send(socket->sk, (size_t)(page)+offset, len, 0, socket->sk_linux_attr->sk_sndtimeo);
+#else
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
+#endif
 		if (sent <= 0) {
 			if (sent == -EAGAIN) {
 				if (drbd_stream_send_timed_out(transport, stream))
 					break;
 				continue;
 			}
+#ifdef _WIN32_V9
+			WDRBD_WARN("%s: size=%d len=%d sent=%d\n", __func__, (int)size, len, sent);
+#else
 			tr_warn(transport, "%s: size=%d len=%d sent=%d\n",
-			     __func__, (int)size, len, sent);
+				__func__, (int)size, len, sent);
+#endif
 			if (sent < 0)
 				err = sent;
 			break;
@@ -1457,36 +1468,38 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		len    -= sent;
 		offset += sent;
 	} while (len > 0 /* THINK && peer_device->repl_state[NOW] >= L_ESTABLISHED */);
+#ifndef _WIN32
 	set_fs(oldfs);
+#endif
 	clear_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 
 	if (len == 0)
 		err = 0;
-#endif
+
 	return err;
 }
-#endif
+
 
 static void dtt_cork(struct socket *socket)
 {
+#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
 	int val = 1;
-#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
 #endif
 }
 
 static void dtt_uncork(struct socket *socket)
 {
+#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
 	int val = 0;
-#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
 #endif
 }
 
 static void dtt_quickack(struct socket *socket)
 {
+#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
 	int val = 2;
-#ifdef _WIN32_TODO // kernel_setsockopt linux kernel func. V9 포팅 필요.
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_QUICKACK, (char *)&val, sizeof(val));
 #endif
 }
@@ -1513,7 +1526,7 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 		dtt_nodelay(socket);
 		break;
 	case NOSPACE:
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifndef _WIN32 // not support. SOCK_NOSPACE 옵션 필요한지 다시 검토 요망. _WIN32_CHECK 
 		if (socket->sk->sk_socket)
 			set_bit(SOCK_NOSPACE, &socket->sk->sk_socket->flags);
 #endif
@@ -1530,7 +1543,7 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 
 static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 {
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifndef _WIN32 // 필요한지 추후 검토
 	struct sock *sk = socket->sk;
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -1545,26 +1558,23 @@ static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 
 static void dtt_debugfs_show(struct drbd_transport *transport, struct seq_file *m)
 {
+#ifndef _WIN32 // 필요한지 추후 검토
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	enum drbd_stream i;
 
 	/* BUMP me if you change the file format/content/presentation */
-#ifdef _WIN32_TODO // V9 포팅 필요
 	seq_printf(m, "v: %u\n\n", 0);
-#endif
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		struct socket *socket = tcp_transport->stream[i];
 
 		if (socket) {
-#ifdef _WIN32_TODO // V9 포팅 필요
 			seq_printf(m, "%s stream\n", i == DATA_STREAM ? "data" : "control");
-#endif
 			dtt_debugfs_show_stream(m, socket);
 		}
 	}
-
+#endif
 }
 
 static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *path)
@@ -1610,7 +1620,7 @@ static void __exit dtt_cleanup(void)
 	drbd_unregister_transport_class(&tcp_transport_class);
 }
 
-#ifdef _WIN32_CHECK
+#ifndef _WIN32
 module_init(dtt_initialize)
 module_exit(dtt_cleanup)
 #endif
