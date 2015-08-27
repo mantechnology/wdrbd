@@ -72,7 +72,11 @@ static int dtt_init(struct drbd_transport *transport);
 static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free_op);
 static int dtt_connect(struct drbd_transport *transport);
 static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, void **buf, size_t size, int flags);
+#ifdef _WIN32_V9
+static int dtt_recv_pages(struct drbd_transport *transport, void* buffer, size_t size);
+#else
 static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, size_t size);
+#endif
 static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_stats *stats);
 static void dtt_set_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream, long timeout);
 static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream);
@@ -386,14 +390,18 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	return rv;
 }
 
-static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages, size_t size)
+#ifdef _WIN32_V9
+static int dtt_recv_pages(struct drbd_transport *transport, void* page, size_t size)
+#else
+static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, size_t size)
+#endif
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 #ifdef _WIN32
-	void** win32_big_page = pages;
-	void* all_pages = NULL, *page = NULL;
+	void* win32_big_page = page;
+	void* all_pages = NULL;
 #else
 	struct page *all_pages, *page;
 #endif
@@ -405,13 +413,13 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 		if (!all_pages)
 			return -ENOMEM;
 
-		*win32_big_page = page = all_pages;
+		win32_big_page = all_pages;
 	}
 	else {
-		*win32_big_page = NULL;
+		win32_big_page = NULL;
 	}
 	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
-	err = dtt_recv_short(socket, *win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+	err = dtt_recv_short(socket, win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
 	if (err < 0) {
 		goto fail;
 	}
