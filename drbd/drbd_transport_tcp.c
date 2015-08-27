@@ -764,22 +764,33 @@ static bool dtt_wait_connect_cond(struct dtt_waiter *waiter)
 
 static void unregister_state_change(struct sock *sock, struct dtt_listener *listener)
 {
+#ifdef _WIN32
+	// not support => 지원하지 않는 이유?
+#else 
 	write_lock_bh(&sock->sk_callback_lock);
 	sock->sk_state_change = listener->original_sk_state_change;
 	sock->sk_user_data = NULL;
 	write_unlock_bh(&sock->sk_callback_lock);
+#endif
 }
 
 static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socket)
 {
 #ifdef _WIN32_V9
-	struct sockaddr_storage_win peer_addr;
+	struct sockaddr_storage_win my_addr, peer_addr;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	WSK_SOCKET*	paccept_socket = NULL;
 #else
     struct sockaddr_storage peer_addr;
 #endif
 	int connect_int, peer_addr_len, err = 0;
 	long timeo;
+#ifdef _WIN32_V9
+	struct socket *s_estab = NULL; //리턴하기 전 *socket = s_estab; 에서 s_estab 가 잠재적으로 초기화 안됬을 수 있다고 컴파일 에러를 뱉어낸다. 
+#else
 	struct socket *s_estab;
+#endif
+	
 	struct net_conf *nc;
 	struct drbd_waiter *waiter2_gen;
 	struct dtt_listener *listener =
@@ -799,37 +810,70 @@ static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socke
 
 retry:
 
-#ifdef _WIN32
+#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. _WIN32_CHECK
 	wait_event_interruptible_timeout(timeo, waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
 #endif	
-
-#ifdef _WIN32_TODO //V9 포팅 필요
-
 	if (timeo <= 0)
 		return -EAGAIN;
-
+	
 	spin_lock_bh(&listener->listener.waiters_lock);
 	if (waiter->socket) {
 		s_estab = waiter->socket;
 		waiter->socket = NULL;
-	} else if (listener->listener.pending_accepts > 0) {
+	}
+	else if (listener->listener.pending_accepts > 0) {
 		listener->listener.pending_accepts--;
 
 		spin_unlock_bh(&listener->listener.waiters_lock);
 
 		s_estab = NULL;
+#ifdef _WIN32_V9
+		// Accept 하고, s_estab 구조를 생성한다.
+		my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요._WIN32_CHECK
+		memset(&peer_addr, 0, sizeof(struct sockaddr_in));
+		paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
+		if (paccept_socket) {
+			s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
+			if (!s_estab) {
+				return -ENOMEM;
+			}
+			s_estab->sk = paccept_socket;
+			sprintf(s_estab->name, "estab_sock");
+			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
+			if (!s_estab->sk_linux_attr) {
+				kfree(s_estab);
+				return -ENOMEM;
+			}
+		}
+		else {
+			if (status == STATUS_TIMEOUT) {
+				err = -EAGAIN;
+			}
+			else {
+				err = -1;
+			}
+		}
+#else
 		err = kernel_accept(listener->s_listen, &s_estab, 0);
+#endif
 		if (err < 0)
 			return err;
-
 		/* The established socket inherits the sk_state_change callback
 		   from the listening socket. */
+#ifdef _WIN32
+		unregister_state_change(s_estab->sk_linux_attr, listener); // unregister_state_change 가 V8에서 내부 구현이 안되었다. => V9 포팅 여부 검토 필요 _WIN32_CHECK
+		status = GetRemoteAddress(s_estab->sk, (PSOCKADDR)&peer_addr); //V8에 없던 s_estab->ops->getname 구현. Accept 를 하고 peer 주소를 다시 획득한다. 분석 필요. _WIN32_CHECK
+		if(status != STATUS_SUCCESS) {
+			kfree(s_estab->sk_linux_attr);
+			kfree(s_estab);
+			return -1;
+		}
+#else
 		unregister_state_change(s_estab->sk, listener);
-
 		s_estab->ops->getname(s_estab, (struct sockaddr *)&peer_addr, &peer_addr_len, 2);
-
+#endif
 		spin_lock_bh(&listener->listener.waiters_lock);
 		waiter2_gen = drbd_find_waiter_by_addr(waiter->waiter.listener, &peer_addr);
 		if (!waiter2_gen) {
@@ -841,18 +885,26 @@ retry:
 			case AF_INET6:
 				from_sin6 = (struct sockaddr_in6 *)&peer_addr;
 				to_sin6 = (struct sockaddr_in6 *)&dtt_path(transport)->my_addr;
+#ifdef _WIN32_V9
+				WDRBD_ERROR("Closing unexpected connection from %pI6 to port %u\n", &from_sin6->sin6_addr, be16_to_cpu(to_sin6->sin6_port));
+#else
 				tr_err(transport, "Closing unexpected connection from "
-					 "%pI6 to port %u\n",
-					 &from_sin6->sin6_addr,
-					 be16_to_cpu(to_sin6->sin6_port));
+					"%pI6 to port %u\n",
+					&from_sin6->sin6_addr,
+					be16_to_cpu(to_sin6->sin6_port));
+#endif
 				break;
 			default:
 				from_sin = (struct sockaddr_in *)&peer_addr;
 				to_sin = (struct sockaddr_in *)&dtt_path(transport)->my_addr;
+#ifdef _WIN32_V9
+				WDRBD_ERROR("Closing unexpected connection from %pI4 to port %u\n", &from_sin->sin_addr, be16_to_cpu(to_sin->sin_port));
+#else
 				tr_err(transport, "Closing unexpected connection from "
-					 "%pI4 to port %u\n",
-					 &from_sin->sin_addr,
-					 be16_to_cpu(to_sin->sin_port));
+					"%pI4 to port %u\n",
+					&from_sin->sin_addr,
+					be16_to_cpu(to_sin->sin_port));
+#endif
 				break;
 			}
 
@@ -863,8 +915,12 @@ retry:
 				container_of(waiter2_gen, struct dtt_waiter, waiter);
 
 			if (waiter2->socket) {
+#ifdef _WIN32_V9
+				WDRBD_ERROR("Receiver busy; rejecting incoming connection\n");
+#else
 				tr_err(waiter2->waiter.transport,
-					 "Receiver busy; rejecting incoming connection\n");
+					"Receiver busy; rejecting incoming connection\n");
+#endif		
 				goto retry_locked;
 			}
 			waiter2->socket = s_estab;
@@ -872,10 +928,11 @@ retry:
 			wake_up(&waiter2->waiter.wait);
 			goto retry_locked;
 		}
+
 	}
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	*socket = s_estab;
-#endif
+
 	return 0;
 
 retry_locked:
@@ -885,8 +942,6 @@ retry_locked:
 		s_estab = NULL;
 	}
 	goto retry;
-
-
 }
 
 static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, struct socket *socket)
