@@ -448,8 +448,12 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 
 	if (socket) {
-#ifdef _WIN32_TODO // 일단 TODO
+
 		struct sock *sk = socket->sk;
+#ifdef _WIN32_V9
+		// TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
+		// unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
+#else
 		struct tcp_sock *tp = tcp_sk(sk);
 
 		stats->unread_received = tp->rcv_nxt - tp->copied_seq;
@@ -490,22 +494,22 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
+// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. _WIN32_CHECK
 static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret_socket)
 {
 	const char *what;
 	struct socket *socket;
 #ifdef _WIN32
 	struct sockaddr_storage_win my_addr, peer_addr;
+	SOCKADDR_IN	LocalAddress = { 0 };
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
 #endif
 	
 	struct net_conf *nc;
-#ifdef _WIN32_V9
-	int err = 0;//임시 NULL 초기화
-#else
 	int err;
-#endif
+
 	int sndbuf_size, rcvbuf_size, connect_int;
 
 	rcu_read_lock();
@@ -529,19 +533,39 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	   peer_addr.ss_family, so use a copy here. */
 	peer_addr = dtt_path(transport)->peer_addr;
 
-#ifdef _WIN32_TODO //V9 포팅 필요
-
 	what = "sock_create_kern";
+#ifdef _WIN32
+	socket = kzalloc(sizeof(struct socket), 0, '42DW');
+	if (!socket) {
+		err = -ENOMEM; 
+		goto out;
+	}
+	sprintf(socket->name, "conn_sock\0");
+	socket->sk_linux_attr = 0;
+	err = 0;
+	
+	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
+	if (socket->sk == NULL) {
+		err = -1;
+		goto out;
+	}
+	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
+	if (!socket->sk_linux_attr) {
+		err = -ENOMEM;
+		goto out;
+	}
+	socket->sk_linux_attr->sk_rcvtimeo =
+		socket->sk_linux_attr->sk_sndtimeo = connect_int * HZ;
+#else
 	err = sock_create_kern(my_addr.ss_family, SOCK_STREAM, IPPROTO_TCP, &socket);
 	if (err < 0) {
 		socket = NULL;
 		goto out;
 	}
-
-
 	socket->sk->sk_rcvtimeo =
-	socket->sk->sk_sndtimeo = connect_int * HZ;
-
+		socket->sk->sk_sndtimeo = connect_int * HZ;
+#endif
+	
 	dtt_setbufsize(socket, sndbuf_size, rcvbuf_size);
 
 	/* explicitly bind to the configured IP as source IP
@@ -552,15 +576,54 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	*  a free one dynamically.
 	*/
 	what = "bind before connect";
+#ifdef _WIN32
+	LocalAddress.sin_family = AF_INET;
+	LocalAddress.sin_addr.s_addr = INADDR_ANY;
+	LocalAddress.sin_port = HTONS(0);
+
+	status = Bind(socket->sk, (PSOCKADDR)&LocalAddress);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("Bind() failed with status 0x%08X \n", status);
+		err = -EINVAL;
+		goto out;
+	}
+#else
 	err = socket->ops->bind(socket, (struct sockaddr *) &my_addr, dtt_path(transport)->my_addr_len);
+#endif
 	if (err < 0)
 		goto out;
-
+	
 	/* connect may fail, peer not yet available.
 	 * stay C_CONNECTING, don't go Disconnecting! */
 	what = "connect";
+	
+#ifdef _WIN32
+	status = Connect(socket->sk, (struct sockaddr *) &peer_addr);
+	if (!NT_SUCCESS(status)) {
+		err = status;
+		switch (status) {
+		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
+		case STATUS_INVALID_DEVICE_STATE: err = -EAGAIN; break;
+		case STATUS_NETWORK_UNREACHABLE: err = -ENETUNREACH; break;
+		case STATUS_HOST_UNREACHABLE: err = -EHOSTUNREACH; break;
+		default: err = -EINVAL; break;
+		}
+	} else {
+		if (status == STATUS_TIMEOUT) { 
+			err = -ETIMEDOUT; 
+		} else { 
+			if (status == 0) { 
+				err = 0; // Connect ok 
+			} else {
+				err = -EINVAL;
+			}
+		}
+	}
+#else
 	err = socket->ops->connect(socket, (struct sockaddr *) &peer_addr,
-				   dtt_path(transport)->peer_addr_len, 0);
+		dtt_path(transport)->peer_addr_len, 0);
+#endif
+	
 	if (err < 0) {
 		switch (err) {
 		case -ETIMEDOUT:
@@ -580,11 +643,16 @@ out:
 		if (socket)
 			sock_release(socket);
 		if (err != -EAGAIN)
+#ifdef _WIN32_V9
+			WDRBD_ERROR("%s failed, err = %d\n", what, err);
+#else
 			tr_err(transport, "%s failed, err = %d\n", what, err);
+#endif
+			
 	} else {
 		*ret_socket = socket;
 	}
-#endif
+
 	return err;
 }
 
