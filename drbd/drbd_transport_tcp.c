@@ -1180,11 +1180,12 @@ out:
 #endif
 
 	if (err < 0 &&
-	    err != -EAGAIN && err != -EINTR && err != -ERESTARTSYS && err != -EADDRINUSE)
-#ifdef _WIN32_TODO // V9 포팅 필요.
-		//tr_err(transport, "%s failed, err = %d\n", what, err); 
+		err != -EAGAIN && err != -EINTR && err != -ERESTARTSYS && err != -EADDRINUSE)
+#ifdef _WIN32_V9
+		WDRBD_ERROR("%s failed, err = %d\n", what, err);
+#else
+		tr_err(transport, "%s failed, err = %d\n", what, err);
 #endif
-
 	kfree(listener);
 
 	return err;
@@ -1204,6 +1205,10 @@ static int dtt_connect(struct drbd_transport *transport)
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 
+#ifdef _WIN32_V9
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	LONG InputBuffer = 1;
+#endif
 	struct socket *dsocket, *csocket;
 	struct net_conf *nc;
 	struct dtt_waiter waiter;
@@ -1239,7 +1244,9 @@ static int dtt_connect(struct drbd_transport *transport)
 				csocket = s;
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
 			} else {
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+				WDRBD_ERROR("Logic error in conn_connect()\n");
+#else
 				tr_err(transport, "Logic error in conn_connect()\n");
 #endif
 				goto out_eagain;
@@ -1263,7 +1270,9 @@ retry:
 			switch (fp) {
 			case P_INITIAL_DATA:
 				if (dsocket) {
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+					WDRBD_WARN("initial packet S crossed\n");
+#else
 					tr_warn(transport, "initial packet S crossed\n");
 #endif
 					sock_release(dsocket);
@@ -1275,7 +1284,9 @@ retry:
 			case P_INITIAL_META:
 				set_bit(RESOLVE_CONFLICTS, &transport->flags);
 				if (csocket) {
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+					WDRBD_WARN("initial packet M crossed\n");
+#else
 					tr_warn(transport, "initial packet M crossed\n");
 #endif
 					sock_release(csocket);
@@ -1285,7 +1296,9 @@ retry:
 				csocket = s;
 				break;
 			default:
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+				WDRBD_WARN("Error receiving initial packet\n");
+#else
 				tr_warn(transport, "Error receiving initial packet\n");
 #endif
 				sock_release(s);
@@ -1303,7 +1316,14 @@ randomize:
 
 	dtt_put_listener(&waiter);
 
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32
+	// data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? _WIN32_CHECK
+	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+		goto out;
+	}
+#else
 	dsocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 	csocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 
@@ -1333,7 +1353,10 @@ randomize:
 	timeout = nc->timeout * HZ / 10;
 	rcu_read_unlock();
 
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32
+	dsocket->sk_linux_attr->sk_sndtimeo = timeout;
+	csocket->sk_linux_attr->sk_sndtimeo = timeout;
+#else
 	dsocket->sk->sk_sndtimeo = timeout;
 	csocket->sk->sk_sndtimeo = timeout;
 #endif
@@ -1357,7 +1380,9 @@ static void dtt_set_rcvtimeo(struct drbd_transport *transport, enum drbd_stream 
 		container_of(transport, struct drbd_tcp_transport, transport);
 
 	struct socket *socket = tcp_transport->stream[stream];
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+	socket->sk_linux_attr->sk_rcvtimeo = timeout;
+#else
 	socket->sk->sk_rcvtimeo = timeout;
 #endif
 }
@@ -1368,7 +1393,9 @@ static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream 
 		container_of(transport, struct drbd_tcp_transport, transport);
 
 	struct socket *socket = tcp_transport->stream[stream];
-#ifdef _WIN32_TODO //V9 포팅 필요.
+#ifdef _WIN32_V9
+	return socket->sk_linux_attr->sk_rcvtimeo;
+#else
 	return socket->sk->sk_rcvtimeo;
 #endif
 }
@@ -1386,10 +1413,9 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk;
-#ifdef _WIN32_TODO //V9 포팅 필요.
+	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. _WIN32_CHECK
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
-#endif
 }
 
 #ifdef _WIN32_V9 // 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다.

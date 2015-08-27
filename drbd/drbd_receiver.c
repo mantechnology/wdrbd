@@ -1096,7 +1096,7 @@ int connect_work(struct drbd_work *work, int cancel)
 /*
  * Returns true if we have a valid connection.
  */
-#ifdef _WIN32_V9 //기존 conn_connect 함수가 V9 형식으로 재편됨. <완료>
+
 static bool conn_connect(struct drbd_connection *connection)
 {
 	struct drbd_transport *transport = &connection->transport;
@@ -1243,7 +1243,7 @@ abort:
 	change_cstate(connection, C_DISCONNECTING, CS_HARD);
 	return false;
 }
-#endif
+
 
 //#ifdef _WIN32_V9 // V9 형식의 인자. <완료>
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
