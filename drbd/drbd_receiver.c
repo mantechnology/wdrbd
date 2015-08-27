@@ -440,9 +440,50 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
  *
  * Returns a page chain linked via page->private.
  */
-// V9형식의 drbd_alloc_pages 구현, gfp_mask 인자는 우선 남겨놓는다. <완료>
+// V9형식의 drbd_alloc_pages 구현, gfp_mask 인자는 우선 남겨놓는다. <완료> => 메모리 할당자 다시 수정한다. V8 형식으로 구현한다.(기초소스 빌드 구축에서 배제되었던 부분 이제 구현)
+#ifdef _WIN32_V9
+void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bool retry)
+{
+	struct drbd_connection *connection =
+		container_of(transport, struct drbd_connection, transport);
+	void* mem = NULL;
+	
+	unsigned int mxb;
+
+	rcu_read_lock();
+	mxb = rcu_dereference(transport->net_conf)->max_buffers;
+	rcu_read_unlock();
+
+	if (atomic_read(&connection->pp_in_use) < mxb)
+		mem = __drbd_alloc_pages(number);
+
+	while (mem == NULL) {
+		if (atomic_read(&connection->pp_in_use) < mxb) {
+			mem = __drbd_alloc_pages(number);
+			if (mem)
+				break;
+		}
+
+		if (!retry)
+			break;
+
+		if (signal_pending(current)) {
+			drbd_warn(connection, "drbd_alloc_pages interrupted!\n");
+			break;
+		}
+		schedule(&drbd_pp_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+	}
+	
+	if (mem) {
+		atomic_add(number, &connection->pp_in_use);
+	}
+
+	return mem;
+}
+
+#else
 struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int number,
-			      gfp_t gfp_mask)
+	gfp_t gfp_mask)
 {
 	struct drbd_connection *connection =
 		container_of(transport, struct drbd_connection, transport);
@@ -454,17 +495,15 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 	mxb = rcu_dereference(transport->net_conf)->max_buffers;
 	rcu_read_unlock();
 
-	if (atomic_read(&connection->pp_in_use) < mxb) {
+	if (atomic_read(&connection->pp_in_use) < mxb)
 #ifdef _WIN32_V9
 		page = __drbd_alloc_pages(number);
 #else
 		page = __drbd_alloc_pages(number, gfp_mask & ~__GFP_WAIT);
 #endif
-		
-	}
 
 	/* Try to keep the fast path fast, but occasionally we need
-	 * to reclaim the pages we lended to the network stack. */
+	* to reclaim the pages we lended to the network stack. */
 	if (page && atomic_read(&connection->pp_in_use_by_net) > 512)
 		drbd_reclaim_net_peer_reqs(connection);
 
@@ -492,7 +531,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 			break;
 		}
 
-		if (schedule_timeout(HZ/10) == 0)
+		if (schedule_timeout(HZ / 10) == 0)
 			mxb = UINT_MAX;
 	}
 	finish_wait(&drbd_pp_wait, &wait);
@@ -501,6 +540,10 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 		atomic_add(number, &connection->pp_in_use);
 	return page;
 }
+
+#endif
+
+
 
 /* Must not be used from irq, as that may deadlock: see drbd_alloc_pages.
 * Is also used from inside an other spin_lock_irq(&mdev->tconn->req_lock);
@@ -2036,16 +2079,20 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	if (trim)
 		return peer_req;
 
+	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
+	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
+#ifdef _WIN32_V9
+	err = tr_ops->recv_pages(transport, (void**)&peer_req->win32_big_page, data_size); // peer_req->win32_big_page 포인터를 dtt_recv_pages 인자로 넘겨서 dtt_recv_pages 안에서 처리.
+	if ( err || ( peer_req->win32_big_page == NULL) ) { //err 처리와 win32_big_page 할당 실패 같이 처리.
+		goto fail;
+	}
+#else
 	err = tr_ops->recv_pages(transport, &peer_req->pages, data_size);
-#ifdef _WIN32_V9 //recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	if (err) {
 		goto fail;
 	}
-	else {
-		peer_req->win32_big_page = peer_req->pages;
-	}
 #endif
-
+	
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
 		unsigned long *data;
 		drbd_err(device, "Fault injection: Corrupting data on receive\n");

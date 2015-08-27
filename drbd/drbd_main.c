@@ -3377,7 +3377,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         }
         
 //#endif
-        drbdFreeDev(VolExt);
+        //drbdFreeDev(VolExt);  // kmpak  temporary disable
     }
 
     list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)

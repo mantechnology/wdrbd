@@ -137,6 +137,7 @@ int dtt_init(struct drbd_transport *transport)
 			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
 			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
 			tcp_transport->rbuf[i].base = NULL; // base가 NULL 초기화 보장이 되는지 모르겠다. 확실히 하기 위해.
+			WDRBD_WARN("dtt_init kzalloc %s allocation fail\n", i ? "CONTROL_STREAM" : "DATA_STREAM" );
 			goto fail;
 		}
 #else 
@@ -210,7 +211,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 
 	if (free_op == DESTROY_TRANSPORT) {
 		for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
-#ifdef _WIN32 //V8 구현 유지.
+#ifdef _WIN32_V9 
 			kfree((void *)tcp_transport->rbuf[i].base);
 #else
 			free_page((unsigned long)tcp_transport->rbuf[i].base);
@@ -225,7 +226,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 	}
 }
 
-#ifdef _WIN32_V9 //한번더 재 검토 필요.
+//한번 더 재 검토 필요.
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 		      void *buf, size_t size, unsigned msg_flags)
 {
@@ -312,7 +313,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 
 	return sent;
 }
-#endif
+
 
 static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int flags)
 {
@@ -342,7 +343,7 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
 #ifdef _WIN32_V9
-	void *buffer = NULL; //임시 NULL 초기화
+	void *buffer = NULL; 
 #else
 	void *buffer;
 #endif
@@ -352,10 +353,17 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		buffer = *buf;
 		rv = dtt_recv_short(socket, buffer, size, flags & ~CALLER_BUFFER);
 	} else if (flags & GROW_BUFFER) {
-
-#ifdef _WIN32_CHECK 
+#ifdef _WIN32_V9
+		ASSERT(*buf == tcp_transport->rbuf[stream].base);
+#else
 		TR_ASSERT(transport, *buf == tcp_transport->rbuf[stream].base);
+#endif	
+
 		buffer = tcp_transport->rbuf[stream].pos;
+
+#ifdef _WIN32_V9
+		ASSERT(((UCHAR*)buffer - (UCHAR*)*buf) + size <= PAGE_SIZE);//gcc void* 연산은 기본 1바이트 연산.
+#else
 		TR_ASSERT(transport, (buffer - *buf) + size <= PAGE_SIZE);
 #endif
 		rv = dtt_recv_short(socket, buffer, size, flags & ~GROW_BUFFER);
@@ -368,8 +376,10 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	}
 
 	if (rv > 0) {
-#ifdef _WIN32_CHECK
-		tcp_transport->rbuf[stream].pos = buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.
+#ifdef _WIN32_V9
+		tcp_transport->rbuf[stream].pos = (UCHAR*)buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.=> gcc 에서 void* 증감연산은 기본 1바이트 연산.
+#else
+		tcp_transport->rbuf[stream].pos = buffer + rv; 
 #endif
 	}
 
@@ -381,16 +391,37 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
+#ifdef _WIN32
+	void** win32_big_page = pages;
+	void* all_pages = NULL, *page = NULL;
+#else
 	struct page *all_pages, *page;
+#endif
 	int err;
 
+#ifdef _WIN32
+	if (size) {
+		all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+		if (!all_pages)
+			return -ENOMEM;
+
+		*win32_big_page = page = all_pages;
+	}
+	else {
+		*win32_big_page = NULL;
+	}
+	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
+	err = dtt_recv_short(socket, *win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+	if (err < 0) {
+		goto fail;
+	}
+#else
 	all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	if (!all_pages)
 		return -ENOMEM;
-
+	
 	page = all_pages;
-	
-	
+
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
 		void *data = kmap(page);
@@ -402,6 +433,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 	}
 
 	*pages = all_pages;
+#endif
 	return 0;
 fail:
 	drbd_free_pages(transport, all_pages, 0);
@@ -416,8 +448,12 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 
 	if (socket) {
-#ifdef _WIN32_TODO // 일단 TODO
+
 		struct sock *sk = socket->sk;
+#ifdef _WIN32_V9
+		// TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
+		// unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
+#else
 		struct tcp_sock *tp = tcp_sk(sk);
 
 		stats->unread_received = tp->rcv_nxt - tp->copied_seq;
@@ -458,22 +494,22 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
+// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. _WIN32_CHECK
 static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret_socket)
 {
 	const char *what;
 	struct socket *socket;
 #ifdef _WIN32
 	struct sockaddr_storage_win my_addr, peer_addr;
+	SOCKADDR_IN	LocalAddress = { 0 };
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
 #endif
 	
 	struct net_conf *nc;
-#ifdef _WIN32_V9
-	int err = 0;//임시 NULL 초기화
-#else
 	int err;
-#endif
+
 	int sndbuf_size, rcvbuf_size, connect_int;
 
 	rcu_read_lock();
@@ -497,19 +533,39 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	   peer_addr.ss_family, so use a copy here. */
 	peer_addr = dtt_path(transport)->peer_addr;
 
-#ifdef _WIN32_TODO //V9 포팅 필요
-
 	what = "sock_create_kern";
+#ifdef _WIN32
+	socket = kzalloc(sizeof(struct socket), 0, '42DW');
+	if (!socket) {
+		err = -ENOMEM; 
+		goto out;
+	}
+	sprintf(socket->name, "conn_sock\0");
+	socket->sk_linux_attr = 0;
+	err = 0;
+	
+	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
+	if (socket->sk == NULL) {
+		err = -1;
+		goto out;
+	}
+	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
+	if (!socket->sk_linux_attr) {
+		err = -ENOMEM;
+		goto out;
+	}
+	socket->sk_linux_attr->sk_rcvtimeo =
+		socket->sk_linux_attr->sk_sndtimeo = connect_int * HZ;
+#else
 	err = sock_create_kern(my_addr.ss_family, SOCK_STREAM, IPPROTO_TCP, &socket);
 	if (err < 0) {
 		socket = NULL;
 		goto out;
 	}
-
-
 	socket->sk->sk_rcvtimeo =
-	socket->sk->sk_sndtimeo = connect_int * HZ;
-
+		socket->sk->sk_sndtimeo = connect_int * HZ;
+#endif
+	
 	dtt_setbufsize(socket, sndbuf_size, rcvbuf_size);
 
 	/* explicitly bind to the configured IP as source IP
@@ -520,15 +576,54 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	*  a free one dynamically.
 	*/
 	what = "bind before connect";
+#ifdef _WIN32
+	LocalAddress.sin_family = AF_INET;
+	LocalAddress.sin_addr.s_addr = INADDR_ANY;
+	LocalAddress.sin_port = HTONS(0);
+
+	status = Bind(socket->sk, (PSOCKADDR)&LocalAddress);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("Bind() failed with status 0x%08X \n", status);
+		err = -EINVAL;
+		goto out;
+	}
+#else
 	err = socket->ops->bind(socket, (struct sockaddr *) &my_addr, dtt_path(transport)->my_addr_len);
+#endif
 	if (err < 0)
 		goto out;
-
+	
 	/* connect may fail, peer not yet available.
 	 * stay C_CONNECTING, don't go Disconnecting! */
 	what = "connect";
+	
+#ifdef _WIN32
+	status = Connect(socket->sk, (struct sockaddr *) &peer_addr);
+	if (!NT_SUCCESS(status)) {
+		err = status;
+		switch (status) {
+		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
+		case STATUS_INVALID_DEVICE_STATE: err = -EAGAIN; break;
+		case STATUS_NETWORK_UNREACHABLE: err = -ENETUNREACH; break;
+		case STATUS_HOST_UNREACHABLE: err = -EHOSTUNREACH; break;
+		default: err = -EINVAL; break;
+		}
+	} else {
+		if (status == STATUS_TIMEOUT) { 
+			err = -ETIMEDOUT; 
+		} else { 
+			if (status == 0) { 
+				err = 0; // Connect ok 
+			} else {
+				err = -EINVAL;
+			}
+		}
+	}
+#else
 	err = socket->ops->connect(socket, (struct sockaddr *) &peer_addr,
-				   dtt_path(transport)->peer_addr_len, 0);
+		dtt_path(transport)->peer_addr_len, 0);
+#endif
+	
 	if (err < 0) {
 		switch (err) {
 		case -ETIMEDOUT:
@@ -548,11 +643,16 @@ out:
 		if (socket)
 			sock_release(socket);
 		if (err != -EAGAIN)
+#ifdef _WIN32_V9
+			WDRBD_ERROR("%s failed, err = %d\n", what, err);
+#else
 			tr_err(transport, "%s failed, err = %d\n", what, err);
+#endif
+			
 	} else {
 		*ret_socket = socket;
 	}
-#endif
+
 	return err;
 }
 

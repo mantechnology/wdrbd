@@ -386,7 +386,7 @@ do { \
 #else
 #define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
 #endif
-#define WDRBD_TRACE_NETLINK WDRBD_TRACE
+#define WDRBD_TRACE_NETLINK
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -479,16 +479,18 @@ struct workqueue_struct {
 	void (*func)();
 	char name[WQNAME_LEN];
 };
-
+#ifdef _WIN32_V9
 struct timer_list {
-	void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
-	PVOID data;             
-	struct list_head entry;  
-	unsigned long expires; 
-	KTIMER ktimer;
-	KDPC dpc;
+    KTIMER ktimer;
+    KDPC dpc;
+    void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
+    PVOID data;             
+    ULONG_PTR expires; 
+#ifdef DBG
+    char name[32];
+#endif
 };
-
+#endif
 extern void init_timer(struct timer_list *t);
 extern void add_timer(struct timer_list *t);
 extern int del_timer_sync(struct timer_list *t);

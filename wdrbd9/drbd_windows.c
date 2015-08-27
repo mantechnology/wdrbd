@@ -1228,6 +1228,9 @@ void init_timer(struct timer_list *t)
 {
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
+#ifdef DBG
+    strcpy(t->name, "undefined");
+#endif
 }
 #ifdef _WIN32_V9
 // kmpak 20150824
@@ -1236,10 +1239,12 @@ void init_timer(struct timer_list *t)
 void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
-    //debug_init(timer);
     UNREFERENCED_PARAMETER(key);
-    UNREFERENCED_PARAMETER(name);
+
     init_timer(timer);
+#ifdef DBG
+    strcpy(timer->name, name);
+#endif
 }
 #endif
 void add_timer(struct timer_list *t)
@@ -1249,12 +1254,13 @@ void add_timer(struct timer_list *t)
 
 void del_timer(struct timer_list *t)
 {
-	KeCancelTimer(&t->ktimer); 
+	KeCancelTimer(&t->ktimer);
+    t->expires = 0;
 }
 
 int del_timer_sync(struct timer_list *t)
 {
-	KeCancelTimer(&t->ktimer);
+    del_timer(t);
     return 0;
 #ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
   	for (;;) {
@@ -1265,42 +1271,80 @@ int del_timer_sync(struct timer_list *t)
 	}
 #endif
 }
-// kmpak pending_only 처리 필요
-static inline int
+#ifdef _WIN32_V9
+/**
+ * timer_pending - is a timer pending?
+ * @timer: the timer in question
+ *
+ * timer_pending will tell whether a given timer is currently pending,
+ * or not. Callers must ensure serialization wrt. other operations done
+ * to this timer, eg. interrupt contexts, or other CPUs on SMP.
+ *
+ * return value: 1 if the timer is pending, 0 if not.
+ */
+static __inline int timer_pending(const struct timer_list * timer)
+{
+    return timer->ktimer.TimerListEntry.Flink
+        && !IsListEmpty(&timer->ktimer.TimerListEntry);
+}
+
+static int
 __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
-    LARGE_INTEGER nWaitTime;
+    if (!timer_pending(timer) && pending_only)
+    {
+        return 0;
+    }
 
-    unsigned long current_milisec = jiffies;
-    nWaitTime.QuadPart = 0;
+    LARGE_INTEGER nWaitTime = { .QuadPart = 0 };
+    ULONG_PTR current_milisec = jiffies;
+
+    timer->expires = expires;
 
     if (current_milisec >= expires)
     {
         nWaitTime.LowPart = 1;
-        KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
-        return 0;
     }
-    expires -= current_milisec;
-    nWaitTime = RtlConvertLongToLargeInteger(-1 * (expires)* 1000 * 10);
+    else
+    {
+        expires -= current_milisec;
+        nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(expires)));
+    }
 
+#ifdef DBG
+    WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
+        timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
+#else
+    WDRBD_TRACE("timer(0x%p) current(%d) expires(%d) gap(%d)\n",
+        timer, current_milisec, timer->expires, timer->expires - current_milisec);
+#endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
     return 1;
 }
-#ifdef _WIN32_V9
+
+/**
+ * mod_timer_pending - modify a pending timer's timeout
+ * @timer: the pending timer to be modified
+ * @expires: new timeout in jiffies
+ *
+ * mod_timer_pending() is the same for pending timers as mod_timer(),
+ * but will not re-activate and modify already deleted timers.
+ *
+ * It is useful for unserialized use of timers.
+ */
 int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 {
     return __mod_timer(timer, expires, true);
 }
-#endif
+
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
-    //if (timer_pending(timer) && timer->expires == expires)
-    if (timer->expires == expires)
+    if (timer_pending(timer) && timer->expires == expires)
     	return 1;
 
     return __mod_timer(timer, expires, false);
 }
-
+#endif
 void kobject_put(struct kobject *kobj)
 {
     if (kobj) 

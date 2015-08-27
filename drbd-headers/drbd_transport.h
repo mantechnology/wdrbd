@@ -251,7 +251,8 @@ extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 
 /* drbd_receiver.c*/
 #ifdef _WIN32_V9
-extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
+//extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
+extern void* drbd_alloc_pages(struct drbd_transport *, unsigned int, bool);
 extern void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net);
 #else
 extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
