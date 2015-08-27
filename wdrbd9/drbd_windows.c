@@ -1068,13 +1068,13 @@ void down(struct mutex *m)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
     mutex_lock(m);
-    DbgPrint("WIN32_CHECK: mutext_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    DbgPrint("down() : mutex_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
 }
 
 void up(struct mutex *m)
 {
     // mutex/spin lock 으로 대체 가능할 듯.
-    DbgPrint("WIN32_CHECK: mutext_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    DbgPrint("up() : mutex_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
     mutex_unlock(m);
 }
 
