@@ -2853,7 +2853,6 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 	 * for any newly introduced state we may have forgotten to add here */
 
 	rcu_read_lock();
-#ifdef _WIN32_CHECK
 	for_each_peer_device_rcu(peer_device, device) {
 		switch (peer_device->repl_state[NOW]) {
 		/* New io is only accepted when the peer device is unknown or there is
@@ -2887,7 +2886,6 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 		if (!stable)
 			break;
 	}
-#endif
 	rcu_read_unlock();
 
 	switch (device->disk_state[NOW]) {

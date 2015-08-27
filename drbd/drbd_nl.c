@@ -1881,9 +1881,6 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	struct disk_conf *new_disk_conf, *old_disk_conf;
 	struct drbd_peer_device *peer_device;
 	int err;
-#ifdef _WIN32
-	KIRQL oldIrql;
-#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -3405,11 +3402,10 @@ fail_free_connection:
 	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 
 	if (!list_empty(&connection->connections)) {
-#ifdef _WIN32_V9
-        synchronize_rcu_w32_wlock();
-#endif
 		drbd_unregister_connection(connection);
+#ifndef _WIN32_V9
 		synchronize_rcu();
+#endif
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
@@ -3751,9 +3747,6 @@ void del_connection(struct drbd_connection *connection)
 	 * handling only does drbd_thread_stop_nowait().
 	 */
 	drbd_thread_stop(&connection->sender);
-#ifdef _WIN32_V9
-    synchronize_rcu_w32_wlock();
-#endif
 	drbd_unregister_connection(connection);
 
 	/*
@@ -3777,7 +3770,9 @@ void del_connection(struct drbd_connection *connection)
 	//synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
     // [choi] drbd_unregister_connection() 위로 이동.
 //#endif
+#ifndef _WIN32_V9
 	synchronize_rcu();
+#endif
 	drbd_put_connection(connection);
 }
 

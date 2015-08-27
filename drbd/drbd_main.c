@@ -4228,30 +4228,29 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	return NO_ERROR;
 
 out_remove_peer_device:
-	list_add_rcu(&tmp, &device->peer_devices);
-	list_del_init(&device->peer_devices);
 #ifdef _WIN32_V9
-    unsigned char  oldIrql_wLock;
+    {
+        synchronize_rcu_w32_wlock();
 #endif
-#ifdef _WIN32_V9
-	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n");
-#else
-	synchronize_rcu();
-#endif
+        list_add_rcu(&tmp, &device->peer_devices);
+        list_del_init(&device->peer_devices);
+        synchronize_rcu();
 #ifdef _WIN32
-    list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &tmp, peer_devices) {
+        list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &tmp, peer_devices) {
 #else
-	list_for_each_entry_safe(peer_device, tmp_peer_device, &tmp, peer_devices) {
+        list_for_each_entry_safe(peer_device, tmp_peer_device, &tmp, peer_devices) {
 #endif
-		struct drbd_connection *connection = peer_device->connection;
+            struct drbd_connection *connection = peer_device->connection;
 
-		kref_debug_put(&connection->kref_debug, 3);
-		kref_put(&connection->kref, drbd_destroy_connection);
-		idr_remove(&connection->peer_devices, device->vnr);
-		list_del(&peer_device->peer_devices);
-		kfree(peer_device);
-	}
-
+            kref_debug_put(&connection->kref_debug, 3);
+            kref_put(&connection->kref, drbd_destroy_connection);
+            idr_remove(&connection->peer_devices, device->vnr);
+            list_del(&peer_device->peer_devices);
+            kfree(peer_device);
+        }
+#ifdef _WIN32_V9
+    }
+#endif
 out_idr_remove_minor:
 	idr_remove(&drbd_devices, minor);
 out_no_minor_idr:
