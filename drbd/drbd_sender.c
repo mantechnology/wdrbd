@@ -1975,15 +1975,12 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int resyn
 		return NO_ERROR;
 	if (resync_after < -1)
 		return ERR_RESYNC_AFTER;
-#ifdef _WIN32_V9 
 	other_device = minor_to_device(resync_after);
 	if (!other_device)
 		return ERR_RESYNC_AFTER;
-#endif
+
 	/* check for loops */
-#ifdef _WIN32_V9 // 기존에 lock 이 없었다. 
 	rcu_read_lock();
-#endif
 	while (1) {
 		if (other_device == device) {
 			rv = ERR_RESYNC_AFTER_CYCLE;
@@ -2011,22 +2008,17 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int resyn
 		/* follow the dependency chain */
 		other_device = minor_to_device(resync_after);
 	}
-#ifdef _WIN32_V9 // 기존에 lock 이 없었다. 
 	rcu_read_unlock();
-#endif
 
-#ifdef _WIN32_V9 // 기존에 return 이 없었다. 이해 안됨.
 	return rv;
-#endif
+
 }
 
 /* caller must hold resources_mutex */
 void drbd_resync_after_changed(struct drbd_device *device)
 {
-#ifdef _WIN32_V9 //기존 do-while loop 에서 변경.
 	while (drbd_pause_after(device) || drbd_resume_next(device))
 		/* do nothing */ ;
-#endif
 }
 
 void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
@@ -2037,7 +2029,10 @@ void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->device->rs_sect_ev, 0);  /* FIXME: ??? */
 	peer_device->rs_in_flight = 0;
 
-#ifdef _WIN32_CHECK	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.
+#ifdef _WIN32_V9	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.
+	peer_device->rs_last_events =
+		drbd_backing_bdev_events(peer_device->device->ldev->backing_bdev->bd_disk);
+#else
 	peer_device->rs_last_events =
 		drbd_backing_bdev_events(peer_device->device->ldev->backing_bdev->bd_contains->bd_disk);
 #endif
@@ -2145,7 +2140,7 @@ static bool use_checksum_based_resync(struct drbd_connection *connection, struct
  * This function might bring you directly into one of the
  * C_PAUSED_SYNC_* states.
  */
-#ifdef _WIN32_V9 // lock 관련 구현 v9포팅 및 전반적으로 검토 필요.
+// lock 관련 구현 v9포팅 및 전반적으로 검토 필요.
 void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_state side)
 {
 	struct drbd_device *device = peer_device->device;
@@ -2312,7 +2307,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (finished_resync_pdsk != D_UNKNOWN)
 		drbd_resync_finished(peer_device, finished_resync_pdsk);
 }
-#endif
+
 
 static void update_on_disk_bitmap(struct drbd_peer_device *peer_device, bool resync_done)
 {
