@@ -1952,7 +1952,7 @@ void do_submit(struct work_struct *ws)
 			if (!list_empty(&pending))
 				break;
 #ifdef _WIN32_V9
-            schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+			schedule(&device->al_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
 			schedule();
 #endif

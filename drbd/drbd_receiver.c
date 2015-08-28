@@ -882,8 +882,8 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_kick_lo(device);
 
-#ifdef _WIN32 //drbd_req.c 포팅부를 보고 따라함.
-		schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#ifdef _WIN32 //drbd_req.c 포팅부를 보고 따라함. => 따라하지 말란 말이야~...
+		schedule(&device->ee_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
 		schedule();
 #endif

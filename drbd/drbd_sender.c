@@ -2191,8 +2191,12 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		}
 	}
 
-#ifdef _WIN32_TODO // down_trylock V9 포팅 필요.
+	// down_trylock V9 포팅 필요.
+#ifdef _WIN32_V9 // mutex_trylock 기존 mutex_trylock 사용. _WIN32_CHECK
+	if (!mutex_trylock(&device->resource->state_sem)) {
+#else
 	if (down_trylock(&device->resource->state_sem)) {
+#endif
 		/* Retry later and let the worker make progress in the
 		 * meantime; two-phase commits depend on that.  */
 		set_bit(B_RS_H_DONE, &peer_device->flags);
@@ -2201,8 +2205,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
-#endif
-
+	
 	lock_all_resources();
 	clear_bit(B_RS_H_DONE, &peer_device->flags);
 	if (connection->cstate[NOW] < C_CONNECTED ||
@@ -2329,22 +2332,22 @@ static void update_on_disk_bitmap(struct drbd_peer_device *peer_device, bool res
 
 static void drbd_ldev_destroy(struct drbd_device *device)
 {
-        struct drbd_peer_device *peer_device;
+    struct drbd_peer_device *peer_device;
 
-        rcu_read_lock();
-        for_each_peer_device_rcu(peer_device, device) {
-                lc_destroy(peer_device->resync_lru);
-                peer_device->resync_lru = NULL;
-        }
-        rcu_read_unlock();
-        lc_destroy(device->act_log);
-        device->act_log = NULL;
+    rcu_read_lock();
+    for_each_peer_device_rcu(peer_device, device) {
+            lc_destroy(peer_device->resync_lru);
+            peer_device->resync_lru = NULL;
+    }
+    rcu_read_unlock();
+    lc_destroy(device->act_log);
+    device->act_log = NULL;
 	__acquire(local);
 	drbd_free_ldev(device->ldev);
 	device->ldev = NULL;
 	__release(local);
 
-        clear_bit(GOING_DISKLESS, &device->flags);
+    clear_bit(GOING_DISKLESS, &device->flags);
 	wake_up(&device->misc_wait);
 }
 
@@ -2479,12 +2482,14 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
 {
 #ifdef _WIN32_V9
-	unsigned long old = 0, new = 0; //_WIN32_CHECK 임시 0으로 초기화.
+	unsigned long old = 0, new; 
 #else
-	unsigned long old, new; 
+	unsigned long old, new;
 #endif
-	
-#ifdef _WIN32_TODO // cmpxchg linux kernel func. V9 포팅 필요.
+#ifdef _WIN32_TODO
+	unsigned long old, new; 
+
+	// cmpxchg linux kernel func. V9 포팅 필요.
 	do {
 		old = *flags;
 		new = old & ~mask;
@@ -2562,9 +2567,8 @@ static void do_unqueued_resource_work(struct drbd_resource *resource)
 static bool dequeue_work_batch(struct drbd_work_queue *queue, struct list_head *work_list)
 {
 	spin_lock_irq(&queue->q_lock);
-#ifdef _WIN32_V9 // list_splice_init 에서 변경됨.
+	// list_splice_init 에서 변경됨.
 	list_splice_tail_init(&queue->q, work_list);
-#endif
 	spin_unlock_irq(&queue->q_lock);
 	return !list_empty(work_list);
 }
@@ -2719,10 +2723,12 @@ static bool check_sender_todo(struct drbd_connection *connection)
 		|| need_unplug(connection)
 		|| !list_empty(&connection->todo.work_list);
 }
-#ifdef _WIN32_V9 // wait_for_work 에서 이름 변경된 듯. 스케줄링 및 lock 관련 코드 전반적으로 포팅 및 검토 필요.
+// wait_for_work 에서 이름 변경된 듯. 스케줄링 및 lock 관련 코드 전반적으로 포팅 및 검토 필요.
 static void wait_for_sender_todo(struct drbd_connection *connection)
 {
+#ifndef _WIN32
 	DEFINE_WAIT(wait);
+#endif
 	struct net_conf *nc;
 	int uncork, cork;
 	bool got_something = 0;
@@ -2751,7 +2757,6 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 #ifndef _WIN32
 		prepare_to_wait(&connection->sender_work.q_wait, &wait, TASK_INTERRUPTIBLE);
 #endif
-				
 		spin_lock_irq(&connection->resource->req_lock);
 		if (check_sender_todo(connection) || signal_pending(current)) {
 			spin_unlock_irq(&connection->resource->req_lock);
@@ -2778,14 +2783,18 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 		if (get_t_state(&connection->sender) != RUNNING)
 			break;
 
-#ifdef _WIN32_TODO //schedule V9 포팅 필요.
+#ifdef _WIN32 
+		schedule(&connection->sender_work.q_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#else
 		schedule();
 #endif
 		/* may be woken up for other things but new work, too,
 		 * e.g. if the current epoch got closed.
 		 * In which case we send the barrier above. */
 	}
+#ifndef _WIN32
 	finish_wait(&connection->sender_work.q_wait, &wait);
+#endif
 
 	/* someone may have changed the config while we have been waiting above. */
 #ifdef _WIN32 //V8 구현 유지.
@@ -2802,7 +2811,7 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 	else if (!uncork)
 		drbd_uncork(connection, DATA_STREAM);
 }
-#endif
+
 
 static void re_init_if_first_write(struct drbd_connection *connection, unsigned int epoch)
 {
@@ -3037,12 +3046,10 @@ int drbd_worker(struct drbd_thread *thi)
 		drbd_thread_current_set_cpu(thi);
 
 		if (list_empty(&work_list)) {
-
-#ifdef _WIN32_V9 // V8에서 wait_for_work 로 구현되었다가 V9에서 wait_event_interruptible 로 구현변경.
+			// V8에서 wait_for_work 로 구현되었다가 V9에서 wait_event_interruptible 로 구현변경.
 			bool w, r, d, p; int sig;
 
 			update_worker_timing_details(resource, dequeue_work_batch);
-
 #ifdef _WIN32
 			wait_event_interruptible(sig, resource->work.q_wait,
 				(w = dequeue_work_batch(&resource->work, &work_list),
@@ -3073,7 +3080,6 @@ int drbd_worker(struct drbd_thread *thi)
 				update_worker_timing_details(resource, do_unqueued_resource_work);
 				do_unqueued_resource_work(resource);
 			}
-#endif
 		}
 
 		if (signal_pending(current)) {
@@ -3121,6 +3127,5 @@ int drbd_worker(struct drbd_thread *thi)
 		 test_bit(DEVICE_WORK_PENDING, &resource->flags) ||
 		 test_bit(PEER_DEVICE_WORK_PENDING, &resource->flags));
 
-// _WIN32_CHECK lock 관련 구현이 제거되었고...전반적으로 로직 점검 필요.
 	return 0;
 }
