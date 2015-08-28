@@ -4,6 +4,7 @@
 #ifdef __KERNEL__
 #include "linux-compat/jiffies.h"
 #endif
+#define AF_NETLINK	16
 #define NETLINK_PORT			5678
 
 struct nlmsghdr
@@ -13,6 +14,16 @@ struct nlmsghdr
 	__u16		nlmsg_flags;	/* Additional flags */
 	__u32		nlmsg_seq;	/* Sequence number */
 	__u32		nlmsg_pid;	/* Sending process port ID */
+};
+
+typedef unsigned short	sa_family_t;
+
+struct sockaddr_nl
+{
+    sa_family_t     nl_family;  /* AF_NETLINK	*/
+    unsigned short  nl_pad;     /* zero		*/
+    __u32           nl_pid;     /* port ID	*/
+    __u32           nl_groups;  /* multicast groups mask */
 };
 
 /* Flags values */
@@ -134,14 +145,63 @@ struct genlmsghdr
 #define GENL_ID_GENERATE	0
 #define GENL_ID_CTRL		NLMSG_MIN_TYPE
 
+/**************************************************************************
+* Controller
+**************************************************************************/
+
+enum
+{
+    CTRL_CMD_UNSPEC,
+    CTRL_CMD_NEWFAMILY,
+    CTRL_CMD_DELFAMILY,
+    CTRL_CMD_GETFAMILY,
+    CTRL_CMD_NEWOPS,
+    CTRL_CMD_DELOPS,
+    CTRL_CMD_GETOPS,
+    CTRL_CMD_NEWMCAST_GRP,
+    CTRL_CMD_DELMCAST_GRP,
+    CTRL_CMD_GETMCAST_GRP, /* unused */
+    __CTRL_CMD_MAX,
+};
+
+#define CTRL_CMD_MAX (__CTRL_CMD_MAX - 1)
+
+enum
+{
+    CTRL_ATTR_UNSPEC,
+    CTRL_ATTR_FAMILY_ID,
+    CTRL_ATTR_FAMILY_NAME,
+    CTRL_ATTR_VERSION,
+    CTRL_ATTR_HDRSIZE,
+    CTRL_ATTR_MAXATTR,
+    CTRL_ATTR_OPS,
+    CTRL_ATTR_MCAST_GROUPS,
+    __CTRL_ATTR_MAX,
+};
+
+#define CTRL_ATTR_MAX (__CTRL_ATTR_MAX - 1)
+
+enum
+{
+    CTRL_ATTR_OP_UNSPEC,
+    CTRL_ATTR_OP_ID,
+    CTRL_ATTR_OP_FLAGS,
+    __CTRL_ATTR_OP_MAX,
+};
+
+#define CTRL_ATTR_OP_MAX (__CTRL_ATTR_OP_MAX - 1)
+
+enum
+{
+    CTRL_ATTR_MCAST_GRP_UNSPEC,
+    CTRL_ATTR_MCAST_GRP_NAME,
+    CTRL_ATTR_MCAST_GRP_ID,
+    __CTRL_ATTR_MCAST_GRP_MAX,
+};
+
+#define CTRL_ATTR_MCAST_GRP_MAX (__CTRL_ATTR_MCAST_GRP_MAX - 1)
+
 #define nla_nest_cancel(_X,_Y)	__noop
-
-
-
-
-
-
-
 
 
 

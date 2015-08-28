@@ -228,11 +228,6 @@ enum rq_flag_bits {
 #define _RET_IP_				(unsigned long)(0)
 #define HZ					    1000
 
-#ifdef stderr
-#undef stderr
-#endif
-#define stderr					2
-
 #define likely(_X)				(_X)
 #define unlikely(_X)			(_X)
 

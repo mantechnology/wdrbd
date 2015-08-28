@@ -103,6 +103,8 @@ extern void add_lib_drbd_to_path(void);
 extern uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length);
 
 
-
+#ifdef _WIN32
+#define UTRACE(format, arg...) fprintf(stderr, "[%s|%d] "format, __FUNCTION__, __LINE__, ##arg)
+#endif
 
 #endif

@@ -1322,9 +1322,6 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 #ifdef DBG
     WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
         timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
-#else
-    WDRBD_TRACE("timer(0x%p) current(%d) expires(%d) gap(%d)\n",
-        timer, current_milisec, timer->expires, timer->expires - current_milisec);
 #endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
     return 1;
