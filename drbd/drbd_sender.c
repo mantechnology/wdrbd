@@ -26,6 +26,10 @@
 #include "windows/drbd.h"
 #include <linux-compat/sched.h>
 #include <linux-compat/wait.h>
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
+#include <drbd_windows.h>
 #else
 #include <linux/module.h>
 #include <linux/drbd.h>
@@ -38,9 +42,7 @@
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #endif
-#include "drbd_int.h"
-#include "drbd_protocol.h"
-#include "drbd_req.h"
+
 
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
@@ -64,7 +66,7 @@ struct mutex resources_mutex;
 /* used for synchronous meta data and bitmap IO
  * submitted by drbd_md_sync_page_io()
  */
-#ifdef _WIN32_V9
+#ifdef _WIN32
 BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS //drbd_md_io_complete 에서 drbd_md_endio 로 이름 변경된듯.
 #else 
 BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
@@ -124,11 +126,29 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         IoFreeIrp(Irp);
     }
 #endif
+#ifdef _WIN32
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	{
+		bio_put(bio);
+	}
+#else
 	bio_put(bio);
+#endif
+	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
 
+#ifdef _WIN32
+#ifdef DRBD_TRACE	
+	{
+		static int cnt = 0;
+		WDRBD_TRACE("drbd_md_endio done.(%d)................!!!\n", cnt++);
+	}
+#endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
 }
 
 /* reads on behalf of the partner,
@@ -155,6 +175,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 
 static int is_failed_barrier(int ee_flags)
 {
+	// V9에서 EE_IS_TRIM 플래그 추가.
 	return (ee_flags & (EE_IS_BARRIER|EE_WAS_ERROR|EE_RESUBMITTED|EE_IS_TRIM))
 		== (EE_IS_BARRIER|EE_WAS_ERROR);
 }
@@ -191,6 +212,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * it may be freed/reused already!
 	 * (as soon as we release the req_lock) */
 	sector = peer_req->i.sector;
+	//do_al_complete_io = peer_req->flags & EE_CALL_AL_COMPLETE_IO; //V9에서 제거됨.
 	block_id = peer_req->block_id;
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
@@ -214,10 +236,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	if (connection->cstate[NOW] == C_CONNECTED) {
 		kref_get(&device->kref); /* put is in drbd_send_acks_wf() */
-#ifdef _WIN32_TODO	//queue_work 리턴형요구..기존 V8 포팅된 함수와 맞지 않다. queue_work linux kerenl func.	
+		//queue_work 리턴형요구..기존 V8 포팅된 함수와 맞지 않다. queue_work linux kerenl func. => 포팅 완료.
 		if (!queue_work(connection->ack_sender, &peer_device->send_acks_work))
 			kref_put(&device->kref, drbd_destroy_device);
-#endif
 	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
