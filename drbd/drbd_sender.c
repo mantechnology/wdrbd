@@ -370,14 +370,39 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS
 BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
-#ifdef _WIN32_TODO
+#ifdef _WIN32
+	unsigned long flags;
+	struct drbd_request *req = NULL;
+	struct drbd_device *device = NULL;
+	struct bio_and_error m;
+	enum drbd_req_event what;
+	int uptodate = 0; 
+	struct bio *bio = NULL;
+	int error = 0;
+	PIRP Irp = NULL;
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_request_endio: IRQL(%d) ................\n", current->comm, KeGetCurrentIrql());
+#endif
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+		Irp = p2;
+		bio = (struct bio *)p3;
+		error = Irp->IoStatus.Status;
+	} else {
+		error = (int)p3;
+		bio = (struct bio *)p2;
+	}
+	req = bio->bi_private;
+	device = req->device;
+	uptodate = bio_flagged(bio, BIO_UPTODATE);
+#else
 	unsigned long flags;
 	struct drbd_request *req = bio->bi_private;
 	struct drbd_device *device = req->device;
 	struct bio_and_error m;
 	enum drbd_req_event what;
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
-
+#endif
+	
 	BIO_ENDIO_FN_START;
 	if (!error && !uptodate) {
 		drbd_warn(device, "p %s: setting error to -EIO\n",
@@ -439,26 +464,52 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	} else
 		what = COMPLETED_OK;
 
+#ifdef _WIN32
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+		if (Irp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			Irp->MdlAddress = NULL;
+		}
+		IoFreeIrp(Irp);
+	}
+#endif
+
 	bio_put(req->private_bio);
 	req->private_bio = ERR_PTR(error);
 
 	/* not req_mod(), we need irqsave here! */
 	spin_lock_irqsave(&device->resource->req_lock, flags);
+#ifdef DRBD_TRACE	
+	WDRBD_TRACE("(%s) drbd_request_endio: before __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
+#endif
 	__req_mod(req, what, NULL, &m);
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 	put_ldev(device);
 
 	if (m.bio)
+#ifdef _WIN32
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+#else
 		complete_master_bio(device, &m);
 #endif
 
+
+#ifdef _WIN32
 #ifdef DRBD_TRACE	
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_request_endio done.(%d).................IRQL(%d)!!!\n", cnt++, KeGetCurrentIrql());
 	}
 #endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
 }
 
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.
@@ -592,7 +643,6 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 	if (!peer_req)
 		goto defer;
 
-#ifdef _WIN32_V9
 	if (size) {
 		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
 						   DIV_ROUND_UP(size, PAGE_SIZE),
@@ -608,7 +658,6 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = ID_SYNCER; /* unused */
-#endif
 
 	peer_req->w.cb = w_e_send_csum;
 	spin_lock_irq(&device->resource->req_lock);
@@ -640,8 +689,7 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 		container_of(w, struct drbd_peer_device, resync_work);
 	struct drbd_device *device = peer_device->device;
 
-#ifdef _WIN32_V9 // V8에 비해 뮤텍스락을 걸어주는 부분이 추가됨.
-	mutex_lock(&device->bm_resync_fo_mutex);
+	mutex_lock(&device->bm_resync_fo_mutex); // V8에 비해 뮤텍스락을 걸어주는 부분이 추가됨.
 	switch (peer_device->repl_state[NOW]) {
 	case L_VERIFY_S:
 		make_ov_request(peer_device, cancel);
@@ -653,11 +701,11 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 		break;
 	}
 	mutex_unlock(&device->bm_resync_fo_mutex);
-#endif
+
 	return 0;
 }
 
-#ifdef _WIN32_V9 //새로 추가된 함수.
+
 int w_send_uuids(struct drbd_work *w, int cancel)
 {
 	struct drbd_peer_device *peer_device =
@@ -671,7 +719,7 @@ int w_send_uuids(struct drbd_work *w, int cancel)
 
 	return 0;
 }
-#endif
+
 
 #ifdef _WIN32
 void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2)
@@ -680,11 +728,11 @@ void resync_timer_fn(unsigned long data)
 #endif
 {
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
-#ifdef _WIN32_V9 // 새로 추가된 함수. 분석 필요.
+	// V9. 새로 추가된 함수. 분석 필요.
 	drbd_queue_work_if_unqueued(
 		&peer_device->connection->sender_work,
 		&peer_device->resync_work);
-#endif
+
 }
 
 static void fifo_set(struct fifo_buffer *fb, int value)
@@ -749,7 +797,7 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	int max_sect;
 	struct fifo_buffer *plan;
 
-	// 기존의 아래 코드 제거됨. 분석 필요.
+	// 기존의 아래 코드 V9에서 제거됨. 분석 필요.
 	//sect_in = atomic_xchg(&mdev->rs_sect_in, 0); /* Number of sectors that came in */
 	//mdev->rs_in_flight -= sect_in;
 	pdc = rcu_dereference(peer_device->conf);
@@ -798,16 +846,14 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	unsigned int sect_in;  /* Number of sectors that came in since the last turn */
 	int number, mxb;
 
-#ifdef _WIN32_V9 //drbd_rs_controller 에서 atomic_xchg연산부는 제거됬고... 이 함수에선 atomic_xchg 연산이 들어갔다. 버그가 해결된 부분인지 확인 필요.
+	//drbd_rs_controller 에서 atomic_xchg연산부는 제거 됬고... 이 함수에선 atomic_xchg 연산이 들어갔다. 버그가 해결된 부분인지 확인 필요.
 	sect_in = atomic_xchg(&peer_device->rs_sect_in, 0);
 	peer_device->rs_in_flight -= sect_in;
-#endif
+
 	rcu_read_lock();
-#ifdef _WIN32_V9
 	nc = rcu_dereference(peer_device->connection->transport.net_conf);
 	mxb = nc ? nc->max_buffers : 0;
-#endif
-
+	
 	if (rcu_dereference(peer_device->rs_plan_s)->size) {
 		number = drbd_rs_controller(peer_device, sect_in) >> (BM_BLOCK_SHIFT - 9);
 		peer_device->c_sync_rate = number * HZ * (BM_BLOCK_SIZE / 1024) / SLEEP_TIME;
@@ -817,7 +863,7 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	}
 	rcu_read_unlock();
 
-#ifdef _WIN32_V9 // 뭔지모를 코드가 추가됨. 분석 필요.
+	// 뭔지모를 코드가 추가됨. 분석 필요. _WIN32_CHECK
 	/* Don't have more than "max-buffers"/2 in-flight.
 	 * Otherwise we may cause the remote site to stall on drbd_alloc_pages(),
 	 * potentially causing a distributed deadlock on congestion during
@@ -829,7 +875,7 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	 * but "rs_in_flight" is in "sectors" (512 Byte). */
 	if (mxb - peer_device->rs_in_flight/8 < number)
 		number = mxb - peer_device->rs_in_flight/8;
-#endif
+
 	return number;
 }
 
@@ -848,6 +894,10 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int number, rollback_i, size;
 	int align, requeue = 0;
 	int i = 0;
+
+#ifdef DRBD_TRACE1
+	WDRBD_TRACE("timer callback: w_make_resync_request: start! ------------------\n");
+#endif
 
 	if (unlikely(cancel))
 		return 0;
@@ -880,8 +930,8 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 			int queued, sndbuf;
 
 			transport->ops->stats(transport, &transport_stats);
-			queued = transport_stats.send_buffer_used;
-			sndbuf = transport_stats.send_buffer_size;
+			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. _WIN32_CHECK
+			sndbuf = transport_stats.send_buffer_size; 
 			if (queued > sndbuf / 2) {
 				requeue = 1;
 				transport->ops->hint(transport, DATA_STREAM, NOSPACE);
@@ -904,9 +954,8 @@ next_sector:
 
 		sector = BM_BIT_TO_SECT(bit);
 
-#ifdef _WIN32_V9 // 기존 drbd_rs_should_slow_down 을 먼저 수행하고 drbd_try_rs_begin_io 을 다음 연산 했는데... V9에서 drbd_rs_should_slow_down 이 제거됨. 분석 필요.
+		// 기존 drbd_rs_should_slow_down 을 먼저 수행하고 drbd_try_rs_begin_io 을 다음 연산 했는데... V9에서 drbd_rs_should_slow_down 이 제거됨. 분석 필요.
 		if (drbd_try_rs_begin_io(peer_device, sector, true)) {
-#endif
 			device->bm_resync_fo = bit;
 			goto requeue;
 		}
@@ -926,9 +975,9 @@ next_sector:
 		 */
 		align = 1;
 		rollback_i = i;
-#ifdef _WIN32_V9 // 기존 무한루프 구조에서 조건을 비교하는 구조로 바뀌었음.
+		// 기존 무한루프 구조에서 조건을 비교하는 구조로 바뀌었음.
 		while (i < number) {
-#endif
+
 			if (size + BM_BLOCK_SIZE > max_bio_size)
 				break;
 
@@ -1047,9 +1096,8 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 		size = BM_BLOCK_SIZE; 
 #endif
 
-#ifdef _WIN32_V9 // 기존 drbd_rs_should_slow_down 선 수행 하는 구조가 변경됨. 어디선가 이와 비슷한 변경점이 있었음. V9에서 로직이 변경된 듯하다.
+		// 기존 drbd_rs_should_slow_down 선 수행 하는 구조가 변경됨. 어디선가 이와 비슷한 변경점이 있었음. V9에서 로직이 변경된 듯하다.
 		if (drbd_try_rs_begin_io(peer_device, sector, true)) {
-#endif
 			peer_device->ov_position = sector;
 			goto requeue;
 		}
@@ -1085,7 +1133,7 @@ int w_ov_finished(struct drbd_work *w, int cancel)
 	return 0;
 }
 
-#ifdef _WIN32_V9 //resync_finished_work 구조체가 추가됨.
+//resync_finished_work 구조체가 추가됨.
 struct resync_finished_work {
 	struct drbd_peer_device_work pdw;
 	enum drbd_disk_state new_peer_disk_state;
@@ -1103,7 +1151,7 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 
 	return 0;
 }
-#endif
+
 
 void drbd_ping_peer(struct drbd_connection *connection)
 {
@@ -1191,7 +1239,7 @@ static void init_resync_stable_bits(struct drbd_peer_device *first_target_pd)
 	clear_bit(STABLE_RESYNC, &device->flags);
 }
 
-#ifdef _WIN32_V9 // 뭔가 많이 변경 되었다... 분석 필요.
+// 뭔가 많이 변경 되었다... 분석 필요.
 int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			 enum drbd_disk_state new_peer_disk_state)
 {
@@ -1199,8 +1247,13 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	struct drbd_connection *connection = peer_device->connection;
 	enum drbd_repl_state *repl_state = peer_device->repl_state;
 	enum drbd_repl_state old_repl_state = L_ESTABLISHED;
+#ifdef _WIN32
+	ULONG_PTR db, dt, dbdt;
+	ULONG_PTR n_oos;
+#else
 	unsigned long db, dt, dbdt;
 	unsigned long n_oos;
+#endif
 	char *khelper_cmd = NULL;
 	int verify_done = 0;
 
@@ -1399,7 +1452,7 @@ out:
 
 	return 1;
 }
-#endif
+
 
 /* helper */
 static void move_to_net_ee_or_free(struct drbd_connection *connection, struct drbd_peer_request *peer_req)
@@ -1590,9 +1643,8 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 
 	digest_size = crypto_hash_digestsize(peer_device->connection->verify_tfm);
 	/* FIXME if this allocation fails, online verify will not terminate! */
-#ifdef _WIN32_V9	
+	// 기존 kmalloc 으로 할당하던 방식에서 drbd_prepare_drequest_csum 으로 처리.
 	digest = drbd_prepare_drequest_csum(peer_req, digest_size);
-#endif
 	if (!digest) {
 		err = -ENOMEM;
 		goto out;
@@ -1734,14 +1786,12 @@ static int drbd_send_barrier(struct drbd_connection *connection)
 	p->barrier = connection->send.current_epoch_nr;
 	p->pad = 0;
 	connection->send.current_epoch_writes = 0;
-#ifdef _WIN32_V9	// jiffies 연산 추가됨. 
+	// jiffies 연산 추가됨. 
 	connection->send.last_sent_barrier_jif = jiffies;
-#endif
 
 	set_bit(BARRIER_ACK_PENDING, &connection->flags);
-#ifdef _WIN32_V9	// conn_send_command 에서 send_command 로 변경.
+	// conn_send_command 에서 send_command 로 변경.
 	err = send_command(connection, -1, P_BARRIER, DATA_STREAM);
-#endif
 	if (err) {
 		clear_bit(BARRIER_ACK_PENDING, &connection->flags);
 		wake_up(&connection->resource->barrier_wait);
@@ -1903,21 +1953,16 @@ static bool drbd_resume_next(struct drbd_device *device)
 
 void resume_next_sg(struct drbd_device *device)
 {
-#ifdef _WIN32_TODO // 일단 TODO
 	lock_all_resources();
 	drbd_resume_next(device);
 	unlock_all_resources();
-#endif
-
 }
 
 void suspend_other_sg(struct drbd_device *device)
 {
-#ifdef _WIN32_TODO // 일단 TODO
 	lock_all_resources();
 	drbd_pause_after(device);
 	unlock_all_resources();
-#endif
 }
 
 /* caller must hold resources_mutex */

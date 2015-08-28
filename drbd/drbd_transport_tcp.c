@@ -461,6 +461,8 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 #ifdef _WIN32_V9
 		// TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
 		// unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
+		stats->send_buffer_size = sk->sk_sndbuf; //sk->sk_sndbuf, sk->sk_wmem_queued 값이 정상적으로 들어가 있는지 모르겠다. 디버깅으로 확인 필요._WIN32_CHECK
+		stats->send_buffer_used = sk->sk_wmem_queued;
 #else
 		struct tcp_sock *tp = tcp_sk(sk);
 
