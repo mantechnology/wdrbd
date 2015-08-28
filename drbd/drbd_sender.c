@@ -260,13 +260,42 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS
 BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
+#ifdef _WIN32
+	struct drbd_peer_request *peer_req = NULL;
+	struct drbd_device *device = NULL;
+	struct bio *bio = NULL;
+	PIRP Irp = NULL;
+	PVOID Context = NULL;
+	int error = 0;
+	int uptodate = 0;
+	int is_write = 0;
+	int is_discard = 0;
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_peer_request_endio: IRQL(%d) ..............\n",  current->comm, KeGetCurrentIrql());
+#endif
 
-#ifdef _WIN32_TODO
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+		Irp = p2;
+		Context = p3;
+		error = Irp->IoStatus.Status;
+		bio = (struct bio *)Context;
+	} else {
+		error = (int)p3;
+		bio = (struct bio *)p2;
+	}
+	peer_req = (struct drbd_peer_request *)bio->bi_private;
+	device = peer_req->peer_device->device;
+	uptodate = bio_flagged(bio, BIO_UPTODATE);
+	is_write = bio_data_dir(bio) == WRITE;
+	is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD); // V9에 추가.
+	
+#else
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
 	int is_write = bio_data_dir(bio) == WRITE;
-	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
+	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD); 
+#endif
 
 	BIO_ENDIO_FN_START;
 	if (error && drbd_ratelimit())
@@ -288,6 +317,23 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (error)
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 
+#ifdef _WIN32
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	{
+		if (Irp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			Irp->MdlAddress = NULL;
+		}
+		IoFreeIrp(Irp);
+	}
+#endif
+
+	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
@@ -295,15 +341,18 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		else
 			drbd_endio_read_sec_final(peer_req);
 	}
-#endif
 
+#ifdef _WIN32
 #ifdef DRBD_TRACE
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_peer_request_endio done.(%d).............!!!\n", cnt++);
 	}
 #endif
+	return STATUS_MORE_PROCESSING_REQUIRED;
+#else
 	BIO_ENDIO_FN_RETURN;
+#endif
 }
 
 void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *device)
