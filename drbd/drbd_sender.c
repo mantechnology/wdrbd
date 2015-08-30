@@ -2481,20 +2481,18 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
 {
-#ifdef _WIN32_V9
-	unsigned long old = 0, new; 
-#else
 	unsigned long old, new;
-#endif
-#ifdef _WIN32_TODO
-	unsigned long old, new; 
 
-	// cmpxchg linux kernel func. V9 포팅 필요.
+	// cmpxchg linux kernel func. V9 포팅 필요. => 이미 포팅되어 있는 atomic_cmpxchg 사용.
 	do {
 		old = *flags;
 		new = old & ~mask;
+#ifdef _WIN32
+	} while (atomic_cmpxchg(flags, old, new) != old);
+#else
 	} while (cmpxchg(flags, old, new) != old);
 #endif
+	
 	return old & mask;
 }
 
