@@ -387,6 +387,7 @@ do { \
 #define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
 #endif
 #define WDRBD_TRACE_NETLINK
+#define WDRBD_TRACE_RCU WDRBD_TRACE
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -1219,22 +1220,22 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define rcu_read_lock() \
     unsigned char oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
     /* [choi] lock/unlock 검토 완료 후 삭제할 예정 */ \
-    WDRBD_TRACE("rcu_read_lock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+    WDRBD_TRACE_RCU("rcu_read_lock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 #define rcu_read_unlock() \
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
-    WDRBD_TRACE("rcu_read_unlock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+    WDRBD_TRACE_RCU("rcu_read_unlock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 
 #define rcu_read_lock_w32_inner() \
 	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
-    WDRBD_TRACE("rcu_read_lock_w32_inner : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+    WDRBD_TRACE_RCU("rcu_read_lock_w32_inner : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 #define synchronize_rcu_w32_wlock() \
 	unsigned char  oldIrql_wLock; \
 	oldIrql_wLock = ExAcquireSpinLockExclusive(&g_rcuLock);\
-    WDRBD_TRACE("synchronize_rcu_w32_wlock : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+    WDRBD_TRACE_RCU("synchronize_rcu_w32_wlock : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 #define synchronize_rcu() \
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
-    WDRBD_TRACE("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+    WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 #ifdef _WIN32_CT
 extern void ct_init_thread_list();

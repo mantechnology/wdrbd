@@ -1981,8 +1981,8 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	}
 
 #ifdef _WIN32
-	// moved // _WIN32_CHECK: V8에서는 이곳 도달 이전에 synchronize_rcu가 모두 처리되었다는 의미로 기억됨. null처리 시 락이 모두 처리되었느지 확인
-    // [choi] 1955 라인으로 moved 된듯.
+	// moved 
+    // [choi] rcu_assign_pointer 사용 후 바로 정리. 
 #else
 	synchronize_rcu();
 #endif
@@ -1997,8 +1997,8 @@ fail_unlock:
 success:
 	if (retcode != NO_ERROR)
 #ifdef _WIN32_V9
-		{} // dummy
-	// _WIN32_CHECK: 이곳 도달 이전에 synchronize_rcu가 처리되어여 할 것으로 보임. null처리 시 락이 모두 처리되는지 확인
+        // moved 
+        // [choi] rcu_assign_pointer 사용 후 바로 정리. 
 #else
 		synchronize_rcu();
 #endif
@@ -2081,9 +2081,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_peer_device *peer_device;
 	unsigned int slots_needed = 0;
 	bool have_conf_update = false;
-#ifdef _WIN32
-    KIRQL oldIrql;
-#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -3402,10 +3399,11 @@ fail_free_connection:
 	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 
 	if (!list_empty(&connection->connections)) {
-		drbd_unregister_connection(connection);
-#ifndef _WIN32_V9
-		synchronize_rcu();
+#ifdef _WIN32_V9
+        synchronize_rcu_w32_wlock();
 #endif
+		drbd_unregister_connection(connection); // list_del_rcu(); 사용됨
+		synchronize_rcu();
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
@@ -3766,12 +3764,9 @@ void del_connection(struct drbd_connection *connection)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-//#ifdef _WIN32_V9
-	//synchronize_rcu_w32_wlock(); // _WIN32_CHECK: 컴파일 회피용. 이 곳에서 락은 의미 없음, 위쪽에서 rcu 를 사용하는 부분을 찾아서 바로 그 이전으로 이 라인을 이동시켜야 함
-    // [choi] drbd_unregister_connection() 위로 이동.
-//#endif
-#ifndef _WIN32_V9
-	synchronize_rcu();
+#ifndef _WIN32_V9 
+    //_WIN32_CHECK [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
+	synchronize_rcu(); 
 #endif
 	drbd_put_connection(connection);
 }
@@ -5333,7 +5328,9 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	 * "destroy" event to come last.
 	 */
 	drbd_flush_workqueue(&resource->work);
-
+#ifdef _WIN32_V9
+    synchronize_rcu_w32_wlock();
+#endif
 	drbd_unregister_device(device);
 
 	mutex_lock(&notification_mutex);
@@ -5342,9 +5339,7 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifndef _WIN32
 	synchronize_rcu();
-#endif
 	drbd_put_device(device);
 
 	return ret;
@@ -5391,11 +5386,12 @@ static int adm_del_resource(struct drbd_resource *resource)
 	notify_resource_state(NULL, 0, resource, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
 
+#ifdef _WIN32_V9
+    synchronize_rcu_w32_wlock();
+#endif
 	list_del_rcu(&resource->resources);
 	drbd_debugfs_resource_cleanup(resource);
-#ifndef _WIN32
 	synchronize_rcu();
-#endif
 	drbd_free_resource(resource);
 out:
 	mutex_unlock(&resources_mutex);

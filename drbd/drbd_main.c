@@ -4252,12 +4252,20 @@ out_remove_peer_device:
     }
 #endif
 out_idr_remove_minor:
-	idr_remove(&drbd_devices, minor);
+#ifdef _WIN32_V9 // [choi] _WIN32_CHECK 필요없으면 삭제
+    {
+        synchronize_rcu_w32_wlock();
+#endif
+        idr_remove(&drbd_devices, minor);
+#ifdef _WIN32_V9 // [choi] _WIN32_CHECK 필요없으면 삭제
+        synchronize_rcu();
+    }
+#endif
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32_V9
-	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n");
+	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n"); // _WIN32_CHECK [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..
 #else
 	synchronize_rcu();
 #endif
