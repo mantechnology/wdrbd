@@ -296,7 +296,11 @@ static void bm_set_page_need_writeout(struct page *page)
 
 static int bm_test_page_unchanged(struct page *page)
 {
+#ifdef _WIN32
+    volatile const ULONG_PTR *addr = &page_private(page);
+#else
 	volatile const unsigned long *addr = &page_private(page);
+#endif
 	return (*addr & ((1UL<<BM_PAGE_NEED_WRITEOUT)|(1UL<<BM_PAGE_LAZY_WRITEOUT))) == 0;
 }
 

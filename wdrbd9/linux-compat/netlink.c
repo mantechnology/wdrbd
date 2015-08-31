@@ -842,8 +842,6 @@ NetlinkWorkThread(PVOID context)
             {
                 WDRBD_WARN("Failed to acquire the mutex\n");
             }
-
-            goto cleanup;
         }
         else
         {

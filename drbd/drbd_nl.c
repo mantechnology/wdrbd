@@ -4482,8 +4482,11 @@ put_result:
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
-//#endif
+#ifdef _WIN32_V9
+    cb->args[0] = (LONG_PTR)resource;
+#else
 	cb->args[0] = (long)resource;
+#endif
 	genlmsg_end(skb, dh);
 	err = 0;
 
@@ -4577,7 +4580,11 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 			if (!resource)
 				goto put_result;
 			kref_debug_get(&resource->kref_debug, 7);
+#ifdef _WIN32_V9
+            cb->args[0] = (LONG_PTR)resource;
+#else
 			cb->args[0] = (long)resource;
+#endif
 		}
 	}
 
@@ -4706,7 +4713,11 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 			if (!resource)
 				goto put_result;
 			kref_debug_get(&resource->kref_debug, 6);
+#ifdef _WIN32_V9
+            cb->args[0] = (LONG_PTR)resource;
+#else
 			cb->args[0] = (long)resource;
+#endif
 			cb->args[1] = SINGLE_RESOURCE;
 		}
 	}
@@ -4716,7 +4727,11 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 		resource = list_first_entry(&drbd_resources, struct drbd_resource, resources);
 		kref_get(&resource->kref);
 		kref_debug_get(&resource->kref_debug, 6);
+#ifdef _WIN32_V9
+        cb->args[0] = (LONG_PTR)resource;
+#else
 		cb->args[0] = (long)resource;
+#endif
 		cb->args[1] = ITERATE_RESOURCES;
 	}
 
@@ -4772,7 +4787,11 @@ found_resource:
 		resource = next_resource;
 		kref_get(&resource->kref);
 		kref_debug_get(&resource->kref_debug, 6);
+#ifdef _WIN32_V9
+        cb->args[0] = (LONG_PTR)resource;
+#else
 		cb->args[0] = (long)resource;
+#endif
 		cb->args[2] = 0;
 		goto next_resource;
 	}
@@ -4808,7 +4827,11 @@ put_result:
 		err = connection_statistics_to_skb(skb, &connection_statistics, !capable(CAP_SYS_ADMIN));
 		if (err)
 			goto out;
+#ifdef _WIN32_V9
+        cb->args[2] = (LONG_PTR)connection;
+#else
 		cb->args[2] = (long)connection;
+#endif
 	}
 	genlmsg_end(skb, dh);
 	err = 0;
@@ -4877,7 +4900,11 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 				goto put_result;
 			kref_debug_get(&resource->kref_debug, 9);
 		}
+#ifdef _WIN32_V9
+        cb->args[0] = (LONG_PTR)resource;
+#else
 		cb->args[0] = (long)resource;
+#endif
 	}
 
 	rcu_read_lock();
@@ -4952,7 +4979,11 @@ put_result:
 		}
 
 		cb->args[1] = minor;
+#ifdef _WIN32_V9
+        cb->args[2] = (LONG_PTR)peer_device;
+#else
 		cb->args[2] = (long)peer_device;
+#endif
 	}
 	genlmsg_end(skb, dh);
 	err = 0;
@@ -5907,7 +5938,11 @@ next:
 		struct drbd_state_change *next_state_change =
 			list_entry(state_change->list.next,
 				   struct drbd_state_change, list);
+#ifdef _WIN32_V9
+        cb->args[0] = (LONG_PTR)next_state_change;
+#else
 		cb->args[0] = (long)next_state_change;
+#endif
 		cb->args[3] = notifications_for_state_change(next_state_change);
 		cb->args[4] = 0;
 	}
@@ -5955,7 +5990,11 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 	if (!list_empty(&head)) {
 		struct drbd_state_change *state_change =
 			list_entry(head.next, struct drbd_state_change, list);
+#ifdef _WIN32_V9
+        cb->args[0] = (LONG_PTR)state_change;
+#else
 		cb->args[0] = (long)state_change;
+#endif
 		cb->args[3] = notifications_for_state_change(state_change);
 		list_del(&head);  /* detach list from head */
 	}
@@ -6037,9 +6076,10 @@ out_no_adm:
 #ifdef _WIN32
 int drbd_tla_parse(struct nlmsghdr *nlh)
 {
-    extern struct genl_family drbd_genl_family;
     extern struct nlattr *global_attrs[];
-
+#ifdef _WIN32_V9
+    drbd_genl_family.id = nlh->nlmsg_type;
+#endif
     return nla_parse(global_attrs, ARRAY_SIZE(drbd_tla_nl_policy) - 1,
         nlmsg_attrdata(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),
         nlmsg_attrlen(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),

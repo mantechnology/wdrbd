@@ -461,6 +461,8 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 #ifdef _WIN32_V9
 		// TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
 		// unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
+		stats->send_buffer_size = sk->sk_sndbuf; //sk->sk_sndbuf, sk->sk_wmem_queued 값이 정상적으로 들어가 있는지 모르겠다. 디버깅으로 확인 필요._WIN32_CHECK
+		stats->send_buffer_used = sk->sk_wmem_queued;
 #else
 		struct tcp_sock *tp = tcp_sk(sk);
 
@@ -1419,6 +1421,10 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 }
 
 // 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다. => BUG 처리하고, _drbd_no_send_page 로 유도한다.
+// _drbd_no_send_page 는 결국 dtt_send_page 를 호출하게 된다.... dtt 계층에서 기존의 V8 의 _drbd_no_send_page 를 구현해줄 함수가 필요.
+// V8 은 no_send_page 방식의 경우 drbd_sendall/drbd_send 를 호출하여 V9 기준의 _dtt_send 를 호출하는 구조이다.
+// V9 은 no_send_page 방식의 경우에도 dtt_send_page 를 호출하여 send_page 방식과 동일한 인터페이스를 사용하게 되어 있다.
+// _dtt_send 는 dtt_connect 시점의 dtt_send_first_packet 에 의해서만 사용된다.
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
 			 struct page *page, int offset, size_t size, unsigned msg_flags)
 {
@@ -1428,8 +1434,8 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
 #else
-	WDRBD_ERROR("not reached here\n"); //_WIN32
-	BUG();
+	//WDRBD_ERROR("not reached here\n"); //_WIN32
+	//BUG(); // => V9은 no_send_page, send_page 두 방식 다 dtt_send_page 로 단일 인터페이스를 사용하여 전송한다. 
 #endif
 	int len = size;
 	int err = -EIO;

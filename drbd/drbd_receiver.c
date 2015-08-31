@@ -752,9 +752,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 
 #ifdef _WIN32_V9
 	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
-#ifdef  _WIN32_CHECK
-	might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... 
-#endif
+	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요. _WIN32_CHECK 
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
 	drbd_free_pages(&peer_device->connection->transport, peer_req->pages, is_net);
@@ -770,19 +768,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	mempool_free(peer_req, drbd_ee_mempool);
 #endif
-	
 
-#if 0
-#ifdef _WIN32_TODO // __drbd_free_peer_req 인자 변경. V9 형식으로 변경 필요.
-	might_sleep();
-	if (peer_req->flags & EE_HAS_DIGEST)
-		kfree(peer_req->digest);
-	drbd_free_pages(&peer_device->connection->transport, peer_req->pages, is_net);
-	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
-	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
-	mempool_free(peer_req, drbd_ee_mempool);
-#endif
-#endif
 }
 #endif
 // <완료>
@@ -882,8 +868,8 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_kick_lo(device);
 
-#ifdef _WIN32 //drbd_req.c 포팅부를 보고 따라함.
-		schedule(&device->misc_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#ifdef _WIN32 //drbd_req.c 포팅부를 보고 따라함. => 따라하지 말란 말이야~...
+		schedule(&device->ee_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
 		schedule();
 #endif

@@ -14,8 +14,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#ifdef _WIN32_V9
 #include "windows/wingenl.h"
-#ifndef _WIN32
+#else
 #include <linux/socket.h>
 #include <linux/types.h>
 #include <linux/netlink.h>
@@ -1037,10 +1038,8 @@ static inline int genlmsg_total_size(int payload)
  * Some helpers to simplify communicating with a particular family
  */
 struct genl_sock {
-#ifndef _WIN32 
 	struct sockaddr_nl	s_local;
 	struct sockaddr_nl	s_peer;
-#endif
 	int			s_fd;
 	unsigned int		s_seq_next;
 	unsigned int		s_seq_expect;

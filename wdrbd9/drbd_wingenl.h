@@ -61,23 +61,6 @@ struct genl_ops
 #define __stringify_1(x)	#x
 #define __stringify(x)		__stringify_1(x)
 
-enum
-{
-    CTRL_CMD_UNSPEC,
-    CTRL_CMD_NEWFAMILY,
-    CTRL_CMD_DELFAMILY,
-    CTRL_CMD_GETFAMILY,
-    CTRL_CMD_NEWOPS,
-    CTRL_CMD_DELOPS,
-    CTRL_CMD_GETOPS,
-    CTRL_CMD_NEWMCAST_GRP,
-    CTRL_CMD_DELMCAST_GRP,
-    CTRL_CMD_GETMCAST_GRP, /* unused */
-    CTRL_ATTR_FAMILY_NAME,
-    CTRL_ATTR_FAMILY_ID,
-    __CTRL_CMD_MAX,
-};
-
 /**
 * struct genl_family - generic netlink family
 * @id: protocol family idenfitier
@@ -370,30 +353,7 @@ static __inline int nlmsg_report(const struct nlmsghdr *nlh)
 }
 
 
-/**
-* nlmsg_for_each_attr - iterate over a stream of attributes
-* @pos: loop counter, set to current attribute
-* @nlh: netlink message header
-* @hdrlen: length of familiy specific header
-* @rem: initialized to len, holds bytes currently remaining in stream
-*/
-#define nlmsg_for_each_attr(pos, nlh, hdrlen, rem) \
-	nla_for_each_attr(pos, nlmsg_attrdata(nlh, hdrlen), \
-			  nlmsg_attrlen(nlh, hdrlen), rem)
-
 extern void nlmsg_free(struct sk_buff *skb);
-
-/**
-* nlmsg_for_each_msg - iterate over a stream of messages
-* @pos: loop counter, set to current message
-* @head: head of message stream
-* @len: length of message stream
-* @rem: initialized to len, holds bytes currently remaining in stream
-*/
-#define nlmsg_for_each_msg(pos, head, len, rem) \
-	for (pos = head, rem = len; \
-	     nlmsg_ok(pos, rem); \
-	     pos = nlmsg_next(pos, &(rem)))
 
 /**************************************************************************
 * Netlink Attributes

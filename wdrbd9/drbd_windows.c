@@ -871,10 +871,18 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 	timeout = expire - jiffies;
 	return timeout < 0 ? 0 : timeout;
 }
-
+#ifdef _WIN32_V9
+bool queue_work(struct workqueue_struct* queue, struct work_struct* work)
+#else
 void queue_work(struct workqueue_struct* queue, struct work_struct* work)
+#endif
 {
 	KeSetEvent(&queue->wakeupEvent, 0, FALSE); // send to run_singlethread_workqueue
+#ifdef _WIN32_V9
+	return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
+#else
+	return;
+#endif
 }
 
 void run_singlethread_workqueue(struct submit_worker *workq)
@@ -1314,9 +1322,6 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 #ifdef DBG
     WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
         timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
-#else
-    WDRBD_TRACE("timer(0x%p) current(%d) expires(%d) gap(%d)\n",
-        timer, current_milisec, timer->expires, timer->expires - current_milisec);
 #endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
     return 1;

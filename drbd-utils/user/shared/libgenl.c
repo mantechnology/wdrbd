@@ -55,7 +55,7 @@ int genl_join_mc_group(struct genl_sock *s, const char *name) {
 		}						\
 	} while(0)
 
-#ifdef _WIN32 //_WIN32_V9
+#ifdef _WIN32
 int get_netlink_port()
 {
     DWORD value, port = NETLINK_PORT;
@@ -77,7 +77,7 @@ int get_netlink_port()
     RegCloseKey(hKey);
     return htons(port);
 }
-#endif // _WIN32_V9
+#endif
 
 static struct genl_sock *genl_connect(__u32 nl_groups)
 {
@@ -90,8 +90,6 @@ static struct genl_sock *genl_connect(__u32 nl_groups)
 
 	/* autobind; kernel is responsible to give us something unique
 	 * in bind() below. */
-
-#ifndef _WIN32
 	s->s_local.nl_pid = 0;
 	s->s_local.nl_family = AF_NETLINK;
 	/*
@@ -101,7 +99,6 @@ static struct genl_sock *genl_connect(__u32 nl_groups)
 	 */
 	s->s_local.nl_groups = nl_groups;
 	s->s_peer.nl_family = AF_NETLINK;
-#endif
 	/* start with some sane sequence number */
 	s->s_seq_expect = s->s_seq_next = time(0);
 
@@ -128,22 +125,16 @@ static struct genl_sock *genl_connect(__u32 nl_groups)
 	sendsocket.sin_addr.s_addr = inet_addr("127.0.0.1");
     sendsocket.sin_port = get_netlink_port();
     
-
 	if (connect(s->s_fd, (struct sockaddr *) &sendsocket, sizeof(sendsocket)) < 0) {
 		perror("connect");
 		return NULL;
 	}
 #endif
 
-#ifndef _WIN32
 	dbg(3, "bound socket to nl_pid:%u, my pid:%u, len:%u, sizeof:%u\n",
 		s->s_local.nl_pid, getpid(),
 		(unsigned)sock_len, (unsigned)sizeof(s->s_local));
-#else
-	dbg(3, "bound socket  my pid:%u, len:%u\n",
-		getpid(),
-		(unsigned)sock_len);
-#endif
+
 	return s;
 
 fail:
@@ -154,7 +145,6 @@ fail:
 
 static int do_send(int fd, const void *buf, int len)
 {
-#ifndef _WIN32
 	int c;
 	while ((c = write(fd, buf, len)) < len) {
 		if (c == -1) {
@@ -166,20 +156,6 @@ static int do_send(int fd, const void *buf, int len)
 		len -= c;
 	}
 	return 0;
-#else
-	struct sockaddr_in sendsocket;
-	memset(&sendsocket, 0, sizeof(sendsocket));
-	sendsocket.sin_family = AF_INET;
-	sendsocket.sin_addr.s_addr = inet_addr("127.0.0.1");
-	sendsocket.sin_port = get_netlink_port();
-
-	if (send(fd, buf, len, 0) != len) {
-		perror("send error");
-		return -1;
-	}
-
-	return 0;
-#endif
 }
 
 int genl_send(struct genl_sock *s, struct msg_buff *msg)
@@ -189,24 +165,22 @@ int genl_send(struct genl_sock *s, struct msg_buff *msg)
 	n->nlmsg_len = msg->tail - msg->data;
 	n->nlmsg_flags |= NLM_F_REQUEST;
 	n->nlmsg_seq = s->s_seq_expect = s->s_seq_next++;
-
 #ifndef _WIN32	
 	n->nlmsg_pid = s->s_local.nl_pid;
 #else
 	n->nlmsg_pid = getpid();
 #endif
+#define LOCAL_DEBUG_LEVEL 3
+#if LOCAL_DEBUG_LEVEL <= DEBUG_LEVEL
+	struct genlmsghdr *g = nlmsg_data(n);
 
-
-#ifndef _WIN32
-	dbg(3, "sending %smessage, pid:%u seq:%u, g.cmd/version:%u/%u",
+	dbg(LOCAL_DEBUG_LEVEL, "sending %smessage, pid:%u seq:%u, g.cmd/version:%u/%u",
 			n->nlmsg_type == GENL_ID_CTRL ? "ctrl " : "",
 			n->nlmsg_pid, n->nlmsg_seq, g->cmd, g->version);
-#else
 #ifdef NL_PACKET_MSG
     UTRACE("len(%d), type(0x%x), pid(%d), seq(%d), flags(0x%x), cmd(%d), version(%d)\n",
         n->nlmsg_len, n->nlmsg_type, n->nlmsg_pid, n->nlmsg_seq, n->nlmsg_flags, g->cmd, g->version);
 #endif
-	dbg(3, "sending message.");
 #endif
 
 	return do_send(s->s_fd, msg->data, n->nlmsg_len);
@@ -220,7 +194,6 @@ int genl_send(struct genl_sock *s, struct msg_buff *msg)
  */
 int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 {
-#ifndef _WIN32
 	struct sockaddr_nl addr;
 	struct pollfd pfd;
 	int flags;
@@ -233,7 +206,6 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 		.msg_controllen = 0,
 		.msg_flags = 0,
 	};
-#endif
 	int n;
 
 	if (!iov->iov_len) {
@@ -241,7 +213,6 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 		iov->iov_base = malloc(iov->iov_len);
 	}
 
-#ifndef _WIN32
 	flags = MSG_PEEK;
 retry:
 	pfd.fd = s->s_fd;
@@ -254,23 +225,12 @@ retry:
 	 * chance to realloc before the rest of the datagram is discarded.
 	 */
 	n = recvmsg(s->s_fd, &msg, flags);
-#else
-	if ((n = recv(s->s_fd, iov->iov_base, iov->iov_len, 0)) < 0){
-		perror("recv");
-		return -1;
-	}
-
-#endif
 	if (!n)
 		return 0;
 	else if (n < 0) {
 		if (errno == EINTR) {
 			dbg(3, "recvmsg() returned EINTR, retrying\n");
-#ifndef _WIN32
 			goto retry;
-#else
-			return -EINTR;
-#endif
 		} else if (errno == EAGAIN) {
 			dbg(3, "recvmsg() returned EAGAIN, aborting\n");
 			return 0;
@@ -282,7 +242,7 @@ retry:
 			return -E_RCV_FAILED;
 		}
 	}
-#ifndef _WIN32
+
 	if (iov->iov_len < (unsigned)n ||
 	    msg.msg_flags & MSG_TRUNC) {
 		/* Provided buffer is not long enough, enlarge it
@@ -304,7 +264,6 @@ retry:
 				addr.nl_pid);
 		goto retry;
 	}
-#endif
 	return n;
 }
 
@@ -376,16 +335,12 @@ int genl_recv_msgs(struct genl_sock *s, struct iovec *iov, char **err_desc, int 
 	return c;
 }
 
-#ifndef _WIN32
 static struct genl_family genl_ctrl = {
         .id = GENL_ID_CTRL,
         .name = "nlctrl",
         .version = 0x2,
         .maxattr = CTRL_ATTR_MAX,
 };
-#else
-static struct genl_family genl_ctrl;
-#endif
 
 struct genl_sock *genl_connect_to_family(struct genl_family *family)
 {
@@ -587,11 +542,7 @@ static int validate_nla(struct nlattr *nla, int maxtype,
 			break;
 		if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN)
 			return -ERANGE;
-//#ifndef _WIN32 // _WIN32_V9_CHECK: needed? [choi] int로 캐스팅 했던 이유를 모르겠음.
 		nla = nla_data(nla) + NLA_ALIGN(pt->len);
-//#else
-//		nla = (int) nla_data(nla) + NLA_ALIGN(pt->len);
-//#endif
 		if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN + nla_len(nla))
 			return -ERANGE;
 		break;

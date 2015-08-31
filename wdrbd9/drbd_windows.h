@@ -228,11 +228,6 @@ enum rq_flag_bits {
 #define _RET_IP_				(unsigned long)(0)
 #define HZ					    1000
 
-#ifdef stderr
-#undef stderr
-#endif
-#define stderr					2
-
 #define likely(_X)				(_X)
 #define unlikely(_X)			(_X)
 
@@ -864,7 +859,11 @@ struct scatterlist {
 
 
 extern struct workqueue_struct *create_singlethread_workqueue(void *name, void  *wq_s, void *func, ULONG Tag);
+#ifdef _WIN32_V9
+extern bool queue_work(struct workqueue_struct* queue, struct work_struct* work);
+#else
 extern void queue_work(struct workqueue_struct* queue, struct work_struct* work);
+#endif
 extern void destroy_workqueue(struct workqueue_struct *wq);
 
 extern void kobject_put(struct kobject *kobj);

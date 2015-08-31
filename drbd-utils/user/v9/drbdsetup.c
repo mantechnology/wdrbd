@@ -678,6 +678,9 @@ int lock_fd;
 struct genl_sock *drbd_sock = NULL;
 
 struct genl_family drbd_genl_family = {
+#ifdef _WIN32_V9    // kmpak NLMSG_MIN_TYPE 이상의 값이 있어야 연속적인 nl 명령처리가 가능
+    .id = NLMSG_MIN_TYPE + 1,
+#endif
 	.name = "drbd",
 	.version = GENL_MAGIC_VERSION,
 	.hdrsize = GENL_MAGIC_FAMILY_HDRSZ,
@@ -1700,26 +1703,7 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 				.userhdr = genlmsg_data(nlmsg_data(nlh)),
 				.attrs = global_attrs,
 			};
-#ifdef _WIN32
-            if (nlh->nlmsg_type == NLMSG_DONE)
-            {
-                if (cm->continuous_poll)
-                    continue;
-                err = cm->show_function(cm, NULL, u_ptr);
-                if (err)
-                {
-                    goto out2;
-                }
-                err = -*(int*)nlmsg_data(nlh);
-                if (err &&
-                    (err != ENODEV || !cm->missing_ok)) {
-                    fprintf(stderr, "received netlink error reply: %s\n",
-                        strerror(err));
-                    err = 20;
-                }
-                goto out2;
-            }
-#endif
+
 			if (nlh->nlmsg_type < NLMSG_MIN_TYPE) {
 				/* Ignore netlink control messages. */
 				continue;
