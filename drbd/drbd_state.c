@@ -444,9 +444,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	/* changes to local_cnt and device flags should be visible before
 	 * changes to state, which again should be visible before anything else
 	 * depending on that change happens. */
-#ifdef _WIN32_CHECK // smp_rmb 재활용?
 	smp_wmb();
-#endif
 	resource->role[NOW] = resource->role[NEW];
 	resource->susp[NOW] = resource->susp[NEW];
 	resource->susp_nod[NOW] = resource->susp_nod[NEW];
@@ -479,9 +477,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 				peer_device->resync_susp_other_c[NEW];
 		}
 	}
-#ifdef _WIN32_CHECK // smp_rmb 재활용?
 	smp_wmb();
-#endif
 out:
 	// __begin_state_change 진입 시점에 락을 걸로 진입함.
 	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.

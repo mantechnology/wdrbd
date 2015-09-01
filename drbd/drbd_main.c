@@ -4351,9 +4351,7 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 
 	spin_lock_irq(&resource->req_lock);
 	set_bit(C_UNREGISTERED, &connection->flags);
-#ifdef _WIN32_CHECK // kmpak 20150729 신규
 	smp_wmb();
-#endif
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else

@@ -61,6 +61,7 @@
 
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()
+#define smp_wmb()				KeMemoryBarrier()
 
 
 #define GFP_KERNEL              1
