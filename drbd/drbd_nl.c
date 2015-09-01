@@ -1937,8 +1937,6 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		goto fail_unlock;
 	}
 
-	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
-    // [choi] lock_all_resources() 수정 필요
 	lock_all_resources();
 	retcode = drbd_resync_after_valid(device, new_disk_conf->resync_after);
 	if (retcode == NO_ERROR) {
@@ -1951,8 +1949,6 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 #endif
 		drbd_resync_after_changed(device);
 	}
-	// _WIN32_CHECK: V8 write_lock_irq(&global_state_lock); 위치가 lock_all_resources로 바뀜. 락 조정 필요
-    // [choi] unlock_all_resources() 수정 필요
 	unlock_all_resources();
 
 	if (retcode != NO_ERROR)

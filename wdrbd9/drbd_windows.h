@@ -382,7 +382,7 @@ do { \
 #define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
 #endif
 #define WDRBD_TRACE_NETLINK
-#define WDRBD_TRACE_RCU WDRBD_TRACE
+#define WDRBD_TRACE_RCU
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
