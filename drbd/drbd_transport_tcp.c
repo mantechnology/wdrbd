@@ -1414,10 +1414,32 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
+#ifdef _WIN32_CHECK
+    // DRBD_DOC: DRBD_CONGESTED_PORTING
+    // 송출시 혼잡 정도를 체크한다.
+    //  - sk_wmem_queued is the amount of memory used by the socket send buffer queued in the transmit queue 
+    // WDRBD WSK는 송출 혼잡 판단 API를 제공하지 않는다. 또한 송출 버퍼가 없다.
+    // 따라서 WDRBD는 drbd_update_congested 기능을 제공 못함.
+
+#ifdef _WIN32_SEND_BUFFING
+    struct sock *sk = tconn->data.socket->sk_linux_attr;
+    struct ring_buffer *bab = tconn->data.socket->bab;
+    int sk_wmem_queued = 0;
+    if (bab)
+    {
+        sk_wmem_queued = bab->sk_wmem_queued;
+    }
+    if (sk_wmem_queued > sk->sk_sndbuf * 4 / 5) // reached 80%
+    {
+        set_bit(NET_CONGESTED, &tconn->flags);
+    }
+#endif
+#else
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk;
 	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. _WIN32_CHECK
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
+#endif
 }
 
 // 기존 V8 에서 xxx_send_page 가 사용되지 않고는 있으나... V9 포팅에서 다시 확인이 필요하다. => BUG 처리하고, _drbd_no_send_page 로 유도한다.

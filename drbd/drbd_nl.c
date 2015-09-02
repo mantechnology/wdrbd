@@ -514,7 +514,11 @@ static void conn_md_sync(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_md_sync(device);
 		kref_put(&device->kref, drbd_destroy_device);
+#ifdef _WIN32
+        rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 	}
 	rcu_read_unlock();
 }

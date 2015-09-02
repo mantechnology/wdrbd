@@ -2048,14 +2048,14 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 		/* was not compressible.
 		 * send a buffer full of plain text bits instead. */
 		unsigned int data_size;
-#ifdef _WIN32_V9
+#ifdef _WIN32_CHECK
 		DbgPrint("WIN32_CHECK: send_bitmap_rle_or_plain: check p size value please!\n");
 		//	size_t num_words;
 		//	size_t *p = (size_t)(sock->sbuf) + header_size;
-#endif
+#else
 		unsigned long num_words;
 		unsigned long *pu = (unsigned long *)pc;
-
+#endif
 		data_size = DRBD_SOCKET_BUFFER_SIZE - header_size;
 		num_words = min_t(size_t, data_size / sizeof(*pu),
 				  c->bm_words - c->word_offset);
@@ -2336,6 +2336,10 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
 #ifdef _WIN32_V9 // _WIN32_CHECK
+    // DRBD_DOC: page parameter -> bio->win32_page. 
+    // 단일 버퍼로 전송함 단일 페이지 사용으로 포팅, 옵셋인자는 불필요함. 항상 0로 가정
+    // [choi] 확인 필요
+    // addr = (void*)page;
     offset2 = (ULONG_PTR)buffer2 - (ULONG_PTR)page_address(page2);
 #else
 	offset2 = buffer2 - page_address(page2);
@@ -3132,7 +3136,7 @@ void drbd_destroy_resource(struct kref *kref)
 	struct drbd_resource *resource = container_of(kref, struct drbd_resource, kref);
 
 	idr_destroy(&resource->devices);
-#ifdef _WIN32_CHECK
+#ifndef _WIN32_V9 // [choi] V8에서 disable됨
 	free_cpumask_var(resource->cpu_mask);
 #endif
 	kfree(resource->name);
@@ -3398,7 +3402,9 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 static int drbd_congested(void *congested_data, int bdi_bits)
 {
 	struct drbd_device *device = congested_data;
+#ifndef _WIN32
 	struct request_queue *q;
+#endif
 	int r = 0;
 
 	if (!may_inc_ap_bio(device)) {
@@ -3423,13 +3429,27 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 	}
 
 	if (get_ldev(device)) {
-#ifndef _WIN32
+#ifdef _WIN32
+		// DRBD_DOC: DRBD_CONGESTED_PORTING
+        // Linux 확인결과 아래 bdi_congested 에 의해 이 drbd_congested 콜백 함수는 다시 불려지지 않는다.
+        // 아래 bdi_congested 는 단지 커널이 관리하는 해당 디바이스의 bdi->state 값을 리턴할 뿐이다.
+        // 따라서 Windows 에서는 아래 bdi->state 값과 유사한 결과를 제공해야 한다.
+        //   - BDI_write_congested,	/* The write queue is getting full */
+        //   - BDI_read_congested,	/* The read queue is getting full */
+        // WDRBD는 지원 안함.(혼잡 상황 없음 처리)
+        r = 0;  
+#else
 		q = bdev_get_queue(device->ldev->backing_bdev);
 		r = bdi_congested(&q->backing_dev_info, bdi_bits);
 #endif
 		put_ldev(device);
 	}
-
+#ifdef _WIN32_SEND_BUFFING //_WIN32_CHECK
+    // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
+    if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
+        reason = 'n';
+    }
+#else
 	if (bdi_bits & (1 << BDI_async_congested)) {
 		struct drbd_peer_device *peer_device;
 
@@ -3442,6 +3462,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		}
 		rcu_read_unlock();
 	}
+#endif
 
 out:
 	return r;
@@ -3554,12 +3575,7 @@ void drbd_flush_peer_acks(struct drbd_resource *resource)
 	spin_lock_irq(&resource->req_lock);
 	if (resource->peer_ack_req) {
 		resource->last_peer_acked_dagtag = resource->peer_ack_req->dagtag_sector;
-#ifdef _WIN32 // _WIN32_CHECK
-		 // 이전에 컴파일 되던 것이 안됨,???
-		// 매트로 전환 관계로 일단 보류
-#else
 		drbd_queue_peer_ack(resource, resource->peer_ack_req);
-#endif
 		resource->peer_ack_req = NULL;
 	}
 	spin_unlock_irq(&resource->req_lock);
@@ -3959,12 +3975,16 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 
 static int init_submitter(struct drbd_device *device)
 {
-#ifdef _WIN32_CHECK // create_singlethread_workqueue()의 파라미터 확인 필요
+// create_singlethread_workqueue()의 파라미터 확인 필요
 	/* opencoded create_singlethread_workqueue(),
 	 * to be able to use format string arguments */
 	device->submit.wq =
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
+#ifndef _WIN32
 		alloc_ordered_workqueue("drbd%u_submit", WQ_MEM_RECLAIM, device->minor);
+#else
+        create_singlethread_workqueue("drbd_submit", &device->submit, do_submit, '21DW');
+#endif
 #else
 		create_singlethread_workqueue("drbd_submit");
 #endif
@@ -3972,7 +3992,7 @@ static int init_submitter(struct drbd_device *device)
 		return -ENOMEM;
 	INIT_WORK(&device->submit.worker, do_submit);
 	INIT_LIST_HEAD(&device->submit.writes);
-#endif
+
 	return 0;
 }
 
@@ -3991,7 +4011,12 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	int vnr = adm_ctx->volume;
 	enum drbd_ret_code err = ERR_NOMEM;
 	bool locked = false;
-
+#ifdef _WIN32
+    if ((minor < 1) || (minor > MINORMASK))
+    {
+        return ERR_INVALID_REQUEST;
+    }
+#endif
 	device = minor_to_device(minor);
 	if (device)
 		return ERR_MINOR_OR_VOLUME_EXISTS;
@@ -4284,7 +4309,9 @@ out_no_peer_device:
 out_no_bitmap:
 	__free_page(device->md_io.page);
 out_no_io_page:
+#ifndef _WIN32 // [choi] V8에서 disable _WIN32_CHECK
 	put_disk(disk);
+#endif
 out_no_disk:
 	blk_cleanup_queue(q);
 out_no_q:
@@ -4405,6 +4432,7 @@ static int __init drbd_init(void)
 	int err;
 #ifdef _WIN32
 	extern void nl_policy_init_by_manual(void);
+
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
 
@@ -4429,9 +4457,7 @@ static int __init drbd_init(void)
 #endif
 
 	initialize_kref_debugging();
-#ifdef _WIN32
-	// not supported
-#else
+
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
 		pr_err("invalid minor_count (%d)\n", minor_count);
 #ifdef MODULE
@@ -4440,7 +4466,9 @@ static int __init drbd_init(void)
 		minor_count = DRBD_MINOR_COUNT_DEF;
 #endif
 	}
-
+#ifdef _WIN32
+    // not supported
+#else
 	err = register_blkdev(DRBD_MAJOR, "drbd");
 	if (err) {
 		pr_err("unable to register block device major %d\n",
@@ -5740,7 +5768,9 @@ static void md_sync_timer_fn(unsigned long data)
  */
 int drbd_wait_misc(struct drbd_device *device, struct drbd_peer_device *peer_device, struct drbd_interval *i)
 {
+#ifndef _WIN32
 	DEFINE_WAIT(wait);
+#endif
 	long timeout;
 
 	rcu_read_lock();
@@ -5760,10 +5790,18 @@ int drbd_wait_misc(struct drbd_device *device, struct drbd_peer_device *peer_dev
 
 	/* Indicate to wake up device->misc_wait on progress.  */
 	i->waiting = true;
+#ifndef _WIN32
 	prepare_to_wait(&device->misc_wait, &wait, TASK_INTERRUPTIBLE);
+#endif
 	spin_unlock_irq(&device->resource->req_lock);
+#ifdef _WIN32
+    timeout = schedule(&device->misc_wait, timeout, __FUNCTION__, __LINE__);
+#else
 	timeout = schedule_timeout(timeout);
+#endif
+#ifndef _WIN32
 	finish_wait(&device->misc_wait, &wait);
+#endif
 	spin_lock_irq(&device->resource->req_lock);
 	if (!timeout || (peer_device && peer_device->repl_state[NOW] < L_ESTABLISHED))
 		return -ETIMEDOUT;
