@@ -597,43 +597,6 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 		is_net ? "pp_in_use_by_net" : "pp_in_use", i);
 	wake_up(&drbd_pp_wait);
 
-#if 0 // TODO 를 그냥 제거하기는 그래서 ... 일단 주석처리.
-#ifdef _WIN32_TDODO //기존 mdev를 V9 형식으로 변경이 필요함.
-	atomic_t *a = is_net ? &mdev->pp_in_use_by_net : &mdev->pp_in_use;
-	int i; 
-
-#ifdef _WIN32
-	if (page_count == NULL)
-		return;
-
-	spin_lock(&drbd_pp_lock);
-	drbd_pp_vacant += page_count;
-	spin_unlock(&drbd_pp_lock);
-	i = page_count;
-#else	
-	if (page == NULL)
-		return;
-
-	if (drbd_pp_vacant > (DRBD_MAX_BIO_SIZE / PAGE_SIZE) * minor_count)
-		i = page_chain_free(page);
-	else {
-		struct page *tmp;
-		tmp = page_chain_tail(page, &i);
-		spin_lock(&drbd_pp_lock);
-		page_chain_add(&drbd_pp_pool, page, tmp);
-		drbd_pp_vacant += i;
-		spin_unlock(&drbd_pp_lock);
-	}
-
-#endif
-	i = atomic_sub_return(i, a);
-	if (i < 0)
-		dev_warn(DEV, "ASSERTION FAILED: %s: %d < 0\n",
-		is_net ? "pp_in_use_by_net" : "pp_in_use", i);
-
-	wake_up(&drbd_pp_wait);
-#endif
-#endif
 }
 
 /*
@@ -710,29 +673,6 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	peer_req->pages = NULL;
 
 	return peer_req;
-
-#if 0 //TODO 처리된 부분을 일단 주석.
-#ifdef _WIN32_TODO // drbd_alloc_peer_req 의 인자가 변경되어 V9 포팅 필요.
-
-	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
-		return NULL;
-
-	peer_req = mempool_alloc(drbd_ee_mempool, gfp_mask & ~__GFP_HIGHMEM);
-	if (!peer_req) {
-		if (!(gfp_mask & __GFP_NOWARN))
-			drbd_err(device, "%s: allocation failed\n", __func__);
-		return NULL;
-	}
-
-	memset(peer_req, 0, sizeof(*peer_req));
-	INIT_LIST_HEAD(&peer_req->w.list);
-	drbd_clear_interval(&peer_req->i);
-	INIT_LIST_HEAD(&peer_req->recv_order);
-	peer_req->submit_jif = jiffies;
-	peer_req->peer_device = peer_device;
-	peer_req->pages = NULL;
-#endif
-#endif
 
 	// 예외처리 부분은 일단 V8의 구현을 따라간다.
 fail:
@@ -1176,15 +1116,14 @@ start:
 
 	drbd_thread_start(&connection->ack_receiver);
 
-//#ifdef _WIN32_TODO
+
 	connection->ack_sender =
 #ifdef _WIN32_V9
 	
-//#ifdef _WIN32_TODO //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
+		//단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
 		// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
 		// 일반 쓰레드로 포팅: drbd_send_peer_ack_wf 로 대체된 작업자 워커함수를 지정하고 일단 마무리 한다.
 		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_send_peer_ack_wf, '31DW');
-//#endif
 #else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
@@ -1192,7 +1131,7 @@ start:
 		create_singlethread_workqueue("drbd_ack_sender");
 #endif
 #endif
-//#endif
+
 
 	if (!connection->ack_sender) {
 		drbd_err(connection, "Failed to create workqueue ack_sender\n");
@@ -2182,14 +2121,12 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 #endif
 
 	if (digest_size) {
-//#ifdef _WIN32_TODO
 		// drbd_csum_bio 의 인자가 V9에서 모두 변경되었다.
 #ifdef _WIN32 // V8의 구현을 따라간다.
 		drbd_csum_bio(peer_device->connection->peer_integrity_tfm, req, dig_vv);
 #else
 		drbd_csum_bio(peer_device->connection->peer_integrity_tfm, bio, dig_vv);
 #endif
-//#endif
 		if (memcmp(dig_in, dig_vv, digest_size)) {
 			drbd_err(peer_device, "Digest integrity check FAILED. Broken NICs?\n");
 			return -EINVAL;
@@ -2573,7 +2510,7 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 	if (!test_bit(RESOLVE_CONFLICTS, &connection->transport.flags))
 		return 0;
 #endif
-//#ifdef _WIN32_TODO // spinlock unlock 의 관계가 복잡하다. 검토 필요... IRQL 문제로 lock, unlock 을 반복해야 하지만... 개선이 필요...
+	// spinlock unlock 의 관계가 복잡하다. 검토 필요... IRQL 문제로 lock, unlock 을 반복해야 하지만... 개선이 필요...
 	spin_lock(&peer_device->peer_seq_lock);
 	for (;;) {
 		if (!seq_greater(peer_seq - 1, peer_device->peer_seq)) {
@@ -2585,9 +2522,6 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 			ret = -ERESTARTSYS;
 			break;
 		}
-//#ifdef _WIN32_V9 // V8의 구현, => 초기 포팅시 V8에서 구현부를 가져오면서 착오(제거함.)
-//		spin_unlock(&peer_device->peer_seq_lock);
-//#endif
 		rcu_read_lock();
 		tp = rcu_dereference(connection->transport.net_conf)->two_primaries;
 		rcu_read_unlock();
@@ -2625,7 +2559,6 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 #ifndef _WIN32
 	finish_wait(&peer_device->device->seq_wait, &wait);
 #endif
-//#endif
 
 	return ret;
 }
@@ -3036,7 +2969,6 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	if (c_min_rate == 0)
 		return false;
 
-//#ifdef _WIN32_TODO
 	// struct block_device 선언 변경. V9 에 새롭게 추가. bd_contains 가 유효하도록 추가 포팅 필요 _WIN32_CHECK
 #ifdef _WIN32_V9
 	// bd_contains는 사용하지 않고 V8 구현 형식으로 따라간다.
@@ -3047,8 +2979,6 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 		- atomic_read(&device->rs_sect_ev);
 #endif
 	
-//#endif
-
 	if (atomic_read(&device->ap_actlog_cnt) || curr_events - peer_device->rs_last_events > 64) {
 		unsigned long rs_left;
 		int i;
@@ -4293,13 +4223,11 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		goto disconnect;
 	}
 
-//#ifdef _WIN32_TODO
 	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => alertable mutex_lock 으로 구현 완료.
 	if (mutex_lock_interruptible(&connection->resource->conf_update)) { 
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		goto disconnect;
 	}
-//#endif
 
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	old_net_conf = connection->transport.net_conf;
@@ -4328,9 +4256,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	if (strcmp(old_net_conf->integrity_alg, integrity_alg))
 		drbd_info(connection, "peer data-integrity-alg: %s\n",
 			  integrity_alg[0] ? integrity_alg : "(none)");
-//#ifdef _WIN32_TODO
 	synchronize_rcu(); // 함수 scope 를 벗어난 rcu 해제... V9 포팅필요. => synchronize 이름으로 인한 착오... 락 획득함수로 오인. 해제함수 이다.
-//#endif
 	kfree(old_net_conf);
 	return 0;
 
@@ -4461,10 +4387,8 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	if (err)
 		return err;
 
-//#ifdef _WIN32_TODO
 	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => mutex_lock_interruptible 포팅 됨. 
 	err = mutex_lock_interruptible(&resource->conf_update);
-//#endif
 	if (err) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		return err;
@@ -4615,9 +4539,7 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 
 	mutex_unlock(&resource->conf_update);
 
-//#ifdef _WIN32_TODO
 	synchronize_rcu(); // 함수 scope 를 벗어난 rcu 해제... V9 포팅필요. => synchronize_rcu 의미 파악 착오. 포팅 완료.
-//#endif
 
 	if (new_net_conf)
 		kfree(old_net_conf);
@@ -4773,10 +4695,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				goto out;
 			}
 
-//#ifdef _WIN32_TODO
 			// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => 포팅 완료.
 			err = mutex_lock_interruptible(&connection->resource->conf_update); 
-//#endif
 			if (err) {
 				drbd_err(connection, "Interrupted while waiting for conf_update\n");
 				goto out;
@@ -4789,9 +4709,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 #endif
 			rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
 			mutex_unlock(&connection->resource->conf_update);
-///#ifdef _WIN32_TODO
+
 			synchronize_rcu(); // lock 획득 코드 확인 필요. => 확인.상단 synchronize_rcu_w32_wlock 추가.
-//#endif
+
 			kfree(old_disk_conf);
 
 			drbd_info(device, "Peer sets u_size to %lu sectors\n",
@@ -5670,7 +5590,7 @@ void queue_queued_twopc(struct drbd_resource *resource)
 	if (q) {
 		resource->starting_queued_twopc = q;
 #ifdef _WIN32
-		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 _WIN32_TODO
+		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 
 #else
 		mb();
 #endif
@@ -7461,13 +7381,13 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 {
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
 	list_del(&req->tl_requests);
-//#ifdef _WIN32_TODO
+
 #ifdef _WIN32_V9
 	mempool_free(req, &drbd_request_mempool);
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
-//#endif
+
 }
 
 static int process_peer_ack_list(struct drbd_connection *connection)
@@ -7618,12 +7538,12 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 void twopc_connection_down(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
-//#ifdef _WIN32_TODO
+
 	//linux spinlock func. 포팅필요. =>spinlock 이 걸려 있는지 체크하는 구현... 굳이 포팅될 필요는 없어 보여서 우선 pass
 #ifndef _WIN32
 	assert_spin_locked(&resource->req_lock);
 #endif
-//#endif
+
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
 		set_bit(TWOPC_RETRY, &connection->flags);
@@ -7975,7 +7895,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
 	int node_id;
-//#ifdef _WIN32_TODO
+
 	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass => 포팅 완료.
 #ifdef _WIN32_V9
 	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, sizeof(ULONG_PTR) * BITS_PER_BYTE) {
@@ -7987,7 +7907,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 		if (bitmap_bit >= 0)
 			bitmap_bits |= NODE_MASK(bitmap_bit);
 	}
-//#endif
+
 	return bitmap_bits;
 }
 
@@ -8021,10 +7941,9 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-//#ifdef _WIN32_TODO
 	// list_cut_position linux kernel func. V9 포팅 필요. => linux kernel 3.14 의 구현부 가져와서 포팅.
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
-//#endif
+
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
@@ -8105,7 +8024,6 @@ static void destroy_request(struct kref *kref)
 		container_of(kref, struct drbd_request, kref);
 
 	list_del(&req->tl_requests);
-//#ifdef _WIN32_TODO
 	// mempool_free V9 포팅 필요.
 #ifdef _WIN32_V9
 	mempool_free(req, &drbd_request_mempool);
@@ -8113,7 +8031,6 @@ static void destroy_request(struct kref *kref)
 	mempool_free(req, drbd_request_mempool);
 #endif
 	
-//#endif
 }
 
 static void cleanup_peer_ack_list(struct drbd_connection *connection)
@@ -8212,22 +8129,21 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	unsigned int header_size = drbd_header_size(connection);
 	int expect   = header_size;
 	bool ping_timeout_active = false;
-//#ifdef _WIN32_TODO
+
 	// linux kernel data type V9 포팅 필요
 #ifndef _WIN32
 	struct sched_param param = { .sched_priority = 2 };
 #endif
-//#endif
+
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
-//#ifdef _WIN32_TODO
+
 	// linux kernel func. V9 포팅 필요
 #ifndef _WIN32 //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
 	rv = sched_setscheduler(current, SCHED_RR, &param);
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);
 #endif
-//#endif
 	
 	while (get_t_state(thi) == RUNNING) {
 		drbd_thread_current_set_cpu(thi);
