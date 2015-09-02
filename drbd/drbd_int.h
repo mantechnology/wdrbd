@@ -1932,6 +1932,18 @@ extern int  drbd_bm_resize(struct drbd_device *device, sector_t sectors, int set
 void drbd_bm_free(struct drbd_bitmap *bitmap);
 extern void drbd_bm_set_all(struct drbd_device *device);
 extern void drbd_bm_clear_all(struct drbd_device *device);
+#ifdef _WIN32
+/* set/clear/test only a few bits at a time */
+extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+/* bm_set_bits variant for use while holding drbd_bm_lock,
+* may process the whole bitmap in one go */
+extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
+extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
+extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
+extern int drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
+#else
 /* set/clear/test only a few bits at a time */
 extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, unsigned long, unsigned long);
 extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, unsigned long, unsigned long);
@@ -1941,26 +1953,43 @@ extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, unsigned long,
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, unsigned long, unsigned long);
 extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, unsigned long, unsigned long);
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, unsigned long, unsigned long);
-#ifdef _WIN32 // _WIN32_V9: 경민 차장  인자가 문제였나보죠? 제 생각엔 _WIN64 를 위한 리턴을 봐야할 것 같아  일단 코멘트 처리하고 한 줄 삽입합니다. 추후 확인
-// int return이라 64bit return과는 아무 상관 없습니다. 여기서는 인자로 인해 수정하였습니다.
-extern int drbd_bm_test_bit(struct drbd_peer_device *, const unsigned long);
-#else
 extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
 #endif
- 
 // _WIN32_CHECK: 아래 함수들 중 입력 인자와 리턴이 _WIN64에 필요한 것들 추루 주의하여 포팅 필요!!!
  
 extern int  drbd_bm_read(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
+#ifdef _WIN32
+extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, ULONG_PTR, ULONG_PTR);
+#else
 extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, unsigned long, unsigned long);
+#endif
 extern int  drbd_bm_write(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern int  drbd_bm_write_hinted(struct drbd_device *device) __must_hold(local);
 extern int  drbd_bm_write_lazy(struct drbd_device *device, unsigned upper_idx) __must_hold(local);
 extern int drbd_bm_write_all(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bm_write_copy_pages(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern size_t	     drbd_bm_words(struct drbd_device *device);
+#ifdef _WIN32
+extern ULONG_PTR drbd_bm_bits(struct drbd_device *device);
+#else
 extern unsigned long drbd_bm_bits(struct drbd_device *device);
+#endif
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
-
+#ifdef _WIN32
+#define DRBD_END_OF_BITMAP	(~(ULONG_PTR)0)
+extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
+/* bm_find_next variants for use while you hold drbd_bm_lock() */
+extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
+extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
+extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
+extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
+/* for receive_bitmap */
+extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
+    size_t number, ULONG_PTR *buffer);
+/* for _drbd_send_bitmap */
+extern void drbd_bm_get_lel(struct drbd_peer_device *peer_device, size_t offset,
+    size_t number, ULONG_PTR *buffer);
+#else
 #define DRBD_END_OF_BITMAP	(~(unsigned long)0)
 extern unsigned long drbd_bm_find_next(struct drbd_peer_device *, unsigned long);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
@@ -1974,7 +2003,7 @@ extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offse
 /* for _drbd_send_bitmap */
 extern void drbd_bm_get_lel(struct drbd_peer_device *peer_device, size_t offset,
 		size_t number, unsigned long *buffer); // _WIN32_CHECK: for Win64
-
+#endif
 extern void drbd_bm_lock(struct drbd_device *device, char *why, enum bm_flag flags);
 extern void drbd_bm_unlock(struct drbd_device *device);
 extern void drbd_bm_slot_lock(struct drbd_peer_device *peer_device, char *why, enum bm_flag flags);
