@@ -45,9 +45,6 @@ struct after_state_change_work {
 	struct completion *done;
 };
 
-#ifdef _WIN32_V9 // _WIN32_CHECK [choi] rcu_read_lock/unlock 이 서로 다른 함수에서 호출 하는 경우가 있어서 전역으로 선언함.
-unsigned char oldIrql_rLock;
-#endif
 
 static void count_objects(struct drbd_resource *resource,
 			  unsigned int *n_devices,
@@ -367,8 +364,8 @@ static void ___begin_state_change(struct drbd_resource *resource)
 
 static void __begin_state_change(struct drbd_resource *resource)
 {
-#ifdef _WIN32_V9 // _WIN32_CHECK [choi] 전역으로 선언한 부분에 대해 재확인 필요.
-    rcu_read_lock_w32_inner();
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+    WDRBD_TRACE_RCU("rcu_read_lock()");
 #else
 	rcu_read_lock();
 #endif
@@ -481,8 +478,11 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 out:
 	// __begin_state_change 진입 시점에 락을 걸로 진입함.
 	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-    // _WIN32_CHECK [choi] 전역으로 선언한 부분에 대해 재확인 필요.
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] 일단 더미처리.
+    WDRBD_TRACE_RCU("rcu_read_unlock()");
+#else
 	rcu_read_unlock();
+#endif
 
 	if ((flags & CS_TWOPC) && !(flags & CS_PREPARE))
 		__clear_remote_state_change(resource);
@@ -610,15 +610,18 @@ static void begin_remote_state_change(struct drbd_resource *resource, unsigned l
 {
 	// __begin_state_change 진입 시점에 락을 걸로 진입함.
 	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-    // _WIN32_CHECK [choi] 전역으로 선언한 부분에 대해 재확인 필요.
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] 일단 더미처리.
+    WDRBD_TRACE_RCU("rcu_read_unlock()");
+#else
 	rcu_read_unlock();
+#endif
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
 }
 
 static void __end_remote_state_change(struct drbd_resource *resource, enum chg_state_flags flags)
 {
-#ifdef _WIN32_V9
-    rcu_read_lock_w32_inner(); // _WIN32_CHECK [choi] 전역으로 선언한 부분에 대해 재확인 필요.
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+    WDRBD_TRACE_RCU("rcu_read_lock()");
 #else
 	rcu_read_lock();
 #endif

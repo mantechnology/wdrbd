@@ -2428,11 +2428,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
-	ep = EP_PASS_ON; // _WIN32_CHECK: JHKIM: 컴파일 오류 회피
-#else
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-#endif
 	rcu_read_unlock();
 	switch (ep) {
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
