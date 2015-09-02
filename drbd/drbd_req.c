@@ -121,6 +121,16 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device,
 		return NULL;
 
 	memset(req, 0, sizeof(*req));
+#ifdef _WIN32
+	req->win32_page_buf = kmalloc(bio_src->bi_size, 0, '63DW');
+	if (!req->win32_page_buf)
+	{
+		WDRBD_ERROR("req->win32_page_buf failed\n");
+		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		return NULL;
+	}
+	memcpy(req->win32_page_buf, bio_src->win32_page_buf, bio_src->bi_size);
+#endif
 
 	drbd_req_make_private_bio(req, bio_src);
 
@@ -333,7 +343,7 @@ tail_recursion:
 				drbd_queue_peer_ack(resource, peer_ack_req);
 				peer_ack_req = NULL;
 			} else
-#ifdef _WIN32
+#ifdef _WIN32_V9
                 ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
@@ -348,6 +358,10 @@ tail_recursion:
 			resource->last_peer_acked_dagtag = req->dagtag_sector;
 	} else
 #ifdef _WIN32
+    	if (req->win32_page_buf)
+    	{
+    		kfree(req->win32_page_buf);
+    	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -402,7 +416,7 @@ bool start_new_tl_epoch(struct drbd_resource *resource)
 }
 #ifdef _WIN32
 void complete_master_bio(struct drbd_device *device,
-struct bio_and_error *m, char *func, int line)
+    struct bio_and_error *m, char *func, int line)
 #else
 void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
@@ -652,9 +666,21 @@ static int drbd_req_put_completion_ref(struct drbd_request *req, struct bio_and_
 #else
 	D_ASSERT(req->device, m || (req->rq_state[0] & RQ_POSTPONED));
 #endif
+#ifdef DRBD_TRACE
+	if (put > 1)
+	{
+        WDRBD_TRACE("(%s) completion_ref: put=%d !!!\n", current->comm, put);
+	}
+#endif
 	if (!atomic_sub_and_test(put, &req->completion_ref))
+#ifdef DRBD_TRACE
+	{
+        WDRBD_TRACE("(%s) completion_ref=%d. No complete req yet! sect=0x%llx sz=%d\n", current->comm, req->completion_ref, req->i.sector, req->i.size);
 		return 0;
-
+	}
+#else
+		return 0;
+#endif
 	drbd_req_complete(req, m);
 
 	if (req->rq_state[0] & RQ_POSTPONED) {
@@ -663,7 +689,9 @@ static int drbd_req_put_completion_ref(struct drbd_request *req, struct bio_and_
 		drbd_restart_request(req);
 		return 0;
 	}
-
+#ifdef DRBD_TRACE
+	WDRBD_TRACE("sect=0x%llx sz=%d done!!!\n", req->i.sector, req->i.size);
+#endif
 	return 1;
 }
 
@@ -1300,8 +1328,11 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 {
 	struct drbd_md *md = &device->ldev->md;
 	unsigned int node_id;
-
+#ifdef _WIN32
+    ULONG_PTR sbnr, ebnr;
+#else
 	unsigned long sbnr, ebnr;
+#endif
 	sector_t esector, nr_sectors;
 
 	if (device->disk_state[NOW] == D_UP_TO_DATE)
@@ -1335,7 +1366,9 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 		struct drbd_peer_device *peer_device, sector_t sector,
 		enum drbd_read_balancing rbm)
 {
+#ifndef _WIN32
 	struct backing_dev_info *bdi;
+#endif
 	int stripe_shift;
 
 	switch (rbm) {
@@ -1638,7 +1671,11 @@ static void drbd_queue_write(struct drbd_device *device, struct drbd_request *re
  * Returns ERR_PTR(-ENOMEM) if we cannot allocate a drbd_request.
  */
 static struct drbd_request *
+#ifdef _WIN32
+drbd_request_prepare(struct drbd_device *device, struct bio *bio, ULONG_PTR start_jif)
+#else
 drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long start_jif)
+#endif
 {
 	const int rw = bio_data_dir(bio);
 	struct drbd_request *req;
@@ -2031,8 +2068,12 @@ void do_submit(struct work_struct *ws)
 MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct drbd_device *device = (struct drbd_device *) q->queuedata;
+#ifdef _WIN32
+	ULONG_PTR start_jif;
+#else
 	unsigned long start_jif;
-
+#endif
+#ifndef _WIN32
 	/* We never supported BIO_RW_BARRIER.
 	 * We don't need to, anymore, either: starting with kernel 2.6.36,
 	 * we have REQ_FUA and REQ_FLUSH, which will be handled transparently
@@ -2041,7 +2082,7 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 		bio_endio(bio, -EOPNOTSUPP);
 		MAKE_REQUEST_RETURN;
 	}
-
+#endif
 	start_jif = jiffies;
 
 	/*
@@ -2069,7 +2110,7 @@ int drbd_merge_bvec(struct request_queue *q,
 		struct bvec_merge_data *bvm,
 		struct bio_vec *bvec)
 {
-#ifdef _WIN32 // kmpak wdrbd 8 에서는 사용안한다고 함수정의 까지 없는데 9에서는 함수원형은 남겨둠
+#ifdef _WIN32_V9 // kmpak wdrbd 8 에서는 사용안한다고 함수정의 까지 없는데 9에서는 함수원형은 남겨둠
     return 0;
 #else
 	struct drbd_device *device = (struct drbd_device *) q->queuedata;
@@ -2184,11 +2225,19 @@ void request_timer_fn(unsigned long data)
 	struct drbd_device *device = (struct drbd_device *) data;
 	struct drbd_connection *connection;
 	struct drbd_request *req_read, *req_write;
+#ifdef _WIN32_V9
+	ULONG_PTR oldest_submit_jif;
+	ULONG_PTR dt = 0;
+	ULONG_PTR et = 0;
+	ULONG_PTR now = jiffies;
+	ULONG_PTR next_trigger_time = now;
+#else
 	unsigned long oldest_submit_jif;
 	unsigned long dt = 0;
 	unsigned long et = 0;
 	unsigned long now = jiffies;
 	unsigned long next_trigger_time = now;
+#endif
 	bool restart_timer = false;
 
 	rcu_read_lock();
@@ -2227,8 +2276,13 @@ void request_timer_fn(unsigned long data)
 	for_each_connection(connection, device->resource) {
 		struct net_conf *nc;
 		struct drbd_request *req;
+#ifdef _WIN32_V9
+        ULONG_PTR ent = 0;
+        ULONG_PTR pre_send_jif = 0;
+#else
 		unsigned long ent = 0;
 		unsigned long pre_send_jif = 0;
+#endif
 		unsigned int ko_count = 0, timeout = 0;
 
 		/* maybe the oldest request waiting for the peer is in fact still

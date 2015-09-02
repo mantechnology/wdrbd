@@ -1992,7 +1992,7 @@ extern int  drbd_bm_resize(struct drbd_device *device, sector_t sectors, int set
 void drbd_bm_free(struct drbd_bitmap *bitmap);
 extern void drbd_bm_set_all(struct drbd_device *device);
 extern void drbd_bm_clear_all(struct drbd_device *device);
-#ifdef _WIN32
+#ifdef _WIN32_V9
 /* set/clear/test only a few bits at a time */
 extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
 extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
@@ -2029,13 +2029,13 @@ extern int  drbd_bm_write_lazy(struct drbd_device *device, unsigned upper_idx) _
 extern int drbd_bm_write_all(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bm_write_copy_pages(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 extern size_t	     drbd_bm_words(struct drbd_device *device);
-#ifdef _WIN32
+#ifdef _WIN32_V9
 extern ULONG_PTR drbd_bm_bits(struct drbd_device *device);
 #else
 extern unsigned long drbd_bm_bits(struct drbd_device *device);
 #endif
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
-#ifdef _WIN32
+#ifdef _WIN32_V9
 #define DRBD_END_OF_BITMAP	(~(ULONG_PTR)0)
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */

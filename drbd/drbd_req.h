@@ -289,14 +289,11 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 	struct bio *bio;
 	bio = bio_clone(bio_src, GFP_NOIO); /* XXX cannot fail?? */
 
-#ifdef _WIN32 // DV
-    if (!bio)
+#ifdef _WIN32
+    if (!bio) // DV
     {
         return NULL;
     }
-#endif
-
-#ifdef _WIN32
 	bio->win32_page_buf = bio_src->win32_page_buf;
 #endif
 

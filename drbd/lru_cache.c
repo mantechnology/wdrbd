@@ -176,16 +176,18 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	for (i = 0; i < e_count; i++) {
 #ifdef _WIN32
 		void *p = ExAllocateFromNPagedLookasideList(cache);
-		if( !p )	break;
-		RtlZeroMemory(p, e_size);
+		if (!p) break;
 #else
 		void *p = kmem_cache_alloc(cache, GFP_KERNEL);
 		if (!p)
 			break;
 #endif
-
-		e = (size_t)p + e_off;
-
+		memset(p, 0, lc->element_size);
+#ifdef _WIN32
+        e = (size_t)p + e_off;
+#else
+		e = p + e_off;
+#endif
 		e->lc_index = i;
 		e->lc_number = LC_FREE;
 		e->lc_new_number = LC_FREE;
@@ -320,11 +322,10 @@ static struct hlist_head *lc_hash_slot(struct lru_cache *lc, unsigned int enr)
 static struct lc_element *__lc_find(struct lru_cache *lc, unsigned int enr,
 		bool include_changing)
 {
-	struct lc_element *e; // _WIN32_CHECK: 초기화 불필요?
+	struct lc_element *e;
 
 	BUG_ON(!lc);
 	BUG_ON(!lc->nr_elements);
-
 #ifndef _WIN32
 	hlist_for_each_entry(e, lc_hash_slot(lc, enr), colision) {
 #else
@@ -617,7 +618,7 @@ void lc_committed(struct lru_cache *lc)
 #else
 	list_for_each_entry_safe(struct lc_element, e, tmp, &lc->to_be_changed, list) {
 #endif
-				/* count number of changes, not number of transactions */
+		/* count number of changes, not number of transactions */
 		++lc->changed;
 		e->lc_number = e->lc_new_number;
 		list_move(&e->list, &lc->in_use);
