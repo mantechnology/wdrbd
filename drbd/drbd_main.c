@@ -83,8 +83,17 @@
 #endif
 
 // _WIN32_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
+#ifdef _WIN32
+static int drbd_open(struct drbd_device *device, fmode_t mode);
+#else
 static int drbd_open(struct block_device *bdev, fmode_t mode);
+#endif
+#ifdef _WIN32
+static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode);
+#else
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
+#endif
+
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
 #else
@@ -2736,11 +2745,13 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 	return rv;
 }
 
-static int drbd_open(struct block_device *bdev, fmode_t mode)
-{
-#ifdef _WIN32 // _WIN32_CHECK
-	struct drbd_device *device = 0;
+#ifdef _WIN32
+static int drbd_open(struct drbd_device *device, fmode_t mode)
 #else
+static int drbd_open(struct block_device *bdev, fmode_t mode)
+#endif
+{
+#ifndef _WIN32 
 	struct drbd_device *device = bdev->bd_disk->private_data;
 #endif
 	struct drbd_resource *resource = device->resource;
@@ -2809,12 +2820,13 @@ static int open_rw_count(struct drbd_resource *resource)
 
 	return count;
 }
-
-static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
-{
-#ifdef _WIN32 // _WIN32_CHECK
-    struct drbd_device *device = 0;
+#ifdef _WIN32
+static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode)
 #else
+static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
+#endif
+{
+#ifndef _WIN32 
 	struct drbd_device *device = gd->private_data;
 #endif
 	struct drbd_resource *resource = device->resource;
