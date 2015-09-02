@@ -159,7 +159,7 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		const struct sockaddr_in6 *v6a1 = (const struct sockaddr_in6 *)addr1;
 		const struct sockaddr_in6 *v6a2 = (const struct sockaddr_in6 *)addr2;
 
-//#ifdef _WIN32_TODO //ipv6 addr 비교 함수 V9 포팅 필요... V9에서 ipv6 지원하는가?...??? => ipv6 도 고려하여 포팅한다.
+	//ipv6 addr 비교 함수 V9 포팅 필요... V9에서 ipv6 지원하는가?...??? => ipv6 도 고려하여 포팅한다.
 #ifdef _WIN32_V9
 		if (!IN6_ADDR_EQUAL(&v6a1->sin6_addr, &v6a2->sin6_addr))
 #else
@@ -172,7 +172,7 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
 #endif
 			return v6a1->sin6_scope_id == v6a2->sin6_scope_id;
-//#endif
+
 		return true;
 	} else /* AF_INET, AF_SSOCKS, AF_SDP */ {
 		const struct sockaddr_in *v4a1 = (const struct sockaddr_in *)addr1;
