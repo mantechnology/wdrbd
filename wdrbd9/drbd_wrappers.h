@@ -1596,6 +1596,4 @@ calling namespace */
 #endif
 #endif
 
-#define drbd_kmap_atomic(page, km)	(page->addr)
-#define drbd_kunmap_atomic(addr, km)	(addr)
 #endif
