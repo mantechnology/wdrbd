@@ -6091,7 +6091,9 @@ void nl_policy_init_by_manual()
     extern void manual_nl_policy_init(void);
     manual_nl_policy_init();
 }
+#endif
 
+#ifdef _WIN32_V9
 struct genl_ops * get_drbd_genl_ops(u8 cmd)
 {
     struct genl_ops * pops = NULL;

@@ -3186,7 +3186,7 @@ void drbd_free_resource(struct drbd_resource *resource)
  * reinserted through our make request function.
  */
  #ifdef _WIN32
-// move to drbd_windrv.h // _WIN32_CHECK 이동되었는지 확인!!!!!! -> 헤더를 다시 생성함.
+// move to drbd_windows.h
 struct retry_worker retry;
 #else
 static struct retry_worker {
@@ -3195,11 +3195,18 @@ static struct retry_worker {
 
 	spinlock_t lock;
 	struct list_head writes;
-#ifdef _WIN32
-	struct task_struct thread; 
-#endif
 } retry;
 #endif
+
+void drbd_req_destroy_lock(struct kref *kref)
+{
+	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
+	struct drbd_resource *resource = req->device->resource;
+
+	spin_lock_irq(&resource->req_lock);
+	drbd_req_destroy(kref);
+	spin_unlock_irq(&resource->req_lock);
+}
 
 static void do_retry(struct work_struct *ws)
 {
@@ -3236,12 +3243,7 @@ static void do_retry(struct work_struct *ws)
 		 * here.  The request object may still be referenced by a
 		 * frozen local req->private_bio, in case we force-detached.
 		 */
-#ifdef _WIN32_V9
-		// 보강! 
-		//extern void drbd_req_destroy_lock(struct kref *kref);
-#else
 		kref_put(&req->kref, drbd_req_destroy_lock);
-#endif
 
 		/* A single suspended or otherwise blocking device may stall
 		 * all others as well.  Fortunately, this code path is to
@@ -5863,13 +5865,11 @@ void unlock_all_resources(void)
 	struct drbd_resource *resource;
 
 	for_each_resource(resource, &drbd_resources)
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 //_WIN32_CHECK
         spin_unlock_irq(&resource->req_lock);
 #else
 		spin_unlock(&resource->req_lock);
-#ifdef _WIN32_CHECK
 	local_irq_enable();
-#endif
 #endif
 	mutex_unlock(&resources_mutex);
 }

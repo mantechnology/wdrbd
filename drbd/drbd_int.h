@@ -2258,7 +2258,6 @@ extern void resync_timer_fn(unsigned long data);
 extern void start_resync_timer_fn(unsigned long data);
 #endif
 
-#ifdef _WIN32_V9
 //drbd_sender.c에 구현. drbd_receiver.c 에서 가져다 쓴다.(extern 선언)
 extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
 
@@ -2276,7 +2275,6 @@ struct drbd_thread_timing_details *tdp,
 #define update_worker_timing_details(r, cb) \
 	__update_timing_details(r->w_timing_details, &r->w_cb_nr, cb, __func__ , __LINE__ )
 
-#endif
 
 /* drbd_receiver.c */
 struct packet_info {
@@ -2884,7 +2882,7 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
  *
  * You have to call put_ldev() when finished working with device->ldev.
  */
-#ifdef _WIN32 // _WIN32_V9 // _WIN32_CHECK
+#ifdef _WIN32_V9 // _WIN32_CHECK
 #define get_ldev_if_state(_device, _min_state)				\
 	(_get_ldev_if_state((_device), (_min_state)) ?			\
 	true : false)
@@ -3131,7 +3129,9 @@ static inline int drbd_queue_order_type(struct drbd_device *device)
 	return QUEUE_ORDERED_NONE;
 }
 
+#ifdef _WIN32_V9
 extern struct genl_ops * get_drbd_genl_ops(u8 cmd);
+#endif
 
 #ifdef blk_queue_plugged
 static inline void drbd_blk_run_queue(struct request_queue *q)

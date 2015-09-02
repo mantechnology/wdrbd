@@ -505,7 +505,7 @@ static void __state_change_unlock(struct drbd_resource *resource, unsigned long 
 	resource->state_change_flags = 0;
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
 	if (done && expect(resource, current != resource->worker.task))
-#ifdef _WIN32 // V8 적용
+#ifdef _WIN32_V9 // V8 적용
         while (wait_for_completion(done) == -DRBD_SIGKILL)
         {
             WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
@@ -1674,7 +1674,7 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	struct after_state_change_work *work;
 	gfp_t gfp = GFP_ATOMIC;
 
-#ifdef _WIN32
+#ifdef _WIN32_V9
     work = kmalloc(sizeof(*work), gfp, '83DW');
 #else
 	work = kmalloc(sizeof(*work), gfp);
@@ -3006,7 +3006,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 		begin_remote_state_change(resource, irq_flags);
 		for(;;) {
 			long t = twopc_timeout(resource);
-#ifdef _WIN32
+#ifdef _WIN32_V9
 			wait_event_timeout(t, resource->twopc_wait,
 				   when_done_lock(resource, irq_flags), t);
 #else
@@ -3557,7 +3557,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 
 	if (!twopc_reply.tid || !expect(resource, twopc_parent))
 		return;
-#ifdef _WIN32
+#ifdef _WIN32_V9
     struct drbd_connection * connection = twopc_parent;
     drbd_debug(connection, "Nested state change %u result: %s\n",
         twopc_reply.tid, drbd_packet_name(cmd));
