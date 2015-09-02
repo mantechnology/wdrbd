@@ -54,7 +54,7 @@ const struct file_operations drbd_proc_fops = {
 	.release	= drbd_proc_release,
 };
 #endif
-#ifdef _WIN32
+#ifdef _WIN32_V9
 int drbd_seq_show(struct seq_file *seq, void *v)
 #else
 static int drbd_seq_show(struct seq_file *seq, void *v)
@@ -62,11 +62,10 @@ static int drbd_seq_show(struct seq_file *seq, void *v)
 {
 	seq_printf(seq, "version: " REL_VERSION " (api:%d/proto:%d-%d)\n%s\n",
 		   GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX, drbd_buildtag());
-
+#ifdef WIN32_TODO
 	print_kref_debug_info(seq);
-
+#endif
 	drbd_print_transports_loaded(seq);
-
 	return 0;
 }
 

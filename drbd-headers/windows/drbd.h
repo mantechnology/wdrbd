@@ -331,7 +331,12 @@ enum drbd_state_rv {
 	SS_PRIMARY_READER = -22,
 	SS_TIMEOUT = -23,
 	SS_WEAKLY_CONNECTED = -24,
+#ifdef _WIN32
+    SS_TARGET_DISK_TOO_SMALL = -25, /* _WIN32_CHECK [choi] 사용안되면 제거*/
+    SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */
+#else
 	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
+#endif
 };
 
 #define SHARED_SECRET_MAX 64

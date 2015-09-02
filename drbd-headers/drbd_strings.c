@@ -124,6 +124,9 @@ static const char *__error_messages[] = {
 	[-SS_INTERRUPTED] = "Interrupted state change",
 	[-SS_TIMEOUT] = "Timeout in operation",
 	[-SS_WEAKLY_CONNECTED] = "Primary nodes must be strongly connected among each other",
+#ifdef _WIN32
+    [-SS_TARGET_DISK_TOO_SMALL] = "Target disk is smaller than source.", /* _WIN32_CHECK [choi] 사용안되면 제거*/
+#endif
 };
 
 struct state_names drbd_error_messages = {
