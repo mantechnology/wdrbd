@@ -57,6 +57,9 @@
 #endif
 #include "drbd_wrappers.h"
 #include "drbd_strings.h"
+#ifdef _WIN32_SEND_BUFFING
+#include "send_buf.h"
+#endif
 #ifndef _WIN32
 #include "compat.h"
 #endif
@@ -348,7 +351,10 @@ static inline int drbd_ratelimit(void)
 #endif
 
 /* Defines to control fault insertion */
+#ifndef _WIN32
 enum {
+#else
+enum _fault {
 	DRBD_FAULT_MD_WR = 0,	/* meta data write */
 	DRBD_FAULT_MD_RD = 1,	/*           read  */
 	DRBD_FAULT_RS_WR = 2,	/* resync          */
@@ -362,6 +368,8 @@ enum {
 
 	DRBD_FAULT_MAX,
 };
+
+#endif
 
 extern unsigned int
 _drbd_insert_fault(struct drbd_device *device, unsigned int type);
@@ -576,7 +584,11 @@ struct drbd_request {
 	struct list_head req_pending_local;
 
 	/* for generic IO accounting */
+#ifdef _WIN32
+    ULONG_PTR start_jif;
+#else
 	unsigned long start_jif;
+#endif
 
 	/* for DRBD internal statistics */
 
@@ -1069,7 +1081,7 @@ struct drbd_resource {
 	atomic_t current_tle_nr;	/* transfer log epoch number */
 	unsigned current_tle_writes;	/* writes seen within this tl epoch */
 
-#ifdef _WIN32_CHECK
+#ifndef _WIN32
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30) && !defined(cpumask_bits)
 	cpumask_t cpu_mask[1];
 #else
@@ -1127,6 +1139,11 @@ struct drbd_connection {
 	struct mutex mutex[2]; /* Protect assembling of new packet until sending it (in send_buffer) */
 	int agreed_pro_version;		/* actually used protocol version */
 	u32 agreed_features;
+
+#ifdef _WIN32_CHECK // [choi] thread 종료시 listen 소켓을 닫기위해 V8에서 추가되었던 변수인데 V9에서도 필요한지 확인후 정리.
+    struct socket *s_listen; // to close when thread_stop.
+#endif
+
 #ifdef _WIN32
 	ULONG_PTR last_received;	/* in jiffies, either socket */
 #else
@@ -1302,6 +1319,18 @@ struct drbd_peer_device {
 
 	/* use checksums for *this* resync */
 	bool use_csums;
+#ifdef _WIN32
+    /* blocks to resync in this run [unit BM_BLOCK_SIZE] */
+    ULONG_PTR rs_total;
+    /* number of resync blocks that failed in this run */
+    ULONG_PTR rs_failed;
+    /* Syncer's start time [unit jiffies] */
+    ULONG_PTR rs_start;
+    /* cumulated time in PausedSyncX state [unit jiffies] */
+    ULONG_PTR rs_paused;
+    /* skipped because csum was equal [unit BM_BLOCK_SIZE] */
+    ULONG_PTR rs_same_csum;
+#else
 	/* blocks to resync in this run [unit BM_BLOCK_SIZE] */
 	unsigned long rs_total;
 	/* number of resync blocks that failed in this run */
@@ -1312,15 +1341,27 @@ struct drbd_peer_device {
 	unsigned long rs_paused;
 	/* skipped because csum was equal [unit BM_BLOCK_SIZE] */
 	unsigned long rs_same_csum;
+#endif
 #define DRBD_SYNC_MARKS 8
 #define DRBD_SYNC_MARK_STEP (3*HZ)
+#ifdef _WIN32
+    /* block not up-to-date at mark [unit BM_BLOCK_SIZE] */
+    ULONG_PTR rs_mark_left[DRBD_SYNC_MARKS];
+    /* marks's time [unit jiffies] */
+    ULONG_PTR rs_mark_time[DRBD_SYNC_MARKS];
+#else
 	/* block not up-to-date at mark [unit BM_BLOCK_SIZE] */
 	unsigned long rs_mark_left[DRBD_SYNC_MARKS];
 	/* marks's time [unit jiffies] */
 	unsigned long rs_mark_time[DRBD_SYNC_MARKS];
+#endif
 	/* current index into rs_mark_{left,time} */
 	int rs_last_mark;
+#ifdef _WIN32
+    ULONG_PTR rs_last_writeout;
+#else
 	unsigned long rs_last_writeout;
+#endif
 
 	/* where does the admin want us to start? (sector) */
 	sector_t ov_start_sector;
@@ -1338,7 +1379,11 @@ struct drbd_peer_device {
 	int rs_last_events;  /* counter of read or write "events" (unit sectors)
 			      * on the lower level device when we last looked. */
 	int rs_in_flight; /* resync sectors in flight (to proxy, in proxy and from proxy) */
+#ifdef _WIN32
+    ULONG_PTR ov_left; /* in bits */
+#else
 	unsigned long ov_left; /* in bits */
+#endif
 
 	u64 current_uuid;
 	u64 bitmap_uuids[DRBD_PEERS_MAX];
@@ -1350,7 +1395,11 @@ struct drbd_peer_device {
 					 are authoritative */
 	bool uuids_received;
 
+#ifdef _WIN32
+    ULONG_PTR comm_bm_set; /* communicated number of set bits. */
+#else
 	unsigned long comm_bm_set; /* communicated number of set bits. */
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_peer_dev;
@@ -1413,7 +1462,11 @@ struct drbd_device {
 	struct block_device *this_bdev;
 	struct gendisk	    *vdisk;
 
+#ifdef _WIN32
+    ULONG_PTR last_reattach_jif;
+#else
 	unsigned long last_reattach_jif;
+#endif
 	struct timer_list md_sync_timer;
 	struct timer_list request_timer;
 #ifdef DRBD_DEBUG_MD_SYNC
@@ -1444,7 +1497,11 @@ struct drbd_device {
 	struct list_head pending_completion[2];
 
 	struct drbd_bitmap *bitmap;
+#ifdef _WIN32
+    ULONG_PTR bm_resync_fo; /* bit offset for drbd_bm_find_next */
+#else
 	unsigned long bm_resync_fo; /* bit offset for drbd_bm_find_next */
+#endif
 	struct mutex bm_resync_fo_mutex;
 
 	int open_rw_cnt, open_ro_cnt;
@@ -1913,10 +1970,13 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * we limit us to a platform agnostic constant here for now.
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
-#ifdef _WIN32_CHECK // 컴파일 오류시 재확인
+#ifndef _WIN32 //_WIN32_CHECK // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?
 #if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #endif
+#else
+#define DRBD_MAX_BIO_SIZE (1 << 20)
+// #define DRBD_MAX_BIO_SIZE (1 << 24)
 #endif
 #define DRBD_MAX_SIZE_H80_PACKET (1U << 15) /* Header 80 only allows packets up to 32KiB data */
 #define DRBD_MAX_BIO_SIZE_P95    (1U << 17) /* Protocol 95 to 99 allows bios up to 128KiB */
@@ -2349,9 +2409,13 @@ extern void connect_timer_fn(PKDPC, PVOID, PVOID, PVOID);
 extern void twopc_timer_fn(unsigned long);
 extern void connect_timer_fn(unsigned long);
 #endif
+#ifdef _WIN32
+// not support
+#else
 /* drbd_proc.c */
 extern struct proc_dir_entry *drbd_proc;
 extern const struct file_operations drbd_proc_fops;
+#endif
 
 /* drbd_actlog.c */
 extern bool drbd_al_begin_io_prepare(struct drbd_device *device, struct drbd_interval *i);
@@ -2367,7 +2431,11 @@ extern int drbd_try_rs_begin_io(struct drbd_peer_device *, sector_t, bool);
 extern void drbd_rs_cancel_all(struct drbd_peer_device *);
 extern int drbd_rs_del_all(struct drbd_peer_device *);
 extern void drbd_rs_failed_io(struct drbd_peer_device *, sector_t, int);
+#ifdef _WIN32
+extern void drbd_advance_rs_marks(struct drbd_peer_device *, ULONG_PTR);
+#else
 extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
+#endif
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 enum update_sync_bits_mode { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC };
@@ -2417,8 +2485,11 @@ extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 
 static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_req)
 {
+#ifdef _WIN32
+	// not support
+	// WSK 에서는 송출이 끝나면 해당 페이지도 사용이 끝난 것임
+#else	
 	struct page *page = peer_req->pages;
-#ifdef _WIN32_CHECK
 	page_chain_for_each(page) {
 		if (page_count(page) > 1)
 			return 1;
