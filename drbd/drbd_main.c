@@ -83,8 +83,17 @@
 #endif
 
 // _WIN32_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
+#ifdef _WIN32
+static int drbd_open(struct drbd_device *device, fmode_t mode);
+#else
 static int drbd_open(struct block_device *bdev, fmode_t mode);
+#endif
+#ifdef _WIN32
+static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode);
+#else
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
+#endif
+
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
 #else
@@ -2736,11 +2745,13 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 	return rv;
 }
 
-static int drbd_open(struct block_device *bdev, fmode_t mode)
-{
-#ifdef _WIN32 // _WIN32_CHECK
-	struct drbd_device *device = 0;
+#ifdef _WIN32
+static int drbd_open(struct drbd_device *device, fmode_t mode)
 #else
+static int drbd_open(struct block_device *bdev, fmode_t mode)
+#endif
+{
+#ifndef _WIN32 
 	struct drbd_device *device = bdev->bd_disk->private_data;
 #endif
 	struct drbd_resource *resource = device->resource;
@@ -2809,12 +2820,13 @@ static int open_rw_count(struct drbd_resource *resource)
 
 	return count;
 }
-
-static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
-{
-#ifdef _WIN32 // _WIN32_CHECK
-    struct drbd_device *device = 0;
+#ifdef _WIN32
+static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode)
 #else
+static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
+#endif
+{
+#ifndef _WIN32 
 	struct drbd_device *device = gd->private_data;
 #endif
 	struct drbd_resource *resource = device->resource;
@@ -3142,7 +3154,7 @@ void drbd_destroy_resource(struct kref *kref)
 	kfree(resource->name);
 	kref_debug_destroy(&resource->kref_debug);
 	kfree(resource);
-#ifdef _WIN32_CHECK
+#ifndef _WIN32 // module_put disable
 	module_put(THIS_MODULE);
 #endif
 }
@@ -3338,19 +3350,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     INIT_LIST_HEAD(&device_list.list);
 
     rcu_read_lock();
-#ifdef _WIN32_CHECK // kmpak 20150806 minors 라는 변수가 없음.
-    idr_for_each_entry(&minors, mdev, i)
-    {
-        if ((mdev_list_p = kmalloc(sizeof(struct mdev_list), GFP_KERNEL, 'C0DW')) == NULL)
-        {
-            WDRBD_ERROR("DRBD_PANIC: No memory\n");
-            rcu_read_unlock();
-            return; // ignore DV error
-        }
-        mdev_list_p->mdev = mdev;
-        list_add(&mdev_list_p->list, &mdev_list.list);
-    }
-#else //_WIN32_V9
+
     idr_for_each_entry(struct drbd_device *, &drbd_devices, device, i)
     {
         if ((device_list_p = kmalloc(sizeof(struct device_list), GFP_KERNEL, 'C0DW')) == NULL)
@@ -3362,7 +3362,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         device_list_p->device = device;
         list_add(&device_list_p->list, &device_list.list);
     }
-#endif
+
     rcu_read_unlock();
 
     list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
@@ -3370,7 +3370,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         PVOLUME_EXTENSION VolExt;
         struct drbd_connection *connection, *tmp;
         VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-//#ifdef _WIN32_CHECK // kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요 [choi] 동작확인 필요.
+		// kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요 [choi] 동작확인 필요.
         extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
 
         for_each_connection_safe(connection, tmp, device_list_p->device->resource) {
@@ -3381,9 +3381,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
                 // error ignored.
             }
         }
-        
-//#endif
-        //drbdFreeDev(VolExt);  // kmpak  temporary disable
+        //drbdFreeDev(VolExt);  // kmpak  temporary disable => 임시 disable 이후 어떻게 할지?... free 해야 할지 디버깅 필요.
     }
 
     list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
@@ -3863,7 +3861,7 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 	mutex_lock(&connection->mutex[CONTROL_STREAM]);
 
 	connection->transport.ops->free(&connection->transport, op);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32 // 지원하지 않음.
 	if (op == DESTROY_TRANSPORT)
 		drbd_put_transport_class(connection->transport.class);
 #endif
