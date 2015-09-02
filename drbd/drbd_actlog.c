@@ -1065,7 +1065,11 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 	return false;
 }
 
+#ifdef _WIN32
+void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, ULONG_PTR still_to_go)
+#else
 void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, unsigned long still_to_go)
+#endif
 {
 	unsigned long now = jiffies;
 	unsigned long last = peer_device->rs_mark_time[peer_device->rs_last_mark];
