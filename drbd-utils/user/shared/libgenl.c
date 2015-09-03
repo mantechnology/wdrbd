@@ -212,9 +212,12 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 		iov->iov_len = 8192;
 		iov->iov_base = malloc(iov->iov_len);
 	}
-
-	flags = MSG_PEEK;
-retry:
+#ifndef _WIN32
+    /* [choi] V8 구현 적용.
+     * 원본 코드를 사용할 경우 MSG_PEEK 값이 2이기 때문에 retry를 시도하는데, 이때 receive timeout이 발생한다.
+     */
+	flags = MSG_PEEK; 
+retry: 
 	pfd.fd = s->s_fd;
 	pfd.events = POLLIN;
 	if ((poll(&pfd, 1, timeout_ms) != 1) || !(pfd.revents & POLLIN))
@@ -225,12 +228,22 @@ retry:
 	 * chance to realloc before the rest of the datagram is discarded.
 	 */
 	n = recvmsg(s->s_fd, &msg, flags);
-	if (!n)
-		return 0;
+#else
+    if ((n = recv(s->s_fd, iov->iov_base, iov->iov_len, 0)) < 0){
+        perror("recv");
+        return -1;
+    }
+#endif
+    if (!n)
+        return 0;
 	else if (n < 0) {
 		if (errno == EINTR) {
 			dbg(3, "recvmsg() returned EINTR, retrying\n");
-			goto retry;
+#ifdef _WIN32
+            return -EINTR;
+#else
+            goto retry;
+#endif
 		} else if (errno == EAGAIN) {
 			dbg(3, "recvmsg() returned EAGAIN, aborting\n");
 			return 0;
@@ -242,7 +255,7 @@ retry:
 			return -E_RCV_FAILED;
 		}
 	}
-
+#ifndef _WIN32
 	if (iov->iov_len < (unsigned)n ||
 	    msg.msg_flags & MSG_TRUNC) {
 		/* Provided buffer is not long enough, enlarge it
@@ -264,6 +277,7 @@ retry:
 				addr.nl_pid);
 		goto retry;
 	}
+#endif
 	return n;
 }
 
