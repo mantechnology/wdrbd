@@ -384,7 +384,7 @@ do { \
 #endif
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM
-#define WDRBD_TRACE_RCU WDRBD_TRACE
+#define WDRBD_TRACE_RCU
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -959,10 +959,12 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 #define __wait_event_interruptible(wq, condition, sig)   \
     do { \
         for (;;) { \
-            if (condition || -DRBD_SIGKILL == sig) {   \
+            if (condition) {   \
+                sig = 0;    \
                 break;      \
             } \
             sig = schedule(&wq, 100, __FUNCTION__, __LINE__);   \
+            if (-DRBD_SIGKILL == sig) { break; }    \
         } \
     } while (0)
 
