@@ -5379,8 +5379,10 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	 * "destroy" event to come last.
 	 */
 	drbd_flush_workqueue(&resource->work);
+#ifdef _WIN32_CHECK	//spinlock hang 으로 주석처리.
 #ifdef _WIN32_V9
     synchronize_rcu_w32_wlock();
+#endif
 #endif
 	drbd_unregister_device(device);
 
@@ -5390,7 +5392,9 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
+#ifdef _WIN32_CHECK
 	synchronize_rcu();
+#endif
 	drbd_put_device(device);
 
 	return ret;
