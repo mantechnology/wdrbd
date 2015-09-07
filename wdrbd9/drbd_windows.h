@@ -953,30 +953,24 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		if (!(condition)) \
 			__wait_event_timeout(wq, condition, __ret);  \
 		t = __ret; \
-		} while (0)
+        		} while (0)
 
-#define __wait_event_interruptible(wq, condition, ret)   \
-	do { \
-		for (;;) { \
-			if (condition)     \
-						{ \
-				break;      \
-						} \
-			/* if (!signal_pending(current)) */ \
-			{ \
-				/*schedule(&wq, MAX_SCHEDULE_TIMEOUT, __FUNC__, __LINE__); */\
-				schedule(&wq, 1, __FUNCTION__, __LINE__); /* DW105: workaround: 1 ms polling */ \
-			}  \
-				} \
-		} while (0)
+#define __wait_event_interruptible(wq, condition, sig)   \
+    do { \
+        for (;;) { \
+            if (condition || -DRBD_SIGKILL == sig) {   \
+                break;      \
+            } \
+            sig = schedule(&wq, 100, __FUNCTION__, __LINE__);   \
+        } \
+    } while (0)
 
 #define wait_event_interruptible(sig, wq, condition) \
-	do {\
-			int __ret = 0;  \
-			if (!(condition))  \
-				__wait_event_interruptible(wq, condition, __ret); \
-			sig = __ret; \
-		} while (0)
+    do {\
+        int __ret = 0;  \
+        __wait_event_interruptible(wq, condition, __ret); \
+        sig = __ret; \
+    } while (0)
 
 // _WIN32_V9 : CHECK
 #define wait_event_interruptible_timeout(t, wq, cond, to) \
@@ -1231,11 +1225,11 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define synchronize_rcu_w32_wlock() \
 	unsigned char  oldIrql_wLock; \
 	oldIrql_wLock = ExAcquireSpinLockExclusive(&g_rcuLock);\
-    WDRBD_TRACE_RCU("synchronize_rcu_w32_wlock : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+    WDRBD_TRACE_RCU("synchronize_rcu_w32_wlock : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 #define synchronize_rcu() \
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
-    WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+    WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 #ifdef _WIN32_CT
 extern void ct_init_thread_list();

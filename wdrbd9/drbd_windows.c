@@ -845,7 +845,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
                 KeResetEvent(&q->wqh_event); // DW-105: 이벤트/폴링 혼용. 리셋으로 시그널 분실시 1ms 타임아웃으로 보상
                 break;
 
-            case STATUS_WAIT_0 + 1:
+            case STATUS_WAIT_1:
                 if (thread->sig == DRBD_SIGKILL)
                 {
                     return -DRBD_SIGKILL;
@@ -934,7 +934,7 @@ void run_singlethread_workqueue(struct submit_worker *workq)
 			}
 			break;
 
-		case (STATUS_WAIT_0 + 1):
+		case (STATUS_WAIT_1):
 			workq->wq->run = FALSE;
 			break;
 		}
@@ -1320,7 +1320,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
     }
 
 #ifdef DBG
-    WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
+    WDRBD_TRACE_TM("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
         timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
 #endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
