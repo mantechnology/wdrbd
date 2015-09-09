@@ -4,6 +4,7 @@
 #include <mountdev.h>
 #include "mvolse.h"
 #include "windows/ioctl.h"
+#include "windows/drbd.h"
 
 #define	MVOL_IOCOMPLETE_REQ(Irp, status, size)		\
 {							\
@@ -36,8 +37,6 @@ typedef struct _MVOL_THREAD
 
 #define	MVOL_READ_OFF			0x01
 #define	MVOL_WRITE_OFF			0x02
-
-#define _WIN32_MVFL                     // new mvf vollock	       
 
 typedef struct _VOLUME_EXTENSION
 {

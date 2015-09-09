@@ -358,11 +358,13 @@ tail_recursion:
 			resource->last_peer_acked_dagtag = req->dagtag_sector;
 	} else
 #ifdef _WIN32
+    {
     	if (req->win32_page_buf)
     	{
     		kfree(req->win32_page_buf);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+    }
 #else
 		mempool_free(req, drbd_request_mempool);
 #endif
@@ -558,6 +560,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	if (s & RQ_LOCAL_OK)
 		++ok;
 	error = PTR_ERR(req->private_bio);
+
 	for_each_peer_device(peer_device, device) {
 		unsigned ns = drbd_req_state_by_peer_device(req, peer_device);
 		/* any net ok ok local ok is good enough to complete this bio as OK */
@@ -1498,6 +1501,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 static void maybe_pull_ahead(struct drbd_device *device)
 {
 	struct drbd_connection *connection;
+
 	for_each_connection(connection, device->resource)
 		__maybe_pull_ahead(device, connection);
 }
@@ -1557,6 +1561,7 @@ static struct drbd_peer_device *find_peer_device_for_read(struct drbd_request *r
 
 	/* TODO: improve read balancing decisions, take into account drbd
 	 * protocol, all peers, pending requests etc. */
+
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->disk_state[NOW] != D_UP_TO_DATE)
 			continue;
@@ -1599,6 +1604,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 		_req_mod(req, QUEUE_AS_DRBD_BARRIER, NULL);
 		return 0;
 	}
+
 	for_each_peer_device(peer_device, device) {
 		remote = drbd_should_do_remote(peer_device, NOW);
 		send_oos = drbd_should_send_out_of_sync(peer_device);
@@ -1822,7 +1828,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		submit_private_bio = true;
 	} else if (no_remote) {
 nodata:
-        if (drbd_ratelimit())
+		if (drbd_ratelimit())
 #ifdef _WIN32
         {
             struct drbd_device * device = req->device;

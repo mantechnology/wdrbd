@@ -1076,13 +1076,13 @@ void down(struct mutex *m)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
     mutex_lock(m);
-    DbgPrint("down() : mutex_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    //WDRBD_TRACE("mutex_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
 }
 
 void up(struct mutex *m)
 {
     // mutex/spin lock 으로 대체 가능할 듯.
-    DbgPrint("up() : mutex_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    //WDRBD_TRACE("mutex_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
     mutex_unlock(m);
 }
 
@@ -1320,8 +1320,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
     }
 
 #ifdef DBG
-    WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
-        timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
+//    WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
+//        timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
 #endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
     return 1;
@@ -2286,15 +2286,6 @@ LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 	return volumeSize.QuadPart;
 }
 
-/**
-* @brief    인자로 들어온 t값보다 바로 큰 16의 배수를 return 한다.
-*   ex) 44 -> 48 return.
-*/
-__inline unsigned int get_16_gt_multiple_size(unsigned int t)
-{
-    return (t + 16) & (-0xf);
-}
-
 #define DRBD_REGISTRY_VOLUMES       L"\\volumes"
 
 /**
@@ -2309,7 +2300,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
     NTSTATUS                    status;
     HANDLE                      hKey = NULL;
-    SIZE_T                      size;
+    ULONG                       size;
     int                         count;
     bool                        ret = FALSE;
 
@@ -2318,16 +2309,13 @@ BOOLEAN do_add_minor(unsigned int minor)
     PAGED_CODE();
 
     PWCHAR new_reg_buf = (PWCHAR)ExAllocatePoolWithTag(PagedPool, MAX_TEXT_BUF, '93DW');
-    UNICODE_STRING new_reg = {0, MAX_TEXT_BUF, new_reg_buf};
-    
-#ifdef _WIN32 //DV
     if (!new_reg_buf)
     {
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag new_reg_buf\n", 0);
         return FALSE;
     }
-#endif
 
+    UNICODE_STRING new_reg = {0, MAX_TEXT_BUF, new_reg_buf};
     RtlCopyUnicodeString(&new_reg, &prext->RegistryPath);
     RtlAppendUnicodeToString(&new_reg, DRBD_REGISTRY_VOLUMES);
 
@@ -2350,11 +2338,11 @@ BOOLEAN do_add_minor(unsigned int minor)
         goto cleanup;
     }
 
-    keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, get_16_gt_multiple_size((unsigned int)size), 'A3DW');
+    keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, 'A3DW');
     if (!keyInfo)
     {
         status = STATUS_INSUFFICIENT_RESOURCES;
-        WDRBD_ERROR("Failed to ExAllocatePoolWithTag keyInfo\n", 0);
+        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%d)\n", size);
         goto cleanup;
     }
 
@@ -2370,6 +2358,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     if (!valueInfo)
     {
         status = STATUS_INSUFFICIENT_RESOURCES;
+        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() valueInfoSize(%d)\n", valueInfoSize);
         goto cleanup;
     }
 
@@ -2389,12 +2378,9 @@ BOOLEAN do_add_minor(unsigned int minor)
 
         if (REG_BINARY == valueInfo->Type)
         {
-            WCHAR token[2] = {0, };
+            valueInfo->Name[0] &= ~0x20;
 
-            token[0] = valueInfo->Name[0];
-            _wcsupr(token);
-
-            if (minor == (unsigned int)(token[0] - 'C'))
+            if (minor == valueInfo->Name[0] - L'C')
             {
                 ret = true;
                 goto cleanup;
@@ -2609,6 +2595,16 @@ int kobject_init_and_add(struct kobject *kobj, struct kobj_type *ktype, struct k
 
 
 #ifdef _WIN32_V9
+int scnprintf(char * buf, size_t size, const char *fmt, ...)
+{
+	va_list args;
+	int i = 0;
+
+	va_start(args, fmt);
+    i = _vsnprintf_s(buf, size, _TRUNCATE, fmt, args);
+	va_end(args);
+	return (-1 == i) ? (size - 1) : i;
+}
 
 int list_is_singular(const struct list_head *head)
 {
