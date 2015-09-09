@@ -32,7 +32,7 @@
 #endif
 
 #define WSK_EVENT_CALLBACK
-//#define WSK_ACCEPT_EVENT_CALLBACK     
+#define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
@@ -441,7 +441,11 @@ struct sockaddr_storage_win {
 }; 
 
 struct sock {
+#ifdef _WIN32_V9
+	LONG_PTR sk_state_change;
+#else
 	int sk_state_change;
+#endif
 	int sk_user_data;
 	int sk_reuse;
 	int sk_allocation;
