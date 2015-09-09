@@ -58,6 +58,11 @@
 #include "shared_main.h"
 #include "drbdadm_parser.h"
 
+#ifdef _WIN32_V9
+#define _WIN32_MVFL
+#include <windows.h>
+#endif
+
 #define MAX_ARGS 40
 
 char *progname;
