@@ -850,8 +850,13 @@ struct drbd_bitmap {
 	struct page **bm_pages;
 	spinlock_t bm_lock;
 
+#ifdef _WIN32 // [choi] V8 적용
+    ULONG_PTR bm_set[DRBD_PEERS_MAX]; /* number of bits set */
+    ULONG_PTR bm_bits;  /* bits per peer */
+#else
 	unsigned long bm_set[DRBD_PEERS_MAX]; /* number of bits set */
 	unsigned long bm_bits;  /* bits per peer */
+#endif
 	size_t   bm_words;
 	size_t   bm_number_of_pages;
 	sector_t bm_dev_capacity;

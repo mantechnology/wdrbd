@@ -283,9 +283,8 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #ifdef _WIN32_MVFL
     if (VolumeExtension->Active)
     {
-#ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
-        if (mdev && (R_PRIMARY != mdev->state.role))
+        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9
+        if (device && (R_PRIMARY != device->resource->role[NOW]))   // V9
         {
             //PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
             //WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
@@ -295,7 +294,6 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             return STATUS_INVALID_DEVICE_REQUEST;
         }
-#endif
     }
 #endif
     IoSkipCurrentIrpStackLocation(Irp);
@@ -323,9 +321,8 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active)
     {
-#ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
-        if (mdev && (mdev->state.role == R_PRIMARY))
+        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
+        if (device && (R_PRIMARY == device->resource->role[0]))
         {
             if (g_read_filter)
             {
@@ -336,7 +333,6 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         {
             goto invalid_device;
         }
-#endif
     }
 
     IoSkipCurrentIrpStackLocation(Irp);
@@ -380,10 +376,9 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active)
     {
-#ifdef _WIN32_CHECK
-        struct drbd_conf *mdev = minor_to_device(VolumeExtension->VolIndex);
+        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
 
-        if (mdev/* && (mdev->state.role == R_PRIMARY)*/)
+        if (device)
         {
             NTSTATUS					status;
             PMVOL_THREAD				pThreadInfo;
@@ -425,13 +420,10 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             return STATUS_INVALID_DEVICE_REQUEST;
         }
-#endif
     }
-    else
-    {
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
-    }
+
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
 }
 
 NTSTATUS

@@ -631,7 +631,6 @@ static char **make_envp(struct env *env)
 	else								\
 		__drbd_printk_connection(level, connection, fmt, args);
 #else
-
 #define magic_printk(level, fmt, args...)				\
 	if (peer_device)						\
 		__drbd_printk_peer_device(level, peer_device, fmt, args); \
@@ -897,7 +896,7 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 	struct task_struct *opa;
 
 	kref_get(&connection->kref);
-    kref_debug_get(&connection->kref_debug, 4);
+	kref_debug_get(&connection->kref_debug, 4);
 #ifdef _WIN32_V9
 	HANDLE		hThread = NULL;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
@@ -1035,7 +1034,7 @@ retry:
 #ifdef _WIN32_V9
                 idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
-                idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+				idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
 					struct drbd_device *device = peer_device->device;
 
@@ -1220,8 +1219,50 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		retcode = drbd_set_role(adm_ctx.resource, R_PRIMARY, parms.assume_uptodate);
 		if (retcode >= SS_SUCCESS)
 			set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
+#ifdef _WIN32_MVFL // V9
+        int vnr;
+        struct drbd_device * device;
+        idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+        {
+            if (D_DISKLESS != device->disk_state[NOW])
+                FsctlCreateVolume(device->minor);
+        }
+#endif
 	} else {
+#ifdef _WIN32_MVFL // V9
+        int vnr;
+        struct drbd_device * device;
+        idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+        {
+            if (D_DISKLESS == device->disk_state[NOW])
+            {
+                retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+            }
+            else if (NT_SUCCESS(FsctlLockVolume(device->minor)))
+            {
+                retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+                if (retcode < SS_SUCCESS)
+                {
+                    FsctlUnlockVolume(device->minor);
+                    goto out;
+                }
+                NTSTATUS status = FsctlDismountVolume(device->minor);
+                FsctlUnlockVolume(device->minor);
+
+                if (!NT_SUCCESS(status))
+                {
+                    retcode = SS_UNKNOWN_ERROR;
+                    goto out;
+                }
+            }
+            else
+            {
+                retcode = SS_DEVICE_IN_USE;
+            }
+        }
+#else
 		retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+#endif
 		if (retcode >= SS_SUCCESS)
 			clear_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
 	}
@@ -1733,6 +1774,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 		b = bdev->backing_bdev->bd_disk->queue;
 
 		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
+
 		blk_set_stacking_limits(&q->limits); // [choi] 구조체 변수 limits 추가. 기능 불필요시 삭제.
 #ifdef REQ_WRITE_SAME
 		blk_queue_max_write_same_sectors(q, 0);
@@ -1771,6 +1813,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			q->backing_dev_info.ra_pages = b->backing_dev_info.ra_pages;
 		}
 	}
+
 	/* To avoid confusion, if this queue does not support discard, clear
 	 * max_discard_sectors, which is what lsblk -D reports to the user.  */
 	if (!blk_queue_discard(q)) {
@@ -2136,7 +2179,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
     if (IS_ERR_OR_NULL(bdev)) {
 #else
-    if (IS_ERR(bdev)) {
+	if (IS_ERR(bdev)) {
 #endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->backing_dev,
 			PTR_ERR(bdev));
@@ -2163,7 +2206,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
     if (IS_ERR_OR_NULL(bdev)) {
 #else
-    if (IS_ERR(bdev)) {
+	if (IS_ERR(bdev)) {
 #endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->meta_dev,
 			PTR_ERR(bdev));
@@ -2499,7 +2542,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
     unsigned char oldIrql_rLock1; // RCU_SPECIAL_CASE
     oldIrql_rLock1 = ExAcquireSpinLockShared(&g_rcuLock);
 #else
-    rcu_read_lock();
+	rcu_read_lock();
 #endif
 	if (rcu_dereference(device->ldev->disk_conf)->al_updates)
 		device->ldev->md.flags &= ~MDF_AL_DISABLED;
@@ -2509,7 +2552,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
     // RCU_SPECIAL_CASE
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1);
 #else
-    rcu_read_unlock();
+	rcu_read_unlock();
 #endif
 
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
@@ -2519,7 +2562,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
-
 #ifdef _WIN32_MVFL
     struct drbd_genlmsghdr *dh = info->userhdr;
     if (do_add_minor(dh->minor))
@@ -2626,6 +2668,7 @@ static int adm_detach(struct drbd_device *device, int force)
 #ifdef _WIN32
 	wait_event_interruptible(ret, device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
+WDRBD_TRACE("ret(%d)\n", ret);
 #else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
@@ -3161,7 +3204,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	bool allocate_bitmap_slots = false;
 	char *transport_name;
 	struct drbd_transport_class *tr_class;
-
+WDRBD_TRACE("start\n");
 	*ret_conn = NULL;
 	if (adm_ctx->connection) {
 #ifdef _WIN32
@@ -3360,7 +3403,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
-    idr_for_each_entry(&connection->peer_devices, peer_device, i) {
+	idr_for_each_entry(&connection->peer_devices, peer_device, i) {
 #endif
 		struct peer_device_info peer_device_info;
 
@@ -3373,7 +3416,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
-    idr_for_each_entry(&connection->peer_devices, peer_device, i) {
+	idr_for_each_entry(&connection->peer_devices, peer_device, i) {
 #endif
 		if (get_ldev_if_state(peer_device->device, D_NEGOTIATING)) {
 			err = drbd_attach_peer_device(peer_device);
@@ -3584,7 +3627,7 @@ int drbd_adm_new_peer(struct sk_buff *skb, struct genl_info *info)
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_PEER_NODE);
 	if (!adm_ctx.reply_skb)
 		return retcode;
-
+WDRBD_TRACE("start\n");
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (adm_ctx.connection) {
@@ -3745,6 +3788,7 @@ void del_connection(struct drbd_connection *connection)
 	 * handling only does drbd_thread_stop_nowait().
 	 */
 	drbd_thread_stop(&connection->sender);
+
 	drbd_unregister_connection(connection);
 
 	/*
@@ -3766,7 +3810,7 @@ void del_connection(struct drbd_connection *connection)
 	mutex_unlock(&notification_mutex);
 #ifndef _WIN32_V9 
     //_WIN32_CHECK [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
-	synchronize_rcu(); 
+	synchronize_rcu();
 #endif
 	drbd_put_connection(connection);
 }
@@ -5470,12 +5514,52 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	resource = adm_ctx.resource;
 	mutex_lock(&resource->adm_mutex);
 	/* demote */
+#ifdef _WIN32_MVFL
+    // down 시 볼륨 dismount 유지되도록 원복
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i)
+    {
+        if (D_DISKLESS == device->disk_state[NOW])
+        {
+            retcode = drbd_set_role(resource, R_SECONDARY, false);
+        }
+        else if (NT_SUCCESS(FsctlLockVolume(device->minor)))
+        {
+            retcode = drbd_set_role(resource, R_SECONDARY, false);
+            if (retcode < SS_SUCCESS)
+            {
+                drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
+                FsctlUnlockVolume(device->minor);
+                goto out;
+            }
+
+            NTSTATUS status = FsctlDismountVolume(device->minor);
+            FsctlUnlockVolume(device->minor);
+
+            if (!NT_SUCCESS(status))
+            {
+                retcode = ERR_RES_NOT_KNOWN;
+                goto out;
+            }
+
+            PVOLUME_EXTENSION pvolext = get_targetdev_by_minor(device->minor);
+            if (pvolext && pvolext->WorkThreadInfo.Active)
+            {
+                mvolTerminateThread(&pvolext->WorkThreadInfo);
+            }
+        }
+        else
+        {
+            retcode = ERR_RES_IN_USE;
+            goto out;
+        }
+    }
+#else
 	retcode = drbd_set_role(resource, R_SECONDARY, false);
 	if (retcode < SS_SUCCESS) {
 		drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
 		goto out;
 	}
-
+#endif
 	mutex_lock(&resource->conf_update);
 	for_each_connection_safe(connection, tmp, resource) {
 		retcode = conn_try_disconnect(connection, 0);
@@ -5523,11 +5607,8 @@ out:
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
 }
-
 #ifdef _WIN32_V9
-
 // DRBD_DOC: CLI를 통한 down 이 아니라 엔진에서 직접 불리는 down 명령
-
 int drbd_adm_down_from_engine(struct drbd_connection *connection)
 {
     struct drbd_resource *resource;
@@ -5591,7 +5672,7 @@ unlock_out:
     mutex_unlock(&resource->conf_update);
 out:
     mutex_unlock(&resource->adm_mutex);
-    return 0;
+    return retcode;
 }
 #endif
 

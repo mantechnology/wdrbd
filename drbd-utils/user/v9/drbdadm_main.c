@@ -57,6 +57,10 @@
 #include "drbdadm_dump.h"
 #include "shared_main.h"
 #include "drbdadm_parser.h"
+#ifdef _WIN32_V9
+#include "windows/drbd.h"
+#include <windows.h>
+#endif
 
 #define MAX_ARGS 40
 
