@@ -3364,7 +3364,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     }
 
     rcu_read_unlock();
-
+#if 0   // kmpak. to escape shutdown mutex hang
     list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
     {
         PVOLUME_EXTENSION VolExt;
@@ -3383,7 +3383,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         }
         //drbdFreeDev(VolExt);  // kmpak  temporary disable => 임시 disable 이후 어떻게 할지?... free 해야 할지 디버깅 필요.
     }
-
+#endif
     list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
     {
         list_del(&device_list_p->list);
