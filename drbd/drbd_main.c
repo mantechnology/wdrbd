@@ -5829,7 +5829,7 @@ void lock_all_resources(void)
 	int __maybe_unused i = 0;
 
 	mutex_lock(&resources_mutex);
-//#ifdef _WIN32_CHECK // kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규
+    // kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규
     //[choi] local_irq_disable(), spin_lock_nested()를 합쳐 spin_lock_irq()로 변경.
     /*
     126 static inline void __raw_spin_lock_irq(raw_spinlock_t *lock)
@@ -5846,16 +5846,20 @@ void lock_all_resources(void)
     362         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
     363 }
     */
-#ifndef _WIN32_V9
-	local_irq_disable();
-#endif
-	for_each_resource(resource, &drbd_resources)
+
 #ifdef _WIN32_V9
+    KIRQL irql = KeGetCurrentIrql();
+    for_each_resource(resource, &drbd_resources)
+    {
         spin_lock_irq(&resource->req_lock);
+        WDRBD_TRACE_REQ_LOCK("_WIN32_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+        resource->req_lock.saved_oldIrql = irql;
+    }
 #else
-		spin_lock_nested(&resource->req_lock, i++);
+	local_irq_disable();
+    for_each_resource(resource, &drbd_resources)
+        spin_lock_nested(&resource->req_lock, i++);
 #endif
-//#endif
 }
 
 void unlock_all_resources(void)
@@ -5863,8 +5867,11 @@ void unlock_all_resources(void)
 	struct drbd_resource *resource;
 
 	for_each_resource(resource, &drbd_resources)
-#ifdef _WIN32_V9 //_WIN32_CHECK
+#ifdef _WIN32_V9
+    {
         spin_unlock_irq(&resource->req_lock);
+        WDRBD_TRACE_REQ_LOCK("_WIN32_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+    }
 #else
 		spin_unlock(&resource->req_lock);
 	local_irq_enable();
