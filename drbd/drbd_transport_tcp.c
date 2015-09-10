@@ -1371,15 +1371,30 @@ randomize:
 		ok = dtt_connection_established(transport, &dsocket, &csocket);
 	} while (!ok);
 
+#ifdef WSK_ACCEPT_EVENT_CALLBACK // dtt_put_listener 하기 전에 이벤트 콜백 해제
+	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("SetEventCallbacks: WSK_EVENT_DISABLE failed=0x%x\n", status); // EVENTLOG
+		//goto out; // listener 를 해제해야 하므로 일 단 진행 한다.
+	}
+#endif
 	dtt_put_listener(&waiter);
 
 #ifdef _WIN32
+
 	// data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? _WIN32_CHECK
 	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
 		goto out;
 	}
+#ifdef _WIN32_CHECK
+	status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+		goto out;
+	}
+#endif
 #else
 	dsocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 	csocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */

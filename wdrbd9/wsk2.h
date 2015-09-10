@@ -7,6 +7,35 @@
 NTSTATUS NTAPI SocketsInit();
 VOID NTAPI SocketsDeinit();
 
+NTSTATUS
+InitWskBuffer(
+	__in  PVOID		Buffer,
+	__in  ULONG		BufferSize,
+	__out PWSK_BUF	WskBuffer
+	);
+
+NTSTATUS
+InitWskData(
+	__out PIRP*		pIrp,
+	__out PKEVENT	CompletionEvent
+	);
+
+VOID
+ReInitWskData(
+	__out PIRP*		pIrp,
+	__out PKEVENT	CompletionEvent
+	);
+
+VOID
+FreeWskBuffer(
+	__in PWSK_BUF WskBuffer
+	);
+
+VOID
+FreeWskData(
+	__in PIRP pIrp
+	);
+
 PWSK_SOCKET
 NTAPI
   CreateSocket(

@@ -1194,7 +1194,11 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
+#ifdef _WIN32_V9
+	err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
+#else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
+#endif
 	if (!err) {
 		sbuf->unsent =
 		sbuf->pos += sbuf->allocated_size;      /* send buffer submitted! */
@@ -2321,8 +2325,11 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 
 	if (sbuf->unsent != sbuf->pos)
 		flush_send_buffer(connection, DATA_STREAM);
-
+#ifdef _WIN32_V9
+	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
+#else 
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
+#endif
 	if (!err)
 		peer_device->send_cnt += size >> 9;
 
