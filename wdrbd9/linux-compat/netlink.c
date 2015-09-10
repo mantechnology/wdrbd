@@ -180,16 +180,12 @@ int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 
         if (socket_entry)
         {
-#ifdef _WIN32_V9
-			// WIN32_CHECK: JHKIM: 컴퍼일 회피
-#else
             //WDRBD_TRACE("send socket(0x%p), data(0x%p), len(%d)\n", socket_entry->ptr, skb->data, skb->len);
             int sent = Send(socket_entry->ptr, skb->data, skb->len, 0, 0);
             if (sent != skb->len)
             {
                 WDRBD_WARN("Failed to send socket(0x%x)\n", socket_entry->ptr);
             }
-#endif
         }
 
         iter = iter->Next;

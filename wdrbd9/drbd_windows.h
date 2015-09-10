@@ -385,6 +385,7 @@ do { \
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM
 #define WDRBD_TRACE_RCU
+#define WDRBD_TRACE_REQ_LOCK //for lock_all_resources(), unlock_all_resources()
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
