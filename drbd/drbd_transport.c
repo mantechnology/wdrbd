@@ -236,7 +236,7 @@ int drbd_get_listener(struct drbd_waiter *waiter,
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_listener *listener, *new_listener = NULL;
 	int err;
-
+	
 	init_waitqueue_head(&waiter->wait);
 
 	while (1) {
@@ -258,8 +258,8 @@ int drbd_get_listener(struct drbd_waiter *waiter,
 
 		if (listener)
 			return 0;
-
-		err = create_listener(waiter->transport, &new_listener);
+	
+		err = create_listener(waiter->transport, &new_listener); 
 		if (err)
 			return err;
 

@@ -61,6 +61,9 @@ struct dtt_listener {
 	struct drbd_listener listener;
 	void (*original_sk_state_change)(struct sock *sk);
 	struct socket *s_listen;
+#ifdef _WIN32_V9
+	WSK_SOCKET* paccept_socket;
+#endif
 };
 
 struct dtt_waiter {
@@ -554,7 +557,11 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	socket->sk_linux_attr = 0;
 	err = 0;
 	
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
+#else
 	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
+#endif
 	if (socket->sk == NULL) {
 		err = -1;
 		goto out;
@@ -805,7 +812,7 @@ static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socke
 	struct drbd_waiter *waiter2_gen;
 	struct dtt_listener *listener =
 		container_of(waiter->waiter.listener, struct dtt_listener, listener);
-
+	
 	rcu_read_lock();
 	nc = rcu_dereference(waiter->waiter.transport->net_conf);
 	if (!nc) {
@@ -833,7 +840,7 @@ retry:
 		s_estab = waiter->socket;
 		waiter->socket = NULL;
 	}
-	else if (listener->listener.pending_accepts > 0) {
+	else if (listener->listener.pending_accepts > 0) { //pending_accepts 가 AcceptEvent callback에서 증가된다.
 		listener->listener.pending_accepts--;
 
 		spin_unlock_bh(&listener->listener.waiters_lock);
@@ -841,15 +848,17 @@ retry:
 		s_estab = NULL;
 #ifdef _WIN32_V9
 		// Accept 하고, s_estab 구조를 생성한다.
-		my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요._WIN32_CHECK
+		my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요.=> 잘 들어가 있음.
 		memset(&peer_addr, 0, sizeof(struct sockaddr_in));
-		paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
-		if (paccept_socket) {
+		// Accept Event Callback 에서 paccept_socket 을 저장해 두었다. 
+		//paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
+		// 
+		if (listener->paccept_socket) {
 			s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
 			if (!s_estab) {
 				return -ENOMEM;
 			}
-			s_estab->sk = paccept_socket;
+			s_estab->sk = listener->paccept_socket;
 			sprintf(s_estab->name, "estab_sock");
 			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
 			if (!s_estab->sk_linux_attr) {
@@ -994,13 +1003,40 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 	return be16_to_cpu(h->command);
 }
 
+#ifdef _WIN32_V9
+NTSTATUS WSKAPI
+dtt_incoming_connection (
+_In_  PVOID         SocketContext,
+_In_  ULONG         Flags,
+_In_  PSOCKADDR     LocalAddress,
+_In_  PSOCKADDR     RemoteAddress,
+_In_opt_  PWSK_SOCKET AcceptSocket,
+_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
+_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+)
+#else
 static void dtt_incoming_connection(struct sock *sock)
+#endif
 {
-#ifndef _WIN32 // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요._WIN32_CHECK
+#ifdef _WIN32 
+	// 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요._WIN32_CHECK => Accept Event Callback 방식 적용. 2015.9.9 sekim
+	struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
+	
+	struct drbd_waiter *waiter;
+	spin_lock(&listener->listener.waiters_lock);
+	listener->listener.pending_accepts++;
+	listener->paccept_socket = AcceptSocket;
+	waiter = list_entry(listener->listener.waiters.next, struct drbd_waiter, list);
+	wake_up(&waiter->wait);
+	spin_unlock(&listener->listener.waiters_lock);
+	//complete(&listener->listener.waiters);
+
+	return STATUS_SUCCESS;
+#else
 	struct dtt_listener *listener = sock->sk_user_data;
 	void (*state_change)(struct sock *sock);
 
-	state_change = listener->original_sk_state_change;
+	state_change = listener->original_sk_state_change; //original state change 핸들러 설정 부분은 V9 포팅에서 skip.
 	if (sock->sk_state == TCP_ESTABLISHED) {
 		struct drbd_waiter *waiter;
 
@@ -1032,7 +1068,11 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 // [choi] V8 prepare_listen_socket() 적용. WSK_ACCEPT_EVENT_CALLBACK은 disable 시켜둠. 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
-    AcceptEvent,
+#ifdef _WIN32_V9
+	dtt_incoming_connection,
+#else
+	AcceptEvent,
+#endif
     NULL, // WskInspectEvent is required only if conditional-accept is used.
     NULL  // WskAbortEvent is required only if conditional-accept is used.
 };
@@ -1078,13 +1118,14 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
     s_listen->sk_linux_attr = 0;
     err = 0;
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-    ad->s_accept = kzalloc(sizeof(struct socket), 0, '82DW');
-    if (!ad->s_accept)
-    {
+    //ad->s_accept = kzalloc(sizeof(struct socket), 0, '82DW');
+	listener = kzalloc(sizeof(struct dtt_listener), 0, '82DW');
+    //if (!ad->s_accept)
+	if (!listener) {
         err = -ENOMEM;
         goto out;
     }
-    s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, ad, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+	s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 #else
     s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 #endif
@@ -1127,28 +1168,29 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 		goto out;
 
 	what = "kmalloc";
-#ifdef _WIN32_V9
-    listener = kmalloc(sizeof(*listener), GFP_KERNEL, "87DW");
-#else
+
+    // listener 는 CreateSocket 이전시점에 할당하여 소켓 컨텍스트 인자로 넘겨주므로 메모리 할당 코드 CreateSocket 이전에서 수행. sekim
+#ifndef _WIN32_V9
 	listener = kmalloc(sizeof(*listener), GFP_KERNEL);
-#endif
 	if (!listener) {
 		err = -ENOMEM;
 		goto out;
 	}
-
+#endif
+	
 	listener->s_listen = s_listen;
 
 #ifdef _WIN32
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-    what = "enable event callbacks";
-    NTSTATUS s = STATUS_UNSUCCESSFUL;
-    s = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
-    if (!NT_SUCCESS(s))
-    {
-        err = s;
-        goto out;
-    }
+	// 이 시점에 event callback을 설정하면 안된다... dtt_create_listener 가 완료되고, drbd_get_listener 안에서 초기화 될 코드가 다 수행되고 난 후 이벤트 콜백을 설정해야 
+	// event callback(dtt_incoming_connection) 안의 코드수행이 안전하다.
+    //what = "enable event callbacks";
+    //NTSTATUS s = STATUS_UNSUCCESSFUL;
+    //s = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
+    //if (!NT_SUCCESS(s)) {
+    //    err = s;
+    //    goto out;
+    //}
 #endif
     //tconn->s_listen = s_listen; //_WIN32_CHECK
 #endif
@@ -1210,6 +1252,7 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32_V9
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	LONG InputBuffer = 1;
+	struct dtt_listener* dttlistener = NULL;
 #endif
 	struct socket *dsocket, *csocket;
 	struct net_conf *nc;
@@ -1229,7 +1272,19 @@ static int dtt_connect(struct drbd_transport *transport)
 	err = drbd_get_listener(&waiter.waiter, dtt_create_listener);
 	if (err)
 		return err;
+	
+#ifdef _WIN32_V9	
+	dttlistener = container_of(waiter.waiter.listener, struct dtt_listener, listener);
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT);
+	if (!NT_SUCCESS(status)) {
+		err = -EAGAIN;
+		return err;
+	}
+#endif
+#endif
 
+	
 	do {
 		struct socket *s = NULL;
 

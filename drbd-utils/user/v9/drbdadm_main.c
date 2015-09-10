@@ -57,9 +57,8 @@
 #include "drbdadm_dump.h"
 #include "shared_main.h"
 #include "drbdadm_parser.h"
-
 #ifdef _WIN32_V9
-#define _WIN32_MVFL
+#include "windows/drbd.h"
 #include <windows.h>
 #endif
 
