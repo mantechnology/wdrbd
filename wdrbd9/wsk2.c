@@ -48,6 +48,21 @@ InitWskData(
 	return STATUS_SUCCESS;
 }
 
+VOID
+ReInitWskData(
+__out PIRP*		pIrp,
+__out PKEVENT	CompletionEvent
+)
+{
+	ASSERT(pIrp);
+	ASSERT(CompletionEvent);
+
+	KeResetEvent(CompletionEvent);
+	IoReuseIrp(*pIrp, STATUS_UNSUCCESSFUL);
+	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+
+	return;
+}
 NTSTATUS
 InitWskBuffer(
 	__in  PVOID		Buffer,
@@ -90,6 +105,15 @@ __in PWSK_BUF WskBuffer
 
 	MmUnlockPages(WskBuffer->Mdl);
 	IoFreeMdl(WskBuffer->Mdl);
+}
+
+VOID
+FreeWskData(
+__in PIRP pIrp
+)
+{
+	if (pIrp)
+		IoFreeIrp(pIrp);
 }
 
 //
@@ -506,6 +530,7 @@ Send(
 	FreeWskBuffer(&WskBuffer);
 	return BytesSent;
 }
+
 
 LONG
 NTAPI

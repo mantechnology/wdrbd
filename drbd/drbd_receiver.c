@@ -7074,7 +7074,7 @@ int drbd_do_features(struct drbd_connection *connection)
 	const int expect = sizeof(struct p_connection_features);
 	struct packet_info pi;
 	int err;
-
+	
 	err = drbd_send_features(connection);
 	if (err)
 		return 0;
