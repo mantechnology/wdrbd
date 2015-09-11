@@ -132,7 +132,14 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device,
 	memcpy(req->win32_page_buf, bio_src->win32_page_buf, bio_src->bi_size);
 #endif
 
+#ifdef _WIN32 // DV
+    if (drbd_req_make_private_bio(req, bio_src) == NULL)
+    {
+        return NULL;
+}
+#else
 	drbd_req_make_private_bio(req, bio_src);
+#endif
 
 	kref_get(&device->kref);
 	kref_debug_get(&device->kref_debug, 6);
@@ -187,7 +194,12 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	rcu_read_unlock();
 
 	if (!queued)
-#ifdef _WIN32
+#ifdef _WIN32_V9
+        if (req->win32_page_buf)
+        {
+            kfree(req->win32_page_buf);
+        }
+
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -344,6 +356,10 @@ tail_recursion:
 				peer_ack_req = NULL;
 			} else
 #ifdef _WIN32_V9
+                if (peer_ack_req->win32_page_buf)
+                {
+                   kfree(peer_ack_req->win32_page_buf);
+                }
                 ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
@@ -663,12 +679,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 /* still holds resource->req_lock */
 static int drbd_req_put_completion_ref(struct drbd_request *req, struct bio_and_error *m, int put)
 {
-#ifdef _WIN32
-    struct drbd_device * device = req->device;
-    D_ASSERT(device, m || (req->rq_state[0] & RQ_POSTPONED));
-#else
 	D_ASSERT(req->device, m || (req->rq_state[0] & RQ_POSTPONED));
-#endif
 #ifdef DRBD_TRACE
 	if (put > 1)
 	{

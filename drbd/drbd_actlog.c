@@ -206,6 +206,10 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	device->md_io.error = -ENODEV;
 #ifdef _WIN32
     bio = bio_alloc_drbd(GFP_NOIO, '30DW');
+    if (!bio)
+    {
+        return -ENODEV;
+    }
 #else
 	bio = bio_alloc_drbd(GFP_NOIO);
 #endif
@@ -237,8 +241,18 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	else
 		submit_bio(rw, bio);
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
+#ifdef _WIN32
+    // not support
+    err = device->md_io.error;
+    if(err == STATUS_NO_SUCH_DEVICE)
+    {
+        drbd_err(device, "cannot find volume, PD=%ws\n", bio->bi_bdev->bd_disk->pDeviceExtension->PhysicalDeviceName);
+        return err;
+    }
+#else
 	if (bio_flagged(bio, BIO_UPTODATE))
 		err = device->md_io.error;
+#endif
 
 #ifndef REQ_FLUSH
 	/* check for unsupported barrier op.

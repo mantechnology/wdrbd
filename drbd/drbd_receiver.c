@@ -693,9 +693,17 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 #ifdef _WIN32_V9
 	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
 	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요. _WIN32_CHECK 
+#ifdef _WIN32 // V9_CHOI V8 적용
+    if (peer_req->win32_big_page)
+    {
+        kfree(peer_req->win32_big_page);
+        peer_req->win32_big_page = NULL;
+        peer_req->pages = NULL;
+    }
+#endif
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-	drbd_free_pages(&peer_device->connection->transport, peer_req->pages, is_net);
+	drbd_free_pages(&peer_device->connection->transport, (peer_req->i.size + PAGE_SIZE - 1) >> PAGE_SHIFT, is_net); // V9_CHOI V8 적용
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
@@ -7383,7 +7391,12 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 	list_del(&req->tl_requests);
 
 #ifdef _WIN32_V9
-	mempool_free(req, &drbd_request_mempool);
+    if (req->win32_page_buf)
+    {
+        kfree(req->win32_page_buf);
+    }
+
+    ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
@@ -8026,7 +8039,12 @@ static void destroy_request(struct kref *kref)
 	list_del(&req->tl_requests);
 	// mempool_free V9 포팅 필요.
 #ifdef _WIN32_V9
-	mempool_free(req, &drbd_request_mempool);
+    if (req->win32_page_buf)
+    {
+        kfree(req->win32_page_buf);
+    }
+
+    ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif

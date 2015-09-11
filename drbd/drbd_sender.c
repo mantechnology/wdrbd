@@ -77,6 +77,9 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     struct bio *bio = NULL;
     int error = 0;
     PIRP Irp = NULL;
+#ifdef DRBD_TRACE
+    WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_md_io_complete IRQL(%d) .............\n", current->comm, KeGetCurrentIrql());
+#endif
 
     if ((ULONG_PTR) p1 != FAULT_TEST_FLAG)
     {
@@ -108,6 +111,9 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	 * ASSERT(atomic_read(&mdev->md_io_in_use) == 1) there.
 	 */
 	drbd_md_put_buffer(device);
+#ifdef DRBD_TRACE
+    WDRBD_TRACE("drbd_md_io_complete: md_io->done(%d) bio se:0x%llx sz:%d\n", device->md_io.done, bio->bi_sector, bio->bi_size);
+#endif
 	device->md_io.done = 1;
 	wake_up(&device->misc_wait);
  #ifdef _WIN32
