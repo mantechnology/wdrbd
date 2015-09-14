@@ -41,6 +41,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "linux", "linux", "{5C0D1E4A
 		drbd-headers\linux\genl_magic_struct.h = drbd-headers\linux\genl_magic_struct.h
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "drbdwutils", "drbdwutils\drbdwutils.vcxproj", "{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -221,6 +223,30 @@ Global
 		{37AC4F5A-1EDB-42AD-9DD8-D139D01F5062}.Win8.1 Release|Win32.Build.0 = Release|Win32
 		{37AC4F5A-1EDB-42AD-9DD8-D139D01F5062}.Win8.1 Release|Win32.Deploy.0 = Release|Win32
 		{37AC4F5A-1EDB-42AD-9DD8-D139D01F5062}.Win8.1 Release|x64.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Debug|Win32.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Debug|Win32.Build.0 = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Debug|x64.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Release|Win32.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Release|Win32.Build.0 = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Release|x64.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Debug|Win32.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Debug|Win32.Build.0 = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Debug|x64.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Release|Win32.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Release|Win32.Build.0 = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win7 Release|x64.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Debug|Win32.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Debug|Win32.Build.0 = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Debug|x64.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Release|Win32.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Release|Win32.Build.0 = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8 Release|x64.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Debug|Win32.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Debug|Win32.Build.0 = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Debug|x64.ActiveCfg = Debug|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Release|Win32.ActiveCfg = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Release|Win32.Build.0 = Release|Win32
+		{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}.Win8.1 Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
