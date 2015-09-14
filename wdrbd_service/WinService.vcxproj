@@ -87,7 +87,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(TargetPath)" "$(ProjectDir)..\makeinstall\drbd\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -127,7 +127,7 @@
       <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(TargetPath)" "$(ProjectDir)..\makeinstall\drbd\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

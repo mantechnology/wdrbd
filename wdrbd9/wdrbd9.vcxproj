@@ -162,61 +162,79 @@
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <ClCompile>
@@ -229,6 +247,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <ClCompile>
@@ -242,6 +268,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <ClCompile>
@@ -251,7 +285,16 @@
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <ClCompile>
@@ -262,6 +305,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <ClCompile>
@@ -275,6 +326,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
     <ClCompile>
@@ -285,6 +344,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <ClCompile>
@@ -298,6 +365,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <ClCompile>
@@ -311,6 +386,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <ClCompile>
@@ -320,6 +403,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <ClCompile>
@@ -330,6 +421,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <ClCompile>
@@ -343,6 +442,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <ClCompile>
@@ -356,6 +463,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Inf Include="drbd.inf" />
