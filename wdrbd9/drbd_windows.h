@@ -980,11 +980,31 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
         sig = __ret; \
     } while (0)
 
-// _WIN32_V9 : CHECK
-#define wait_event_interruptible_timeout(t, wq, cond, to) \
+#ifdef _WIN32_V9  // _WIN32_V9_CHECK:JHKIM:DW_552:  JHKIM: 재확인!!
+#define wait_event_interruptible_timeout(ret, wq, condition, to) \
 	do {\
-			/*DbgPrint("_WIN32_CHECK: make wait_event_interruptible_timeout body!!\n");*/ \
+		int t = 0;\
+		int real_timeout = to /100; /*divide*/\
+        for (;;) { \
+            if (condition) {   \
+				DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);\
+                break;      \
+						} \
+			if (++t > real_timeout) \
+						{\
+				ret = 0;\
+				DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);\
+				break;\
+						}\
+			/*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
+			ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
+			/*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
+			if (ret == 0)\
+				continue; \
+            if (-DRBD_SIGKILL == ret) { break; } \
+				}\
 		} while (0)
+#endif
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)
 
