@@ -27,7 +27,7 @@
 #include "drbd_wrappers.h"
 #include <wsk2.h>
 #include <linux-compat\drbd_endian.h>
-
+#include <drbd_int.h> // _WIN32_V9_CHECK:JHKIM:DW_552:
 #else
 #include <linux/module.h>
 #include <linux/errno.h>

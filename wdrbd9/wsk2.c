@@ -599,6 +599,10 @@ LONG NTAPI Receive(
     PVOID       waitObjects[2];
     int         wObjCount = 1;
 
+	// _WIN32_V9_CHECK:JHKIM:DW_552:  
+	DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d -> 10Sec\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+	Timeout = 10000; // _WIN32_V9_CHECK:JHKIM:DW_552: 무조건 강제!!!!
+
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
