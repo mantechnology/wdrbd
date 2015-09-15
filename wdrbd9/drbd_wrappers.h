@@ -1412,10 +1412,20 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 #endif
 
 #ifndef COMPAT_HAVE_PRANDOM_U32
+#ifdef _WIN32
+static int random32_win()
+{
+    int buf;
+    get_random_bytes(&buf, 4);
+    return buf;
+}
+#endif
 static inline u32 prandom_u32(void)
 {
-#ifdef _WIN32_CHECK
-    return random32();
+#ifdef _WIN32_V9
+    return random32_win();
+#else
+    return random32();    
 #endif
 }
 #endif
