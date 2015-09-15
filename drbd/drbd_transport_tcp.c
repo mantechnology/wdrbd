@@ -1295,11 +1295,31 @@ static int dtt_connect(struct drbd_transport *transport)
 		if (s) {
 			if (!dsocket) {
 				dsocket = s;
+#ifdef _WIN32 // V8 적용. DW-154 관련 수정사항.
+                sprintf(dsocket->name, "data_sock\0");//DEBUG
+                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0)
+                {
+                    sock_release(s);
+                    dsocket = 0;
+                    goto retry;
+                }
+#else
 				dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM);
+#endif
 			} else if (!csocket) {
 				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
 				csocket = s;
+#ifdef _WIN32 // V8 적용. DW-154 관련 수정사항.
+                sprintf(csocket->name, "meta_sock\0");//DEBUG
+                if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
+                {
+                    sock_release(s);
+                    csocket = 0;
+                    goto retry;
+                }
+#else
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
+#endif
 			} else {
 #ifdef _WIN32_V9
 				WDRBD_ERROR("Logic error in conn_connect()\n");
