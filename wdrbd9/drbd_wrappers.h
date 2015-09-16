@@ -1594,15 +1594,24 @@ calling namespace */
 #endif
 
 #ifndef list_first_or_null_rcu
-#ifdef _WIN32_CHECK
+#ifndef _WIN32_V9
 #define list_first_or_null_rcu(ptr, type, member) \
 ({ \
 	struct list_head *__ptr = (ptr); \
-	struct list_head *__next = ACCESS_ONCE(__ptr->next); \
+	struct list_head *__next = ACCESS_ONCE(__ptr->next); \ 
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
 #else
-#define list_first_or_null_rcu(ptr, type, member) NULL
+// _WIN32_CHECK ACCESS_ONCE 부분 확인 필요.
+#define list_first_or_null_rcu(conn, ptr, type, member) \
+    do {    \
+        struct list_head *__ptr = (ptr);    \
+        struct list_head *__next = (__ptr->next);    \
+        if (likely(__ptr != __next))    \
+            conn = list_entry_rcu(__next, type, member);   \
+        else   \
+           conn = NULL;    \
+    }while (0)
 #endif
 #endif
 

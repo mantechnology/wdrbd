@@ -282,9 +282,15 @@ struct drbd_connection *__drbd_next_connection_ref(u64 *visited,
 
 	rcu_read_lock();
 	if (!connection) {
+#ifdef _WIN32_V9
+        list_first_or_null_rcu(connection, &resource->connections,
+        struct drbd_connection,
+            connections);
+#else
 		connection = list_first_or_null_rcu(&resource->connections,
 						    struct drbd_connection,
 						    connections);
+#endif
 		*visited = 0;
 	} else {
 		struct list_head *pos;
@@ -333,9 +339,15 @@ struct drbd_peer_device *__drbd_next_peer_device_ref(u64 *visited,
 {
 	rcu_read_lock();
 	if (!peer_device) {
+#ifdef _WIN32_V9
+        list_first_or_null_rcu(peer_device, &device->peer_devices,
+        struct drbd_peer_device,
+            peer_devices);
+#else
 		peer_device = list_first_or_null_rcu(&device->peer_devices,
 						    struct drbd_peer_device,
 						    peer_devices);
+#endif
 		*visited = 0;
 	} else {
 		struct list_head *pos;

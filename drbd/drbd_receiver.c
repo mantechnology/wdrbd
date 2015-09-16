@@ -2048,7 +2048,7 @@ fail:
 }
 //#endif
 
-#ifdef _WIN32_V9 // V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요. 
+// V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요. 
 // => rename 된 것이 맞고, 구현도 변경됨(기존 메모리 해제 연산이 포함되어 있었는데... 제거됨.)
 // => 착오 : rename 된 것이 아니고, 기존 V8 ignore_remaining_packet 으로 대체된 것... 분석 해 놓고도 다시 삽질을 하였다.
 static int ignore_remaining_packet(struct drbd_connection *connection, int size)
@@ -2066,7 +2066,6 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 
 	return 0;
 }
-#endif
 
 //#ifdef _WIN32_V9 // V9에 추가된 함수 아니므로 주석 제거.
 //
@@ -2641,10 +2640,9 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 	drbd_for_each_overlap(i, &device->write_requests, sector, size) {
 		if (i == &peer_req->i)
 			continue;
-#ifdef _WIN32_V9 //V9에 추가된 부분.
+        //V9에 추가된 부분.
 		if (i->completed)
 			continue;
-#endif
 		if (!i->local) {
 			/*
 			 * Our peer has sent a conflicting remote request; this
@@ -2676,15 +2674,13 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 					  (unsigned long long)sector, size,
 					  discard ? "local" : "remote");
 
-#ifdef _WIN32_CHECK //V8에 존재했던 inc_unacked 가 제거됨. 의미 파악 필요.
-			//inc_unacked(mdev);
-#endif
+            //_WIN32_CHECK V8에 존재했던 inc_unacked(mdev); 가 제거됨. 의미 파악 필요.
+
 			peer_req->w.cb = discard ? e_send_discard_write :
 						   e_send_retry_write;
 			list_add_tail(&peer_req->w.list, &device->done_ee);
-#ifdef _WIN32_V9 // 기존 wake_asender 에서 queue_work 로 변경.
+            // V9 기존 wake_asender 에서 queue_work 로 변경.
 			queue_work(connection->ack_sender, &peer_req->peer_device->send_acks_work);
-#endif
 
 			err = -ENOENT;
 			goto out;
@@ -2712,11 +2708,10 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 				 */
 				err = drbd_wait_misc(device, NULL, &req->i);
 				if (err) {
-#ifdef _WIN32_V9 // V8에서 _conn_request_state 만 단독으로 호출해서 상태를 변경하는 방식에서 락을 걸고 __change_cstate 하는 방식으로 변경.
+                    // V8에서 _conn_request_state 만 단독으로 호출해서 상태를 변경하는 방식에서 락을 걸고 __change_cstate 하는 방식으로 변경.
 					begin_state_change_locked(connection->resource, CS_HARD);
 					__change_cstate(connection, C_TIMEOUT);
 					end_state_change_locked(connection->resource);
-#endif
 					fail_postponed_requests(peer_req);
 					goto out;
 				}
@@ -8149,7 +8144,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	bool ping_timeout_active = false;
 
 	// linux kernel data type V9 포팅 필요
-#ifndef _WIN32
+#ifdef _WIN32_CHECK
 	struct sched_param param = { .sched_priority = 2 };
 #endif
 
@@ -8157,7 +8152,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	struct drbd_transport_ops *tr_ops = transport->ops;
 
 	// linux kernel func. V9 포팅 필요
-#ifndef _WIN32 //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
+#ifdef _WIN32_CHECK //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
 	rv = sched_setscheduler(current, SCHED_RR, &param);
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);
