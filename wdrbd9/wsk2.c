@@ -599,9 +599,20 @@ LONG NTAPI Receive(
     PVOID       waitObjects[2];
     int         wObjCount = 1;
 
-	// _WIN32_V9_CHECK:JHKIM:DW_552:  
-	DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d -> 10Sec\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
-	Timeout = 10000; // _WIN32_V9_CHECK:JHKIM:DW_552: 무조건 강제!!!!
+	DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d.\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+
+#ifdef _WIN32_V9_CHECK // _WIN32_V9_CHECK:JHKIM:DW_552:  
+	if (Timeout < 10000)
+	{
+		DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d -> 10Sec\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+		Timeout = 10000; // _WIN32_V9_CHECK:JHKIM:DW_552: 10초 미만은 무조건 강제!!!!
+	}
+	else
+	{ 
+		// Rx에서 무한 대기하는 로직에는 10초로 제한하면 안되기에 구분함. 10초 보다 적은 설정부분은 추후 재확인 요망.
+		DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d.\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+	}
+#endif
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;

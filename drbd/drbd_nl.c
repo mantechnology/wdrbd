@@ -737,13 +737,21 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	if (connection && device)
 		peer_device = conn_peer_device(connection, device->vnr);
 
+#ifdef _WIN32_V9
+	// _WIN32_V9_DOC:JHKIM: BSOD 발생. 로직 무시 가능. 추후 보강
+#else
 	magic_printk(KERN_INFO, "helper command: %s %s\n", usermode_helper, cmd);
+#endif
 	notify_helper(NOTIFY_CALL, device, connection, cmd, 0);
 	ret = call_usermodehelper(usermode_helper, argv, envp, UMH_WAIT_PROC);
+#ifdef _WIN32_V9
+	// _WIN32_V9_DOC:JHKIM: BSOD 발생. 로직 무시 가능. 추후 보강
+#else
 	magic_printk(ret ? KERN_WARNING : KERN_INFO,
 		     "helper command: %s %s exit code %u (0x%x)\n",
 		     usermode_helper, cmd,
 		     (ret >> 8) & 0xff, ret);
+#endif
 	notify_helper(NOTIFY_RESPONSE, device, connection, cmd, ret);
 
 	if (current == resource->worker.task)
