@@ -993,7 +993,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 			if (++t > real_timeout) \
 						{\
 				ret = 0;\
-				DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);\
+				/*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);*/\
 				break;\
 						}\
 			/*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \

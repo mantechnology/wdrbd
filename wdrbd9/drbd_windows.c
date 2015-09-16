@@ -1234,6 +1234,7 @@ int page_count(struct page *page)
 
 void init_timer(struct timer_list *t)
 {
+	DbgPrint("DRBD_TEST:(%s)init_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
@@ -1248,7 +1249,7 @@ void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
     UNREFERENCED_PARAMETER(key);
-
+	DbgPrint("DRBD_TEST:(%s)init_timer_key\n", current->comm); // _WIN32_V9_TEST
     init_timer(timer);
 #ifdef DBG
     strcpy(timer->name, name);
@@ -1257,17 +1258,21 @@ void init_timer_key(struct timer_list *timer, const char *name,
 #endif
 void add_timer(struct timer_list *t)
 {
+	DbgPrint("DRBD_TEST:(%s)add_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	mod_timer(t, t->expires);
 }
 
 void del_timer(struct timer_list *t)
 {
+	DbgPrint("DRBD_TEST:(%s)del_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeCancelTimer(&t->ktimer);
     t->expires = 0;
 }
 
 int del_timer_sync(struct timer_list *t)
 {
+	DbgPrint("DRBD_TEST:(%s)del_timer_sync t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
+
     del_timer(t);
     return 0;
 #ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요

@@ -416,6 +416,8 @@ Send(
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
+	DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
+
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
 
@@ -528,6 +530,7 @@ Send(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
+	DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
 	return BytesSent;
 }
 
@@ -599,18 +602,18 @@ LONG NTAPI Receive(
     PVOID       waitObjects[2];
     int         wObjCount = 1;
 
-	DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d.\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+	DbgPrint("DRBD_TEST:(%s)Rx: sz=%d to=%d\n", current->comm, BufferSize, Timeout);
 
-#ifdef _WIN32_V9_CHECK // _WIN32_V9_CHECK:JHKIM:DW_552:  
+#ifdef _WIN32_V9 // _CHECK // _WIN32_V9_CHECK:JHKIM:DW_552:  
 	if (Timeout < 10000)
 	{
-		DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d -> 10Sec\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
-		Timeout = 10000; // _WIN32_V9_CHECK:JHKIM:DW_552: 10초 미만은 무조건 강제!!!!
+		DbgPrint("DRBD_TEST:(%s) Rx Timeout change from %d -> 10Sec\n", current->comm, Timeout);
+		Timeout = 10000; // _WIN32_V9_CHECK:JHKIM:DW_552: 10초 미만은 무조건 강제! 연결 시점에 타이머 조사요망
 	}
 	else
 	{ 
 		// Rx에서 무한 대기하는 로직에는 10초로 제한하면 안되기에 구분함. 10초 보다 적은 설정부분은 추후 재확인 요망.
-		DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d.\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
+		//DbgPrint("DRBD_TEST:(%s) Recv: WskSocket=%p Buffer=%p BufferSize=%d Timeout=%d.\n", current->comm, WskSocket, Buffer, BufferSize, Timeout);
 	}
 #endif
 
@@ -724,6 +727,7 @@ LONG NTAPI Receive(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
+	DbgPrint("DRBD_TEST:(%s)Rx: done. ret=%d\n", current->comm, BytesReceived); // _WIN32_V9_TEST
 	return BytesReceived;
 }
 

@@ -2338,7 +2338,8 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 	if (sbuf->unsent != sbuf->pos)
 		flush_send_buffer(connection, DATA_STREAM);
 #ifdef _WIN32_V9
-	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
+	//err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
+	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임. 일단 다시 원복! CHECK!
 #else 
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
 #endif
@@ -2363,23 +2364,30 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
-#ifdef _WIN32_V9 // _WIN32_CHECK
+#ifdef _WIN32_V9 // CHECK
     // DRBD_DOC: page parameter -> bio->win32_page. 
     // 단일 버퍼로 전송함 단일 페이지 사용으로 포팅, 옵셋인자는 불필요함. 항상 0로 가정
-    // [choi] 확인 필요
-    // addr = (void*)page;
+    // [choi] 확인 필요 ->  [JHKIM] page는 win32_page_buf 로써 페이지 구조체가 아님.
+
     offset2 = (ULONG_PTR)buffer2 - (ULONG_PTR)page_address(page2);
+	DbgPrint("DRBD_TEST: off2=%d", offset2);
+	from_base = page; // _WIN32_V9_DOC:JHKIM: page는 win32_page_buf 로써 페이지 구조체가 아님.
 #else
 	offset2 = buffer2 - page_address(page2);
-#endif
 	from_base = drbd_kmap_atomic(page, KM_USER0);
-#ifdef _WIN32_V9 // _WIN32_CHECK
+#endif
+
+#ifdef _WIN32_V9 // CHECK
 	memcpy(buffer2, (char *)from_base + offset, size);
 #else
 	memcpy(buffer2, from_base + offset, size);
 #endif
 	drbd_kunmap_atomic(from_base, KM_USER0);
+#ifdef _WIN32_V9
+	err = __drbd_send_page(peer_device, page2->addr, offset2, size, msg_flags);
+#else
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
+#endif
 
 	if (!err) {
 		sbuf->unsent =
