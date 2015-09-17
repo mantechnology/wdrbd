@@ -642,25 +642,39 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	/* Do not wait if no memory is immediately available.  */
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. _WIN32_CHECK
+	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, size, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. _WIN32_CHECK
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
 #endif
 	if (!peer_req)
 		goto defer;
 
+#ifdef _WIN32_V9 
+
+	// JHKIM: win32_big_page가 이미 할당 됨!!!
+
+	/* JHKIM: 일단 참고용으로 코멘트 처리.
 	if (size) {
 		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-						   DIV_ROUND_UP(size, PAGE_SIZE),
-						   GFP_TRY & ~__GFP_WAIT);
+				DIV_ROUND_UP(size, PAGE_SIZE),
+				GFP_TRY & ~__GFP_WAIT);
 		if (!peer_req->pages)
 			goto defer2;
-		
-		peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다.
+
+		peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
 	}
 	else {
 		peer_req->win32_big_page = NULL;
+*/
+#else// JHKIM: 원본 다시 복구함...
+	if (size) {
+		drbd_alloc_page_chain(&peer_device->connection->transport,
+			&peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+		if (!peer_req->page_chain.head)
+			goto defer2;
 	}
+#endif
+
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = ID_SYNCER; /* unused */
@@ -1541,6 +1555,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	} else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
 			inc_rs_pending(peer_device);
+			DbgPrint("DRBD_TEST:w_e_end_rsdata_req! drbd_send_block!");
 			err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
 		} else {
 			if (drbd_ratelimit())

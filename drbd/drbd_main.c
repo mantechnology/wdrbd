@@ -1090,7 +1090,7 @@ static void new_or_recycle_send_buffer_page(struct drbd_send_buffer *sbuf)
 
 		page = alloc_page(GFP_KERNEL);
 		if (page) {
-#ifndef _WIN32 //V8 구현 적용.
+#ifndef _WIN32 //V8 구현 적용. // JHKIM: free_page 필요 할 듯. 확인요망!
 			put_page(sbuf->page);
 #endif
 			sbuf->page = page;
@@ -1109,10 +1109,13 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
 	char *page_start = page_address(sbuf->page);
-
+	DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		if (sbuf->unsent != sbuf->pos)
+		{ // WIN32_V9
+			DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! sbuf->unsent=%d sbuf->pos=%d sz=%d!\n", current->comm, drbd_stream, sbuf->unsent , sbuf->pos, size);
 			flush_send_buffer(connection, drbd_stream);
+		}// WIN32_V9
 		new_or_recycle_send_buffer_page(sbuf);
 	}
 
@@ -1202,10 +1205,13 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int msg_flags, err, offset, size;
 
+
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
+	DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
+
 #ifdef _WIN32_V9
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
 #else
@@ -1248,6 +1254,7 @@ static int __send_command(struct drbd_connection *connection, int vnr,
 		sbuf->allocated_size = 0;
 		err = 0;
 	} else {
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! __send_command!!!!\n", current->comm, drbd_stream);
 		err = flush_send_buffer(connection, drbd_stream);
 
 		/* DRBD protocol "pings" are latency critical.
@@ -1296,7 +1303,11 @@ void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 
 	mutex_lock(&connection->mutex[stream]);
 	if (sbuf->unsent != sbuf->pos)
+	{ //WIN32_V9
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
+
 		flush_send_buffer(connection, stream);
+	}
 
 	clear_bit(CORKED + stream, &connection->flags);
 	tr_ops->hint(transport, stream, UNCORK);
@@ -2336,7 +2347,11 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 	int err;
 
 	if (sbuf->unsent != sbuf->pos)
+	{ //WIN32_V9
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer! sbuf->unsent=%d sbuf->pos=%d sz=%d! __drbd_send_page!\n", current->comm,  sbuf->unsent, sbuf->pos, size);
+
 		flush_send_buffer(connection, DATA_STREAM);
+	}
 #ifdef _WIN32_V9
 	//err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임. 일단 다시 원복! CHECK!
@@ -2352,6 +2367,26 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			      int offset, size_t size, unsigned msg_flags)
 {
+#ifdef _WIN32_V9 // NEW!
+	struct drbd_connection *connection = peer_device->connection;
+	struct drbd_transport *transport = &connection->transport;
+	struct drbd_transport_ops *tr_ops = transport->ops;
+	int err;
+
+	//alloc_send_buffer 에 관여 하지 않는다!
+	DbgPrint("DRBD_TEST:_drbd_no_send_page off=%d sz=%d $$$$$$$$$$$$$$", offset, size);
+	flush_send_buffer(connection, DATA_STREAM); 
+
+	dumpHex((void*) page, 100, 16);
+
+	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임
+	if (!err)
+		peer_device->send_cnt += size >> 9;
+
+	return err;
+
+#else
+
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	void *from_base;
@@ -2362,6 +2397,10 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	if (sbuf->unsent != sbuf->pos)
 		flush_send_buffer(connection, DATA_STREAM);
 
+#ifdef _WIN32_V9
+	//  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
+#else
+	// JHKIM: 아래 원본의 V9 관련 코드는 일단 참고용으로 유지
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
 #ifdef _WIN32_V9 // CHECK
@@ -2383,8 +2422,10 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	memcpy(buffer2, from_base + offset, size);
 #endif
 	drbd_kunmap_atomic(from_base, KM_USER0);
+#endif
+
 #ifdef _WIN32_V9
-	err = __drbd_send_page(peer_device, page2->addr, offset2, size, msg_flags);
+	err = __drbd_send_page(peer_device, page, offset, size, msg_flags); //  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
 #else
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
 #endif
@@ -2395,6 +2436,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	}
 
 	return err;
+#endif
 }
 
 static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
@@ -2660,10 +2702,14 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	if (digest_size)
 		drbd_csum_ee(peer_device->connection->integrity_tfm, peer_req, p + 1);
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
+	DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
+	{ //_WIN32_V9
+		dumpHex((void*) peer_req->win32_big_page, 100, 16);
 		err = _drbd_send_zc_ee(peer_device, peer_req);
+	}
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;
@@ -3569,7 +3615,7 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		if (connection->send_buffer[i].page) {
-#ifndef _WIN32 //V8 구현 적용.
+#ifndef _WIN32 //V8 구현 적용. // JHKIM: void __free_page()로 할당된 영역을 반납해야 할 듯. 확인 요망!
 			put_page(connection->send_buffer[i].page);
 #endif
 			connection->send_buffer[i].page = NULL;
