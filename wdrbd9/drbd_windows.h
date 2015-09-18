@@ -178,11 +178,11 @@ enum rq_flag_bits {
 #define ENOENT					4
 #define EMEDIUMTYPE				5
 #define EROFS					6
-#define EAGAIN					7
+#define	E2BIG		 7	/* Argument list too long */    // kmpak linux 2.6.32.61
 #define MSG_NOSIGNAL			8
 #define ETIMEDOUT				9
 #define EBUSY					10
-#define EOVERFLOW				11
+#define	EAGAIN		11	/* Try again */ // kmpak linux 2.6.32.61
 #define ENOBUFS					12
 #define ENODEV					13
 #define EWOULDBLOCK				14
@@ -204,6 +204,7 @@ enum rq_flag_bits {
 #define EHOSTUNREACH			30
 #define EBADR					31
 #define EADDRINUSE              32 //_WIN32_V9
+#define	EOVERFLOW	75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
 #define	ESTALE		116	/* Stale NFS file handle */
 
 #define SIGXCPU					100
@@ -386,6 +387,7 @@ do { \
 #define WDRBD_TRACE_TM
 #define WDRBD_TRACE_RCU
 #define WDRBD_TRACE_REQ_LOCK //for lock_all_resources(), unlock_all_resources()
+#define WDRBD_TRACE_TR      WDRBD_TRACE
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -527,8 +529,8 @@ struct work_struct {
 };
 
 struct block_device_operations {
-	int (*open) ();
-	void (*release) ();
+	int (*open) (struct block_device *, fmode_t);
+	int (*release) (struct gendisk *, fmode_t);
 };
 
 struct kobj_type {
@@ -540,6 +542,10 @@ struct gendisk
 {
 	char disk_name[DISK_NAME_LEN];  /* name of major driver */
 	struct request_queue *queue;
+#ifdef _WIN32_V9
+    const struct block_device_operations *fops;
+    void *private_data;
+#endif
 	PVOLUME_EXTENSION pDeviceExtension;
 };
 
@@ -982,28 +988,25 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 
 #ifdef _WIN32_V9  // _WIN32_V9_CHECK:JHKIM:DW_552:  JHKIM: 재확인!!
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
-	do {\
-		int t = 0;\
-		int real_timeout = to /100; /*divide*/\
+    do {\
+        int t = 0;\
+        int real_timeout = to /100; /*divide*/\
         for (;;) { \
             if (condition) {   \
-				DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);\
+		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);*/\
                 break;      \
-						} \
-			if (++t > real_timeout) \
-						{\
-				ret = 0;\
-				/*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);*/\
-				break;\
-						}\
-			/*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
-			ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
-			/*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
-			if (ret == 0)\
-				continue; \
+            } \
+	        if (++t > real_timeout) {\
+		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);*/\
+		        ret = 0;\
+		        break;\
+            }\
+	        /*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
+	        ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
+	        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
-				}\
-		} while (0)
+        }\
+    } while (0)
 #endif
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)

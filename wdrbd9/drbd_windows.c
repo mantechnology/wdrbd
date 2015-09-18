@@ -1,6 +1,7 @@
 ﻿#include <stdint.h>
 #include <stdarg.h>
 #include <intrin.h>
+#include <ntifs.h>
 #include "drbd_windows.h"
 #include "wsk2.h"
 #include "drbd_wingenl.h"
@@ -1208,7 +1209,22 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,  sector_t *err
 
 void get_random_bytes(void *buf, int nbytes)
 {
-	LARGE_INTEGER p = KeQueryPerformanceCounter(NULL);
+    ULONG rn = nbytes;
+    UCHAR * target = buf;
+    int length = 0;
+
+    do
+    {
+        rn = RtlRandomEx(&rn);
+        length = (4 > nbytes) ? nbytes : 4;
+        memcpy(target, (UCHAR *)&rn, length);
+        nbytes -= length;
+        target += length;
+        
+    } while (nbytes);
+
+#if 0
+    LARGE_INTEGER p = KeQueryPerformanceCounter(NULL);
 	LARGE_INTEGER random;
 
 	random.LowPart = p.LowPart ^ (ULONG) p.HighPart;
@@ -1220,6 +1236,7 @@ void get_random_bytes(void *buf, int nbytes)
 	memcpy(buf, (char*) &random.HighPart, nbytes);
 
 	//DRBD_DOC: http://www.osronline.com/showThread.cfm?link=51429
+#endif
 }
 
 unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm)

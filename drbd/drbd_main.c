@@ -82,18 +82,8 @@
 #define DRBD_RELEASE_RETURN int
 #endif
 
-// _WIN32_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
-#ifdef _WIN32
-static int drbd_open(struct drbd_device *device, fmode_t mode);
-#else
 static int drbd_open(struct block_device *bdev, fmode_t mode);
-#endif
-#ifdef _WIN32
-static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode);
-#else
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
-#endif
-
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
 #else
@@ -2386,7 +2376,6 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	return err;
 
 #else
-
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	void *from_base;
@@ -2423,7 +2412,6 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 #endif
 	drbd_kunmap_atomic(from_base, KM_USER0);
 #endif
-
 #ifdef _WIN32_V9
 	err = __drbd_send_page(peer_device, page, offset, size, msg_flags); //  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
 #else
@@ -2818,15 +2806,9 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 	return rv;
 }
 
-#ifdef _WIN32
-static int drbd_open(struct drbd_device *device, fmode_t mode)
-#else
 static int drbd_open(struct block_device *bdev, fmode_t mode)
-#endif
 {
-#ifndef _WIN32 
 	struct drbd_device *device = bdev->bd_disk->private_data;
-#endif
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
 	int rv = 0;
@@ -2876,6 +2858,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 	}
 	spin_unlock_irqrestore(&resource->req_lock, flags);
 	up(&resource->state_sem);
+
 	return rv;
 }
 
@@ -2893,15 +2876,10 @@ static int open_rw_count(struct drbd_resource *resource)
 
 	return count;
 }
-#ifdef _WIN32
-static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode)
-#else
+
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
-#endif
 {
-#ifndef _WIN32 
 	struct drbd_device *device = gd->private_data;
-#endif
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
 	int open_rw_cnt;
@@ -3464,7 +3442,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     }
 }
 #endif
-
 /**
  * drbd_congested() - Callback for the flusher thread
  * @congested_data:	User data
@@ -3771,7 +3748,6 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
 #endif
-
 #ifdef _WIN32_V9 // [choi] count를 1로 초기화 하기 때문에 mutex를 사용해도 문제 없을 것으로 예상.
 #ifdef _WIN32_TMP_DEBUG_MUTEX
     mutex_init(&resource->state_sem, "res_state_mutex"); 
@@ -3779,7 +3755,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
     mutex_init(&resource->state_sem); 
 #endif
 #else
-    sema_init(&resource->state_sem, 1);
+	sema_init(&resource->state_sem, 1);
 #endif
 	resource->role[NOW] = R_SECONDARY;
 	if (set_resource_options(resource, res_opts))
@@ -4023,7 +3999,6 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 #else
 	peer_device->resync_timer.data = (unsigned long) peer_device;
 #endif
-
 #ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
     init_timer(&peer_device->start_resync_timer);
     init_timer(&peer_device->resync_timer);
@@ -4065,7 +4040,6 @@ static int init_submitter(struct drbd_device *device)
 		return -ENOMEM;
 	INIT_WORK(&device->submit.worker, do_submit);
 	INIT_LIST_HEAD(&device->submit.writes);
-
 	return 0;
 }
 
@@ -4166,7 +4140,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     init_timer(&device->md_sync_timer);
     init_timer(&device->request_timer);
 #endif
-
 	init_waitqueue_head(&device->misc_wait);
 	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
@@ -4182,7 +4155,16 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->rq_queue = q;
 	q->queuedata   = device;
 
+#ifdef _WIN32_V9
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    if (!pvext)
+        goto out_no_disk;
+
+	device->this_bdev = pvext->dev;
+    disk = pvext->dev->bd_disk;
+#else
 	disk = alloc_disk(1);
+#endif
 	if (!disk)
 		goto out_no_disk;
 	device->vdisk = disk;
@@ -4190,33 +4172,17 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	set_disk_ro(disk, true);
 
 	disk->queue = q;
-#ifdef _WIN32 // V8 적용
-    //unused
-#else
+#ifndef _WIN32 // V8 적용
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
-	disk->fops = &drbd_ops;
 #endif
-    sprintf(disk->disk_name, "drbd%d", minor);
+	disk->fops = &drbd_ops;
+	sprintf(disk->disk_name, "drbd%d", minor);
+	disk->private_data = device;
 #ifndef _WIN32 // V8 적용
-    disk->private_data = device;
-
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
-#else
-    {
-        char *buf[2];
-        buf[0] = minor + 'C';
-        buf[1] = 0;
-        device->this_bdev = blkdev_get_by_path(buf, 0, 0);
-        if (!device->this_bdev)
-            goto out_no_disk;
-    }
-#endif
-#ifdef _WIN32
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-	device->this_bdev = (pvext) ? pvext->dev : NULL;
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4455,7 +4421,7 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
-    idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
 		list_del_rcu(&peer_device->peer_devices);
 		list_add(&peer_device->peer_devices, &work_list);

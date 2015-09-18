@@ -754,7 +754,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
         goto block_device_failed;
     }
 
-    dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, 'D5DW');
+    dev->bd_disk = alloc_disk(0);
     if (!dev->bd_disk)
     {
         WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
