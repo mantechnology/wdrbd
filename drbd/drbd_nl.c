@@ -2605,7 +2605,17 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
                     goto force_diskless_dec;
                 }
             }
-            else if (STATUS_DEVICE_ALREADY_ATTACHED != status)
+            else if (STATUS_DEVICE_ALREADY_ATTACHED == status)  // _WIN32_V9
+            {
+                struct block_device * bd = pvolext->dev;
+                if (bd)
+                {
+                    // kmpak 이 시점에 하는 것이 좋을 지는 조금 고민해야 함
+                    bd->bd_disk->fops->open(bd, FMODE_WRITE);
+                    bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
+                }
+            }
+            else
             {
                 WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
             }

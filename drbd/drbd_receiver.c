@@ -619,7 +619,7 @@ You must not have the req_lock:
 // => drbd_alloc_peer_req 와 drbd_alloc_pages 를 쪼개어 놓은 이유가 있다. drbd_alloc_pages 를 transport 계층 ops 함수에서 호출할 때가 있기 때문에 분리될 필요가 있었다. 보기 좋으라고 분리시킨게 아님.
 //<완료>
 struct drbd_peer_request *
-drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask, ULONG Tag ) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
+	drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, unsigned int data_size, gfp_t gfp_mask, ULONG Tag) __must_hold(local) //기존의 data_size 와 tag 인자 제외.이유는 위 코멘트에 기술.
 #else
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
@@ -628,9 +628,9 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	struct drbd_device *device = peer_device->device; 
 	struct drbd_peer_request *peer_req = NULL;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	void* page = NULL;
-	//unsigned nr_pages = (data_size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	unsigned nr_pages = (data_size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
 	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
 		return NULL;
@@ -640,18 +640,21 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 		drbd_err(device, "%s: allocation failed\n", __func__);
 		return NULL;
 	}
-	// drbd_alloc_pages 는 V9 에서 별도로 호출이 이루어 진다. _WIN32_CHECK
-	//if (data_size) {
-	//	page = drbd_alloc_pages(&peer_device->connection->transport, nr_pages, (gfp_mask & __GFP_WAIT));
-	//	if (!page) {
-	//		drbd_err("win32_big_page alloc failed\n");
-	//		goto fail;
-	//	}
-	//	peer_req->win32_big_page = page;
-	//}
-	//else {
-	//	peer_req->win32_big_page = 0;
-	//}
+
+	memset(peer_req, 0, sizeof(*peer_req)); // _WIN32_DRBD_V9
+
+	// drbd_alloc_pages 는 V9 에서 별도로 호출이 이루어 진다. _WIN32_CHECK // JHKIM: 이 곳에서 할당해야 함. 트랜스포트로 넘어가서 할당하면 해당 메모리를 상위 peer_req에 연결할 방법이 없음
+	if (data_size) {
+		page = drbd_alloc_pages(&peer_device->connection->transport, nr_pages, (gfp_mask & __GFP_WAIT));
+		if (!page) {
+			drbd_err(device, "win32_big_page alloc failed\n");
+			goto fail;
+		}
+		peer_req->win32_big_page = page;
+	}
+	else {
+		peer_req->win32_big_page = 0;
+	}
 #else
 	if (drbd_insert_fault(device, DRBD_FAULT_AL_EE))
 		return NULL;
@@ -664,7 +667,9 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	}
 #endif
 
+#ifndef _WIN32_V9
 	memset(peer_req, 0, sizeof(*peer_req));
+#endif
 	INIT_LIST_HEAD(&peer_req->w.list);
 	drbd_clear_interval(&peer_req->i);
 	INIT_LIST_HEAD(&peer_req->recv_order);
@@ -693,7 +698,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 #ifdef _WIN32_V9
 	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
 	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요. _WIN32_CHECK 
-#ifdef _WIN32 // V9_CHOI V8 적용
+#ifdef _WIN32 // V9_CHOI V8 적용 // JHKIM: win32_big_page 해제 위치 재확인
     if (peer_req->win32_big_page)
     {
         kfree(peer_req->win32_big_page);
@@ -1986,7 +1991,7 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 		return NULL;
 	}
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, id, sector, GFP_TRY, '22DW');
+	peer_req = drbd_alloc_peer_req(peer_device, id, sector, data_size, GFP_TRY, '22DW');
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif
@@ -2003,10 +2008,18 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
 #ifdef _WIN32_V9
+	DbgPrint("DRBD_TEST:read_in_block! recv_pages!");
 	err = tr_ops->recv_pages(transport, (void*)peer_req->win32_big_page, data_size); // peer_req->win32_big_page 포인터를 dtt_recv_pages 인자로 넘겨서 dtt_recv_pages 안에서 처리.
+
+	DbgPrint("DRBD_TEST:read_in_block! ret!!! peer_req->win32_big_page=%d err=%d\n", peer_req->win32_big_page, err);
+	dumpHex((void*) peer_req->win32_big_page, 100, 16);
+
 	if ( err || ( peer_req->win32_big_page == NULL) ) { //err 처리와 win32_big_page 할당 실패 같이 처리.
 		goto fail;
 	}
+
+	//dumpHex( (void*)peer_req->win32_big_page, 100, 16);
+
 #else
 	err = tr_ops->recv_pages(transport, &peer_req->pages, data_size);
 	if (err) {
@@ -2283,7 +2296,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	sector_t sector;
 	int err;
 	struct p_data *p = pi->data;
-
+	DbgPrint("DRBD_TEST:receive_RSDataReply! ");
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
 		return -EIO;
@@ -3068,7 +3081,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		return ignore_remaining_packet(connection, pi->size);
 	}
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, p->block_id, sector, GFP_TRY, '32DW');
+	peer_req = drbd_alloc_peer_req(peer_device, p->block_id, sector, size, GFP_TRY, '32DW');
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
 #endif

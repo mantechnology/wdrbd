@@ -2314,7 +2314,7 @@ extern int drbd_submit_peer_request(struct drbd_device *,
 				    const int);
 extern int drbd_free_peer_reqs(struct drbd_resource *, struct list_head *, bool is_net_ee);
 #ifdef _WIN32_V9 //drbd_alloc_peer_req 내부에서 수행하던 drbd_alloc_pages가 V9에선 분리 수행된다.따라서 기존 V8의 인자에서 alloc 관련 인자가 제거됨.
-extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, gfp_t gfp_mask, ULONG Tag) __must_hold(local);
+extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *peer_device, u64 id, sector_t sector, unsigned int size, gfp_t gfp_mask, ULONG Tag) __must_hold(local);
 #else
 extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *, gfp_t) __must_hold(local);
 #endif

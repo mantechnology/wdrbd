@@ -82,18 +82,8 @@
 #define DRBD_RELEASE_RETURN int
 #endif
 
-// _WIN32_CHECK: WDRBD V8 에서 매트로가 사용되었는데 반영이 필요한지는 추후 확인
-#ifdef _WIN32
-static int drbd_open(struct drbd_device *device, fmode_t mode);
-#else
 static int drbd_open(struct block_device *bdev, fmode_t mode);
-#endif
-#ifdef _WIN32
-static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode);
-#else
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
-#endif
-
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
 #else
@@ -1090,7 +1080,7 @@ static void new_or_recycle_send_buffer_page(struct drbd_send_buffer *sbuf)
 
 		page = alloc_page(GFP_KERNEL);
 		if (page) {
-#ifndef _WIN32 //V8 구현 적용.
+#ifndef _WIN32 //V8 구현 적용. // JHKIM: free_page 필요 할 듯. 확인요망!
 			put_page(sbuf->page);
 #endif
 			sbuf->page = page;
@@ -1109,10 +1099,13 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
 	char *page_start = page_address(sbuf->page);
-
+	DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		if (sbuf->unsent != sbuf->pos)
+		{ // WIN32_V9
+			DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! sbuf->unsent=%d sbuf->pos=%d sz=%d!\n", current->comm, drbd_stream, sbuf->unsent , sbuf->pos, size);
 			flush_send_buffer(connection, drbd_stream);
+		}// WIN32_V9
 		new_or_recycle_send_buffer_page(sbuf);
 	}
 
@@ -1202,10 +1195,13 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int msg_flags, err, offset, size;
 
+
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
+	DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
+
 #ifdef _WIN32_V9
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
 #else
@@ -1248,6 +1244,7 @@ static int __send_command(struct drbd_connection *connection, int vnr,
 		sbuf->allocated_size = 0;
 		err = 0;
 	} else {
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! __send_command!!!!\n", current->comm, drbd_stream);
 		err = flush_send_buffer(connection, drbd_stream);
 
 		/* DRBD protocol "pings" are latency critical.
@@ -1296,7 +1293,11 @@ void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 
 	mutex_lock(&connection->mutex[stream]);
 	if (sbuf->unsent != sbuf->pos)
+	{ //WIN32_V9
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
+
 		flush_send_buffer(connection, stream);
+	}
 
 	clear_bit(CORKED + stream, &connection->flags);
 	tr_ops->hint(transport, stream, UNCORK);
@@ -2336,7 +2337,11 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 	int err;
 
 	if (sbuf->unsent != sbuf->pos)
+	{ //WIN32_V9
+		DbgPrint("DRBD_TEST: (%s)flush_send_buffer! sbuf->unsent=%d sbuf->pos=%d sz=%d! __drbd_send_page!\n", current->comm,  sbuf->unsent, sbuf->pos, size);
+
 		flush_send_buffer(connection, DATA_STREAM);
+	}
 #ifdef _WIN32_V9
 	//err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임. 일단 다시 원복! CHECK!
@@ -2352,6 +2357,25 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			      int offset, size_t size, unsigned msg_flags)
 {
+#ifdef _WIN32_V9 // NEW!
+	struct drbd_connection *connection = peer_device->connection;
+	struct drbd_transport *transport = &connection->transport;
+	struct drbd_transport_ops *tr_ops = transport->ops;
+	int err;
+
+	//alloc_send_buffer 에 관여 하지 않는다!
+	DbgPrint("DRBD_TEST:_drbd_no_send_page off=%d sz=%d $$$$$$$$$$$$$$", offset, size);
+	flush_send_buffer(connection, DATA_STREAM); 
+
+	dumpHex((void*) page, 100, 16);
+
+	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임
+	if (!err)
+		peer_device->send_cnt += size >> 9;
+
+	return err;
+
+#else
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	void *from_base;
@@ -2362,6 +2386,10 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	if (sbuf->unsent != sbuf->pos)
 		flush_send_buffer(connection, DATA_STREAM);
 
+#ifdef _WIN32_V9
+	//  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
+#else
+	// JHKIM: 아래 원본의 V9 관련 코드는 일단 참고용으로 유지
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
 #ifdef _WIN32_V9 // CHECK
@@ -2383,8 +2411,9 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	memcpy(buffer2, from_base + offset, size);
 #endif
 	drbd_kunmap_atomic(from_base, KM_USER0);
+#endif
 #ifdef _WIN32_V9
-	err = __drbd_send_page(peer_device, page2->addr, offset2, size, msg_flags);
+	err = __drbd_send_page(peer_device, page, offset, size, msg_flags); //  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
 #else
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
 #endif
@@ -2395,6 +2424,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	}
 
 	return err;
+#endif
 }
 
 static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
@@ -2660,10 +2690,14 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	if (digest_size)
 		drbd_csum_ee(peer_device->connection->integrity_tfm, peer_req, p + 1);
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
+	DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
+	{ //_WIN32_V9
+		dumpHex((void*) peer_req->win32_big_page, 100, 16);
 		err = _drbd_send_zc_ee(peer_device, peer_req);
+	}
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;
@@ -2772,15 +2806,9 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 	return rv;
 }
 
-#ifdef _WIN32
-static int drbd_open(struct drbd_device *device, fmode_t mode)
-#else
 static int drbd_open(struct block_device *bdev, fmode_t mode)
-#endif
 {
-#ifndef _WIN32 
 	struct drbd_device *device = bdev->bd_disk->private_data;
-#endif
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
 	int rv = 0;
@@ -2830,6 +2858,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 	}
 	spin_unlock_irqrestore(&resource->req_lock, flags);
 	up(&resource->state_sem);
+
 	return rv;
 }
 
@@ -2847,15 +2876,10 @@ static int open_rw_count(struct drbd_resource *resource)
 
 	return count;
 }
-#ifdef _WIN32
-static DRBD_RELEASE_RETURN drbd_release(struct drbd_device *device, fmode_t mode)
-#else
+
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
-#endif
 {
-#ifndef _WIN32 
 	struct drbd_device *device = gd->private_data;
-#endif
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
 	int open_rw_cnt;
@@ -3418,7 +3442,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     }
 }
 #endif
-
 /**
  * drbd_congested() - Callback for the flusher thread
  * @congested_data:	User data
@@ -3569,7 +3592,7 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		if (connection->send_buffer[i].page) {
-#ifndef _WIN32 //V8 구현 적용.
+#ifndef _WIN32 //V8 구현 적용. // JHKIM: void __free_page()로 할당된 영역을 반납해야 할 듯. 확인 요망!
 			put_page(connection->send_buffer[i].page);
 #endif
 			connection->send_buffer[i].page = NULL;
@@ -3725,7 +3748,6 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
 #endif
-
 #ifdef _WIN32_V9 // [choi] count를 1로 초기화 하기 때문에 mutex를 사용해도 문제 없을 것으로 예상.
 #ifdef _WIN32_TMP_DEBUG_MUTEX
     mutex_init(&resource->state_sem, "res_state_mutex"); 
@@ -3733,7 +3755,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
     mutex_init(&resource->state_sem); 
 #endif
 #else
-    sema_init(&resource->state_sem, 1);
+	sema_init(&resource->state_sem, 1);
 #endif
 	resource->role[NOW] = R_SECONDARY;
 	if (set_resource_options(resource, res_opts))
@@ -3977,7 +3999,6 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 #else
 	peer_device->resync_timer.data = (unsigned long) peer_device;
 #endif
-
 #ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
     init_timer(&peer_device->start_resync_timer);
     init_timer(&peer_device->resync_timer);
@@ -4025,7 +4046,6 @@ static int init_submitter(struct drbd_device *device)
 		return -ENOMEM;
 	INIT_WORK(&device->submit.worker, do_submit);
 	INIT_LIST_HEAD(&device->submit.writes);
-
 	return 0;
 }
 
@@ -4132,7 +4152,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     strcpy(device->request_timer.name, "request_timer");
 #endif
 #endif
-
 	init_waitqueue_head(&device->misc_wait);
 	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
@@ -4148,7 +4167,16 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->rq_queue = q;
 	q->queuedata   = device;
 
+#ifdef _WIN32_V9
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    if (!pvext)
+        goto out_no_disk;
+
+	device->this_bdev = pvext->dev;
+    disk = pvext->dev->bd_disk;
+#else
 	disk = alloc_disk(1);
+#endif
 	if (!disk)
 		goto out_no_disk;
 	device->vdisk = disk;
@@ -4156,33 +4184,17 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	set_disk_ro(disk, true);
 
 	disk->queue = q;
-#ifdef _WIN32 // V8 적용
-    //unused
-#else
+#ifndef _WIN32 // V8 적용
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
-	disk->fops = &drbd_ops;
 #endif
-    sprintf(disk->disk_name, "drbd%d", minor);
+	disk->fops = &drbd_ops;
+	sprintf(disk->disk_name, "drbd%d", minor);
+	disk->private_data = device;
 #ifndef _WIN32 // V8 적용
-    disk->private_data = device;
-
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
-#else
-    {
-        char *buf[2];
-        buf[0] = minor + 'C';
-        buf[1] = 0;
-        device->this_bdev = blkdev_get_by_path(buf, 0, 0);
-        if (!device->this_bdev)
-            goto out_no_disk;
-    }
-#endif
-#ifdef _WIN32
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-	device->this_bdev = (pvext) ? pvext->dev : NULL;
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4421,7 +4433,7 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
-    idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
 		list_del_rcu(&peer_device->peer_devices);
 		list_add(&peer_device->peer_devices, &work_list);
