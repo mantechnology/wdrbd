@@ -3981,6 +3981,12 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 #ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
     init_timer(&peer_device->start_resync_timer);
     init_timer(&peer_device->resync_timer);
+#ifdef DBG
+    memset(peer_device->start_resync_timer.name, 0, Q_NAME_SZ);
+    strcpy(peer_device->start_resync_timer.name, "start_resync_timer");
+    memset(peer_device->resync_timer.name, 0, Q_NAME_SZ);
+    strcpy(peer_device->resync_timer.name, "resync_timer");
+#endif
 #endif
 
 	INIT_LIST_HEAD(&peer_device->propagate_uuids_work.list);
@@ -4119,6 +4125,12 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
     init_timer(&device->md_sync_timer);
     init_timer(&device->request_timer);
+#ifdef DBG
+    memset(device->md_sync_timer.name, 0, Q_NAME_SZ);
+    strcpy(device->md_sync_timer.name, "md_sync_timer");
+    memset(device->request_timer.name, 0, Q_NAME_SZ);
+    strcpy(device->request_timer.name, "request_timer");
+#endif
 #endif
 
 	init_waitqueue_head(&device->misc_wait);

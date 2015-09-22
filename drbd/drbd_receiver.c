@@ -1223,11 +1223,7 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 // <완료>
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
-#ifdef _WIN32_V9
 	void *buffer; 
-#else
-	void *buffer = tconn->data.rbuf; //기존 V8은 tconn->data.rbuf 를 버퍼로 사용.
-#endif
 	int err;
 
 	err = drbd_recv_all_warn(connection, &buffer, drbd_header_size(connection));
