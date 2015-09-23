@@ -1099,7 +1099,7 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
 	char *page_start = page_address(sbuf->page);
-	DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
+	//DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		if (sbuf->unsent != sbuf->pos)
 		{ // WIN32_V9
@@ -1200,7 +1200,7 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
-	DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
+	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
 
 #ifdef _WIN32_V9
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
@@ -1244,7 +1244,7 @@ static int __send_command(struct drbd_connection *connection, int vnr,
 		sbuf->allocated_size = 0;
 		err = 0;
 	} else {
-		DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! __send_command!!!!\n", current->comm, drbd_stream);
+		//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! __send_command!!!!\n", current->comm, drbd_stream);
 		err = flush_send_buffer(connection, drbd_stream);
 
 		/* DRBD protocol "pings" are latency critical.
@@ -1294,7 +1294,7 @@ void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 	mutex_lock(&connection->mutex[stream]);
 	if (sbuf->unsent != sbuf->pos)
 	{ //WIN32_V9
-		DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
+		//DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
 
 		flush_send_buffer(connection, stream);
 	}
@@ -2364,10 +2364,10 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	int err;
 
 	//alloc_send_buffer 에 관여 하지 않는다!
-	DbgPrint("DRBD_TEST:_drbd_no_send_page off=%d sz=%d $$$$$$$$$$$$$$", offset, size);
+	//DbgPrint("DRBD_TEST:_drbd_no_send_page off=%d sz=%d $$$$$$$$$$$$$$", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 
-	dumpHex((void*) page, 100, 16);
+	//dumpHex((void*) page, 100, 16);
 
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임
 	if (!err)
@@ -2690,12 +2690,12 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	if (digest_size)
 		drbd_csum_ee(peer_device->connection->integrity_tfm, peer_req, p + 1);
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
-	DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
+    //DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
 	{ //_WIN32_V9
-		dumpHex((void*) peer_req->win32_big_page, 100, 16);
+        //dumpHex((void*) peer_req->win32_big_page, 100, 16);
 		err = _drbd_send_zc_ee(peer_device, peer_req);
 	}
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
@@ -4029,16 +4029,12 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 
 static int init_submitter(struct drbd_device *device)
 {
-// create_singlethread_workqueue()의 파라미터 확인 필요
 	/* opencoded create_singlethread_workqueue(),
 	 * to be able to use format string arguments */
 	device->submit.wq =
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
-#ifndef _WIN32
+//#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
+#ifndef _WIN32_V9
 		alloc_ordered_workqueue("drbd%u_submit", WQ_MEM_RECLAIM, device->minor);
-#else
-        create_singlethread_workqueue("drbd_submit", &device->submit, do_submit, '21DW');
-#endif
 #else
 		create_singlethread_workqueue("drbd_submit");
 #endif
@@ -4572,11 +4568,7 @@ static int __init drbd_init(void)
 		goto fail;
 	}
 #endif
-#ifdef _WIN32
-	retry.wq = create_singlethread_workqueue("drbd_reissue", &retry, do_retry, '31DW');
-#else
 	retry.wq = create_singlethread_workqueue("drbd-reissue");
-#endif
 	if (!retry.wq) {
 		pr_err("unable to create retry workqueue\n");
 		goto fail;

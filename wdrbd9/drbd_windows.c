@@ -873,149 +873,93 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 	return timeout < 0 ? 0 : timeout;
 }
 #ifdef _WIN32_V9
-bool queue_work(struct workqueue_struct* queue, struct work_struct* work)
+int queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #else
 void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 {
-	KeSetEvent(&queue->wakeupEvent, 0, FALSE); // send to run_singlethread_workqueue
+    ExInterlockedInsertTailList(&queue->list_head, &work->_entry, &queue->list_lock);
+    KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
 #ifdef _WIN32_V9
-	return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
+    return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
 #else
-	return;
+    return;
 #endif
 }
-
-void run_singlethread_workqueue(struct submit_worker *workq)
+#ifdef _WIN32_V9    // kmpak DW-561
+void run_singlethread_workqueue(struct workqueue_struct * wq)
 {
-	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	PVOID waitObjects[2];
-	int maxObj = 2;
-	int loop = 0; 
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PVOID waitObjects[2] = { &wq->wakeupEvent, &wq->killEvent };
+    int maxObj = 2;
 
-#ifdef _WIN32_CT
-    workq->thi.task = ct_add_thread(KeGetCurrentThread(), workq->wq->name, FALSE, '34DW');
-    if (!workq->thi.task)
+    while (wq->run)
     {
-        WDRBD_ERROR("DRBD_PANIC: ct_add_thread failed.\n");
-        return;
+        status = KeWaitForMultipleObjects(maxObj, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
+        switch (status)
+        {
+            case STATUS_WAIT_0:
+            {
+                for (PLIST_ENTRY entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock);
+                    !IsListEmpty(&wq->list_head);
+                    entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock))
+                {
+                    struct work_struct * w = CONTAINING_RECORD(entry, struct work_struct, _entry);
+                    w->func(w);
+                }
+                break;
+            }
+
+            case (STATUS_WAIT_1) :
+                wq->run = FALSE;
+                break;
+
+            default:
+                continue;
+        }
     }
 
-    KeSetEvent(&workq->thi.start_event, 0, FALSE);
-    KeWaitForSingleObject(&workq->thi.wait_event, Executive, KernelMode, FALSE, NULL);
-
-#else
-	workq->task.current_thr = KeGetCurrentThread(); 
-	workq->task.pid = workq->task.current_thr;
-	sprintf(workq->task.comm, "%s\0", workq->wq->name); 
-#endif
-    
-	waitObjects[0] = &workq->wq->wakeupEvent;
-	waitObjects[1] = &workq->wq->killEvent;
-
-	while (workq->wq->run == TRUE)
-	{
-		loop++;
-
-		status = KeWaitForMultipleObjects(maxObj, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, NULL, NULL); 
-		switch (status) 
-		{
-		case STATUS_TIMEOUT:
-			continue;
-
-		case STATUS_WAIT_0:
-			if (!workq->wq->func)
-			{
-				WDRBD_ERROR("func is null! skip\n");
-                BUG();
-			}
-			else
-			{
-				workq->wq->func(&workq->worker); 
-			}
-			break;
-
-		case (STATUS_WAIT_1):
-			workq->wq->run = FALSE;
-			break;
-		}
-	}
-
-#ifdef _WIN32_CT
-    ct_delete_thread(KeGetCurrentThread());
-#endif
-
-	WDRBD_INFO("done.\n");
-	PsTerminateSystemThread(STATUS_SUCCESS); 
+    WDRBD_INFO("%s workqueue finished\n", wq->name);
 }
 
-struct workqueue_struct *create_singlethread_workqueue(void *name, void  *wq_s, void *func, ULONG Tag)
+// kmpak 차후에는 이렇게 별도 wq 스레드 생성하는 것 보단
+// system wq 를 활용하는 것도 고려해볼 필요가 있음
+struct workqueue_struct *create_singlethread_workqueue(void * name)
 {
-	HANDLE		hThread = NULL;
-	NTSTATUS	status = STATUS_UNSUCCESSFUL;
-	struct submit_worker *workq = (struct submit_worker *)wq_s; // DRBD_DOC: submit_worker, retry_worker 를 submit_worker 구조로 단일화
-
-	workq->wq = kzalloc(sizeof(struct workqueue_struct), 0, Tag); 
-	if (!workq->wq)
-	{
-		return 0;
-	}
-
-	KeInitializeEvent(&workq->wq->wakeupEvent, SynchronizationEvent, FALSE); 
-	KeInitializeEvent(&workq->wq->killEvent, SynchronizationEvent, FALSE);
-
-#ifdef _WIN32_CT
-    KeInitializeEvent(&workq->thi.start_event, SynchronizationEvent, FALSE);
-    KeInitializeEvent(&workq->thi.wait_event, SynchronizationEvent, FALSE);
-
-#else
-    workq->task.has_sig_event = FALSE;
-#endif
-
-	workq->wq->func = func;
-	sprintf(workq->wq->name, "%s\0", name); 
-	workq->wq->run = TRUE;
-#ifdef _WIN32_CT
-    workq->thi.task = NULL;
-#endif
-
-	status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, run_singlethread_workqueue, (void *)workq);
-
-	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", status);
-		kfree(workq->wq);
-		return 0;
-	}
-
-#ifdef _WIN32_CT
-    KeWaitForSingleObject(&workq->thi.start_event, Executive, KernelMode, FALSE, NULL);
-
-    if (!workq->thi.task) {
-        WDRBD_ERROR("PsCreateSystemThread failed with workq->thi.task\n");
-        kfree(workq->wq);
-        return 0;
+    struct workqueue_struct * wq = kzalloc(sizeof(struct workqueue_struct), 0, '31DW');
+    if (!wq)
+    {
+        return NULL;
     }
 
-    KeSetEvent(&workq->thi.wait_event, 0, FALSE);
-#endif
+    KeInitializeEvent(&wq->wakeupEvent, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&wq->killEvent, SynchronizationEvent, FALSE);
+    InitializeListHead(&wq->list_head);
+    KeInitializeSpinLock(&wq->list_lock);
+    strcpy(wq->name, name);
+    wq->run = TRUE;
 
-	status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &workq->wq->pThread, NULL);
-	ZwClose(hThread);
-	if (!NT_SUCCESS(status)) {
-#ifdef _WIN32_CT
-        WDRBD_ERROR("DRBD_PANIC: ObReferenceObjectByHandle failed with status 0x%08X\n", status);
-        KeSetEvent(&workq->thi.wait_event, 0, FALSE);
-        destroy_workqueue(workq->wq);
-#else
-		WDRBD_ERROR("ObReferenceObjectByHandle failed with status 0x%08X\n", status);
-		kfree(workq->wq);
-#endif
-		return 0;
-	}
+    HANDLE hThread = NULL;
+    NTSTATUS status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, run_singlethread_workqueue, wq);
+    if (!NT_SUCCESS(status))
+    {
+        WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", status);
+        kfree(wq);
+        return NULL;
+    }
 
-	return workq->wq; 
+    status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &wq->pThread, NULL);
+    ZwClose(hThread);
+    if (!NT_SUCCESS(status))
+    {
+        WDRBD_ERROR("ObReferenceObjectByHandle failed with status 0x%08X\n", status);
+        kfree(wq);
+        return NULL;
+    }
+
+    return wq;
 }
-
+#endif
 #ifdef _WIN32_TMP_DEBUG_MUTEX
 void mutex_init(struct mutex *m, char *name)
 #else
@@ -1251,7 +1195,7 @@ int page_count(struct page *page)
 
 void init_timer(struct timer_list *t)
 {
-	DbgPrint("DRBD_TEST:(%s)init_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)init_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
@@ -1266,7 +1210,7 @@ void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
     UNREFERENCED_PARAMETER(key);
-	DbgPrint("DRBD_TEST:(%s)init_timer_key\n", current->comm); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)init_timer_key\n", current->comm); // _WIN32_V9_TEST
     init_timer(timer);
 #ifdef DBG
     strcpy(timer->name, name);
@@ -1275,21 +1219,20 @@ void init_timer_key(struct timer_list *timer, const char *name,
 #endif
 void add_timer(struct timer_list *t)
 {
-	DbgPrint("DRBD_TEST:(%s)add_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)add_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	mod_timer(t, t->expires);
 }
 
 void del_timer(struct timer_list *t)
 {
-	DbgPrint("DRBD_TEST:(%s)del_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)del_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeCancelTimer(&t->ktimer);
     t->expires = 0;
 }
 
 int del_timer_sync(struct timer_list *t)
 {
-	DbgPrint("DRBD_TEST:(%s)del_timer_sync t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
-
+	//DbgPrint("DRBD_TEST:(%s)del_timer_sync t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
     del_timer(t);
     return 0;
 #ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요

@@ -387,7 +387,8 @@ do { \
 #define WDRBD_TRACE_TM
 #define WDRBD_TRACE_RCU
 #define WDRBD_TRACE_REQ_LOCK //for lock_all_resources(), unlock_all_resources()
-#define WDRBD_TRACE_TR      WDRBD_TRACE
+#define WDRBD_TRACE_TR
+#define WDRBD_TRACE_WQ
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -477,6 +478,10 @@ struct socket {
 
 #define WQNAME_LEN	16	
 struct workqueue_struct {
+#ifdef _WIN32_V9
+    LIST_ENTRY list_head;
+    KSPIN_LOCK list_lock;
+#endif
 	int run;
 	KEVENT	wakeupEvent;
 	KEVENT	killEvent;
@@ -524,6 +529,9 @@ static __inline void setup_timer_key(_In_ struct timer_list * timer,
     } while (0)
 #endif
 struct work_struct {
+#ifdef _WIN32_V9
+    LIST_ENTRY  _entry;
+#endif
 	struct list_head entry;
 	void (*func)(struct work_struct *work);
 };
@@ -871,9 +879,9 @@ struct scatterlist {
     } while (0)
 
 
-extern struct workqueue_struct *create_singlethread_workqueue(void *name, void  *wq_s, void *func, ULONG Tag);
+extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32_V9
-extern bool queue_work(struct workqueue_struct* queue, struct work_struct* work);
+extern int queue_work(struct workqueue_struct* queue, struct work_struct* work);
 #else
 extern void queue_work(struct workqueue_struct* queue, struct work_struct* work);
 #endif

@@ -1131,20 +1131,12 @@ start:
 
 
 	connection->ack_sender =
-#ifdef _WIN32_V9
-	
-		//단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인 듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
-		// create_singlethread_workqueue 를 호출한 다른 파트에선 INIT_WORK 와 같은 초기화 작업을 해 주는데... V9의 이 부분에선 이러한 수행을 하지 않는다. 분석 필요. _WIN32_CHECK
-		// 일반 쓰레드로 포팅: drbd_send_peer_ack_wf 로 대체된 작업자 워커함수를 지정하고 일단 마무리 한다.
-		create_singlethread_workqueue("drbd_ack_sender", &ack_sender, drbd_send_peer_ack_wf, '31DW');
-#else
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
+//#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
+#ifndef _WIN32_V9
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
 		create_singlethread_workqueue("drbd_ack_sender");
 #endif
-#endif
-
 
 	if (!connection->ack_sender) {
 		drbd_err(connection, "Failed to create workqueue ack_sender\n");
@@ -2008,11 +2000,11 @@ read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
 #ifdef _WIN32_V9
-	DbgPrint("DRBD_TEST:read_in_block! recv_pages!");
+	//DbgPrint("DRBD_TEST:read_in_block! recv_pages!");
 	err = tr_ops->recv_pages(transport, (void*)peer_req->win32_big_page, data_size); // peer_req->win32_big_page 포인터를 dtt_recv_pages 인자로 넘겨서 dtt_recv_pages 안에서 처리.
 
-	DbgPrint("DRBD_TEST:read_in_block! ret!!! peer_req->win32_big_page=%d err=%d\n", peer_req->win32_big_page, err);
-	dumpHex((void*) peer_req->win32_big_page, 100, 16);
+	//DbgPrint("DRBD_TEST:read_in_block! ret!!! peer_req->win32_big_page=%d err=%d\n", peer_req->win32_big_page, err);
+	//dumpHex((void*) peer_req->win32_big_page, 100, 16);
 
 	if ( err || ( peer_req->win32_big_page == NULL) ) { //err 처리와 win32_big_page 할당 실패 같이 처리.
 		goto fail;
@@ -2296,7 +2288,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	sector_t sector;
 	int err;
 	struct p_data *p = pi->data;
-	DbgPrint("DRBD_TEST:receive_RSDataReply! ");
+	//DbgPrint("DRBD_TEST:receive_RSDataReply! ");
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
 		return -EIO;
@@ -2688,9 +2680,8 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 			peer_req->w.cb = discard ? e_send_discard_write :
 						   e_send_retry_write;
 			list_add_tail(&peer_req->w.list, &device->done_ee);
-            // V9 기존 wake_asender 에서 queue_work 로 변경.
+            // V9 기존 wake_asender 에서 work queue 방식으로 변경.
 			queue_work(connection->ack_sender, &peer_req->peer_device->send_acks_work);
-
 			err = -ENOENT;
 			goto out;
 		} else {
@@ -7443,6 +7434,7 @@ static int process_peer_ack_list(struct drbd_connection *connection)
 			break;
 		req = tmp;
 	}
+    WDRBD_TRACE_WQ("finished\n");
 	spin_unlock_irq(&resource->req_lock);
 	return err;
 }
@@ -8171,7 +8163,6 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		drbd_thread_current_set_cpu(thi);
 
 		drbd_reclaim_net_peer_reqs(connection);
-
 		if (test_and_clear_bit(SEND_PING, &connection->flags)) {
 			if (drbd_send_ping(connection)) {
 				drbd_err(connection, "drbd_send_ping has failed\n");
@@ -8405,14 +8396,7 @@ int drbd_ack_sender(struct drbd_thread *thi)
 
 		/* short circuit, recv_msg would return EINTR anyways. */
 		if (signal_pending(current))
-#ifdef _WIN32
-		{
-			WDRBD_INFO("asender: signal(%d) pending. continue.\n", current->sig);
 			continue;
-		}
-#else
-			continue;
-#endif
 
 #ifdef _WIN32 
 		rv = Receive(tconn->meta.socket->sk, buf, expect - received, 0, tconn->meta.socket->sk_linux_attr->sk_rcvtimeo);

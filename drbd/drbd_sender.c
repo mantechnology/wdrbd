@@ -242,7 +242,6 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	if (connection->cstate[NOW] == C_CONNECTED) {
 		kref_get(&device->kref); /* put is in drbd_send_acks_wf() */
-		//queue_work 리턴형요구..기존 V8 포팅된 함수와 맞지 않다. queue_work linux kerenl func. => 포팅 완료.
 		if (!queue_work(connection->ack_sender, &peer_device->send_acks_work))
 			kref_put(&device->kref, drbd_destroy_device);
 	}
@@ -851,6 +850,10 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	if (req_sect > max_sect)
 		req_sect = max_sect;
 
+    WDRBD_TRACE_TR("sect_in=%u in_flight=%d want=%u corr=%d steps=%d cps=%d curr_c=%d rs=%d\n",
+         sect_in, peer_device->rs_in_flight, want, correction, steps, cps,
+         curr_corr, req_sect)
+     ;
 	/*
 	drbd_warn(device, "si=%u if=%d wa=%u co=%d st=%d cps=%d pl=%d cc=%d rs=%d\n",
 		 sect_in, peer_device->rs_in_flight, want, correction,
@@ -916,7 +919,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int i = 0;
 
 #ifdef DRBD_TRACE1
-	WDRBD_TRACE("timer callback: w_make_resync_request: start! ------------------\n");
+	WDRBD_TRACE("timer callback jiffies(%llu)\n", jiffies);
 #endif
 
 	if (unlikely(cancel))
@@ -939,11 +942,13 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 
 	max_bio_size = queue_max_hw_sectors(device->rq_queue) << 9;
 	number = drbd_rs_number_requests(peer_device);
+    WDRBD_TRACE_TR("number(%d)\n", number);
 	if (number <= 0)
 		goto requeue;
 
 	for (i = 0; i < number; i++) {
 		/* Stop generating RS requests, when half of the send buffer is filled */
+#ifdef _WIN32_CHECK //kmpak 현재 사용하지 않음. 차후 확인 필요
 		mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (transport->ops->stream_ok(transport, DATA_STREAM)) {
 			struct drbd_transport_stats transport_stats;
@@ -961,7 +966,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (requeue)
 			goto requeue;
-
+#endif
 next_sector:
 		size = BM_BLOCK_SIZE;
 		bit  = drbd_bm_find_next(peer_device, device->bm_resync_fo);
@@ -1555,7 +1560,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	} else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
 			inc_rs_pending(peer_device);
-			DbgPrint("DRBD_TEST:w_e_end_rsdata_req! drbd_send_block!");
+			//DbgPrint("DRBD_TEST:w_e_end_rsdata_req! drbd_send_block!");
 			err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
 		} else {
 			if (drbd_ratelimit())
