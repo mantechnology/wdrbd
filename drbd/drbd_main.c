@@ -4174,6 +4174,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	device->this_bdev = pvext->dev;
     disk = pvext->dev->bd_disk;
+    q->backing_dev_info.pDeviceExtension = pvext;
 #else
 	disk = alloc_disk(1);
 #endif
