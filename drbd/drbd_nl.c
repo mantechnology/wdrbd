@@ -1790,6 +1790,8 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 	}
 
 	blk_queue_logical_block_size(q, 512);
+    WDRBD_TRACE_RS("bdev(0x%p) q(0x%p) max_hw_sectors(%d) max_bio_size(%d)\n",
+        bdev, q, max_hw_sectors, max_bio_size);
 	blk_queue_max_hw_sectors(q, max_hw_sectors);
 	/* This is the workaround for "bio would need to, but cannot, be split" */
 #ifndef _WIN32
@@ -1798,7 +1800,9 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 	if (b) {
 		struct request_queue * const b = device->ldev->backing_bdev->bd_disk->queue;
 		u32 agreed_featurs = common_connection_features(device->resource);
+
 		q->limits.max_discard_sectors = DRBD_MAX_DISCARD_SECTORS;
+
 		if (blk_queue_discard(b) && (agreed_featurs & FF_TRIM)) {
 			/* We don't care, stacking below should fix it for the local device.
 			 * Whether or not it is a suitable granularity on the remote device
@@ -1834,7 +1838,7 @@ void drbd_reconsider_max_bio_size(struct drbd_device *device, struct drbd_backin
 {
 	unsigned int max_bio_size = device->device_conf.max_bio_size;
 	struct drbd_peer_device *peer_device;
-
+WDRBD_TRACE_RS("bdev(0x%p) max_bio_size(%d)\n", bdev, max_bio_size);
 	if (bdev) {
 		max_bio_size = min(max_bio_size,
 			queue_max_hw_sectors(bdev->backing_bdev->bd_disk->queue) << 9);
@@ -2611,8 +2615,8 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
                 if (bd)
                 {
                     // kmpak 이 시점에 하는 것이 좋을 지는 조금 고민해야 함
-                    bd->bd_disk->fops->open(bd, FMODE_WRITE);
-                    bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
+                    //bd->bd_disk->fops->open(bd, FMODE_WRITE);
+                    //bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
                 }
             }
             else

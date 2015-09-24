@@ -389,6 +389,7 @@ do { \
 #define WDRBD_TRACE_REQ_LOCK //for lock_all_resources(), unlock_all_resources()
 #define WDRBD_TRACE_TR
 #define WDRBD_TRACE_WQ
+#define WDRBD_TRACE_RS
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop

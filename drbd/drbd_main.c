@@ -1195,7 +1195,6 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int msg_flags, err, offset, size;
 
-
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
@@ -1295,7 +1294,6 @@ void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 	if (sbuf->unsent != sbuf->pos)
 	{ //WIN32_V9
 		//DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
-
 		flush_send_buffer(connection, stream);
 	}
 
@@ -2364,7 +2362,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	int err;
 
 	//alloc_send_buffer 에 관여 하지 않는다!
-	//DbgPrint("DRBD_TEST:_drbd_no_send_page off=%d sz=%d $$$$$$$$$$$$$$", offset, size);
+	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 
 	//dumpHex((void*) page, 100, 16);
@@ -4053,7 +4051,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	struct drbd_device *device;
 	struct drbd_peer_device *peer_device, *tmp_peer_device;
 	struct gendisk *disk;
+#ifdef _WIN32_V9
+    struct request_queue *q = NULL;
+#else
 	struct request_queue *q;
+#endif
 	LIST_HEAD(peer_devices);
 	LIST_HEAD(tmp);
 	int id;
@@ -4152,9 +4154,15 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
+#ifdef _WIN32_V9
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    if (!pvext)
+        goto out_no_disk;
 
-#ifdef _WIN32
-    q = blk_alloc_queue(GFP_KERNEL, '11DW');
+	device->this_bdev = pvext->dev;
+    q = pvext->dev->bd_disk->queue;
+    q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
+    WDRBD_TRACE_RS("q(0x%p) max_hw_sectors(%d)\n", q, q->max_hw_sectors);
 #else
 	q = blk_alloc_queue(GFP_KERNEL);
 #endif
@@ -4162,15 +4170,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 		goto out_no_q;
 	device->rq_queue = q;
 	q->queuedata   = device;
-
 #ifdef _WIN32_V9
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-    if (!pvext)
-        goto out_no_disk;
-
-	device->this_bdev = pvext->dev;
     disk = pvext->dev->bd_disk;
-    q->backing_dev_info.pDeviceExtension = pvext;
 #else
 	disk = alloc_disk(1);
 #endif
@@ -4305,22 +4306,22 @@ out_remove_peer_device:
     {
         synchronize_rcu_w32_wlock();
 #endif
-        list_add_rcu(&tmp, &device->peer_devices);
-        list_del_init(&device->peer_devices);
-        synchronize_rcu();
+	list_add_rcu(&tmp, &device->peer_devices);
+	list_del_init(&device->peer_devices);
+	synchronize_rcu();
 #ifdef _WIN32
         list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &tmp, peer_devices) {
 #else
-        list_for_each_entry_safe(peer_device, tmp_peer_device, &tmp, peer_devices) {
+	list_for_each_entry_safe(peer_device, tmp_peer_device, &tmp, peer_devices) {
 #endif
-            struct drbd_connection *connection = peer_device->connection;
+		struct drbd_connection *connection = peer_device->connection;
 
-            kref_debug_put(&connection->kref_debug, 3);
-            kref_put(&connection->kref, drbd_destroy_connection);
-            idr_remove(&connection->peer_devices, device->vnr);
-            list_del(&peer_device->peer_devices);
-            kfree(peer_device);
-        }
+		kref_debug_put(&connection->kref_debug, 3);
+		kref_put(&connection->kref, drbd_destroy_connection);
+		idr_remove(&connection->peer_devices, device->vnr);
+		list_del(&peer_device->peer_devices);
+		kfree(peer_device);
+	}
 #ifdef _WIN32_V9
     }
 #endif
@@ -4329,7 +4330,7 @@ out_idr_remove_minor:
     {
         synchronize_rcu_w32_wlock();
 #endif
-        idr_remove(&drbd_devices, minor);
+	idr_remove(&drbd_devices, minor);
 #ifdef _WIN32_V9 // [choi] _WIN32_CHECK 필요없으면 삭제
         synchronize_rcu();
     }
@@ -5901,8 +5902,8 @@ void lock_all_resources(void)
     }
 #else
 	local_irq_disable();
-    for_each_resource(resource, &drbd_resources)
-        spin_lock_nested(&resource->req_lock, i++);
+	for_each_resource(resource, &drbd_resources)
+		spin_lock_nested(&resource->req_lock, i++);
 #endif
 }
 
