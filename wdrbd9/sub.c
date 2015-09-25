@@ -237,7 +237,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 	PVOID						buffer;
 	LARGE_INTEGER				offset;
 	ULONG						length;
-	struct drbd_conf			*mdev = NULL;
+	struct drbd_device			*mdev = NULL;
 
 	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	if (Irp->MdlAddress)
