@@ -416,7 +416,7 @@ Send(
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -530,7 +530,7 @@ Send(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
 	return BytesSent;
 }
 
@@ -602,7 +602,7 @@ LONG NTAPI Receive(
     PVOID       waitObjects[2];
     int         wObjCount = 1;
 
-	DbgPrint("DRBD_TEST:(%s)Rx: sz=%d to=%d\n", current->comm, BufferSize, Timeout);
+	//DbgPrint("DRBD_TEST:(%s)Rx: sz=%d to=%d\n", current->comm, BufferSize, Timeout);
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
@@ -714,7 +714,7 @@ LONG NTAPI Receive(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	DbgPrint("DRBD_TEST:(%s)Rx: done. ret=%d\n", current->comm, BytesReceived); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST:(%s)Rx: done. ret=%d\n", current->comm, BytesReceived); // _WIN32_V9_TEST
 	return BytesReceived;
 }
 
