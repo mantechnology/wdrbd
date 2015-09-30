@@ -775,7 +775,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
     dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, 'E5DW');
     if (!dev->bd_disk->queue)
     {
-        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory");
+        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
         goto request_queue_failed;
     }
 
@@ -783,7 +783,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 
     dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
     dev->bd_disk->queue->logical_block_size = 512;
-    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
+    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
 
     return dev;
 

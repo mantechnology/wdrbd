@@ -1201,11 +1201,7 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
 	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
 
-#ifdef _WIN32_V9
-	err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
-#else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
-#endif
 	if (!err) {
 		sbuf->unsent =
 		sbuf->pos += sbuf->allocated_size;      /* send buffer submitted! */
@@ -2337,15 +2333,10 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 	if (sbuf->unsent != sbuf->pos)
 	{ //WIN32_V9
 		DbgPrint("DRBD_TEST: (%s)flush_send_buffer! sbuf->unsent=%d sbuf->pos=%d sz=%d! __drbd_send_page!\n", current->comm,  sbuf->unsent, sbuf->pos, size);
-
 		flush_send_buffer(connection, DATA_STREAM);
 	}
-#ifdef _WIN32_V9
-	//err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
-	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임. 일단 다시 원복! CHECK!
-#else 
+
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
-#endif
 	if (!err)
 		peer_device->send_cnt += size >> 9;
 
@@ -2366,13 +2357,11 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	flush_send_buffer(connection, DATA_STREAM); 
 
 	//dumpHex((void*) page, 100, 16);
-
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임
 	if (!err)
 		peer_device->send_cnt += size >> 9;
 
 	return err;
-
 #else
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];

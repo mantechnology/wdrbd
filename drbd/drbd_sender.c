@@ -948,15 +948,13 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 
 	for (i = 0; i < number; i++) {
 		/* Stop generating RS requests, when half of the send buffer is filled */
-#ifdef _WIN32_CHECK //kmpak 현재 사용하지 않음. 차후 확인 필요
 		mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (transport->ops->stream_ok(transport, DATA_STREAM)) {
 			struct drbd_transport_stats transport_stats;
 			int queued, sndbuf;
-
 			transport->ops->stats(transport, &transport_stats);
 			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. _WIN32_CHECK
-			sndbuf = transport_stats.send_buffer_size; 
+			sndbuf = transport_stats.send_buffer_size;
 			if (queued > sndbuf / 2) {
 				requeue = 1;
 				transport->ops->hint(transport, DATA_STREAM, NOSPACE);
@@ -966,7 +964,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (requeue)
 			goto requeue;
-#endif
+
 next_sector:
 		size = BM_BLOCK_SIZE;
 		bit  = drbd_bm_find_next(peer_device, device->bm_resync_fo);
