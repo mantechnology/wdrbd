@@ -319,10 +319,12 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+		if (peer_device == except_)
+#else
 		if (peer_device == except)
-			continue;
 #endif
+			continue;
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
@@ -350,10 +352,12 @@ set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+		if (peer_device == except_)
+#else
 		if (peer_device == except)
-			continue;
 #endif
+			continue;
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);

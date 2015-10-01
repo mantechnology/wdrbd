@@ -325,7 +325,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
  * Magic: define multicast groups
  * Magic: define multicast group registration helper
  */
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // JHKIM: 불필요 할 듯.
 /* COMPAT
  * See linux 3.13,
  * genetlink: make multicast groups const, prevent abuse

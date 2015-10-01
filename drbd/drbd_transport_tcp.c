@@ -1360,13 +1360,12 @@ randomize:
 	dtt_put_listener(&waiter);
 
 #ifdef _WIN32
-	// data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? V9_CHECK
 	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
 		goto out;
 	}
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
 	status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
@@ -1462,7 +1461,7 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // JHKIM: 혼잡모드 재확인!
     // DRBD_DOC: DRBD_CONGESTED_PORTING
     // 송출시 혼잡 정도를 체크한다.
     //  - sk_wmem_queued is the amount of memory used by the socket send buffer queued in the transmit queue 
@@ -1484,7 +1483,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 #endif
 #else
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk_linux_attr;
-	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. _WIN32_CHECK
+	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. V9_CHECK
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 #endif

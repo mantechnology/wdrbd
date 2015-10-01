@@ -33,7 +33,7 @@
 // V8 에서 GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN) 와 같이 define 되어 있었음. V9에서 __GFP_WAIT 가 추가되었다.
 // kmpak GFP 무슨 flag든 윈도우즈에선 어차피 관련 없음.
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // JHKIM:tr_printk 포팅?
 #define tr_printk(level, transport, fmt, args...)  ({		\
 	rcu_read_lock();					\
 	printk(level "drbd %s %s:%s: " fmt,			\
@@ -191,11 +191,9 @@ struct drbd_transport_ops {
 struct drbd_transport_class {
 	const char *name;
 	const int instance_size;
-//#ifdef _WIN32_CHECK
 #ifndef _WIN32_V9 // module 필드 필요 없으므로 제거.
 	struct module *module;
 #endif
-//#endif
 	int (*init)(struct drbd_transport *);
 	struct list_head list;
 };
@@ -264,20 +262,6 @@ static inline struct page *page_chain_next(struct page *page)
 {
 	return (struct page *)page_private(page);
 }
-#if 0 // V8에 사용되었던 page_chain_for_each, page_chain_for_each_safe 와 동일한 매크로로 하단에 정리하여 다시 선언함. 특별히 재검토가 필요하지는 않아 보인다.
-#ifdef _WIN32
-
-#define page_chain_for_each(page) \
-	for (; page ; page = page_chain_next(page))
-
-#endif
-
-#ifdef _WIN32_CHECK
-// page_chain_for_each_safe 매크로만 별도 재 검토 필요
-#define page_chain_for_each_safe(page, n) \
-	for (; page && ({ n = page_chain_next(page); 1; }); page = n)
-#endif
-#endif
 
 #ifndef _WIN32
 #define page_chain_for_each(page) \

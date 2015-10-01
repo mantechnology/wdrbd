@@ -478,7 +478,7 @@ mempool_t *mempool_create_page_pool(int min_nr, int order)
 	p_pool->page_alloc = 1; 
 	return p_pool; 
 }
-#ifndef _WIN32_CHECK
+#ifndef _WIN32_V9
 mempool_t *mempool_create_slab_pool(int min_nr, int order)
 {
 	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
@@ -575,7 +575,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
     }
     return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
 #else
-	kref_sub(kref, 1, release); //_WIN32_CHECK
+	kref_sub(kref, 1, release); //V9_CHECK
 #endif
 }
 
@@ -686,6 +686,7 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 
 #include "drbd_int.h"
 
+#ifndef _WIN32_V9 // JHKIM: 미사용, 추후 제거
 union drbd_state g_mask_null; 
 union drbd_state g_val_null;
 
@@ -704,7 +705,7 @@ union drbd_state ns_val(union drbd_state prev, int bitpos, int mask, int val)
 union drbd_state ns2_val1(struct drbd_conf *mdev, int bitpos, int mask, int s)
 {
 	union drbd_state __ns;
-	//__ns = drbd_read_state(mdev); //_WIN32_CHECK drbd_read_state 메소드 없어짐
+	//__ns = drbd_read_state(mdev); // drbd_read_state 메소드 없어짐
 	__ns.i &= ~(mask << bitpos);
 	__ns.i |= (s << bitpos);
 	return __ns;
@@ -713,13 +714,14 @@ union drbd_state ns2_val1(struct drbd_conf *mdev, int bitpos, int mask, int s)
 union drbd_state ns2_val2(struct drbd_conf *mdev, int bitpos1, int mask1, int s1, int bitpos2, int mask2, int s2)
 {
 	union drbd_state __ns;
-	//__ns = drbd_read_state(mdev); //_WIN32_CHECK drbd_read_state 메소드 없어짐
+	//__ns = drbd_read_state(mdev); // drbd_read_state 메소드 없어짐
 	__ns.i &= ~(mask1 << bitpos1);
 	__ns.i |= (s1 << bitpos1);
 	__ns.i &= ~(mask2 << bitpos2);
 	__ns.i |= (s2 << bitpos2);
 	return __ns;
 }
+#endif
 
 long IS_ERR_OR_NULL(const void *ptr)
 {
@@ -1015,7 +1017,7 @@ void mutex_unlock(struct mutex *m)
     KeReleaseMutex(&m->mtx, FALSE);
 }
 
-#ifdef _WIN32_V9 // __WIN32_CHECK
+#ifdef _WIN32_V9 // V9_CHECK
 
 void down(struct mutex *m)
 {
@@ -1130,13 +1132,13 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 #ifdef _WIN32_V9
 void spin_lock_bh(spinlock_t *lock)
 {
-	//_WIN32_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
+	//V9_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
 	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
 }
 
 void spin_unlock_bh(spinlock_t *lock)
 {
-	//_WIN32_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
+	//V9_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
 	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 }
 #endif
@@ -1195,13 +1197,13 @@ int page_count(struct page *page)
 
 void init_timer(struct timer_list *t)
 {
-	//DbgPrint("DRBD_TEST:(%s)init_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
     strcpy(t->name, "undefined");
 #endif
 }
+
 #ifdef _WIN32_V9
 // kmpak 20150824
 // lock dependency에 따른 작업을 위해 key 값이 존재하나 아직 이것을
@@ -1210,29 +1212,29 @@ void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
     UNREFERENCED_PARAMETER(key);
-	//DbgPrint("DRBD_TEST:(%s)init_timer_key\n", current->comm); // _WIN32_V9_TEST
     init_timer(timer);
 #ifdef DBG
     strcpy(timer->name, name);
 #endif
 }
 #endif
+
 void add_timer(struct timer_list *t)
 {
-	//DbgPrint("DRBD_TEST:(%s)add_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	mod_timer(t, t->expires);
 }
 
 void del_timer(struct timer_list *t)
 {
-	//DbgPrint("DRBD_TEST:(%s)del_timer t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
 	KeCancelTimer(&t->ktimer);
+#ifdef _WIN32_V9
     t->expires = 0;
+#endif
 }
 
 int del_timer_sync(struct timer_list *t)
 {
-	//DbgPrint("DRBD_TEST:(%s)del_timer_sync t=%d\n", current->comm, t->expires); // _WIN32_V9_TEST
+#ifdef _WIN32_V9
     del_timer(t);
     return 0;
 #ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
@@ -1243,7 +1245,11 @@ int del_timer_sync(struct timer_list *t)
 		cpu_relax();
 	}
 #endif
+#else
+	KeCancelTimer(&t->ktimer);
+#endif
 }
+
 #ifdef _WIN32_V9
 /**
  * timer_pending - is a timer pending?
@@ -1307,15 +1313,35 @@ int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 {
     return __mod_timer(timer, expires, true);
 }
+#endif
 
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
+#ifdef _WIN32_V9
     if (timer_pending(timer) && timer->expires == expires)
     	return 1;
 
     return __mod_timer(timer, expires, false);
-}
+#else
+	LARGE_INTEGER nWaitTime;
+
+	unsigned long current_milisec = jiffies;
+	nWaitTime.QuadPart = 0;
+
+	if (current_milisec >= expires_ms)
+	{
+		nWaitTime.LowPart = 1;
+		KeSetTimer(&t->ktimer, nWaitTime, &t->dpc);
+		return 0;
+	}
+	expires_ms -= current_milisec;
+	nWaitTime = RtlConvertLongToLargeInteger(-1 * (expires_ms) * 1000 * 10);
+
+	KeSetTimer(&t->ktimer, nWaitTime, &t->dpc);
+	return 1;
 #endif
+}
+
 void kobject_put(struct kobject *kobj)
 {
     if (kobj) 
@@ -2006,7 +2032,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	toks += now - last_msg;					
 	last_msg = now;
 
-	__ret = 0;  // _WIN32_CHECK
+	__ret = 0;  // V9_CHECK
 #ifdef _WIN32_CHECK : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	

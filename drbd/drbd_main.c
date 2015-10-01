@@ -846,8 +846,8 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 }
 
-#ifdef _WIN32_CHECK
 #ifdef _WIN32_SEND_BUFFING // send bufferring 파트 일단 복사함.
+#ifdef _WIN32_SEND_BUFFING
 struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
 #else
 static struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
@@ -1693,11 +1693,14 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 
 	pdc = rcu_dereference_protected(peer_device->conf,
 		lockdep_is_held(&peer_device->device->resource->conf_update));
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9
+	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // V9_CHECK: 추후 태그 목록정리
+#else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
+#endif
 	if (!resync_plan)
 		goto out;
-#endif
+
 #ifdef _WIN32_V9
 	resync_lru = lc_create("resync", &drbd_bm_ext_cache,
 			       1, 61, sizeof(struct bm_extent),

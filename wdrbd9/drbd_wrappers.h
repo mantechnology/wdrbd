@@ -397,9 +397,6 @@ static inline struct crypto_hash *
 crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 #endif
 {
-#ifndef _WIN32_CHECK
-    return NULL;
-#else
     struct crypto_hash *ch;
     char *closing_bracket;
 
@@ -407,7 +404,11 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
     closing_bracket = strchr(alg_name, ')');
     if (!closing_bracket)
     {
-        ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#ifdef _WIN32_V9
+		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
+#else
+		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#endif
         if (!ch)
             return ERR_PTR(-ENOMEM);
         ch->base = crypto_alloc_tfm(alg_name, 0);
@@ -420,8 +421,11 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
     }
     if (closing_bracket - alg_name < 6)
         return ERR_PTR(-ENOENT);
-
-    ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#ifdef _WIN32_V9
+	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
+#else
+	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#endif
     if (!ch)
         return ERR_PTR(-ENOMEM);
 
@@ -436,7 +440,6 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
     }
 
     return ch;
-#endif
 }
 
 static inline int
@@ -1302,7 +1305,7 @@ static inline void genl_unregister_mc_group(struct genl_family *family,
 static inline void kref_sub(struct kref *kref, unsigned int count,
     void(*release) (struct kref *kref))
 {
-	//_WIN32_CHECK with kref_put
+	//_WIN32_CHECK with kref_put//JHKIM: count 회수와, kref_put 에서 release 함수가 잘 불려지는지 확인.
     while (count--)
         kref_put(kref, release);
 }
@@ -1353,7 +1356,7 @@ commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #endif
 
 #ifndef COMPAT_HAVE_KREF_GET_UNLESS_ZERO
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_CHECK // JHKIM: debugfs 에서만 사용. 일단 포팅보류
 static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
     return atomic_add_unless(&kref->refcount, 1, 0);
@@ -1495,10 +1498,8 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9 // _WIN32_CHECK 
+#ifdef _WIN32_V9 // _WIN32_CHECK [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
 /*
-[choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
-
 static inline void queue_flag_set_unlocked(unsigned int flag, struct request_queue *q)
 {
        __set_bit(flag, &q->queue_flags);

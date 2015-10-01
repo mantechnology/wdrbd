@@ -131,7 +131,6 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 #else
 	list_for_each_entry(tc, &transport_classes, list) {
 #endif
-//#ifdef _WIN32_CHECK // drbd_transport_class 의 module 필드 어떻게 처리할 지 추후 검토 필요. => module 필드 제거.
 #ifdef _WIN32_V9
 		// tc->name 만 출력.
 		seq_printf(seq, " %s ", tc->name);
@@ -139,7 +138,6 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 		seq_printf(seq, " %s (%s)", tc->name,
 			tc->module->version ? tc->module->version : "NONE");
 #endif
-//#endif
 	}
 	seq_putc(seq, '\n');
 
