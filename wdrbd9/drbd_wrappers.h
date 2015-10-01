@@ -1,4 +1,4 @@
-﻿// _WIN32_CHECK: JHKIM: 이 파일은 drbd 오리지널인데  wdrbd9 폴더로 이동한 이유는? 확인 후 원복
+﻿// V9_CHECK: JHKIM: 이 파일은 drbd 오리지널인데  wdrbd9 폴더로 이동한 이유는? 확인 후 원복
 #ifndef _DRBD_WRAPPERS_H
 #define _DRBD_WRAPPERS_H
 
@@ -187,7 +187,7 @@ void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 }
 #endif
 #ifdef _WIN32
-// move to windows.c // _WIN32_CHECK: JHKIM: V8에서 이동.이유는 기억이 안남. 일단 이동.
+// move to windows.c // V9_CHECK: JHKIM: V8에서 이동.이유는 기억이 안남. 일단 이동.
 #else
 static inline struct block_device *blkdev_get_by_path(const char *path,
     fmode_t mode, void *holder)
@@ -1498,7 +1498,7 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9 //_WIN32_CHECK 
+#ifdef _WIN32_V9 //V9_CHECK 
 /*
 [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
 
@@ -1583,7 +1583,9 @@ calling namespace */
 #define rcu_dereference_protected(p, c) (p)
 #endif
 
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 
+// V9_CHECK //JHKIM: debugfs용, 추후 보강
+#else
 #ifndef COMPAT_HAVE_F_PATH_DENTRY
 #define f_path.dentry f_dentry
 #endif
@@ -1602,7 +1604,7 @@ calling namespace */
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
 #else
-// _WIN32_CHECK ACCESS_ONCE 부분 확인 필요.
+// V9_CHECK ACCESS_ONCE 부분 확인 필요.
 #define list_first_or_null_rcu(conn, ptr, type, member) \
     do {    \
         struct list_head *__ptr = (ptr);    \

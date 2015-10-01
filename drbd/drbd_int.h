@@ -534,7 +534,13 @@ extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
 
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
-#ifdef _WIN32_CHECK // kmpak 29150729 신규
+#ifdef _WIN32_V9 // V9_CHECK: kmpak 29150729 신규-> JHKIM:typecheck 무시. 추후 재확인
+#define dagtag_newer_eq(a,b)      \
+	((s64)(a) - (s64)(b) >= 0)
+
+#define dagtag_newer(a,b)      \
+	((s64)(a) - (s64)(b) > 0)
+#else
 #define dagtag_newer_eq(a,b)      \
 	(typecheck(u64, a) && \
 	 typecheck(u64, b) && \
@@ -544,9 +550,6 @@ extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
 	(typecheck(u64, a) && \
 	 typecheck(u64, b) && \
 	((s64)(a) - (s64)(b) > 0))
-#else
-#define dagtag_newer_eq(a,b)    false
-#define dagtag_newer(a,b)       false
 #endif
 
 struct drbd_request {
@@ -1422,11 +1425,11 @@ struct submit_worker {
 	/* protected by ..->resource->req_lock */
 	struct list_head writes;
 
-#ifdef _WIN32 // _WIN32_CHECK: JHKIM:	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
+#ifdef _WIN32 // V9_CHECK: JHKIM:	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
 #ifdef _WIN32_CT
     struct drbd_thread thi;
 #else
-	struct task_struct task; //DRBD_DEBUG // _WIN32_CHECK:JHKIM: 최종 시점에 _WIN32_CT 매크로를 제거하고 관련 else 파트도 모두 제거 정리!!!
+	struct task_struct task; //DRBD_DEBUG //JHKIM: 최종 시점에 _WIN32_CT 매크로를 제거하고 관련 else 파트도 모두 제거 정리!!!
 #endif
 #endif
 };
@@ -1708,7 +1711,7 @@ extern int  drbd_thread_start(struct drbd_thread *thi);
 extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 
 #ifdef _WIN32
-//#define drbd_thread_current_set_cpu(A) ({})  // _WIN32_CHECK: VS2013 에서 컴파일이 되는가?
+//#define drbd_thread_current_set_cpu(A) ({})  // V9_CHECK: VS2013 에서 컴파일이 되는가?
 // => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
 #define drbd_thread_current_set_cpu(A) 
 #define drbd_calc_cpu_mask(A)
@@ -1978,7 +1981,7 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * we limit us to a platform agnostic constant here for now.
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
-#ifndef _WIN32 //_WIN32_CHECK // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?
+#ifndef _WIN32 //V9_CHECK // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?//JHKIM: 필요없을 듯.
 #if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #endif
@@ -2023,8 +2026,7 @@ extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, unsigned long, un
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, unsigned long, unsigned long);
 extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
 #endif
-// _WIN32_CHECK: 아래 함수들 중 입력 인자와 리턴이 _WIN64에 필요한 것들 추루 주의하여 포팅 필요!!!
- 
+
 extern int  drbd_bm_read(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
 #ifdef _WIN32
 extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, ULONG_PTR, ULONG_PTR);
@@ -2067,10 +2069,10 @@ extern unsigned long _drbd_bm_total_weight(struct drbd_device *, int);
 extern unsigned long drbd_bm_total_weight(struct drbd_peer_device *);
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
-		size_t number, unsigned long *buffer); // _WIN32_CHECK: for Win64
+		size_t number, unsigned long *buffer);
 /* for _drbd_send_bitmap */
 extern void drbd_bm_get_lel(struct drbd_peer_device *peer_device, size_t offset,
-		size_t number, unsigned long *buffer); // _WIN32_CHECK: for Win64
+		size_t number, unsigned long *buffer);
 #endif
 extern void drbd_bm_lock(struct drbd_device *device, char *why, enum bm_flag flags);
 extern void drbd_bm_unlock(struct drbd_device *device);
@@ -2106,7 +2108,7 @@ extern mempool_t *drbd_ee_mempool;
  * frequent calls to alloc_page(), and still will be able to make progress even
  * under memory pressure.
  */
-#ifndef _WIN32 // _WIN32_CHECK: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
+#ifndef _WIN32 // V9_CHECK: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
 extern struct page *drbd_pp_pool;
 #endif
 
@@ -2130,11 +2132,6 @@ extern struct bio_set *drbd_md_io_bio_set;
 extern struct bio *bio_alloc_drbd(gfp_t gfp_mask, ULONG Tag);
 #else
 extern struct bio *bio_alloc_drbd(gfp_t gfp_mask);
-#endif
-
-
-#ifdef _WIN32_CHECK
-extern EX_SPIN_LOCK global_state_lock; 이 사용 안되는지 확인. 안되면 삭제. 중요한 전역이었기에 일단 기록함.
 #endif
 
 extern int conn_lowest_minor(struct drbd_connection *connection);
@@ -2369,7 +2366,15 @@ static inline sector_t drbd_get_capacity(struct block_device *bdev)
 static inline void drbd_set_my_capacity(struct drbd_device *device,
 					sector_t size)
 {
-#ifdef _WIN32_CHECK
+#ifdef _WIN32
+	//disk->part0.nr_sects = size;
+	if (!device->this_bdev)
+	{
+		return;
+}
+
+	device->this_bdev->d_size = size << 9;
+#else
 	/* set_capacity(device->this_bdev->bd_disk, size); */
 	set_capacity(device->vdisk, size);
 	device->this_bdev->bd_inode->i_size = (loff_t)size << 9;
@@ -2890,7 +2895,7 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
  *
  * You have to call put_ldev() when finished working with device->ldev.
  */
-#ifdef _WIN32_V9 // _WIN32_CHECK
+#ifdef _WIN32_V9 // V9_CHECK
 #define get_ldev_if_state(_device, _min_state)				\
 	(_get_ldev_if_state((_device), (_min_state)) ?			\
 	true : false)

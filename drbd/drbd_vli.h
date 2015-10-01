@@ -25,7 +25,7 @@
 #ifndef _DRBD_VLI_H
 #define _DRBD_VLI_H
 
-#ifdef _WIN32 // _WIN32_CHECK : 일단 헤더파일 오류 회피! 추후 정리
+#ifdef _WIN32 // V9_CHECK : 일단 헤더파일 오류 회피! 추후 정리
 #include "linux-compat\drbd_endian.h"
 #endif
 /*
@@ -214,7 +214,7 @@ struct bitstream_cursor {
 static inline void bitstream_cursor_reset(struct bitstream_cursor *cur, void *s)
 {
 #ifdef _WIN32
-	cur->b = (unsigned char *) s; // _WIN32_CHECK: 캐스팅 재확인
+	cur->b = (unsigned char *) s;
 #else
 	cur->b = s;
 #endif
@@ -245,7 +245,7 @@ struct bitstream {
 static inline void bitstream_init(struct bitstream *bs, void *s, size_t len, unsigned int pad_bits)
 {
 #ifdef _WIN32
-	bs->buf = (unsigned char *)s; // _WIN32_CHECK: 캐스팅 재확인
+	bs->buf = (unsigned char *)s;
 #else
 	bs->buf = s;
 #endif

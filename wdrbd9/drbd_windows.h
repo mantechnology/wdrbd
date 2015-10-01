@@ -1109,7 +1109,7 @@ static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
 #define generic_find_next_le_bit(addr, size, offset)	find_next_bit(addr, size, offset)
 #endif
 
-// _WIN32_CHECK: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
+// V9_CHECK: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
 struct retry_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1352,15 +1352,12 @@ typedef struct _PTR_ENTRY
 #define MSG_DONTROUTE	4
 #define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
-// asm-x86
-//#define PAGE_SHIFT	12		//_WIN32_CHECK Windows환경으로 포팅필요 // kmpak 불필요
-
 //pagemap.h
-#define PAGE_CACHE_SHIFT	PAGE_SHIFT //_WIN32_CHECK Windows환경으로 포팅필요
+#define PAGE_CACHE_SHIFT	PAGE_SHIFT //V9_CHECK Windows환경으로 포팅필요
 
 // Bio.h
-#define BIO_MAX_PAGES		256		//_WIN32_CHECK Windows환경으로 포팅필요
-#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //_WIN32_CHECK Windows환경으로 포팅필요
+#define BIO_MAX_PAGES		256		//V9_CHECK Windows환경으로 포팅필요
+#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //V9_CHECK Windows환경으로 포팅필요
 
 //asm-x86 , asm-generic 
 #define	EDESTADDRREQ	89	/* Destination address required */

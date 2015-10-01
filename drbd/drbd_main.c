@@ -113,7 +113,7 @@ module_param(allow_oos, bool, 0);
 #ifdef CONFIG_DRBD_FAULT_INJECTION
 #ifdef _WIN32
 
-// DRBD_DOC: 참고 _WIN32_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
+// DRBD_DOC: 참고 V9_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
 //Example: Simulate data write errors on / dev / drbd0 with a probability of 5 % .
 //		echo 16 > /sys/module/drbd/parameters/enable_faults
 //		echo 1 > /sys/module/drbd/parameters/fault_devs
@@ -171,7 +171,7 @@ module_param_string(usermode_helper, usermode_helper, sizeof(usermode_helper), 0
 struct idr drbd_devices;
 struct list_head drbd_resources;
 
-#ifdef _WIN32 // _WIN32_CHECK: 변수 추가, 컴파일 오류시 재확인 후 제거
+#ifdef _WIN32
 NPAGED_LOOKASIDE_LIST drbd_request_mempool;
 NPAGED_LOOKASIDE_LIST drbd_ee_mempool;		/* peer requests */
 NPAGED_LOOKASIDE_LIST drbd_al_ext_cache;	/* bitmap extents */
@@ -570,14 +570,14 @@ static int drbd_thread_setup(void *arg)
     if (!thi->nt)
     {
         WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
-        // kref_put(&tconn->kref, &conn_destroy); // _WIN32_CHECK: V9에서 사용 안되는 이유 규명
+        // kref_put(&tconn->kref, &conn_destroy); //V9_CHECK: V9에서 사용 안되는 이유 규명// JHKIM: 별도 메타니즘 사용
         PsTerminateSystemThread(STATUS_SUCCESS);
         // BUG();
     }
 
     KeSetEvent(&thi->start_event, 0, FALSE);
     KeWaitForSingleObject(&thi->wait_event, Executive, KernelMode, FALSE, NULL);
-#else // _WIN32_CHECK: V9.0에서는 포팅 종료 시 else의 old 방식은 삭제할 것
+#else // V9_CHECK: V9.0에서는 포팅 종료 시 else의 old 방식은 삭제할 것
 	KeSetEvent(&thi->task->start_event, 0, FALSE);
 	KeWaitForSingleObject(&thi->task->wait_event, Executive, KernelMode, FALSE, NULL);
 
@@ -647,7 +647,7 @@ static void drbd_thread_init(struct drbd_resource *resource, struct drbd_thread 
 	thi->function = func;
 	thi->resource = resource;
 	thi->connection = NULL;
-	thi->name = name; // _WIN32_CHECK: V8에서는 strncopy 를 했는데, 이렇게 포인터만 넘겨도 복사효과가 있는지 확인
+	thi->name = name;
 }
 
 int drbd_thread_start(struct drbd_thread *thi)
@@ -671,7 +671,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 		else
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
-		// kref_get(&thi->tconn->kref); // _WIN32_CHECK: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함
+		// kref_get(&thi->tconn->kref); // V9_CHECK: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함
 
 		init_completion(&thi->stop);
 		D_ASSERT(resource, thi->task == NULL);
@@ -679,7 +679,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		flush_signals(current); /* otherw. may get -ERESTARTNOINTR */
-#ifdef _WIN32 //  _WIN32_CHECK
+#ifdef _WIN32
 #ifdef _WIN32_CT
         thi->nt = NULL;
         {
@@ -692,7 +692,7 @@ int drbd_thread_start(struct drbd_thread *thi)
             KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
             Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
             if (!NT_SUCCESS(Status)) {
-                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
                 //kref_put(&tconn->kref, &conn_destroy);
                 return false;
             }
@@ -702,11 +702,11 @@ int drbd_thread_start(struct drbd_thread *thi)
         KeWaitForSingleObject(&thi->start_event, Executive, KernelMode, FALSE, NULL);
         if (!thi->nt)
         {
-            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");// _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");//V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
            // kref_put(&tconn->kref, &conn_destroy);
             return false;
         }
-        //sprintf(thi->nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name); // rename // _WIN32_CHECK: 스레드 이름 보관 방식이 달라졌는가?
+        //sprintf(thi->nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name); // rename //V9_CHECK: 스레드 이름 보관 방식이 달라졌는가?
 #else
 		nt = (struct task_struct *)kzalloc(sizeof(struct task_struct), 0);
 		if (!nt)
@@ -745,7 +745,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 			KeInitializeEvent(&nt->wait_event, SynchronizationEvent, FALSE);
 			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
 			if (!NT_SUCCESS(Status)) {
-				//conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status);// _WIN32_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
+				//conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status);//V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
 				//kref_put(&tconn->kref, &conn_destroy);
 				return false;
 			}
@@ -847,7 +847,7 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 }
 
 #ifdef _WIN32_CHECK
-#ifdef _WIN32_SEND_BUFFING // _WIN32_CHECK: send bufferring 파트 일단 복사함.
+#ifdef _WIN32_SEND_BUFFING // send bufferring 파트 일단 복사함.
 struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
 #else
 static struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
@@ -2044,7 +2044,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32_V9 // _WIN32_CHECK
+#ifdef _WIN32_V9 // V9_CHECK
 	pc = (char *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #else
 	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
@@ -2320,7 +2320,7 @@ int drbd_send_ov_request(struct drbd_peer_device *peer_device, sector_t sector, 
  * As a workaround, we disable sendpage on pages
  * with page_count == 0 or PageSlab.
  */
-// #ifndef _WIN32_SEND_BUFFING // _WIN32_CHECK: send buffering 은 버퍼링 없이 동작하는 것을 transport 드라이버에 우선 적용하여 정상 동작을 확인 한 후에 처리함. 
+// #ifndef _WIN32_SEND_BUFFING // send buffering 은 버퍼링 없이 동작하는 것을 transport 드라이버에 우선 적용하여 정상 동작을 확인 한 후에 처리함. 
 static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			    int offset, size_t size, unsigned msg_flags)
 {
@@ -2440,7 +2440,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	DRBD_ITER_TYPE iter;
 #endif
 
-#ifdef _WIN32_V9 // _WIN32_CHECK !!!!
+#ifdef _WIN32_V9 // V9_CHECK !!!!
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
 	if (err)
@@ -2491,7 +2491,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	struct page *page = peer_req->pages;
 	unsigned len = peer_req->i.size;
 	int err;
-#ifdef _WIN32_V9 // _WIN32_CHECK !!!!
+#ifdef _WIN32_V9 // V9_CHECK !!!!
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
 	err = _drbd_no_send_page(peer_device, peer_req->win32_big_page, 0, len, 0);
@@ -2576,7 +2576,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	/* our digest is still only over the payload.
 	 * TRIM does not carry any payload. */
 	if (digest_size)
-#ifdef _WIN32 // _WIN32_CHECK: network buffer duplicated
+#ifdef _WIN32 // V9_CHECK: network buffer duplicated
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req, p + 1);
 #else
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, p + 1);
@@ -2773,7 +2773,7 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 			timeout -= HZ / 5;
 		} else if (rv == SS_TWO_PRIMARIES) {
 			/* Wait till the peer demoted itself */
-#ifdef _WIN32_V9 // _WIN32_CHECK
+#ifdef _WIN32_V9 // V9_CHECK
 			wait_event_interruptible_timeout(timeout, resource->state_wait,
 				resource->role[NOW] == R_PRIMARY ||
 				(!primary_peer_present(resource) && any_disk_is_uptodate(device)),
@@ -3354,7 +3354,7 @@ static void drbd_cleanup(void)
 #ifndef _WIN32
 	drbd_genl_unregister();
 #endif
-//  _WIN32_CHECK: minord 가 여기서 정리됨, 9.0의 방식 비교 분석 필요!!
+//  V9_CHECK: minord 가 여기서 정리됨, 9.0의 방식 비교 분석 필요!!
 	drbd_debugfs_cleanup();
 
 	drbd_destroy_mempools();
@@ -3366,7 +3366,7 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32_V9 // _WIN32_CHECK [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
+#ifdef _WIN32_V9 // V9_CHECK [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     unsigned int i;
@@ -3481,7 +3481,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 #endif
 		put_ldev(device);
 	}
-#ifdef _WIN32_SEND_BUFFING //_WIN32_CHECK
+#ifdef _WIN32_SEND_BUFFING 
     // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
@@ -3858,7 +3858,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 #endif
 	drbd_thread_init(resource, &connection->receiver, drbd_receiver, "receiver");
 	connection->receiver.connection = connection;
-	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender"); // _WIN32_CHECK [choi] bsod남.
+	drbd_thread_init(resource, &connection->sender, drbd_sender, "sender");
 	connection->sender.connection = connection;
 	drbd_thread_init(resource, &connection->ack_receiver, drbd_ack_receiver, "ack_recv");
 	connection->ack_receiver.connection = connection;
@@ -4315,12 +4315,12 @@ out_remove_peer_device:
     }
 #endif
 out_idr_remove_minor:
-#ifdef _WIN32_V9 // [choi] _WIN32_CHECK 필요없으면 삭제
+#ifdef _WIN32_V9 // [choi] V9_CHECK 필요없으면 삭제
     {
         synchronize_rcu_w32_wlock();
 #endif
 	idr_remove(&drbd_devices, minor);
-#ifdef _WIN32_V9 // [choi] _WIN32_CHECK 필요없으면 삭제
+#ifdef _WIN32_V9 // [choi] V9_CHECK 필요없으면 삭제
         synchronize_rcu();
     }
 #endif
@@ -4328,7 +4328,7 @@ out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32_V9
-	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n"); // _WIN32_CHECK [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..
+	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n"); // V9_CHECK [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..
 #else
 	synchronize_rcu();
 #endif
@@ -5886,7 +5886,7 @@ void lock_all_resources(void)
     for_each_resource(resource, &drbd_resources)
     {
         spin_lock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("_WIN32_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+        WDRBD_TRACE_REQ_LOCK("V9_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
         resource->req_lock.saved_oldIrql = irql;
     }
 #else
@@ -5904,7 +5904,7 @@ void unlock_all_resources(void)
 #ifdef _WIN32_V9
     {
         spin_unlock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("_WIN32_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+        WDRBD_TRACE_REQ_LOCK("V9_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
     }
 #else
 		spin_unlock(&resource->req_lock);

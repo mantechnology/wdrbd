@@ -544,7 +544,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 /* wdrbd에서는 실질적으로 page pool 할당을 해주진 않는다.
 * 다만 pool_size의 영향을 받게 하기 위해 page_count 관리를 받도록만 하며
 * 따라서 여기서 page반환같은 실질적인 메모리 free를 하지 않는다.
-* 그점이 __drbd_free_peer_req() 과 다른 부분이다. ===========> 이 주석이 의미하는 바를 정확히 이해 못함... 추후 확인 요망???... _WIN32_CHECK
+* 그점이 __drbd_free_peer_req() 과 다른 부분이다. ===========> 이 주석이 의미하는 바를 정확히 이해 못함... 추후 확인 요망???... V9_CHECK
 */
 #ifdef _WIN32_V9
 //void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
@@ -571,7 +571,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 		return;
 
 	spin_lock(&drbd_pp_lock);
-	drbd_pp_vacant += page_count;  // drbd_pp_vacant 변수가 있는 이유?..이해가 안됨. 추후 확인 요망???. _WIN32_CHECK
+	drbd_pp_vacant += page_count;  // drbd_pp_vacant 변수가 있는 이유?..이해가 안됨. 추후 확인 요망???. 
 	spin_unlock(&drbd_pp_lock);
 	i = page_count;
 
@@ -613,7 +613,7 @@ You must not have the req_lock:
  drbd_wait_ee_list_empty()
 */
 
-#ifdef _WIN32_V9 // drbd_alloc_peer_req 의 함수 인자를 V8 포맷으로 일단 맞춰둔다. 메모리 할당 방식도 기존의 lookaside list 방식으로. _WIN32_CHECK
+#ifdef _WIN32_V9 // drbd_alloc_peer_req 의 함수 인자를 V8 포맷으로 일단 맞춰둔다. 메모리 할당 방식도 기존의 lookaside list 방식으로. 
 // 기존의 V8 drbd_alloc_peer_req 는 내부에서 drbd_alloc_pages를 호출하는 방식으로 구현되었으나, V9에서는 drbd_alloc_peer_req 를 호출하고 drbd_alloc_pages 를 별도로 다시 호출하여 구성되었다.
 // 이런식으로 V9에서는 함수가 하는 일이 많은 경우 기능을 쪼개어서 하나의 함수에서 처리할 내용을 두세개의 함수로 나누어 놓은 내용이 많이 보인다. 따라서 drbd_alloc_peer_req 의 V9 버전은 V8버전의 인자에서 조정이 필요하다. 
 // => drbd_alloc_peer_req 와 drbd_alloc_pages 를 쪼개어 놓은 이유가 있다. drbd_alloc_pages 를 transport 계층 ops 함수에서 호출할 때가 있기 때문에 분리될 필요가 있었다. 보기 좋으라고 분리시킨게 아님.

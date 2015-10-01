@@ -1306,8 +1306,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	rcu_read_unlock();
 	if (mask) {
 		int bitmap_index;
-//#ifdef _WIN32_CHECK
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9 // V9_CHECK:JHKIM 타입 캐스팅 필요성 확인
 		for_each_set_bit(bitmap_index, (ULONG_PTR*)&mask, BITS_PER_LONG) {
 #else 
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {
@@ -1319,7 +1318,6 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 				drbd_bm_clear_bits(device, bitmap_index,
 						   clear_start, clear_end);
 		}
-//#endif
 	}
 
 out:

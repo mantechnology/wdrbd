@@ -353,10 +353,8 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 
 	for (i = 0; i < number; i++) {
 		if (!pages[i]) {
-#ifdef _WIN32_CHECK
 			pr_alert("bm_free_pages tried to free a NULL pointer; i=%lu n=%lu\n",
 				 i, number);
-#endif
 			continue;
 		}
 		__free_page(pages[i]);
@@ -949,7 +947,21 @@ static u64 drbd_md_on_disk_bits(struct drbd_device *device)
 	/* for interoperability between 32bit and 64bit architectures,
 	 * we round on 64bit words.  FIXME do we still need this? */
 	word64_on_disk = bitmap_sectors << (9 - 3); /* x * (512/8) */
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9 // _WIN32_CHECK: JHKIM: do_div 결과 비교확인후 제거
+	/* 참고:
+	-#define do_div(n,base)						\
+	-({								\
+	-	int _res;						\
+	-	_res = ((unsigned long) (n)) % (unsigned) (base);	\
+	-	(n) = ((unsigned long) (n)) / (unsigned) (base);	\
+	-	_res;							\
+	-})
+	*/
+
+	u64 tmp = word64_on_disk;
+	word64_on_disk = word64_on_disk / device->bitmap->bm_max_peers;
+	DbgPrint("DRBD_TEST:do_div: %lld / %d = %lld. Right???\n", tmp, device->bitmap->bm_max_peers, word64_on_disk); // V9_CHECK: 값 확인 후 제거! 확인 전에 출력 부하가 크면 제거 
+#else
 	do_div(word64_on_disk, device->bitmap->bm_max_peers);
 #endif
 	return word64_on_disk << 6; /* x * 64 */;

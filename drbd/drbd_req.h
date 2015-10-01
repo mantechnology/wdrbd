@@ -329,7 +329,7 @@ extern int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		struct bio_and_error *m);
 #ifdef _WIN32
 extern void complete_master_bio(struct drbd_device *device,
-		struct bio_and_error *m, char *func, int line); // _WIN32_CHECK: caller 확인 디버깅용, 일단 유지
+		struct bio_and_error *m, char *func, int line); // V9_CHECK: caller 확인 디버깅용 인자추가, 일단 유지
 #else
 extern void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m);
@@ -358,12 +358,12 @@ static inline int _req_mod(struct drbd_request *req, enum drbd_req_event what,
 	int rv;
 
 	/* __req_mod possibly frees req, do not touch req after that! */
-#ifdef DRBD_TRACE	// _WIN32_CHECK: 디버깅용 일단 유지
+#ifdef DRBD_TRACE
 	WDRBD_TRACE("(%s) _req_mod: call __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
 #endif
 	rv = __req_mod(req, what, peer_device, &m);
 	if (m.bio)
-#ifdef _WIN32 // _WIN32_CHECK:  디버깅용 일단 유지
+#ifdef _WIN32
 		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
