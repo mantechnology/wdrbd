@@ -323,11 +323,9 @@ static inline void drbd_plug_device(struct request_queue *q)
 {}
 #endif
 
+#ifndef _WIN32_V9 // 헤더불일치로 일단 함수 바디를 windows.c로 이동.
 static inline int drbd_backing_bdev_events(struct gendisk *disk)
 {
-#ifndef _WIN32_CHECK
-    return 0;
-#else
 #if defined(__disk_stat_inc)
     /* older kernel */
     return (int)disk_stat_read(disk, sectors[0])
@@ -337,8 +335,8 @@ static inline int drbd_backing_bdev_events(struct gendisk *disk)
     return (int)part_stat_read(&disk->part0, sectors[0])
         + (int)part_stat_read(&disk->part0, sectors[1]);
 #endif
-#endif
 }
+#endif
 
 #ifndef COMPAT_HAVE_SOCK_SHUTDOWN
 #define COMPAT_HAVE_SOCK_SHUTDOWN 1
@@ -1304,10 +1302,9 @@ static inline void genl_unregister_mc_group(struct genl_family *family,
 static inline void kref_sub(struct kref *kref, unsigned int count,
     void(*release) (struct kref *kref))
 {
-    //_WIN32_CHECK with kref_put
+	//_WIN32_CHECK with kref_put
     while (count--)
         kref_put(kref, release);
-    //_WIN32_CHECK_END
 }
 #endif
 
@@ -1498,7 +1495,7 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9 //V9_CHECK 
+#ifdef _WIN32_V9 // _WIN32_CHECK 
 /*
 [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
 

@@ -2969,8 +2969,8 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 
 	// struct block_device 선언 변경. V9 에 새롭게 추가. bd_contains 가 유효하도록 추가 포팅 필요 
 #ifdef _WIN32_V9
-	// bd_contains는 사용하지 않고 V8 구현 형식으로 따라간다.
-	curr_events = drbd_backing_bdev_events(device->ldev->backing_bdev->bd_disk)
+	// bd_contains는 사용하지 않고 V8 구현 형식으로 따라간다. // JHKIM: V8 mdev(device) 스타일로 처리
+	curr_events = drbd_backing_bdev_events(device)
 		- atomic_read(&device->rs_sect_ev);
 #else
 	curr_events = drbd_backing_bdev_events(device->ldev->backing_bdev->bd_contains->bd_disk)

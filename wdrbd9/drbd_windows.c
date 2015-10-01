@@ -2601,5 +2601,35 @@ void list_cut_position(struct list_head *list, struct list_head *head, struct li
 		__list_cut_position(list, head, entry);
 }
 
+// 헤더불일치로 일단 함수 바디를 windows.h로 이동.
+int drbd_backing_bdev_events(struct drbd_device *device)
+{
+#ifdef _WIN32_GetDiskPerf // JHKIM:V8참고, 추후 업글 시 참고
+	extern NTSTATUS mvolGetDiskPerf(PDEVICE_OBJECT TargetDeviceObject, PDISK_PERFORMANCE pDiskPerf);
+	NTSTATUS status;
+	DISK_PERFORMANCE diskPerf;
+
+	status = mvolGetDiskPerf(mdev->ldev->backing_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, &diskPerf);
+	if (!NT_SUCCESS(status))
+	{
+		WDRBD_ERROR("mvolGetDiskPerf status=0x%x\n", status);
+		return mdev->writ_cnt + mdev->read_cnt;
+	}
+	// WDRBD_INFO("mdev: %d + %d = %d, diskPerf: %lld + %lld = %lld\n",
+	//		mdev->read_cnt, mdev->writ_cnt, mdev->writ_cnt + mdev->read_cnt,
+	//		diskPerf.BytesRead.QuadPart/512, diskPerf.BytesWritten.QuadPart/512,
+	//		diskPerf.BytesRead.QuadPart/512 + diskPerf.BytesWritten.QuadPart/512);
+
+	return (diskPerf.BytesRead.QuadPart / 512) + (diskPerf.BytesWritten.QuadPart / 512);
+#else
+	if ((device->writ_cnt + device->read_cnt) == 0)
+	{
+		// DRBD_DOC: 최초인 경우 적당한 누적치를 반환하여 sync에 속도를 부여
+		return 100;
+	}
+	return device->writ_cnt + device->read_cnt;
+#endif
+}
+
 
 #endif

@@ -2053,9 +2053,9 @@ void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->device->rs_sect_ev, 0);  /* FIXME: ??? */
 	peer_device->rs_in_flight = 0;
 
-#ifdef _WIN32_V9	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.
+#ifdef _WIN32_V9	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.// JHKIM: V8 mdev(device) 스타일로 처리
 	peer_device->rs_last_events =
-		drbd_backing_bdev_events(peer_device->device->ldev->backing_bdev->bd_disk);
+		drbd_backing_bdev_events(peer_device->device);
 #else
 	peer_device->rs_last_events =
 		drbd_backing_bdev_events(peer_device->device->ldev->backing_bdev->bd_contains->bd_disk);

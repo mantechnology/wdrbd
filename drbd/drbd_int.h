@@ -1151,7 +1151,7 @@ struct drbd_connection {
 	int agreed_pro_version;		/* actually used protocol version */
 	u32 agreed_features;
 
-#ifdef _WIN32_CHECK // [choi] thread 종료시 listen 소켓을 닫기위해 V8에서 추가되었던 변수인데 V9에서도 필요한지 확인후 정리.
+#ifdef V9_CHECK // [choi] thread 종료시 listen 소켓을 닫기위해 V8에서 추가되었던 변수인데 V9에서도 필요한지 확인후 정리.
     struct socket *s_listen; // to close when thread_stop.
 #endif
 
