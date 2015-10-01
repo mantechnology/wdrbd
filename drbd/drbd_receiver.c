@@ -172,7 +172,6 @@ static int page_chain_free(struct page *page)
 	struct page *tmp;
 	int i = 0;
 
-//#ifdef _WIN32_CHECK // page_chain_for_each_safe v8에 사용되었던 매크로를 그대로 적용한다.
 	page_chain_for_each_safe(page, tmp) {
 #ifdef _WIN32 //V8에 사용된 코드를 적용.
 		__free_page(page);
@@ -181,7 +180,6 @@ static int page_chain_free(struct page *page)
 #endif
 		++i;
 	}
-//#endif
 
 	return i;
 }
@@ -643,7 +641,7 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 
 	memset(peer_req, 0, sizeof(*peer_req)); // _WIN32_DRBD_V9
 
-	// drbd_alloc_pages 는 V9 에서 별도로 호출이 이루어 진다. _WIN32_CHECK // JHKIM: 이 곳에서 할당해야 함. 트랜스포트로 넘어가서 할당하면 해당 메모리를 상위 peer_req에 연결할 방법이 없음
+	// drbd_alloc_pages 는 V9 에서 별도로 호출이 이루어 진다. // JHKIM: 이 곳에서 할당해야 함. 트랜스포트로 넘어가서 할당하면 해당 메모리를 상위 peer_req에 연결할 방법이 없음
 	if (data_size) {
 		page = drbd_alloc_pages(&peer_device->connection->transport, nr_pages, (gfp_mask & __GFP_WAIT));
 		if (!page) {
@@ -697,7 +695,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 
 #ifdef _WIN32_V9
 	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
-	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요. _WIN32_CHECK 
+	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요.  
 #ifdef _WIN32 // V9_CHOI V8 적용 // JHKIM: win32_big_page 해제 위치 재확인
     if (peer_req->win32_big_page)
     {
@@ -944,7 +942,7 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->packet_seq, 0);
 	peer_device->peer_seq = 0;
 
-#ifdef _WIN32_CHECK //V8 의 state_mutex 관련 mutex 들이 V9에서 제거되었다.
+#ifdef _WIN32_V9 //V8 의 state_mutex 관련 mutex 들이 V9에서 제거되었다. // JHKIM: 첨고용 코드인 듯. 원본 재확인 및 유사부분 일괄 정리필요.
 	//mdev->state_mutex = mdev->tconn->agreed_pro_version < 100 ?
 	//	&mdev->tconn->cstate_mutex :
 	//	&mdev->own_state_mutex;
@@ -2098,11 +2096,10 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 
 #ifdef _WIN32
     struct drbd_device * device = peer_device->device;
-//#ifdef _WIN32_CHECK
 	//D_ASSERT(sector == req->master_bio->bi_sector);
 
 	if (req->master_bio->win32_page_buf) {
-		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨. => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  _WIN32_CHECK !!!!!!!!!!!!!!
+		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨. => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  V9_CHECK !!!!!!!!!!!!!!
 		err = drbd_recv_all_warn(peer_device->connection, req->master_bio->win32_page_buf, data_size);
 		if (err)
 			return err;
@@ -2111,8 +2108,6 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	else {
 		return -EINVAL;
 	}
-//#endif
-
 #else 
 	bio = req->master_bio;
 	D_ASSERT(peer_device->device, sector == DRBD_BIO_BI_SECTOR(bio));
@@ -2675,7 +2670,7 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 					  (unsigned long long)sector, size,
 					  discard ? "local" : "remote");
 
-            //_WIN32_CHECK V8에 존재했던 inc_unacked(mdev); 가 제거됨. 의미 파악 필요.
+            //V9_CHECK V8에 존재했던 inc_unacked(mdev); 가 제거됨. 의미 파악 필요.
 
 			peer_req->w.cb = discard ? e_send_discard_write :
 						   e_send_retry_write;
@@ -2972,7 +2967,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	if (c_min_rate == 0)
 		return false;
 
-	// struct block_device 선언 변경. V9 에 새롭게 추가. bd_contains 가 유효하도록 추가 포팅 필요 _WIN32_CHECK
+	// struct block_device 선언 변경. V9 에 새롭게 추가. bd_contains 가 유효하도록 추가 포팅 필요 
 #ifdef _WIN32_V9
 	// bd_contains는 사용하지 않고 V8 구현 형식으로 따라간다.
 	curr_events = drbd_backing_bdev_events(device->ldev->backing_bdev->bd_disk)
@@ -3112,7 +3107,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	case P_RS_DATA_REQUEST:
 		peer_req->w.cb = w_e_end_rsdata_req;
 		fault_type = DRBD_FAULT_RS_RD;
-		//mdev->bm_resync_fo = BM_SECT_TO_BIT(sector); //V9에서 제거된 부분._WIN32_CHECK
+		//mdev->bm_resync_fo = BM_SECT_TO_BIT(sector); //V9에서 제거된 부분.
 		break;
 
 	case P_OV_REPLY:
@@ -3141,7 +3136,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			D_ASSERT(device, connection->agreed_pro_version >= 89);
 			peer_req->w.cb = w_e_end_csum_rs_req;
 			/* remember to report stats in drbd_resync_finished */
-			peer_device->use_csums = true; //_WIN32_CHECK 기존 코드 => //mdev->bm_resync_fo = BM_SECT_TO_BIT(sector);
+			peer_device->use_csums = true; //V9_CHECK 기존 코드 => //mdev->bm_resync_fo = BM_SECT_TO_BIT(sector);
 		} else if (pi->cmd == P_OV_REPLY) {
 			/* track progress, we may need to throttle */
 			atomic_add(size >> 9, &peer_device->rs_sect_in);
@@ -3161,7 +3156,6 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 #else
 				unsigned long now = jiffies;
 #endif
-//#ifdef _WIN32_CHECK // 포팅 중 실수해서 다시 붙여 넣음... 틀린부분 없는지 한번 더 재검토 요망. => 재확인 완료.
 				int i;
 				peer_device->ov_start_sector = sector;
 				peer_device->ov_position = sector;
@@ -3173,7 +3167,6 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 				}
 				drbd_info(device, "Online Verify start sector: %llu\n",
 					(unsigned long long)sector);
-//#endif
 		}
 		peer_req->w.cb = w_e_end_ov_req;
 		fault_type = DRBD_FAULT_RS_RD;
@@ -4242,7 +4235,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	new_net_conf->after_sb_2p = convert_after_sb(p_after_sb_2p);
 	new_net_conf->two_primaries = p_two_primaries;
 
-#ifdef _WIN32 // V8 의 코드를 가져옴.로직 상 맞는지 확인 필요. _WIN32_CHECK // 이 부분이 V8 기존 구현에 왜 들어갔는지? 이해가 안됨. 이유가?? => 하단부 synchronize_rcu 와 짝을 맞추기 위한 lock 획득 코드로 보인다.
+#ifdef _WIN32 // V8 의 코드를 가져옴.로직 상 맞는지 확인 필요.  // 이 부분이 V8 기존 구현에 왜 들어갔는지? 이해가 안됨. 이유가?? => 하단부 synchronize_rcu 와 짝을 맞추기 위한 lock 획득 코드로 보인다.
 	synchronize_rcu_w32_wlock();
 #endif
 	rcu_assign_pointer(connection->transport.net_conf, new_net_conf);
@@ -4265,7 +4258,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 
 disconnect_rcu_unlock:
 
-#ifdef _WIN32 // 로직이 맞는지 확인 필요하다. _WIN32_CHECK => 확인되었음.
+#ifdef _WIN32
 	// RCU_SPECIAL_CASE
 	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1); 
 #else
@@ -4315,9 +4308,6 @@ static struct crypto_hash *drbd_crypto_alloc_digest_safe(const struct drbd_devic
 	return tfm;
 }
 
-//#ifdef _WIN32_CHECK
-// ignore_remaining_packet 사라짐. => 구현 위치 변경됨.
-//#endif
 /*
  * config_unknown_volume  -  device configuration command for unknown volume
  *
@@ -4619,7 +4609,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
 #ifdef _WIN32_V9
-	int err = 0; //일단 0 초기화 _WIN32_CHECK
+	int err = 0;
 #else 
 	int err;
 #endif
@@ -4643,11 +4633,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	 */
 	
 #ifdef _WIN32_V9
-//#ifdef _WIN32_CHECK
-		// ?: 의미가 정확히 적용됬는지 확인 필요. => 일단 ? : C99 문법 의미대로 풀어서 포팅. 추후 런타임 동작 시 값 추적 필요.
+		// V9_CHECK: 의미가 정확히 적용됬는지 확인 필요. => 일단 ? : C99 문법 의미대로 풀어서 포팅. 추후 런타임 동작 시 값 추적 필요.
 		peer_device->max_size = 
 			be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
-//#endif
 #else 
 		peer_device->max_size = 
 			be64_to_cpu(p->c_size) ? : be64_to_cpu(p->u_size) ? : be64_to_cpu(p->d_size);
@@ -5460,7 +5448,7 @@ static int abort_local_transaction(struct drbd_resource *resource)
 	wake_up(&resource->state_wait);
 
 #ifdef _WIN32
-	//_WIN32_CHECK t 인자 적용 맞는 지 확인 필요.
+	//V9_CHECK t 인자 적용 맞는 지 확인 필요.
 	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
@@ -6853,8 +6841,6 @@ static void drbdd(struct drbd_connection *connection)
 	change_cstate(connection, C_PROTOCOL_ERROR, CS_HARD);
 }
 
-// conn_flush_workqueue 함수 제거됨. _WIN32_CHECK
-
 void conn_disconnect(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -7466,7 +7452,6 @@ static int got_peers_in_sync(struct drbd_connection *connection, struct packet_i
 	return 0;
 }
 
-// got_conn_RqSReply 함수ㅜ제거됨. _WIN32_CHECK
 static int got_RqSReply(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct p_req_state_reply *p = pi->data;
@@ -7928,7 +7913,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	struct p_peer_ack *p = pi->data;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
-	struct list_head work_list = { 0, };//일단 0 초기화 _WIN32_CHECK
+	struct list_head work_list = { 0, }; //일단 0 초기화 V9_CHECK
 
 	dagtag = be64_to_cpu(p->dagtag);
 	in_sync = be64_to_cpu(p->mask);
@@ -8145,7 +8130,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	bool ping_timeout_active = false;
 
 	// linux kernel data type V9 포팅 필요
-#ifdef _WIN32_CHECK
+#ifndef _WIN32_V9 // V9_CHECK
 	struct sched_param param = { .sched_priority = 2 };
 #endif
 
@@ -8153,7 +8138,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	struct drbd_transport_ops *tr_ops = transport->ops;
 
 	// linux kernel func. V9 포팅 필요
-#ifdef _WIN32_CHECK //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
+#ifndef _WIN32_V9 // V9_CHECK //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
 	rv = sched_setscheduler(current, SCHED_RR, &param);
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);
@@ -8331,215 +8316,6 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 	if (process_peer_ack_list(connection))
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
 }
-
-
-#ifdef _WIN32_CHECK //단순한 작업자 쓰레드 구조가 아닌 워크큐의 구조인듯 하다. create_singlethread_workqueue 를 부르는 다른 호출부와 구조도 다름. 분석 필요하여 drbd_ack_sender 구현부 임시 주석처리
-// V9에서 drbd_send_peer_ack_wf 함수로 대체.
-int drbd_ack_sender(struct drbd_thread *thi)
-{
-
-	struct drbd_tconn *tconn = thi->tconn;
-	struct asender_cmd *cmd = NULL;
-	struct packet_info pi;
-	int rv;
-	void *buf = tconn->meta.rbuf;
-	int received = 0;
-	unsigned int header_size = drbd_header_size(tconn);
-	int expect = header_size;
-	bool ping_timeout_active = false;
-	struct net_conf *nc;
-	int ping_timeo, tcp_cork, ping_int;
-
-#ifdef _WIN32
-	// KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
-#else
-	current->policy = SCHED_RR;  /* Make this a realtime task! */
-	current->rt_priority = 2;    /* more important than all other tasks */
-#endif
-
-	while (get_t_state(thi) == RUNNING) {
-		drbd_thread_current_set_cpu(thi);
-		rcu_read_lock();
-		nc = rcu_dereference(tconn->net_conf);
-		ping_timeo = nc->ping_timeo;
-		tcp_cork = nc->tcp_cork;
-		ping_int = nc->ping_int;
-		rcu_read_unlock();
-
-		if (test_and_clear_bit(SEND_PING, &tconn->flags)) {
-			if (drbd_send_ping(tconn)) {
-				conn_err(tconn, "drbd_send_ping has failed\n");
-				goto reconnect;
-			}
-
-#ifdef _WIN32
-			tconn->meta.socket->sk_linux_attr->sk_rcvtimeo = ping_timeo * HZ / 10;
-#else
-			tconn->meta.socket->sk->sk_rcvtimeo = ping_timeo * HZ / 10;
-#endif
-			ping_timeout_active = true;
-		}
-
-		/* TODO: conditionally cork; it may hurt latency if we cork without
-		much to send */
-		if (tcp_cork)
-			drbd_tcp_cork(tconn->meta.socket);
-
-		if (tconn_finish_peer_reqs(tconn)) {
-			conn_err(tconn, "tconn_finish_peer_reqs() failed\n");
-			goto reconnect;
-		}
-
-		/* but unconditionally uncork unless disabled */
-		if (tcp_cork)
-			drbd_tcp_uncork(tconn->meta.socket);
-
-		/* short circuit, recv_msg would return EINTR anyways. */
-		if (signal_pending(current))
-			continue;
-
-#ifdef _WIN32 
-		rv = Receive(tconn->meta.socket->sk, buf, expect - received, 0, tconn->meta.socket->sk_linux_attr->sk_rcvtimeo);
-#else
-		rv = drbd_recv_short(tconn->meta.socket, buf, expect - received, 0);
-#endif
-		clear_bit(SIGNAL_ASENDER, &tconn->flags);
-		flush_signals(current);
-
-		/* Note:
-		* -EINTR	 (on meta) we got a signal
-		* -EAGAIN	 (on meta) rcvtimeo expired
-		* -ECONNRESET	 other side closed the connection
-		* -ERESTARTSYS  (on data) we got a signal
-		* rv <  0	 other than above: unexpected error!
-		* rv == expected: full header or command
-		* rv <  expected: "woken" by signal during receive
-		* rv == 0	 : "connection shut down by peer"
-		*/
-		if (likely(rv > 0)) {
-			received += rv;
-#ifdef _WIN32
-			(ULONG_PTR) buf += rv;
-#else
-			buf += rv;
-#endif
-		}
-		else if (rv == 0) {
-			if (test_bit(DISCONNECT_SENT, &tconn->flags)) {
-				long t;
-				rcu_read_lock();
-				t = rcu_dereference(tconn->net_conf)->ping_timeo * HZ / 10;
-				rcu_read_unlock();
-
-#ifdef _WIN32
-				wait_event_timeout(t, tconn->ping_wait,
-					tconn->cstate < C_WF_REPORT_PARAMS,
-					t);
-#else
-				t = wait_event_timeout(tconn->ping_wait,
-					tconn->cstate < C_WF_REPORT_PARAMS,
-					t);
-#endif
-				if (t)
-					break;
-			}
-			conn_err(tconn, "meta connection shut down by peer.\n");
-			goto reconnect;
-		}
-		else if (rv == -EAGAIN) {
-			/* If the data socket received something meanwhile,
-			* that is good enough: peer is still alive. */
-
-#ifdef _WIN32
-
-			if (time_after(tconn->last_received,
-				jiffies - tconn->meta.socket->sk_linux_attr->sk_rcvtimeo))
-				continue;
-#else
-			if (time_after(tconn->last_received,
-				jiffies - tconn->meta.socket->sk->sk_rcvtimeo))
-				continue;
-#endif
-			if (ping_timeout_active) {
-				conn_err(tconn, "PingAck did not arrive in time.\n"); // DRBD_BOSD_TEST park vm에서 발생!!! 불특정이나 약 3분 간격
-				goto reconnect;
-			}
-			set_bit(SEND_PING, &tconn->flags);
-			continue;
-		}
-		else if (rv == -EINTR) {
-			continue;
-		}
-		else {
-			conn_err(tconn, "sock_recvmsg returned %d\n", rv);
-			goto reconnect;
-		}
-
-		if (received == expect && cmd == NULL) {
-			if (decode_header(tconn, tconn->meta.rbuf, &pi))
-				goto reconnect;
-
-			cmd = &asender_tbl[pi.cmd];
-			if (pi.cmd >= ARRAY_SIZE(asender_tbl) || !cmd->fn) {
-				conn_err(tconn, "Unexpected meta packet %s (0x%04x)\n",
-					cmdname(pi.cmd), pi.cmd);
-				goto disconnect;
-			}
-			expect = header_size + cmd->pkt_size;
-			if (pi.size != expect - header_size) {
-				conn_err(tconn, "Wrong packet size on meta (c: %d, l: %d)\n",
-					pi.cmd, pi.size);
-				goto reconnect;
-			}
-		}
-		if (received == expect) {
-			bool err;
-#ifdef DRBD_TRACE1
-			if (pi.cmd != P_PING && pi.cmd != P_PING_ACK)
-				WDRBD_TRACE("cmd->fn(%s) pi.cmd=0x%x pi->size=%d start.\n", cmdname(pi.cmd), pi.cmd, pi.size);
-#endif		
-			err = cmd->fn(tconn, &pi);
-
-			if (err) {
-				conn_err(tconn, "%pf failed\n", cmd->fn);
-				goto reconnect;
-			}
-
-			tconn->last_received = jiffies;
-
-			if (cmd == &asender_tbl[P_PING_ACK]) {
-				/* restore idle timeout */
-#ifdef _WIN32
-				tconn->meta.socket->sk_linux_attr->sk_rcvtimeo = ping_int * HZ;
-#else
-				tconn->meta.socket->sk->sk_rcvtimeo = ping_int * HZ;
-#endif
-				ping_timeout_active = false;
-			}
-
-			buf = tconn->meta.rbuf;
-			received = 0;
-			expect = header_size;
-			cmd = NULL;
-		}
-	}
-
-	if (0) {
-	reconnect:
-		conn_request_state(tconn, NS(conn, C_NETWORK_FAILURE), CS_HARD);
-		conn_md_sync(tconn);
-	}
-	if (0) {
-	disconnect:
-		conn_request_state(tconn, NS(conn, C_DISCONNECTING), CS_HARD);
-	}
-	clear_bit(SIGNAL_ASENDER, &tconn->flags);
-
-	conn_info(tconn, "asender terminated\n");
-
-	return 0;
-}
-#endif
 
 #ifndef _WIN32
 EXPORT_SYMBOL(drbd_alloc_pages); /* for transports */

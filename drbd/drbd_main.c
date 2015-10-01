@@ -4347,7 +4347,7 @@ out_no_peer_device:
 out_no_bitmap:
 	__free_page(device->md_io.page);
 out_no_io_page:
-#ifndef _WIN32 // [choi] V8에서 disable _WIN32_CHECK
+#ifndef _WIN32 // [choi] V8에서 disable 
 	put_disk(disk);
 #endif
 out_no_disk:

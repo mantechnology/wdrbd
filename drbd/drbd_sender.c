@@ -338,7 +338,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK
+	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. V9_CHECK
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
@@ -641,7 +641,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	/* Do not wait if no memory is immediately available.  */
 #ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, size, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. _WIN32_CHECK
+	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, size, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. V9_CHECK
 #else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
 #endif
@@ -886,7 +886,7 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	}
 	rcu_read_unlock();
 
-	// 뭔지모를 코드가 추가됨. 분석 필요. _WIN32_CHECK
+	// 뭔지모를 코드가 추가됨. 분석 필요. V9_CHECK
 	/* Don't have more than "max-buffers"/2 in-flight.
 	 * Otherwise we may cause the remote site to stall on drbd_alloc_pages(),
 	 * potentially causing a distributed deadlock on congestion during
@@ -953,7 +953,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 			struct drbd_transport_stats transport_stats;
 			int queued, sndbuf;
 			transport->ops->stats(transport, &transport_stats);
-			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. _WIN32_CHECK
+			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. V9_CHECK
 			sndbuf = transport_stats.send_buffer_size;
 			if (queued > sndbuf / 2) {
 				requeue = 1;
@@ -1366,7 +1366,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			khelper_cmd = "after-resync-target";
 
 		if (peer_device->use_csums && peer_device->rs_total) {
-#ifdef _WIN32 // V8의 mdev 를 peer_device 형식으로 변경함. _WIN32_CHECK 맞는 지 확인 필요.
+#ifdef _WIN32 // V8의 mdev 를 peer_device 형식으로 변경함. V9_CHECK 맞는 지 확인 필요.
 			const ULONG_PTR s = peer_device->rs_same_csum;
 			const ULONG_PTR t = peer_device->rs_total;
 #else
@@ -1790,9 +1790,6 @@ int w_e_end_ov_reply(struct drbd_work *w, int cancel)
 	return err;
 }
 
-#ifdef _WIN32_CHECK
-//w_prev_work_done 함수 사라졌나??
-#endif
 /* FIXME
  * We need to track the number of pending barrier acks,
  * and to be able to wait for them.
@@ -2215,7 +2212,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		}
 	}
 
-	// down_trylock V9 포팅 필요.
 #ifdef _WIN32_V9 // mutex_trylock 기존 mutex_trylock 사용. _WIN32_CHECK
 	if (!mutex_trylock(&device->resource->state_sem)) {
 #else
@@ -2624,7 +2620,7 @@ static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connect
 {
 	struct bio_and_error m;
 #ifdef _WIN32_V9
-	struct drbd_request *req = NULL; //_WIN32_CHECK 임시 NULL 로 초기화.
+	struct drbd_request *req = NULL;
 #else
 	struct drbd_request *req; 
 #endif

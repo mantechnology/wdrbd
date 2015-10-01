@@ -139,7 +139,7 @@ int dtt_init(struct drbd_transport *transport)
 	tcp_transport->transport.class = &tcp_transport_class;
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 #ifdef _WIN32_V9 //적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요. => 해제 관련 문제 확인, 수정 완료.
-		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // _WIN32_CHECK 임시 Tag '009D'
+		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // V9_CHECK 임시 Tag '009D'
 		if (!buffer) {
 			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
 			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
@@ -254,9 +254,9 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 
 	/* THINK  if (signal_pending) return ... ? */
-#ifdef _WIN32_CHECK
-	// 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
-#endif
+
+	// V9_CHECK 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
+
 	do {
 		/* STRANGE
 		 * tcp_sendmsg does _not_ use its size parameter at all ?
@@ -299,14 +299,10 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	} while (sent < size);
 
-#ifdef _WIN32_CHECK
-	// 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
-#endif
+	// V9_CHECK 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
 
 	if (rv <= 0) {
-#ifdef _WIN32_CHECK
-		// 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
-#endif
+		// V9_CHECK 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
 		return rv;
 	}
 
@@ -329,7 +325,7 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 	flags = WSK_FLAG_WAITALL;
 	return Receive(socket->sk, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
-	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_WIN32_CHECK 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
+	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_V9_CHECK 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
 #endif
 }
 
@@ -489,7 +485,7 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
-// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. _WIN32_CHECK
+// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. V9_CHECK
 static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret_socket)
 {
 	const char *what;
@@ -798,7 +794,7 @@ static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socke
 	timeo += (prandom_u32() & 1) ? timeo / 7 : -timeo / 7; /* 28.5% random jitter */
 
 retry:
-#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. _WIN32_CHECK
+#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_CHECK
 	wait_event_interruptible_timeout(timeo, waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
@@ -854,8 +850,8 @@ retry:
 		/* The established socket inherits the sk_state_change callback
 		   from the listening socket. */
 #ifdef _WIN32
-		unregister_state_change(s_estab->sk_linux_attr, listener); // unregister_state_change 가 V8에서 내부 구현이 안되었다. => V9 포팅 여부 검토 필요 _WIN32_CHECK
-		status = GetRemoteAddress(s_estab->sk, (PSOCKADDR)&peer_addr); //V8에 없던 s_estab->ops->getname 구현. Accept 를 하고 peer 주소를 다시 획득한다. 분석 필요. _WIN32_CHECK
+		unregister_state_change(s_estab->sk_linux_attr, listener); // unregister_state_change 가 V8에서 내부 구현이 안되었다. => V9 포팅 여부 검토 필요 
+		status = GetRemoteAddress(s_estab->sk, (PSOCKADDR)&peer_addr); //V8에 없던 s_estab->ops->getname 구현. Accept 를 하고 peer 주소를 다시 획득한다. 분석 필요. 
 		if(status != STATUS_SUCCESS) {
 			kfree(s_estab->sk_linux_attr);
 			kfree(s_estab);
@@ -989,7 +985,7 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32 
-	// 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요._WIN32_CHECK => Accept Event Callback 방식 적용. 2015.9.9 sekim
+	// 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
 	struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
 	
 	struct drbd_waiter *waiter;
@@ -1158,7 +1154,7 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
     //    goto out;
     //}
 #endif
-    //tconn->s_listen = s_listen; //_WIN32_CHECK
+    //tconn->s_listen = s_listen; //V9_CHECK
 #endif
 #ifndef _WIN32
 	write_lock_bh(&s_listen->sk->sk_callback_lock);
@@ -1182,7 +1178,7 @@ out:
 #ifdef _WIN32
     {
 		sock_release(s_listen);
-        //tconn->s_listen = 0; //_WIN32_CHECK
+        //tconn->s_listen = 0; //V9_CHECK
     }
 #else
         sock_release(s_listen);
@@ -1364,7 +1360,7 @@ randomize:
 	dtt_put_listener(&waiter);
 
 #ifdef _WIN32
-	// data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? _WIN32_CHECK
+	// data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? V9_CHECK
 	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
