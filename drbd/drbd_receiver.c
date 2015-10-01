@@ -7644,7 +7644,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 	enum drbd_req_event what;
 
 #ifdef DRBD_TRACE
-	WDRBD_TRACE("pi-cmd 0x%x(%s) sect:0x%llx sz:%d\n", pi->cmd, cmdname(pi->cmd), sector, blksize);
+	WDRBD_TRACE("pi-cmd 0x%x(%s) sect:0x%llx sz:%d\n", pi->cmd, drbd_packet_name(pi->cmd), sector, blksize);
 #endif
 
 	peer_device = conn_peer_device(connection, pi->vnr);

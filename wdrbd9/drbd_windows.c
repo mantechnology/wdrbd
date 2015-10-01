@@ -900,9 +900,10 @@ void run_singlethread_workqueue(struct workqueue_struct * wq)
         {
             case STATUS_WAIT_0:
             {
-                PLIST_ENTRY entry;
-                while ((entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock)) != 0)
+                PLIST_ENTRY entry;                
+                while (!IsListEmpty(&wq->list_head))
                 {
+                    entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock);
                     struct work_struct * w = CONTAINING_RECORD(entry, struct work_struct, _entry);
                     w->func(w);
                 }

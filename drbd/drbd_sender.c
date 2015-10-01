@@ -650,28 +650,31 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 #ifdef _WIN32_V9 
 
-	// JHKIM: win32_big_page가 이미 할당 됨!!!
+    // JHKIM: win32_big_page가 이미 할당 됨!!!
 
-	/* JHKIM: 일단 참고용으로 코멘트 처리.
-	if (size) {
-		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-				DIV_ROUND_UP(size, PAGE_SIZE),
-				GFP_TRY & ~__GFP_WAIT);
-		if (!peer_req->pages)
-			goto defer2;
+    // JHKIM: 일단 참고용으로 코멘트 처리.
 
-		peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
-	}
-	else {
-		peer_req->win32_big_page = NULL;
-*/
-#else// JHKIM: 원본 다시 복구함...
-	if (size) {
-		drbd_alloc_page_chain(&peer_device->connection->transport,
-			&peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
-		if (!peer_req->page_chain.head)
-			goto defer2;
-	}
+    // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
+    if (size) {
+        peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
+            DIV_ROUND_UP(size, PAGE_SIZE),
+            GFP_TRY & ~__GFP_WAIT);
+        if (!peer_req->pages)
+            goto defer2;
+
+        peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
+    }
+    else {
+        peer_req->win32_big_page = NULL;
+    }
+#else// JHKIM: 원본 다시 복구함... -> CHOI: 원본이 포팅버전 코드랑 달라서 다시 가져옴.
+    if (size) {
+        peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
+            DIV_ROUND_UP(size, PAGE_SIZE),
+            GFP_TRY & ~__GFP_WAIT);
+        if (!peer_req->pages)
+            goto defer2;
+    }
 #endif
 
 	peer_req->i.size = size;
