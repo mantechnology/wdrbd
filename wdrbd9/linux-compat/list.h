@@ -135,9 +135,7 @@ static __inline int list_empty_careful(const struct list_head *head)
 */
 #ifdef _WIN32
 #define list_for_each_entry_rcu(type, pos, head, member) \
-    for (pos = list_entry_rcu((head)->next, type, member); \
-		prefetch(pos->member.next), &pos->member != (head); \
-		pos = list_entry_rcu(pos->member.next, type, member))
+    list_for_each_entry(type, pos, head, member)
 #else
 #define list_for_each_entry_rcu(pos, head, member) \
 	for (pos = list_entry_rcu((head)->next, typeof(*pos), member); \
