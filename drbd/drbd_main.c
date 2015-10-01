@@ -1200,8 +1200,11 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
 	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
-
+#ifdef _WIN32_V9
+    err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
+#else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
+#endif
 	if (!err) {
 		sbuf->unsent =
 		sbuf->pos += sbuf->allocated_size;      /* send buffer submitted! */
@@ -2045,7 +2048,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	struct p_compressed_bm *pc;
 	int len, err;
 #ifdef _WIN32_V9 // V9_CHECK
-	pc = (char *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
+	pc = (struct p_compressed_bm *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #else
 	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #endif
@@ -2068,10 +2071,9 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 		/* was not compressible.
 		 * send a buffer full of plain text bits instead. */
 		unsigned int data_size;
-#ifdef _WIN32_CHECK
-		DbgPrint("WIN32_CHECK: send_bitmap_rle_or_plain: check p size value please!\n");
-		//	size_t num_words;
-		//	size_t *p = (size_t)(sock->sbuf) + header_size;
+#ifdef _WIN32_V9
+		ULONG_PTR num_words;
+        ULONG_PTR *pu = (ULONG_PTR *)pc;
 #else
 		unsigned long num_words;
 		unsigned long *pu = (unsigned long *)pc;
@@ -2335,34 +2337,40 @@ static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *p
 		DbgPrint("DRBD_TEST: (%s)flush_send_buffer! sbuf->unsent=%d sbuf->pos=%d sz=%d! __drbd_send_page!\n", current->comm,  sbuf->unsent, sbuf->pos, size);
 		flush_send_buffer(connection, DATA_STREAM);
 	}
-
+#ifdef _WIN32_V9
+	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
+#else
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
+#endif
 	if (!err)
 		peer_device->send_cnt += size >> 9;
 
 	return err;
 }
-
-int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
+#ifdef _WIN32_V9
+// kmpak no_send_page 에서는 page에 관해 고려치 않고 buffer만 고려하면 된다.
+int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 			      int offset, size_t size, unsigned msg_flags)
 {
-#ifdef _WIN32_V9 // NEW!
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-	//alloc_send_buffer 에 관여 하지 않는다!
 	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 
 	//dumpHex((void*) page, 100, 16);
-	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags); // _WIN32_V9_DOC:JHKIM: page 는 진입 시 이미 address 임
+	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
 	if (!err)
 		peer_device->send_cnt += size >> 9;
 
 	return err;
+}
 #else
+int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
+			      int offset, size_t size, unsigned msg_flags)
+{
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	void *from_base;
@@ -2373,37 +2381,13 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	if (sbuf->unsent != sbuf->pos)
 		flush_send_buffer(connection, DATA_STREAM);
 
-#ifdef _WIN32_V9
-	//  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
-#else
-	// JHKIM: 아래 원본의 V9 관련 코드는 일단 참고용으로 유지
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	page2 = sbuf->page;
-#ifdef _WIN32_V9 // CHECK
-    // DRBD_DOC: page parameter -> bio->win32_page. 
-    // 단일 버퍼로 전송함 단일 페이지 사용으로 포팅, 옵셋인자는 불필요함. 항상 0로 가정
-    // [choi] 확인 필요 ->  [JHKIM] page는 win32_page_buf 로써 페이지 구조체가 아님.
-
-    offset2 = (ULONG_PTR)buffer2 - (ULONG_PTR)page_address(page2);
-	DbgPrint("DRBD_TEST: off2=%d", offset2);
-	from_base = page; // _WIN32_V9_DOC:JHKIM: page는 win32_page_buf 로써 페이지 구조체가 아님.
-#else
 	offset2 = buffer2 - page_address(page2);
 	from_base = drbd_kmap_atomic(page, KM_USER0);
-#endif
-
-#ifdef _WIN32_V9 // CHECK
-	memcpy(buffer2, (char *)from_base + offset, size);
-#else
 	memcpy(buffer2, from_base + offset, size);
-#endif
 	drbd_kunmap_atomic(from_base, KM_USER0);
-#endif
-#ifdef _WIN32_V9
-	err = __drbd_send_page(peer_device, page, offset, size, msg_flags); //  JHKIM: 추가적인 페이지/옵셋 처리 불필요! 이미 버포로 결정되어 진입!!
-#else
 	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
-#endif
 
 	if (!err) {
 		sbuf->unsent =
@@ -2411,9 +2395,8 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	}
 
 	return err;
-#endif
 }
-
+#endif
 static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			   int offset, size_t size, unsigned msg_flags)
 {
@@ -2425,11 +2408,11 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 	 * by someone, leading to some obscure delayed Oops somewhere else. */
 #ifdef _WIN32
     if (disable_sendpage)
+        return _drbd_no_send_page(peer_device, page->addr, offset, size, msg_flags);
 #else
 	if (disable_sendpage || (page_count(page) < 1) || PageSlab(page))
-#endif
 		return _drbd_no_send_page(peer_device, page, offset, size, msg_flags);
-
+#endif
 	return __drbd_send_page(peer_device, page, offset, size, msg_flags);
 }
 

@@ -1495,6 +1495,11 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 // V8 은 no_send_page 방식의 경우 drbd_sendall/drbd_send 를 호출하여 V9 기준의 _dtt_send 를 호출하는 구조이다.
 // V9 은 no_send_page 방식의 경우에도 dtt_send_page 를 호출하여 send_page 방식과 동일한 인터페이스를 사용하게 되어 있다.
 // _dtt_send 는 dtt_connect 시점의 dtt_send_first_packet 에 의해서만 사용된다.
+// V9은 no_send_page, send_page 두 방식 다 dtt_send_page 로 단일 인터페이스를 사용하여 전송한다.
+
+// kmpak
+// 이 함수에서는 page 구조체로 argument를 받지만 실은 실제 buffer의 주소를 받도록 한다.
+// 상위에서 win32_page_buf 를 주는 경우도 발생하기 때문이다.
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
 			 struct page *page, int offset, size_t size, unsigned msg_flags)
 {
@@ -1503,17 +1508,11 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 	struct socket *socket = tcp_transport->stream[stream];
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
-#else
-	//WDRBD_ERROR("not reached here\n"); //_WIN32
-	//BUG(); // => V9은 no_send_page, send_page 두 방식 다 dtt_send_page 로 단일 인터페이스를 사용하여 전송한다. 
 #endif
 	int len = size;
 	int err = -EIO;
-#ifdef _WIN32
-	// not support
-#else
+
 	msg_flags |= MSG_NOSIGNAL;
-#endif
 	dtt_update_congested(tcp_transport);
 #ifndef _WIN32
 	set_fs(KERNEL_DS);
@@ -1521,7 +1520,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 	do {
 		int sent;
 #ifdef _WIN32
-		sent = Send(socket->sk, (void *)((unsigned char *)(page->addr) + offset), len, 0, socket->sk_linux_attr->sk_sndtimeo);
+		sent = Send(socket->sk, (void *)((unsigned char *)(page) + offset), len, 0, socket->sk_linux_attr->sk_sndtimeo);
 #else
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
 #endif
