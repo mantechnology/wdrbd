@@ -922,7 +922,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int i = 0;
 
 #ifdef DRBD_TRACE1
-	WDRBD_TRACE("timer callback jiffies(%llu)\n", jiffies);
+	WDRBD_TRACE_RS("timer callback jiffies(%llu)\n", jiffies);
 #endif
 
 	if (unlikely(cancel))

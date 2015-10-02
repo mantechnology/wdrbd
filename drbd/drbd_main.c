@@ -2272,6 +2272,7 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 	p->block_id = block_id;
 	p->pad = 0;
 	p->blksize = cpu_to_be32(size);
+    WDRBD_TRACE_RS("size(%d) cmd(%d) sector(%lld) block_id(%d)\n", size, cmd, sector, block_id);
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
 }
 
@@ -4137,7 +4138,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->this_bdev = pvext->dev;
     q = pvext->dev->bd_disk->queue;
     q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
-    WDRBD_TRACE_RS("q(0x%p) max_hw_sectors(%d)\n", q, q->max_hw_sectors);
 #else
 	q = blk_alloc_queue(GFP_KERNEL);
 #endif

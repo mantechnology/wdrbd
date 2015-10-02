@@ -530,11 +530,13 @@ static __inline void setup_timer_key(_In_ struct timer_list * timer,
     } while (0)
 #endif
 struct work_struct {
-#ifdef _WIN32_V9
-    LIST_ENTRY  _entry;
-#endif
 	struct list_head entry;
 	void (*func)(struct work_struct *work);
+};
+
+struct work_struct_wrapper {
+    struct work_struct * w;
+    LIST_ENTRY  element;
 };
 
 struct block_device_operations {

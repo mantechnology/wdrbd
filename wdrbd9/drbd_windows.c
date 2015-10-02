@@ -880,12 +880,12 @@ int queue_work(struct workqueue_struct* queue, struct work_struct* work)
 void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 {
-    ExInterlockedInsertTailList(&queue->list_head, &work->_entry, &queue->list_lock);
+    struct work_struct_wrapper * wr = kmalloc(sizeof(struct work_struct_wrapper), 0, '1111');
+    wr->w = work;
+    ExInterlockedInsertTailList(&queue->list_head, &wr->element, &queue->list_lock);
     KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
 #ifdef _WIN32_V9
     return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
-#else
-    return;
 #endif
 }
 #ifdef _WIN32_V9    // kmpak DW-561
@@ -902,12 +902,12 @@ void run_singlethread_workqueue(struct workqueue_struct * wq)
         {
             case STATUS_WAIT_0:
             {
-                PLIST_ENTRY entry;                
-                while (!IsListEmpty(&wq->list_head))
+                PLIST_ENTRY entry;
+                while ((entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock)) != 0)
                 {
-                    entry = ExInterlockedRemoveHeadList(&wq->list_head, &wq->list_lock);
-                    struct work_struct * w = CONTAINING_RECORD(entry, struct work_struct, _entry);
-                    w->func(w);
+                    struct work_struct_wrapper * wr = CONTAINING_RECORD(entry, struct work_struct_wrapper, element);
+                    wr->w->func(wr->w);
+                    kfree(wr);
                 }
                 break;
             }

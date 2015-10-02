@@ -269,6 +269,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
  */
 #ifdef _WIN32
 		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo);
+        WDRBD_TRACE_TR("kernel_sendmsg(%d) socket(0x%p) iov_len(%d)\n", rv, socket, iov_len);
 #else
 		rv = kernel_sendmsg(socket, &msg, &iov, 1, size);
 #endif
@@ -406,6 +407,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, 
 	}
 	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
 	err = dtt_recv_short(socket, win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+    WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) page(0x%p)\n", err, socket, size, page);
     if (err < 0) {
 		goto fail;
 	}
@@ -1520,6 +1522,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		int sent;
 #ifdef _WIN32
 		sent = Send(socket->sk, (void *)((unsigned char *)(page) + offset), len, 0, socket->sk_linux_attr->sk_sndtimeo);
+        WDRBD_TRACE_TR("sendpage(%d) offset(%d) socket(0x%p)\n", sent, offset, socket);
 #else
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
 #endif
