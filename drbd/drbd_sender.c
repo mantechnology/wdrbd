@@ -26,9 +26,6 @@
 #include "windows/drbd.h"
 #include <linux-compat/sched.h>
 #include <linux-compat/wait.h>
-#include "drbd_int.h"
-#include "drbd_protocol.h"
-#include "drbd_req.h"
 #include <drbd_windows.h>
 #else
 #include <linux/module.h>
@@ -42,7 +39,9 @@
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #endif
-
+#include "drbd_int.h"
+#include "drbd_protocol.h"
+#include "drbd_req.h"
 
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
@@ -67,7 +66,7 @@ struct mutex resources_mutex;
  * submitted by drbd_md_sync_page_io()
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS //drbd_md_io_complete 에서 drbd_md_endio 로 이름 변경된듯.
+BIO_ENDIO_TYPE drbd_md_endio(void *p1, void *p2, void *p3) //drbd_md_io_complete 에서 drbd_md_endio 로 이름 변경된듯.
 #else 
 BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -260,47 +259,32 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
  * "submitted" by the receiver.
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS
+BIO_ENDIO_TYPE drbd_peer_request_endio(void *p1, void *p2, void *p3)
 #else
 BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
-	struct drbd_peer_request *peer_req = NULL;
-	struct drbd_device *device = NULL;
 	struct bio *bio = NULL;
 	PIRP Irp = NULL;
-	PVOID Context = NULL;
 	int error = 0;
-	int uptodate = 0;
-	int is_write = 0;
-	int is_discard = 0;
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_peer_request_endio: IRQL(%d) ..............\n",  current->comm, KeGetCurrentIrql());
 #endif
-
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
 		Irp = p2;
-		Context = p3;
 		error = Irp->IoStatus.Status;
-		bio = (struct bio *)Context;
+		bio = (struct bio *)p3;
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
-	peer_req = (struct drbd_peer_request *)bio->bi_private;
-	device = peer_req->peer_device->device;
-	uptodate = bio_flagged(bio, BIO_UPTODATE);
-	is_write = bio_data_dir(bio) == WRITE;
-	is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD); // V9에 추가.
-	
-#else
+#endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
 	int is_write = bio_data_dir(bio) == WRITE;
-	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD); 
-#endif
+	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
 
 	BIO_ENDIO_FN_START;
 	if (error && drbd_ratelimit())
@@ -346,18 +330,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		else
 			drbd_endio_read_sec_final(peer_req);
 	}
-
-#ifdef _WIN32
 #ifdef DRBD_TRACE
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_peer_request_endio done.(%d).............!!!\n", cnt++);
 	}
 #endif
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *device)
@@ -370,7 +349,7 @@ void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *
 /* read, readA or write requests on R_PRIMARY coming from drbd_make_request
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS
+BIO_ENDIO_TYPE drbd_request_endio(void *p1, void *p2, void *p3)
 #else
 BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -640,11 +619,8 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 		return -EIO;
 
 	/* Do not wait if no memory is immediately available.  */
-#ifdef _WIN32_V9
-	peer_req = drbd_alloc_peer_req(peer_device, ID_SYNCER /* unused */, sector, size, GFP_TRY & ~__GFP_WAIT, '03DW'); //V8의 구현을 적용. V9_CHECK
-#else
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
-#endif
+
 	if (!peer_req)
 		goto defer;
 
@@ -921,9 +897,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int align, requeue = 0;
 	int i = 0;
 
-#ifdef DRBD_TRACE1
-	WDRBD_TRACE_RS("timer callback jiffies(%llu)\n", jiffies);
-#endif
+	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 
 	if (unlikely(cancel))
 		return 0;
@@ -945,7 +919,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 
 	max_bio_size = queue_max_hw_sectors(device->rq_queue) << 9;
 	number = drbd_rs_number_requests(peer_device);
-    WDRBD_TRACE_TR("number(%d)\n", number);
+    //WDRBD_TRACE_TR("number(%d)\n", number);
 	if (number <= 0)
 		goto requeue;
 

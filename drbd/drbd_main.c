@@ -1103,7 +1103,7 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		if (sbuf->unsent != sbuf->pos)
 		{ // WIN32_V9
-			DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! sbuf->unsent=%d sbuf->pos=%d sz=%d!\n", current->comm, drbd_stream, sbuf->unsent , sbuf->pos, size);
+			WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) sizez(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
 			flush_send_buffer(connection, drbd_stream);
 		}// WIN32_V9
 		new_or_recycle_send_buffer_page(sbuf);

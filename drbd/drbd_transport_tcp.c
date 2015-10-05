@@ -75,11 +75,7 @@ static int dtt_init(struct drbd_transport *transport);
 static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free_op);
 static int dtt_connect(struct drbd_transport *transport);
 static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, void **buf, size_t size, int flags);
-#ifdef _WIN32_V9
-static int dtt_recv_pages(struct drbd_transport *transport, void* buffer, size_t size);
-#else
 static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, size_t size);
-#endif
 static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_stats *stats);
 static void dtt_set_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream, long timeout);
 static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream);
@@ -269,7 +265,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
  */
 #ifdef _WIN32
 		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo);
-        WDRBD_TRACE_TR("kernel_sendmsg(%d) socket(0x%p) iov_len(%d)\n", rv, socket, iov_len);
+        WDRBD_TRACE_RS("kernel_sendmsg(%d) socket(0x%p) iov_len(%d)\n", rv, socket, iov_len);
 #else
 		rv = kernel_sendmsg(socket, &msg, &iov, 1, size);
 #endif
@@ -378,43 +374,29 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	return rv;
 }
 
-#ifdef _WIN32_V9
-static int dtt_recv_pages(struct drbd_transport *transport, void* page, size_t size)
-#else
-static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, size_t size)
-#endif
+static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages, size_t size)
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 #ifdef _WIN32
-	void* win32_big_page = page;
-	void* all_pages = NULL;
+    void * all_pages = NULL;
 #else
 	struct page *all_pages, *page;
 #endif
 	int err;
 
+	all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+	if (!all_pages)
+		return -ENOMEM;
 #ifdef _WIN32
-	if (size) {
-    	all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
-    	if (!all_pages)
-    		return -ENOMEM;
-  		win32_big_page = all_pages;
-	}
-	else {
-		win32_big_page = NULL;
-	}
 	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
-	err = dtt_recv_short(socket, win32_big_page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
-    WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) page(0x%p)\n", err, socket, size, page);
+	err = dtt_recv_short(socket, all_pages, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+    WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) all_pages(0x%p)\n", err, socket, size, all_pages);
     if (err < 0) {
 		goto fail;
 	}
 #else
-	all_pages = drbd_alloc_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
-	if (!all_pages)
-		return -ENOMEM;
 	page = all_pages;
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
@@ -425,9 +407,8 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **page, 
 			goto fail;
 		size -= len;
 	}
-
-	*pages = all_pages;
 #endif
+	*pages = all_pages;
 	return 0;
 fail:
 	drbd_free_pages(transport, all_pages, 0);
