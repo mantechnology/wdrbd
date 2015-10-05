@@ -356,11 +356,13 @@ tail_recursion:
 				peer_ack_req = NULL;
 			} else
 #ifdef _WIN32_V9
-                if (peer_ack_req->win32_page_buf)
-                {
-                   kfree(peer_ack_req->win32_page_buf);
-                }
-                ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+			{
+				if (peer_ack_req->win32_page_buf)
+				{
+					kfree(peer_ack_req->win32_page_buf);
+				}
+				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+			}
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
 #endif
