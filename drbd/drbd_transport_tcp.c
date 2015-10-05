@@ -473,7 +473,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 {
 	const char *what;
 	struct socket *socket;
-#ifdef _WIN32
+#ifdef _WIN32_V9
 	struct sockaddr_storage_win my_addr, peer_addr;
 	SOCKADDR_IN	LocalAddress = { 0 };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -684,8 +684,7 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 
 	if (rr > 0 || rr == -EAGAIN) {
 		return true;
-	}
-	else {
+	} else {
 		sock_release(*socket);
 		*socket = NULL;
 		return false;
@@ -1539,7 +1538,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 
 static void dtt_cork(struct socket *socket)
 {
-#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
+#ifndef _WIN32 // not support.
 	int val = 1;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
 #endif
@@ -1547,7 +1546,7 @@ static void dtt_cork(struct socket *socket)
 
 static void dtt_uncork(struct socket *socket)
 {
-#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
+#ifndef _WIN32 // not support.
 	int val = 0;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
 #endif
@@ -1555,7 +1554,7 @@ static void dtt_uncork(struct socket *socket)
 
 static void dtt_quickack(struct socket *socket)
 {
-#ifndef _WIN32 // kernel_setsockopt linux kernel func. V9 포팅 필요. => not support.
+#ifndef _WIN32 // not support.
 	int val = 2;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_QUICKACK, (char *)&val, sizeof(val));
 #endif
