@@ -63,9 +63,7 @@
 
 struct flush_work {
 	struct drbd_work w;
-#ifdef _WIN32_V9 //기존 flush_work 구조체에 새롭게 drbd_device* 필드가 추가됨.
-	struct drbd_device *device;
-#endif
+	struct drbd_device *device; // V9에서 drbd_device* 필드가 추가됨.
 	struct drbd_epoch *epoch;
 };
 
@@ -75,22 +73,17 @@ enum finish_epoch {
 	FE_RECYCLED,
 };
 
-struct submit_worker ack_sender;
-int drbd_ack_sender(struct drbd_thread *thi); //drbd_asender => drbd_ack_sender rename
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 static int drbd_disconnected(struct drbd_peer_device *);
 
 static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *, struct drbd_epoch *, enum epoch_event);
 static int e_end_block(struct drbd_work *, int);
-#ifdef _WIN32_V9 //V9 에 새롭게 추가된 함수들.
 static void cleanup_unacked_peer_requests(struct drbd_connection *connection);
 static void cleanup_peer_ack_list(struct drbd_connection *connection);
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids);
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, unsigned long);
-#endif
 
-// tconn이 connection 으로 변경된 부분외에 V8과 동일하다. 더 볼것 없음. <완료>
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	struct drbd_epoch *prev;
@@ -112,7 +105,6 @@ static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, str
  * Locking is the responsibility of the caller.
  */
 #ifndef _WIN32 //V8의 구현 적용
-// tmp 변수를 NULL 초기화 하는 부분만 다르다. 나머지는 V8,V9 동일. NULL 초기화가 안되어 있어서 문제가 있었는지?... 확인 요망. <완료>
 static struct page *page_chain_del(struct page **head, int n)
 {
 	struct page *page;
@@ -151,7 +143,6 @@ static struct page *page_chain_del(struct page **head, int n)
 /* may be used outside of locks to find the tail of a (usually short)
  * "private" page chain, before adding it back to a global chain head
  * with page_chain_add() under a spinlock. */
-// 변경사항 없음. <완료>
 static struct page *page_chain_tail(struct page *page, int *len)
 {
 	struct page *tmp;
@@ -163,7 +154,6 @@ static struct page *page_chain_tail(struct page *page, int *len)
 	return page;
 }
 
-//<완료>
 static int page_chain_free(struct page *page)
 {
 	struct page *tmp;
@@ -179,15 +169,15 @@ static int page_chain_free(struct page *page)
 	}
 	return i;
 }
-//<완료>
+
 static void page_chain_add(struct page **head,
 		struct page *chain_first, struct page *chain_last)
 {
-//#if 1 //의미없는 조건부컴파일 지시자 제거.
+#if 1
 	struct page *tmp;
 	tmp = page_chain_tail(chain_first, NULL);
 	BUG_ON(tmp != chain_last);
-//#endif
+#endif
 
 	/* add chain to head */
 #ifdef _WIN32 //V8의 구현 적용.
@@ -197,74 +187,6 @@ static void page_chain_add(struct page **head,
 #endif
 	*head = chain_first;
 }
-#endif
-
-#if 0 //__drbd_alloc_pages 를 V9 형식으로 재 정의한다.
-#ifdef _WIN32 
-static void * __drbd_alloc_pages(struct drbd_conf *mdev, unsigned int number)
-{
-	/* Yes, testing drbd_pp_vacant outside the lock is racy.
-	* So what. It saves a spin_lock. */
-	if (drbd_pp_vacant >= (int)number) {
-		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
-		if (mem)
-		{
-			spin_lock(&drbd_pp_lock);
-			drbd_pp_vacant -= (int)number;
-			spin_unlock(&drbd_pp_lock);
-			return mem;
-		}
-	}
-
-	return NULL;
-}
-#else
-static struct page *__drbd_alloc_pages(struct drbd_conf *mdev,
-	unsigned int number)
-{
-	struct page *page = NULL;
-	struct page *tmp = NULL;
-	unsigned int i = 0;
-
-	/* Yes, testing drbd_pp_vacant outside the lock is racy.
-	* So what. It saves a spin_lock. */
-	if (drbd_pp_vacant >= number) {
-		spin_lock(&drbd_pp_lock);
-		page = page_chain_del(&drbd_pp_pool, number);
-		if (page)
-			drbd_pp_vacant -= number;
-		spin_unlock(&drbd_pp_lock);
-		if (page)
-			return page;
-	}
-
-	/* GFP_TRY, because we must not cause arbitrary write-out: in a DRBD
-	* "criss-cross" setup, that might cause write-out on some other DRBD,
-	* which in turn might block on the other node at this very place.  */
-	for (i = 0; i < number; i++) {
-		tmp = alloc_page(GFP_TRY);
-		if (!tmp)
-			break;
-		set_page_private(tmp, (unsigned long)page);
-		page = tmp;
-	}
-
-	if (i == number)
-		return page;
-
-	/* Not enough pages immediately available this time.
-	* No need to jump around here, drbd_alloc_pages will retry this
-	* function "soon". */
-	if (page) {
-		tmp = page_chain_tail(page, NULL);
-		spin_lock(&drbd_pp_lock);
-		page_chain_add(&drbd_pp_pool, page, tmp);
-		drbd_pp_vacant += i;
-		spin_unlock(&drbd_pp_lock);
-	}
-	return NULL;
-}
-#endif
 #endif
 
 #ifdef _WIN32_V9 
@@ -288,7 +210,7 @@ static void * __drbd_alloc_pages(unsigned int number)
 }
 #else
 
-static void * __drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
+static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 
 {
 	struct page *page = NULL;
@@ -335,7 +257,7 @@ static void * __drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 /* kick lower level device, if we have more than (arbitrary number)
  * reference counts on it, which typically are locally submitted io
  * requests.  don't use unacked_cnt, so we speed up proto A and B, too. */
-// V9 형식의 인자와 watermark 연산방식 변경. 특별히 검토할 부분은 없는듯.<완료>
+// V9 형식의 인자와 watermark 연산방식 변경.
 static void maybe_kick_lo(struct drbd_device *device)
 {
 	struct disk_conf *dc;
@@ -362,7 +284,6 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 	   in order. As soon as we see the first not finished we can
 	   stop to examine the list... */
 #ifdef _WIN32_V9
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &connection->net_ee, w.list) {
 #else 
 	list_for_each_entry_safe( peer_req, tmp, &connection->net_ee, w.list) {
@@ -374,7 +295,6 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 }
 
 //기존 drbd_kick_lo_and_reclaim_net 함수가 두개의 함수 drbd_reclaim_net_peer_reqs, conn_maybe_kick_lo 로 분리된 듯 하다.
-// <완료>
 static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 {
 	LIST_HEAD(reclaimed);
@@ -385,7 +305,6 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 	reclaim_finished_net_peer_reqs(connection, &reclaimed);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &reclaimed, w.list)
 		drbd_free_net_peer_req(peer_req);
 #else 
@@ -394,7 +313,6 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 #endif
 }
 
-// <완료>
 static void conn_maybe_kick_lo(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -419,7 +337,6 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
  * the kernel.
  * Possibly retry until DRBD frees sufficient pages somewhere else.
  *
- * // V9에 추가된 주석.
  * If this allocation would exceed the max_buffers setting, we throttle
  * allocation (schedule_timeout) to give the system some room to breathe.
  *
@@ -430,7 +347,6 @@ static void conn_maybe_kick_lo(struct drbd_connection *connection)
  *
  * Returns a page chain linked via page->private.
  */
-// V9형식의 drbd_alloc_pages 구현, gfp_mask 인자는 우선 남겨놓는다. <완료> => 메모리 할당자 다시 수정한다. V8 형식으로 구현한다.(기초소스 빌드 구축에서 배제되었던 부분 이제 구현)
 #ifdef _WIN32_V9
 void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bool retry)
 {
@@ -534,15 +450,9 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 * 그점이 __drbd_free_peer_req() 과 다른 부분이다. ===========> 이 주석이 의미하는 바를 정확히 이해 못함... 추후 확인 요망???... V9_CHECK
 */
 #ifdef _WIN32_V9
-//void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net) //V9 형식으로 재정의
-// <완료>
 void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net) //V9 형식으로 재정의 (page_count 인자받게 재정의)
 #else
-#ifdef _WIN32
-STATIC void drbd_free_pages(struct drbd_conf *mdev, struct page *page, int is_net)
-#else
 void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is_net)
-#endif
 #endif
 {
 	struct drbd_connection *connection =
@@ -551,9 +461,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 	int i;
 
 #ifdef _WIN32_V9
-	
-	//if (page_count == NULL)
-	if (page_count <= 0) // int 형 변수를 NULL 비교하는 것은 적절치 않아 기존 V8코드 수정.
+	if (page_count <= 0)
 		return;
 
 	spin_lock(&drbd_pp_lock);
@@ -637,17 +545,9 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	peer_req->pages = NULL;
 
 	return peer_req;
-	// 예외처리 부분은 일단 V8의 구현을 따라간다.
-fail:
-#ifdef _WIN32
-	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
-#else
-	mempool_free(peer_req, drbd_ee_mempool);
-#endif
-	return NULL;
 }
 
-#ifdef _WIN32_V9 // drbd_alloc_peer_req 는 alloc page 관련을 분리시켰지만... __drbd_free_peer_req 는 free page 를 함게 수행하는 듯 하다. <완료>
+// drbd_alloc_peer_req 는 alloc page 관련을 분리시켰지만... __drbd_free_peer_req 는 free page 를 함게 수행하는 듯 하다. <완료>
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
@@ -679,8 +579,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 	mempool_free(peer_req, drbd_ee_mempool);
 #endif
 }
-#endif
-// <완료>
+
 int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, bool is_net_ee)
 {
 	LIST_HEAD(work_list);
@@ -691,9 +590,6 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
 	list_splice_init(list, &work_list);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
-	//list_for_each_entry_safe(struct drbd_peer_device, peer_req, t, &work_list, w.list) {
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
-	// struct drbd_peer_request 인자가 들어가야 하는데...이전 작업자의 실수인듯.
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
 #else
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
@@ -707,7 +603,6 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
 /*
  * See also comments in _req_mod(,BARRIER_ACKED) and receive_Barrier.
  */
-// <완료>
 static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 {
 	struct drbd_connection *connection = peer_device->connection;
@@ -735,7 +630,6 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 	 * all ignore the last argument.
 	 */
 #ifdef _WIN32
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &work_list, w.list) {
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
@@ -746,20 +640,18 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 		err2 = peer_req->w.cb(&peer_req->w, !!err);
 		if (!err)
 			err = err2;
-#ifdef _WIN32_V9 //기존 V8에서는 단순히 drbd_free_peer_req 를 호출했으나 V9에서는 recv_order 리스트가 비어있는지 확인한후 drbd_free_pages 를 호출하는 분기 코드가 추가 되었다. 버그수정인가?.. 구조상의 변화인가 확인 필요.
+		// 기존 V8에서는 단순히 drbd_free_peer_req 를 호출했으나 V9에서는 recv_order 리스트가 비어있는지 확인한후 drbd_free_pages 를 호출하는 분기 코드가 추가 되었다. 버그수정인가?.. 구조상의 변화인가 확인 필요.
 		if (!list_empty(&peer_req->recv_order)) {
 			drbd_free_pages(&connection->transport, peer_req->pages, 0);
 			peer_req->pages = NULL;
 		} else
 			drbd_free_peer_req(peer_req);
-#endif
 	}
 	wake_up(&device->ee_wait);
 
 	return err;
 }
 
-// <완료>
 static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 				     struct list_head *head)
 {
@@ -785,7 +677,7 @@ static void _drbd_wait_ee_list_empty(struct drbd_device *device,
 		spin_lock_irq(&device->resource->req_lock);
 	}
 }
-//v9 형식으로 인자만 바뀜 <완료>
+
 static void drbd_wait_ee_list_empty(struct drbd_device *device,
 				    struct list_head *head)
 {
@@ -795,8 +687,6 @@ static void drbd_wait_ee_list_empty(struct drbd_device *device,
 }
 
 //V8의 drbd_recv_short 는 transport ops 핸들러 recv 로 대체되었다.
-
-//<완료>
 static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size, int flags)
 {
 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
@@ -816,7 +706,6 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 			t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 			rcu_read_unlock();
 #ifdef _WIN32_V9
-			//drbd_connection 의 ping_wait 인자 점검필요 => ping_wait 인자가 맞다.
 			wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
 #else
 			t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
@@ -896,11 +785,6 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 
 	atomic_set(&peer_device->packet_seq, 0);
 	peer_device->peer_seq = 0;
-#ifdef _WIN32_V9 //V8 의 state_mutex 관련 mutex 들이 V9에서 제거되었다. // JHKIM: 첨고용 코드인 듯. 원본 재확인 및 유사부분 일괄 정리필요.
-	//mdev->state_mutex = mdev->tconn->agreed_pro_version < 100 ?
-	//	&mdev->tconn->cstate_mutex :
-	//	&mdev->own_state_mutex;
-#endif
 
 	err = drbd_send_sync_param(peer_device);
 	if (!err)
@@ -931,7 +815,7 @@ void connect_timer_fn(unsigned long data)
 	drbd_queue_work(&connection->sender_work, &connection->connect_timer_work);
 	spin_unlock_irqrestore(&resource->req_lock, irq_flags);
 }
-#ifdef _WIN32_V9 //V9에 새롭게 추가된 구현. conn_connect 와의 차이점과 어떤 시점에서 구동되는지에 대해 추후 분석이 필요하다. <완료>
+//V9에 새롭게 추가된 구현. conn_connect 와의 차이점과 어떤 시점에서 구동되는지에 대해 추후 분석이 필요하다. <완료>
 void conn_connect2(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -955,11 +839,10 @@ void conn_connect2(struct drbd_connection *connection)
 	}
 	rcu_read_unlock();
 }
-#endif
 
 void conn_disconnect(struct drbd_connection *connection);
 
-#ifdef _WIN32_V9 // connect 시 timer 핸들러. V9에서 connect 시 타이머를 구동시키는 것이 V8과 어떤 차이점이 있는지 확인 필요. 구현부에서 conn_connect2를 부르는 모습이 보인다.<완료>
+// connect 시 timer 핸들러. V9에서 connect 시 타이머를 구동시키는 것이 V8과 어떤 차이점이 있는지 확인 필요. 구현부에서 conn_connect2를 부르는 모습이 보인다.<완료>
 int connect_work(struct drbd_work *work, int cancel)
 {
 	struct drbd_connection *connection =
@@ -983,7 +866,6 @@ int connect_work(struct drbd_work *work, int cancel)
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
 }
-#endif
 /*
  * Returns true if we have a valid connection.
  */
@@ -1120,7 +1002,6 @@ abort:
 	return false;
 }
 
-//#ifdef _WIN32_V9 // V9 형식의 인자. <완료>
 int decode_header(struct drbd_connection *connection, void *header, struct packet_info *pi)
 {
 	unsigned int header_size = drbd_header_size(connection);
@@ -1160,8 +1041,7 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 #endif
 	return 0;
 }
-//#endif
-// <완료>
+
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
 	void *buffer;
@@ -1358,11 +1238,7 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 		if (fw) {
 			fw->w.cb = w_flush;
 			fw->epoch = epoch;
-#ifdef _WIN32_V9
 			fw->device = NULL; /* FIXME drop this member, it is unused. */
-#else
-			fw->w.tconn = tconn;
-#endif
 			drbd_queue_work(&resource->work, &fw->w);
 		} else {
 			drbd_warn(resource, "Could not kmalloc a flush_work obj\n");
@@ -1376,7 +1252,6 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 	return rv;
 }
 
-#ifdef _WIN32_V9
 static enum write_ordering_e
 max_allowed_wo(struct drbd_backing_dev *bdev, enum write_ordering_e wo)
 {
@@ -1393,7 +1268,6 @@ max_allowed_wo(struct drbd_backing_dev *bdev, enum write_ordering_e wo)
 
 	return wo;
 }
-#endif
 
 /**
  * drbd_bump_write_ordering() - Fall back to an other write ordering method
@@ -1425,32 +1299,16 @@ void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backin
 		if (i++ == 1 && wo == WO_BIO_BARRIER)
 			wo = WO_BDEV_FLUSH; /* WO = barrier does not handle multiple volumes */
 
-#ifdef _WIN32_V9
 		if (get_ldev(device)) {
 			wo = max_allowed_wo(device->ldev, wo);
 			if (device->ldev == bdev)
 				bdev = NULL;
 			put_ldev(device);
 		}
-#else
-		if (!get_ldev_if_state(mdev, D_ATTACHING))
-			continue;
-
-		dc = rcu_dereference(mdev->ldev->disk_conf);
-		if (wo == WO_bio_barrier && !dc->disk_barrier)
-			wo = WO_bdev_flush;
-		if (wo == WO_bdev_flush && !dc->disk_flushes)
-			wo = WO_drain_io;
-		if (wo == WO_drain_io && !dc->disk_drain)
-			wo = WO_none;
-		put_ldev(mdev);
-#endif
 	}
 
-#ifdef _WIN32_V9
 	if (bdev)
 		wo = max_allowed_wo(bdev, wo);
-#endif
 
 	rcu_read_unlock();
 
@@ -1614,7 +1472,7 @@ fail:
 	return err;
 }
 
-#ifdef _WIN32_V9 // drbd_remove_epoch_entry_interval 에서 drbd_remove_peer_req_interval 로 rename 됨.
+// drbd_remove_epoch_entry_interval 에서 drbd_remove_peer_req_interval 로 rename 됨.
 static void drbd_remove_peer_req_interval(struct drbd_device *device,
 					  struct drbd_peer_request *peer_req)
 {
@@ -1627,7 +1485,6 @@ static void drbd_remove_peer_req_interval(struct drbd_device *device,
 	if (i->waiting)
 		wake_up(&device->misc_wait);
 }
-#endif
 
 /**
  * w_e_reissue() - Worker callback; Resubmit a bio, without REQ_HARDBARRIER set
@@ -1846,7 +1703,6 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 
 /* used from receive_RSDataReply (recv_resync_read)
  * and from receive_Data */
-//#ifdef _WIN32_V9 // V8에도 있었던 함수 이므로 주석 제거.
 static struct drbd_peer_request *
 read_in_block(struct drbd_peer_device *peer_device, u64 id, sector_t sector,
 	      struct packet_info *pi) __must_hold(local)
@@ -1941,11 +1797,7 @@ fail:
 	drbd_free_peer_req(peer_req);
 	return NULL;
 }
-//#endif
 
-// V8의 drbd_drain_block => ignore_remaining_packet 으로 변경되었나?... 검토 필요. 
-// => rename 된 것이 맞고, 구현도 변경됨(기존 메모리 해제 연산이 포함되어 있었는데... 제거됨.)
-// => 착오 : rename 된 것이 아니고, 기존 V8 ignore_remaining_packet 으로 대체된 것... 분석 해 놓고도 다시 삽질을 하였다.
 static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 {
 	void *data_to_ignore;
@@ -1962,8 +1814,6 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 	return 0;
 }
 
-//#ifdef _WIN32_V9 // V9에 추가된 함수 아니므로 주석 제거.
-//
 static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_request *req,
 			   sector_t sector, int data_size)
 {
@@ -1977,10 +1827,8 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	digest_size = 0;
 	if (peer_device->connection->peer_integrity_tfm) {
 		digest_size = crypto_hash_digestsize(peer_device->connection->peer_integrity_tfm);
-#ifdef _WIN32_V9
 		// V8에서 drbd_recv_all_warn 을 사용했었다.
 		err = drbd_recv_into(peer_device->connection, dig_in, digest_size);
-#endif
 		if (err)
 			return err;
 		data_size -= digest_size;
@@ -1995,8 +1843,14 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	//D_ASSERT(sector == req->master_bio->bi_sector);
 
 	if (req->master_bio->win32_page_buf) {
-		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨. => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  V9_CHECK !!!!!!!!!!!!!!
-		err = drbd_recv_all_warn(peer_device->connection, req->master_bio->win32_page_buf, data_size);
+		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨.
+        // => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  V9_CHECK !!!!!!!!!!!!!!
+		// => CHOI : map 구현은 필요 없을 듯. drbd_recv_into로 변경.
+#ifdef _WIN32_V9
+        err = drbd_recv_into(peer_device->connection, req->master_bio->win32_page_buf, data_size);
+#else
+        err = drbd_recv_all_warn(peer_device->connection, req->master_bio->win32_page_buf, data_size);
+#endif
 		if (err)
 			return err;
 		data_size = 0;
@@ -2031,14 +1885,10 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 			return -EINVAL;
 		}
 	}
-#ifdef _WIN32
-    D_ASSERT(device, data_size == 0);
-#else
+
 	D_ASSERT(peer_device->device, data_size == 0);
-#endif
 	return 0;
 }
-//#endif
 
 /*
  * e_end_resync_block() is called in ack_sender context via
@@ -2178,7 +2028,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	sector_t sector;
 	int err;
 	struct p_data *p = pi->data;
-	//DbgPrint("DRBD_TEST:receive_RSDataReply! ");
+
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
 		return -EIO;
@@ -2293,12 +2143,11 @@ static int e_send_ack(struct drbd_work *w, enum drbd_packet ack)
 
 	return err;
 }
-#ifdef _WIN32_V9 // e_send_superseded 에서 e_send_discard_write 으로 이름 변경.
+// e_send_superseded 에서 e_send_discard_write 으로 이름 변경.
 static int e_send_discard_write(struct drbd_work *w, int unused)
 {
 	return e_send_ack(w, P_SUPERSEDED); //P_SUPERSEDED 는 그대로 사용되었다.
 }
-#endif
 
 static int e_send_retry_write(struct drbd_work *w, int unused)
 {
@@ -2330,9 +2179,8 @@ static void update_peer_seq(struct drbd_peer_device *peer_device, unsigned int p
 {
 	unsigned int newest_peer_seq;
 
-#ifdef _WIN32_V9 // V8의 need_peer_seq제거되고 test_bit 로 변경.
+// V8의 need_peer_seq제거되고 test_bit 로 변경.
 	if (test_bit(RESOLVE_CONFLICTS, &peer_device->connection->transport.flags)) {
-#endif
 		spin_lock(&peer_device->peer_seq_lock);
 		newest_peer_seq = seq_max(peer_device->peer_seq, peer_seq);
 		peer_device->peer_seq = newest_peer_seq;
@@ -2356,7 +2204,6 @@ static bool overlapping_resync_write(struct drbd_device *device, struct drbd_pee
 
 	spin_lock_irq(&device->resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry(struct drbd_peer_request, rs_req, &device->sync_ee, w.list) {
 #else
 	list_for_each_entry(rs_req, &device->sync_ee, w.list) {
@@ -2401,10 +2248,10 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 #endif
 	long timeout;
 	int ret = 0, tp;
-#ifdef _WIN32_V9 // V8의 need_peer_seq제거되고 test_bit 로 변경.
+// V8의 need_peer_seq제거되고 test_bit 로 변경.
 	if (!test_bit(RESOLVE_CONFLICTS, &connection->transport.flags))
 		return 0;
-#endif
+
 	// spinlock unlock 의 관계가 복잡하다. 검토 필요... IRQL 문제로 lock, unlock 을 반복해야 하지만... 개선이 필요...
 	spin_lock(&peer_device->peer_seq_lock);
 	for (;;) {
@@ -2665,7 +2512,6 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		return -EIO;
 	}
 
-#ifdef _WIN32_V9 // V8에 비해 뭔가 새롭게 많이 추가됨.
 	peer_req->dagtag_sector = connection->last_dagtag_sector + (peer_req->i.size >> 9);
 	connection->last_dagtag_sector = peer_req->dagtag_sector;
 
@@ -2687,7 +2533,6 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		D_ASSERT(device, peer_req->i.size == 0);
 		D_ASSERT(device, dp_flags & DP_FLUSH);
 	}
-#endif
 
 	if (dp_flags & DP_MAY_SET_IN_SYNC)
 		peer_req->flags |= EE_MAY_SET_IN_SYNC;
@@ -2832,12 +2677,11 @@ bool drbd_rs_should_slow_down(struct drbd_peer_device *peer_device, sector_t sec
 
 	if (!throttle || throttle_if_app_is_waiting)
 		return throttle;
-#ifdef _WIN32_V9 // V8에 비해 변경점이 많음. => 기존 로직을 drbd_sector_has_priority 로 묶어서 처리.
+// V8에 비해 변경점이 많음. => 기존 로직을 drbd_sector_has_priority 로 묶어서 처리.
 	return !drbd_sector_has_priority(peer_device, sector);
-#endif
 }
 
-#ifdef _WIN32_V9 // V9에 새롭게 추가된 함수.
+// V9에 새롭게 추가된 함수.
 bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
@@ -2889,7 +2733,6 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	}
 	return false;
 }
-#endif
 
 static int receive_DataRequest(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -2954,7 +2797,6 @@ WDRBD_TRACE_RS("cmd(%s) sector(0x%x), size(%d)\n", drbd_packet_name(pi->cmd), se
 	}
 
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY);
-
 	err = -ENOMEM;
 	if (!peer_req)
 		goto fail;
@@ -3113,9 +2955,7 @@ submit_for_resync:
 	atomic_add(size >> 9, &device->rs_sect_ev);
 
 submit:
-//#ifdef _WIN32_V9
 	update_receiver_timing_details(connection, drbd_submit_peer_request); // V9.update_receiver_timing_details 이 종종 불려진다. 무슨 의미?
-//#endif
 	inc_unacked(peer_device);
 	// 기존의 list_add_tail(&peer_req->w.list, &mdev->read_ee); 코드가 상단으로 올라감. 의미?
 	if (drbd_submit_peer_request(device, peer_req, READ, fault_type) == 0)
@@ -3546,7 +3386,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 	if (peer == UUID_JUST_CREATED)
 		return 3;
 
-//#ifdef _WIN32_V9 // UUID compare 하는 구현이 많이 변경됨.
+// UUID compare 하는 구현이 많이 변경됨.
 	if (self == peer) {
 		if (connection->agreed_pro_version < 110) {
 			int rv = uuid_fixup_resync_end(peer_device, rule_nr);
@@ -3660,7 +3500,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 				return -100;
 		}
 	}
-//#endif
+
 	return -1000;
 }
 
@@ -3831,7 +3671,6 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 /* drbd_sync_handshake() returns the new replication state on success, and -1
  * on failure.
  */
-//#ifdef _WIN32_V9 // 로직에 대한 분석과 이해 필요. 변경점 많음 => 착오인듯(drbd_handshake와 혼동한 듯). => disk_states_to_goodness 에 대한 랩퍼 호출 정도. 변경사항 크지 않음.
 static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_device,
 						enum drbd_role peer_role,
 						enum drbd_disk_state peer_disk_state) __must_hold(local)
@@ -3946,7 +3785,6 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 
 	return goodness_to_repl_state(peer_device, peer_role, hg);
 }
-//#endif
 
 static enum drbd_after_sb_p convert_after_sb(enum drbd_after_sb_p peer)
 {
@@ -4447,7 +4285,7 @@ static void warn_if_differ_considerably(struct drbd_device *device,
 		drbd_warn(device, "Considerable difference in %s: %llus vs. %llus\n", s,
 		     (unsigned long long)a, (unsigned long long)b);
 }
-//#ifdef _WIN32_V9 //V9 에 새롭게 추가됨.
+//V9 에 새롭게 추가됨.
 /* Maximum bio size that a protocol version supports. */
 static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 {
@@ -4458,9 +4296,7 @@ static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 	else
 		return DRBD_MAX_SIZE_H80_PACKET;
 }
-//#endif
 
-//#ifdef _WIN32_V9
 static int receive_sizes(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device;
@@ -4659,8 +4495,6 @@ out:
 		put_ldev(device);// 결국 여기서 put_ldev 한다. 
 	return err;
 }
-//#endif
-
 
 void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -5329,7 +5163,6 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	spin_lock_irq(&resource->queued_twopc_lock);
 
 #ifdef _WIN32
-	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
 #else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
@@ -5429,7 +5262,7 @@ void queue_queued_twopc(struct drbd_resource *resource)
 	if (q) {
 		resource->starting_queued_twopc = q;
 #ifdef _WIN32
-		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 
+		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 V9_CHECK
 #else
 		mb();
 #endif
@@ -5464,7 +5297,6 @@ static int abort_queued_twopc(struct drbd_resource *resource, struct twopc_reply
 
 	spin_lock_irqsave(&resource->queued_twopc_lock, irq_flags);
 #ifdef _WIN32
-	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
 #else
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
@@ -5540,7 +5372,11 @@ static int process_twopc(struct drbd_connection *connection,
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device = NULL;
 	struct p_twopc_request *p = pi->data;
+#ifdef _WIN32_V9
 	union drbd_state mask , val;
+#else
+    union drbd_state mask = {}, val = {};
+#endif
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
@@ -5827,7 +5663,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	spin_lock_irq(&resource->req_lock);
 	old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
 	spin_unlock_irq(&resource->req_lock);
-	//WIN32_V9 기존 retry 위치가 변경. V9에서 spin_unlock_irq 하단에서 retry 하도록 변경. 이하 하단부 코드는 V9 에서 변경이 많이 된듯.
+	//기존 retry 위치가 변경. V9에서 spin_unlock_irq 하단에서 retry 하도록 변경. 이하 하단부 코드는 V9 에서 변경이 많이 된듯.
  retry:
 	new_repl_state = max_t(enum drbd_repl_state, old_peer_state.conn, L_OFF);
 
@@ -6289,7 +6125,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 	struct drbd_peer_device *peer_device;
 	struct drbd_device *device;
 	struct bm_xfer_ctx c;
-	int err, ret;
+	int err;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -6301,6 +6137,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 #endif
 	/* Final repl_states become visible when the disk leaves NEGOTIATING state */
 #ifdef _WIN32_V9
+    int ret;
 	wait_event_interruptible(ret, device->resource->state_wait,
 		read_disk_state(device) != D_NEGOTIATING);
 #else
@@ -7088,22 +6925,20 @@ int drbd_do_auth(struct drbd_connection *connection)
 		rv = -1;
 		goto fail;
 	}
-#ifdef _WIN32_V9
+
 	resp_size = crypto_hash_digestsize(connection->cram_hmac_tfm);
 	response = conn_prepare_command(connection, resp_size, DATA_STREAM);
 	if (!response) {
 		rv = 0;
 		goto fail;
 	}
-#endif
+
 	sg_init_table(&sg, 1);
-#ifdef _WIN32_V9
 	dig_size = pi.size;
 	if (peer_is_drbd_9) {
 		peers_ch->i = cpu_to_be32(connection->resource->res_opts.node_id);
 		dig_size += sizeof(peers_ch->i);
 	}
-#endif
 	sg_set_buf(&sg, peers_ch, dig_size);
 
 	rv = crypto_hash_digest(&desc, &sg, sg.length, response);
@@ -7118,9 +6953,9 @@ int drbd_do_auth(struct drbd_connection *connection)
 	//	rv = 0;
 	//	goto fail;
 	//}
-#ifdef _WIN32_V9	 // 기존 conn_send_command 함수에서 변경.
+	
+	// 기존 conn_send_command 함수에서 변경.
 	rv = !send_command(connection, -1, P_AUTH_RESPONSE, DATA_STREAM);
-#endif
 	if (!rv)
 		goto fail;
 
@@ -7155,13 +6990,12 @@ int drbd_do_auth(struct drbd_connection *connection)
 		rv = -1;
 		goto fail;
 	}
-#ifdef _WIN32_V9 //V9 에 추가된 부분. 
+
 	dig_size = sizeof(my_challenge.d);
 	if (peer_is_drbd_9) {
 		my_challenge.i = cpu_to_be32(connection->peer_node_id);
 		dig_size += sizeof(my_challenge.i);
 	}
-#endif
 	sg_set_buf(&sg, &my_challenge, dig_size);
 
 	rv = crypto_hash_digest(&desc, &sg, sg.length, right_response);
@@ -7500,9 +7334,8 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		what = RECV_ACKED_BY_PEER;
 		break;
 	case P_SUPERSEDED:
-#ifdef _WIN32_V9 //기존 CONFLICT_RESOLVED 에서 변경.
+		//기존 CONFLICT_RESOLVED 에서 변경.
 		what = DISCARD_WRITE;
-#endif
 		break;
 	case P_RETRY_WRITE:
 		what = POSTPONE_WRITE;
@@ -7718,7 +7551,6 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	u64 bitmap_bits = 0;
 	int node_id;
 
-	// for_each_set_bit V9 포팅 필요. => 시간이 오래 걸리는 듯 하여 우선 pass => 포팅 완료.
 #ifdef _WIN32_V9
 	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, sizeof(ULONG_PTR) * BITS_PER_BYTE) {
 #else
@@ -7737,14 +7569,17 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	struct p_peer_ack *p = pi->data;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
-	struct list_head work_list = { 0, }; //일단 0 초기화 V9_CHECK
+#ifdef _WIN32_V9
+	struct list_head work_list = { 0, }; // 초기화
+#else
+	struct list_head work_list;
+#endif
 
 	dagtag = be64_to_cpu(p->dagtag);
 	in_sync = be64_to_cpu(p->mask);
 
 	spin_lock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry 의 4개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->peer_requests, recv_order) {
 #else
 	list_for_each_entry(peer_req, &connection->peer_requests, recv_order) {
@@ -7763,7 +7598,6 @@ found:
 	spin_unlock_irq(&resource->req_lock);
 
 #ifdef _WIN32	
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
@@ -7815,7 +7649,6 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 	list_splice_init(&connection->peer_requests, &work_list);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &work_list, recv_order) {
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
@@ -7839,7 +7672,6 @@ static void destroy_request(struct kref *kref)
 		container_of(kref, struct drbd_request, kref);
 
 	list_del(&req->tl_requests);
-	// mempool_free V9 포팅 필요.
 #ifdef _WIN32_V9
     if (req->win32_page_buf)
     {
@@ -7861,7 +7693,6 @@ static void cleanup_peer_ack_list(struct drbd_connection *connection)
 	spin_lock_irq(&resource->req_lock);
 	idx = 1 + connection->peer_node_id;
 #ifdef _WIN32
-	// list_for_each_entry_safe 의 5개 인자받는 wdrbd8.4의 기존 Win32 버전 매크로 사용
 	list_for_each_entry_safe(struct drbd_request, req, tmp, &resource->peer_ack_list, tl_requests) {
 #else
 	list_for_each_entry_safe(req, tmp, &resource->peer_ack_list, tl_requests) {
@@ -8001,7 +7832,6 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 				t = rcu_dereference(connection->transport.net_conf)->ping_timeo * HZ/10;
 				rcu_read_unlock();
 #ifdef _WIN32
-				// 첫번째 인자 t, 마지막 인자 t 맞는지 추후 확인 필요. => 확인완료.
 				wait_event_timeout(t, connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);
 #else
 				t = wait_event_timeout(connection->ping_wait, connection->cstate[NOW] < C_CONNECTED, t);

@@ -190,7 +190,7 @@ mvolDeviceUsage(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 }
 
 int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, struct splitInfo *splitInfo,
-	long split_id, long split_total_id, long split_total_length, struct drbd_conf *mdev, PVOID buffer, LARGE_INTEGER offset, ULONG length)
+    long split_id, long split_total_id, long split_total_length, struct drbd_device *device, PVOID buffer, LARGE_INTEGER offset, ULONG length)
 {
 	struct bio				*bio;
 	unsigned int			nr_pages;
@@ -221,7 +221,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	q->queuedata = mdev;
+    q->queuedata = device;
 
 	drbd_make_request(q, bio); // drbd local I/O entry point 
 
