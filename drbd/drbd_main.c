@@ -3158,8 +3158,14 @@ void drbd_destroy_device(struct kref *kref)
 		device->bitmap = NULL;
 	}
 	__free_page(device->md_io.page);
+#ifdef _WIN32_V9
+	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
+	// vdisk와 rq_queue 는 mvol 에서 전역으로 관리되는 볼륨용 자료구조임으로 free 되면 안됨.
+	// WDRBD에서 vdisk 는 별용도가 없고,백킹디바이스 연결부분만 복잡, mvol 의 PVOLUME_EXTENSION 와 통합하는 리팩토링 필요.
+#else
 	put_disk(device->vdisk);
 	blk_cleanup_queue(device->rq_queue);
+#endif
 	kref_debug_destroy(&device->kref_debug);
 
 	kfree(device);

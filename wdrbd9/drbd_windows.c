@@ -1934,8 +1934,13 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 */
 void blk_cleanup_queue(struct request_queue *q)
 {
+#ifdef _WIN32_V9
+	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
+	// caller에서 미리 정리하고 이 함수는 제거 필요. 
+#else
     if( q != NULL )
         ExFreePool( q );
+#endif
 }
 
 struct gendisk *alloc_disk(int minors)
