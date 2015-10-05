@@ -1522,7 +1522,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		int sent;
 #ifdef _WIN32
 		sent = Send(socket->sk, (void *)((unsigned char *)(page) + offset), len, 0, socket->sk_linux_attr->sk_sndtimeo);
-        WDRBD_TRACE_TR("sendpage(%d) offset(%d) socket(0x%p)\n", sent, offset, socket);
+        WDRBD_TRACE_TR("sendpage sent(%d/%d) offset(%d) socket(0x%p)\n", sent, len, offset, socket);
 #else
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
 #endif

@@ -2272,7 +2272,7 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 	p->block_id = block_id;
 	p->pad = 0;
 	p->blksize = cpu_to_be32(size);
-    WDRBD_TRACE_RS("size(%d) cmd(%d) sector(%lld) block_id(%d)\n", size, cmd, sector, block_id);
+    WDRBD_TRACE_RS("drbd_send_drequest:size(%d) cmd(%d) sector(%llx) block_id(%d)\n", size, cmd, sector, block_id);
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
 }
 
@@ -2361,7 +2361,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
+	WDRBD_TRACE_RS("_drbd_no_send_page: offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 
 	//dumpHex((void*) page, 100, 16);

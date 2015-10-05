@@ -1198,7 +1198,7 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 
 	err = decode_header(connection, buffer, pi);
 	connection->last_received = jiffies;
-    WDRBD_TRACE_RS("cmd(%s)\n", drbd_packet_name(pi->cmd));
+    WDRBD_TRACE_RS("recv cmd(%s)\n", drbd_packet_name(pi->cmd));
 	return err;
 }
 
@@ -8068,7 +8068,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 		pre_recv_jif = jiffies;
 		rv = tr_ops->recv(transport, CONTROL_STREAM, &buffer, expect - received, rflags);
-        WDRBD_TRACE_RS("rv(%d) size(%llu) flags(0x%x)\n", rv, expect - received, rflags);
+        WDRBD_TRACE_RS("ack_receiver: rv(%d/%d) rflags(0x%x)\n", rv, expect - received, rflags);
 		/* Note:
 		 * -EINTR	 (on meta) we got a signal
 		 * -EAGAIN	 (on meta) rcvtimeo expired
