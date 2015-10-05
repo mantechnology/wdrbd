@@ -95,6 +95,7 @@ static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, str
 	return prev;
 }
 
+#ifndef _WIN32 //V8의 구현 적용
 /*
  * some helper functions to deal with single linked page lists,
  * page->private being our "next" pointer.
@@ -104,7 +105,6 @@ static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, str
  * Otherwise, don't modify head, and return NULL.
  * Locking is the responsibility of the caller.
  */
-#ifndef _WIN32 //V8의 구현 적용
 static struct page *page_chain_del(struct page **head, int n)
 {
 	struct page *page;

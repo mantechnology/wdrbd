@@ -499,11 +499,10 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.
 void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, void *digest)
 {
-#ifdef _WIN32
 	struct hash_desc desc;
 	struct page *page = peer_req->pages;
 	unsigned len;
-#else
+#ifndef _WIN32
 	struct scatterlist sg;
 	struct page *tmp;
 #endif
@@ -855,7 +854,6 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	rcu_read_lock();
 	nc = rcu_dereference(peer_device->connection->transport.net_conf);
 	mxb = nc ? nc->max_buffers : 0;
-	
 	if (rcu_dereference(peer_device->rs_plan_s)->size) {
 		number = drbd_rs_controller(peer_device, sect_in) >> (BM_BLOCK_SHIFT - 9);
 		peer_device->c_sync_rate = number * HZ * (BM_BLOCK_SIZE / 1024) / SLEEP_TIME;
@@ -977,7 +975,6 @@ next_sector:
 		rollback_i = i;
 		// 기존 무한루프 구조에서 조건을 비교하는 구조로 바뀌었음.
 		while (i < number) {
-
 			if (size + BM_BLOCK_SIZE > max_bio_size)
 				break;
 
@@ -1151,7 +1148,6 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 
 	return 0;
 }
-
 
 void drbd_ping_peer(struct drbd_connection *connection)
 {
@@ -1343,7 +1339,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			khelper_cmd = "after-resync-target";
 
 		if (peer_device->use_csums && peer_device->rs_total) {
-#ifdef _WIN32 // V8의 mdev 를 peer_device 형식으로 변경함. V9_CHECK 맞는 지 확인 필요.
+#ifdef _WIN32
 			const ULONG_PTR s = peer_device->rs_same_csum;
 			const ULONG_PTR t = peer_device->rs_total;
 #else
@@ -1452,7 +1448,6 @@ out:
 
 	return 1;
 }
-
 
 /* helper */
 static void move_to_net_ee_or_free(struct drbd_connection *connection, struct drbd_peer_request *peer_req)
@@ -1665,9 +1660,8 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 	peer_req = NULL;
 
 	inc_rs_pending(peer_device);
-#ifdef _WIN32_V9 // 기존 drbd_send_drequest_csum 호출에서 drbd_send_command 호출로 변경.
+	// 기존 drbd_send_drequest_csum 호출에서 drbd_send_command 호출로 변경.
 	err = drbd_send_command(peer_device, P_OV_REPLY, DATA_STREAM);
-#endif
 	if (err)
 		dec_rs_pending(peer_device);
 	kfree(digest);
@@ -2009,7 +2003,6 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int resyn
 	rcu_read_unlock();
 
 	return rv;
-
 }
 
 /* caller must hold resources_mutex */
@@ -2623,7 +2616,11 @@ restart:
 	req = list_prepare_entry(tmp, &connection->resource->transfer_log, tl_requests);
 #endif
 
+#ifdef _WIN32_V9
 	list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
+#else
+    list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+#endif
 		/* potentially needed in complete_master_bio below */
 		device = req->device;
 		peer_device = conn_peer_device(connection, device->vnr);
@@ -3042,10 +3039,11 @@ int drbd_worker(struct drbd_thread *thi)
 
 		if (list_empty(&work_list)) {
 			// V8에서 wait_for_work 로 구현되었다가 V9에서 wait_event_interruptible 로 구현변경.
-			bool w, r, d, p; int sig;
+			bool w, r, d, p; 
 
 			update_worker_timing_details(resource, dequeue_work_batch);
 #ifdef _WIN32
+            int sig;
 			wait_event_interruptible(sig, resource->work.q_wait,
 				(w = dequeue_work_batch(&resource->work, &work_list),
 				r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
