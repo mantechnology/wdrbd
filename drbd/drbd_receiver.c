@@ -7673,6 +7673,7 @@ static void destroy_request(struct kref *kref)
 
 	list_del(&req->tl_requests);
 #ifdef _WIN32_V9
+	// _WIN32_CHECK:JHKIM: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
     if (req->win32_page_buf)
     {
         kfree(req->win32_page_buf);
