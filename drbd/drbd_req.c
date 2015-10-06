@@ -198,6 +198,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
     {
         if (req->win32_page_buf)
         {
+            // _WIN32_CHECK: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
             kfree(req->win32_page_buf);
         }
 
