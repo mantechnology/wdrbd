@@ -136,7 +136,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device,
     if (drbd_req_make_private_bio(req, bio_src) == NULL)
     {
         return NULL;
-}
+    }
 #else
 	drbd_req_make_private_bio(req, bio_src);
 #endif
@@ -193,14 +193,16 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	}
 	rcu_read_unlock();
 
-	if (!queued)
+    if (!queued)
 #ifdef _WIN32_V9
+    {
         if (req->win32_page_buf)
         {
             kfree(req->win32_page_buf);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+    }
 #else
 		mempool_free(req, drbd_request_mempool);
 #endif

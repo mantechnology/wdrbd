@@ -3215,7 +3215,7 @@ void drbd_free_resource(struct drbd_resource *resource)
 			 drbd_destroy_connection);
 	}
 #ifdef _WIN32_V9
-	mempool_free(resource->peer_ack_req, &drbd_request_mempool);
+    ExFreeToNPagedLookasideList(&drbd_request_mempool, resource->peer_ack_req);
 #else
 	mempool_free(resource->peer_ack_req, drbd_request_mempool);
 #endif
