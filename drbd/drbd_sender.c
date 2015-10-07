@@ -1664,7 +1664,9 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 	err = drbd_send_command(peer_device, P_OV_REPLY, DATA_STREAM);
 	if (err)
 		dec_rs_pending(peer_device);
+#ifndef _WIN32_V9 // fixed BAD_POOL_CALLER
 	kfree(digest);
+#endif
 
 out:
 	if (peer_req)
