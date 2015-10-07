@@ -1443,7 +1443,7 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
-#ifdef _WIN32_CHECK // JHKIM: 혼잡모드 재확인!
+#ifdef _WIN32 //_WIN32_CHECK // JHKIM: 혼잡모드 재확인! --> CHOI : tcp_transport->stream[DATA_STREAM]가 null이라 BSOD남.
     // DRBD_DOC: DRBD_CONGESTED_PORTING
     // 송출시 혼잡 정도를 체크한다.
     //  - sk_wmem_queued is the amount of memory used by the socket send buffer queued in the transmit queue 
