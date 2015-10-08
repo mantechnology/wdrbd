@@ -617,11 +617,7 @@ out:
 		if (socket)
 			sock_release(socket);
 		if (err != -EAGAIN)
-#ifdef _WIN32_V9
-			WDRBD_ERROR("%s failed, err = %d\n", what, err);
-#else
 			tr_err(transport, "%s failed, err = %d\n", what, err);
-#endif
 	} else {
 		*ret_socket = socket;
 	}
@@ -665,7 +661,6 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 		return false;
 
 #ifdef _WIN32 // 기존 구현 유지 ??? 소켓의 상태를 확인하고 상태가 유효하지 않으면 free 시키는 로직 => 소켓 상태 확인이...BACKLOG 정보 확인으로 가능한가?... history 를 알려주세요~...
-	
 	Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
 	if (NT_SUCCESS(Status))	{
 		if (out > 0) {
@@ -781,7 +776,11 @@ retry:
 #else
 	timeo = wait_event_interruptible_timeout(waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
 #endif
+#ifdef _WIN32_V9
+    if (-ETIMEDOUT == timeo)
+#else
 	if (timeo <= 0)
+#endif
 		return -EAGAIN;
 
 	spin_lock_bh(&listener->listener.waiters_lock);
@@ -885,12 +884,8 @@ retry:
 				container_of(waiter2_gen, struct dtt_waiter, waiter);
 
 			if (waiter2->socket) {
-#ifdef _WIN32_V9
-				WDRBD_ERROR("Receiver busy; rejecting incoming connection\n");
-#else
 				tr_err(waiter2->waiter.transport,
 					 "Receiver busy; rejecting incoming connection\n");
-#endif		
 				goto retry_locked;
 			}
 			waiter2->socket = s_estab;
@@ -940,12 +935,8 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 		return err;
 	}
 	if (h->magic != cpu_to_be32(DRBD_MAGIC)) {
-#ifdef _WIN32_V9
-		WDRBD_ERROR("Wrong magic value 0x%08x in receive_first_packet\n", be32_to_cpu(h->magic));
-#else
 		tr_err(transport, "Wrong magic value 0x%08x in receive_first_packet\n",
 			 be32_to_cpu(h->magic));
-#endif
 		return -EINVAL;
 	}
 	return be16_to_cpu(h->command);
@@ -966,19 +957,41 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
-#ifdef _WIN32 
-	// 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
-	struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
-	
-	struct drbd_waiter *waiter;
-	spin_lock(&listener->listener.waiters_lock);
-	listener->listener.pending_accepts++;
-	listener->paccept_socket = AcceptSocket;
-	waiter = list_entry(listener->listener.waiters.next, struct drbd_waiter, list);
-	wake_up(&waiter->wait);
-	spin_unlock(&listener->listener.waiters_lock);
+#ifdef _WIN32_V9
+    // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
+    struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
+    struct drbd_waiter *waiter;
+    struct socket * s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
+    if (s_estab)
+    {
+        s_estab->sk = AcceptSocket;
+        sprintf(s_estab->name, "estab_sock");
+        s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
 
-	//complete(&listener->listener.waiters);
+        if (s_estab->sk_linux_attr)
+        {
+            s_estab->sk_linux_attr->sk_sndbuf = 16384;  // kmpak temp.
+        }
+        else
+        {
+            kfree(s_estab);
+        }
+    }
+
+    spin_lock(&listener->listener.waiters_lock);
+    waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
+    struct dtt_waiter * w = waiter;
+    if (!w->socket && s_estab)
+    {
+        w->socket = s_estab;
+    }
+    else
+    {
+        listener->listener.pending_accepts++;
+        listener->paccept_socket = AcceptSocket;
+    }
+    wake_up(&waiter->wait);
+	spin_unlock(&listener->listener.waiters_lock);
 
 	return STATUS_SUCCESS;
 #else
@@ -1016,11 +1029,7 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 // [choi] V8 prepare_listen_socket() 적용. WSK_ACCEPT_EVENT_CALLBACK은 disable 시켜둠. 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
-#ifdef _WIN32_V9
 	dtt_incoming_connection,
-#else
-	AcceptEvent,
-#endif
     NULL, // WskInspectEvent is required only if conditional-accept is used.
     NULL  // WskAbortEvent is required only if conditional-accept is used.
 };
@@ -1064,9 +1073,7 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
     s_listen->sk_linux_attr = 0;
     err = 0;
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-    //ad->s_accept = kzalloc(sizeof(struct socket), 0, '82DW');
 	listener = kzalloc(sizeof(struct dtt_listener), 0, '82DW');
-    //if (!ad->s_accept)
 	if (!listener) {
         err = -ENOMEM;
         goto out;
@@ -1157,22 +1164,12 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 	return 0;
 out:
 	if (s_listen)
-#ifdef _WIN32
-    {
 		sock_release(s_listen);
-        //tconn->s_listen = 0; //V9_CHECK
-    }
-#else
-        sock_release(s_listen);
-#endif
 
 	if (err < 0 &&
 	    err != -EAGAIN && err != -EINTR && err != -ERESTARTSYS && err != -EADDRINUSE)
-#ifdef _WIN32_V9
-		WDRBD_ERROR("%s failed, err = %d\n", what, err);
-#else
 		tr_err(transport, "%s failed, err = %d\n", what, err);
-#endif
+
 	kfree(listener);
 
 	return err;
@@ -1262,11 +1259,7 @@ static int dtt_connect(struct drbd_transport *transport)
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
 #endif
 			} else {
-#ifdef _WIN32_V9
-				WDRBD_ERROR("Logic error in conn_connect()\n");
-#else
 				tr_err(transport, "Logic error in conn_connect()\n");
-#endif
 				goto out_eagain;
 			}
 		}
@@ -1288,11 +1281,7 @@ retry:
 			switch (fp) {
 			case P_INITIAL_DATA:
 				if (dsocket) {
-#ifdef _WIN32_V9
-					WDRBD_WARN("initial packet S crossed\n");
-#else
 					tr_warn(transport, "initial packet S crossed\n");
-#endif
 					sock_release(dsocket);
 					dsocket = s;
 					goto randomize;
@@ -1302,11 +1291,7 @@ retry:
 			case P_INITIAL_META:
 				set_bit(RESOLVE_CONFLICTS, &transport->flags);
 				if (csocket) {
-#ifdef _WIN32_V9
-					WDRBD_WARN("initial packet M crossed\n");
-#else
 					tr_warn(transport, "initial packet M crossed\n");
-#endif
 					sock_release(csocket);
 					csocket = s;
 					goto randomize;
@@ -1314,11 +1299,7 @@ retry:
 				csocket = s;
 				break;
 			default:
-#ifdef _WIN32_V9
-				WDRBD_WARN("Error receiving initial packet\n");
-#else
 				tr_warn(transport, "Error receiving initial packet\n");
-#endif
 				sock_release(s);
 randomize:
 				if (prandom_u32() & 1)
@@ -1512,12 +1493,8 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 					break;
 				continue;
 			}
-#ifdef _WIN32_V9
-			WDRBD_WARN("%s: size=%d len=%d sent=%d\n", __func__, (int)size, len, sent);
-#else
 			tr_warn(transport, "%s: size=%d len=%d sent=%d\n",
 			     __func__, (int)size, len, sent);
-#endif
 			if (sent < 0)
 				err = sent;
 			break;

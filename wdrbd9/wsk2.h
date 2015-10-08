@@ -162,7 +162,6 @@ __out PSOCKADDR	pRemoteAddress
 
 extern void sock_release(void  *sock);
 
-#ifdef WSK_EVENT_CALLBACK
 #define HTON_SHORT(n) (((((unsigned short)(n) & 0xFFu  )) << 8) | \
     (((unsigned short)(n)& 0xFF00u) >> 8))
 
@@ -184,7 +183,6 @@ NTSTATUS CloseWskEventSocket();
 
 extern
 void ReleaseProviderNPI();
-#endif
 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 

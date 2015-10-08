@@ -31,7 +31,6 @@
 #define drbd_conf drbd_device
 #endif
 
-#define WSK_EVENT_CALLBACK
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
@@ -1001,7 +1000,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
-        int real_timeout = to /100; /*divide*/\
+        int real_timeout = to / 200; /*divide*/\
         for (;;) { \
             if (condition) {   \
 		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);*/\
@@ -1009,11 +1008,11 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
             } \
 	        if (++t > real_timeout) {\
 		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);*/\
-		        ret = 0;\
+		        ret = -ETIMEDOUT;\
 		        break;\
             }\
 	        /*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
-	        ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
+	        ret = schedule(&wq, 200, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
 	        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
@@ -1187,7 +1186,6 @@ extern NTSTATUS FsctlFlushVolume(unsigned int minor);
 extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 #endif
 
-#ifdef WSK_EVENT_CALLBACK
 extern
 void InitWskNetlink(void * pctx);
 
@@ -1206,7 +1204,6 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
-#endif
 
 extern PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj);
 extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);

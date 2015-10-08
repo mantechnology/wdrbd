@@ -30,10 +30,21 @@
  * write-out because in a criss-cross setup, the write-out could lead to memory
  * pressure on the peer, eventually leading to deadlock.
  */
-// V8 에서 GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN) 와 같이 define 되어 있었음. V9에서 __GFP_WAIT 가 추가되었다.
-// kmpak GFP 무슨 flag든 윈도우즈에선 어차피 관련 없음.
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
-#ifdef _WIN32_CHECK // JHKIM:tr_printk 포팅?
+#ifdef _WIN32_V9
+#define tr_printk(level, transport, fmt, ...)  ({		\
+	printk(level "drbd %s: " fmt,			\
+	       rcu_dereference((transport)->net_conf)->name,	\
+	       __VA_ARGS__);					\
+    	})
+
+#define tr_err(transport, fmt, ...) \
+	WDRBD_ERROR(fmt, __VA_ARGS__)
+#define tr_warn(transport, fmt, ...) \
+	WDRBD_WARN(fmt, __VA_ARGS__)
+#define tr_info(transport, fmt, ...) \
+	WDRBD_INFO(fmt, __VA_ARGS__)
+#else
 #define tr_printk(level, transport, fmt, args...)  ({		\
 	rcu_read_lock();					\
 	printk(level "drbd %s %s:%s: " fmt,			\
@@ -50,14 +61,13 @@
 	tr_printk(KERN_WARNING, transport, fmt, ## args)
 #define tr_info(transport, fmt, args...) \
 	tr_printk(KERN_INFO, transport, fmt, ## args)
-
+#endif
 #define TR_ASSERT(x, exp)							\
 	do {									\
 		if (!(exp))							\
 			tr_err(x, "ASSERTION %s FAILED in %s\n", 		\
 				 #exp, __func__);				\
 	} while (0)
-#endif
 
 struct drbd_resource;
 struct drbd_connection;
