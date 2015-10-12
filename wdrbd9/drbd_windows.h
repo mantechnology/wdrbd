@@ -389,6 +389,7 @@ do { \
 #define WDRBD_TRACE_TR
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
+#define WDRBD_TRACE_SOK
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
