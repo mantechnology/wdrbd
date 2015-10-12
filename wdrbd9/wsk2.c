@@ -994,7 +994,6 @@ GetRemoteAddress(
 	return Status;
 }
 
-#ifdef WSK_EVENT_CALLBACK
 WSK_REGISTRATION    gWskEventRegistration;
 WSK_PROVIDER_NPI    gWskEventProviderNPI;
 PWSK_SOCKET         netlink_server_socket = NULL;
@@ -1142,7 +1141,6 @@ ReleaseProviderNPI()
 {
     WskReleaseProviderNPI(&gWskEventRegistration);
 }
-#endif
 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 NTSTATUS

@@ -127,11 +127,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
-#ifdef WSK_EVENT_CALLBACK
         Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
-#else
-        Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, NetlinkServerThread, NULL);
-#endif
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
