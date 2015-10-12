@@ -1312,13 +1312,15 @@ randomize:
 
 		ok = dtt_connection_established(transport, &dsocket, &csocket);
 	} while (!ok);
-
+WDRBD_TRACE_SOK("loop finished. waiter.socket(0x%p)\n", waiter.socket);
+#if 0   // kmpak No need to event disable because it will be released socket.
 #ifdef WSK_ACCEPT_EVENT_CALLBACK // dtt_put_listener 하기 전에 이벤트 콜백 해제
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("SetEventCallbacks: WSK_EVENT_DISABLE failed=0x%x\n", status); // EVENTLOG
 		//goto out; // listener 를 해제해야 하므로 일 단 진행 한다.
 	}
+#endif
 #endif
 	dtt_put_listener(&waiter);
 
@@ -1372,6 +1374,9 @@ randomize:
 	dsocket->sk->sk_sndtimeo = timeout;
 	csocket->sk->sk_sndtimeo = timeout;
 #endif
+WDRBD_TRACE_RS("dsocket(0x%p), sk_linux_attr(0x%p), sk_sndbuf(%d)\n", dsocket, dsocket->sk_linux_attr, dsocket->sk_linux_attr->sk_sndbuf);
+WDRBD_TRACE_RS("csocket(0x%p), sk_linux_attr(0x%p), sk_sndbuf(%d)\n", csocket, csocket->sk_linux_attr, csocket->sk_linux_attr->sk_sndbuf);
+WDRBD_TRACE_RS("finished\n");
 	return 0;
 
 out_eagain:
