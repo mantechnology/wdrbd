@@ -1014,7 +1014,10 @@ int mutex_trylock(struct mutex *m)
 
 void mutex_unlock(struct mutex *m)
 {
-    KeReleaseMutex(&m->mtx, FALSE);
+#ifdef _WIN32_V9
+    if (mutex_is_locked(m)) //_WIN32_V9_CHECK choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함.
+#endif
+        KeReleaseMutex(&m->mtx, FALSE);
 }
 
 #ifdef _WIN32_V9 // V9_CHECK
