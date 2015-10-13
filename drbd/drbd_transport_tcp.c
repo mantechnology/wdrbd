@@ -1314,7 +1314,6 @@ randomize:
 
 		ok = dtt_connection_established(transport, &dsocket, &csocket);
 	} while (!ok);
-WDRBD_TRACE_SOK("loop finished. waiter.socket(0x%p)\n", waiter.socket);
 #if 0   // kmpak No need to event disable because it will be released socket.
 #ifdef WSK_ACCEPT_EVENT_CALLBACK // dtt_put_listener 하기 전에 이벤트 콜백 해제
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
