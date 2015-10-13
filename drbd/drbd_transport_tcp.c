@@ -957,6 +957,17 @@ static void dtt_incoming_connection(struct sock *sock)
     // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
     struct drbd_waiter *waiter;
+
+    spin_lock(&listener->listener.waiters_lock);
+    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
+    if (!waiter)
+    {
+        // 해당 노드의 connection을 위한 스레드를 만들기도 전에 해당 노드로 부터 try connect이 되는 경우가 있다.
+        // 이런 경우는 이번 타이밍때는 넘기고 다음번 incoming시 세션을 맺어주도록 한다.
+        spin_unlock(&listener->listener.waiters_lock);
+        return STATUS_SUCCESS;
+    }
+
     struct socket * s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
     if (s_estab)
     {
@@ -974,8 +985,6 @@ static void dtt_incoming_connection(struct sock *sock)
         }
     }
 
-    spin_lock(&listener->listener.waiters_lock);
-    waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
     struct dtt_waiter * w = waiter;
     if (!w->socket && s_estab)
     {
