@@ -642,7 +642,11 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 			err = err2;
 		// 기존 V8에서는 단순히 drbd_free_peer_req 를 호출했으나 V9에서는 recv_order 리스트가 비어있는지 확인한후 drbd_free_pages 를 호출하는 분기 코드가 추가 되었다. 버그수정인가?.. 구조상의 변화인가 확인 필요.
 		if (!list_empty(&peer_req->recv_order)) {
+#ifdef _WIN32_V9
+			drbd_free_pages(&connection->transport, DIV_ROUND_UP(peer_req->i.size, PAGE_SIZE), 0);
+#else
 			drbd_free_pages(&connection->transport, peer_req->pages, 0);
+#endif
 			peer_req->pages = NULL;
 		} else
 			drbd_free_peer_req(peer_req);

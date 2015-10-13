@@ -402,7 +402,12 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct page **pages,
 	*pages = all_pages;
 	return 0;
 fail:
+#ifdef _WIN32_V9 //JHKIM: 이 함수에서 할당된 페이지 카운트는 free_page로 감산하고, 실제 할당된 메모리는 별도로 제거한다.
+	drbd_free_pages(transport, DIV_ROUND_UP(size, PAGE_SIZE), 0);
+	kfree(all_pages);
+#else
 	drbd_free_pages(transport, all_pages, 0);
+#endif
 	return err;
 }
 
