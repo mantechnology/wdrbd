@@ -333,7 +333,7 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
 #ifdef _WIN32_V9
-	void *buffer = NULL; 
+	UCHAR *buffer = NULL; 
 #else
 	void *buffer;
 #endif
@@ -343,14 +343,10 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 		buffer = *buf;
 		rv = dtt_recv_short(socket, buffer, size, flags & ~CALLER_BUFFER);
 	} else if (flags & GROW_BUFFER) {
-#ifdef _WIN32_V9
-		ASSERT(*buf == tcp_transport->rbuf[stream].base);
-#else
 		TR_ASSERT(transport, *buf == tcp_transport->rbuf[stream].base);
-#endif	
 		buffer = tcp_transport->rbuf[stream].pos;
 #ifdef _WIN32_V9
-		ASSERT(((UCHAR*)buffer - (UCHAR*)*buf) + size <= PAGE_SIZE);//gcc void* 연산은 기본 1바이트 연산.
+        TR_ASSERT(transport, (buffer - (UCHAR*)*buf) + size <= PAGE_SIZE);//gcc void* 연산은 기본 1바이트 연산.
 #else
 		TR_ASSERT(transport, (buffer - *buf) + size <= PAGE_SIZE);
 #endif
@@ -363,13 +359,8 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 			*buf = buffer;
 	}
 
-	if (rv > 0) {
-#ifdef _WIN32_V9
-		tcp_transport->rbuf[stream].pos = (UCHAR*)buffer + rv; //buffer 포인터 연산 UCHAR* 타입 1바이트 연산 하면 되나???.... 찝찝하니...다시 확인.=> gcc 에서 void* 증감연산은 기본 1바이트 연산.
-#else
+	if (rv > 0)
 		tcp_transport->rbuf[stream].pos = buffer + rv;
-#endif
-	}
 
 	return rv;
 }
@@ -1189,14 +1180,15 @@ static int dtt_connect(struct drbd_transport *transport)
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 
-#ifdef _WIN32_V9
-	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	LONG InputBuffer = 1;
-	struct dtt_listener* dttlistener = NULL;
-#endif
 	struct socket *dsocket, *csocket;
 	struct net_conf *nc;
+#ifdef _WIN32_V9
+    struct dtt_waiter * waiter = kzalloc(sizeof(struct dtt_waiter), 0, '62DW');
+    if (!waiter)
+        return -ENOMEM;
+#else
 	struct dtt_waiter waiter;
+#endif
 	int timeout, err;
 	bool ok;
 
@@ -1206,19 +1198,25 @@ static int dtt_connect(struct drbd_transport *transport)
 	if (!dtt_path(transport))
 		return -EDESTADDRREQ;
 	tcp_transport->in_use = true;
-
+#ifdef _WIN32_V9
+    waiter->waiter.transport = transport;
+    waiter->socket = NULL;
+    err = drbd_get_listener(&waiter->waiter, dtt_create_listener);
+#else
 	waiter.waiter.transport = transport;
 	waiter.socket = NULL;
 	err = drbd_get_listener(&waiter.waiter, dtt_create_listener);
+#endif
 	if (err)
 		return err;
-#ifdef _WIN32_V9	
-	dttlistener = container_of(waiter.waiter.listener, struct dtt_listener, listener);
+#ifdef _WIN32_V9
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+	struct dtt_listener* dttlistener = container_of(waiter->waiter.listener, struct dtt_listener, listener);
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT);
 	if (!NT_SUCCESS(status)) {
 		err = -EAGAIN;
-		return err;
+		goto out;
 	}
 #endif
 #endif
@@ -1269,7 +1267,11 @@ static int dtt_connect(struct drbd_transport *transport)
 
 retry:
 		s = NULL;
+#ifdef _WIN32_V9
+        err = dtt_wait_for_connect(waiter, &s);
+#else
 		err = dtt_wait_for_connect(&waiter, &s);
+#endif
 		if (err < 0 && err != -EAGAIN)
 			goto out;
 
@@ -1322,9 +1324,14 @@ WDRBD_TRACE_SOK("loop finished. waiter.socket(0x%p)\n", waiter.socket);
 	}
 #endif
 #endif
+#ifdef _WIN32_V9
+    dtt_put_listener(waiter);
+#else
 	dtt_put_listener(&waiter);
+#endif
 
 #ifdef _WIN32
+    LONG InputBuffer = 1;
 	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
@@ -1382,7 +1389,12 @@ WDRBD_TRACE_RS("finished\n");
 out_eagain:
 	err = -EAGAIN;
 out:
+#ifdef _WIN32_V9
+    dtt_put_listener(waiter);
+    kfree(waiter);
+#else
 	dtt_put_listener(&waiter);
+#endif
 	if (dsocket)
 		sock_release(dsocket);
 	if (csocket)
