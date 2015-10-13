@@ -956,7 +956,6 @@ static void dtt_incoming_connection(struct sock *sock)
 #ifdef _WIN32_V9
     // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
-    struct drbd_waiter *waiter;
 
     spin_lock(&listener->listener.waiters_lock);
     struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
