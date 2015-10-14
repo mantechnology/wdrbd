@@ -486,8 +486,31 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
+#ifdef _WIN32_V9
+	{
+		// _WIN32_CHECK: JHKIM: DW-594, DW-596 임시해결, 일단 primary 시 볼륨 접근이 가능하도록 일단 임시조치! 규명되야 함!!
+		// 원인: 
+		//    primary 시 상대노드는 pp_in_use 값이 음수가 도는 시점에 drbd_alloc_pages 를 사용하는 스레드가 무한대기를 하게됨
+		//    이 상황이 되면 로컬노드는,
+		//     1) primary 명령(drbd!drbd_adm_set_role)이 drbd!FsctlCreateVolume에거 대기하여 끝나지 못하거나
+		//     2) 로컬 I/O에서 블록 전송 시 complete_conflicting_writes 에서 대기하게 됨
+		// 추정:
+		//   - 네트웍 송신에서 사용하는 페이지 버퍼가 반납될 때 중복으로 반납이 처리되는 듯.
+		//   - 유독, 상대노드의 got_peer_ack 처리에서 반납이 될 때 음수 발생하는 듯.
+		// 임시조치에 따른 사이드이펙:
+		//  - win32_big_page 버퍼는 정상 반납됨으로 메모리 오버플로에는 문제 없을 듯.
+		//  - 오리지널도 어차피 pp_in_use 오동작 시에는 경고로 조치하는 듯.
+
+		// 32/64비트에서 포멧/페일오버 시험완료. 출력 빈도가 높아 disable 함.
+		//drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0: _WIN32_CHECK: reset pp_in_use!\n",
+		//	is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+
+		*a = 0;
+	}
+#else
 		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
 			is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+#endif
 	wake_up(&drbd_pp_wait);
 }
 
