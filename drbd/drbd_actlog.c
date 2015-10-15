@@ -286,11 +286,17 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 			drbd_err(device, "bdev->md_bdev==NULL\n");
 		return -EIO;
 	}
-
+#ifdef _WIN32_V9
+	drbd_dbg(device, "meta_data io: %s [0x%p]:%s(,%llus,%s) %pS\n",
+	     current->comm, current->pid, __func__,
+	     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ",
+	     (void*)_RET_IP_ );
+#else
 	drbd_dbg(device, "meta_data io: %s [%d]:%s(,%llus,%s) %pS\n",
 	     current->comm, current->pid, __func__,
 	     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ",
 	     (void*)_RET_IP_ );
+#endif
 
 	if (sector < drbd_md_first_sector(bdev) ||
 	    sector + 7 > drbd_md_last_sector(bdev))
@@ -1089,8 +1095,13 @@ void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, ULONG_PTR still
 void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, unsigned long still_to_go)
 #endif
 {
+#ifdef _WIN32_V9
+    ULONG_PTR now = jiffies;
+    ULONG_PTR last = peer_device->rs_mark_time[peer_device->rs_last_mark];
+#else
 	unsigned long now = jiffies;
 	unsigned long last = peer_device->rs_mark_time[peer_device->rs_last_mark];
+#endif
 	int next = (peer_device->rs_last_mark + 1) % DRBD_SYNC_MARKS;
 	if (time_after_eq(now, last + DRBD_SYNC_MARK_STEP)) {
 		if (peer_device->rs_mark_left[peer_device->rs_last_mark] != still_to_go &&
@@ -1254,7 +1265,11 @@ bool drbd_set_all_out_of_sync(struct drbd_device *device, sector_t sector, int s
  * @mask:	bitmap indexes to modify (mask set)
  */
 bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
+#ifdef _WIN32_V9
+		   ULONG_PTR bits, ULONG_PTR mask)
+#else
 		   unsigned long bits, unsigned long mask)
+#endif
 {
 	long set_start, set_end, clear_start, clear_end;
 	sector_t esector, nr_sectors;

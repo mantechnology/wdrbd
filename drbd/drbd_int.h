@@ -327,7 +327,7 @@ static inline int drbd_ratelimit(void)
 #endif
 
 #ifdef _WIN32
-#define D_ASSERT(exp)   ASSERT(exp)
+#define D_ASSERT(x, exp)   ASSERT(exp)
 #else
 #define D_ASSERT(x, exp)							\
 	do {									\
@@ -604,15 +604,27 @@ struct drbd_request {
 	 */
 
 	/* before actual request processing */
+#ifdef _WIN32_V9
+	ULONG_PTR in_actlog_jif;
+#else
 	unsigned long in_actlog_jif;
-
+#endif
 	/* local disk */
+#ifdef _WIN32_V9
+	ULONG_PTR pre_submit_jif;
+#else
 	unsigned long pre_submit_jif;
-
+#endif
 	/* per connection */
+#ifdef _WIN32_V9
+	ULONG_PTR pre_send_jif[DRBD_PEERS_MAX];
+	ULONG_PTR acked_jif[DRBD_PEERS_MAX];
+	ULONG_PTR net_done_jif[DRBD_PEERS_MAX];
+#else
 	unsigned long pre_send_jif[DRBD_PEERS_MAX];
 	unsigned long acked_jif[DRBD_PEERS_MAX];
 	unsigned long net_done_jif[DRBD_PEERS_MAX];
+#endif
 
 	/* Possibly even more detail to track each phase:
 	 *  master_completion_jif
@@ -699,8 +711,13 @@ struct drbd_peer_request {
 	atomic_t pending_bios;
 	struct drbd_interval i;
 	/* see comments on ee flag bits below */
+#ifdef _WIN32_V9
+    ULONG_PTR flags;
+    ULONG_PTR submit_jif;
+#else
 	unsigned long flags;
 	unsigned long submit_jif;
+#endif
 	union {
 		u64 block_id;
 		struct digest_info *digest;
@@ -1018,7 +1035,11 @@ struct twopc_reply {
 
 struct drbd_thread_timing_details
 {
+#ifdef _WIN32_V9
+	ULONG_PTR start_jif;
+#else
 	unsigned long start_jif;
+#endif
 	void *cb_addr;
 	const char *caller_fn;
 	unsigned int line;
@@ -1259,8 +1280,11 @@ struct drbd_connection {
 	struct drbd_thread_timing_details r_timing_details[DRBD_THREAD_DETAILS_HIST];
 
 	struct {
+#ifdef _WIN32_V9
+        ULONG_PTR last_sent_barrier_jif;
+#else
 		unsigned long last_sent_barrier_jif;
-
+#endif
 		/* whether this sender thread
 		 * has processed a single write yet. */
 		bool seen_any_write_yet;
@@ -1552,7 +1576,11 @@ struct drbd_device {
 struct drbd_bm_aio_ctx {
 	struct drbd_device *device;
 	struct list_head list; /* on device->pending_bitmap_io */
+#ifdef _WIN32_V9
+	ULONG_PTR start_jif;
+#else
 	unsigned long start_jif;
+#endif
 	atomic_t in_flight;
 	unsigned int done;
 	unsigned flags;
@@ -1715,14 +1743,11 @@ extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 // => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
 #define drbd_thread_current_set_cpu(A) 
 #define drbd_calc_cpu_mask(A)
-
 #else
-
 #ifdef CONFIG_SMP
 extern void drbd_thread_current_set_cpu(struct drbd_thread *thi);
 #else
 #endif
-
 #endif
 
 extern void tl_release(struct drbd_connection *, unsigned int barrier_nr,
@@ -2445,7 +2470,11 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, ULONG_PTR);
 extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 #endif
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
+#ifdef _WIN32_V9
+extern bool drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+#else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
+#endif
 enum update_sync_bits_mode { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC };
 extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
 		enum update_sync_bits_mode mode);

@@ -2156,9 +2156,13 @@ int drbd_merge_bvec(struct request_queue *q,
 	return limit;
 #endif
 }
-
+#ifdef _WIN32_V9
+static ULONG_PTR time_min_in_future(ULONG_PTR now,
+		ULONG_PTR t1, ULONG_PTR t2)
+#else
 static unsigned long time_min_in_future(unsigned long now,
 		unsigned long t1, unsigned long t2)
+#endif
 {
 	t1 = time_after(now, t1) ? now : t1;
 	t2 = time_after(now, t2) ? now : t2;
@@ -2167,7 +2171,11 @@ static unsigned long time_min_in_future(unsigned long now,
 
 static bool net_timeout_reached(struct drbd_request *net_req,
 		struct drbd_connection *connection,
+#ifdef _WIN32_V9
+		ULONG_PTR now, ULONG_PTR ent,
+#else
 		unsigned long now, unsigned long ent,
+#endif
 		unsigned int ko_count, unsigned int timeout)
 {
 	struct drbd_device *device = net_req->device;
