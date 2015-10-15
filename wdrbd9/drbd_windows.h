@@ -390,6 +390,7 @@ do { \
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SOK
+#define WDRBD_TRACE_SEM
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -419,6 +420,12 @@ struct mutex {
 	char name[32]; 
 #endif
 };
+
+#ifdef _WIN32_V9
+struct semaphore{
+    KSEMAPHORE sem;
+};
+#endif
 
 struct kref {
 	int refcount;
@@ -705,6 +712,9 @@ extern void write_unlock_irq(spinlock_t *lock);
 extern void mutex_init(struct mutex *m, char *name);
 #else
 extern void mutex_init(struct mutex *m);
+#endif
+#ifdef _WIN32_V9
+extern void sema_init(struct semaphore *s, int limit);
 #endif
 
 extern NTSTATUS mutex_lock(struct mutex *m);
@@ -1405,8 +1415,9 @@ struct sched_param {
  82         struct rw_semaphore name = __RWSEM_INITIALIZER(name)
 #endif
 
-extern void down(struct mutex *m);
-extern void up(struct mutex *);
+extern void down(struct semaphore *s);
+extern int down_trylock(struct semaphore *s);
+extern void up(struct semaphore *s);
 
 // down_up RW lock 을 spinlock 으로 포팅
 extern KSPIN_LOCK transport_classes_lock;

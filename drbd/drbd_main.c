@@ -3731,15 +3731,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
 #endif
-#ifdef _WIN32_V9 // [choi] count를 1로 초기화 하기 때문에 mutex를 사용해도 문제 없을 것으로 예상.
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-    mutex_init(&resource->state_sem, "res_state_mutex"); 
-#else
-    mutex_init(&resource->state_sem); 
-#endif
-#else
 	sema_init(&resource->state_sem, 1);
-#endif
 	resource->role[NOW] = R_SECONDARY;
 	if (set_resource_options(resource, res_opts))
 		goto fail_free_name;

@@ -1022,18 +1022,53 @@ void mutex_unlock(struct mutex *m)
 
 #ifdef _WIN32_V9 // V9_CHECK
 
-void down(struct mutex *m)
+void sema_init(struct semaphore *s, int limit)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
-    mutex_lock(m);
-    //WDRBD_TRACE("mutex_lock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
+    KeInitializeSemaphore(&s->sem, limit, limit);    
+    WDRBD_TRACE_SEM("KeInitializeSemaphore!  KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
 }
 
-void up(struct mutex *m)
+void down(struct semaphore *s)
 {
-    // mutex/spin lock 으로 대체 가능할 듯.
-    //WDRBD_TRACE("mutex_unlock name(%s) ownerthread(%x)!\n", m->name, m->mtx.OwnerThread);
-    mutex_unlock(m);
+	// mutex/spin lock 으로 대체 가능할 듯. -> CHOI : KSEMAPHORE 사용
+    WDRBD_TRACE_SEM("KeWaitForSingleObject before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+    KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, NULL);
+    WDRBD_TRACE_SEM("KeWaitForSingleObject after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+}
+
+/**
+  * down_trylock - try to acquire the semaphore, without waiting
+  * @sem: the semaphore to be acquired
+  *
+  * Try to acquire the semaphore atomically.  Returns 0 if the semaphore has
+  * been acquired successfully or 1 if it it cannot be acquired.
+  */
+int down_trylock(struct semaphore *s)
+{
+    LARGE_INTEGER Timeout;
+    Timeout.QuadPart = 0;
+    
+    if (KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, &Timeout) == STATUS_SUCCESS)
+    {
+        WDRBD_TRACE_SEM("success! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+        return 0;
+    }
+    else
+    {
+        WDRBD_TRACE_SEM("fail! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+        return 1;
+    }
+}
+
+void up(struct semaphore *s)
+{
+    // mutex/spin lock 으로 대체 가능할 듯. -> CHOI : KSEMAPHORE 사용
+    if (KeReadStateSemaphore(&s->sem) < s->sem.Limit)
+    {
+        WDRBD_TRACE_SEM("KeReleaseSemaphore before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+        KeReleaseSemaphore(&s->sem, IO_NO_INCREMENT, 1, FALSE);
+        WDRBD_TRACE_SEM("KeReleaseSemaphore after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+    }
 }
 
 /*

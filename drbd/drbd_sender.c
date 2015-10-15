@@ -2184,11 +2184,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		}
 	}
 
-#ifdef _WIN32_V9 // mutex_trylock 기존 mutex_trylock 사용. _WIN32_CHECK
-	if (!mutex_trylock(&device->resource->state_sem)) {
-#else
 	if (down_trylock(&device->resource->state_sem)) {
-#endif
 		/* Retry later and let the worker make progress in the
 		 * meantime; two-phase commits depend on that.  */
 		set_bit(B_RS_H_DONE, &peer_device->flags);
