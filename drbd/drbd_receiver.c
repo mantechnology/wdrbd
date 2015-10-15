@@ -468,7 +468,6 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 	drbd_pp_vacant += page_count;  // drbd_pp_vacant 변수가 있는 이유?..이해가 안됨. 추후 확인 요망???. 
 	spin_unlock(&drbd_pp_lock);
 	i = page_count;
-
 #else
 	if (page == NULL)
 		return;
@@ -1062,7 +1061,7 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 		return -EINVAL;
 	}
 #ifdef _WIN32
-	pi->data = (LONG_PTR)header + header_size;
+	pi->data = (UCHAR *)header + header_size;
 #else
 	pi->data = header + header_size;
 #endif
@@ -2794,7 +2793,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 				(unsigned long long)sector, size);
 		return -EINVAL;
 	}
-WDRBD_TRACE_RS("cmd(%s) sector(0x%x), size(%d)\n", drbd_packet_name(pi->cmd), sector, size);
+    WDRBD_TRACE_RS("cmd(%s) sector(0x%x), size(%d)\n", drbd_packet_name(pi->cmd), sector, size);
 	min_d_state = pi->cmd == P_DATA_REQUEST ? D_UP_TO_DATE : D_OUTDATED;
 	if (!get_ldev_if_state(device, min_d_state)) {
 		verb = 1;
@@ -7579,7 +7578,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	int node_id;
 
 #ifdef _WIN32_V9
-	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, sizeof(ULONG_PTR) * BITS_PER_BYTE) {
+	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 #else
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, sizeof(node_ids) * BITS_PER_BYTE) {
 #endif

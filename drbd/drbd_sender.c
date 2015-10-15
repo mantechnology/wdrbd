@@ -92,10 +92,12 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         bio = (struct bio *)p2;
     }
 #endif
-
 	BIO_ENDIO_FN_START;
 
 	device = bio->bi_private;
+#ifdef _WIN32_V9
+    void * ldev = device->ldev;
+#endif
 	device->md_io.error = error;
 
 	/* We grabbed an extra reference in _drbd_md_sync_page_io() to be able
@@ -115,7 +117,24 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 	device->md_io.done = 1;
 	wake_up(&device->misc_wait);
- #ifdef _WIN32
+#ifdef _WIN32
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	{
+		bio_put(bio);
+	}
+#else
+	bio_put(bio);
+#endif
+
+#ifdef _WIN32_V9
+	if (ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
+#else
+	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
+#endif
+    {
+		put_ldev(device);
+    }
+#ifdef _WIN32
     if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
     {
         if (Irp->MdlAddress != NULL) {
@@ -127,33 +146,16 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
             }
             Irp->MdlAddress = NULL;
         }
-
         IoFreeIrp(Irp);
     }
 #endif
-#ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
-	{
-		bio_put(bio);
-	}
-#else
-	bio_put(bio);
-#endif
-	
-	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
-		put_ldev(device);
-
-#ifdef _WIN32
 #ifdef DRBD_TRACE	
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_md_endio done.(%d)................!!!\n", cnt++);
 	}
 #endif
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 /* reads on behalf of the partner,
@@ -482,7 +484,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		complete_master_bio(device, &m);
 #endif
 
-
 #ifdef _WIN32
 #ifdef DRBD_TRACE	
 	{
@@ -528,7 +529,7 @@ void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, v
 	}
 	/* and now the last, possibly only partially used page */
 	len = peer_req->i.size & (PAGE_SIZE - 1);
-	sg_set_page(&sg, page, len ? : PAGE_SIZE, 0);
+	sg_set_page(&sg, page, len ?: PAGE_SIZE, 0);
 	crypto_hash_update(&desc, &sg, sg.length);
 	crypto_hash_final(&desc, digest);
 #endif
@@ -545,9 +546,10 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 #else
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
+	struct hash_desc desc;
 	struct scatterlist sg;
 #endif
-	
+
 #ifdef _WIN32 //V8 구현 유지.
 	if (req->win32_page_buf)
 		crypto_hash_update(&desc, req->win32_page_buf, req->i.size); // ignore compile warning
@@ -619,39 +621,33 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	/* Do not wait if no memory is immediately available.  */
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
-
 	if (!peer_req)
 		goto defer;
-
 #ifdef _WIN32_V9 
-
     // JHKIM: win32_big_page가 이미 할당 됨!!!
-
     // JHKIM: 일단 참고용으로 코멘트 처리.
-
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
-    if (size) {
-        peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-            DIV_ROUND_UP(size, PAGE_SIZE),
-            GFP_TRY & ~__GFP_WAIT);
-        if (!peer_req->pages)
-            goto defer2;
+	if (size) {
+		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
+						   DIV_ROUND_UP(size, PAGE_SIZE),
+						   GFP_TRY & ~__GFP_WAIT);
+		if (!peer_req->pages)
+			goto defer2;
 
         peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
-    }
+	}
     else {
         peer_req->win32_big_page = NULL;
     }
 #else// JHKIM: 원본 다시 복구함... -> CHOI: 원본이 포팅버전 코드랑 달라서 다시 가져옴.
-    if (size) {
-        peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-            DIV_ROUND_UP(size, PAGE_SIZE),
-            GFP_TRY & ~__GFP_WAIT);
-        if (!peer_req->pages)
-            goto defer2;
-    }
+	if (size) {
+		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
+						   DIV_ROUND_UP(size, PAGE_SIZE),
+						   GFP_TRY & ~__GFP_WAIT);
+		if (!peer_req->pages)
+			goto defer2;
+	}
 #endif
-
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = ID_SYNCER; /* unused */
@@ -702,7 +698,6 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 	return 0;
 }
 
-
 int w_send_uuids(struct drbd_work *w, int cancel)
 {
 	struct drbd_peer_device *peer_device =
@@ -717,7 +712,6 @@ int w_send_uuids(struct drbd_work *w, int cancel)
 	return 0;
 }
 
-
 #ifdef _WIN32
 void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2)
 #else
@@ -729,7 +723,6 @@ void resync_timer_fn(unsigned long data)
 	drbd_queue_work_if_unqueued(
 		&peer_device->connection->sender_work,
 		&peer_device->resync_work);
-
 }
 
 static void fifo_set(struct fifo_buffer *fb, int value)
@@ -894,7 +887,6 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int number, rollback_i, size;
 	int align, requeue = 0;
 	int i = 0;
-
 	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 
 	if (unlikely(cancel))
@@ -917,7 +909,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 
 	max_bio_size = queue_max_hw_sectors(device->rq_queue) << 9;
 	number = drbd_rs_number_requests(peer_device);
-    //WDRBD_TRACE_TR("number(%d)\n", number);
+    WDRBD_TRACE_TR("number(%d)\n", number);
 	if (number <= 0)
 		goto requeue;
 
@@ -927,6 +919,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		if (transport->ops->stream_ok(transport, DATA_STREAM)) {
 			struct drbd_transport_stats transport_stats;
 			int queued, sndbuf;
+
 			transport->ops->stats(transport, &transport_stats);
 			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. V9_CHECK
 			sndbuf = transport_stats.send_buffer_size;
@@ -1090,7 +1083,7 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 		//size =  1024*256;  // for flowcontrol
 		//size =  BM_BLOCK_SIZE;  // for flowcontrol
 #else
-		size = BM_BLOCK_SIZE; 
+		size = BM_BLOCK_SIZE;
 #endif
 
 		// 기존 drbd_rs_should_slow_down 선 수행 하는 구조가 변경됨. 어디선가 이와 비슷한 변경점이 있었음. V9에서 로직이 변경된 듯하다.
@@ -1276,7 +1269,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 
 		drbd_kick_lo(device);
 		schedule_timeout_interruptible(HZ / 10);
-    queue_on_sender_workq:
+	queue_on_sender_workq:
 #ifdef _WIN32
         rfw = kmalloc(sizeof(*rfw), GFP_ATOMIC, '13DW');
 #else
@@ -2021,7 +2014,6 @@ void drbd_rs_controller_reset(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->rs_sect_in, 0);
 	atomic_set(&peer_device->device->rs_sect_ev, 0);  /* FIXME: ??? */
 	peer_device->rs_in_flight = 0;
-
 #ifdef _WIN32_V9	// linux 의 block_device 구조체 선언 형식이 바뀐듯... bd_contains 가 추가되어 추후 확인 요망.// JHKIM: V8 mdev(device) 스타일로 처리
 	peer_device->rs_last_events =
 		drbd_backing_bdev_events(peer_device->device);
@@ -2193,7 +2185,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
-	
 	lock_all_resources();
 	clear_bit(B_RS_H_DONE, &peer_device->flags);
 	if (connection->cstate[NOW] < C_CONNECTED ||
@@ -2237,6 +2228,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     drbd_repl_str(repl_state),
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
+        DbgPrint("\n");
 		if (side == L_SYNC_TARGET) {
 			device->bm_resync_fo = 0;
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
@@ -2299,7 +2291,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		drbd_resync_finished(peer_device, finished_resync_pdsk);
 }
 
-
 static void update_on_disk_bitmap(struct drbd_peer_device *peer_device, bool resync_done)
 {
 	struct drbd_device *device = peer_device->device;
@@ -2320,22 +2311,22 @@ static void update_on_disk_bitmap(struct drbd_peer_device *peer_device, bool res
 
 static void drbd_ldev_destroy(struct drbd_device *device)
 {
-    struct drbd_peer_device *peer_device;
+        struct drbd_peer_device *peer_device;
 
-    rcu_read_lock();
-    for_each_peer_device_rcu(peer_device, device) {
-            lc_destroy(peer_device->resync_lru);
-            peer_device->resync_lru = NULL;
-    }
-    rcu_read_unlock();
-    lc_destroy(device->act_log);
-    device->act_log = NULL;
+        rcu_read_lock();
+        for_each_peer_device_rcu(peer_device, device) {
+                lc_destroy(peer_device->resync_lru);
+                peer_device->resync_lru = NULL;
+        }
+        rcu_read_unlock();
+        lc_destroy(device->act_log);
+        device->act_log = NULL;
 	__acquire(local);
 	drbd_free_ldev(device->ldev);
 	device->ldev = NULL;
 	__release(local);
 
-    clear_bit(GOING_DISKLESS, &device->flags);
+        clear_bit(GOING_DISKLESS, &device->flags);
 	wake_up(&device->misc_wait);
 }
 
@@ -2590,7 +2581,7 @@ static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connect
 #ifdef _WIN32_V9
 	struct drbd_request *req = NULL;
 #else
-	struct drbd_request *req; 
+	struct drbd_request *req;
 #endif
 	struct drbd_request *req_oldest = NULL;
 	struct drbd_request *tmp = NULL;
@@ -2607,7 +2598,6 @@ static struct drbd_request *tl_mark_for_resend_by_connection(struct drbd_connect
 	 * without it disappearing.
 	 */
 restart:
-
 #ifdef _WIN32_V9
     req = list_prepare_entry(struct drbd_request, tmp, &connection->resource->transfer_log, tl_requests);
 #else
@@ -2617,7 +2607,7 @@ restart:
 #ifdef _WIN32_V9
 	list_for_each_entry_continue(struct drbd_request, req, &connection->resource->transfer_log, tl_requests) {
 #else
-    list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
+	list_for_each_entry_continue(req, &connection->resource->transfer_log, tl_requests) {
 #endif
 		/* potentially needed in complete_master_bio below */
 		device = req->device;
@@ -2745,7 +2735,8 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 	for (;;) {
 		int send_barrier;
 #ifndef _WIN32
-		prepare_to_wait(&connection->sender_work.q_wait, &wait, TASK_INTERRUPTIBLE);
+		prepare_to_wait(&connection->sender_work.q_wait, &wait,
+				TASK_INTERRUPTIBLE);
 #endif
 		spin_lock_irq(&connection->resource->req_lock);
 		if (check_sender_todo(connection) || signal_pending(current)) {
@@ -2801,7 +2792,6 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 	else if (!uncork)
 		drbd_uncork(connection, DATA_STREAM);
 }
-
 
 static void re_init_if_first_write(struct drbd_connection *connection, unsigned int epoch)
 {
@@ -2881,13 +2871,12 @@ static int process_one_request(struct drbd_connection *connection)
 
 	spin_unlock_irq(&connection->resource->req_lock);
 
-	if (m.bio) {
+	if (m.bio)
 #ifdef _WIN32
 		complete_master_bio(device, &m, __func__, __LINE__ );
 #else
 		complete_master_bio(device, &m);
 #endif
-	}
 
 	maybe_send_write_hint(connection);
 
@@ -3004,13 +2993,12 @@ int drbd_sender(struct drbd_thread *thi)
 		tl_next_request_for_connection(connection);
 		__req_mod(req, SEND_CANCELED, peer_device, &m);
 		spin_unlock_irq(&connection->resource->req_lock);
-		if (m.bio) {
+		if (m.bio)
 #ifdef _WIN32
 			complete_master_bio(device, &m, __func__, __LINE__ );
 #else
 			complete_master_bio(device, &m);
 #endif
-		}
 	}
 
 	/* cancel all still pending works */
@@ -3037,7 +3025,7 @@ int drbd_worker(struct drbd_thread *thi)
 
 		if (list_empty(&work_list)) {
 			// V8에서 wait_for_work 로 구현되었다가 V9에서 wait_event_interruptible 로 구현변경.
-			bool w, r, d, p; 
+			bool w, r, d, p;
 
 			update_worker_timing_details(resource, dequeue_work_batch);
 #ifdef _WIN32
@@ -3048,14 +3036,13 @@ int drbd_worker(struct drbd_thread *thi)
 				d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
 				p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
 				w || r || d || p));
-
 #else
 			wait_event_interruptible(resource->work.q_wait,
 				(w = dequeue_work_batch(&resource->work, &work_list),
-				r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
-				d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
-				p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
-				w || r || d || p));
+				 r = test_and_clear_bit(RESOURCE_WORK_PENDING, &resource->flags),
+				 d = test_and_clear_bit(DEVICE_WORK_PENDING, &resource->flags),
+				 p = test_and_clear_bit(PEER_DEVICE_WORK_PENDING, &resource->flags),
+				 w || r || d || p));
 
 #endif
 			if (p) {
