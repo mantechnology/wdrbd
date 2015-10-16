@@ -334,7 +334,6 @@ static void ___begin_state_change(struct drbd_resource *resource)
 	resource->susp_fen[NEW] = resource->susp_fen[NOW];
 
 	for_each_connection(connection, resource) {
-		DbgPrint("DRBD_TEST:___begin_state_change: connection=%p", connection);
 		connection->cstate[NEW] = connection->cstate[NOW];
 		connection->peer_role[NEW] = connection->peer_role[NOW];
 	}
@@ -4055,14 +4054,8 @@ enum drbd_state_rv change_cstate(struct drbd_connection *connection,
 	};
 
 	if (cstate == C_CONNECTED) {
-		DbgPrint("DRBD_TEST: test1\n");
 		cstate_context.context.mask.role = role_MASK;
-		DbgPrint("DRBD_TEST: test2\n");
-		DbgPrint("DRBD_TEST: connection=%p\n", connection);
-		DbgPrint("DRBD_TEST: connection->resource=%p\n", connection->resource);
-		DbgPrint("DRBD_TEST: connection->resource->role=%p\n", connection->resource->role);
 		cstate_context.context.val.role = connection->resource->role[NOW];
-		DbgPrint("DRBD_TEST: test3\n");
 	}
 
 	/*
