@@ -391,6 +391,7 @@ do { \
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SOK
 #define WDRBD_TRACE_SEM
+#define WDRBD_TRACE_IP4 
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop

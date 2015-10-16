@@ -2700,5 +2700,15 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 #endif
 }
 
-
+char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
+{
+	sprintf(buf, "%u.%u.%u.%u:%u\0",
+		sockaddr->sin_addr.S_un.S_un_b.s_b1,
+		sockaddr->sin_addr.S_un.S_un_b.s_b2,
+		sockaddr->sin_addr.S_un.S_un_b.s_b3,
+		sockaddr->sin_addr.S_un.S_un_b.s_b4,
+		HTONS(sockaddr->sin_port)
+		);
+	return buf;
+}
 #endif

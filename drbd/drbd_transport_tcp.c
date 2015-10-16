@@ -1242,6 +1242,13 @@ static int dtt_connect(struct drbd_transport *transport)
 			goto out;
 
 		if (s) {
+#ifdef _WIN32_V9
+			{
+				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+				char sbuf[64], dbuf[64];
+				WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
+			}
+#endif
 			if (!dsocket) {
 				dsocket = s;
 #ifdef _WIN32 // V8 적용. DW-154 관련 수정사항.
@@ -1289,6 +1296,13 @@ retry:
 			goto out;
 
 		if (s) {
+#ifdef _WIN32_V9 
+			{
+				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+				char sbuf[64], dbuf[64];
+				WDRBD_TRACE_IP4("WDRBD_TEST: Accepted:  %s <- %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
+			}
+#endif
 			int fp = dtt_receive_first_packet(tcp_transport, s);
 
 			dtt_socket_ok_or_free(&dsocket);
