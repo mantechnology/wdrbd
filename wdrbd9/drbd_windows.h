@@ -391,7 +391,8 @@ do { \
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SOK
 #define WDRBD_TRACE_SEM
-#define WDRBD_TRACE_IP4 
+#define WDRBD_TRACE_IP4 DbgPrint
+#define WDRBD_TRACE_SB DbgPrint
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -475,15 +476,17 @@ struct sock {
 };
 
 #include <wsk.h>
+#ifdef _WIN32_SEND_BUFFING
+#include <send_buf.h>
+#endif
 struct socket {
 	struct sock *sk_linux_attr;
 	PWSK_SOCKET sk;
 	char name[32];
 #ifdef _WIN32_SEND_BUFFING
-	struct ring_buffer *bab;
+	struct _buffering_attr buffering_attr;
 #endif
 };
-
 
 #define WQNAME_LEN	16	
 struct workqueue_struct {

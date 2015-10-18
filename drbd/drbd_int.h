@@ -487,13 +487,6 @@ struct drbd_thread {
 	struct drbd_connection *connection;
 	int reset_cpu_mask;
 	const char *name;
-#ifdef _WIN32_SEND_BUFFING
-	HANDLE send_buf_thread_handle;
-	KEVENT send_buf_kill_event;
-	KEVENT send_buf_killack_event;
-	KEVENT send_buf_thr_start_event;
-	int send_buf_flag;
-#endif
 };
 
 static inline enum drbd_thread_state get_t_state(struct drbd_thread *thi)

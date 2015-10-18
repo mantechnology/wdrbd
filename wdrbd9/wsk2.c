@@ -1,7 +1,6 @@
 ﻿
 #include "drbd_windows.h"
 #include "wsk2.h"
-   
 enum
 {
 	DEINITIALIZED,
@@ -400,9 +399,200 @@ char *GetSockErrorString(NTSTATUS status)
 	return ErrorString;
 }
 
+#ifdef _WIN32_SEND_BUFFING
 LONG
 NTAPI
 Send(
+	__in PWSK_SOCKET	WskSocket,
+	__in PVOID			Buffer,
+	__in ULONG			BufferSize,
+	__in ULONG			Flags,
+	__in ULONG			Timeout,
+	__in KEVENT			*send_buf_kill_event
+)
+#else
+LONG
+NTAPI
+Send(
+	__in PWSK_SOCKET	WskSocket,
+	__in PVOID			Buffer,
+	__in ULONG			BufferSize,
+	__in ULONG			Flags,
+	__in ULONG			Timeout,
+	__in KEVENT			*send_buf_kill_event,
+	__in struct			drbd_transport *transport,
+	__in enum			drbd_stream stream
+)
+#endif
+{
+	KEVENT		CompletionEvent = { 0 };
+	PIRP		Irp = NULL;
+	WSK_BUF		WskBuffer = { 0 };
+	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
+
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
+		return SOCKET_ERROR;
+
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	if (!NT_SUCCESS(Status)) {
+		return SOCKET_ERROR;
+	}
+
+	Status = InitWskData(&Irp, &CompletionEvent);
+	if (!NT_SUCCESS(Status)) {
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
+	Flags |= WSK_FLAG_NODELAY;
+
+	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
+		WskSocket,
+		&WskBuffer,
+		Flags,
+		Irp);
+
+	if (Status == STATUS_PENDING)
+	{
+		LARGE_INTEGER	nWaitTime;
+		LARGE_INTEGER	*pTime;
+
+		int retry_count = 0;
+	retry:
+		if (Timeout <= 0 || Timeout == MAX_SCHEDULE_TIMEOUT)
+		{
+			pTime = NULL;
+		}
+		else
+		{
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+			pTime = &nWaitTime;
+		}
+		{
+			struct      task_struct *thread = current;
+			PVOID       waitObjects[2];
+			int         wObjCount = 1;
+
+			waitObjects[0] = (PVOID) &CompletionEvent;
+			if (thread->has_sig_event)
+			{
+				waitObjects[1] = (PVOID) &thread->sig_event;
+				wObjCount++;
+			}
+
+			if (send_buf_kill_event)
+			{
+				// 송신버퍼링용. 송신버퍼링 스레드는 current 구조를 따르지 않음. 
+				// 위 has_sig_event 로직과 겹치지 않음으로 동일 배열을 사용.
+				waitObjects[1] = (PVOID) send_buf_kill_event;
+				wObjCount++;
+			}
+
+			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
+			switch (Status)
+			{
+			case STATUS_TIMEOUT:
+#ifdef _WIN32_SEND_BUFFING
+				if (wObjCount == 2)
+				{
+					retry_count++;
+					WDRBD_WARN("(%s) sent timeout=%d sz=%d retry_count=%d WskSocket=%p IRP=%p\n",
+						current->comm, Timeout, BufferSize, retry_count,WskSocket, Irp);
+
+					// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
+					// 무한대기. 중단 여부는 상위레벨 BAB overflow 에서 처리. 
+					// _WIN32_V9 포팅 후 안정화뒤 제거
+
+					goto retry;
+				}
+				else
+				{
+					WDRBD_WARN("(%s) send buffering! Not reached!?\n");
+					BUG(); // _WIN32_V9 포팅 후 안정화뒤 제거
+				}
+#else
+				// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
+				// WIN32_V9 포팅 시 송신버퍼링이 기본이되고 이 부분은 단지 시험용.(internal used only)
+				if (transport != NULL)
+				{
+					extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+					if (!drbd_stream_send_timed_out(transport, stream))
+					{
+						goto retry;
+					}
+				}
+#endif
+				BytesSent = -EAGAIN;
+				break;
+
+			case STATUS_WAIT_0:
+				if (NT_SUCCESS(Irp->IoStatus.Status))
+				{
+					BytesSent = (LONG)Irp->IoStatus.Information;
+				}
+				else
+				{
+					WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+					switch (Irp->IoStatus.Status)
+					{
+						case STATUS_IO_TIMEOUT:
+							BytesSent = -EAGAIN;
+							break;
+						case STATUS_INVALID_DEVICE_STATE:
+							BytesSent = -EAGAIN;
+							break;
+						default:
+							BytesSent = -ECONNRESET;
+							break;
+					}
+				}
+				break;
+
+			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
+				BytesSent = -EINTR;
+				WDRBD_WARN("(%s) kill signal occured!\n", current->comm);
+				break;
+
+			default:
+				WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
+				BytesSent = SOCKET_ERROR;
+			}
+		}
+	}
+	else
+	{
+		if (Status == STATUS_SUCCESS)
+		{
+			BytesSent = (LONG) Irp->IoStatus.Information;
+			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+		}
+		else
+		{
+			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+			BytesSent = SOCKET_ERROR;
+		}
+	}
+
+	if (BytesSent == -EINTR || BytesSent == -EAGAIN)
+	{
+		IoCancelIrp(Irp);
+		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+	}
+
+	IoFreeIrp(Irp);
+	FreeWskBuffer(&WskBuffer);
+
+	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
+	return BytesSent;
+}
+
+// _WIN32_V9: _WIN32_SEND_BUFFING NEW!
+LONG
+NTAPI
+SendLocal(
 	__in PWSK_SOCKET	WskSocket,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
@@ -413,10 +603,10 @@ Send(
 	KEVENT		CompletionEvent = { 0 };
 	PIRP		Irp = NULL;
 	WSK_BUF		WskBuffer = { 0 };
-	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
+	//DbgPrint("DRBD_TEST: SendLocal!! (%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -454,64 +644,42 @@ Send(
 			nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
 			pTime = &nWaitTime;
 		}
-
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
+
 		switch (Status)
 		{
-			case STATUS_TIMEOUT:
-				IoCancelIrp(Irp);
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				// DRBC_CHECK_WSK: wait timeout 발생과 동시에 wsk subsystem 에서 정상 송출이 처리되는 경우 대비!?
-				BytesSent = -EAGAIN;
-				break;
+		case STATUS_TIMEOUT:
+			//IoCancelIrp(Irp);
+			//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			BytesSent = -EAGAIN;
+			break;
 
-			case STATUS_WAIT_0:
-				if (NT_SUCCESS(Irp->IoStatus.Status))
+		case STATUS_WAIT_0:
+			if (NT_SUCCESS(Irp->IoStatus.Status))
+			{
+				BytesSent = (LONG) Irp->IoStatus.Information;
+			}
+			else
+			{
+				WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+				switch (Irp->IoStatus.Status)
 				{
-					BytesSent = (LONG)Irp->IoStatus.Information;
+				case STATUS_IO_TIMEOUT:
+					BytesSent = -EAGAIN;
+					break;
+				case STATUS_INVALID_DEVICE_STATE:
+					BytesSent = -EAGAIN;
+					break;
+				default:
+					BytesSent = -ECONNRESET;
+					break;
 				}
-				else
-				{
-					WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
-					switch (Irp->IoStatus.Status)
-					{
-						case STATUS_IO_TIMEOUT:
-							BytesSent = -EAGAIN;
-							break;
-						case STATUS_INVALID_DEVICE_STATE:
-#ifdef _WIN32_SEND_BUFFING_XXX
-							//  _WIN32_SEND_BUFFING_TODO:
-							// DW-352: 이 오류 시 EAGAIN 로 리턴하면 상위 콜러에서 재시도를 하는데 이 시도들이 대기시간 없이 처리됨으로 바로 끝남.
-							// 따라서 여기서 강제 타임아웃을 부여 잠시 대기함으로 리턴 후 상위 재시도가 느리게 처리되도록 유도. 
-							// 의도는 이곳에서 대기하는 동안 버퍼가 비워질 것을 기대한 것이나 
-							// 시험결과 재 송신하는 시점에서 버퍼 비워짐 없이 동일 오류가 발생함
-							// 따라서 이 대기로직은 원복하여 해당 오류 시 빨리 disconnect 로 처리되는 것이 적절
-							// 결론은, 송신 버퍼링으로 현상이 사라졌으나 추후 INVALID_DEVICE_STATE 상태 규명이 필요함.
+			}
+			break;
 
-							if (pTime)
-							{
-								KTIMER ktimer;
-								KeInitializeTimer(&ktimer);
-								KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
-								KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
-							}
-							else
-							{
-								BUG(); // test
-							}
-#endif
-							BytesSent = -EAGAIN;
-							break;
-						default:
-							BytesSent = -ECONNRESET;
-							break;
-					}
-				}
-				break;
-
-			default:
-				WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
-				BytesSent = SOCKET_ERROR;
+		default:
+			WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
+			BytesSent = SOCKET_ERROR;
 		}
 	}
 	else
@@ -533,7 +701,6 @@ Send(
 	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
 	return BytesSent;
 }
-
 
 LONG
 NTAPI

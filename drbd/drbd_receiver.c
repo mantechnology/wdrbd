@@ -930,7 +930,7 @@ start:
 	ping_int = nc->ping_int;
 	rcu_read_unlock();
 
-	transport->ops->set_rcvtimeo(transport, DATA_STREAM, ping_timeo * 4 * HZ/10);
+	transport->ops->set_rcvtimeo(transport, DATA_STREAM, ping_timeo * 4 * HZ / 10);
 	transport->ops->set_rcvtimeo(transport, CONTROL_STREAM, ping_int * HZ);
 
 	h = drbd_do_features(connection);
@@ -963,7 +963,7 @@ start:
 	rcu_read_lock();
 #endif
 #ifdef _WIN32_V9
-    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
@@ -971,7 +971,7 @@ start:
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	}
 #ifdef _WIN32_V9
-    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
@@ -983,6 +983,24 @@ start:
 			clear_bit(DISCARD_MY_DATA, &device->flags);
 	}
 	rcu_read_unlock();
+
+#ifdef _WIN32_SEND_BUFFING
+	// JHKIM: 리팩토링: 추후 1:N 연결 transport->ops->connect() 부분이 안정화 되면, 
+	// sendbuffering 시작 시점을 이렇게 세션이 연결된 후가 아니라 data/control 소켓이 만들어지는 시점에서 처리.
+	
+	if (nc->sndbuf_size <= 0)
+	{
+		drbd_warn(connection, "sndbuf_size is %d. send-buffering is not used.", nc->sndbuf_size);
+	}
+	else
+	{
+		BOOLEAN send_buffring = FALSE;
+
+		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
+		if (send_buffring)
+			drbd_info(connection, "send buffering %s. sndbuf-size(%u) congestion-fill(%d).\n", (send_buffring == TRUE) ? "start" : "failed", nc->sndbuf_size, (nc->cong_fill * 512));
+	}
+#endif
 
 	drbd_thread_start(&connection->ack_receiver);
 	connection->ack_sender =

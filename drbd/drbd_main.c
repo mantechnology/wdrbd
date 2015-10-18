@@ -846,37 +846,6 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 }
 
-#ifdef _WIN32_SEND_BUFFING // send bufferring 파트 일단 복사함.
-#ifdef _WIN32_SEND_BUFFING
-struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
-#else
-static struct drbd_thread *drbd_task_to_thread(struct drbd_tconn *tconn, struct task_struct *task)
-#endif
-
-{
-	struct drbd_thread *thi =
-		task == tconn->receiver.task ? &tconn->receiver :
-		task == tconn->asender.task  ? &tconn->asender :
-		task == tconn->worker.task   ? &tconn->worker : NULL;
-
-	return thi;
-}
-
-char *drbd_task_to_thread_name(struct drbd_tconn *tconn, struct task_struct *task)
-{
-	struct drbd_thread *thi = drbd_task_to_thread(tconn, task);
-#ifdef _WIN32
-    char * ret = thi ? thi->name : (task && task->comm) ? task->comm : "NULL";
-    if (!ret)
-        WDRBD_TRACE("return is null. tconn(0x%p), task(0x%p)\n", tconn, task);
-    return ret;
-#else
-    return thi ? thi->name : task->comm;
-#endif
-	
-}
-#endif
-
 int conn_lowest_minor(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -3478,10 +3447,12 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
+#ifdef _WIN32_CHECK 	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
     // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
     }
+#endif
 #else
 	if (bdi_bits & (1 << BDI_async_congested)) {
 		struct drbd_peer_device *peer_device;
@@ -3575,7 +3546,7 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		if (connection->send_buffer[i].page) {
-#ifndef _WIN32 //V8 구현 적용. // JHKIM: void __free_page()로 할당된 영역을 반납해야 할 듯. 확인 요망!
+#ifndef _WIN32 //V8 구현 적용. // WIN32_CHECK:JHKIM: void __free_page()로 할당된 영역을 반납해야 할 듯. 확인 요망!
 			put_page(connection->send_buffer[i].page);
 #endif
 			connection->send_buffer[i].page = NULL;
@@ -3884,8 +3855,13 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	mutex_lock(&connection->mutex[CONTROL_STREAM]);
 
+#ifdef	_WIN32_SEND_BUFFING
+	// JHKIM: 주의! ops->free 에서 sock_release 하는데 이때 bab 가 반납된다. 
+	// 따리서 ops->free 보다 먼저 송신버퍼퍼링 스레드 2개를 종료시켜야 한다.
+	connection->transport.ops->stop_send_buffring(&connection->transport);
+#endif
 	connection->transport.ops->free(&connection->transport, op);
-#ifdef _WIN32 // 지원하지 않음.
+#ifndef _WIN32_V9 // _WIN32_SEND_BUFFING 작업중 코멘트 처리함.
 	if (op == DESTROY_TRANSPORT)
 		drbd_put_transport_class(connection->transport.class);
 #endif

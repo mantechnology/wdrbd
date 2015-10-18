@@ -1459,29 +1459,43 @@ void del_gendisk(struct gendisk *disk)
 		return;
 	}
 
+#ifndef _WIN32_SEND_BUFFING
 	status = CloseSocket(sock->sk); 
 	if (!NT_SUCCESS(status)) 
 	{
 		WDRBD_ERROR("error=0x%x\n", status);
 		return;
 	}
+#endif
 
 	if (sock->sk_linux_attr)
 	{
 		kfree(sock->sk_linux_attr);
 		sock->sk_linux_attr = 0;
 	}
-#ifdef _WIN32_SEND_BUFFING
-	if (sock->bab)
-	{
-		if (sock->bab->static_big_buf)
-		{
-			kfree(sock->bab->static_big_buf);
-		}
-		kfree(sock->bab);
 
+#ifdef _WIN32_SEND_BUFFING
+	struct _buffering_attr *buffering_attr = &sock->buffering_attr;
+	struct ring_buffer *bab = buffering_attr->bab;
+
+	if (bab)
+	{
+		WDRBD_WARN("Socket(%s) Send buffering used: clear bab\n", sock->name);
+		if (bab->static_big_buf)
+		{
+			kfree(bab->static_big_buf);
+		}
+		kfree(bab);
+	}
+
+	status = CloseSocket(sock->sk);
+	if (!NT_SUCCESS(status))
+	{
+		WDRBD_ERROR("CloseSocket error=0x%x\n", status);
+		return;
 	}
 #endif
+
 	kfree(sock);
 }
 
@@ -2581,8 +2595,9 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	{
 		LONG readcount;
 		char ret; 
-
-		if ((Status = Send(Socket, cmd_line, strlen(cmd_line), 0, 0)) != (long)strlen(cmd_line))
+#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, 0)) != (long) strlen(cmd_line))
+#endif
 		{
 			WDRBD_ERROR("send fail stat=0x%x\n", Status);
 			goto error;

@@ -12,7 +12,7 @@
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
 
-#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
+#define MAX_ONETIME_SEND_BUF	(64*1024) // (1024*1024*10) // 10MB
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
@@ -21,14 +21,14 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 
 	if (length == 0 || length > DRBD_SNDBUF_SIZE_MAX)
 	{
-		printk(KERN_ERR "WDRBD_ERRO: [%s] bab(%s) size(%d) is bad. max(%d)\n", __FUNCTION__, name, length, DRBD_SNDBUF_SIZE_MAX);
+		WDRBD_ERROR("bab(%s) size(%d) is bad. max(%d)\n", name, length, DRBD_SNDBUF_SIZE_MAX);
 		return NULL;
 	}
 
 	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, 'WD73');
 	if (ring)
 	{
-		ring->mem = (char*)(ring + 1);
+		ring->mem = (char*) (ring + 1);
 		ring->length = length + 1;
 		ring->read_pos = 0;
 		ring->write_pos = 0;
@@ -42,8 +42,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 #else
 		mutex_init(&ring->cs);
 #endif
-		KeInitializeEvent(&ring->event, SynchronizationEvent, FALSE);
-		printk(KERN_INFO "WDRBD_INFO: [%s] bab(%s) size(%d)\n", __FUNCTION__,  name, sz);
+		WDRBD_INFO("bab(%s) size(%d)\n", name, length);
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
@@ -51,13 +50,13 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		if (!ring->static_big_buf)
 		{
 			ExFreePool(ring);
-			printk(KERN_ERR "WDRBD_ERRO: [%s] bab(%s) static_big_buf alloc(%d) failed.\n", __FUNCTION__, name, MAX_ONETIME_SEND_BUF);
+			WDRBD_ERROR("bab(%s) static_big_buf alloc(%d) failed.\n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
 	}
 	else
 	{
-		printk(KERN_ERR "WDRBD_ERRO: [%s] bab(%s) memory allocation failed. please check sndbuf-size %u(0x%X).\n", __FUNCTION__, name, sz, sz);
+		WDRBD_ERROR("bab(%s) memory allocation failed. please check sndbuf-size %u(0x%X).\n", name, sz, sz);
 	}
 	return ring;
 }
@@ -120,7 +119,7 @@ void write_ring_buffer(ring_buffer *ring, const char *data, int len)
 
 	ring->que++;
 	ring->seq++;
-	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length; 
+	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
 	LeaveCriticalSection(&ring->cs);
 }
 
@@ -144,64 +143,73 @@ void read_ring_buffer(ring_buffer *ring, char *data, int len)
 	LeaveCriticalSection(&ring->cs);
 }
 
-LONG NTAPI send_buf(
-	__in struct drbd_tconn *tconn,
-	__in struct socket	*socket,
-	__in PVOID			Buffer,
-	__in ULONG			BufferSize,
-	__in ULONG			Flags,
-	__in ULONG			Timeout
-)
+int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
 {
-	struct ring_buffer *bab = socket->bab;
-	PWSK_SOCKET	WskSocket = socket->sk;
+	// struct drbd_connection *connection = container_of(transport, struct drbd_connection, transport);
+	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
+	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
 
-	if (tconn->receiver.send_buf_thread_handle == NULL || bab == NULL)
+#if 0 //WDRBD_TRACE_IP4
 	{
-		return Send(WskSocket, Buffer, BufferSize, 0, Timeout);
+		extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+		char sbuf[64], dbuf[64];
+		DbgPrint("WDRBD_TEST: send_buf:(%s:%d) %s -> %s\n",
+			socket->name, size,
+			get_ip4(sbuf, &list_first_entry_or_null(&transport->paths, struct drbd_path, list)->my_addr),
+			get_ip4(dbuf, &list_first_entry_or_null(&transport->paths, struct drbd_path, list)->peer_addr));
+	}
+#endif
+
+	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL)
+	{
+		static int tmp = 0;
+		if (tmp++ < 500) // V9_CHECK!!
+		{
+			WDRBD_TRACE_SB("send buf: disabled. sb thread=%p bab=%p (tmp:%d)\n", buffering_attr->send_buf_thread_handle, buffering_attr->bab, tmp);
+		}
+		return Send(socket->sk, buf, size, 0, timeout, NULL);
 	}
 
-	int highwater = bab->length * 99 / 100; // 99%
-	int data_sz = get_ring_buffer_size(bab);
+	unsigned long long  tmp = (long long) buffering_attr->bab->length * 99;
+	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
+	int data_sz = get_ring_buffer_size(buffering_attr->bab);
 
-	if ((data_sz + BufferSize) > highwater ) 
+	if ((data_sz + size) > highwater)
 	{
-		LARGE_INTEGER	nWaitTime;
-		LARGE_INTEGER	*pTime = NULL;
-		int i;
-		int retry;
-
-		if (Timeout <= 100)
+		int retry = 0;
+		while (1)
 		{
-			Timeout = 6000; // MAX 6 sec
-		}
+			// TODO: 출력부하 무시, 안정화 이후 제거
+			WDRBD_WARN("bab(%s) overflow. retry(%d). bab:total(%d) queued(%d) requested(%d) highwater(%d)", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
 
-		nWaitTime = RtlConvertLongToLargeInteger(-1 * 100 * 1000 * 10); // 0.1 sec
-		pTime = &nWaitTime;
-		retry = Timeout / 100; // unit: 0.1 sec
-
-		for (i = 0; i < retry; i++)
-		{
+			LARGE_INTEGER	nWaitTime;
 			KTIMER ktimer;
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * 1000 * socket->sk_linux_attr->sk_sndtimeo * 10);
 			KeInitializeTimer(&ktimer);
 			KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
 			KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+			WDRBD_WARN("time done!\n");
 
-			data_sz = get_ring_buffer_size(bab);
-			if ((data_sz + BufferSize) > highwater)
+			// V8: if (we_should_drop_the_connection(tconn, socket))
+			if (drbd_stream_send_timed_out(transport, stream)) // V9 
 			{
-				// TODO: 출력부하 무시, 안정화 이후 제거
-				//printk("WDRBD_WARN: [%s] bab(%s) overflow. retry(%d/%d). bab:total(%d) queued(%d) requested(%d) highwater(%d)", __FUNCTION__, bab->name, i, retry, bab->length, data_sz, BufferSize, highwater);
+				WDRBD_ERROR("bab(%s) we_should_drop_the_connection.\n", buffering_attr->bab->name);
+				return -EAGAIN;
+			}
+
+			data_sz = get_ring_buffer_size(buffering_attr->bab);
+			if ((data_sz + size) > highwater)
+			{
+				retry++;
+				continue;
 			}
 			else
 			{
 				// TODO: 출력부하 무시, 안정화 이후 제거
-				printk(KERN_WARNING "WDRBD_WARN: [%s] bab(%s) overflow resolved at loop(%d/%d).\n", __FUNCTION__, bab->name, i, retry);
+				WDRBD_WARN("bab(%s) overflow resolved at loop %d. bab:total(%d) queued(%d) requested(%d) highwater(%d)\n", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
 				goto buffering;
 			}
 		}
-		printk(KERN_ERR "WDRBD_ERRO: [%s] bab(%s) send timeout.\n", __FUNCTION__, bab->name);
-		return -EAGAIN;
 	}
 
 #ifdef SENDBUF_TRACE
@@ -221,24 +229,20 @@ LONG NTAPI send_buf(
 	LeaveCriticalSection(&bab->cs);
 #endif
 
-buffering:
-	write_ring_buffer(bab, Buffer, BufferSize); 
-	KeSetEvent(&bab->event, 0, FALSE);
-	return BufferSize;
+buffering:		
+	write_ring_buffer(buffering_attr->bab, buf, size);
+	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
+	return size;
 }
 
-//
-// send buffring thread
-//
-
-void do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout)
+int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 {
 	int ret = 0, bab_peek = 0;
 
 	if (bab == NULL)
 	{
-		printk(KERN_ERR "WDRBD_ERRO: [%s] bab is null.\n", __FUNCTION__);
-		return;
+		WDRBD_ERROR("bab is null.\n");
+		return 0;
 	}
 
 #ifdef SENDBUF_TRACE 
@@ -255,7 +259,7 @@ void do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout)
 		list_for_each_entry_safe(struct _send_req, req, tmp, &bab->send_req_list, list)
 		{
 			loop++;
-			if (((pos = strlen(sbuf)) + 10) > 1024 )
+			if (((pos = strlen(sbuf)) + 10) > 1024)
 			{
 				DbgPrint("SENDBUF_TRACE: who list(%d) too big. ignore!\n", loop); // ASYNC 일 경우 발생!
 				list_del(&req->list);
@@ -281,7 +285,7 @@ void do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout)
 	int txloop = 0;
 
 	while (1)
-	{ 
+	{
 		int tx_sz = 0;
 
 		txloop++;
@@ -302,35 +306,42 @@ void do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout)
 		}
 
 		read_ring_buffer(bab, bab->static_big_buf, tx_sz);
-		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout);
-		
+		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event);
+		if (ret == -EINTR)
+		{
+			return -EINTR;
+		}
+
 		if (ret != tx_sz)
 		{
-			printk(KERN_WARNING "WDRBD_WARN: [%s] count mismatch. request=(%d) sent=(%d)\n", __FUNCTION__, tx_sz, ret);
+			WDRBD_WARN("count mismatch. request=(%d) sent=(%d)\n", tx_sz, ret);
 			// will be recovered by upper drbd protocol 
 		}
 	}
+	return 0;
 }
+
+//
+// send buffring thread
+//
 
 VOID NTAPI send_buf_thread(PVOID p)
 {
-	struct drbd_tconn *tconn = (struct drbd_tconn *)p;
-	PWSK_SOCKET	Socket = (PWSK_SOCKET)tconn->data.socket->sk;
+	struct _buffering_attr *buffering_attr = (struct _buffering_attr *)p;
+	struct socket *socket = container_of(buffering_attr, struct socket, buffering_attr);
 	LONG readcount;
 	NTSTATUS status;
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
-	KeSetEvent(&tconn->receiver.send_buf_thr_start_event, 0, FALSE);
+	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
 	pTime = &nWaitTime;
 
-	#define MAX_EVT		3
-
+#define MAX_EVT		2
 	PVOID waitObjects[MAX_EVT];
-	waitObjects[0] = &tconn->receiver.send_buf_kill_event;
-	waitObjects[1] = &tconn->data.socket->bab->event;
-	waitObjects[2] = &tconn->meta.socket->bab->event;
+	waitObjects[0] = &buffering_attr->send_buf_kill_event;
+	waitObjects[1] = &buffering_attr->ring_buf_event;
 
 	while (TRUE)
 	{
@@ -341,25 +352,24 @@ VOID NTAPI send_buf_thread(PVOID p)
 			break;
 
 		case STATUS_WAIT_0:
-			printk(KERN_INFO "WDRBD_INFO: [%s] response kill ack event!\n", __FUNCTION__);
-			KeSetEvent(&tconn->receiver.send_buf_killack_event, 0, FALSE);
+			WDRBD_INFO("response kill-ack-event\n");
 			goto done;
 
-		case (STATUS_WAIT_0 + 1):
-			do_send(tconn->data.socket->sk, tconn->data.socket->bab, tconn->data.socket->sk_linux_attr->sk_sndtimeo);
-			break;
-
-		case (STATUS_WAIT_0 + 2):
-			do_send(tconn->meta.socket->sk, tconn->meta.socket->bab, tconn->meta.socket->sk_linux_attr->sk_sndtimeo);
+		case (STATUS_WAIT_0 + 1) :
+			if (do_send(socket->sk, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR)
+			{
+				goto done;
+			}
 			break;
 
 		default:
-			printk(KERN_ERR "WDRBD_ERRO: [%s] unexpected wakwup case(0x%x). ignore.\n", __FUNCTION__, status);
+			WDRBD_ERROR("unexpected wakwup case(0x%x). ignore.\n", status);
 		}
 	}
 
 done:
-	printk(KERN_INFO "WDRBD_INFO: [%s] done.\n", __FUNCTION__);
+	KeSetEvent(&buffering_attr->send_buf_killack_event, 0, FALSE);
+	WDRBD_INFO("sendbuf thread done.!!\n");
 	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 

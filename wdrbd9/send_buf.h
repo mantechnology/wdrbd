@@ -1,9 +1,9 @@
 ﻿#ifndef __WIN32_SEND_BUFFING_H
 #define __WIN32_SEND_BUFFING_H
-
+#ifndef _WIN32_SEND_BUFFING
 #include "drbd_windows.h"	
 #include "wsk2.h"	
-
+#endif
 #define SENDER_IS_RECV			0
 #define SENDER_IS_ASEND			1
 #define SENDER_IS_WORKER		2
@@ -31,7 +31,6 @@ struct ring_buffer {
 	unsigned int read_pos;
 	unsigned int write_pos;
 	struct mutex cs;
-	KEVENT event;
 	int que;
 	int deque;
 	int seq;
@@ -42,6 +41,15 @@ struct ring_buffer {
 #endif
 };
 
+struct _buffering_attr {
+	HANDLE send_buf_thread_handle;
+	KEVENT send_buf_kill_event;
+	KEVENT send_buf_killack_event;
+	KEVENT send_buf_thr_start_event;
+	KEVENT ring_buf_event;
+	struct ring_buffer *bab;
+};
+
 typedef struct ring_buffer  ring_buffer;
 
 extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
@@ -49,14 +57,5 @@ extern ring_buffer *create_ring_buffer(char *name, unsigned int length);
 extern void destroy_ring_buffer(ring_buffer *ring);
 extern int get_ring_buffer_size(ring_buffer *ring);
 extern void write_ring_buffer(ring_buffer *ring, const char *data, int len);
-
-LONG NTAPI send_buf(
-	__in struct drbd_tconn *tconn,
-	__in struct	socket *socket,
-	__in PVOID			Buffer,
-	__in ULONG			BufferSize,
-	__in ULONG			Flags,
-	__in ULONG			Timeout
-);
-
+extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size);
 #endif

@@ -84,8 +84,26 @@ NTAPI
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in ULONG			Flags,
-	__in ULONG			Timeout
+	__in ULONG			Timeout,
+#ifdef _WIN32_SEND_BUFFING
+	__in KEVENT			*send_buf_kill_event
+#else
+	__in KEVENT			*send_buf_kill_event,
+	__in struct drbd_transport *transport,
+	__in enum			drbd_stream stream
+#endif
 	);
+
+//_WIN32_V9: _WIN32_SEND_BUFFING: normal local send: netlink, helper
+LONG
+NTAPI
+SendLocal(
+	__in PWSK_SOCKET	WskSocket,
+	__in PVOID			Buffer,
+	__in ULONG			BufferSize,
+	__in ULONG			Flags,
+	__in ULONG			Timeout
+);
 
 LONG
 NTAPI
