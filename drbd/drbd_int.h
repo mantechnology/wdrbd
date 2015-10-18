@@ -473,7 +473,7 @@ enum drbd_thread_state {
 };
 
 struct drbd_thread {
-#ifdef _WIN32_CT
+#ifdef _WIN32
     struct task_struct *nt;
     KEVENT start_event;
     KEVENT wait_event;
@@ -1439,11 +1439,7 @@ struct submit_worker {
 	struct list_head writes;
 
 #ifdef _WIN32 // V9_CHECK: JHKIM:	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요!
-#ifdef _WIN32_CT
     struct drbd_thread thi;
-#else
-	struct task_struct task; //DRBD_DEBUG //JHKIM: 최종 시점에 _WIN32_CT 매크로를 제거하고 관련 else 파트도 모두 제거 정리!!!
-#endif
 #endif
 };
 

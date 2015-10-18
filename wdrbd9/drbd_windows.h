@@ -17,8 +17,7 @@
 //#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
 
 //#define _WIN32_SEND_BUFFING				// V9 포팅을 위해 임시 제거. // 송신버퍼링 사용. 최종 안정화 후 제거
-#define _WIN32_CT
- 
+
 #define _WIN32_EVENTLOG			        // Windows Eventlog 포팅지점
 
 #define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
@@ -768,13 +767,7 @@ extern void set_disk_ro(struct gendisk *disk, int flag);
 
 #define TASK_COMM_LEN		32
 struct task_struct {
-#ifdef _WIN32_CT
     struct list_head list; 
-#else
-    KEVENT start_event; 
-    KEVENT wait_event;
-    PKTHREAD current_thr;
-#endif
 	PKTHREAD pid; // for linux style
     KEVENT sig_event;
     BOOLEAN has_sig_event;
@@ -1036,12 +1029,8 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)
 
-#ifdef _WIN32_CT
 struct drbd_thread;
 extern void wake_up_process(struct drbd_thread *thi);
-#else
-extern int wake_up_process(struct task_struct *nt);
-#endif
 
 extern void _wake_up(wait_queue_head_t *q, char *__func, int __line);
 
@@ -1135,13 +1124,7 @@ struct retry_worker {
 };
 
 
-#ifdef _WIN32_CT
 #define current		    ct_find_thread(KeGetCurrentThread())
-#else
-/// SEO: 리눅스 코드 유지용 함수
-extern struct task_struct * find_current_thread(); 
-#define current		find_current_thread()
-#endif
 
 #define MAX_PROC_BUF	2048
 
@@ -1285,12 +1268,10 @@ extern EX_SPIN_LOCK g_rcuLock;
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
-#ifdef _WIN32_CT
 extern void ct_init_thread_list();
 extern struct task_struct * ct_add_thread(PKTHREAD id, char *name, BOOLEAN event, ULONG Tag);
 extern void ct_delete_thread(PKTHREAD id);
 extern struct task_struct* ct_find_thread(PKTHREAD id);
-#endif
 
 #define bdevname(dev, buf)  \
     dev->bd_disk->disk_name

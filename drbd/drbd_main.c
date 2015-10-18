@@ -565,7 +565,6 @@ static int drbd_thread_setup(void *arg)
 	unsigned long flags;
 	int retval;
 #ifdef _WIN32
-#ifdef _WIN32_CT
     thi->nt = ct_add_thread(KeGetCurrentThread(), thi->name, TRUE, 'B0DW');
     if (!thi->nt)
     {
@@ -577,14 +576,6 @@ static int drbd_thread_setup(void *arg)
 
     KeSetEvent(&thi->start_event, 0, FALSE);
     KeWaitForSingleObject(&thi->wait_event, Executive, KernelMode, FALSE, NULL);
-#else // V9_CHECK: V9.0에서는 포팅 종료 시 else의 old 방식은 삭제할 것
-	KeSetEvent(&thi->task->start_event, 0, FALSE);
-	KeWaitForSingleObject(&thi->task->wait_event, Executive, KernelMode, FALSE, NULL);
-
-	thi->task->current_thr = KeGetCurrentThread();
-	thi->task->pid = thi->task->current_thr;
-    thi->task->has_sig_event = TRUE;
-#endif
 #endif
 
 restart:
@@ -612,11 +603,7 @@ restart:
 		goto restart;
 	}
 #ifdef _WIN32
-#ifdef _WIN32_CT
     ct_delete_thread(thi->task->pid);
-#else
-	kfree(thi->task);
-#endif
 #endif
 	thi->task = NULL;
 	thi->t_state = NONE;
@@ -654,7 +641,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 {
 	struct drbd_resource *resource = thi->resource;
 	struct drbd_connection *connection = thi->connection;
-#ifndef _WIN32_CT
+#ifndef _WIN32
 	struct task_struct *nt;
 #endif
 	unsigned long flags;
@@ -680,7 +667,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 		spin_unlock_irqrestore(&thi->t_lock, flags);
 		flush_signals(current); /* otherw. may get -ERESTARTNOINTR */
 #ifdef _WIN32
-#ifdef _WIN32_CT
         thi->nt = NULL;
         {
             HANDLE		hThread = NULL;
@@ -708,11 +694,6 @@ int drbd_thread_start(struct drbd_thread *thi)
         }
         //sprintf(thi->nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name); // rename //V9_CHECK: 스레드 이름 보관 방식이 달라졌는가?
 #else
-		nt = (struct task_struct *)kzalloc(sizeof(struct task_struct), 0);
-		if (!nt)
-		{
-#endif
-#else
 		nt = kthread_create(drbd_thread_setup, (void *) thi,
 				    "drbd_%c_%s", thi->name[0], resource->name);
 
@@ -724,37 +705,17 @@ int drbd_thread_start(struct drbd_thread *thi)
 
 			return false;
 		}
-#endif // _WIN32_CT
+#endif
 		spin_lock_irqsave(&thi->t_lock, flags);
-#ifdef _WIN32_CT
+#ifdef _WIN32
         thi->task = thi->nt;
 #else
 		thi->task = nt;
 #endif
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
-#ifdef _WIN32
-#ifndef _WIN32_CT
-		{
-			HANDLE		hThread = NULL;
-			NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-            nt->has_sig_event = TRUE;
-			KeInitializeEvent(&nt->sig_event, SynchronizationEvent, FALSE);
-			KeInitializeEvent(&nt->start_event, SynchronizationEvent, FALSE);
-			KeInitializeEvent(&nt->wait_event, SynchronizationEvent, FALSE);
-			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
-			if (!NT_SUCCESS(Status)) {
-				//conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status);//V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
-				//kref_put(&tconn->kref, &conn_destroy);
-				return false;
-			}
-			ZwClose(hThread);
-			sprintf(nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name);
-		}
-#endif
-#endif
-#ifdef _WIN32_CT
+#ifdef _WIN32
         wake_up_process(thi);
 #else
 		wake_up_process(nt);
@@ -4453,7 +4414,7 @@ static int __init drbd_init(void)
 	//g_val_null.i = 0;
 #endif
 
-#ifdef _WIN32_CT
+#ifdef _WIN32
 	ct_init_thread_list();
 #endif
 

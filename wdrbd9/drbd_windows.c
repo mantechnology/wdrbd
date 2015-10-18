@@ -743,18 +743,10 @@ int IS_ERR(void *ptr)
 	return IS_ERR_VALUE((unsigned long) ptr);
 }
 
-#ifdef _WIN32_CT
 void wake_up_process(struct drbd_thread *thi)
 {
     KeSetEvent(&thi->wait_event, 0, FALSE);
 }
-#else
-int wake_up_process(struct task_struct *nt)
-{
-	KeWaitForSingleObject(&nt->start_event, Executive, KernelMode, FALSE, NULL);
-	KeSetEvent(&nt->wait_event, 0, FALSE); 
-}
-#endif
 
 void _wake_up(wait_queue_head_t *q, char *__func, int __line)
 {		
@@ -1505,7 +1497,6 @@ void set_disk_ro(struct gendisk *disk, int flag)
 
 }
 
-#ifdef _WIN32_CT
 #define CT_MAX_THREAD_LIST          40
 static LIST_HEAD(ct_thread_list);
 static int ct_thread_num = 0;
@@ -1594,83 +1585,6 @@ struct task_struct* ct_find_thread(PKTHREAD id)
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
 }
-
-#else
-
-struct task_struct *find_current_thread() 
-{
-	extern struct task_struct g_nlThread;
-#ifdef _WIN32_CHECK
-	extern struct retry_worker retry;
-#endif
-
-	struct task_struct *curr = 0;
-	struct drbd_conf *mdev;
-	PKTHREAD threadHandle;
-	int i;
-
-	threadHandle = KeGetCurrentThread();
-	if (g_nlThread.current_thr == threadHandle)
-	{
-		return &g_nlThread;
-	}
-#ifdef _WIN32_CHECK
-	if (retry.task.current_thr == threadHandle)
-	{
-		return &retry.task.current_thr;
-	}
-#endif
-	rcu_read_lock();
-	idr_for_each_entry(&minors, mdev, i)  // i means minor number
-	{
-		if (mdev->submit.task.current_thr == threadHandle)
-		{
-			curr = &mdev->submit.task;
-			break;
-		}
-
-		if (mdev->tconn->worker.task)
-		{		
-			if (mdev->tconn->worker.task->current_thr == threadHandle)
-			{
-				curr = mdev->tconn->worker.task;
-				break;
-			}
-		}
-
-		if (mdev->tconn->receiver.task)
-		{		
-			if (mdev->tconn->receiver.task->current_thr == threadHandle)
-			{
-				curr = mdev->tconn->receiver.task;
-				break;
-			}
-		}
-
-		if (mdev->tconn->asender.task)
-		{
-			if (mdev->tconn->asender.task->current_thr == threadHandle)
-			{
-				curr = mdev->tconn->asender.task;
-				break;
-			}
-		}
-	}
-	rcu_read_unlock();
-
-	if (!curr)
-	{
-		static struct task_struct g_dummy_current; // 공유?
-		curr = &g_dummy_current;
-		curr->current_thr = threadHandle;
-		curr->pid = 0; // pid 의 값 존재 여부로 스레드 확인
-        curr->has_sig_event = FALSE;
-		strcpy(curr->comm, "notFound"); // io request from upper layer driver 
-	}
-
-	return curr;
-}
-#endif
 
 int signal_pending(struct task_struct *task)
 {

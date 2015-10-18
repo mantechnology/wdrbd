@@ -92,9 +92,6 @@ static struct genl_family drbd_genl_family  = {
 
 struct nlattr *global_attrs[128];
 
-#ifndef _WIN32_CT
-struct task_struct g_nlThread;
-#endif
 extern struct mutex g_genl_mutex;
 
 static ERESOURCE    genl_multi_socket_res_lock;
@@ -481,10 +478,8 @@ NetlinkWorkThread(PVOID context)
     int err;
     struct genl_info * pinfo = NULL;
 
-#ifdef _WIN32_CT
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
     //WDRBD_INFO("Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), pctx);
-#endif
 
     void * psock_buf = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
 
@@ -590,9 +585,7 @@ cleanup:
     pop_msocket_entry(socket);
     Disconnect(socket);
     CloseSocket(socket);
-#ifdef _WIN32_CT
     ct_delete_thread(KeGetCurrentThread());
-#endif
     ExFreeToNPagedLookasideList(&drbd_workitem_mempool, context);
     if (pinfo)
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
