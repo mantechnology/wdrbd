@@ -1793,6 +1793,11 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 					BUG(); // JHKIM: 안정화후 제거.
 				}
 
+				if (i == CONTROL_STREAM)
+				{
+					size = 1024 * 5120; // meta bab is about 5MB
+				}
+
 				if ((attr->bab = create_ring_buffer(tcp_transport->stream[i]->name, size)) != NULL)
 				{
 					extern VOID NTAPI send_buf_thread(PVOID p);
