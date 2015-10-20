@@ -1018,10 +1018,17 @@ static void dtt_incoming_connection(struct sock *sock)
     struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
     if (!waiter)
     {
-        // 해당 노드의 connection을 위한 스레드를 만들기도 전에 해당 노드로 부터 try connect이 되는 경우가 있다.
+        // 해당 노드의 connection을 위한 스레드를 만들기도 전에 해당 노드로 부터 try connect이 되는 경우가 있다. // JHKIM: 리스트에 등록이 안될텐데, 이런 경우가 발생을 하는가?
         // 이런 경우는 이번 타이밍때는 넘기고 다음번 incoming시 세션을 맺어주도록 한다.
         spin_unlock(&listener->listener.waiters_lock);
-        return STATUS_SUCCESS;
+#ifdef _WIN32_CHECK // JHKIM: 다음 동작이 필요한가? 
+		// 참고: https://msdn.microsoft.com/en-us/library/windows/hardware/ff571120(v=vs.85).aspx
+		if (NULL == AcceptSocket)
+		{
+			WskCloseSocket(AcceptSocket);
+		}
+#endif
+		return STATUS_REQUEST_NOT_ACCEPTED; // rejected the incoming connection
     }
 
     struct socket * s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
