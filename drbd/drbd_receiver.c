@@ -301,6 +301,7 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 //기존 drbd_kick_lo_and_reclaim_net 함수가 두개의 함수 drbd_reclaim_net_peer_reqs, conn_maybe_kick_lo 로 분리된 듯 하다.
 static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 {
+#ifndef _WIN32_V9   // kmpak. No need to use in Windows
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
 	struct drbd_resource *resource = connection->resource;
@@ -314,6 +315,7 @@ static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 #else 
 	list_for_each_entry_safe(peer_req, t, &reclaimed, w.list)
 		drbd_free_net_peer_req(peer_req);
+#endif
 #endif
 }
 
@@ -4754,7 +4756,14 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos++]);
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
+#ifdef _WIN32_V9
+    struct drbd_resource *resource = device->resource;
+    spin_lock_irq(&resource->req_lock);
+    peer_device->uuids_received = true;
+    spin_unlock_irq(&resource->req_lock);
+#else
 	peer_device->uuids_received = true;
+#endif
 
 	err = __receive_uuids(peer_device, be64_to_cpu(p->node_mask));
 

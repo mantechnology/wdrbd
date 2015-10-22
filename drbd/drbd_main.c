@@ -652,12 +652,21 @@ int drbd_thread_start(struct drbd_thread *thi)
 
 	switch (thi->t_state) {
 	case NONE:
+#ifdef _WIN32_V9
+		if (connection)
+			drbd_info(connection, "Starting %s thread (from %s [0x%x])\n",
+				 thi->name, current->comm, current->pid);
+		else
+			drbd_info(resource, "Starting %s thread (from %s [0x%x])\n",
+				 thi->name, current->comm, current->pid);
+#else
 		if (connection)
 			drbd_info(connection, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
 		else
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
+#endif
 		// kref_get(&thi->tconn->kref); // V9_CHECK: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함
 
 		init_completion(&thi->stop);
@@ -751,8 +760,8 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	spin_lock_irqsave(&thi->t_lock, flags);
 
 #ifdef _WIN32
-	WDRBD_INFO("thi(%s) ns(%s) state(%d) waitflag(%d) event(%d)-------------------!\n", 
-		thi->name, (ns == RESTARTING) ? "RESTARTING" : "EXITING", thi->t_state, wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
+	//WDRBD_INFO("thi(%s) ns(%s) state(%d) waitflag(%d) event(%d)-------------------!\n", 
+	//	thi->name, (ns == RESTARTING) ? "RESTARTING" : "EXITING", thi->t_state, wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 #endif
 	if (thi->t_state == NONE) {
 		spin_unlock_irqrestore(&thi->t_lock, flags);
@@ -783,7 +792,7 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 		}
 		else
 		{
-			WDRBD_INFO("cur=(%s) thi=(%s) stop myself\n", current->comm, thi->name ); //_WIN32
+		//	WDRBD_INFO("cur=(%s) thi=(%s) stop myself\n", current->comm, thi->name ); //_WIN32
 		}
 #else
 			force_sig(DRBD_SIGKILL, thi->task);
@@ -794,17 +803,17 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 	if (wait)
 #ifdef _WIN32
 	{ 
-		WDRBD_INFO("(%s) wait_for_completion. signaled(%d)\n", current->comm, KeReadStateEvent(&thi->stop.wait.wqh_event));
+		//WDRBD_INFO("(%s) wait_for_completion. signaled(%d)\n", current->comm, KeReadStateEvent(&thi->stop.wait.wqh_event));
 
 		while (wait_for_completion(&thi->stop) == -DRBD_SIGKILL)
 		{
-			WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n"); // not happened.
+		//	WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n"); // not happened.
 		}
     }
 #else
 		wait_for_completion(&thi->stop);
 #endif
-	WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
+	//WDRBD_INFO("waitflag(%d) signaled(%d). sent stop sig done.\n", wait, KeReadStateEvent(&thi->stop.wait.wqh_event)); // _WIN32
 }
 
 int conn_lowest_minor(struct drbd_connection *connection)
@@ -1033,7 +1042,7 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		if (sbuf->unsent != sbuf->pos)
 		{ // WIN32_V9
-			WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) sizez(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
+			WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) size(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
 			flush_send_buffer(connection, drbd_stream);
 		}// WIN32_V9
 		new_or_recycle_send_buffer_page(sbuf);
@@ -2202,7 +2211,7 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 	p->block_id = block_id;
 	p->pad = 0;
 	p->blksize = cpu_to_be32(size);
-    WDRBD_TRACE_RS("drbd_send_drequest:size(%d) cmd(%d) sector(%llx) block_id(%d)\n", size, cmd, sector, block_id);
+    WDRBD_TRACE_RS("size(%d) cmd(%d) sector(0x%llx) block_id(%d)\n", size, cmd, sector, block_id);
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
 }
 

@@ -3226,7 +3226,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	bool allocate_bitmap_slots = false;
 	char *transport_name;
 	struct drbd_transport_class *tr_class;
-WDRBD_TRACE("start\n");
+
 	*ret_conn = NULL;
 	if (adm_ctx->connection) {
 #ifdef _WIN32
@@ -3649,7 +3649,7 @@ int drbd_adm_new_peer(struct sk_buff *skb, struct genl_info *info)
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_PEER_NODE);
 	if (!adm_ctx.reply_skb)
 		return retcode;
-WDRBD_TRACE("start\n");
+
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (adm_ctx.connection) {

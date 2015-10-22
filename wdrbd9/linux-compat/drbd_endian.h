@@ -14,6 +14,7 @@
 #include <stdint.h>
 #ifdef _WIN32
 #define inline  __inline
+#include <basetsd.h>
 #else
 #include <endian.h>
 #endif
@@ -146,10 +147,8 @@ static inline unsigned int generic_hweight32(unsigned int w)
     res = (res & 0x00FF00FF) + ((res >> 8) & 0x00FF00FF);
     return (res & 0x0000FFFF) + ((res >> 16) & 0x0000FFFF);
 }
-#ifdef _WIN32
-// WIN32_CHECK:JHKIM: 64 비트용 커버전 부분 일단 마킹. 추후 전수 조사로 일괄 반영/검증필요 (ULONG 돠 WIN64 두 가지로 검색하면 될 듯)
-//static inline ULONG_PTR generic_hweight64(uint64_t w) // ULONG_PTR 헤더 연결 오류인 듯, 일단 원본 유지, 추후 보강
-static inline unsigned long generic_hweight64(uint64_t w)
+#ifdef _WIN32_V9
+static inline ULONG_PTR generic_hweight64(uint64_t w)
 #else
 static inline unsigned long generic_hweight64(uint64_t w)
 #endif
@@ -167,8 +166,11 @@ static inline unsigned long generic_hweight64(uint64_t w)
     return (res & 0x00000000FFFFFFFF) + ((res >> 32) & 0x00000000FFFFFFFF);
 #endif
 }
-
+#ifdef _WIN32_V9
+static inline ULONG_PTR hweight_long(unsigned long w)
+#else
 static inline unsigned long hweight_long(unsigned long w)
+#endif
 {
     return sizeof(w) == 4 ? generic_hweight32(w) : generic_hweight64(w);
 }
