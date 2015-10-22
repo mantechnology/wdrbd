@@ -938,8 +938,13 @@ struct drbd_backing_dev {
 
 struct drbd_md_io {
 	struct page *page;
+#ifdef _WIN32_V9
+    ULONG_PTR start_jif;	/* last call to drbd_md_get_buffer */
+    ULONG_PTR submit_jif;	/* last _drbd_md_sync_page_io() submit */
+#else
 	unsigned long start_jif;	/* last call to drbd_md_get_buffer */
 	unsigned long submit_jif;	/* last _drbd_md_sync_page_io() submit */
+#endif
 	const char *current_use;
 	atomic_t in_use;
 	unsigned int done;
@@ -1450,8 +1455,11 @@ struct drbd_device {
 	struct drbd_resource *resource;
 	struct list_head peer_devices;
 	struct list_head pending_bitmap_io;
-
+#ifdef _WIN32_V9
+    ULONG_PTR flush_jif;
+#else
 	unsigned long flush_jif;
+#endif
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_minor;
 	struct dentry *debugfs_vol;
@@ -2278,11 +2286,15 @@ extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
 
 // update_receiver_timing_details drbd_receiver.c 에서 사용. 관련 함수 헤더 선언 추가.
 void __update_timing_details(
-struct drbd_thread_timing_details *tdp,
+    struct drbd_thread_timing_details *tdp,
 	unsigned int *cb_nr,
 	void *cb,
 	const char *fn, const unsigned int line);
-
+/*
+ * Add a per-connection worker thread callback_history
+ * with timing details, call site and callback function.
+ * http://git.drbd.org/drbd-9.0.git/commitdiff/af34edb86ccd15b8276af2174efdd5f57eead102
+ */
 #define update_sender_timing_details(c, cb) \
 	__update_timing_details(c->s_timing_details, &c->s_cb_nr, cb, __func__ , __LINE__ )
 #define update_receiver_timing_details(c, cb) \
@@ -2301,7 +2313,11 @@ struct packet_info {
 
 struct queued_twopc {
 	struct drbd_work w;
+#ifdef _WIN32_V9
+    ULONG_PTR start_jif;
+#else
 	unsigned long start_jif;
+#endif
 	struct drbd_connection *connection;
 	struct twopc_reply reply;
 	struct packet_info packet_info;

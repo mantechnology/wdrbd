@@ -82,7 +82,11 @@ static int e_end_block(struct drbd_work *, int);
 static void cleanup_unacked_peer_requests(struct drbd_connection *connection);
 static void cleanup_peer_ack_list(struct drbd_connection *connection);
 static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids);
+#ifdef _WIN32_V9
+static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, ULONG_PTR);
+#else
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, unsigned long);
+#endif
 
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
@@ -5410,7 +5414,11 @@ static void nested_twopc_abort(struct drbd_resource *resource, int vnr, enum drb
 static int process_twopc(struct drbd_connection *connection,
 			 struct twopc_reply *reply,
 			 struct packet_info *pi,
+#ifdef _WIN32_V9
+             ULONG_PTR receive_jif)
+#else
 			 unsigned long receive_jif)
+#endif
 {
 	struct drbd_connection *affected_connection = connection;
 	struct drbd_resource *resource = connection->resource;
@@ -7816,7 +7824,11 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	struct drbd_connection *connection = thi->connection;
 	struct meta_sock_cmd *cmd = NULL;
 	struct packet_info pi;
+#ifdef _WIN32_V9
+    ULONG_PTR pre_recv_jif;
+#else
 	unsigned long pre_recv_jif;
+#endif
 	int rv;
 	void *buffer;
 	int received = 0, rflags = 0;
