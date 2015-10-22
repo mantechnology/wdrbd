@@ -4758,9 +4758,9 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		peer_device->history_uuids[i++] = 0;
 #ifdef _WIN32_V9
     struct drbd_resource *resource = device->resource;
-    spin_lock_irq(&resource->req_lock);
+    down(&resource->state_sem);
     peer_device->uuids_received = true;
-    spin_unlock_irq(&resource->req_lock);
+    up(&resource->state_sem);
 #else
 	peer_device->uuids_received = true;
 #endif
