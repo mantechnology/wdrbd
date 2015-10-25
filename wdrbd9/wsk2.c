@@ -477,20 +477,19 @@ Send(
 			int         wObjCount = 1;
 
 			waitObjects[0] = (PVOID) &CompletionEvent;
+#ifndef _WIN32_SEND_BUFFING // WIN32_V9_REFACTO_: JHKIM: 입력인자 축소와 로그메세지 축소관련하여 추가 리팩토링 필요.
 			if (thread->has_sig_event)
 			{
 				waitObjects[1] = (PVOID) &thread->sig_event;
-				wObjCount++;
+				wObjCount = 2; // DRBD_DOC_V9:JHKIM: down 같은 CLI에서 요청될 때는 has_sig_event 가 없다. 이때는 wObjCount가 1 임.
 			}
-
+#else
 			if (send_buf_kill_event)
 			{
-				// 송신버퍼링용. 송신버퍼링 스레드는 current 구조를 따르지 않음. 
-				// 위 has_sig_event 로직과 겹치지 않음으로 동일 배열을 사용.
-				waitObjects[1] = (PVOID) send_buf_kill_event;
-				wObjCount++;
+				waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: 송신버퍼링에서 송출 도중에 kill 요청을 인지하는 방법임. thread->has_sig_event를 이용한 일관성있는 중지신호 수신방안이 필요(리팩토링 필요)
+				wObjCount = 2;
 			}
-
+#endif
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
 			{
@@ -535,7 +534,7 @@ Send(
 				}
 				else
 				{
-					WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+					WDRBD_WARN("tx error(%s)\n", GetSockErrorString(Irp->IoStatus.Status));
 					switch (Irp->IoStatus.Status)
 					{
 						case STATUS_IO_TIMEOUT:
@@ -553,11 +552,11 @@ Send(
 
 			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
 				BytesSent = -EINTR;
-				WDRBD_WARN("(%s) kill signal occured!\n", current->comm);
+				WDRBD_WARN("signal occured.\n");
 				break;
 
 			default:
-				WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
+				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
 				BytesSent = SOCKET_ERROR;
 			}
 		}
