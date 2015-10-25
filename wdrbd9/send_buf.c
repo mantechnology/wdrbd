@@ -50,13 +50,13 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		if (!ring->static_big_buf)
 		{
 			ExFreePool(ring);
-			WDRBD_ERROR("bab(%s) static_big_buf alloc(%d) failed.\n", name, MAX_ONETIME_SEND_BUF);
+			WDRBD_ERROR("bab(%s): alloc(%d) failed.\n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
 	}
 	else
 	{
-		WDRBD_ERROR("bab(%s) memory allocation failed. please check sndbuf-size %u(0x%X).\n", name, sz, sz);
+		WDRBD_ERROR("bab(%s):alloc(%u) failed\n", name, sz);
 	}
 	return ring;
 }

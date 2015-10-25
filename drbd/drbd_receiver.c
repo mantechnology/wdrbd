@@ -996,7 +996,7 @@ start:
 	
 	if (nc->sndbuf_size <= 0)
 	{
-		drbd_warn(connection, "sndbuf_size is %d. send-buffering is not used.", nc->sndbuf_size);
+		drbd_warn(connection, "send-buffering disabled\n");
 	}
 	else
 	{
@@ -1004,7 +1004,9 @@ start:
 
 		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
 		if (send_buffring)
-			drbd_info(connection, "send buffering %s. sndbuf-size(%u) congestion-fill(%d).\n", (send_buffring == TRUE) ? "start" : "failed", nc->sndbuf_size, (nc->cong_fill * 512));
+			drbd_info(connection, "buffering s(%d) c(%d)\n", nc->sndbuf_size, (nc->cong_fill * 512));
+		else
+			drbd_warn(connection, "send-buffering disabled\n");
 	}
 #endif
 

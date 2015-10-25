@@ -16,7 +16,7 @@
 //#define DRBD_TRACE				    // 복제흐름보기(기본), 성능 개선후 제거
 //#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
 
-//#define _WIN32_SEND_BUFFING				// V9 포팅을 위해 임시 제거. // 송신버퍼링 사용. 최종 안정화 후 제거
+#define _WIN32_SEND_BUFFING				// V9 포팅을 위해 임시 제거. // 송신버퍼링 사용. 최종 안정화 후 제거
 
 #define _WIN32_EVENTLOG			        // Windows Eventlog 포팅지점
 
@@ -391,7 +391,7 @@ do { \
 #define WDRBD_TRACE_SOK
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4 DbgPrint
-#define WDRBD_TRACE_SB DbgPrint
+#define WDRBD_TRACE_SB 
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
