@@ -95,9 +95,6 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	BIO_ENDIO_FN_START;
 
 	device = bio->bi_private;
-#ifdef _WIN32_V9
-    void * ldev = device->ldev;
-#endif
 	device->md_io.error = error;
 
 	/* We grabbed an extra reference in _drbd_md_sync_page_io() to be able
@@ -117,6 +114,23 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 	device->md_io.done = 1;
 	wake_up(&device->misc_wait);
+
+#ifdef _WIN32
+	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	{
+		if (Irp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			Irp->MdlAddress = NULL;
+		}
+		IoFreeIrp(Irp);
+	}
+#endif
+
 #ifdef _WIN32
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
 	{
@@ -125,30 +139,9 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #else
 	bio_put(bio);
 #endif
-
-#ifdef _WIN32_V9
-	if (ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
-#else
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
-#endif
-    {
 		put_ldev(device);
-    }
-#ifdef _WIN32
-    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
-    {
-        if (Irp->MdlAddress != NULL) {
-            PMDL mdl, nextMdl;
-            for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
-                nextMdl = mdl->Next;
-                MmUnlockPages(mdl);
-                IoFreeMdl(mdl); // This function will also unmap pages.
-            }
-            Irp->MdlAddress = NULL;
-        }
-        IoFreeIrp(Irp);
-    }
-#endif
+
 #ifdef DRBD_TRACE	
 	{
 		static int cnt = 0;
