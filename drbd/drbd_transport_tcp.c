@@ -526,7 +526,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	{
 		if (nc->sndbuf_size > 0)
 		{
-			tr_warn(transport, "sndbuf_size(%d) too small. increase to default(%d).", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
+			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
 			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
 		}
 	}
@@ -859,7 +859,7 @@ retry:
 			{
 				if (nc->sndbuf_size > 0)
 				{
-					tr_warn(transport, "sndbuf_size(%d) too small. increase to default(%d).", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
+					tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
 					nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
 				}
 			}
@@ -1011,6 +1011,7 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32_V9
+#if 1 // JHKIM:원본 방식 변경부분
     // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
 
@@ -1063,10 +1064,52 @@ static void dtt_incoming_connection(struct sock *sock)
 
 	return STATUS_SUCCESS;
 #else
+	// JHKIM: 원본 방식 유지부분, 리룩스와 비교 시 참고
+#ifdef _WIN32_V9
+	struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
+
+	if (AcceptSocket) {
+#else
 	struct dtt_listener *listener = sock->sk_user_data;
 	void (*state_change)(struct sock *sock);
 
-	state_change = listener->original_sk_state_change; //original state change 핸들러 설정 부분은 V9 포팅에서 skip.
+	state_change = listener->original_sk_state_change;
+	if (sock->sk_state == TCP_ESTABLISHED) {
+#endif
+		struct drbd_waiter *waiter;
+
+		spin_lock(&listener->listener.waiters_lock);
+		listener->listener.pending_accepts++;
+#ifdef _WIN32_V9
+		listener->paccept_socket = AcceptSocket;
+#endif
+		waiter = list_entry(listener->listener.waiters.next, struct drbd_waiter, list);
+#ifdef _WIN32_V9
+		if (!waiter)
+		{
+			spin_unlock(&listener->listener.waiters_lock);
+			return STATUS_REQUEST_NOT_ACCEPTED; 
+		}
+#endif
+		wake_up(&waiter->wait);
+		spin_unlock(&listener->listener.waiters_lock);
+#ifdef _WIN32_V9
+		return STATUS_SUCCESS;
+#endif
+	}
+	
+#ifdef _WIN32_V9
+	//WskCloseSocket(AcceptSocket);
+	return STATUS_REQUEST_NOT_ACCEPTED;
+#else
+	state_change(sock);
+#endif
+#endif
+#else
+	struct dtt_listener *listener = sock->sk_user_data;
+	void (*state_change)(struct sock *sock);
+
+	state_change = listener->original_sk_state_change;
 	if (sock->sk_state == TCP_ESTABLISHED) {
 		struct drbd_waiter *waiter;
 
