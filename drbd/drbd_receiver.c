@@ -7864,7 +7864,17 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		drbd_reclaim_net_peer_reqs(connection);
 
 		if (test_and_clear_bit(SEND_PING, &connection->flags)) {
+#ifdef _WIN32_V9
+			int ping_ret;
+			if (ping_ret = drbd_send_ping(connection)) {
+				if (ping_ret == -EINTR && current->sig == SIGXCPU)
+				{
+					WDRBD_INFO("got SIGXCPU during ping\n");
+					flush_signals(current);
+				}
+#else
 			if (drbd_send_ping(connection)) {
+#endif
 				drbd_err(connection, "drbd_send_ping has failed\n");
 				goto reconnect;
 			}
@@ -7924,6 +7934,12 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 			/* maybe drbd_thread_stop(): the while condition will notice.
 			 * maybe woken for send_ping: we'll send a ping above,
 			 * and change the rcvtimeo */
+#ifdef _WIN32_V9
+			if (current->sig == SIGXCPU)
+			{
+				WDRBD_INFO("got SIGXCPU during rx.\n");
+			}
+#endif
 			flush_signals(current);
 			continue;
 		} else {
@@ -7950,15 +7966,29 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 			rflags = 0;
 		}
 		if (received == expect) {
+#ifdef _WIN32_V9
+			int err;
+#else
 			bool err;
+#endif
 
 			pi.data = buffer;
 			err = cmd->fn(connection, &pi);
 			if (err) {
+#ifdef _WIN32_V9
+				if (err == -EINTR && current->sig == SIGXCPU)
+				{
+					WDRBD_INFO("got SIGXCPU during fn(%s)\n", drbd_packet_name(pi.cmd));
+					flush_signals(current);
+					goto ignore_sig;
+				}
+#endif
 				drbd_err(connection, "%pf failed\n", cmd->fn);
 				goto reconnect;
 			}
-
+#ifdef _WIN32_V9
+		ignore_sig:
+#endif
 			connection->last_received = jiffies;
 
 			if (cmd == &ack_receiver_tbl[P_PING_ACK]) {
