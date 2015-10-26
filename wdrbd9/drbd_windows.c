@@ -912,8 +912,6 @@ void run_singlethread_workqueue(struct workqueue_struct * wq)
                 continue;
         }
     }
-
-    WDRBD_INFO("%s workqueue finished\n", wq->name);
 }
 
 // kmpak 차후에는 이렇게 별도 wq 스레드 생성하는 것 보단
@@ -1474,7 +1472,7 @@ void del_gendisk(struct gendisk *disk)
 
 	if (bab)
 	{
-		WDRBD_WARN("Socket(%s) Send buffering used: clear bab\n", sock->name);
+		//WDRBD_WARN("Socket(%s) Send buffering used: clear bab\n", sock->name);
 		if (bab->static_big_buf)
 		{
 			kfree(bab->static_big_buf);

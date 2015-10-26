@@ -552,7 +552,6 @@ Send(
 
 			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
 				BytesSent = -EINTR;
-				WDRBD_WARN("signal occured.\n");
 				break;
 
 			default:
@@ -840,7 +839,7 @@ LONG NTAPI Receive(
             }
             break;
 
-        case STATUS_WAIT_0 + 1:
+        case STATUS_WAIT_1:
             BytesReceived = -EINTR;
             break;
 
@@ -873,7 +872,7 @@ LONG NTAPI Receive(
 		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 		if (Irp->IoStatus.Information > 0)
 		{
-			WDRBD_INFO("rx canceled but rx data(%d) avaliable.\n", Irp->IoStatus.Information);
+			//WDRBD_INFO("rx canceled but rx data(%d) avaliable.\n", Irp->IoStatus.Information);
 			BytesReceived = Irp->IoStatus.Information;
 		}
 	}
