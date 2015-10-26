@@ -931,7 +931,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 #endif
 			sndbuf = mdev->tconn->data.socket->sk_linux_attr->sk_sndbuf;
 #else
-			queued = transport_stats.send_buffer_used; //stats 을 얻어와서 hint 제공하는 기능은 우선 동작 안함. V9_CHECK
+			queued = transport_stats.send_buffer_used;
 			sndbuf = transport_stats.send_buffer_size;
 #endif
 			if (queued > sndbuf / 2) {

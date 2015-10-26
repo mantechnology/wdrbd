@@ -1267,7 +1267,9 @@ int del_timer_sync(struct timer_list *t)
 #ifdef _WIN32_V9
     del_timer(t);
     return 0;
-#ifdef _WIN32_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
+#ifdef _WIN32_V9
+	// V9_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
+#else
   	for (;;) {
 		int ret = try_to_del_timer_sync(timer);
 		if (ret >= 0)
@@ -2054,7 +2056,7 @@ int _DRBD_ratelimit(size_t ratelimit_jiffies, size_t ratelimit_burst, struct drb
 #endif
 
 #ifdef _WIN32_V9
- // _WIN32_CHECK: JHKIM: disable!
+ // disable.
 #else
 bool _expect(long exp, struct drbd_conf *mdev, char *file, int line)
 {

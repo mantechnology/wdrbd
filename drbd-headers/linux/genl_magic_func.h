@@ -304,7 +304,6 @@ static struct genl_ops ZZZ_genl_ops[] __read_mostly = {
 #undef GENL_op
 #define GENL_op(op_name, op_num, handler, tla_list)
 
-//_WIN32_CHECK [choi] V8에서는 genl_family가 #ifndef _WIN32로 묶어있었다. 동작에 문제 없다면 유지.
 /*
  * Define the genl_family, multicast groups,				{{{1
  * and provide register/unregister functions.
@@ -325,20 +324,7 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
  * Magic: define multicast groups
  * Magic: define multicast group registration helper
  */
-#ifdef _WIN32_CHECK // JHKIM: 불필요 할 듯.
-/* COMPAT
- * See linux 3.13,
- * genetlink: make multicast groups const, prevent abuse
- * genetlink: pass family to functions using groups
- * genetlink: only pass array to genl_register_family_with_ops()
- * which are commits c53ed742..2a94fe48
- */
-#ifdef genl_register_family_with_ops_groups
-#include <linux/genl_magic_func-genl_register_family_with_ops_groups.h>
-#else
-#include <linux/genl_magic_func-genl_register_mc_group.h>
-#endif
-#endif
+
 /*
  * Magic: provide conversion functions					{{{1
  * populate skb from struct.

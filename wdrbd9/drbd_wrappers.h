@@ -1297,7 +1297,6 @@ static inline void genl_unregister_mc_group(struct genl_family *family,
 static inline void kref_sub(struct kref *kref, unsigned int count,
     void(*release) (struct kref *kref))
 {
-	//_WIN32_CHECK with kref_put//JHKIM: count 회수와, kref_put 에서 release 함수가 잘 불려지는지 확인.
     while (count--)
         kref_put(kref, release);
 }
@@ -1348,7 +1347,7 @@ commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #endif
 
 #ifndef COMPAT_HAVE_KREF_GET_UNLESS_ZERO
-#ifdef _WIN32_CHECK // JHKIM: debugfs 에서만 사용. 일단 포팅보류
+#ifdef _WIN32_V9_DEBUGFS // JHKIM: debugfs 에서만 사용. 일단 포팅보류
 static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
     return atomic_add_unless(&kref->refcount, 1, 0);
@@ -1490,7 +1489,7 @@ static inline void genl_unlock(void) {}
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9 // _WIN32_CHECK [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯.
+#ifdef _WIN32_V9 // _WIN32_XXX [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯. // JHKIM: 정상.
 /*
 static inline void queue_flag_set_unlocked(unsigned int flag, struct request_queue *q)
 {

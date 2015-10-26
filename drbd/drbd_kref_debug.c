@@ -1,7 +1,7 @@
 ﻿#include <drbd_kref_debug.h>
 
 #ifdef _WIN32_V9
-// _WIN32_CHECK: JHKIM: CONFIG_KREF_DEBUG 포팅 보류
+// _WIN32_DEBUGFS: JHKIM: CONFIG_KREF_DEBUG 포팅 보류
 // #ifdef CONFIG_KREF_DEBUG // && _WIN32
 #else
 struct kref_debug_class kref_class_resource = {

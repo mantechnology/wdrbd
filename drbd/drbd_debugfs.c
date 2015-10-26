@@ -139,7 +139,7 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 	seq_print_age_or_dash(m, s & RQ_LOCAL_PENDING, now - req->pre_submit_jif);
 
 #define RQ_HDR_3 "\tsent\tacked\tdone"
-#ifdef _WIN32_CHECK // JHKIM:debugfs 용
+#ifdef _WIN32_V9_DEBUGFS // JHKIM:debugfs 용
 	print_one_age_or_dash(m, req, RQ_NET_SENT, 0, now, offsetof(typeof(*req), pre_send_jif));
 	print_one_age_or_dash(m, req, RQ_NET_SENT, RQ_NET_PENDING, now, offsetof(typeof(*req), acked_jif));
 	print_one_age_or_dash(m, req, RQ_NET_DONE, 0, now, offsetof(typeof(*req), net_done_jif));
@@ -558,7 +558,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 
 	return 0;
 }
-#ifdef _WIN32_CHECK  // JHKIM:debugfs 용
+#ifdef _WIN32_V9_DEBUGFS  // JHKIM:debugfs 용
 /* simple_positive(file->f_path.dentry) respectively debugfs_positive(),
  * but neither is "reachable" from here.
  * So we have our own inline version of it above.  :-( */

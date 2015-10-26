@@ -296,7 +296,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 			else
 				continue;
 		}
-#endif // _WIN32_CHECK
+#endif
 		if (rv == -EINTR) {
 			flush_signals(current);
 			rv = 0;
@@ -1650,7 +1650,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
 #endif
 		if (sent <= 0) {
-#ifndef _WIN32_SEND_BUFFING // _WIN32_CHECK
+#ifndef _WIN32_SEND_BUFFING
 			if (sent == -EAGAIN) {
 				if (drbd_stream_send_timed_out(transport, stream))
 					break;
@@ -1723,7 +1723,7 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 		dtt_nodelay(socket);
 		break;
 	case NOSPACE:
-#ifndef _WIN32 // not support. SOCK_NOSPACE 옵션 필요한지 다시 검토 요망. _WIN32_CHECK 
+#ifndef _WIN32 // not support. SOCK_NOSPACE 옵션 필요한지 다시 검토 요망. _WIN32_V9
 		if (socket->sk->sk_socket)
 			set_bit(SOCK_NOSPACE, &socket->sk->sk_socket->flags);
 #endif

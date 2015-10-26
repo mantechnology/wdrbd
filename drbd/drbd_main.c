@@ -667,7 +667,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
 #endif
-		// kref_get(&thi->tconn->kref); // V9_CHECK: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함
+		// kref_get(&thi->tconn->kref); // V9_XXX: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함 // JHKIM: drbd_thread_setup 함수 종료 시점에 krep_put 이 없음. 쌍으로 존재해야 하는 의미로 미루워 볼 때 사용 안함이 정상임. 
 
 		init_completion(&thi->stop);
 		D_ASSERT(resource, thi->task == NULL);
@@ -687,8 +687,8 @@ int drbd_thread_start(struct drbd_thread *thi)
             KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
             Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
             if (!NT_SUCCESS(Status)) {
-                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
-                //kref_put(&tconn->kref, &conn_destroy);
+                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명 // JHKIM: 확인완료
+                //kref_put(&tconn->kref, &conn_destroy); // _WIN32_XXX
                 return false;
             }
             ZwClose(hThread);
@@ -697,12 +697,12 @@ int drbd_thread_start(struct drbd_thread *thi)
         KeWaitForSingleObject(&thi->start_event, Executive, KernelMode, FALSE, NULL);
         if (!thi->nt)
         {
-            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");//V9_CHECK: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명
-           // kref_put(&tconn->kref, &conn_destroy);
+            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");//V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명  // JHKIM: 확인완료: 
+           // kref_put(&tconn->kref, &conn_destroy);  // JHKIM: 확인완료:  _WIN32_XXX
             return false;
         }
-        //sprintf(thi->nt->comm, "drbd_%c_%s", thi->name[0], thi->tconn->name); // rename //V9_CHECK: 스레드 이름 보관 방식이 달라졌는가?
 #else
+
 		nt = kthread_create(drbd_thread_setup, (void *) thi,
 				    "drbd_%c_%s", thi->name[0], resource->name);
 
@@ -4261,7 +4261,7 @@ out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32_V9
-	DbgPrint("_WIN32_CHECK: check synchronize_rcu!!!!\n"); // V9_CHECK [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..
+	DbgPrint("_WIN32_V9_RCU: check synchronize_rcu!!!!\n"); // _WIN32_V9_RCU [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..
 #else
 	synchronize_rcu();
 #endif

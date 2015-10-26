@@ -3831,7 +3831,7 @@ void del_connection(struct drbd_connection *connection)
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
 #ifndef _WIN32_V9 
-    //_WIN32_CHECK [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
+    //_WIN32_V9_RCU [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
 	synchronize_rcu();
 #endif
 	drbd_put_connection(connection);
@@ -5445,7 +5445,7 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	 * "destroy" event to come last.
 	 */
 	drbd_flush_workqueue(&resource->work);
-#ifdef _WIN32_CHECK	//spinlock hang 으로 주석처리.
+#ifdef _WIN32_V9_RCU	//spinlock hang 으로 주석처리.
 #ifdef _WIN32_V9
     synchronize_rcu_w32_wlock();
 #endif
@@ -5458,7 +5458,7 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifdef _WIN32_CHECK
+#ifdef _WIN32_V9_RCU
 	synchronize_rcu();
 #endif
 	drbd_put_device(device);

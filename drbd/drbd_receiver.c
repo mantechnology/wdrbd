@@ -493,7 +493,8 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 	if (i < 0)
 #ifdef _WIN32_V9
 	{
-		// _WIN32_CHECK: JHKIM: DW-594, DW-596 임시해결, 일단 primary 시 볼륨 접근이 가능하도록 일단 임시조치! 규명되야 함!!
+		// _WIN32_V9_DW596: DW-596 이슈 보강부분
+		// JHKIM: DW-594, DW-596 임시해결, 일단 primary 시 볼륨 접근이 가능하도록 일단 임시조치! 규명되야 함!!
 		// 원인: 
 		//    primary 시 상대노드는 pp_in_use 값이 음수가 도는 시점에 drbd_alloc_pages 를 사용하는 스레드가 무한대기를 하게됨
 		//    이 상황이 되면 로컬노드는,
@@ -507,7 +508,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 		//  - 오리지널도 어차피 pp_in_use 오동작 시에는 경고로 조치하는 듯.
 
 		// 32/64비트에서 포멧/페일오버 시험완료. 출력 빈도가 높아 disable 함.
-		//drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0: _WIN32_CHECK: reset pp_in_use!\n",
+		//drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0:reset pp_in_use!\n",
 		//	is_net ? "pp_in_use_by_net" : "pp_in_use", i);
 
 		*a = 0;
@@ -7736,7 +7737,7 @@ static void destroy_request(struct kref *kref)
 
 	list_del(&req->tl_requests);
 #ifdef _WIN32_V9
-	// _WIN32_CHECK:JHKIM: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
+	// _WIN32_V9_DW596:JHKIM: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
     if (req->win32_page_buf)
     {
         kfree(req->win32_page_buf);
