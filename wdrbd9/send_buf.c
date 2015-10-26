@@ -163,7 +163,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL)
 	{
 		static int tmp = 0;
-		if (tmp++ < 500) // V9_CHECK!!
+		if (tmp++ < 500) // V9_XXX!!
 		{
 			WDRBD_TRACE_SB("send buf: disabled. sb thread=%p bab=%p (tmp:%d)\n", buffering_attr->send_buf_thread_handle, buffering_attr->bab, tmp);
 		}

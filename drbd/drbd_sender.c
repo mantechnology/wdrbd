@@ -317,7 +317,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. V9_CHECK
+	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
@@ -849,7 +849,7 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	}
 	rcu_read_unlock();
 
-	// 뭔지모를 코드가 추가됨. 분석 필요. V9_CHECK
+	// 뭔지모를 코드가 추가됨. 분석 필요. V9_XXX
 	/* Don't have more than "max-buffers"/2 in-flight.
 	 * Otherwise we may cause the remote site to stall on drbd_alloc_pages(),
 	 * potentially causing a distributed deadlock on congestion during

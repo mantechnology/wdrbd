@@ -27,7 +27,7 @@
 #include "drbd_wrappers.h"
 #include <wsk2.h>
 #include <linux-compat\drbd_endian.h>
-#include <drbd_int.h> // _WIN32_V9_CHECK:JHKIM:DW_552:
+#include <drbd_int.h> // _WIN32_V9_XXX:JHKIM:DW_552:
 #else
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -143,7 +143,7 @@ int dtt_init(struct drbd_transport *transport)
 	tcp_transport->transport.class = &tcp_transport_class;
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 #ifdef _WIN32_V9 //적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요. => 해제 관련 문제 확인, 수정 완료.
-		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // V9_CHECK 임시 Tag '009D'
+		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // V9_XXX 임시 Tag '009D'
 		if (!buffer) {
 			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
 			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
@@ -259,7 +259,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 
 	/* THINK  if (signal_pending) return ... ? */
 
-	// V9_CHECK 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
+	// V9_XXX 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
 
 	do {
 		/* STRANGE
@@ -313,10 +313,10 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	} while (sent < size);
 
-	// V9_CHECK 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
+	// V9_XXX 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
 
 	if (rv <= 0) {
-		// V9_CHECK 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
+		// V9_XXX 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
 		return rv;
 	}
 
@@ -339,7 +339,7 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 	flags = WSK_FLAG_WAITALL;
 	return Receive(socket->sk, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
-	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_V9_CHECK 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
+	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_V9_XXX 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
 #endif
 }
 
@@ -495,7 +495,7 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
-// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. V9_CHECK
+// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. V9_XXX
 static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret_socket)
 {
 	const char *what;
@@ -519,7 +519,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	}
 
 #ifdef _WIN32_SEND_BUFFING
-// JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, V9_CHECK: 추후 정리!
+// JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_CHECK: 추후 정리!
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*50)   // 100MB->50MB 축소
 
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
@@ -813,7 +813,7 @@ static int dtt_wait_for_connect(struct dtt_waiter *waiter, struct socket **socke
 	timeo += (prandom_u32() & 1) ? timeo / 7 : -timeo / 7; /* 28.5% random jitter */
 
 retry:
-#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_CHECK
+#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_XXX
 	wait_event_interruptible_timeout(timeo, waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->waiter.wait, dtt_wait_connect_cond(waiter), timeo);
@@ -1254,7 +1254,7 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
     //    goto out;
     //}
 #endif
-    //tconn->s_listen = s_listen; //V9_CHECK
+    //tconn->s_listen = s_listen; //V9_XXX
 #endif
 #ifndef _WIN32
 	write_lock_bh(&s_listen->sk->sk_callback_lock);
@@ -1598,7 +1598,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 #endif
 #else
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk_linux_attr;
-	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. V9_CHECK
+	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. _WIN32_CHECK
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 #endif

@@ -327,7 +327,7 @@ enum drbd_state_rv {
 	SS_CONCURRENT_ST_CHG = -19,   /* Concurrent cluster side state change! */
 	SS_O_VOL_PEER_PRI = -20,
 	SS_INTERRUPTED = -21,	/* interrupted in stable_state_change() */
-// _WIN32_V9_CHECK 이전과 재비교!
+// _WIN32_XXX 이전과 재비교!
 	SS_PRIMARY_READER = -22,
 	SS_TIMEOUT = -23,
 	SS_WEAKLY_CONNECTED = -24,

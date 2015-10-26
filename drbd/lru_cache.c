@@ -70,7 +70,7 @@ int lc_try_lock(struct lru_cache *lc)
 	unsigned long val;
 	do {
 #ifdef _WIN32
-		val = atomic_cmpxchg(&lc->flags, 0, LC_LOCKED); // V9_CHECK: 기능이 동일한 지 재확인
+		val = atomic_cmpxchg(&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
 #else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
 #endif
@@ -201,7 +201,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	for (i--; i; i--) {
 		void *p = element[i];
 #ifdef _WIN32
-		ExFreeToNPagedLookasideList(cache, (size_t)p - e_off); // _V9_CHECK: (size_t) 캐스팅이 적절한지 재확인
+		ExFreeToNPagedLookasideList(cache, (size_t)p - e_off); // _V9_XXX: (size_t) 캐스팅이 적절한지 재확인
 #else
 		kmem_cache_free(cache, p - e_off);
 #endif

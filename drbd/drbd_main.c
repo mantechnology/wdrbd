@@ -113,7 +113,6 @@ module_param(allow_oos, bool, 0);
 #ifdef CONFIG_DRBD_FAULT_INJECTION
 #ifdef _WIN32
 
-// DRBD_DOC: 참고 V9_CHECK: DRBD_V8 에서 시험용으로 사용된 것임, V9 에서도 그대로 적용 될 듯, 
 //Example: Simulate data write errors on / dev / drbd0 with a probability of 5 % .
 //		echo 16 > /sys/module/drbd/parameters/enable_faults
 //		echo 1 > /sys/module/drbd/parameters/fault_devs
@@ -569,7 +568,7 @@ static int drbd_thread_setup(void *arg)
     if (!thi->nt)
     {
         WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
-        // kref_put(&tconn->kref, &conn_destroy); //V9_CHECK: V9에서 사용 안되는 이유 규명// JHKIM: 별도 메타니즘 사용
+        // kref_put(&tconn->kref, &conn_destroy); //V9_XXX: V9에서 사용 안되는 이유 규명// JHKIM: 별도 메타니즘 사용
         PsTerminateSystemThread(STATUS_SUCCESS);
         // BUG();
     }
@@ -1633,7 +1632,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 	pdc = rcu_dereference_protected(peer_device->conf,
 		lockdep_is_held(&peer_device->device->resource->conf_update));
 #ifdef _WIN32_V9
-	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // V9_CHECK: 추후 태그 목록정리
+	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // _WIN32_CHECK: 추후 메모리 할당 태그 목록정리
 #else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 #endif
@@ -1989,7 +1988,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32_V9 // V9_CHECK
+#ifdef _WIN32_V9
 	pc = (struct p_compressed_bm *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #else
 	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
@@ -2366,7 +2365,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	DRBD_ITER_TYPE iter;
 #endif
 
-#ifdef _WIN32_V9 // V9_CHECK !!!!
+#ifdef _WIN32_V9
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
 	if (err)
@@ -2417,7 +2416,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	struct page *page = peer_req->pages;
 	unsigned len = peer_req->i.size;
 	int err;
-#ifdef _WIN32_V9 // V9_CHECK !!!!
+#ifdef _WIN32_V9 // V9_XXX !!!!
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
 	err = _drbd_no_send_page(peer_device, peer_req->win32_big_page, 0, len, 0);
@@ -2502,7 +2501,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	/* our digest is still only over the payload.
 	 * TRIM does not carry any payload. */
 	if (digest_size)
-#ifdef _WIN32 // V9_CHECK: network buffer duplicated
+#ifdef _WIN32 // V9_CHECK: network buffer duplicated // JHKIM: 어떤 의미인가?
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req, p + 1);
 #else
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, p + 1);
@@ -2699,7 +2698,7 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 			timeout -= HZ / 5;
 		} else if (rv == SS_TWO_PRIMARIES) {
 			/* Wait till the peer demoted itself */
-#ifdef _WIN32_V9 // V9_CHECK
+#ifdef _WIN32_V9
 			wait_event_interruptible_timeout(timeout, resource->state_wait,
 				resource->role[NOW] == R_PRIMARY ||
 				(!primary_peer_present(resource) && any_disk_is_uptodate(device)),
@@ -3289,7 +3288,7 @@ static void drbd_cleanup(void)
 #ifndef _WIN32
 	drbd_genl_unregister();
 #endif
-//  V9_CHECK: minord 가 여기서 정리됨, 9.0의 방식 비교 분석 필요!!
+//  _WIN32_V9_DEBUGFS: minord 가 여기서 정리됨, 9.0의 방식 비교 분석 필요!!
 	drbd_debugfs_cleanup();
 
 	drbd_destroy_mempools();
@@ -3301,7 +3300,7 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32_V9 // V9_CHECK [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
+#ifdef _WIN32_V9 // V9_XXX [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     unsigned int i;
@@ -4248,12 +4247,12 @@ out_remove_peer_device:
     }
 #endif
 out_idr_remove_minor:
-#ifdef _WIN32_V9 // [choi] V9_CHECK 필요없으면 삭제
+#ifdef _WIN32_V9 // [choi] _WIN32_V9_RCU 필요없으면 삭제
     {
         synchronize_rcu_w32_wlock();
 #endif
 	idr_remove(&drbd_devices, minor);
-#ifdef _WIN32_V9 // [choi] V9_CHECK 필요없으면 삭제
+#ifdef _WIN32_V9 // [choi] _WIN32_V9_RCU 필요없으면 삭제
         synchronize_rcu();
     }
 #endif
@@ -5819,7 +5818,7 @@ void lock_all_resources(void)
     for_each_resource(resource, &drbd_resources)
     {
         spin_lock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("V9_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+        WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
         resource->req_lock.saved_oldIrql = irql;
     }
 #else
@@ -5837,7 +5836,7 @@ void unlock_all_resources(void)
 #ifdef _WIN32_V9
     {
         spin_unlock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("V9_CHECK : CurrentIrql(%d)\n", KeGetCurrentIrql());
+        WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
     }
 #else
 		spin_unlock(&resource->req_lock);

@@ -1004,7 +1004,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
         sig = __ret; \
     } while (0)
 
-#ifdef _WIN32_V9  // _WIN32_V9_CHECK:JHKIM:DW_552:  JHKIM: 재확인!!
+#ifdef _WIN32_V9  // _WIN32_V9_XXX:JHKIM:DW_552:  JHKIM: 재확인!!
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
@@ -1114,7 +1114,7 @@ static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
 #define generic_find_next_le_bit(addr, size, offset)	find_next_bit(addr, size, offset)
 #endif
 
-// V9_CHECK: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
+// V9_XXX: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
 struct retry_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1348,11 +1348,11 @@ typedef struct _PTR_ENTRY
 #define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
 //pagemap.h
-#define PAGE_CACHE_SHIFT	PAGE_SHIFT //V9_CHECK Windows환경으로 포팅필요
+#define PAGE_CACHE_SHIFT	PAGE_SHIFT //V9_XXX Windows환경으로 포팅필요
 
 // Bio.h
-#define BIO_MAX_PAGES		256		//V9_CHECK Windows환경으로 포팅필요
-#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //V9_CHECK Windows환경으로 포팅필요
+#define BIO_MAX_PAGES		256		//V9_XXX Windows환경으로 포팅필요
+#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //V9_XXX Windows환경으로 포팅필요
 
 //asm-x86 , asm-generic 
 #define	EDESTADDRREQ	89	/* Destination address required */

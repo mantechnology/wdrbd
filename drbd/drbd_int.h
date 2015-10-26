@@ -1732,8 +1732,8 @@ extern int  drbd_thread_start(struct drbd_thread *thi);
 extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 
 #ifdef _WIN32
-//#define drbd_thread_current_set_cpu(A) ({})  // V9_CHECK: VS2013 에서 컴파일이 되는가?
-// => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
+//#define drbd_thread_current_set_cpu(A) ({})  // V9_XXX: VS2013 에서 컴파일이 되는가?
+// V9_XXX => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
 #define drbd_thread_current_set_cpu(A) 
 #define drbd_calc_cpu_mask(A)
 #else
@@ -1999,7 +1999,7 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * we limit us to a platform agnostic constant here for now.
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
-#ifndef _WIN32 //V9_CHECK // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?//JHKIM: 필요없을 듯.
+#ifndef _WIN32 //V9_XXX // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?//JHKIM: 필요없을 듯.
 #if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #endif
@@ -2126,8 +2126,8 @@ extern mempool_t *drbd_ee_mempool;
  * frequent calls to alloc_page(), and still will be able to make progress even
  * under memory pressure.
  */
-#ifndef _WIN32 // V9_CHECK: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
-extern struct page *drbd_pp_pool;
+#ifndef _WIN32 // V9_XXX: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
+extern struct page *drbd_pp_pool; // V9_XXX
 #endif
 
 extern spinlock_t   drbd_pp_lock;
@@ -2924,7 +2924,7 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
  *
  * You have to call put_ldev() when finished working with device->ldev.
  */
-#ifdef _WIN32_V9 // V9_CHECK
+#ifdef _WIN32_V9
 #define get_ldev_if_state(_device, _min_state)				\
 	(_get_ldev_if_state((_device), (_min_state)) ?			\
 	true : false)

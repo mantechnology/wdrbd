@@ -41,7 +41,7 @@ typedef		__u16		uint16_t;
 typedef		__u32		uint32_t;
 
 //#if defined(__GNUC__)
-#ifndef _WIN32_APP //_WIN32_V9_CHECK: cli x64 build error! 필요없으면 삭제
+#ifndef _WIN32_APP //_WIN32_XXX: cli x64 build error! 필요없으면 삭제
 typedef		__u64		uint64_t;
 typedef		__u64		u_int64_t;
 typedef		__s64		int64_t;

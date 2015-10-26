@@ -170,7 +170,6 @@ void wait_until_done_or_force_detached(struct drbd_device *device, struct drbd_b
 	if (dt == 0)
 		dt = MAX_SCHEDULE_TIMEOUT;
 
-// _WIN32_V9_CHECK: 인자 맞춤! 
 #ifdef _WIN32
     wait_event_timeout(dt, device->misc_wait,
         *done || test_bit(FORCE_DETACH, &device->flags), dt);
@@ -1325,7 +1324,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	rcu_read_unlock();
 	if (mask) {
 		int bitmap_index;
-#ifdef _WIN32_V9 // V9_CHECK:JHKIM 타입 캐스팅 필요성 확인
+#ifdef _WIN32_V9 // V9_XXX:JHKIM 타입 캐스팅 필요성 확인
 		for_each_set_bit(bitmap_index, (ULONG_PTR*)&mask, BITS_PER_LONG) {
 #else 
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {

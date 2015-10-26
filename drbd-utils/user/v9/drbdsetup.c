@@ -3869,7 +3869,7 @@ static void print_usage_and_exit(const char* addinfo)
 
 static int modprobe_drbd(void)
 {
-#ifndef _WIN32 //_WIN32_V9_CHECK : modprobe 필요성 확인
+#ifndef _WIN32 //_WIN32_XXX : modprobe 필요성 확인
 	struct stat sb;
 	int ret, retries = 10;
 
@@ -3899,7 +3899,7 @@ static int modprobe_drbd(void)
 	return ret == 0;
 #else
     return 1; // [choi] return true.
-#endif //_WIN32_V9_CHECK_END
+#endif //_WIN32_XXX
 }
 
 static void maybe_exec_legacy_drbdsetup(char **argv)

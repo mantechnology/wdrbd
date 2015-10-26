@@ -25,7 +25,7 @@
 #ifndef _DRBD_VLI_H
 #define _DRBD_VLI_H
 
-#ifdef _WIN32 // V9_CHECK : 일단 헤더파일 오류 회피! 추후 정리
+#ifdef _WIN32 // V9_XXX : 일단 헤더파일 오류 회피! 추후 정리
 #include "linux-compat\drbd_endian.h"
 #endif
 /*

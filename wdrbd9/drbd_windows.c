@@ -575,7 +575,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
     }
     return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
 #else
-	kref_sub(kref, 1, release); //V9_CHECK
+	kref_sub(kref, 1, release); //V9_XXX
 #endif
 }
 
@@ -1007,12 +1007,12 @@ int mutex_trylock(struct mutex *m)
 void mutex_unlock(struct mutex *m)
 {
 #ifdef _WIN32_V9
-    if (mutex_is_locked(m)) //_WIN32_V9_CHECK choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함.
+    if (mutex_is_locked(m)) //_WIN32_CHECK choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함. // JHKIM: 그런 경우는 BUG로 처리하여 스택을 보면서 위치를 찾아야 함. 보도디버깅 코드 삽입 필요 _WIN32_V9_MUTEX_TEST
 #endif
         KeReleaseMutex(&m->mtx, FALSE);
 }
 
-#ifdef _WIN32_V9 // V9_CHECK
+#ifdef _WIN32_V9
 
 void sema_init(struct semaphore *s, int limit)
 {
@@ -1162,13 +1162,13 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 #ifdef _WIN32_V9
 void spin_lock_bh(spinlock_t *lock)
 {
-	//V9_CHECK: dummy!!! spin lock  적용해도 문제 없을 듯.
+	//V9_XXX: dummy!!! spin lock  적용해도 문제 없을 듯.
 	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
 }
 
 void spin_unlock_bh(spinlock_t *lock)
 {
-	//V9_CHECK: dummy!!! spin unlock  적용해도 문제 없을 듯.
+	//V9_XXX: dummy!!! spin unlock  적용해도 문제 없을 듯.
 	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 }
 #endif
@@ -1268,7 +1268,7 @@ int del_timer_sync(struct timer_list *t)
     del_timer(t);
     return 0;
 #ifdef _WIN32_V9
-	// V9_CHECK // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
+	// V9_XXX // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
 #else
   	for (;;) {
 		int ret = try_to_del_timer_sync(timer);
@@ -2005,7 +2005,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	toks += now - last_msg;					
 	last_msg = now;
 
-	__ret = 0;  // V9_CHECK
+	__ret = 0; 
 #ifdef _WIN32_CHECK : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	

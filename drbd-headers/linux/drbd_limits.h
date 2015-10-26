@@ -89,7 +89,7 @@
 
   /* I don't think that a tcp send buffer of more than 10M is useful */
 #define DRBD_SNDBUF_SIZE_MIN  0
-#if 1  // _WIN32_SEND_BUFFING // JHKIM: 헤더파일 영역이 다름? 일단, 강제 정의, V9_CHECK
+#if 1  // _WIN32_SEND_BUFFING // JHKIM: 헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_CHECK
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*50) // 100MB->50MB 축소
 #else

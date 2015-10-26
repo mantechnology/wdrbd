@@ -329,7 +329,7 @@ extern int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		struct bio_and_error *m);
 #ifdef _WIN32
 extern void complete_master_bio(struct drbd_device *device,
-		struct bio_and_error *m, char *func, int line); // V9_CHECK: caller 확인 디버깅용 인자추가, 일단 유지
+		struct bio_and_error *m, char *func, int line);
 #else
 extern void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m);
