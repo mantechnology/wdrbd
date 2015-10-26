@@ -1007,7 +1007,7 @@ int mutex_trylock(struct mutex *m)
 void mutex_unlock(struct mutex *m)
 {
 #ifdef _WIN32_V9
-    if (mutex_is_locked(m)) //_WIN32_CHECK choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함. // JHKIM: 그런 경우는 BUG로 처리하여 스택을 보면서 위치를 찾아야 함. 보도디버깅 코드 삽입 필요 _WIN32_V9_MUTEX_TEST
+    if (mutex_is_locked(m)) //_WIN32_CHECK_7 choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함. // JHKIM: 그런 경우는 BUG로 처리하여 스택을 보면서 위치를 찾아야 함. 보도디버깅 코드 삽입 필요 _WIN32_V9_MUTEX_TEST
 #endif
         KeReleaseMutex(&m->mtx, FALSE);
 }
@@ -2006,7 +2006,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	last_msg = now;
 
 	__ret = 0; 
-#ifdef _WIN32_CHECK : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
+#ifdef _WIN32_CHECK_8 // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	
 		toks = ratelimit_burst * ratelimit_jiffies;	

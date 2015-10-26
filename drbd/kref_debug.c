@@ -12,7 +12,7 @@
 #include "kref_debug.h"
 
 #ifdef _WIN32_V9
-// _WIN32_CHECK: CONFIG_KREF_DEBUG 디버깅을 하지 않겠다는 의도로 일단 회피처리
+// _WIN32_V9_KREF_DEBUG: CONFIG_KREF_DEBUG 디버깅을 하지 않겠다는 의도로 일단 회피처리
 #ifdef CONFIG_KREF_DEBUG // && _WIN32
 
 	// 사용할 경우만 대비...

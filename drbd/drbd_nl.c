@@ -4179,7 +4179,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	resource = device->resource;
-#ifdef _WIN32_CHECK // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요// JHKIM: 특이한 케이스로 기억됨. 일단 보류.
+#ifdef _WIN32_CHECK_3 // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요// JHKIM: 특이한 케이스로 기억됨. 일단 보류.
     sector_t p_size = resource->p_size << 9;
     sector_t l_size = get_targetdev_volsize(resource->this_bdev->bd_disk->pDeviceExtension);
     if ((resource->state.disk == D_INCONSISTENT) && 
@@ -4282,7 +4282,7 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_DISK;
 		goto out;
 	}
-#ifdef _WIN32_CHECK // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요
+#ifdef _WIN32_CHECK_3 // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요
     sector_t p_size = resource->p_size << 9;
     sector_t l_size = get_targetdev_volsize(resource->this_bdev->bd_disk->pDeviceExtension);
     if ((resource->state.disk == D_INCONSISTENT) &&

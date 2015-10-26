@@ -1632,7 +1632,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 	pdc = rcu_dereference_protected(peer_device->conf,
 		lockdep_is_held(&peer_device->device->resource->conf_update));
 #ifdef _WIN32_V9
-	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // _WIN32_CHECK: 추후 메모리 할당 태그 목록정리
+	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // _WIN32_CHECK_2: 추후 메모리 할당 태그 목록정리
 #else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 #endif

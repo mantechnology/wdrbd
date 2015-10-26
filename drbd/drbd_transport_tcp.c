@@ -449,7 +449,7 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
         // unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
 		stats->send_buffer_size = sk->sk_sndbuf;
 #ifdef _WIN32_SEND_BUFFING
-		// unused! // _WIN32_CHECK
+		// unused! // _WIN32_SEND_BUFFING_TODO
 #else
 		stats->send_buffer_used = sk->sk_wmem_queued;
 #endif
@@ -519,7 +519,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 	}
 
 #ifdef _WIN32_SEND_BUFFING
-// JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_CHECK: 추후 정리!
+// JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_SEND_BUFFING_TODO: 추후 정리!
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*50)   // 100MB->50MB 축소
 
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
@@ -1022,7 +1022,7 @@ static void dtt_incoming_connection(struct sock *sock)
         // 해당 노드의 connection을 위한 스레드를 만들기도 전에 해당 노드로 부터 try connect이 되는 경우가 있다. // JHKIM: 리스트에 등록이 안될텐데, 이런 경우가 발생을 하는가?
         // 이런 경우는 이번 타이밍때는 넘기고 다음번 incoming시 세션을 맺어주도록 한다.
         spin_unlock(&listener->listener.waiters_lock);
-#ifdef _WIN32_CHECK // JHKIM: 다음 동작이 필요한가? 
+#ifdef _WIN32_CHECK_5 // JHKIM: 다음 동작이 필요한가? 
 		// 참고: https://msdn.microsoft.com/en-us/library/windows/hardware/ff571120(v=vs.85).aspx
 		if (NULL == AcceptSocket)
 		{
@@ -1470,7 +1470,7 @@ randomize:
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
 		goto out;
 	}
-#ifdef _WIN32_CHECK // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
+#ifdef _WIN32_CHECK_6 // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
 	status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
@@ -1574,14 +1574,14 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
-#ifdef _WIN32 //_WIN32_CHECK // JHKIM: 혼잡모드 재확인! --> CHOI : tcp_transport->stream[DATA_STREAM]가 null이라 BSOD남.
+#ifdef _WIN32 //_WIN32_SEND_BUFFING_TODO:재확인 // JHKIM: 혼잡모드 재확인! --> CHOI : tcp_transport->stream[DATA_STREAM]가 null이라 BSOD남.
     // DRBD_DOC: DRBD_CONGESTED_PORTING
     // 송출시 혼잡 정도를 체크한다.
     //  - sk_wmem_queued is the amount of memory used by the socket send buffer queued in the transmit queue 
     // WDRBD WSK는 송출 혼잡 판단 API를 제공하지 않는다. 또한 송출 버퍼가 없다.
     // 따라서 WDRBD는 drbd_update_congested 기능을 제공 못함.
 
-#ifdef _WIN32_SEND_BUFFING
+#ifdef _WIN32_SEND_BUFFING //_WIN32_SEND_BUFFING_TODO:재확인
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk_linux_attr;
 	struct _buffering_attr *buffering_attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
 	struct ring_buffer *bab = buffering_attr->bab;
@@ -1598,7 +1598,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 #endif
 #else
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk_linux_attr;
-	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. _WIN32_CHECK
+	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. //_WIN32_SEND_BUFFING_TODO:재확인
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 #endif

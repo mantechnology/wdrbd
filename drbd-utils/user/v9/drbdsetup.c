@@ -703,7 +703,7 @@ static int conv_block_dev(struct drbd_argument *ad, struct msg_buff *msg,
 	struct stat sb;
 	int device_fd;
 
-#ifdef _WIN32 //_WIN32_V9_CHECK [choi] v8.4.3에서는 여기서 무조건 return NO_ERROR; 하도록 되있음. 아래 루틴을 타지않아도 되는건지 확인필요.
+#ifdef _WIN32 //_WIN32_CHECK_9 // _[choi] v8.4.3에서는 여기서 무조건 return NO_ERROR; 하도록 되있음. 아래 루틴을 타지않아도 되는건지 확인필요.
     // check true!
     nla_put_string(msg, ad->nla_type, arg);
     return NO_ERROR;

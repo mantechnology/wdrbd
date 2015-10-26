@@ -317,7 +317,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK
+	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK_4
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
@@ -915,7 +915,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 
 			transport->ops->stats(transport, &transport_stats);
 
-#if 0 // def _WIN32 // JHKIM:_WIN32_CHECK: TODO: 정리할 것!. 
+#if 0 // def _WIN32 // JHKIM:_WIN32_SEND_BUFFING_TODO: 정리할 것!. 
 #ifdef _WIN32_SEND_BUFFING
 			struct ring_buffer *bab = mdev->tconn->data.socket->bab;
 			if (bab)
