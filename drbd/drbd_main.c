@@ -3378,6 +3378,14 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 #endif
 	int r = 0;
 
+#ifdef _WIN32_V9
+	
+	// _WIN32_V9_DEBUGFS // JHKIM
+	// V8에서는 drbd_seq_show 에서 이 함수가 강제로 불려지도록하여 혼잡상태를 파악하여 표현하였으나
+	// V9에서는 DEBUGFS가 사용되면서 이 함수가 불려지지 않는다(또는 방식이 바뀐 듯)
+	// DEBUGFS 포팅 시점에 재 확인하고 의미없으면 not_suppported 로 처리한다.
+
+#else
 	if (!may_inc_ap_bio(device)) {
 		/* DRBD has frozen IO */
 		r = bdi_bits;
@@ -3416,7 +3424,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
-#ifdef _WIN32_CHECK 	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
+#ifdef _WIN32_XXX 	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
     // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
@@ -3438,6 +3446,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 #endif
 
 out:
+#endif
 	return r;
 }
 
