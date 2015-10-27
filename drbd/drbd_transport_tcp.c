@@ -843,13 +843,13 @@ retry:
 		//paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
 		// 
 		if (listener->paccept_socket) {
-			s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
+			s_estab = kzalloc(sizeof(struct socket), 0, 'D6DW');
 			if (!s_estab) {
 				return -ENOMEM;
 			}
 			s_estab->sk = listener->paccept_socket;
 			sprintf(s_estab->name, "estab_sock");
-			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
+			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'B6DW');
 			if (!s_estab->sk_linux_attr) {
 				kfree(s_estab);
 				return -ENOMEM;
@@ -1032,12 +1032,12 @@ static void dtt_incoming_connection(struct sock *sock)
 		return STATUS_REQUEST_NOT_ACCEPTED; // rejected the incoming connection
     }
 
-    struct socket * s_estab = kzalloc(sizeof(struct socket), 0, '82DW');
+    struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
     if (s_estab)
     {
         s_estab->sk = AcceptSocket;
         sprintf(s_estab->name, "estab_sock");
-        s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
+        s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
 
         if (s_estab->sk_linux_attr)
         {
@@ -1174,7 +1174,7 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
 
 	what = "sock_create_kern";
 #ifdef _WIN32
-    s_listen = kzalloc(sizeof(struct socket), 0, '62DW');
+    s_listen = kzalloc(sizeof(struct socket), 0, '87DW');
     if (!s_listen)
     {
         err = -ENOMEM;
@@ -1184,7 +1184,7 @@ static int dtt_create_listener(struct drbd_transport *transport, struct drbd_lis
     s_listen->sk_linux_attr = 0;
     err = 0;
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-	listener = kzalloc(sizeof(struct dtt_listener), 0, '82DW');
+	listener = kzalloc(sizeof(struct dtt_listener), 0, 'F6DW');
 	if (!listener) {
         err = -ENOMEM;
         goto out;
@@ -1293,6 +1293,9 @@ static void dtt_put_listener(struct dtt_waiter *waiter)
 		sock_release(waiter->socket);
 		waiter->socket = NULL;
 	}
+#ifdef _WIN32_V9
+    kfree(waiter);
+#endif
 }
 
 static int dtt_connect(struct drbd_transport *transport)
@@ -1303,7 +1306,7 @@ static int dtt_connect(struct drbd_transport *transport)
 	struct socket *dsocket, *csocket;
 	struct net_conf *nc;
 #ifdef _WIN32_V9
-    struct dtt_waiter * waiter = kzalloc(sizeof(struct dtt_waiter), 0, '62DW');
+    struct dtt_waiter * waiter = kzalloc(sizeof(struct dtt_waiter), 0, '97DW');
     if (!waiter)
         return -ENOMEM;
 #else
@@ -1524,7 +1527,6 @@ out_eagain:
 out:
 #ifdef _WIN32_V9
     dtt_put_listener(waiter);
-    kfree(waiter);
 #else
 	dtt_put_listener(&waiter);
 #endif
@@ -1895,9 +1897,9 @@ static bool dtt_stop_send_buffring(struct drbd_transport *transport)
 			if (attr->send_buf_thread_handle != NULL)
 			{
 				KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
-				WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
+				//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
 				KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
-				WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+				//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
 				attr->send_buf_thread_handle = NULL;
 			}
 			else
@@ -1908,7 +1910,7 @@ static bool dtt_stop_send_buffring(struct drbd_transport *transport)
 		}
 		else
 		{
-			WDRBD_WARN("No stream(channel:%d)\n", i);
+			//WDRBD_WARN("No stream(channel:%d)\n", i);
 			return FALSE;
 		}
 	}

@@ -4053,7 +4053,7 @@ static struct crypto_hash *drbd_crypto_alloc_digest_safe(const struct drbd_devic
 		return NULL;
 
 #ifdef _WIN32
-    tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC, '92DW');
+    tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC, 'A6DW');
 #else
 	tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC);
 #endif
@@ -7887,7 +7887,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 		pre_recv_jif = jiffies;
 		rv = tr_ops->recv(transport, CONTROL_STREAM, &buffer, expect - received, rflags);
-        WDRBD_TRACE_RS("ack_receiver: rv(%d/%d) rflags(0x%x)\n", rv, expect - received, rflags);
+        //WDRBD_TRACE_SK("%s rv(%d/%d) rflags(0x%x)\n", ((connection)->transport.net_conf)->name, rv, expect - received, rflags);
 		/* Note:
 		 * -EINTR	 (on meta) we got a signal
 		 * -EAGAIN	 (on meta) rcvtimeo expired
@@ -7940,7 +7940,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #ifdef _WIN32_V9
 			if (current->sig == SIGXCPU)
 			{
-				WDRBD_INFO("got SIGXCPU during rx.\n");
+				//WDRBD_INFO("got SIGXCPU during rx.\n");
 			}
 #endif
 			flush_signals(current);
@@ -7981,7 +7981,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #ifdef _WIN32_V9
 				if (err == -EINTR && current->sig == SIGXCPU)
 				{
-					WDRBD_INFO("got SIGXCPU during fn(%s)\n", drbd_packet_name(pi.cmd));
+					//WDRBD_INFO("got SIGXCPU during fn(%s)\n", drbd_packet_name(pi.cmd));
 					flush_signals(current);
 					goto ignore_sig;
 				}

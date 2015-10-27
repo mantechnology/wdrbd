@@ -653,10 +653,10 @@ int drbd_thread_start(struct drbd_thread *thi)
 	case NONE:
 #ifdef _WIN32_V9
 		if (connection)
-			drbd_info(connection, "Starting %s thread (from %s [0x%x])\n",
+			drbd_info(connection, "Starting %s thread (from %s [0x%p])\n",
 				 thi->name, current->comm, current->pid);
 		else
-			drbd_info(resource, "Starting %s thread (from %s [0x%x])\n",
+			drbd_info(resource, "Starting %s thread (from %s [0x%p])\n",
 				 thi->name, current->comm, current->pid);
 #else
 		if (connection)

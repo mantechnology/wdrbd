@@ -513,6 +513,9 @@ NetlinkWorkThread(PVOID context)
 
         struct nlmsghdr *nlh = (struct nlmsghdr *)psock_buf;
 
+        if (pinfo)
+            ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
+
         pinfo = genl_info_new(nlh, socket);
         if (!pinfo)
         {
