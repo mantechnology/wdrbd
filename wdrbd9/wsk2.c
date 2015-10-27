@@ -509,7 +509,7 @@ Send(
 				}
 				else
 				{
-					WDRBD_WARN("(%s) send buffering! Not reached!?\n");
+                    WDRBD_WARN("(%s) send buffering! Not reached!?\n", current->comm);
 					BUG(); // _WIN32_V9 포팅 후 안정화뒤 제거
 				}
 #else
