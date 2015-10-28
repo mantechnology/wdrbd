@@ -1303,6 +1303,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
     if (!timer_pending(timer) && pending_only)
     {
+		//_WIN32_CHECK // JHKIM: 0으로 리턴해도 되는가? Win 에서는 타이머 적재가 되야할 듯.
+		DbgPrint("DRBD_TEST: __mod_timer: timer ignored. check please.\n"); // JHKIM
         return 0;
     }
 
@@ -1348,9 +1350,11 @@ int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
 #ifdef _WIN32_V9
+#if 0 // _WIN32_CHECK: JHKIM: Windows 에서는 timer->expires 가 재계산 되지 않기에 expires 와 동일하다. 여기서 return 하면 타이머 적재가 안되어 sender 스레드의 connect_work 콜백이 이 트리거링 되지 않는다.
     if (timer_pending(timer) && timer->expires == expires)
     	return 1;
 
+#endif
     return __mod_timer(timer, expires, false);
 #else
 	LARGE_INTEGER nWaitTime;
