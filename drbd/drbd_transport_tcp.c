@@ -752,6 +752,43 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 	dtt_socket_ok_or_free(socket1);
 	dtt_socket_ok_or_free(socket2);
 
+#ifdef _WIN32_V9 //JHKIM:임시조치: 연결된 소켓이 정상인지 실제 통신으로 재확인한다. 추후 재정리.
+	int ret;
+	char buf = 0x77;
+
+	if ((ret = SendLocal((*socket1)->sk, &buf, 1, 0, 3000)) != 1)
+	{
+		WDRBD_INFO("socket1(%s) is ok. but send error(%d)", (*socket1)->name, ret);
+		sock_release(*socket1);
+		*socket1 = 0;
+		return false;
+	}
+
+	if ((ret = Receive((*socket1)->sk, &buf, 1, 0, 5000)) != 1)
+	{
+		WDRBD_INFO("socket1(%s) is ok. but recv timeout(%d)!", (*socket1)->name, ret);
+		sock_release(*socket1);
+		*socket1 = 0;
+		return false;
+	}
+
+	if ((ret = SendLocal((*socket2)->sk, &buf, 1, 0, 3000)) != 1)
+	{
+		WDRBD_INFO("socket2(%s) is ok. but send error(%d)!", (*socket2)->name, ret);
+		sock_release(*socket2);
+		*socket2 = 0;
+		return false;
+	}
+
+	if ((ret = Receive((*socket2)->sk, &buf, 1, 0, 5000)) != 1)
+	{
+		WDRBD_INFO("socket2(%s) is ok. but recv timeout(%d)!", (*socket2)->name, ret);
+		sock_release(*socket2);
+		*socket2 = 0;
+		return false;
+	}
+#endif
+
 	return *socket1 && *socket2;
 }
 
