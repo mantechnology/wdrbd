@@ -218,7 +218,7 @@ void drbd_printk_with_wrong_object_type(void);
 #define drbd_debug(obj, fmt, ...) \
 	drbd_printk(KERN_DEBUG, obj, fmt, __VA_ARGS__)
 #else
-#define drbd_debug(obj, fmt, ...)
+#define drbd_debug(obj, fmt, ...) drbd_printk(KERN_DEBUG, obj, fmt, __VA_ARGS__)
 #endif
 #else
 #define __drbd_printk_device(level, device, fmt, args...)		\

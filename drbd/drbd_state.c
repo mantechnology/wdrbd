@@ -1307,7 +1307,15 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 			   resource */
 			if (connection->cstate[OLD] < C_CONNECTED &&
 			    peer_device->repl_state[NEW] >= L_ESTABLISHED)
+#ifdef _WIN32_V9
+			{
+				// _WIN32_CHECK:// JHKIM: 3차 SS_NEED_CONNECTION 오류회피: 임시처리: SS_NEED_CONNECTION 무시! -> 효과있음! 추후 재확인!!!
+				drbd_debug(connection, "Ignore SS_NEED_CONNECTION!!! cs=%d repl=%d - Check please!!!!\n",
+					connection->cstate[OLD], peer_device->repl_state[NEW]);
+			}
+#else
 				return SS_NEED_CONNECTION;
+#endif
 		}
 	}
 

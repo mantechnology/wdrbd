@@ -1030,12 +1030,37 @@ start:
 			kref_debug_get(&connection->kref_debug, 11);
 			connection->connect_timer_work.cb = connect_work;
 			timeout = twopc_retry_timeout(resource, 0);
+#if 0 // def _WIN32_V9 // JHKIM: 1차 SS_NEED_CONNECTION 오류회피:connect_work 를 바로 처리하도록 조치 -> 효과 없음
 			drbd_debug(connection, "Waiting for %ums to avoid transaction "
-				   "conflicts\n", jiffies_to_msecs(timeout));
+				"conflicts? No, right now!\n", jiffies_to_msecs(timeout));
+			connection->connect_timer.expires = 0;
+#else
+			drbd_debug(connection, "Waiting for %ums to avoid transaction "
+				"conflicts\n", jiffies_to_msecs(timeout));
 			connection->connect_timer.expires = jiffies + timeout;
+#endif
 			add_timer(&connection->connect_timer);
 		}
+#ifdef _WIN32_V9 // JHKIM: 2차 SS_NEED_CONNECTION 오류회피:connect_work 을 사용 안하는 노드들은 약간 대기 -> 효과 없음
+		else
+		{
+			drbd_debug(connection, "Skip connect_work\n");
+#if 0
+			// sleep 1 sec.
+			LARGE_INTEGER	nWaitTime;
+			KTIMER ktimer;
+			nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(200)));
+			KeInitializeTimer(&ktimer);
+			KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
+			KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+#endif
+		}
+		drbd_debug(connection, "Wait done.\n");
+#endif
 	} else {
+#ifdef _WIN32_V9 // DEBUG: 확인 후 제거
+		panic("DRBD_CHECK: unexpected agreed_pro_version (%d)!!!\n", connection->agreed_pro_version);
+#endif
 		enum drbd_state_rv rv;
 		rv = change_cstate(connection, C_CONNECTED,
 				   CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE | CS_LOCAL_ONLY);
