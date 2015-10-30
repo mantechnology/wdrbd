@@ -798,7 +798,11 @@ static bool initial_states_pending(struct drbd_connection *connection)
 
 bool conn_try_outdate_peer(struct drbd_connection *connection)
 {
+#ifdef _WIN32_V9
+    ULONG_PTR last_reconnect_jif;
+#else
 	unsigned long last_reconnect_jif;
+#endif
 	enum drbd_fencing_policy fencing_policy;
 	char *ex_to_string;
 	int r;
