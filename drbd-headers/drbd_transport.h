@@ -198,7 +198,7 @@ struct drbd_transport_ops {
 	int (*remove_path)(struct drbd_transport *, struct drbd_path *path);
 #ifdef _WIN32_SEND_BUFFING // _WIN32_V9
 	bool (*start_send_buffring)(struct drbd_transport *, int size);
-	bool (*stop_send_buffring)(struct drbd_transport *);
+	void (*stop_send_buffring)(struct drbd_transport *);
 #endif
 };
 

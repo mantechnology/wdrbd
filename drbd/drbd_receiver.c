@@ -1001,7 +1001,7 @@ start:
 	}
 	else
 	{
-		BOOLEAN send_buffring = FALSE;
+		bool send_buffring = FALSE;
 
 		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
 		if (send_buffring)

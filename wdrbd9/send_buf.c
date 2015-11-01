@@ -65,6 +65,10 @@ void destroy_ring_buffer(ring_buffer *ring)
 {
 	if (ring)
 	{
+		if (ring->static_big_buf)
+		{
+			kfree(ring->static_big_buf);
+		}
 		ExFreePool(ring);
 	}
 }
@@ -334,6 +338,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
+	WDRBD_INFO("start send_buf_thread\n");
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
 	pTime = &nWaitTime;
@@ -368,6 +373,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	}
 
 done:
+	WDRBD_INFO("send_buf_killack_event!\n");
 	KeSetEvent(&buffering_attr->send_buf_killack_event, 0, FALSE);
 	WDRBD_INFO("sendbuf thread done.!!\n");
 	PsTerminateSystemThread(STATUS_SUCCESS);

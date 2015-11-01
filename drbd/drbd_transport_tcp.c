@@ -90,7 +90,7 @@ static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 
 #ifdef _WIN32_SEND_BUFFING // _WIN32_V9
 static bool dtt_start_send_buffring(struct drbd_transport *, int size);
-static bool dtt_stop_send_buffring(struct drbd_transport *);
+static void dtt_stop_send_buffring(struct drbd_transport *);
 #endif
 static struct drbd_transport_class tcp_transport_class = {
 	.name = "tcp",
@@ -179,7 +179,7 @@ static struct drbd_path* dtt_path(struct drbd_transport *transport)
 static void dtt_free_one_sock(struct socket *socket)
 {
 #ifdef _WIN32_V9
-	synchronize_rcu_w32_wlock();
+	synchronize_rcu_w32_wlock(); // WIN32_CHECK_RCU: //JHKIM: 쓰기 락을 건다하더라도 크리티컬 섹션이 없기에 의미가 없다. LDRBD에서 synchronize_rcu 의미가 살아나려면 이 함수 진입 전에 어디서인가 rcu 관련 쓰기가 있다는 것이고 그 곳을 찿아 그 시점에서 처리해야 한다. 
 #endif
 	if (socket) {
 		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
@@ -520,7 +520,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct socket **ret
 
 #ifdef _WIN32_SEND_BUFFING
 // JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_SEND_BUFFING_TODO: 추후 정리!
-#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*50)   // 100MB->50MB 축소
+#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)   // 100MB->50MB 축소 -> 1:N 시험에서는 메모리 부족 현상 발생, 20MB로 다시 축소
 
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
 	{
@@ -1866,7 +1866,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 		int i;
 		for (int i = 0; i < 2; i++)
 		{
-			if (tcp_transport->stream[i] != NULL)
+			if (tcp_transport->stream[i] != NULL) // ASSERT
 			{
 				struct _buffering_attr *attr = &tcp_transport->stream[i]->buffering_attr;
 
@@ -1906,6 +1906,25 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 					// wait send buffering thread start...
 					KeWaitForSingleObject(&attr->send_buf_thr_start_event, SynchronizationEvent, Executive, KernelMode, FALSE, NULL);
 				}
+				else
+				{
+					if (i == CONTROL_STREAM)
+					{
+						attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
+
+						// kill DATA_STREAM thread
+						KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
+						//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
+						KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
+						//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+						attr->send_buf_thread_handle = NULL;
+						
+						// free DATA_STREAM bab
+						destroy_ring_buffer(attr->bab);
+						attr->bab = NULL;
+					}
+					return FALSE;
+				}
 			}
 			else
 			{
@@ -1918,7 +1937,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 	return FALSE;
 }
 
-static bool dtt_stop_send_buffring(struct drbd_transport *transport)
+static void dtt_stop_send_buffring(struct drbd_transport *transport)
 {
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
 	struct _buffering_attr *attr;
@@ -1941,17 +1960,15 @@ static bool dtt_stop_send_buffring(struct drbd_transport *transport)
 			}
 			else
 			{
-				WDRBD_WARN("No send_buffering_data_thread(%s)\n", tcp_transport->stream[i]->name);
-				return FALSE;
+				WDRBD_WARN("No send_buffering thread(%s)\n", tcp_transport->stream[i]->name);
 			}
 		}
 		else
 		{
-			//WDRBD_WARN("No stream(channel:%d)\n", i);
-			return FALSE;
+			WDRBD_WARN("No send_buffering stream(%d)\n", i);
 		}
 	}
-	return TRUE;
+	return;
 }
 #endif // _WIN32_SEND_BUFFING
 

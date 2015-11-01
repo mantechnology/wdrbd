@@ -1484,7 +1484,7 @@ void del_gendisk(struct gendisk *disk)
 
 	if (bab)
 	{
-		//WDRBD_WARN("Socket(%s) Send buffering used: clear bab\n", sock->name);
+		WDRBD_WARN("Socket(%s) bab free\n", sock->name);
 		if (bab->static_big_buf)
 		{
 			kfree(bab->static_big_buf);
