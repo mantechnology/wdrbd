@@ -1,4 +1,5 @@
-﻿/*
+﻿//_WIN32_V9_PATCH_1 : 어디서????
+/*
   drbd.h
   Kernel module for 2.6.x Kernels
 

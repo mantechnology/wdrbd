@@ -139,29 +139,6 @@ static void dprint_array(const char *dir, int nla_type,
  * use one static buffer for parsing of nested attributes */
 static struct nlattr *nested_attr_tb[128];
 
-#ifndef __KERNEL__
-#ifndef BUILD_BUG_ON
-/* Force a compilation error if condition is true */
-#define BUILD_BUG_ON(condition) ((void)BUILD_BUG_ON_ZERO(condition))
-/* Force a compilation error if condition is true, but also produce a
-   result (of value 0 and type size_t), so the expression can be used
-   e.g. in a structure initializer (or where-ever else comma expressions
-   aren't permitted). */
-#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
-#define BUILD_BUG_ON_NULL(e) ((void *)sizeof(struct { int:-!!(e); }))
-#endif
-#else
-#ifndef BUILD_BUG_ON
-/* Force a compilation error if condition is true */
-#define BUILD_BUG_ON(condition) 
-/* Force a compilation error if condition is true, but also produce a
-   result (of value 0 and type size_t), so the expression can be used
-   e.g. in a structure initializer (or where-ever else comma expressions
-   aren't permitted). */
-#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
-#define BUILD_BUG_ON_NULL(e) ((void *)sizeof(struct { int:-!!(e); }))
-#endif
-#endif
 #undef GENL_struct
 #define GENL_struct(tag_name, tag_number, s_name, s_fields)		\
 static int __ ## s_name ## _from_attrs(struct s_name *s,		\
@@ -324,6 +301,19 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
  * Magic: define multicast groups
  * Magic: define multicast group registration helper
  */
+
+/* COMPAT
+ * See linux 3.13,
+ * genetlink: make multicast groups const, prevent abuse
+ * genetlink: pass family to functions using groups
+ * genetlink: only pass array to genl_register_family_with_ops()
+ * which are commits c53ed742..2a94fe48
+ */
+#ifdef genl_register_family_with_ops_groups
+#include <linux/genl_magic_func-genl_register_family_with_ops_groups.h>
+#else
+#include <linux/genl_magic_func-genl_register_mc_group.h>
+#endif
 
 /*
  * Magic: provide conversion functions					{{{1
