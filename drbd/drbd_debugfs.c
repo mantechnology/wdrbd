@@ -510,7 +510,6 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 			   "  target_node_id: %d\n",
 			   twopc.tid, twopc.initiator_node_id,
 			   twopc.target_node_id);
-
 		if (twopc.initiator_node_id == resource->res_opts.node_id) {
 			struct drbd_connection *connection;
 
@@ -518,6 +517,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 			rcu_read_lock();
 			for_each_connection(connection, resource) {
 				char *name = rcu_dereference((connection)->transport.net_conf)->name;
+
 				if (!test_bit(TWOPC_PREPARED, &connection->flags))
 					seq_printf(m, "%s n.p., ", name);
 				else if (test_bit(TWOPC_NO, &connection->flags))
@@ -558,14 +558,8 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 
 	return 0;
 }
+
 #ifdef _WIN32_V9_DEBUGFS  // JHKIM:debugfs 용
-/* simple_positive(file->f_path.dentry) respectively debugfs_positive(),
- * but neither is "reachable" from here.
- * So we have our own inline version of it above.  :-( */
-static inline int debugfs_positive(struct dentry *dentry)
-{
-        return dentry->d_inode && !d_unhashed(dentry);
-}
 
 /* make sure at *open* time that the respective object won't go away. */
 static int drbd_single_open(struct file *file, int (*show)(struct seq_file *, void *),
@@ -584,7 +578,7 @@ static int drbd_single_open(struct file *file, int (*show)(struct seq_file *, vo
 	/* serialize with d_delete() */
 	mutex_lock(&parent->d_inode->i_mutex);
 	/* Make sure the object is still alive */
-	if (debugfs_positive(file->f_path.dentry)
+	if (simple_positive(file->f_path.dentry)
 	&& kref_get_unless_zero(kref))
 		ret = 0;
 	mutex_unlock(&parent->d_inode->i_mutex);
@@ -793,7 +787,7 @@ static int connection_transport_show(struct seq_file *m, void *ignored)
 		seq_printf(m, "  allocated: %d bytes\n", sbuf->allocated_size);
 	}
 
-	seq_printf(m, "transport_type: %s\n\n", transport->class->name);
+	seq_printf(m, "\ntransport_type: %s\n", transport->class->name);
 
 	tr_ops->debugfs_show(transport, m);
 
@@ -1127,7 +1121,7 @@ static int drbd_single_open_peer_device(struct file *file,
 	if (!parent || !parent->d_inode)
 		goto out;
 	mutex_lock(&parent->d_inode->i_mutex);
-	if (!debugfs_positive(file->f_path.dentry))
+	if (!simple_positive(file->f_path.dentry))
 		goto out_unlock;
 
 	got_connection = kref_get_unless_zero(&connection->kref);
