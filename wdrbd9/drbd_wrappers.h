@@ -10,6 +10,14 @@
 
 #include "linux-compat/Backing-dev.h"
 #else
+// _WIN32_V9_PATCH_1
+#include <linux/version.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+# error "At least kernel version 2.6.18 (with patches) required"
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
+# warning "Kernels <2.6.32 likely have compat issues we did not cover here"
+#endif
 #include "compat.h"
 #include <linux/ctype.h>
 #include <linux/net.h>
@@ -25,46 +33,47 @@
 #include <linux/blkdev.h>
 #endif
 
+
 #ifndef pr_fmt
-#define pr_fmt(fmt)	fmt
+#define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #endif
 
 /* {{{ pr_* macros */
 /* some very old kernels don't have them, or at least not all of them */
 #ifndef pr_emerg
 #define pr_emerg(fmt, ...) \
-		printk(KERN_EMERG pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_alert
 #define pr_alert(fmt, ...) \
-		printk(KERN_ALERT pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_crit
 #define pr_crit(fmt, ...) \
-		printk(KERN_CRIT pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_err
 #define pr_err(fmt, ...) \
-		printk(KERN_ERR pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_warning
 #define pr_warning(fmt, ...) \
-		printk(KERN_WARNING pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_warn
 #define pr_warn pr_warning
 #endif
 #ifndef pr_notice
 #define pr_notice(fmt, ...) \
-		printk(KERN_NOTICE pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_info
 #define pr_info(fmt, ...) \
-		printk(KERN_INFO pr_fmt(fmt), __VA_ARGS__)
+		printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
 #endif
 #ifndef pr_cont
 #define pr_cont(fmt, ...) \
-		printk(KERN_CONT fmt, __VA_ARGS__)
+		printk(KERN_CONT fmt, ##__VA_ARGS__)
 #endif
 
 /* pr_devel() should produce zero code unless DEBUG is defined */
@@ -92,12 +101,12 @@
 
 /* The history of blkdev_issue_flush()
 
-It had 2 arguments before fbd9b09a177a481eda256447c881f014f29034fe,
-after it had 4 arguments. (With that commit came BLKDEV_IFL_WAIT)
+   It had 2 arguments before fbd9b09a177a481eda256447c881f014f29034fe,
+   after it had 4 arguments. (With that commit came BLKDEV_IFL_WAIT)
 
-It had 4 arguments before dd3932eddf428571762596e17b65f5dc92ca361b,
-after it got 3 arguments. (With that commit came BLKDEV_DISCARD_SECURE
-and BLKDEV_IFL_WAIT disappeared again.) */
+   It had 4 arguments before dd3932eddf428571762596e17b65f5dc92ca361b,
+   after it got 3 arguments. (With that commit came BLKDEV_DISCARD_SECURE
+   and BLKDEV_IFL_WAIT disappeared again.) */
 #ifndef BLKDEV_IFL_WAIT
 #ifndef BLKDEV_DISCARD_SECURE
 /* before fbd9b09a177 */
@@ -112,12 +121,13 @@ and BLKDEV_IFL_WAIT disappeared again.) */
 #define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, gfpf, s, BLKDEV_IFL_WAIT)
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31) //_WIN32_V9_PATCH_1
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
 {
-    int retval = 512;
-    if (q && q->logical_block_size)
-        retval = q->logical_block_size;
-    return retval;
+	int retval = 512;
+	if (q && q->hardsect_size) //_WIN32_V9_PATCH_1
+		retval = q->hardsect_size;
+	return retval;
 }
 
 static inline sector_t bdev_logical_block_size(struct block_device *bdev)
@@ -132,17 +142,48 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
 
 static inline unsigned int queue_max_sectors(struct request_queue *q)
 {
-    return q->max_hw_sectors;
+	return q->max_sectors;//_WIN32_V9_PATCH_1
 }
 
 static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
 {
-    q->logical_block_size = size;
+	q->hardsect_size = size;//_WIN32_V9_PATCH_1
 }
+#endif // //_WIN32_V9_PATCH_1
+
+#ifdef _WIN32_V9_PATCH_1
+static inline unsigned short queue_logical_block_size(struct request_queue *q)
+{
+	int retval = 512;
+	if (q && q->logical_block_size)
+		retval = q->logical_block_size;
+	return retval;
+}
+
+static inline sector_t bdev_logical_block_size(struct block_device *bdev)
+{
+	return queue_logical_block_size(bdev_get_queue(bdev));
+}
+
+static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
+{
+	return q->max_hw_sectors;
+}
+
+static inline unsigned int queue_max_sectors(struct request_queue *q)
+{
+	return q->max_hw_sectors;
+}
+
+static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
+{
+	q->logical_block_size = size;
+}
+#endif
 
 #ifdef COMPAT_HAVE_VOID_MAKE_REQUEST
 /* in Commit 5a7bbad27a410350e64a2d7f5ec18fc73836c14f (between Linux-3.1 and 3.2)
-make_request() becomes type void. Before it had type int. */
+   make_request() becomes type void. Before it had type int. */
 #define MAKE_REQUEST_TYPE void
 #define MAKE_REQUEST_RETURN return
 #else
@@ -158,13 +199,13 @@ typedef unsigned __bitwise__ fmode_t;
 
 #ifndef COMPAT_HAVE_BLKDEV_GET_BY_PATH
 /* see kernel 2.6.37,
-* d4d7762 block: clean up blkdev_get() wrappers and their users
-* e525fd8 block: make blkdev_get/put() handle exclusive access
-* and kernel 2.6.28
-* 30c40d2 [PATCH] propagate mode through open_bdev_excl/close_bdev_excl
-* Also note that there is no FMODE_EXCL before
-* 86d434d [PATCH] eliminate use of ->f_flags in block methods
-*/
+ * d4d7762 block: clean up blkdev_get() wrappers and their users
+ * e525fd8 block: make blkdev_get/put() handle exclusive access
+ * and kernel 2.6.28
+ * 30c40d2 [PATCH] propagate mode through open_bdev_excl/close_bdev_excl
+ * Also note that there is no FMODE_EXCL before
+ * 86d434d [PATCH] eliminate use of ->f_flags in block methods
+ */
 #ifndef COMPAT_HAVE_OPEN_BDEV_EXCLUSIVE
 #ifndef FMODE_EXCL
 #define FMODE_EXCL 0
@@ -190,9 +231,9 @@ void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 // move to windows.c // V9_XXX: JHKIM: V8에서 이동.이유는 기억이 안남. 일단 이동.
 #else
 static inline struct block_device *blkdev_get_by_path(const char *path,
-    fmode_t mode, void *holder)
+		fmode_t mode, void *holder)
 {
-    return open_bdev_exclusive(path, mode, holder);
+	return open_bdev_exclusive(path, mode, holder);
 }
 #endif
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
@@ -213,15 +254,16 @@ static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 	}
 	*/
 #else
-    /* blkdev_put != close_bdev_exclusive, in general, so this is obviously
-    * not correct, and there should be some if (mode & FMODE_EXCL) ...
-    * But this is the only way it is used in DRBD,
-    * and for <= 2.6.27, there is no FMODE_EXCL anyways. */
-    close_bdev_exclusive(bdev, mode);
+	/* blkdev_put != close_bdev_exclusive, in general, so this is obviously
+	 * not correct, and there should be some if (mode & FMODE_EXCL) ...
+	 * But this is the only way it is used in DRBD,
+	 * and for <= 2.6.27, there is no FMODE_EXCL anyways. */
+	close_bdev_exclusive(bdev, mode);
+
 #endif
-    /* blkdev_put seems to not have useful return values,
-    * close_bdev_exclusive is void. */
-    return 0;
+	/* blkdev_put seems to not have useful return values,
+	 * close_bdev_exclusive is void. */
+	return 0;
 }
 #define blkdev_put(b, m)	drbd_blkdev_put(b, m)
 #endif
@@ -230,7 +272,7 @@ static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 /* Before Linux-2.6.24 bie_endio() had the size of the bio as second argument.
-See 6712ecf8f648118c3363c142196418f89a510b90 */
+   See 6712ecf8f648118c3363c142196418f89a510b90 */
 #define bio_endio(B,E) bio_endio(B, (B)->bi_size, E)
 #define BIO_ENDIO_TYPE int
 #define BIO_ENDIO_ARGS(b,e) (b, unsigned int bytes_done, e)
@@ -261,17 +303,17 @@ extern BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int err
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
 /* Before 2.6.23 (with 20c2df83d25c6a95affe6157a4c9cac4cf5ffaac) kmem_cache_create had a
-ctor and a dtor */
+   ctor and a dtor */
 #define kmem_cache_create(N,S,A,F,C) kmem_cache_create(N,S,A,F,C,NULL)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 static inline void sg_set_page(struct scatterlist *sg, struct page *page,
-    unsigned int len, unsigned int offset)
+			       unsigned int len, unsigned int offset)
 {
-    sg->page = page;
-    sg->offset = offset;
-    sg->length = len;
+	sg->page   = page;
+	sg->offset = offset;
+	sg->length = len;
 }
 
 #define sg_init_table(S,N) ({})
@@ -279,11 +321,11 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 #endif
 
 /* how to get to the kobj of a gendisk.
-* see also upstream commits
-* edfaa7c36574f1bf09c65ad602412db9da5f96bf
-* ed9e1982347b36573cd622ee5f4e2a7ccd79b3fd
-* 548b10eb2959c96cef6fc29fc96e0931eeb53bc5
-*/
+ * see also upstream commits
+ * edfaa7c36574f1bf09c65ad602412db9da5f96bf
+ * ed9e1982347b36573cd622ee5f4e2a7ccd79b3fd
+ * 548b10eb2959c96cef6fc29fc96e0931eeb53bc5
+ */
 #ifndef dev_to_disk
 # define disk_to_kobj(disk) (&(disk)->kobj)
 #else
@@ -297,46 +339,45 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 #ifdef blk_queue_plugged
 static inline void drbd_plug_device(struct request_queue *q)
 {
-    spin_lock_irq(q->queue_lock);
+	spin_lock_irq(q->queue_lock);
 
-    /* XXX the check on !blk_queue_plugged is redundant,
-    * implicitly checked in blk_plug_device */
+/* XXX the check on !blk_queue_plugged is redundant,
+ * implicitly checked in blk_plug_device */
 
-    if (!blk_queue_plugged(q))
-    {
-        blk_plug_device(q);
-        del_timer(&q->unplug_timer);
-        /* unplugging should not happen automatically... */
-    }
-    spin_unlock_irq(q->queue_lock);
+	if (!blk_queue_plugged(q)) {
+		blk_plug_device(q);
+		del_timer(&q->unplug_timer);
+		/* unplugging should not happen automatically... */
+	}
+	spin_unlock_irq(q->queue_lock);
 }
 #else
 static inline void drbd_plug_device(struct request_queue *q)
-{}
+{
+}
 #endif
 
 #ifndef _WIN32_V9 // 헤더불일치로 일단 함수 바디를 windows.c로 이동.
 static inline int drbd_backing_bdev_events(struct gendisk *disk)
 {
 #if defined(__disk_stat_inc)
-    /* older kernel */
-    return (int)disk_stat_read(disk, sectors[0])
-        + (int)disk_stat_read(disk, sectors[1]);
+	/* older kernel */
+	return (int)disk_stat_read(disk, sectors[0])
+	     + (int)disk_stat_read(disk, sectors[1]);
 #else
-    /* recent kernel */
-    return (int)part_stat_read(&disk->part0, sectors[0])
-        + (int)part_stat_read(&disk->part0, sectors[1]);
+	/* recent kernel */
+	return (int)part_stat_read(&disk->part0, sectors[0])
+	     + (int)part_stat_read(&disk->part0, sectors[1]);
 #endif
 }
 #endif
 
 #ifndef COMPAT_HAVE_SOCK_SHUTDOWN
 #define COMPAT_HAVE_SOCK_SHUTDOWN 1
-enum sock_shutdown_cmd
-{
-    SHUT_RD = 0,
-    SHUT_WR = 1,
-    SHUT_RDWR = 2,
+enum sock_shutdown_cmd {
+	SHUT_RD = 0,
+	SHUT_WR = 1,
+	SHUT_RDWR = 2,
 };
 static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_cmd how)
 {
@@ -344,7 +385,7 @@ static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_c
     UNREFERENCED_PARAMETER(sock);
     UNREFERENCED_PARAMETER(how);
 #else
-    return sock->ops->shutdown(sock, how);
+	return sock->ops->shutdown(sock, how);
 #endif
 }
 #endif
@@ -352,9 +393,9 @@ static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_c
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
 static inline void drbd_unregister_blkdev(unsigned int major, const char *name)
 {
-    int ret = unregister_blkdev(major, name);
-    if (ret)
-        pr_err("unregister of device failed\n");
+	int ret = unregister_blkdev(major, name);
+	if (ret)
+		pr_err("unregister of device failed\n");
 }
 #else
 #define drbd_unregister_blkdev unregister_blkdev
@@ -363,22 +404,20 @@ static inline void drbd_unregister_blkdev(unsigned int major, const char *name)
 #if !defined(CRYPTO_ALG_ASYNC)
 /* With Linux-2.6.19 the crypto API changed! */
 /* This is not a generic backport of the new api, it just implements
-the corner case of "hmac(xxx)".  */
+   the corner case of "hmac(xxx)".  */
 
 #define CRYPTO_ALG_ASYNC 4711
 #define CRYPTO_ALG_TYPE_HASH CRYPTO_ALG_TYPE_DIGEST
 
-struct crypto_hash
-{
-    struct crypto_tfm *base;
-    const u8 *key;
-    int keylen;
+struct crypto_hash {
+	struct crypto_tfm *base;
+	const u8 *key;
+	int keylen;
 };
 
-struct hash_desc
-{
-    struct crypto_hash *tfm;
-    u32 flags;
+struct hash_desc {
+	struct crypto_hash *tfm;
+	u32 flags;
 };
 
 #ifdef _WIN32
@@ -389,63 +428,61 @@ static inline struct crypto_hash *
 crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 #endif
 {
-    struct crypto_hash *ch;
-    char *closing_bracket;
+	struct crypto_hash *ch;
+	char *closing_bracket;
 
-    /* "hmac(xxx)" is in alg_name we need that xxx. */
-    closing_bracket = strchr(alg_name, ')');
-    if (!closing_bracket)
-    {
+	/* "hmac(xxx)" is in alg_name we need that xxx. */
+	closing_bracket = strchr(alg_name, ')');
+	if (!closing_bracket) {
 #ifdef _WIN32_V9
 		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
 #else
 		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
 #endif
-        if (!ch)
-            return ERR_PTR(-ENOMEM);
-        ch->base = crypto_alloc_tfm(alg_name, 0);
-        if (ch->base == NULL)
-        {
-            kfree(ch);
-            return ERR_PTR(-ENOMEM);
-        }
-        return ch;
-    }
-    if (closing_bracket - alg_name < 6)
-        return ERR_PTR(-ENOENT);
+		if (!ch)
+			return ERR_PTR(-ENOMEM);
+		ch->base = crypto_alloc_tfm(alg_name, 0);
+		if (ch->base == NULL) {
+			kfree(ch);
+			return ERR_PTR(-ENOMEM);
+		}
+		return ch;
+	}
+	if (closing_bracket-alg_name < 6)
+		return ERR_PTR(-ENOENT);
+
 #ifdef _WIN32_V9
 	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
 #else
 	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
 #endif
-    if (!ch)
-        return ERR_PTR(-ENOMEM);
+	if (!ch)
+		return ERR_PTR(-ENOMEM);
 
-    *closing_bracket = 0;
-    ch->base = crypto_alloc_tfm(alg_name + 5, 0);
-    *closing_bracket = ')';
+	*closing_bracket = 0;
+	ch->base = crypto_alloc_tfm(alg_name + 5, 0);
+	*closing_bracket = ')';
 
-    if (ch->base == NULL)
-    {
-        kfree(ch);
-        return ERR_PTR(-ENOMEM);
-    }
+	if (ch->base == NULL) {
+		kfree(ch);
+		return ERR_PTR(-ENOMEM);
+	}
 
-    return ch;
+	return ch;
 }
 
 static inline int
 crypto_hash_setkey(struct crypto_hash *hash, const u8 *key, unsigned int keylen)
 {
-    hash->key = key;
-    hash->keylen = keylen;
+	hash->key = key;
+	hash->keylen = keylen;
 
-    return 0;
+	return 0;
 }
 
 static inline int
 crypto_hash_digest(struct hash_desc *desc, struct scatterlist *sg,
-unsigned int nbytes, u8 *out)
+		   unsigned int nbytes, u8 *out)
 {
 #ifdef _WIN32
 #else
@@ -454,7 +491,7 @@ unsigned int nbytes, u8 *out)
 		    &desc->tfm->keylen, sg, 1 /* ! */ , out);
 	/* ! this is not generic. Would need to convert nbytes -> nsg */
 #endif
-    return 0;
+	return 0;
 }
 
 static inline void crypto_free_hash(struct crypto_hash *tfm)
@@ -471,25 +508,25 @@ static inline void crypto_free_hash(struct crypto_hash *tfm)
 
 static inline unsigned int crypto_hash_digestsize(struct crypto_hash *tfm)
 {
-    return crypto_tfm_alg_digestsize(tfm->base);
+	return crypto_tfm_alg_digestsize(tfm->base);
 }
 
 static inline struct crypto_tfm *crypto_hash_tfm(struct crypto_hash *tfm)
 {
-    return tfm->base;
+	return tfm->base;
 }
 
 static inline int crypto_hash_init(struct hash_desc *desc)
 {
 #ifndef _WIN32
-    crypto_digest_init(desc->tfm->base);
+	crypto_digest_init(desc->tfm->base);
 #endif
-    return 0;
+	return 0;
 }
 
 static inline int crypto_hash_update(struct hash_desc *desc,
-struct scatterlist *sg,
-    unsigned int nbytes)
+				     struct scatterlist *sg,
+				     unsigned int nbytes)
 {
 #ifdef _WIN32
 	// sha1, md5, and crc32c.
@@ -497,8 +534,8 @@ struct scatterlist *sg,
 
 	*(int*)desc = crc32c(0, (char*)sg, nbytes);
 #else
-    crypto_digest_update(desc->tfm->base, sg, 1 /* ! */);
-    /* ! this is not generic. Would need to convert nbytes -> nsg */
+	crypto_digest_update(desc->tfm->base,sg,1 /* ! */ );
+	/* ! this is not generic. Would need to convert nbytes -> nsg */
 
 #endif
 }
@@ -514,9 +551,9 @@ static inline int crypto_hash_final(struct hash_desc *desc, u8 *out)
 		*out++ = *p++; // long
 	}
 #else
-    crypto_digest_final(desc->tfm->base, out);
+	crypto_digest_final(desc->tfm->base, out);
 #endif
-    return 0;
+	return 0;
 }
 
 #endif
@@ -525,19 +562,19 @@ static inline int crypto_hash_final(struct hash_desc *desc, u8 *out)
 #ifndef COMPAT_HAVE_VZALLOC
 static inline void *vzalloc(unsigned long size)
 {
-    void *rv = vmalloc(size);
-    if (rv)
-        memset(rv, 0, size);
+	void *rv = vmalloc(size);
+	if (rv)
+		memset(rv, 0, size);
 
-    return rv;
+	return rv;
 }
 #endif
 #endif
 
 #ifndef COMPAT_HAVE_UMH_WAIT_PROC
 /* On Jul 17 2007 with commit 86313c4 usermodehelper: Tidy up waiting,
-* UMH_WAIT_PROC was added as an enum value of 1.
-* On Mar 23 2012 with commit 9d944ef3 that got changed to a define of 2. */
+ * UMH_WAIT_PROC was added as an enum value of 1.
+ * On Mar 23 2012 with commit 9d944ef3 that got changed to a define of 2. */
 #define UMH_WAIT_PROC 1
 #endif
 
@@ -554,52 +591,53 @@ typedef cpumask_t cpumask_var_t[1];
 #ifndef _WIN32
 static inline void cpumask_clear(cpumask_t *dstp)
 {
-    bitmap_zero(cpumask_bits(dstp), NR_CPUS);
+	bitmap_zero(cpumask_bits(dstp), NR_CPUS);
 }
 
 static inline int cpumask_equal(const cpumask_t *src1p,
-    const cpumask_t *src2p)
+				const cpumask_t *src2p)
 {
-    return bitmap_equal(cpumask_bits(src1p), cpumask_bits(src2p),
-        nr_cpumask_bits);
+	return bitmap_equal(cpumask_bits(src1p), cpumask_bits(src2p),
+						 nr_cpumask_bits);
 }
 
 static inline void cpumask_copy(cpumask_t *dstp,
-    cpumask_t *srcp)
+				cpumask_t *srcp)
 {
-    bitmap_copy(cpumask_bits(dstp), cpumask_bits(srcp), nr_cpumask_bits);
+	bitmap_copy(cpumask_bits(dstp), cpumask_bits(srcp), nr_cpumask_bits);
 }
 
 static inline unsigned int cpumask_weight(const cpumask_t *srcp)
 {
-    return bitmap_weight(cpumask_bits(srcp), nr_cpumask_bits);
+	return bitmap_weight(cpumask_bits(srcp), nr_cpumask_bits);
 }
 
 static inline void cpumask_set_cpu(unsigned int cpu, cpumask_t *dstp)
 {
-    set_bit(cpu, cpumask_bits(dstp));
+	set_bit(cpu, cpumask_bits(dstp));
 }
 
 static inline void cpumask_setall(cpumask_t *dstp)
 {
-    bitmap_fill(cpumask_bits(dstp), nr_cpumask_bits);
+	bitmap_fill(cpumask_bits(dstp), nr_cpumask_bits);
 }
 
 static inline void free_cpumask_var(cpumask_var_t mask)
-{}
+{
+}
 #endif
 #endif
 /* see upstream commit 0281b5dc0350cbf6dd21ed558a33cccce77abc02 */
 #ifdef CONFIG_CPUMASK_OFFSTACK
 static inline int zalloc_cpumask_var(cpumask_var_t *mask, gfp_t flags)
 {
-    return alloc_cpumask_var(mask, flags | __GFP_ZERO);
+	return alloc_cpumask_var(mask, flags | __GFP_ZERO);
 }
 #else
 static inline int zalloc_cpumask_var(cpumask_var_t *mask, gfp_t flags)
 {
-    cpumask_clear(*mask);
-    return 1;
+	cpumask_clear(*mask);
+	return 1;
 }
 #endif
 /* see upstream commit cd8ba7cd9be0192348c2836cb6645d9b2cd2bfd2 */
@@ -619,75 +657,72 @@ static inline int zalloc_cpumask_var(cpumask_var_t *mask, gfp_t flags)
 #define unhex(c)                        (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10))
 
 static inline int backport_bitmap_parse(const char *buf, unsigned int buflen,
-    int is_user, unsigned long *maskp,
-    int nmaskbits)
+		int is_user, unsigned long *maskp,
+		int nmaskbits)
 {
-    int c, old_c, totaldigits, ndigits, nchunks, nbits;
-    u32 chunk;
-    const char __user *ubuf = buf;
+	int c, old_c, totaldigits, ndigits, nchunks, nbits;
+	u32 chunk;
+	const char __user *ubuf = buf;
 
-    bitmap_zero(maskp, nmaskbits);
+	bitmap_zero(maskp, nmaskbits);
 
-    nchunks = nbits = totaldigits = c = 0;
-    do
-    {
-        chunk = ndigits = 0;
+	nchunks = nbits = totaldigits = c = 0;
+	do {
+		chunk = ndigits = 0;
 
-        /* Get the next chunk of the bitmap */
-        while (buflen)
-        {
-            old_c = c;
-            if (is_user)
-            {
-                if (__get_user(c, ubuf++))
-                    return -EFAULT;
-            }
-            else
-                c = *buf++;
-            buflen--;
-            if (isspace(c))
-                continue;
+		/* Get the next chunk of the bitmap */
+		while (buflen) {
+			old_c = c;
+			if (is_user) {
+				if (__get_user(c, ubuf++))
+					return -EFAULT;
+			}
+			else
+				c = *buf++;
+			buflen--;
+			if (isspace(c))
+				continue;
 
-            /*
-            * If the last character was a space and the current
-            * character isn't '\0', we've got embedded whitespace.
-            * This is a no-no, so throw an error.
-            */
-            if (totaldigits && c && isspace(old_c))
-                return -EINVAL;
+			/*
+			 * If the last character was a space and the current
+			 * character isn't '\0', we've got embedded whitespace.
+			 * This is a no-no, so throw an error.
+			 */
+			if (totaldigits && c && isspace(old_c))
+				return -EINVAL;
 
-            /* A '\0' or a ',' signal the end of the chunk */
-            if (c == '\0' || c == ',')
-                break;
+			/* A '\0' or a ',' signal the end of the chunk */
+			if (c == '\0' || c == ',')
+				break;
 
-            if (!isxdigit(c))
-                return -EINVAL;
+			if (!isxdigit(c))
+				return -EINVAL;
 
-            /*
-            * Make sure there are at least 4 free bits in 'chunk'.
-            * If not, this hexdigit will overflow 'chunk', so
-            * throw an error.
-            */
-            if (chunk & ~((1UL << (CHUNKSZ - 4)) - 1))
-                return -EOVERFLOW;
+			/*
+			 * Make sure there are at least 4 free bits in 'chunk'.
+			 * If not, this hexdigit will overflow 'chunk', so
+			 * throw an error.
+			 */
+			if (chunk & ~((1UL << (CHUNKSZ - 4)) - 1))
+				return -EOVERFLOW;
 
-            chunk = (chunk << 4) | unhex(c);
-            ndigits++; totaldigits++;
-        }
-        if (ndigits == 0)
-            return -EINVAL;
-        if (nchunks == 0 && chunk == 0)
-            continue;
+			chunk = (chunk << 4) | unhex(c);
+			ndigits++; totaldigits++;
+		}
+		if (ndigits == 0)
+			return -EINVAL;
+		if (nchunks == 0 && chunk == 0)
+			continue;
 
-        bitmap_shift_left(maskp, maskp, CHUNKSZ, nmaskbits);
-        *maskp |= chunk;
-        nchunks++;
-        nbits += (nchunks == 1) ? nbits_to_hold_value(chunk) : CHUNKSZ;
-        if (nbits > nmaskbits)
-            return -EOVERFLOW;
-    } while (buflen && c == ',');
+		bitmap_shift_left(maskp, maskp, CHUNKSZ, nmaskbits);
+		*maskp |= chunk;
+		nchunks++;
+		nbits += (nchunks == 1) ? nbits_to_hold_value(chunk) : CHUNKSZ;
+		if (nbits > nmaskbits)
+			return -EOVERFLOW;
+	} while (buflen && c == ',');
 
-    return 0;
+	return 0;
 }
 #endif
 
@@ -698,24 +733,23 @@ static inline int backport_bitmap_parse(const char *buf, unsigned int buflen,
 #endif
 
 /* see upstream commits
-* 2d3a4e3666325a9709cc8ea2e88151394e8f20fc (in 2.6.25-rc1)
-* 59b7435149eab2dd06dd678742faff6049cb655f (in 2.6.26-rc1)
-* this "backport" does not close the race that lead to the API change,
-* but only provides an equivalent function call.
-*/
+ * 2d3a4e3666325a9709cc8ea2e88151394e8f20fc (in 2.6.25-rc1)
+ * 59b7435149eab2dd06dd678742faff6049cb655f (in 2.6.26-rc1)
+ * this "backport" does not close the race that lead to the API change,
+ * but only provides an equivalent function call.
+ */
 #ifndef COMPAT_HAVE_PROC_CREATE_DATA
 #ifndef _WIN32
 static inline struct proc_dir_entry *proc_create_data(const char *name,
-    mode_t mode, struct proc_dir_entry *parent,
-struct file_operations *proc_fops, void *data)
+	mode_t mode, struct proc_dir_entry *parent,
+	struct file_operations *proc_fops, void *data)
 {
-    struct proc_dir_entry *pde = create_proc_entry(name, mode, parent);
-    if (pde)
-    {
-        pde->proc_fops = proc_fops;
-        pde->data = data;
-    }
-    return pde;
+	struct proc_dir_entry *pde = create_proc_entry(name, mode, parent);
+	if (pde) {
+		pde->proc_fops = proc_fops;
+		pde->data = data;
+	}
+	return pde;
 }
 #endif
 
@@ -727,16 +761,16 @@ static inline void blk_queue_max_hw_sectors(struct request_queue *q, unsigned in
 #ifdef _WIN32
 	q->max_hw_sectors = max;
 #else
-    blk_queue_max_sectors(q, max);
+	blk_queue_max_sectors(q, max);
 #endif
 }
 #elif defined(COMPAT_USE_BLK_QUEUE_MAX_SECTORS_ANYWAYS)
-/* For kernel versions 2.6.31 to 2.6.33 inclusive, even though
-* blk_queue_max_hw_sectors is present, we actually need to use
-* blk_queue_max_sectors to set max_hw_sectors. :-(
-* RHEL6 2.6.32 chose to be different and already has eliminated
-* blk_queue_max_sectors as upstream 2.6.34 did.
-*/
+	/* For kernel versions 2.6.31 to 2.6.33 inclusive, even though
+	 * blk_queue_max_hw_sectors is present, we actually need to use
+	 * blk_queue_max_sectors to set max_hw_sectors. :-(
+	 * RHEL6 2.6.32 chose to be different and already has eliminated
+	 * blk_queue_max_sectors as upstream 2.6.34 did.
+	 */
 #define blk_queue_max_hw_sectors(q, max)	blk_queue_max_sectors(q, max)
 #endif
 
@@ -744,27 +778,38 @@ static inline void blk_queue_max_hw_sectors(struct request_queue *q, unsigned in
 static inline void blk_queue_max_segments(struct request_queue *q, unsigned short max_segments)
 {
 #ifndef _WIN32
-    blk_queue_max_phys_segments(q, max_segments);
-    blk_queue_max_hw_segments(q, max_segments);
+	blk_queue_max_phys_segments(q, max_segments);
+	blk_queue_max_hw_segments(q, max_segments);
 #define BLK_MAX_SEGMENTS MAX_HW_SEGMENTS /* or max MAX_PHYS_SEGMENTS. Probably does not matter */
 #endif
 }
 #endif
 
+#ifdef _WIN32_V9_PATCH_1
+#else
+#ifndef COMPAT_HAVE_BOOL_TYPE 	//_WIN32_V9_PATCH_1_CHECK
+typedef _Bool                   bool;
+enum {
+	false = 0,
+	true = 1
+};
+#endif
+#endif
+
 /* REQ_* and BIO_RW_* flags have been moved around in the tree,
-* and have finally been "merged" with
-* 7b6d91daee5cac6402186ff224c3af39d79f4a0e and
-* 7cc015811ef8992dfcce314d0ed9642bc18143d1
-* We communicate between different systems,
-* so we have to somehow semantically map the bi_rw flags
-* bi_rw (some kernel version) -> data packet flags -> bi_rw (other kernel version)
-*/
+ * and have finally been "merged" with
+ * 7b6d91daee5cac6402186ff224c3af39d79f4a0e and
+ * 7cc015811ef8992dfcce314d0ed9642bc18143d1
+ * We communicate between different systems,
+ * so we have to somehow semantically map the bi_rw flags
+ * bi_rw (some kernel version) -> data packet flags -> bi_rw (other kernel version)
+ */
 
 /* RHEL 6.1 backported FLUSH/FUA as BIO_RW_FLUSH/FUA
-* and at that time also introduced the defines BIO_FLUSH/FUA.
-* There is also REQ_FLUSH/FUA, but these do NOT share
-* the same value space as the bio rw flags, yet.
-*/
+ * and at that time also introduced the defines BIO_FLUSH/FUA.
+ * There is also REQ_FLUSH/FUA, but these do NOT share
+ * the same value space as the bio rw flags, yet.
+ */
 #ifdef BIO_FLUSH
 
 #define DRBD_REQ_FLUSH		(1UL << BIO_RW_FLUSH)
@@ -775,16 +820,16 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 #define DRBD_REQ_UNPLUG		(1UL << BIO_RW_UNPLUG)
 
 #elif defined(REQ_FLUSH)	/* introduced in 2.6.36,
-* now equivalent to bi_rw */
+				 * now equivalent to bi_rw */
 
 #define DRBD_REQ_SYNC		REQ_SYNC
 #define DRBD_REQ_FLUSH		REQ_FLUSH
 #define DRBD_REQ_FUA		REQ_FUA
 #define DRBD_REQ_DISCARD	REQ_DISCARD
 /* REQ_HARDBARRIER has been around for a long time,
-* without being directly related to bi_rw.
-* so the ifdef is only usful inside the ifdef REQ_FLUSH!
-* commit 7cc0158 (v2.6.36-rc1) made it a bi_rw flag, ...  */
+ * without being directly related to bi_rw.
+ * so the ifdef is only usful inside the ifdef REQ_FLUSH!
+ * commit 7cc0158 (v2.6.36-rc1) made it a bi_rw flag, ...  */
 #ifdef REQ_HARDBARRIER
 #define DRBD_REQ_HARDBARRIER	REQ_HARDBARRIER
 #else
@@ -793,7 +838,7 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 #endif
 
 /* again: testing on this _inside_ the ifdef REQ_FLUSH,
-* see 721a960 block: kill off REQ_UNPLUG */
+ * see 721a960 block: kill off REQ_UNPLUG */
 #ifdef REQ_UNPLUG
 #define DRBD_REQ_UNPLUG		REQ_UNPLUG
 #else
@@ -801,13 +846,13 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 #endif
 
 #else				/* "older", and hopefully not
-* "partially backported" kernel */
+				 * "partially backported" kernel */
 
 #if defined(BIO_RW_SYNC)
 /* see upstream commits
-* 213d9417fec62ef4c3675621b9364a667954d4dd,
-* 93dbb393503d53cd226e5e1f0088fe8f4dbaa2b8
-* later, the defines even became an enum ;-) */
+ * 213d9417fec62ef4c3675621b9364a667954d4dd,
+ * 93dbb393503d53cd226e5e1f0088fe8f4dbaa2b8
+ * later, the defines even became an enum ;-) */
 #define DRBD_REQ_SYNC		(1UL << BIO_RW_SYNC)
 #define DRBD_REQ_UNPLUG		(1UL << BIO_RW_SYNC)
 #else
@@ -818,65 +863,65 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 
 #define DRBD_REQ_FLUSH		(1UL << BIO_RW_BARRIER)
 /* REQ_FUA has been around for a longer time,
-* without a direct equivalent in bi_rw. */
+ * without a direct equivalent in bi_rw. */
 #define DRBD_REQ_FUA		(1UL << BIO_RW_BARRIER)
 #define DRBD_REQ_HARDBARRIER	(1UL << BIO_RW_BARRIER)
 
 /* we don't support DISCARDS yet, anyways.
-* cannot test on defined(BIO_RW_DISCARD), it may be an enum */
+ * cannot test on defined(BIO_RW_DISCARD), it may be an enum */
 #define DRBD_REQ_DISCARD	0
 #endif
 
 /* this results in:
-bi_rw   -> dp_flags
+	bi_rw   -> dp_flags
 
 < 2.6.28
-SYNC	-> SYNC|UNPLUG
-BARRIER	-> FUA|FLUSH
-there is no DISCARD
+	SYNC	-> SYNC|UNPLUG
+	BARRIER	-> FUA|FLUSH
+	there is no DISCARD
 2.6.28
-SYNC	-> SYNC|UNPLUG
-BARRIER	-> FUA|FLUSH
-DISCARD	-> DISCARD
+	SYNC	-> SYNC|UNPLUG
+	BARRIER	-> FUA|FLUSH
+	DISCARD	-> DISCARD
 2.6.29
-SYNCIO	-> SYNC
-UNPLUG	-> UNPLUG
-BARRIER	-> FUA|FLUSH
-DISCARD	-> DISCARD
+	SYNCIO	-> SYNC
+	UNPLUG	-> UNPLUG
+	BARRIER	-> FUA|FLUSH
+	DISCARD	-> DISCARD
 2.6.36
-SYNC	-> SYNC
-UNPLUG	-> UNPLUG
-FUA	-> FUA
-FLUSH	-> FLUSH
-DISCARD	-> DISCARD
+	SYNC	-> SYNC
+	UNPLUG	-> UNPLUG
+	FUA	-> FUA
+	FLUSH	-> FLUSH
+	DISCARD	-> DISCARD
 --------------------------------------
-dp_flags   -> bi_rw
+	dp_flags   -> bi_rw
 < 2.6.28
-SYNC	-> SYNC (and unplug)
-UNPLUG	-> SYNC (and unplug)
-FUA	-> BARRIER
-FLUSH	-> BARRIER
-there is no DISCARD,
-it will be silently ignored on the receiving side.
+	SYNC	-> SYNC (and unplug)
+	UNPLUG	-> SYNC (and unplug)
+	FUA	-> BARRIER
+	FLUSH	-> BARRIER
+	there is no DISCARD,
+	it will be silently ignored on the receiving side.
 2.6.28
-SYNC	-> SYNC (and unplug)
-UNPLUG	-> SYNC (and unplug)
-FUA	-> BARRIER
-FLUSH	-> BARRIER
-DISCARD -> DISCARD
-(if that fails, we handle it like any other IO error)
+	SYNC	-> SYNC (and unplug)
+	UNPLUG	-> SYNC (and unplug)
+	FUA	-> BARRIER
+	FLUSH	-> BARRIER
+	DISCARD -> DISCARD
+	(if that fails, we handle it like any other IO error)
 2.6.29
-SYNC	-> SYNCIO
-UNPLUG	-> UNPLUG
-FUA	-> BARRIER
-FLUSH	-> BARRIER
-DISCARD -> DISCARD
+	SYNC	-> SYNCIO
+	UNPLUG	-> UNPLUG
+	FUA	-> BARRIER
+	FLUSH	-> BARRIER
+	DISCARD -> DISCARD
 2.6.36
-SYNC	-> SYNC
-UNPLUG	-> UNPLUG
-FUA	-> FUA
-FLUSH	-> FLUSH
-DISCARD	-> DISCARD
+	SYNC	-> SYNC
+	UNPLUG	-> UNPLUG
+	FUA	-> FUA
+	FLUSH	-> FLUSH
+	DISCARD	-> DISCARD
 */
 
 #ifndef REQ_NOIDLE
@@ -886,8 +931,8 @@ DISCARD	-> DISCARD
 
 #ifndef CONFIG_DYNAMIC_DEBUG
 /* At least in 2.6.34 the function macro dynamic_dev_dbg() is broken when compiling
-without CONFIG_DYNAMIC_DEBUG. It has 'format' in the argument list, it references
-to 'fmt' in its body. */
+   without CONFIG_DYNAMIC_DEBUG. It has 'format' in the argument list, it references
+   to 'fmt' in its body. */
 #ifdef dynamic_dev_dbg
 #undef dynamic_dev_dbg
 #define dynamic_dev_dbg(dev, fmt, ...)                               \
@@ -943,91 +988,90 @@ to 'fmt' in its body. */
       defined(AUGMENTED_RBTREE_SYMBOLS_EXPORTED))
 
 /*
-* Make sure the replacements for the augmented rbtree helper functions do not
-* clash with functions the kernel implements but does not export.
-*/
+ * Make sure the replacements for the augmented rbtree helper functions do not
+ * clash with functions the kernel implements but does not export.
+ */
 #define rb_augment_f drbd_rb_augment_f
 #define rb_augment_path drbd_rb_augment_path
 #define rb_augment_insert drbd_rb_augment_insert
 #define rb_augment_erase_begin drbd_rb_augment_erase_begin
 #define rb_augment_erase_end drbd_rb_augment_erase_end
 
-typedef void(*rb_augment_f)(struct rb_node *node, void *data);
+typedef void (*rb_augment_f)(struct rb_node *node, void *data);
 
 static inline void rb_augment_path(struct rb_node *node, rb_augment_f func, void *data)
 {
-    struct rb_node *parent;
+	struct rb_node *parent;
 
 up:
-    func(node, data);
-    parent = rb_parent(node);
-    if (!parent)
-        return;
+	func(node, data);
+	parent = rb_parent(node);
+	if (!parent)
+		return;
 
-    if (node == parent->rb_left && parent->rb_right)
-        func(parent->rb_right, data);
-    else if (parent->rb_left)
-        func(parent->rb_left, data);
+	if (node == parent->rb_left && parent->rb_right)
+		func(parent->rb_right, data);
+	else if (parent->rb_left)
+		func(parent->rb_left, data);
 
-    node = parent;
-    goto up;
+	node = parent;
+	goto up;
 }
 
 /*
-* after inserting @node into the tree, update the tree to account for
-* both the new entry and any damage done by rebalance
-*/
+ * after inserting @node into the tree, update the tree to account for
+ * both the new entry and any damage done by rebalance
+ */
 static inline void rb_augment_insert(struct rb_node *node, rb_augment_f func, void *data)
 {
-    if (node->rb_left)
-        node = node->rb_left;
-    else if (node->rb_right)
-        node = node->rb_right;
+	if (node->rb_left)
+		node = node->rb_left;
+	else if (node->rb_right)
+		node = node->rb_right;
 
-    rb_augment_path(node, func, data);
+	rb_augment_path(node, func, data);
 }
 
 /*
-* before removing the node, find the deepest node on the rebalance path
-* that will still be there after @node gets removed
-*/
+ * before removing the node, find the deepest node on the rebalance path
+ * that will still be there after @node gets removed
+ */
 static inline struct rb_node *rb_augment_erase_begin(struct rb_node *node)
 {
-    struct rb_node *deepest;
+	struct rb_node *deepest;
 
-    if (!node->rb_right && !node->rb_left)
-        deepest = rb_parent(node);
-    else if (!node->rb_right)
-        deepest = node->rb_left;
-    else if (!node->rb_left)
-        deepest = node->rb_right;
-    else
-    {
-        deepest = rb_next(node);
-        if (deepest->rb_right)
-            deepest = deepest->rb_right;
-        else if (rb_parent(deepest) != node)
-            deepest = rb_parent(deepest);
-    }
+	if (!node->rb_right && !node->rb_left)
+		deepest = rb_parent(node);
+	else if (!node->rb_right)
+		deepest = node->rb_left;
+	else if (!node->rb_left)
+		deepest = node->rb_right;
+	else {
+		deepest = rb_next(node);
+		if (deepest->rb_right)
+			deepest = deepest->rb_right;
+		else if (rb_parent(deepest) != node)
+			deepest = rb_parent(deepest);
+	}
 
-    return deepest;
+	return deepest;
 }
 
 /*
-* after removal, update the tree to account for the removed entry
-* and any rebalance damage.
-*/
+ * after removal, update the tree to account for the removed entry
+ * and any rebalance damage.
+ */
 static inline void rb_augment_erase_end(struct rb_node *node, rb_augment_f func, void *data)
 {
-    if (node)
-        rb_augment_path(node, func, data);
+	if (node)
+		rb_augment_path(node, func, data);
 }
 #endif
 
 /*
-* In commit c4945b9e (v2.6.39-rc1), the little-endian bit operations have been
-* renamed to be less weird.
-*/
+ * In commit c4945b9e (v2.6.39-rc1), the little-endian bit operations have been
+ * renamed to be less weird.
+ */
 #ifndef COMPAT_HAVE_FIND_NEXT_ZERO_BIT_LE
 #define find_next_zero_bit_le(addr, size, offset) \
 	generic_find_next_zero_le_bit(addr, size, offset)
@@ -1085,16 +1129,16 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 #endif
 
 /*
-* Introduced in 930631ed (v2.6.19-rc1).
-*/
+ * Introduced in 930631ed (v2.6.19-rc1).
+ */
 #ifndef DIV_ROUND_UP
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #endif
 
 /*
-* IS_ALIGNED() was added to <linux/kernel.h> in mainline commit 0c0e6195 (and
-* improved in f10db627); 2.6.24-rc1.
-*/
+ * IS_ALIGNED() was added to <linux/kernel.h> in mainline commit 0c0e6195 (and
+ * improved in f10db627); 2.6.24-rc1.
+ */
 #ifndef IS_ALIGNED
 #ifndef _WIN32
 #define IS_ALIGNED(x, a) (((x) & ((typeof(x))(a) - 1)) == 0)
@@ -1104,10 +1148,10 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 #endif
 
 /*
-* NLA_TYPE_MASK and nla_type() were added to <linux/netlink.h> in mainline
-* commit 8f4c1f9b; v2.6.24-rc1.  Before that, none of the nlattr->nla_type
-* flags had a special meaning.
-*/
+ * NLA_TYPE_MASK and nla_type() were added to <linux/netlink.h> in mainline
+ * commit 8f4c1f9b; v2.6.24-rc1.  Before that, none of the nlattr->nla_type
+ * flags had a special meaning.
+ */
 
 #ifndef NLA_TYPE_MASK
 #define NLA_TYPE_MASK ~0
@@ -1115,28 +1159,28 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 static inline int nla_type(const struct nlattr *nla)
 {
 #ifndef _WIN32
-    return nla->nla_type & NLA_TYPE_MASK;
+	return nla->nla_type & NLA_TYPE_MASK;
 #endif
 }
 
 #endif
 
 /*
-* nlmsg_hdr was added to <linux/netlink.h> in mainline commit b529ccf2
-* (v2.6.22-rc1).
-*/
+ * nlmsg_hdr was added to <linux/netlink.h> in mainline commit b529ccf2
+ * (v2.6.22-rc1).
+ */
 
 #ifndef COMPAT_HAVE_NLMSG_HDR
 static inline struct nlmsghdr *nlmsg_hdr(const struct sk_buff *skb)
 {
-    return (struct nlmsghdr *)skb->data;
+	return (struct nlmsghdr *)skb->data;
 }
 #endif
 
 /*
-* genlmsg_reply() was added to <net/genetlink.h> in mainline commit 81878d27
-* (v2.6.20-rc2).
-*/
+ * genlmsg_reply() was added to <net/genetlink.h> in mainline commit 81878d27
+ * (v2.6.20-rc2).
+ */
 
 #ifndef COMPAT_HAVE_GENLMSG_REPLY
 #ifndef _WIN32
@@ -1146,7 +1190,7 @@ static inline struct nlmsghdr *nlmsg_hdr(const struct sk_buff *skb)
 static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
 {
 #ifndef _WIN32
-    return genlmsg_unicast(skb, info->snd_pid);
+	return genlmsg_unicast(skb, info->snd_pid);
 #else
 	return genlmsg_unicast(skb, info);
 #endif
@@ -1154,9 +1198,9 @@ static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
 #endif
 
 /*
-* genlmsg_msg_size() and genlmsg_total_size() were added to <net/genetlink.h>
-* in mainline commit 17db952c (v2.6.19-rc1).
-*/
+ * genlmsg_msg_size() and genlmsg_total_size() were added to <net/genetlink.h>
+ * in mainline commit 17db952c (v2.6.19-rc1).
+ */
 
 #ifndef COMPAT_HAVE_GENLMSG_MSG_SIZE
 #ifndef _WIN32
@@ -1165,20 +1209,21 @@ static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
 
 static inline int genlmsg_msg_size(int payload)
 {
-    return GENL_HDRLEN + payload;
+	return GENL_HDRLEN + payload;
 }
 
 static inline int genlmsg_total_size(int payload)
 {
-    return NLMSG_ALIGN(genlmsg_msg_size(payload));
+	return NLMSG_ALIGN(genlmsg_msg_size(payload));
 }
 #endif
 #endif
 
 /*
-* genlmsg_new() was added to <net/genetlink.h> in mainline commit 3dabc715
-* (v2.6.20-rc2).
-*/
+ * genlmsg_new() was added to <net/genetlink.h> in mainline commit 3dabc715
+ * (v2.6.20-rc2).
+ */
+
 #ifndef COMPAT_HAVE_GENLMSG_NEW
 extern struct sk_buff *genlmsg_new(size_t payload, gfp_t flags);
 #else
@@ -1186,15 +1231,15 @@ extern struct sk_buff *genlmsg_new(size_t payload, gfp_t flags);
 
 static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 {
-    return nlmsg_new(genlmsg_total_size(payload), flags);
+	return nlmsg_new(genlmsg_total_size(payload), flags);
 }
 #endif
 
 /*
-* genlmsg_put() was introduced in mainline commit 482a8524 (v2.6.15-rc1) and
-* changed in 17c157c8 (v2.6.20-rc2).  genlmsg_put_reply() was introduced in
-* 17c157c8.  We replace the compat_genlmsg_put() from 482a8524.
-*/
+ * genlmsg_put() was introduced in mainline commit 482a8524 (v2.6.15-rc1) and
+ * changed in 17c157c8 (v2.6.20-rc2).  genlmsg_put_reply() was introduced in
+ * 17c157c8.  We replace the compat_genlmsg_put() from 482a8524.
+ */
 #ifdef _WIN32
 
 extern void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
@@ -1210,51 +1255,51 @@ extern void *genlmsg_put_reply(struct msg_buff *skb,
 #include <net/genetlink.h>
 
 static inline void *compat_genlmsg_put(struct sk_buff *skb, u32 pid, u32 seq,
-struct genl_family *family, int flags,
-    u8 cmd)
+				       struct genl_family *family, int flags,
+				       u8 cmd)
 {
-    struct nlmsghdr *nlh;
-    struct genlmsghdr *hdr;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *hdr;
 
-    nlh = nlmsg_put(skb, pid, seq, family->id, GENL_HDRLEN +
-        family->hdrsize, flags);
-    if (nlh == NULL)
-        return NULL;
+	nlh = nlmsg_put(skb, pid, seq, family->id, GENL_HDRLEN +
+			family->hdrsize, flags);
+	if (nlh == NULL)
+		return NULL;
 
-    hdr = nlmsg_data(nlh);
-    hdr->cmd = cmd;
-    hdr->version = family->version;
-    hdr->reserved = 0;
+	hdr = nlmsg_data(nlh);
+	hdr->cmd = cmd;
+	hdr->version = family->version;
+	hdr->reserved = 0;
 
-    return (char *)hdr + GENL_HDRLEN;
+	return (char *) hdr + GENL_HDRLEN;
 }
 
 #define genlmsg_put compat_genlmsg_put
 
 static inline void *genlmsg_put_reply(struct sk_buff *skb,
-struct genl_info *info,
-struct genl_family *family,
-    int flags, u8 cmd)
+                                      struct genl_info *info,
+                                      struct genl_family *family,
+                                      int flags, u8 cmd)
 {
-    return genlmsg_put(skb, info->snd_pid, info->snd_seq, family,
-        flags, cmd);
+	return genlmsg_put(skb, info->snd_pid, info->snd_seq, family,
+			   flags, cmd);
 }
 #endif
 #endif
 
 /*
-* compat_genlmsg_multicast() got a gfp_t parameter in mainline commit d387f6ad
-* (v2.6.19-rc1).
-*/
+ * compat_genlmsg_multicast() got a gfp_t parameter in mainline commit d387f6ad
+ * (v2.6.19-rc1).
+ */
 
 #ifdef COMPAT_NEED_GENLMSG_MULTICAST_WRAPPER
 #ifndef _WIN32
 #include <net/genetlink.h>
 #endif
 static inline int compat_genlmsg_multicast(struct sk_buff *skb, u32 pid,
-    unsigned int group, gfp_t flags)
+					   unsigned int group, gfp_t flags)
 {
-    return genlmsg_multicast(skb, pid, group);
+	return genlmsg_multicast(skb, pid, group);
 }
 
 #define genlmsg_multicast compat_genlmsg_multicast
@@ -1262,50 +1307,50 @@ static inline int compat_genlmsg_multicast(struct sk_buff *skb, u32 pid,
 #endif
 
 /*
-* Dynamic generic netlink multicast groups were introduced in mainline commit
-* 2dbba6f7 (v2.6.23-rc1).  Before that, netlink had a fixed number of 32
-* multicast groups.  Use an arbitrary hard-coded group number for that case.
-*/
+ * Dynamic generic netlink multicast groups were introduced in mainline commit
+ * 2dbba6f7 (v2.6.23-rc1).  Before that, netlink had a fixed number of 32
+ * multicast groups.  Use an arbitrary hard-coded group number for that case.
+ */
 
 #ifndef COMPAT_HAVE_CTRL_ATTR_MCAST_GROUPS
 
-struct genl_multicast_group
-{
-    struct genl_family	*family;	/* private */
-    struct list_head	list;		/* private */
-    char			name[GENL_NAMSIZ];
-    u32			id;
+struct genl_multicast_group {
+	struct genl_family	*family;	/* private */
+        struct list_head	list;		/* private */
+        char			name[GENL_NAMSIZ];
+	u32			id;
 };
 
 static inline int genl_register_mc_group(struct genl_family *family,
-            struct genl_multicast_group *grp)
+					 struct genl_multicast_group *grp)
 {
-    grp->id = 1;
-    return 0;
+	grp->id = 1;
+	return 0;
 }
 
 static inline void genl_unregister_mc_group(struct genl_family *family,
-    struct genl_multicast_group *grp)
-{}
+					    struct genl_multicast_group *grp)
+{
+}
 
 #endif
 
 /*
-* kref_sub() was introduced in mainline commit ecf7ace9 (v2.6.38-rc1).
-*/
+ * kref_sub() was introduced in mainline commit ecf7ace9 (v2.6.38-rc1).
+ */
 #ifndef COMPAT_HAVE_KREF_SUB
 static inline void kref_sub(struct kref *kref, unsigned int count,
-    void(*release) (struct kref *kref))
+			    void (*release) (struct kref *kref))
 {
-    while (count--)
-        kref_put(kref, release);
+	while (count--)
+		kref_put(kref, release);
 }
 #endif
 
 /*
-* list_for_each_entry_continue_rcu() was introduced in mainline commit
-* 254245d2 (v2.6.33-rc1).
-*/
+ * list_for_each_entry_continue_rcu() was introduced in mainline commit
+ * 254245d2 (v2.6.33-rc1).
+ */
 #ifndef list_for_each_entry_continue_rcu
 #ifdef _WIN32_V9
 #define list_for_each_entry_continue_rcu(type, pos, head, member)             \
@@ -1334,15 +1379,15 @@ static __inline long IS_ERR_OR_NULL(const void *ptr)
 #else
 static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
 {
-    return !ptr || IS_ERR_VALUE((unsigned long)ptr);
+	return !ptr || IS_ERR_VALUE((unsigned long)ptr);
 }
 #endif
 #endif
 
 #ifndef SK_CAN_REUSE
 /* This constant was introduced by Pavel Emelyanov <xemul@parallels.com> on
-Thu Apr 19 03:39:36 2012 +0000. Before the release of linux-3.5
-commit 4a17fd52 sock: Introduce named constants for sk_reuse */
+   Thu Apr 19 03:39:36 2012 +0000. Before the release of linux-3.5
+   commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #define SK_CAN_REUSE   1
 #endif
 
@@ -1350,7 +1395,7 @@ commit 4a17fd52 sock: Introduce named constants for sk_reuse */
 #ifdef _WIN32_V9_DEBUGFS // JHKIM: debugfs 에서만 사용. 일단 포팅보류
 static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
-    return atomic_add_unless(&kref->refcount, 1, 0);
+	return atomic_add_unless(&kref->refcount, 1, 0);
 }
 #else
 static __inline int kref_get_unless_zero(struct kref *kref)
@@ -1362,7 +1407,7 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 
 #ifdef COMPAT_KMAP_ATOMIC_PAGE_ONLY
 /* see 980c19e3
-* highmem: mark k[un]map_atomic() with two arguments as deprecated */
+ * highmem: mark k[un]map_atomic() with two arguments as deprecated */
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr)
 #else
@@ -1416,7 +1461,7 @@ static inline u32 prandom_u32(void)
 #ifdef _WIN32_V9
     return random32_win();
 #else
-    return random32();    
+	return random32();
 #endif
 }
 #endif
@@ -1448,28 +1493,27 @@ static inline u32 prandom_u32(void)
 #ifndef COMPAT_HAVE_IDR_ALLOC
 static inline int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_mask)
 {
-    int rv, got;
+	int rv, got;
 
-    if (!idr_pre_get(idr, gfp_mask))
-        return -ENOMEM;
-    rv = idr_get_new_above(idr, ptr, start, &got);
-    if (rv < 0)
-        return rv;
+	if (!idr_pre_get(idr, gfp_mask))
+		return -ENOMEM;
+	rv = idr_get_new_above(idr, ptr, start, &got);
+	if (rv < 0)
+		return rv;
 
-    if (got >= end)
-    {
-        idr_remove(idr, got);
-        return -ENOSPC;
-    }
+	if (got >= end) {
+		idr_remove(idr, got);
+		return -ENOSPC;
+	}
 
-    return got;
+	return got;
 }
 #endif
 
 #ifndef BLKDEV_ISSUE_ZEROOUT_EXPORTED
 /* Was introduced with 2.6.34 */
 extern int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
-    sector_t nr_sects, gfp_t gfp_mask, bool discard);
+				sector_t nr_sects, gfp_t gfp_mask, bool discard);
 #else
 /* synopsis changed a few times, though */
 #ifdef COMPAT_BLKDEV_ISSUE_ZEROOUT_BLKDEV_IFL_WAIT
@@ -1483,8 +1527,8 @@ extern int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 
 
 #ifndef COMPAT_HAVE_GENL_LOCK
-static inline void genl_lock(void) {}
-static inline void genl_unlock(void) {}
+static inline void genl_lock(void)  { }
+static inline void genl_unlock(void)  { }
 #endif
 
 
@@ -1540,17 +1584,17 @@ static inline void queue_flag_clear_unlocked(unsigned int flag, struct request_q
 static inline void blk_set_stacking_limits(struct queue_limits *lim)
 {
 # ifdef COMPAT_QUEUE_LIMITS_HAS_DISCARD_ZEROES_DATA
-    lim->discard_zeroes_data = 1;
+	lim->discard_zeroes_data = 1;
 # endif
 }
 #endif
 
 #ifdef COMPAT_HAVE_STRUCT_BVEC_ITER
 /* since Linux 3.14 we have a new way to iterate a bio
-Mainline commits:
-7988613b0 block: Convert bio_for_each_segment() to bvec_iter
-4f024f379 block: Abstract out bvec iterator
-*/
+   Mainline commits:
+   7988613b0 block: Convert bio_for_each_segment() to bvec_iter
+   4f024f379 block: Abstract out bvec iterator
+ */
 #define DRBD_BIO_VEC_TYPE struct bio_vec
 #define DRBD_ITER_TYPE struct bvec_iter
 #define BVD .
@@ -1564,7 +1608,7 @@ Mainline commits:
 #define DRBD_BIO_BI_SIZE(BIO) ((BIO)->bi_size)
 
 /* Attention: The backward comp version of this macro accesses bio from
-calling namespace */
+   calling namespace */
 #define bio_iter_last(BVEC, ITER) ((ITER) == bio->bi_vcnt - 1)
 #endif
 
@@ -1576,7 +1620,9 @@ calling namespace */
 // _WIN32_V9_DEBUGFS //JHKIM: debugfs용, 추후 보강
 #else
 #ifndef COMPAT_HAVE_F_PATH_DENTRY
-#define f_path.dentry f_dentry
+#error "won't compile with this kernel version (f_path.dentry vs f_dentry)"
+/* change all occurences of f_path.dentry to f_dentry, and conditionally
+ * #define f_dentry to f_path.dentry */
 #endif
 #endif
 
@@ -1589,7 +1635,7 @@ calling namespace */
 #define list_first_or_null_rcu(ptr, type, member) \
 ({ \
 	struct list_head *__ptr = (ptr); \
-	struct list_head *__next = ACCESS_ONCE(__ptr->next); \ 
+	struct list_head *__next = ACCESS_ONCE(__ptr->next); \
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
 #else
@@ -1606,4 +1652,66 @@ calling namespace */
 #endif
 #endif
 
+#ifndef COMPAT_HAVE_GENERIC_START_IO_ACCT
+#ifndef __disk_stat_inc
+static inline void generic_start_io_acct(int rw, unsigned long sectors,
+					 struct hd_struct *part)
+{
+#ifdef _WIN32_V9_PATCH_CHECK
+	int cpu;
+	BUILD_BUG_ON(sizeof(atomic_t) != sizeof(part->in_flight[0]));
+
+	cpu = part_stat_lock();
+	part_round_stats(cpu, part);
+	part_stat_inc(cpu, part, ios[rw]);
+	part_stat_add(cpu, part, sectors[rw], sectors);
+	(void) cpu; /* The macro invocations above want the cpu argument, I do not like
+		       the compiler warning about cpu only assigned but never used... */
+	/* part_inc_in_flight(part, rw); */
+	atomic_inc((atomic_t*)&part->in_flight[rw]);
+	part_stat_unlock();
+#else
+	DbgPrint("DRBD_TEST: check generic_start_io_acct\n");
+#endif
+}
+
+static inline void generic_end_io_acct(int rw, struct hd_struct *part,
+				  unsigned long start_time)
+{
+#ifdef _WIN32_V9_PATCH_CHECK
+	unsigned long duration = jiffies - start_time;
+	int cpu;
+
+	cpu = part_stat_lock();
+	part_stat_add(cpu, part, ticks[rw], duration);
+	part_round_stats(cpu, part);
+	/* part_dec_in_flight(part, rw); */
+	atomic_dec((atomic_t*)&part->in_flight[rw]);
+	part_stat_unlock();
+#else
+DbgPrint("DRBD_TEST: check generic_end_io_acct\n");
+#endif
+}
+#endif /* __disk_stat_inc */
+#endif /* COMPAT_HAVE_GENERIC_START_IO_ACCT */
+
+
+#ifndef COMPAT_SOCK_CREATE_KERN_HAS_FIVE_PARAMETERS
+#define sock_create_kern(N,F,T,P,S) sock_create_kern(F,T,P,S)
+#endif
+
+#ifndef COMPAT_HAVE_WB_CONGESTED_ENUM
+#define WB_async_congested BDI_async_congested
+#define WB_sync_congested BDI_sync_congested
+#endif
+
+#ifdef _WIN32_V9_PATCH_1_CHECK
+#ifndef COMPAT_HAVE_SIMPLE_POSITIVE
+#include <linux/dcache.h>
+static inline int simple_positive(struct dentry *dentry)
+{
+        return dentry->d_inode && !d_unhashed(dentry);
+}
+#endif
+#endif
 #endif
