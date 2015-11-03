@@ -495,7 +495,8 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 	if (e == CC_NOT_AN_ENUM)
 		pe_valid_enums(field->u.e.map, field->u.e.size);
 
-	exit(E_CONFIG_INVALID);
+	if (config_valid <= 1)
+		config_valid = 0;
 }
 
 static void pe_options(struct context_def *options_def)
@@ -1364,7 +1365,7 @@ int parse_proxy_options_section(struct d_proxy_info **pp)
 	return parse_proxy_options(&proxy->options, &proxy->plugins);
 }
 
-static struct hname_address *parse_hname_address_pair(struct connection *conn, int prev_token)
+static struct hname_address *parse_hname_address_pair(struct path *path, int prev_token)
 {
 	struct hname_address *ha;
 	int token;
@@ -1379,11 +1380,11 @@ static struct hname_address *parse_hname_address_pair(struct connection *conn, i
 		goto parse_address;
 	case TK__THIS_HOST:
 		ha->name = "_this_host";
-		conn->my_address = &ha->address;
+		path->my_address = &ha->address;
 		goto parse_address;
 	case TK__REMOTE_HOST:
 		ha->name = "_remote_host";
-		conn->connect_to = &ha->address;
+		path->connect_to = &ha->address;
 		goto parse_address;
 	default:
 		assert(0);
@@ -1436,7 +1437,7 @@ struct connection *alloc_connection()
 		err("calloc: %m\n");
 		exit(E_EXEC_ERROR);
 	}
-	STAILQ_INIT(&conn->hname_address_pairs);
+	STAILQ_INIT(&conn->paths);
 	STAILQ_INIT(&conn->net_options);
 	STAILQ_INIT(&conn->peer_devices);
 	STAILQ_INIT(&conn->pd_options);
@@ -1501,11 +1502,77 @@ static struct d_host_info *parse_peer_node_id(void)
 	return host;
 }
 
+struct path *alloc_path()
+{
+	struct path *path;
+
+	path = calloc(1, sizeof(struct path));
+	if (path == NULL) {
+		err("calloc: %m\n");
+		exit(E_EXEC_ERROR);
+	}
+	STAILQ_INIT(&path->hname_address_pairs);
+
+	return path;
+}
+
+static struct path *path0(struct connection *conn)
+{
+	struct path *path = STAILQ_FIRST(&conn->paths);
+
+	if (!path) {
+		path = alloc_path();
+		path->implicit = true;
+		path->config_line = line;
+
+		insert_tail(&conn->paths, path);
+	} else {
+		if (!path->implicit) {
+			config_valid = 0;
+			err("%s:%d: Explicit and implicit paths not allowed\n",
+			    config_file, line);
+		}
+	}
+	return path;
+}
+
+static struct path *parse_path()
+{
+	struct path *path;
+	int hosts = 0, token;
+
+	path = alloc_path();
+	path->config_line = line;
+
+	EXP('{');
+	while (1) {
+		token = yylex();
+		switch(token) {
+		case TK_ADDRESS:
+		case TK_HOST:
+		case TK__THIS_HOST:
+		case TK__REMOTE_HOST:
+			insert_tail(&path->hname_address_pairs, parse_hname_address_pair(path, token));
+			if (++hosts >= 3) {
+				err("%s:%d: only two 'host' keywords per path allowed\n",
+				    config_file, fline);
+				config_valid = 0;
+			}
+			break;
+		case '}':
+			return path;
+		default:
+			pe_expected_got( "host | }", token);
+		}
+	}
+}
+
 static struct connection *parse_connection(enum pr_flags flags)
 {
 	struct connection *conn;
 	struct peer_device *peer_device;
 	int hosts = 0, token;
+	struct path *path;
 
 	conn = alloc_connection();
 	conn->config_line = line;
@@ -1528,7 +1595,8 @@ static struct connection *parse_connection(enum pr_flags flags)
 		case TK_HOST:
 		case TK__THIS_HOST:
 		case TK__REMOTE_HOST:
-			insert_tail(&conn->hname_address_pairs, parse_hname_address_pair(conn, token));
+			path = path0(conn);
+			insert_tail(&path->hname_address_pairs, parse_hname_address_pair(path, token));
 			if (++hosts >= 3) {
 				err("%s:%d: only two 'host' keywords per connection allowed\n",
 				    config_file, fline);
@@ -1565,6 +1633,9 @@ static struct connection *parse_connection(enum pr_flags flags)
 			conn->is_standalone = 1;
 			EXP(';');
 			break;
+		case TK_PATH:
+			insert_tail(&conn->paths, parse_path());
+			break;
 		case '}':
 			return conn;
 		default:
@@ -1575,33 +1646,34 @@ static struct connection *parse_connection(enum pr_flags flags)
 
 void parse_connection_mesh(struct d_resource *res, enum pr_flags flags)
 {
+	struct mesh *mesh;
 	int token;
 
 	EXP('{');
+	mesh = calloc(1, sizeof(struct mesh));
+	STAILQ_INIT(&mesh->hosts);
+	STAILQ_INIT(&mesh->net_options);
+
 	while (1) {
 		token = yylex();
 		switch(token) {
 		case TK_HOSTS:
-			if (!STAILQ_EMPTY(&res->mesh)) {
-				err("%s:%d: only one 'connection-mesh' keyword is allowed\n",
-				    config_file, fline);
-				config_valid = 0;
-			}
-			parse_hosts(&res->mesh, ';');
+			parse_hosts(&mesh->hosts, ';');
 			break;
 		case TK_NET:
-			if (!STAILQ_EMPTY(&res->mesh_net_options)) {
+			if (!STAILQ_EMPTY(&mesh->net_options)) {
 				err("%s:%d: only one 'net' section allowed\n",
 				    config_file, fline);
 				config_valid = 0;
 			}
 			EXP('{');
-			res->mesh_net_options =
+			mesh->net_options =
 				__parse_options(&show_net_options_ctx,
 						&net_delegate,
 						(void *)flags);
 			break;
 		case '}':
+			insert_tail(&res->meshes, mesh);
 			return;
 		default:
 			pe_expected_got( "hosts | net | }", token);
@@ -1633,8 +1705,7 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 	STAILQ_INIT(&res->handlers);
 	STAILQ_INIT(&res->proxy_options);
 	STAILQ_INIT(&res->proxy_plugins);
-	STAILQ_INIT(&res->mesh);
-	STAILQ_INIT(&res->mesh_net_options);
+	STAILQ_INIT(&res->meshes);
 	res->name = res_name;
 	res->config_file = config_save;
 	res->start_line = line;

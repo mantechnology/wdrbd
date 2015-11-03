@@ -323,8 +323,8 @@ int adm_adjust_wp(const struct cfg_ctx *ctx)
 /*  */ struct adm_cmd detach_cmd = {"detach", adm_drbdsetup, &detach_cmd_ctx, .takes_long = 1, ACF1_MINOR_ONLY };
 /*  */ struct adm_cmd new_peer_cmd = {"new-peer", adm_new_peer, &new_peer_cmd_ctx, ACF1_CONNECT};
 /*  */ struct adm_cmd del_peer_cmd = {"del-peer", adm_drbdsetup, &disconnect_cmd_ctx, ACF1_CONNECT};
-/*  */ struct adm_cmd new_path_cmd = {"new-path", adm_path, &path_cmd_ctx, ACF1_CONNECT};
-/*  */ struct adm_cmd del_path_cmd = {"del-path", adm_path, &path_cmd_ctx, ACF1_CONNECT};
+/*  */ struct adm_cmd new_path_cmd = {"new-path", adm_path, &path_cmd_ctx, ACF1_CONNECT .iterate_paths = 1};
+/*  */ struct adm_cmd del_path_cmd = {"del-path", adm_path, &path_cmd_ctx, ACF1_CONNECT .iterate_paths = 1};
 /*  */ struct adm_cmd connect_cmd = {"connect", adm_connect, &connect_cmd_ctx, ACF1_CONNECT};
 /*  */ struct adm_cmd net_options_cmd = {"net-options", adm_new_peer, &net_options_ctx, ACF1_CONNECT};
 /*  */ struct adm_cmd disconnect_cmd = {"disconnect", adm_drbdsetup, &disconnect_cmd_ctx, ACF1_DISCONNECT};
@@ -348,7 +348,7 @@ static struct adm_cmd wait_ci_cmd = {"wait-con-int", adm_wait_ci, .show_in_usage
 static struct adm_cmd role_cmd = {"role", adm_drbdsetup, ACF1_RESNAME};
 static struct adm_cmd cstate_cmd = {"cstate", adm_drbdsetup, ACF1_DISCONNECT};
 static struct adm_cmd dstate_cmd = {"dstate", adm_setup_and_meta, ACF1_MINOR_ONLY };
-static struct adm_cmd status_cmd = {"status", adm_drbdsetup, .show_in_usage = 1, .uc_dialog = 1};
+static struct adm_cmd status_cmd = {"status", adm_drbdsetup, .show_in_usage = 1, .uc_dialog = 1, .backend_res_name=1};
 static struct adm_cmd peer_device_options_cmd = {"peer-device-options", adm_peer_device,
 						 &peer_device_options_ctx, ACF1_PEER_DEVICE};
 static struct adm_cmd dump_cmd = {"dump", adm_dump, ACF1_DUMP};
@@ -585,7 +585,10 @@ enum on_error { KEEP_RUNNING, EXIT_ON_FAIL };
 static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 {
 	struct d_volume *vol = ctx->vol;
-	int rv;
+	bool iterate_paths;
+	int rv = 0;
+
+	iterate_paths = ctx->path ? 0 : ctx->cmd->iterate_paths;
 
 	if (ctx->cmd->disk_required &&
 	    (!vol->disk || !vol->meta_disk || !vol->meta_index)) {
@@ -597,10 +600,25 @@ static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 		return rv;
 	}
 
-	rv = ctx->cmd->function(ctx);
-	if (rv >= 20) {
-		if (on_error == EXIT_ON_FAIL)
-			exit(rv);
+	if (iterate_paths) {
+		struct cfg_ctx tmp_ctx = *ctx;
+		struct path *path;
+
+		for_each_path(path, &tmp_ctx.conn->paths) {
+			tmp_ctx.path = path;
+			rv = tmp_ctx.cmd->function(&tmp_ctx);
+			if (rv >= 20) {
+				if (on_error == EXIT_ON_FAIL)
+					exit(rv);
+			}
+
+		}
+	} else {
+		rv = ctx->cmd->function(ctx);
+		if (rv >= 20) {
+			if (on_error == EXIT_ON_FAIL)
+				exit(rv);
+		}
 	}
 	return rv;
 }
@@ -1542,13 +1560,79 @@ static int adm_forget_peer(const struct cfg_ctx *ctx)
 static int adm_khelper(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res = ctx->res;
+	struct d_volume *vol = ctx->vol;
 	int rv = 0;
 	char *sh_cmd;
+	char minor_string[8];
+	char volume_string[8];
 #ifdef _WIN32
 	char *argv[] = { "cmd", "/c", NULL, NULL };
 #else
 	char *argv[] = { "/bin/sh", "-c", NULL, NULL };
 #endif
+	setenv("DRBD_CONF", config_save, 1);
+	setenv("DRBD_RESOURCE", res->name, 1);
+
+	if (vol) {
+		snprintf(minor_string, sizeof(minor_string), "%u", vol->device_minor);
+		snprintf(volume_string, sizeof(volume_string), "%u", vol->vnr);
+		setenv("DRBD_MINOR", minor_string, 1);
+		setenv("DRBD_VOLUME", volume_string, 1);
+		setenv("DRBD_LL_DISK", shell_escape(vol->disk), 1);
+	} else {
+		char *minor_list;
+		char *volume_list;
+		char *ll_list;
+		char *separator = "";
+		char *pos_minor;
+		char *pos_volume;
+		char *pos_ll;
+		int volumes = 0;
+		int minor_len, volume_len, ll_len = 0;
+		int n;
+
+		for_each_volume(vol, &res->me->volumes) {
+			volumes++;
+			ll_len += strlen(shell_escape(vol->disk)) + 1;
+		}
+
+		/* max minor number is 2**20 - 1, which is 7 decimal digits.
+		 * plus separator respective trailing zero. */
+		minor_len = volumes * 8 + 1;
+		volume_len = minor_len;
+		minor_list = alloca(minor_len);
+		volume_list = alloca(volume_len);
+		ll_list = alloca(ll_len);
+
+		pos_minor = minor_list;
+		pos_volume = volume_list;
+		pos_ll = ll_list;
+		for_each_volume(vol, &res->me->volumes) {
+#define append(name, fmt, v) do {						\
+			n = snprintf(pos_ ## name, name ## _len, "%s" fmt,	\
+					separator, v);				\
+			if (n >= name ## _len) {				\
+				/* "can not happen" */				\
+				err("buffer too small when generating the "	\
+					#name " list\n");			\
+				abort();					\
+				break;						\
+			}							\
+			name ## _len -= n;					\
+			pos_ ## name += n;					\
+			} while (0)
+
+			append(minor, "%d", vol->device_minor);
+			append(volume, "%d", vol->vnr);
+			append(ll, "%s", shell_escape(vol->disk));
+
+#undef append
+			separator = " ";
+		}
+		setenv("DRBD_MINOR", minor_list, 1);
+		setenv("DRBD_VOLUME", volume_list, 1);
+		setenv("DRBD_LL_DISK", ll_list, 1);
+	}
 
 	if ((sh_cmd = get_opt_val(&res->handlers, ctx->cmd->name, NULL))) {
 		argv[2] = sh_cmd;
@@ -1637,6 +1721,7 @@ static int adm_path(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res = ctx->res;
 	struct connection *conn = ctx->conn;
+	struct path *path = ctx->path;
 
 	char *argv[MAX_ARGS];
 	int argc = 0;
@@ -1646,8 +1731,8 @@ static int adm_path(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%s", res->name);
 	argv[NA(argc)] = ssprintf("%s", conn->peer->node_id);
 
-	argv[NA(argc)] = ssprintf_addr(conn->my_address);
-	argv[NA(argc)] = ssprintf_addr(conn->connect_to);
+	argv[NA(argc)] = ssprintf_addr(path->my_address);
+	argv[NA(argc)] = ssprintf_addr(path->connect_to);
 
 	add_setup_options(argv, &argc);
 	argv[NA(argc)] = 0;
@@ -1664,18 +1749,20 @@ void free_opt(struct d_option *item)
 
 int _proxy_connect_name_len(const struct d_resource *res, const struct connection *conn)
 {
+	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 	return (conn->name ? strlen(conn->name) : strlen(res->name)) +
-		strlen(names_to_str_c(&conn->peer_proxy->on_hosts, '_')) +
-		strlen(names_to_str_c(&conn->my_proxy->on_hosts, '_')) +
+		strlen(names_to_str_c(&path->peer_proxy->on_hosts, '_')) +
+		strlen(names_to_str_c(&path->my_proxy->on_hosts, '_')) +
 		3 /* for the two dashes and the trailing 0 character */;
 }
 
 char *_proxy_connection_name(char *conn_name, const struct d_resource *res, const struct connection *conn)
 {
+	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 	sprintf(conn_name, "%s-%s-%s",
 		conn->name ?: res->name,
-		names_to_str_c(&conn->peer_proxy->on_hosts, '_'),
-		names_to_str_c(&conn->my_proxy->on_hosts, '_'));
+		names_to_str_c(&path->peer_proxy->on_hosts, '_'),
+		names_to_str_c(&path->my_proxy->on_hosts, '_'));
 	return conn_name;
 }
 
@@ -1689,19 +1776,20 @@ int do_proxy_conn_up(const struct cfg_ctx *ctx)
 	rv = 0;
 
 	for_each_connection(conn, &ctx->res->connections) {
+		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 		conn_name = proxy_connection_name(ctx->res, conn);
 
 		argv[2] = ssprintf(
 				"add connection %s %s:%s %s:%s %s:%s %s:%s",
 				conn_name,
-				conn->my_proxy->inside.addr,
-				conn->my_proxy->inside.port,
-				conn->peer_proxy->outside.addr,
-				conn->peer_proxy->outside.port,
-				conn->my_proxy->outside.addr,
-				conn->my_proxy->outside.port,
-				conn->my_address->addr,
-				conn->my_address->port);
+				path->my_proxy->inside.addr,
+				path->my_proxy->inside.port,
+				path->peer_proxy->outside.addr,
+				path->peer_proxy->outside.port,
+				path->my_proxy->outside.addr,
+				path->my_proxy->outside.port,
+				path->my_address->addr,
+				path->my_address->port);
 
 		rv = m_system_ex(argv, SLEEPS_SHORT, ctx->res->name);
 		if (rv)
@@ -1723,11 +1811,12 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 	rv = 0;
 
 	for_each_connection(conn, &ctx->res->connections) {
+		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 		conn_name = proxy_connection_name(ctx->res, conn);
 
 		argc = 0;
 		argv[NA(argc)] = drbd_proxy_ctl;
-		STAILQ_FOREACH(opt, &conn->my_proxy->options, link) {
+		STAILQ_FOREACH(opt, &path->my_proxy->options, link) {
 			argv[NA(argc)] = "-c";
 			argv[NA(argc)] = ssprintf("set %s %s %s",
 					opt->name, conn_name, opt->value);
@@ -1736,8 +1825,8 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 		counter = 0;
 		/* Don't send the "set plugin ... END" line if no plugins are defined
 		 * - that's incompatible with the drbd proxy version 1. */
-		if (!STAILQ_EMPTY(&conn->my_proxy->plugins)) {
-			STAILQ_FOREACH(opt, &conn->my_proxy->plugins, link) {
+		if (!STAILQ_EMPTY(&path->my_proxy->plugins)) {
+			STAILQ_FOREACH(opt, &path->my_proxy->plugins, link) {
 				argv[NA(argc)] = "-c";
 				argv[NA(argc)] = ssprintf("set plugin %s %d %s",
 						conn_name, counter, opt->name);
@@ -1780,9 +1869,10 @@ int do_proxy_conn_down(const struct cfg_ctx *ctx)
 static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 {
 	struct connection *conn = ctx->conn;
+	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 	int rv;
 
-	if (!conn->my_proxy) {
+	if (!path->my_proxy) {
 		if (all_resources)
 			return 0;
 		err("%s:%d: In resource '%s',no proxy config for connection %sfrom '%s' to '%s'%s.\n",
@@ -1794,7 +1884,7 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 		exit(E_CONFIG_INVALID);
 	}
 
-	if (!hostname_in_list(hostname, &conn->my_proxy->on_hosts)) {
+	if (!hostname_in_list(hostname, &path->my_proxy->on_hosts)) {
 		if (all_resources)
 			return 0;
 		err("The proxy config in resource %s is not for %s.\n",
@@ -1802,7 +1892,7 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 		exit(E_CONFIG_INVALID);
 	}
 
-	if (!conn->peer_proxy) {
+	if (!path->peer_proxy) {
 		err("There is no proxy config for the peer in resource %s.\n",
 		    ctx->res->name);
 		if (all_resources)
@@ -1896,14 +1986,13 @@ static int adm_wait_c(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = drbdsetup;
 	if (ctx->vol && ctx->conn) {
 		argv[NA(argc)] = ssprintf("%s-%s", ctx->cmd->name, "volume");
+		argv[NA(argc)] = res->name;
+		argv[NA(argc)] = ssprintf("%s", ctx->conn->peer->node_id);
 		argv[NA(argc)] = ssprintf("%d", vol->vnr);
-		argv[NA(argc)] = ssprintf_addr(ctx->conn->my_address);
-		argv[NA(argc)] = ssprintf_addr(ctx->conn->connect_to);
 	} else if (ctx->conn) {
 		argv[NA(argc)] = ssprintf("%s-%s", ctx->cmd->name, "connection");
 		argv[NA(argc)] = res->name;
-		argv[NA(argc)] = ssprintf_addr(ctx->conn->my_address);
-		argv[NA(argc)] = ssprintf_addr(ctx->conn->connect_to);
+		argv[NA(argc)] = ssprintf("%s", ctx->conn->peer->node_id);
 	} else {
 		argv[NA(argc)] = ssprintf("%s-%s", ctx->cmd->name, "resource");
 		argv[NA(argc)] = res->name;
@@ -1917,7 +2006,7 @@ static int adm_wait_c(const struct cfg_ctx *ctx)
 			// one connect-interval? two?
 			timeout *= 2;
 		}
-		argv[argc++] = "-t";
+		argv[argc++] = "--wfc-timeout";
 		argv[argc] = ssprintf("%lu", timeout);
 		argc++;
 	} else
@@ -3144,7 +3233,9 @@ int main(int argc, char **argv)
 		else if (cmd->res_name_required)
 			print_usage_and_exit(cmd, "No resource names specified", E_USAGE);
 	} else if (resource_names[0]) {
-		if (!cmd->res_name_required)
+		if (cmd->backend_res_name)
+			/* Okay */  ;
+		else if (!cmd->res_name_required)
 			err("This command will ignore resource names!\n");
 		else if (resource_names[1] && cmd->use_cached_config_file)
 			err("You should not use this command with multiple resources!\n");
