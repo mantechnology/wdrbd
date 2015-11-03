@@ -30,6 +30,8 @@
 #define drbd_conf drbd_device
 #endif
 
+#define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
+
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
@@ -973,7 +975,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
+			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
 				}  \
 		} while (0)
 
