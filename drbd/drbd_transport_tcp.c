@@ -220,8 +220,11 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 			tcp_transport->stream[i] = NULL;
 		}
 	}
-
+#ifdef _WIN32_V9_PATCH_1
+	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
+#else
 	list_for_each_entry(drbd_path, &transport->paths, list) {
+#endif
 		bool was_established = drbd_path->established;
 		drbd_path->established = false;
 		if (was_established)
@@ -239,7 +242,11 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 #endif	
 			tcp_transport->rbuf[i].base = NULL;
 		}
-		list_for_each_entry_safe(drbd_path, tmp, &transport->paths, list) { // WIN32_V9_PATCH_1_CHECK: check !!
+#ifdef _WIN32_V9_PATCH_1
+		list_for_each_entry_safe(struct drbd_path, drbd_path, tmp, &transport->paths, list) {
+#else
+		list_for_each_entry_safe(drbd_path, tmp, &transport->paths, list) {
+#endif
 			list_del(&drbd_path->list);
 			kfree(drbd_path);
 		}
@@ -412,7 +419,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 #ifdef _WIN32
 	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
 	err = dtt_recv_short(socket, page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
-    WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) all_pages(0x%p)\n", err, socket, size, all_pages);
+	WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) all_pages(0x%p)\n", err, socket, size, page);
     if (err < 0) {
 		goto fail;
 	}
@@ -817,7 +824,11 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 	struct drbd_path *drbd_path;
 	bool rv;
 	// WIN32_V9_PATCH_1_CHECK: 많이 변경됨, 리스너 관련 V9 포팅에 영향은 없는지 확인!
+#ifdef _WIN32_V9_PATCH_1
+	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
+#else
 	list_for_each_entry(drbd_path, &transport->paths, list) {
+#endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 		struct drbd_listener *listener = path->waiter.listener;
 
@@ -910,7 +921,8 @@ retry:
 		s_estab = NULL;
 #ifdef _WIN32_V9
 		// Accept 하고, s_estab 구조를 생성한다.
-		my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요.=> 잘 들어가 있음.
+		// _WIN32_V9_PATCH_1_CHECL: JHKIM: 일단 my_addr 사용안함으로 코멘트!
+		// my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요.=> 잘 들어가 있음.
 		memset(&peer_addr, 0, sizeof(struct sockaddr_in));
 		// Accept Event Callback 에서 paccept_socket 을 저장해 두었다. 
 		//paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
@@ -1107,13 +1119,17 @@ static void dtt_incoming_connection(struct sock *sock)
             kfree(s_estab);
         }
     }
-
+#ifdef _WIN32_V9_PATCH_1_CHECK
     struct dtt_waiter * w = waiter;
     if (!w->socket && s_estab)
     {
         w->socket = s_estab;
     }
     else
+#else
+	// 자료구조변경됨 일단 무시
+	DbgPrint("_WIN32_V9_PATCH_1_CHECK: dtt_incoming_connection!\n");
+#endif
     {
         listener->listener.pending_accepts++;
         listener->paccept_socket = AcceptSocket;
@@ -1123,7 +1139,7 @@ static void dtt_incoming_connection(struct sock *sock)
 
 	return STATUS_SUCCESS;
 #else
-	// JHKIM: 원본 방식 유지부분, 리룩스와 비교 시 참고
+	// JHKIM: 원본 방식 유지부분, 리룩스와 비교 시 참고 // 이부분이 V9_PATCH 에서 바뀜
 #ifdef _WIN32_V9
 	struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
 
@@ -1235,7 +1251,11 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	rcvbuf_size = nc->rcvbuf_size;
 	rcu_read_unlock();
 
+#ifdef _WIN32_V9_PATCH_1
+	my_addr = *(struct sockaddr_storage_win *)addr;
+#else
 	my_addr = *(struct sockaddr_storage *)addr;
+#endif
 
 	what = "sock_create_kern";
 #ifdef _WIN32
@@ -1357,8 +1377,11 @@ out:
 static void dtt_put_listeners(struct drbd_transport *transport)
 {
 	struct drbd_path *drbd_path;
-
+#ifdef _WIN32_V9_PATCH_1
+	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
+#else
 	list_for_each_entry(drbd_path, &transport->paths, list) {
+#endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 
 		path->first = NULL;
@@ -1382,7 +1405,11 @@ static struct dtt_path *dtt_next_path(struct dtt_path *path)
 	if (list_is_last(&path->path.list, &transport->paths))
 		drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	else
+#ifdef _WIN32_V9_PATCH_1
+		drbd_path = list_next_entry(struct drbd_path, &path->path, list);
+#else
 		drbd_path = list_next_entry(&path->path, list);
+#endif
 
 	return container_of(drbd_path, struct dtt_path, path);
 }
@@ -1396,7 +1423,7 @@ static int dtt_connect(struct drbd_transport *transport)
 	struct socket *dsocket, *csocket;
 	struct net_conf *nc;
 #ifdef _WIN32_V9
-    struct dtt_wait_first * waiter = kzalloc(sizeof(struct dtt_waiter), 0, '97DW');
+	struct dtt_path * waiter = kzalloc(sizeof(struct dtt_path), 0, '97DW');
     if (!waiter)
         return -ENOMEM;
 #else
@@ -1411,19 +1438,32 @@ static int dtt_connect(struct drbd_transport *transport)
 	if (list_empty(&transport->paths))
 		return -EDESTADDRREQ;
 #ifdef _WIN32_V9_PATCH_1
+	waiter->waiter.transport = transport;
+	init_waitqueue_head(&waiter->waiter.wait);
+#else
 	waiter.transport = transport;
 	init_waitqueue_head(&waiter.wait);
+#endif
 
+#ifdef _WIN32_V9_PATCH_1
+	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
+#else
 	list_for_each_entry(drbd_path, &transport->paths, list) {
+#endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
-
+#ifdef _WIN32_V9_PATCH_1
+		path->first = waiter; // JHKIM: 양단의 자료구조 의도적인 불일치 검토
+#else
 		path->first = &waiter;
+#endif
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
 					dtt_create_listener);
 		if (err)
 			goto out;
 	}
-#if 0 // V9 원본
+
+#ifdef _WIN32_V9_PATCH_1_XXX
+// V9 원본참고
 #ifdef _WIN32_V9
     waiter->waiter.transport = transport;
     waiter->socket = NULL;
@@ -1436,25 +1476,18 @@ static int dtt_connect(struct drbd_transport *transport)
 	if (err)
 		return out;
 #endif
-#else
-// 패치원본
-	waiter.transport = transport;
-	init_waitqueue_head(&waiter.wait);
 
-	list_for_each_entry(drbd_path, &transport->paths, list) {
-		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
-
-		path->first = &waiter;
-		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
-					dtt_create_listener);
-		if (err)
-			goto out;
-	}
-#endif
+	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
+	connect_to_path = container_of(drbd_path, struct dtt_path, path);
 
 #ifdef _WIN32_V9
     NTSTATUS status = STATUS_UNSUCCESSFUL;
+#ifdef _WIN32_V9_PATCH_1
 	struct dtt_listener* dttlistener = container_of(waiter->waiter.listener, struct dtt_listener, listener);
+	DbgPrint("_WIN32_V9_PATCH_1:  get listener. ok???\n");
+#else
+	struct dtt_listener* dttlistener = container_of(waiter->waiter.listener, struct dtt_listener, listener);
+#endif
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT);
 	if (!NT_SUCCESS(status)) {
@@ -1464,9 +1497,6 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 #endif
 
-	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
-	connect_to_path = container_of(drbd_path, struct dtt_path, path);
-	
 	do {
 		struct socket *s = NULL;
 
@@ -1479,7 +1509,8 @@ static int dtt_connect(struct drbd_transport *transport)
 			{
 				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
 				char sbuf[64], dbuf[64];
-				WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
+				// _WIN32_V9_PATCH_1: 추후정리
+				// WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
 			}
 #endif
 			if (!first_path) {
@@ -1542,7 +1573,8 @@ retry:
 			{
 				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
 				char sbuf[64], dbuf[64];
-				WDRBD_TRACE_IP4("WDRBD_TEST: Accepted:  %s <- %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
+				// _WIN32_V9_PATCH_1: 추후정리
+				// WDRBD_TRACE_IP4("WDRBD_TEST: Accepted:  %s <- %s\n", get_ip4(sbuf, &(dtt_path(transport))->my_addr), get_ip4(dbuf, &dtt_path(transport)->peer_addr));
 			}
 #endif
 			int fp = dtt_receive_first_packet(tcp_transport, s);

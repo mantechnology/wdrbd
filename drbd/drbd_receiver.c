@@ -174,7 +174,7 @@ static int page_chain_free(struct page *page)
 
 	page_chain_for_each_safe(page, tmp) {
 #ifdef _WIN32 //V8에 사용된 코드를 적용.
-		set_page_chain_next_offset_size(page, NULL, 0, 0); // _WIN32_V9_PATCH_1_CHECK
+		set_page_chain_next_offset_size(page, NULL, 0, 0); // _WIN32_V9_PATCH_1_CHECK // 미사용!!
 		__free_page(page);
 #else
 		set_page_chain_next_offset_size(page, NULL, 0, 0);
@@ -195,15 +195,14 @@ static void page_chain_add(struct page **head,
 #endif
 
 	/* add chain to head */
-#ifdef _WIN32_V9_PATCH_1
-	DbgPrint("_WIN32_V9_PATCH_1_CHECK: page_chain_add!\n");
+#ifdef _WIN32_V9_PATCH_1 // 미사용!!
+	DbgPrint("_WIN32_V9_PATCH_1_CHECK: page_chain_add!\n"); // 미사용!!
 #else
 #ifdef _WIN32 //V8의 구현 적용.
 	set_page_private(chain_last, *head);
 #else
 	set_page_private(chain_last, (unsigned long)*head);
 #endif
-#else
 	set_page_chain_next(chain_last, *head);
 #endif
 	*head = chain_first;
@@ -605,7 +604,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
     {
         kfree(peer_req->win32_big_page);
         peer_req->win32_big_page = NULL;
-        peer_req->pages = NULL; //_WIN32_V9_PATCH_1_CHECK
+        //peer_req->pages = NULL; //_WIN32_V9_PATCH_1_CHECK
     }
 #endif
 	if (peer_req->flags & EE_HAS_DIGEST)
@@ -3018,7 +3017,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		if (!peer_req->page_chain.head)
 			goto fail2;
 #ifdef _WIN32
-		peer_req->win32_big_page = peer_req->pages; //V8의 구현을 따라간다.
+		peer_req->win32_big_page = peer_req->page_chain.head; /// _WIN32_V9_PATCH_1
 #endif
 	}
 #ifdef _WIN32

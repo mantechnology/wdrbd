@@ -1671,7 +1671,7 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 	atomic_inc((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-	DbgPrint("DRBD_TEST: check generic_start_io_acct\n");
+	DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_start_io_acct\n");
 #endif
 }
 
@@ -1689,7 +1689,7 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 	atomic_dec((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-DbgPrint("DRBD_TEST: check generic_end_io_acct\n");
+	DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_end_io_acct\n");
 #endif
 }
 #endif /* __disk_stat_inc */

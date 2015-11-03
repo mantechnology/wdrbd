@@ -204,8 +204,9 @@ enum rq_flag_bits {
 #define EHOSTUNREACH			30
 #define EBADR					31
 #define EADDRINUSE              32 //_WIN32_V9
-#define	EOVERFLOW	75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
-#define	ESTALE		116	/* Stale NFS file handle */
+#define	EOVERFLOW				75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
+#define	ESTALE					116	/* Stale NFS file handle */
+#define ECONNABORTED			130 /* Software caused connection abort */ // _WIN32_V9_PATCH_1
 
 #define SIGXCPU					100
 #define SIGHUP					101
@@ -570,6 +571,9 @@ struct gendisk
     void *private_data;
 #endif
 	PVOLUME_EXTENSION pDeviceExtension;
+#ifdef _WIN32_V9_PATCH_1
+	void * part0; // _WIN32_V9_PATCH_1_CHECK
+#endif
 };
 
 struct block_device {

@@ -406,6 +406,7 @@ void drbd_path_event(struct drbd_transport *transport, struct drbd_path *path)
 	notify_path(connection, path, NOTIFY_CHANGE);
 }
 
+#ifndef _WIN32_V9 // 
 /* Network transport abstractions */
 EXPORT_SYMBOL_GPL(drbd_register_transport_class);
 EXPORT_SYMBOL_GPL(drbd_unregister_transport_class);

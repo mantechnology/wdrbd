@@ -316,7 +316,12 @@ GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
 /*
  * Notifications and commands (genlmsghdr->cmd)
  */
+ // 
+#ifdef _WIN32_V9_PATCH_1 
+	// _WIN32_V9_PATCH_1_CHECK: JHKIM: skip compile error!!!
+#else
 GENL_mc_group(events)
+#endif
 
 	/* add DRBD minor devices as volumes to resources */
 GENL_op(DRBD_ADM_NEW_MINOR, 5, GENL_doit(drbd_adm_new_minor),
