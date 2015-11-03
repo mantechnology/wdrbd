@@ -23,6 +23,18 @@
 # define BITS_PER_LONG __WORDSIZE
 #endif
 #endif
+#ifdef _WIN32_V9_PATCH_1_CHECK
+#ifndef BITS_PER_LONG
+# if defined(__SIZEOF_LONG__)
+#  define BITS_PER_LONG (__SIZEOF_LONG__ * 8)
+# elif defined(__WORDSIZE)
+#  define BITS_PER_LONG __WORDSIZE
+# else /* wtf is wrong with your libc headers? */
+#  error "neither BITS_PER_LONG, __SIZEOF_LONG__, nor __WORDSIZE defined"
+# endif
+#endif
+#endif
+
 /* linux/byteorder/swab.h */
 
 /* casts are necessary for constants, because we never know for sure
