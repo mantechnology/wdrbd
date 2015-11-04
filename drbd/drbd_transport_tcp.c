@@ -850,15 +850,6 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 	}
 
 	return NULL;
-
-	/*_WIN32_V9_PATCH_1_CHECK: V9 참고 XXX
-	struct drbd_listener *listener = waiter->waiter.listener;
-	bool rv;
-	spin_lock_bh(&listener->waiters_lock);
-	rv = waiter->waiter.listener->pending_accepts > 0 || waiter->socket != NULL;
-	spin_unlock_bh(&listener->waiters_lock);
-	return rv;
-	*/
 }
 
 static void unregister_state_change(struct sock *sock, struct dtt_listener *listener)
@@ -1106,7 +1097,7 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32_V9
-#if 0 // JHKIM:원본 방식 변경부분 // _WIN32_V9_PATCH_1_CHECK: 다시 패치된 원본을 유지하는 방법으로 시험
+#if 0 // JHKIM:원본 방식 변경부분 // _WIN32_V9_PATCH_1: 다시 패치된 원본을 유지하는 방법으로 시험
     // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
 
@@ -1152,7 +1143,7 @@ static void dtt_incoming_connection(struct sock *sock)
     else
 #else
 	// 자료구조변경됨 일단 무시
-	DbgPrint("_WIN32_V9_PATCH_1_CHECK: dtt_incoming_connection!\n");
+	DbgPrint("_WIN32_V9_PATCH_1: dtt_incoming_connection!\n");
 #endif
     {
         listener->listener.pending_accepts++;
@@ -1369,12 +1360,12 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #endif
 
 	listener->s_listen = s_listen;
-#ifdef _WIN32 // _WIN32_V9_PATCH_1_CHECK
+#ifdef _WIN32 // _WIN32_V9_PATCH_1
 	// 이 시점에 event callback을 설정하면 안된다...
 	// dtt_create_listener 가 완료되고, drbd_get_listener 안에서 초기화 될 코드가 다 수행되고 난 후 이벤트 콜백을 설정해야 
 	// event callback(dtt_incoming_connection) 안의 코드수행이 안전하다.
 
-	// _WIN32_V9_PATCH_1_: JHKIM: 패치 오리지널과 유사하게 시험하기위해 일단 원복하여 시험.
+	// _WIN32_V9_PATCH_1_CHECK: JHKIM: 패치 오리지널과 유사하게 시험하기위해 일단 원복하여 시험. 정성동작중...
     what = "enable event callbacks";
     NTSTATUS s = STATUS_UNSUCCESSFUL;
     s = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
@@ -1729,7 +1720,7 @@ randomize:
 	TR_ASSERT(transport, first_path == connect_to_path);
 	connect_to_path->path.established = true;
 	drbd_path_event(transport, &connect_to_path->path);
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_1_CHECK
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_1
 	dtt_put_listeners(transport);
     //dtt_put_listener(waiter);
 #else
@@ -1796,7 +1787,7 @@ out_eagain:
 	err = -EAGAIN;
 out:
 #ifdef _WIN32_V9
-    //dtt_put_listener(waiter);// _WIN32_V9_PATCH_1_CHECK
+    //dtt_put_listener(waiter);// _WIN32_V9_PATCH_1
 	dtt_put_listeners(transport);
 #else
 	dtt_put_listeners(transport);

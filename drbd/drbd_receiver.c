@@ -174,7 +174,7 @@ static int page_chain_free(struct page *page)
 
 	page_chain_for_each_safe(page, tmp) {
 #ifdef _WIN32 //V8에 사용된 코드를 적용.
-		set_page_chain_next_offset_size(page, NULL, 0, 0); // _WIN32_V9_PATCH_1_CHECK // 미사용!!
+		set_page_chain_next_offset_size(page, NULL, 0, 0);
 		__free_page(page);
 #else
 		set_page_chain_next_offset_size(page, NULL, 0, 0);
@@ -195,8 +195,8 @@ static void page_chain_add(struct page **head,
 #endif
 
 	/* add chain to head */
-#ifdef _WIN32_V9_PATCH_1 // 미사용!!
-	DbgPrint("_WIN32_V9_PATCH_1_CHECK: page_chain_add!\n"); // 미사용!!
+#ifdef _WIN32_V9_PATCH_1 
+	// unused!
 #else
 #ifdef _WIN32 //V8의 구현 적용.
 	set_page_private(chain_last, *head);
@@ -253,7 +253,7 @@ static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
 		tmp = alloc_page(gfp_mask);
 		if (!tmp)
 			break;
-		set_page_chain_next_offset_size(tmp, page, 0, 0); //_WIN32_V9_PATCH_1_CHECK
+		set_page_chain_next_offset_size(tmp, page, 0, 0);
 		page = tmp;
 	}
 
@@ -604,7 +604,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
     {
         kfree(peer_req->win32_big_page);
         peer_req->win32_big_page = NULL;
-        //peer_req->pages = NULL; //_WIN32_V9_PATCH_1_CHECK
+        //peer_req->pages = NULL; //_WIN32_V9_PATCH_1
     }
 #endif
 	if (peer_req->flags & EE_HAS_DIGEST)
@@ -1891,7 +1891,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 		unsigned long *data;
 		drbd_err(device, "Fault injection: Corrupting data on receive, sector %llu\n",
 				d->sector);
-		page = peer_req->page_chain.head; // _WIN32_V9_PATCH_1_CHECK
+		page = peer_req->page_chain.head;
 #ifndef _WIN32 // peer_req->pages 의 kmap 부분은 제거=> V8의 구현
 		data = kmap(page) + page_chain_offset(page);
 		data[0] = ~data[0];
@@ -2898,7 +2898,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 	struct drbd_device *device = peer_device->device;
 	unsigned long db, dt, dbdt;
 	unsigned int c_min_rate;
-	int curr_events = 0; // _WIN32_V9_PATCH_1_CHECK
+	int curr_events = 0; // _WIN32_V9_PATCH_1
 
 	rcu_read_lock();
 	c_min_rate = rcu_dereference(peer_device->conf)->c_min_rate;

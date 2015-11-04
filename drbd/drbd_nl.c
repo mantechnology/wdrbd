@@ -4038,7 +4038,7 @@ static sector_t local_possible_max_size(struct drbd_device *device) __must_hold(
 	struct drbd_backing_dev *tmp_bdev;
 	sector_t s;
 #ifdef _WIN32_V9_PATCH_1
-	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL, 'TEST'); // _WIN32_V9_PATCH_1_CHECK
+	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL, 'FFDW');
 #else
 	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL);
 #endif

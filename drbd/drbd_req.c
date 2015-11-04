@@ -1422,7 +1422,7 @@ static void complete_conflicting_writes(struct drbd_request *req)
 		if (!i)	/* if any */
 			break;
 		/* Indicate to wake up device->misc_wait on progress.  */
-		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE); // _WIN32_V9_PATCH_1_CHECK
+		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE); // _WIN32_V9_PATCH_1
 		i->waiting = true;
 		spin_unlock_irq(&device->resource->req_lock);
 #ifdef _WIN32

@@ -785,9 +785,8 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 }
 #endif
 
-#ifdef _WIN32_V9_PATCH_1
-#else
-#ifndef COMPAT_HAVE_BOOL_TYPE 	//_WIN32_V9_PATCH_1_CHECK
+#ifndef _WIN32_V9_PATCH_1
+#ifndef COMPAT_HAVE_BOOL_TYPE 
 typedef _Bool                   bool;
 enum {
 	false = 0,

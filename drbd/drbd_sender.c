@@ -3092,7 +3092,7 @@ int drbd_worker(struct drbd_thread *thi)
 #ifdef _WIN32_V9_PATCH_1
 			if (w->cb == NULL)
 			{
-				panic("_WIN32_V9_PATCH_1_CHECK: check please!!!\n");
+				panic("_WIN32_V9_PATCH_1_CHECK: check please!!!\n"); // 추후 삭제
 			}
 #endif
 			w->cb(w, 0);
