@@ -134,7 +134,7 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 		seq_printf(seq, " %s ", tc->name);
 #else
 		seq_printf(seq, " %s (%s)", tc->name,
-			tc->module->version ? tc->module->version : "NONE");
+				tc->module->version ? tc->module->version : "NONE");
 #endif
 	}
 	seq_putc(seq, '\n');
@@ -203,10 +203,15 @@ static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const stru
 	return false;
 }
 
-static struct drbd_listener *find_listener(struct drbd_connection *connection)
+static struct drbd_listener *find_listener(struct drbd_connection *connection,
+					   const struct sockaddr_storage *addr)
 {
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_listener *listener;
+#ifdef _WIN32_V9_PATCH_1
+	//JHKIM: 변경되었음. 재확인 필요 
+	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+#if 0 // V8 org 참고
 	struct drbd_path *path;
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
@@ -219,25 +224,34 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection)
 				kref_get(&listener->kref);
 				return listener;
 			}
+#endif // V8 org
+#else
+	list_for_each_entry(listener, &resource->listeners, list) {
+#endif
+		if (addr_and_port_equal(&listener->listen_addr, addr)) {
+			kref_get(&listener->kref);
+			return listener;
+
 		}
 	}
 	return NULL;
 }
 
 int drbd_get_listener(struct drbd_waiter *waiter,
-		      int (*create_listener)(struct drbd_transport *, struct drbd_listener **))
+		      const struct sockaddr *addr,
+		      int (*create_listener)(struct drbd_transport *, const struct sockaddr *addr, struct drbd_listener **))
 {
 	struct drbd_connection *connection =
 		container_of(waiter->transport, struct drbd_connection, transport);
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_listener *listener, *new_listener = NULL;
-	int err;
-	
+	int err, tries = 0;
+
 	init_waitqueue_head(&waiter->wait);
 
 	while (1) {
 		spin_lock_bh(&resource->listeners_lock);
-		listener = find_listener(connection);
+		listener = find_listener(connection, (struct sockaddr_storage *)addr);
 		if (!listener && new_listener) {
 			list_add(&new_listener->list, &resource->listeners);
 			listener = new_listener;
@@ -247,17 +261,22 @@ int drbd_get_listener(struct drbd_waiter *waiter,
 			list_add(&waiter->list, &listener->waiters);
 			waiter->listener = listener;
 		}
-
 		spin_unlock_bh(&resource->listeners_lock);
+
 		if (new_listener)
 			new_listener->destroy(new_listener);
 
 		if (listener)
 			return 0;
-	
-		err = create_listener(waiter->transport, &new_listener); 
-		if (err)
+
+		err = create_listener(waiter->transport, addr, &new_listener);
+		if (err) {
+			if (err == -EADDRINUSE && ++tries < 3) {
+				schedule_timeout_uninterruptible(HZ / 20);
+				continue;
+			}
 			return err;
+		}
 
 		kref_init(&new_listener->kref);
 		INIT_LIST_HEAD(&new_listener->waiters);
@@ -274,7 +293,6 @@ static void drbd_listener_destroy(struct kref *kref)
 
 	spin_lock_bh(&resource->listeners_lock);
 	list_del(&listener->list);
-
 	spin_unlock_bh(&resource->listeners_lock);
 
 	listener->destroy(listener);
@@ -298,9 +316,7 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 		ad2 = list_entry(waiter->listener->waiters.next, struct drbd_waiter, list);
 		wake_up(&ad2->wait);
 	}
-
 	spin_unlock_bh(&resource->listeners_lock);
-
 	kref_put(&waiter->listener->kref, drbd_listener_destroy);
 	waiter->listener = NULL;
 }
@@ -381,6 +397,14 @@ bool drbd_should_abort_listening(struct drbd_transport *transport)
 	return abort;
 }
 
+/* Called by a transport if a path was established / disconnected */
+void drbd_path_event(struct drbd_transport *transport, struct drbd_path *path)
+{
+	struct drbd_connection *connection =
+		container_of(transport, struct drbd_connection, transport);
+
+	notify_path(connection, path, NOTIFY_CHANGE);
+}
 
 #ifndef _WIN32_V9 // 
 /* Network transport abstractions */
@@ -391,4 +415,5 @@ EXPORT_SYMBOL_GPL(drbd_put_listener);
 EXPORT_SYMBOL_GPL(drbd_find_waiter_by_addr);
 EXPORT_SYMBOL_GPL(drbd_stream_send_timed_out);
 EXPORT_SYMBOL_GPL(drbd_should_abort_listening);
+EXPORT_SYMBOL_GPL(drbd_path_event);
 #endif

@@ -1039,11 +1039,9 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 	char *page_start = page_address(sbuf->page);
 	//DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
-		if (sbuf->unsent != sbuf->pos)
-		{ // WIN32_V9
-			WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) size(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
-			flush_send_buffer(connection, drbd_stream);
-		}// WIN32_V9
+		WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) size(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
+		flush_send_buffer(connection, drbd_stream);
+
 		new_or_recycle_send_buffer_page(sbuf);
 	}
 
@@ -1133,10 +1131,13 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int msg_flags, err, offset, size;
 
+	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
+	if (size == 0)
+		return 0;
+
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
-	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
 	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
 #ifdef _WIN32_V9
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
@@ -1228,11 +1229,7 @@ void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 
 
 	mutex_lock(&connection->mutex[stream]);
-	if (sbuf->unsent != sbuf->pos)
-	{ //WIN32_V9
-		//DbgPrint("DRBD_TEST: (%s)flush_send_buffer drbd_uncork!\n", current->comm );
-		flush_send_buffer(connection, stream);
-	}
+	flush_send_buffer(connection, stream);
 
 	clear_bit(CORKED + stream, &connection->flags);
 	tr_ops->hint(transport, stream, UNCORK);
@@ -2121,80 +2118,6 @@ void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set
 	send_command(connection, -1, P_BARRIER_ACK, CONTROL_STREAM);
 }
 
-/**
- * _drbd_send_ack() - Sends an ack packet
- * @device:	DRBD device.
- * @cmd:	Packet command code.
- * @sector:	sector, needs to be in big endian byte order
- * @blksize:	size in byte, needs to be in big endian byte order
- * @block_id:	Id, big endian byte order
- */
-static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-			  u64 sector, u32 blksize, u64 block_id)
-{
-	struct p_block_ack *p;
-
-	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
-		return -EIO;
-
-	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
-	if (!p)
-		return -EIO;
-	p->sector = sector;
-	p->block_id = block_id;
-	p->blksize = blksize;
-	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
-#ifdef DRBD_TRACE
-	WDRBD_TRACE("cmd 0x%x id: 0x%llx seq: 0x%x sect: 0x%llx sz: %d\n", 
-		cmd, p->block_id, be32_to_cpu(p->seq_num), be64_to_cpu(p->sector), be32_to_cpu(p->blksize));
-#endif
-	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
-}
-
-/* dp->sector and dp->block_id already/still in network byte order,
- * data_size is payload size according to dp->head,
- * and may need to be corrected for digest size. */
-void drbd_send_ack_dp(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-		      struct p_data *dp, int data_size)
-{
-	if (peer_device->connection->peer_integrity_tfm)
-		data_size -= crypto_hash_digestsize(peer_device->connection->peer_integrity_tfm);
-	_drbd_send_ack(peer_device, cmd, dp->sector, cpu_to_be32(data_size),
-		       dp->block_id);
-}
-
-void drbd_send_ack_rp(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-		      struct p_block_req *rp)
-{
-	_drbd_send_ack(peer_device, cmd, rp->sector, rp->blksize, rp->block_id);
-}
-
-/**
- * drbd_send_ack() - Sends an ack packet
- * @device:	DRBD device
- * @cmd:	packet command code
- * @peer_req:	peer request
- */
-int drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-		  struct drbd_peer_request *peer_req)
-{
-	return _drbd_send_ack(peer_device, cmd,
-			      cpu_to_be64(peer_req->i.sector),
-			      cpu_to_be32(peer_req->i.size),
-			      peer_req->block_id);
-}
-
-/* This function misuses the block_id field to signal if the blocks
- * are is sync or not. */
-int drbd_send_ack_ex(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-		     sector_t sector, int blksize, u64 block_id)
-{
-	return _drbd_send_ack(peer_device, cmd,
-			      cpu_to_be64(sector),
-			      cpu_to_be32(blksize),
-			      cpu_to_be64(block_id));
-}
-
 int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 		       sector_t sector, int size, u64 block_id)
 {
@@ -2265,20 +2188,15 @@ int drbd_send_ov_request(struct drbd_peer_device *peer_device, sector_t sector, 
  * with page_count == 0 or PageSlab.
  */
 // #ifndef _WIN32_SEND_BUFFING // send buffering 은 버퍼링 없이 동작하는 것을 transport 드라이버에 우선 적용하여 정상 동작을 확인 한 후에 처리함. 
-static int __drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
+static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			    int offset, size_t size, unsigned msg_flags)
 {
 	struct drbd_connection *connection = peer_device->connection;
-	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-	if (sbuf->unsent != sbuf->pos)
-	{ //WIN32_V9
-		DbgPrint("DRBD_TEST: (%s)flush_send_buffer! sbuf->unsent=%d sbuf->pos=%d sz=%d! __drbd_send_page!\n", current->comm,  sbuf->unsent, sbuf->pos, size);
-		flush_send_buffer(connection, DATA_STREAM);
-	}
+
 #ifdef _WIN32_V9
 	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
 #else
@@ -2305,7 +2223,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	//dumpHex((void*) page, 100, 16);
 	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
 	if (!err)
-		peer_device->send_cnt += size >> 9;
+		peer_device->send_cnt += size >> 9; // _WIN32_V9_1_PATCH:JHKKIM: 여기서 가산을 하는지 원본과 비교필요.
 
 	return err;
 }
@@ -2317,54 +2235,37 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
 	void *from_base;
 	void *buffer2;
-	struct page *page2;
-	int offset2, err;
-
-	if (sbuf->unsent != sbuf->pos)
-		flush_send_buffer(connection, DATA_STREAM);
-
+	int err;
+// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
-	page2 = sbuf->page;
-	offset2 = buffer2 - page_address(page2);
 	from_base = drbd_kmap_atomic(page, KM_USER0);
 	memcpy(buffer2, from_base + offset, size);
 	drbd_kunmap_atomic(from_base, KM_USER0);
-	err = __drbd_send_page(peer_device, page2, offset2, size, msg_flags);
 
-	if (!err) {
-		sbuf->unsent =
-		sbuf->pos += size;
+	if (msg_flags & MSG_MORE) {
+		sbuf->pos += sbuf->allocated_size;
+		sbuf->allocated_size = 0;
+		err = 0;
+	} else {
+		err = flush_send_buffer(connection, DATA_STREAM);
 	}
 
 	return err;
 }
 #endif
-static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
-			   int offset, size_t size, unsigned msg_flags)
-{
-	/* e.g. XFS meta- & log-data is in slab pages, which have a
-	 * page_count of 0 and/or have PageSlab() set.
-	 * we cannot use send_page for those, as that does get_page();
-	 * put_page(); and would cause either a VM_BUG directly, or
-	 * __page_cache_release a page that would actually still be referenced
-	 * by someone, leading to some obscure delayed Oops somewhere else. */
-#ifdef _WIN32
-    if (disable_sendpage)
-        return _drbd_no_send_page(peer_device, page->addr, offset, size, msg_flags);
-#else
-	if (disable_sendpage || (page_count(page) < 1) || PageSlab(page))
-		return _drbd_no_send_page(peer_device, page, offset, size, msg_flags);
-#endif
-	return __drbd_send_page(peer_device, page, offset, size, msg_flags);
-}
 
 static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 {
+	struct drbd_connection *connection = peer_device->connection;
 #ifndef _WIN32
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
 #endif
-
+// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
+	/* Flush send buffer and make sure PAGE_SIZE is available... */
+	alloc_send_buffer(connection, PAGE_SIZE, DATA_STREAM);
+	connection->send_buffer[DATA_STREAM].allocated_size = 0;
+	
 #ifdef _WIN32_V9
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
@@ -2389,22 +2290,44 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 {
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
-
-	/* hint all but last page with MSG_MORE */
+	bool no_zc = disable_sendpage;
+	/* e.g. XFS meta- & log-data is in slab pages, which have a
+	 * page_count of 0 and/or have PageSlab() set.
+	 * we cannot use send_page for those, as that does get_page();
+	 * put_page(); and would cause either a VM_BUG directly, or
+	 * __page_cache_release a page that would actually still be referenced
+	 * by someone, leading to some obscure delayed Oops somewhere else. */
 #ifdef _WIN32
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
 #else
-	bio_for_each_segment(bvec, bio, iter) {
+	if (!no_zc)
+		bio_for_each_segment(bvec, bio, iter) {
+			struct page *page = bvec BVD bv_page;
+
+			if (page_count(page) < 1 || PageSlab(page)) {
+				no_zc = true;
+				break;
+			}
+		}
+
+	if (no_zc) {
+		return _drbd_send_bio(peer_device, bio);
+	} else {
+		struct drbd_connection *connection = peer_device->connection;
+		struct drbd_transport *transport = &connection->transport;
+		struct drbd_transport_ops *tr_ops = transport->ops;
 		int err;
 
-		err = _drbd_send_page(peer_device, bvec BVD bv_page,
-				      bvec BVD bv_offset, bvec BVD bv_len,
-				      bio_iter_last(bvec, iter) ? 0 : MSG_MORE);
-		if (err)
-			return err;
+		flush_send_buffer(connection, DATA_STREAM);
+
+		err = tr_ops->send_zc_bio(transport, bio);
+		if (!err)
+			peer_device->send_cnt += DRBD_BIO_BI_SIZE(bio) >> 9;
+
+		return err;
 	}
 #endif
 	return 0;
@@ -2413,9 +2336,12 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 			    struct drbd_peer_request *peer_req)
 {
-	struct page *page = peer_req->pages;
+	struct page *page = peer_req->page_chain.head;
 	unsigned len = peer_req->i.size;
 	int err;
+	
+	flush_send_buffer(peer_device->connection, DATA_STREAM);
+
 #ifdef _WIN32_V9 // V9_XXX !!!!
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
@@ -2423,9 +2349,15 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	if (err)
 		return err;
 #else
+	// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
 	/* hint all but last page with MSG_MORE */
 	page_chain_for_each(page) {
 		unsigned l = min_t(unsigned, len, PAGE_SIZE);
+		if (page_chain_offset(page) != 0 ||
+		    page_chain_size(page) != l) {
+			drbd_err(peer_device, "FIXME page %p offset %u len %u\n",
+				page, page_chain_offset(page), page_chain_size(page));
+		}
 
 		err = _drbd_send_page(peer_device, page, 0, l,
 				      page_chain_next(page) ? MSG_MORE : 0);
@@ -2600,16 +2532,14 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	p->seq_num = 0;  /* unused */
 	p->dp_flags = 0;
 	if (digest_size)
-		drbd_csum_ee(peer_device->connection->integrity_tfm, peer_req, p + 1);
+		drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req->page_chain.head, p + 1);
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
     //DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
-	{ //_WIN32_V9
-        //dumpHex((void*) peer_req->win32_big_page, 100, 16);
 		err = _drbd_send_zc_ee(peer_device, peer_req);
-	}
+
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;
@@ -2630,6 +2560,9 @@ int drbd_send_out_of_sync(struct drbd_peer_device *peer_device, struct drbd_requ
 int drbd_send_dagtag(struct drbd_connection *connection, u64 dagtag)
 {
 	struct p_dagtag *p;
+
+	if (connection->agreed_pro_version < 110)
+		return 0;
 
 	p = conn_prepare_command(connection, sizeof(*p), DATA_STREAM);
 	if (!p)
@@ -2887,7 +2820,7 @@ static void drbd_destroy_mempools(void)
 
 	while (drbd_pp_pool) {
 		page = drbd_pp_pool;
-		drbd_pp_pool = (struct page *)page_private(page);
+		drbd_pp_pool = page_chain_next(page);
 		__free_page(page);
 		drbd_pp_vacant--;
 	}
@@ -3019,7 +2952,7 @@ static int drbd_create_mempools(void)
 		page = alloc_page(GFP_HIGHUSER);
 		if (!page)
 			goto Enomem;
-		set_page_private(page, (unsigned long)drbd_pp_pool);
+		set_page_chain_next_offset_size(page, drbd_pp_pool, 0, 0);
 		drbd_pp_pool = page;
 	}
 #endif
@@ -3079,7 +3012,7 @@ void drbd_destroy_device(struct kref *kref)
 		bdput(device->this_bdev);
 #endif
 
-	drbd_free_ldev(device->ldev);
+	drbd_backing_dev_free(device, device->ldev);
 	device->ldev = NULL;
 
 	drbd_release_all_peer_reqs(device);
@@ -3368,7 +3301,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
  * @congested_data:	User data
  * @bdi_bits:		Bits the BDI flusher thread is currently interested in
  *
- * Returns 1<<BDI_async_congested and/or 1<<BDI_sync_congested if we are congested.
+ * Returns 1<<WB_async_congested and/or 1<<WB_sync_congested if we are congested.
  */
 static int drbd_congested(void *congested_data, int bdi_bits)
 {
@@ -3393,14 +3326,14 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 	}
 
 	if (test_bit(CALLBACK_PENDING, &device->resource->flags)) {
-		r |= (1 << BDI_async_congested);
+		r |= (1 << WB_async_congested);
 		/* Without good local data, we would need to read from remote,
 		 * and that would need the worker thread as well, which is
 		 * currently blocked waiting for that usermode helper to
 		 * finish.
 		 */
 		if (!get_ldev_if_state(device, D_UP_TO_DATE))
-			r |= (1 << BDI_sync_congested);
+			r |= (1 << WB_sync_congested);
 		else
 			put_ldev(device);
 		r &= bdi_bits;
@@ -3431,13 +3364,13 @@ static int drbd_congested(void *congested_data, int bdi_bits)
     }
 #endif
 #else
-	if (bdi_bits & (1 << BDI_async_congested)) {
+	if (bdi_bits & (1 << WB_async_congested)) {
 		struct drbd_peer_device *peer_device;
 
 		rcu_read_lock();
 		for_each_peer_device_rcu(peer_device, device) {
 			if (test_bit(NET_CONGESTED, &peer_device->connection->transport.flags)) {
-				r |= (1 << BDI_async_congested);
+				r |= (1 << WB_async_congested);
 				break;
 			}
 		}
@@ -5644,11 +5577,13 @@ int drbd_bitmap_io(struct drbd_device *device,
 		char *why, enum bm_flag flags,
 		struct drbd_peer_device *peer_device)
 {
+	/* Only suspend io, if some operation is supposed to be locked out */
+	const bool do_suspend_io = flags & (BM_LOCK_CLEAR|BM_LOCK_SET|BM_LOCK_TEST);
 	int rv;
 
 	D_ASSERT(device, current != device->resource->worker.task);
 
-	if (!(flags & BM_LOCK_CLEAR))
+	if (do_suspend_io)
 		drbd_suspend_io(device, WRITE_ONLY);
 
 	if (flags & BM_LOCK_SINGLE_SLOT)
@@ -5663,7 +5598,7 @@ int drbd_bitmap_io(struct drbd_device *device,
 	else
 		drbd_bm_unlock(device);
 
-	if (!(flags & BM_LOCK_CLEAR))
+	if (do_suspend_io)
 		drbd_resume_io(device);
 
 	return rv;

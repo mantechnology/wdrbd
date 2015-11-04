@@ -121,6 +121,12 @@ static __inline int list_empty_careful(const struct list_head *head)
      return (next == head) && (next == head->prev);
 }
 
+//_WIN32_V9_PATCH_1
+static __inline int list_is_last(const struct list_head *list, const struct list_head *head)
+{
+	return list->next == head;
+}
+
 #define prefetch(_addr)		(_addr)
 
 /**

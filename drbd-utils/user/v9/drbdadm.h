@@ -149,19 +149,31 @@ struct hname_address
 };
 STAILQ_HEAD(hname_address_pairs, hname_address);
 
-struct connection
+struct path
 {
-	char *name; /* parsed */
-	struct hname_address_pairs hname_address_pairs; /* parsed here */
 	int config_line; /* parsed here */
+	struct hname_address_pairs hname_address_pairs; /* parsed here */
 
-	struct peer_devices peer_devices;
-	struct d_host_info *peer;
 	struct d_address *my_address; /* determined in set_me_in_resource() */
 	struct d_address *peer_address;
 	struct d_address *connect_to;
 	struct d_proxy_info *my_proxy;
 	struct d_proxy_info *peer_proxy;
+
+	unsigned int implicit:1;
+	unsigned int adj_seen:1;
+	STAILQ_ENTRY(path) link;
+};
+STAILQ_HEAD(paths, path);
+
+struct connection
+{
+	char *name; /* parsed */
+	struct paths paths;
+	int config_line; /* parsed here */
+
+	struct peer_devices peer_devices;
+	struct d_host_info *peer;
 
 	struct options net_options; /* parsed here, inherited from res, used here */
 	struct options pd_options; /* parsed here, inherited into the peer_devices */
@@ -177,6 +189,14 @@ struct connection
 };
 STAILQ_HEAD(connections, connection);
 
+struct mesh
+{
+	struct names hosts; /* parsed here. Expanded to connections in post_parse */
+	struct options net_options;
+	STAILQ_ENTRY(mesh) link;
+};
+STAILQ_HEAD(meshes, mesh);
+
 struct d_resource
 {
 	char* name;
@@ -188,8 +208,7 @@ struct d_resource
 	struct d_host_info* me;
 	struct hosts all_hosts;
 
-	struct names mesh; /* parsed here. Expanded to connections in post_parse */
-	struct options mesh_net_options;
+	struct meshes meshes;
 
 	struct options net_options; /* parsed here, inherited to connections */
 	struct options disk_options;
@@ -253,6 +272,7 @@ struct adm_cmd {
 	unsigned int uc_dialog:1; /* May show usage count dialog */
 	unsigned int test_config:1; /* Allow -t option */
 	unsigned int disk_required:1; /* cmd needs vol->disk or vol->meta_[disk|index] */
+	unsigned int iterate_paths:1; /* cmd needs path set, eventually iterate over all */
 };
 
 struct cfg_ctx {
@@ -264,6 +284,8 @@ struct cfg_ctx {
 	struct d_volume *vol;
 
 	struct connection *conn;
+
+	struct path *path;
 
 	const struct adm_cmd *cmd;
 };
@@ -356,6 +378,7 @@ extern struct d_resource* parse_resource_for_adjust(const struct cfg_ctx *ctx);
 extern struct d_resource* parse_resource(char*, enum pr_flags);
 extern void post_parse(struct resources *, enum pp_flags);
 extern struct connection *alloc_connection();
+extern struct path *alloc_path();
 extern struct d_volume *alloc_volume(void);
 extern struct peer_device *alloc_peer_device();
 extern void free_connection(struct connection *connection);
@@ -469,6 +492,7 @@ extern struct names backend_options;
 #define for_each_volume_safe(var, next, head) STAILQ_FOREACH_SAFE(var, next, head, link)
 #define for_each_host(var, head) STAILQ_FOREACH(var, head, link)
 #define for_each_connection(var, head) STAILQ_FOREACH(var, head, link)
+#define for_each_path(var, head) STAILQ_FOREACH(var, head, link)
 
 #define insert_volume(head, elem) STAILQ_INSERT_ORDERED(head, elem, link)
 

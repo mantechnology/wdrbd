@@ -44,10 +44,15 @@
 	BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags)); \
 } while (0)
 
+#ifdef _WIN32_V9_PATCH_1
 #define RETURN(x)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
 	return x ; } while (0)
-
+#else
+#define RETURN(x...)     do { \
+	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
+	return x ; } while (0)
+#endif
 /* BUG() if e is not one of the elements tracked by lc */
 #define PARANOIA_LC_ELEMENT(lc, e) do {	\
 	struct lru_cache *lc_ = (lc);	\
@@ -74,7 +79,7 @@ int lc_try_lock(struct lru_cache *lc)
 #else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
 #endif
-	} while (val == LC_PARANOIA);
+	} while (unlikely (val == LC_PARANOIA));
 	/* Spin until no-one is inside a PARANOIA_ENTRY()/RETURN() section. */
 	return 0 == val;
 #if 0
@@ -291,7 +296,7 @@ void lc_reset(struct lru_cache *lc)
  * @seq: the seq_file to print into
  * @lc: the lru cache to print statistics of
  */
-size_t lc_seq_printf_stats(struct seq_file *seq, struct lru_cache *lc)
+void lc_seq_printf_stats(struct seq_file *seq, struct lru_cache *lc)
 {
 	/* NOTE:
 	 * total calls to lc_get are
@@ -301,15 +306,14 @@ size_t lc_seq_printf_stats(struct seq_file *seq, struct lru_cache *lc)
 	 * update of the cache.
 	 */
 #if defined(_WIN64)
-	seq_printf(seq, "\t%s: used:%u/%u "
-		"hits:%I64u misses:%I64u starving:%I64u locked:%I64u changed:%I64u\n",
-		lc->name, lc->used, lc->nr_elements,
-		lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
+	seq_printf(seq, "\t%s: used:%u/%u hits:%I64u misses:%I64u starving:%I64u locked:%I64u changed:%I64u\n\n",
+		   lc->name, lc->used, lc->nr_elements,
+		   lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
 #else
-	seq_printf(seq, "\t%s: used:%u/%u "
-		"hits:%lu misses:%lu starving:%lu locked:%lu changed:%lu\n",
-		lc->name, lc->used, lc->nr_elements,
-		lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
+	seq_printf(seq, "\t%s: used:%u/%u hits:%lu misses:%lu starving:%lu locked:%lu changed:%lu\n",
+		   lc->name, lc->used, lc->nr_elements,
+		   lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
+
 #endif
 }
 

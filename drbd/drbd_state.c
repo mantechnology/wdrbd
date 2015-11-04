@@ -2696,12 +2696,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			/* This triggers bitmap writeout of potentially still unwritten pages
 			 * if the resync finished cleanly, or aborted because of peer disk
-			 * failure, or because of connection loss.
+			 * failure, or on transition from resync back to AHEAD/BEHIND.
+			 *
+			 * Connection loss is handled in drbd_disconnected() by the receiver.
+			 *
 			 * For resync aborted because of local disk failure, we cannot do
 			 * any bitmap writeout anymore.
+			 *
 			 * No harm done if some bits change during this phase.
 			 */
-			if (repl_state[OLD] > L_ESTABLISHED && repl_state[NEW] <= L_ESTABLISHED && get_ldev(device)) {
+			if ((repl_state[OLD] > L_ESTABLISHED && repl_state[OLD] < L_AHEAD) &&
+			    (repl_state[NEW] == L_ESTABLISHED || repl_state[NEW] >= L_AHEAD) &&
+			    get_ldev(device)) {
 				drbd_queue_bitmap_io(device, &drbd_bm_write_copy_pages, NULL,
 					"write from resync_finished", BM_LOCK_BULK,
 					NULL);
@@ -3119,7 +3125,14 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 		if (!(test_bit(TWOPC_YES, &connection->flags) ||
 		      test_bit(TWOPC_NO, &connection->flags) ||
 		      test_bit(TWOPC_RETRY, &connection->flags))) {
+#ifdef _WIN32_V9_PATCH_1 
+			//_WIN32_V9_PATCH_1_CHECK
+			static int x = 0; // globally!
+			if (!(x++ % 3000))
+				drbd_debug(connection, "Reply not ready yet x=(%d)\n", x);
+#else
 			drbd_debug(connection, "Reply not ready yet\n");
+#endif
 			ready = false;
 			break;
 		}

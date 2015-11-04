@@ -326,6 +326,16 @@ static inline int drbd_ratelimit(void)
 }
 #endif
 
+#ifdef _WIN32_V9_PATCH_1 // JHKIM: 노드가 많을 경우 오류를 놓치는 경우 방지. 안정화 시점에 정리 또는 계속유지.
+#define D_ASSERT(x, exp) \
+	do { \
+		if (!(exp))	{ \
+			DbgPrint("\n\nASSERTION %s FAILED in %s #########\n\n",	\
+				 #exp, __func__); \
+			 panic("PANIC: check!!!!\n");\
+		} \
+	} while (0)
+#else
 #ifdef _WIN32
 #define D_ASSERT(x, exp)   ASSERT(exp)
 #else
@@ -335,6 +345,7 @@ static inline int drbd_ratelimit(void)
 			drbd_err(x, "ASSERTION %s FAILED in %s\n",		\
 				 #exp, __func__);				\
 	} while (0)
+#endif
 #endif
 /**
  * expect  -  Make an assertion
@@ -700,7 +711,7 @@ struct drbd_peer_request {
 	struct drbd_peer_device *peer_device;
 	struct list_head recv_order; /* writes only */
 	struct drbd_epoch *epoch; /* for writes */
-	struct page *pages;
+	struct drbd_page_chain_head page_chain;
 	atomic_t pending_bios;
 	struct drbd_interval i;
 	/* see comments on ee flag bits below */
@@ -1568,7 +1579,11 @@ struct drbd_device {
 
 struct drbd_bm_aio_ctx {
 	struct drbd_device *device;
+#ifdef _WIN32_V9_PATCH_1
 	struct list_head list; /* on device->pending_bitmap_io */
+#else
+	struct list_head list; /* on device->pending_bitmap_io */;
+#endif
 #ifdef _WIN32_V9
 	ULONG_PTR start_jif;
 #else
@@ -1740,6 +1755,7 @@ extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 #ifdef CONFIG_SMP
 extern void drbd_thread_current_set_cpu(struct drbd_thread *thi);
 #else
+#define drbd_thread_current_set_cpu(A) ({})
 #endif
 #endif
 
@@ -1759,14 +1775,6 @@ extern int drbd_send_state(struct drbd_peer_device *, union drbd_state);
 extern int drbd_send_current_state(struct drbd_peer_device *);
 extern int drbd_send_sync_param(struct drbd_peer_device *);
 extern void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set_size);
-extern int drbd_send_ack(struct drbd_peer_device *, enum drbd_packet,
-			 struct drbd_peer_request *);
-extern void drbd_send_ack_rp(struct drbd_peer_device *, enum drbd_packet,
-			     struct p_block_req *rp);
-extern void drbd_send_ack_dp(struct drbd_peer_device *, enum drbd_packet,
-			     struct p_data *dp, int data_size);
-extern int drbd_send_ack_ex(struct drbd_peer_device *, enum drbd_packet,
-			    sector_t sector, int blksize, u64 block_id);
 extern int drbd_send_out_of_sync(struct drbd_peer_device *, struct drbd_request *);
 extern int drbd_send_block(struct drbd_peer_device *, enum drbd_packet,
 			   struct drbd_peer_request *);
@@ -1785,7 +1793,7 @@ extern void drbd_send_twopc_reply(struct drbd_connection *connection,
 extern void drbd_send_peers_in_sync(struct drbd_peer_device *, u64, sector_t, int);
 extern int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd_connection *lost_peer);
 extern void drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes);
-extern void drbd_free_ldev(struct drbd_backing_dev *ldev);
+extern void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *ldev);
 extern void drbd_cleanup_device(struct drbd_device *device);
 void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text);
 
@@ -2256,7 +2264,7 @@ extern void drbd_csum_bio(struct crypto_hash *, struct drbd_request *, void *);
 extern void drbd_csum_bio(struct crypto_hash *, struct bio *, void *);
 #endif
 
-extern void drbd_csum_ee(struct crypto_hash *, struct drbd_peer_request *, void *);
+extern void drbd_csum_pages(struct crypto_hash *, struct page *, void *);
 /* worker callbacks */
 extern int w_e_end_data_req(struct drbd_work *, int);
 extern int w_e_end_rsdata_req(struct drbd_work *, int);
@@ -2286,15 +2294,11 @@ extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
 
 // update_receiver_timing_details drbd_receiver.c 에서 사용. 관련 함수 헤더 선언 추가.
 void __update_timing_details(
-    struct drbd_thread_timing_details *tdp,
-	unsigned int *cb_nr,
-	void *cb,
-	const char *fn, const unsigned int line);
-/*
- * Add a per-connection worker thread callback_history
- * with timing details, call site and callback function.
- * http://git.drbd.org/drbd-9.0.git/commitdiff/af34edb86ccd15b8276af2174efdd5f57eead102
- */
+		struct drbd_thread_timing_details *tdp,
+		unsigned int *cb_nr,
+		void *cb,
+		const char *fn, const unsigned int line);
+
 #define update_sender_timing_details(c, cb) \
 	__update_timing_details(c->s_timing_details, &c->s_cb_nr, cb, __func__ , __LINE__ )
 #define update_receiver_timing_details(c, cb) \
@@ -2311,6 +2315,24 @@ struct packet_info {
 	void *data;
 };
 
+/* packet_info->data is just a pointer into some temporary buffer
+ * owned by the transport. As soon as we call into the transport for
+ * any further receive operation, the data it points to is undefined.
+ * The buffer may be freed/recycled/re-used already.
+ * Convert and store the relevant information for any incoming data
+ * in drbd_peer_request_detail.
+ */
+
+struct drbd_peer_request_details {
+	uint64_t sector;	/* be64_to_cpu(p_data.sector) */
+	uint64_t block_id;	/* unmodified p_data.block_id */
+	uint32_t peer_seq;	/* be32_to_cpu(p_data.seq_num) */
+	uint32_t dp_flags;	/* be32_to_cpu(p_data.dp_flags) */
+	uint32_t length;	/* endian converted p_head*.length */
+	uint32_t bi_size;	/* resulting bio size */
+	/* for non-discards: bi_size = length - digest_size */
+};
+
 struct queued_twopc {
 	struct drbd_work w;
 #ifdef _WIN32_V9
@@ -2324,6 +2346,10 @@ struct queued_twopc {
 	struct p_twopc_request packet_data;
 };
 
+extern int drbd_send_ack(struct drbd_peer_device *, enum drbd_packet,
+			 struct drbd_peer_request *);
+extern int drbd_send_ack_ex(struct drbd_peer_device *, enum drbd_packet,
+			    sector_t sector, int blksize, u64 block_id);
 extern int drbd_receiver(struct drbd_thread *thi);
 extern int drbd_ack_receiver(struct drbd_thread *thi);
 extern void drbd_send_ping_wf(struct work_struct *ws);
@@ -2459,7 +2485,7 @@ extern int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_int
 extern void drbd_al_begin_io_commit(struct drbd_device *device);
 extern bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_al_begin_io(struct drbd_device *device, struct drbd_interval *i);
-extern void drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i);
+extern int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i);
 extern void drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_rs_complete_io(struct drbd_peer_device *, sector_t);
 extern int drbd_rs_begin_io(struct drbd_peer_device *, sector_t);
@@ -2489,7 +2515,7 @@ extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sec
 	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED)
 extern void drbd_al_shrink(struct drbd_device *device);
 extern bool drbd_sector_has_priority(struct drbd_peer_device *, sector_t);
-extern int drbd_initialize_al(struct drbd_device *, void *);
+extern int drbd_al_initialize(struct drbd_device *, void *);
 
 /* drbd_nl.c */
 
@@ -2518,6 +2544,8 @@ extern void notify_peer_device_state(struct sk_buff *,
 				     enum drbd_notification_type);
 extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 			  struct drbd_connection *, const char *, int);
+extern void notify_path(struct drbd_connection *, struct drbd_path *,
+			enum drbd_notification_type);
 
 /*
  * inline helper functions
@@ -2529,7 +2557,7 @@ static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_r
 	// not support
 	// WSK 에서는 송출이 끝나면 해당 페이지도 사용이 끝난 것임
 #else	
-	struct page *page = peer_req->pages;
+	struct page *page = peer_req->page_chain.head;
 	page_chain_for_each(page) {
 		if (page_count(page) > 1)
 			return 1;

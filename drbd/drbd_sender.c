@@ -491,22 +491,23 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 }
 
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.
-void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, void *digest)
+void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 {
 	struct hash_desc desc;
-	struct page *page = peer_req->pages;
-	unsigned len;
 #ifndef _WIN32
 	struct scatterlist sg;
-	struct page *tmp;
 #endif
 	
 #ifdef _WIN32 //V8 구현 유지.
+#ifdef _WIN32_V9_PATCH_1
+	DbgPrint("_WIN32_V9_PATCH_1_CHECK: check drbd_csum_pages\n");// : 아래 else 파트의 V8 을 포팅!?
+#else
 	// DRBD_UPGRADE: CRYPTO
 	// discard typecasting and support other type such as md4, sha.
 	// use int 4 bytes in desc variable
 	crypto_hash_update(&desc, peer_req->win32_big_page, peer_req->i.size); // ignore comple warning
 	crypto_hash_final(&desc, digest);
+#endif
 #else
 	desc.tfm = tfm;
 	desc.flags = 0;
@@ -514,16 +515,12 @@ void drbd_csum_ee(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, v
 	sg_init_table(&sg, 1);
 	crypto_hash_init(&desc);
 
-	while ((tmp = page_chain_next(page))) {
-		/* all but the last page will be fully used */
-		sg_set_page(&sg, page, PAGE_SIZE, 0);
+	page_chain_for_each(page) {
+		unsigned off = page_chain_offset(page);
+		unsigned len = page_chain_size(page);
+		sg_set_page(&sg, page, len, off);
 		crypto_hash_update(&desc, &sg, sg.length);
-		page = tmp;
 	}
-	/* and now the last, possibly only partially used page */
-	len = peer_req->i.size & (PAGE_SIZE - 1);
-	sg_set_page(&sg, page, len ?: PAGE_SIZE, 0);
-	crypto_hash_update(&desc, &sg, sg.length);
 	crypto_hash_final(&desc, digest);
 #endif
 }
@@ -580,7 +577,7 @@ static int w_e_send_csum(struct drbd_work *w, int cancel)
 	digest_size = crypto_hash_digestsize(peer_device->connection->csums_tfm);
 	digest = drbd_prepare_drequest_csum(peer_req, digest_size);
 	if (digest) {
-		drbd_csum_ee(peer_device->connection->csums_tfm, peer_req, digest);
+		drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
 		/* Free peer_req and pages before send.
 		 * In case we block on congestion, we could otherwise run into
 		 * some distributed deadlock, if the other side blocks on
@@ -620,6 +617,10 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
     // JHKIM: win32_big_page가 이미 할당 됨!!!
     // JHKIM: 일단 참고용으로 코멘트 처리.
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
+	
+#ifdef _WIN32_V9_PATCH_1 // _CHECK: drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜! 수정할 것!!
+	DbgPrint("WIN32_V9_PATCH_1_CHECK: read_for_csum check!!\n");	
+#else
 	if (size) {
 		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
 						   DIV_ROUND_UP(size, PAGE_SIZE),
@@ -632,12 +633,12 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
     else {
         peer_req->win32_big_page = NULL;
     }
-#else// JHKIM: 원본 다시 복구함... -> CHOI: 원본이 포팅버전 코드랑 달라서 다시 가져옴.
+#endif
+#else
 	if (size) {
-		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-						   DIV_ROUND_UP(size, PAGE_SIZE),
-						   GFP_TRY & ~__GFP_WAIT);
-		if (!peer_req->pages)
+		drbd_alloc_page_chain(&peer_device->connection->transport,
+			&peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+		if (!peer_req->page_chain.head)
 			goto defer2;
 	}
 #endif
@@ -1394,12 +1395,13 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 					drbd_info(peer_device, "Peer was unstable during resync\n");
 			}
 
-			drbd_print_uuids(peer_device, "updated UUIDs");
-			if (peer_device->uuids_received) {
+			if (stable_resync && peer_device->uuids_received) {
 				/* Now the two UUID sets are equal, update what we
 				 * know of the peer. */
 				const int node_id = device->resource->res_opts.node_id;
 				int i;
+
+				drbd_print_uuids(peer_device, "updated UUIDs");
 				peer_device->current_uuid = drbd_current_uuid(device);
 				peer_device->bitmap_uuids[node_id] = drbd_bitmap_uuid(peer_device);
 				for (i = 0; i < ARRAY_SIZE(peer_device->history_uuids); i++)
@@ -1599,7 +1601,7 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 #endif
 		}
 		if (digest) {
-			drbd_csum_ee(peer_device->connection->csums_tfm, peer_req, digest);
+			drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
 			eq = !memcmp(digest, di->digest, digest_size);
 			kfree(digest);
 		}
@@ -1651,7 +1653,7 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 	}
 
 	if (!(peer_req->flags & EE_WAS_ERROR))
-		drbd_csum_ee(peer_device->connection->verify_tfm, peer_req, digest);
+		drbd_csum_pages(peer_device->connection->verify_tfm, peer_req->page_chain.head, digest);
 	else
 		memset(digest, 0, digest_size);
 
@@ -1726,7 +1728,7 @@ int w_e_end_ov_reply(struct drbd_work *w, int cancel)
 		digest = kmalloc(digest_size, GFP_NOIO);
 #endif
 		if (digest) {
-			drbd_csum_ee(peer_device->connection->verify_tfm, peer_req, digest);
+			drbd_csum_pages(peer_device->connection->verify_tfm, peer_req->page_chain.head, digest);
 
 			D_ASSERT(device, digest_size == di->digest_size);
 			eq = !memcmp(digest, di->digest, digest_size);
@@ -2333,7 +2335,7 @@ static void drbd_ldev_destroy(struct drbd_device *device)
         lc_destroy(device->act_log);
         device->act_log = NULL;
 	__acquire(local);
-	drbd_free_ldev(device->ldev);
+	drbd_backing_dev_free(device, device->ldev);
 	device->ldev = NULL;
 	__release(local);
 
@@ -2662,13 +2664,12 @@ restart:
 		 * complete the master bio, outside of the lock. */
 		if (m.bio || need_resched()) {
 			spin_unlock_irq(&connection->resource->req_lock);
-			if (m.bio) {
+			if (m.bio)
 #ifdef _WIN32
 				complete_master_bio(device, &m, __func__, __LINE__ );
 #else
 				complete_master_bio(device, &m);
 #endif
-			}
 			cond_resched();
 			spin_lock_irq(&connection->resource->req_lock);
 			goto restart;
@@ -3088,6 +3089,12 @@ int drbd_worker(struct drbd_thread *thi)
 			w = list_first_entry(&work_list, struct drbd_work, list);
 			list_del_init(&w->list);
 			update_worker_timing_details(resource, w->cb);
+#ifdef _WIN32_V9_PATCH_1
+			if (w->cb == NULL)
+			{
+				panic("_WIN32_V9_PATCH_1_CHECK: check please!!!\n"); // 추후 삭제
+			}
+#endif
 			w->cb(w, 0);
 		}
 	}

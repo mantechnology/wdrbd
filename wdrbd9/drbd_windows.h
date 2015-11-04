@@ -30,6 +30,8 @@
 #define drbd_conf drbd_device
 #endif
 
+#define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
+
 #define WSK_ACCEPT_EVENT_CALLBACK     
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
@@ -202,8 +204,9 @@ enum rq_flag_bits {
 #define EHOSTUNREACH			30
 #define EBADR					31
 #define EADDRINUSE              32 //_WIN32_V9
-#define	EOVERFLOW	75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
-#define	ESTALE		116	/* Stale NFS file handle */
+#define	EOVERFLOW				75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
+#define	ESTALE					116	/* Stale NFS file handle */
+#define ECONNABORTED			130 /* Software caused connection abort */ // _WIN32_V9_PATCH_1
 
 #define SIGXCPU					100
 #define SIGHUP					101
@@ -568,6 +571,9 @@ struct gendisk
     void *private_data;
 #endif
 	PVOLUME_EXTENSION pDeviceExtension;
+#ifdef _WIN32_V9_PATCH_1
+	void * part0; // _WIN32_V9_PATCH_1_CHECK
+#endif
 };
 
 struct block_device {
@@ -879,7 +885,11 @@ struct scatterlist {
 
 #define MINORMASK				26
 
+#ifdef _WIN32_V9_PATCH_1 // JHKIM: BUG() 시 로직이 동작하면 원인분석이 어려워짐. panic으로 중단. 안정화 시점에 정리 또는 계속유지.
+#define BUG()   panic("PANIC!!!")
+#else
 #define BUG()   WDRBD_FATAL("BUG: failure\n")
+#endif
 
 #define BUG_ON(_condition)	\
     do {	\
@@ -973,7 +983,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
+			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
 				}  \
 		} while (0)
 

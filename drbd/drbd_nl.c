@@ -1465,27 +1465,32 @@ static bool effective_disk_size_determined(struct drbd_device *device)
 enum determine_dev_size
 drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct resize_parms *rs) __must_hold(local)
 {
-	sector_t prev_first_sect, prev_size; /* previous meta location */
-	sector_t la_size, u_size;
+	struct md_offsets_and_sizes {
+		u64 effective_size;
+		u64 md_offset;
+		s32 al_offset;
+		s32 bm_offset;
+		u32 md_size_sect;
+
+		u32 al_stripes;
+		u32 al_stripe_size_4k;
+	} prev;
+	sector_t u_size, size;
 	struct drbd_md *md = &device->ldev->md;
-	u32 prev_al_stripe_size_4k;
-	u32 prev_al_stripes;
-	sector_t size;
 	char ppb[10];
 	void *buffer;
 
 	int md_moved, la_size_changed;
 	enum determine_dev_size rv = DS_UNCHANGED;
 
-	/* race:
-	 * application request passes inc_ap_bio,
-	 * but then cannot get an AL-reference.
-	 * this function later may wait on ap_bio_cnt == 0. -> deadlock.
+	/* We may change the on-disk offsets of our meta data below.  Lock out
+	 * anything that may cause meta data IO, to avoid acting on incomplete
+	 * layout changes or scribbling over meta data that is in the process
+	 * of being moved.
 	 *
-	 * to avoid that:
-	 * Suspend IO right here.
-	 * still lock the act_log to not trigger ASSERTs there.
-	 */
+	 * Move is not exactly correct, btw, currently we have all our meta
+	 * data in core memory, to "move" it we just write it all out, there
+	 * are no reads. */
 	drbd_suspend_io(device, READ_AND_WRITE);
 	buffer = drbd_md_get_buffer(device, __func__); /* Lock meta-data IO */
 	if (!buffer) {
@@ -1493,19 +1498,17 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 		return DS_ERROR;
 	}
 
-	/* no wait necessary anymore, actually we could assert that */
-	wait_event(device->al_wait, lc_try_lock(device->act_log));
-
-	prev_first_sect = drbd_md_first_sector(device->ldev);
-	prev_size = device->ldev->md.md_size_sect;
-	la_size = device->ldev->md.effective_size;
+	/* remember current offset and sizes */
+	prev.effective_size = md->effective_size;
+	prev.md_offset = md->md_offset;
+	prev.al_offset = md->al_offset;
+	prev.bm_offset = md->bm_offset;
+	prev.md_size_sect = md->md_size_sect;
+	prev.al_stripes = md->al_stripes;
+	prev.al_stripe_size_4k = md->al_stripe_size_4k;
 
 	if (rs) {
 		/* rs is non NULL if we should change the AL layout only */
-
-		prev_al_stripes = md->al_stripes;
-		prev_al_stripe_size_4k = md->al_stripe_size_4k;
-
 		md->al_stripes = rs->al_stripes;
 		md->al_stripe_size_4k = rs->al_stripe_size / 4;
 		md->al_size_4k = (u64)rs->al_stripes * rs->al_stripe_size / 4;
@@ -1518,7 +1521,7 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 	rcu_read_unlock();
 	size = drbd_new_dev_size(device, u_size, flags & DDSF_FORCED);
 
-	if (size < la_size) {
+	if (size < prev.effective_size) {
 		if (rs && u_size == 0) {
 			/* Remove "rs &&" later. This check should always be active, but
 			   right now the receiver expects the permissive behavior */
@@ -1539,21 +1542,20 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 		err = drbd_bm_resize(device, size, !(flags & DDSF_NO_RESYNC));
 		if (unlikely(err)) {
 			/* currently there is only one error: ENOMEM! */
-			size = drbd_bm_capacity(device)>>1;
+			size = drbd_bm_capacity(device);
 			if (size == 0) {
 				drbd_err(device, "OUT OF MEMORY! "
 				    "Could not allocate bitmap!\n");
 			} else {
 				drbd_err(device, "BM resizing failed. "
-				    "Leaving size unchanged at size = %lu KB\n",
-				    (unsigned long)size);
+				    "Leaving size unchanged\n");
 			}
 			rv = DS_ERROR;
 		}
 		/* racy, see comments above. */
 		drbd_set_my_capacity(device, size);
 		if (effective_disk_size_determined(device)) {
-			device->ldev->md.effective_size = size;
+			md->effective_size = size;
 			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
 			     (unsigned long long)size >> 1);
 		}
@@ -1561,23 +1563,39 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 	if (rv <= DS_ERROR)
 		goto err_out;
 
-	la_size_changed = (la_size != device->ldev->md.effective_size);
+	la_size_changed = (prev.effective_size != md->effective_size);
 
-	md_moved = prev_first_sect != drbd_md_first_sector(device->ldev)
-		|| prev_size	   != device->ldev->md.md_size_sect;
+	md_moved = prev.md_offset    != md->md_offset
+		|| prev.md_size_sect != md->md_size_sect;
 
 	if (la_size_changed || md_moved || rs) {
-		u32 prev_flags;
+		int i;
+		bool prev_al_disabled = 0;
+		u32 prev_peer_full_sync = 0;
 
 		/* We do some synchronous IO below, which may take some time.
 		 * Clear the timer, to avoid scary "timer expired!" messages,
 		 * "Superblock" is written out at least twice below, anyways. */
 		del_timer(&device->md_sync_timer);
-		drbd_al_shrink(device); /* All extents inactive. */
 
-		prev_flags = md->flags;
-		md->flags &= ~MDF_PRIMARY_IND;
+		/* We won't change the "al-extents" setting, we just may need
+		 * to move the on-disk location of the activity log ringbuffer.
+		 * Lock for transaction is good enough, it may well be "dirty"
+		 * or even "starving". */
+		wait_event(device->al_wait, lc_try_lock_for_transaction(device->act_log));
+
+		/* mark current on-disk bitmap and activity log as unreliable */
+		prev_al_disabled = !!(md->flags & MDF_AL_DISABLED);
+		md->flags |= MDF_AL_DISABLED;
+		for (i = 0; i < DRBD_PEERS_MAX; i++) {
+			if (md->peers[i].flags & MDF_PEER_FULL_SYNC)
+				prev_peer_full_sync |= 1 << i;
+			else
+				md->peers[i].flags |= MDF_PEER_FULL_SYNC;
+		}
 		drbd_md_write(device, buffer);
+
+		drbd_al_initialize(device, buffer);
 
 		drbd_info(device, "Writing the whole bitmap, %s\n",
 			 la_size_changed && md_moved ? "size changed and md moved" :
@@ -1585,9 +1603,15 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 		/* next line implicitly does drbd_suspend_io()+drbd_resume_io() */
 		drbd_bitmap_io(device, md_moved ? &drbd_bm_write_all : &drbd_bm_write,
 			       "size changed", BM_LOCK_ALL, NULL);
-		drbd_initialize_al(device, buffer);
 
-		md->flags = prev_flags;
+		/* on-disk bitmap and activity log is authoritative again
+		 * (unless there was an IO error meanwhile...) */
+		if (!prev_al_disabled)
+			md->flags &= ~MDF_AL_DISABLED;
+		for (i = 0; i < DRBD_PEERS_MAX; i++) {
+			if (0 == (prev_peer_full_sync & (1 << i)))
+				md->peers[i].flags &= ~MDF_PEER_FULL_SYNC;
+		}
 		drbd_md_write(device, buffer);
 
 		if (rs)
@@ -1595,20 +1619,22 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 				 md->al_stripes, md->al_stripe_size_4k * 4);
 	}
 
-	if (size > la_size)
-		rv = la_size ? DS_GREW : DS_GREW_FROM_ZERO;
-	if (size < la_size)
+	if (size > prev.effective_size)
+		rv = prev.effective_size ? DS_GREW : DS_GREW_FROM_ZERO;
+	if (size < prev.effective_size)
 		rv = DS_SHRUNK;
 
 	if (0) {
 	err_out:
-		if (rs) {
-			md->al_stripes = prev_al_stripes;
-			md->al_stripe_size_4k = prev_al_stripe_size_4k;
-			md->al_size_4k = (u64)prev_al_stripes * prev_al_stripe_size_4k;
-
-			drbd_md_set_sector_offsets(device, device->ldev);
-		}
+		/* restore previous offset and sizes */
+		md->effective_size = prev.effective_size;
+		md->md_offset = prev.md_offset;
+		md->al_offset = prev.al_offset;
+		md->bm_offset = prev.bm_offset;
+		md->md_size_sect = prev.md_size_sect;
+		md->al_stripes = prev.al_stripes;
+		md->al_stripe_size_4k = prev.al_stripe_size_4k;
+		md->al_size_4k = (u64)prev.al_stripes * prev.al_stripe_size_4k;
 	}
 	lc_unlock(device->act_log);
 	wake_up(&device->al_wait);
@@ -1659,9 +1685,8 @@ drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_h
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-		if (peer_device->repl_state[NOW] < L_ESTABLISHED)
-			continue;
-		p_size = min_not_zero(p_size, peer_device->max_size);
+		if (peer_device->disk_state[NOW] > D_DISKLESS)
+			p_size = min_not_zero(p_size, peer_device->max_size);
 	}
 	rcu_read_unlock();
 
@@ -2123,6 +2148,97 @@ static bool bitmap_index_vacant(struct drbd_backing_dev *bdev, int bitmap_index)
 	return true;
 }
 
+static struct block_device *open_backing_dev(struct drbd_device *device,
+		const char *bdev_path, void *claim_ptr, bool do_bd_link)
+{
+	struct block_device *bdev;
+	int err = 0;
+
+	bdev = blkdev_get_by_path(bdev_path,
+				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
+	if (IS_ERR(bdev)) {
+		drbd_err(device, "open(\"%s\") failed with %ld\n",
+				bdev_path, PTR_ERR(bdev));
+		return bdev;
+	}
+
+	if (!do_bd_link)
+		return bdev;
+
+#if   defined(COMPAT_HAVE_BD_UNLINK_DISK_HOLDER)
+	err = bd_link_disk_holder(bdev, device->vdisk);
+#elif defined(COMPAT_HAVE_BD_CLAIM_BY_DISK)
+	err = bd_claim_by_disk(bdev, claim_ptr, device->vdisk);
+#endif
+	if (err) {
+		blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
+		drbd_err(device, "bd_link_disk_holder(\"%s\", ...) failed with %d\n",
+				bdev_path, err);
+		bdev = ERR_PTR(err);
+	}
+	return bdev;
+}
+
+static int open_backing_devices(struct drbd_device *device,
+		struct disk_conf *new_disk_conf,
+		struct drbd_backing_dev *nbc)
+{
+	struct block_device *bdev;
+
+	bdev = open_backing_dev(device, new_disk_conf->backing_dev, device, true);
+	if (IS_ERR(bdev))
+		return ERR_OPEN_DISK;
+	nbc->backing_bdev = bdev;
+
+	/*
+	 * meta_dev_idx >= 0: external fixed size, possibly multiple
+	 * drbd sharing one meta device.  TODO in that case, paranoia
+	 * check that [md_bdev, meta_dev_idx] is not yet used by some
+	 * other drbd minor!  (if you use drbd.conf + drbdadm, that
+	 * should check it for you already; but if you don't, or
+	 * someone fooled it, we need to double check here)
+	 */
+	bdev = open_backing_dev(device, new_disk_conf->meta_dev,
+		/* claim ptr: device, if claimed exclusively; shared drbd_m_holder,
+		 * if potentially shared with other drbd minors */
+			(new_disk_conf->meta_dev_idx < 0) ? (void*)device : (void*)drbd_m_holder,
+		/* avoid double bd_claim_by_disk() for the same (source,target) tuple,
+		 * as would happen with internal metadata. */
+			(new_disk_conf->meta_dev_idx != DRBD_MD_INDEX_FLEX_INT &&
+			 new_disk_conf->meta_dev_idx != DRBD_MD_INDEX_INTERNAL));
+	if (IS_ERR(bdev))
+		return ERR_OPEN_MD_DISK;
+	nbc->md_bdev = bdev;
+	return NO_ERROR;
+}
+
+static void close_backing_dev(struct drbd_device *device, struct block_device *bdev,
+	bool do_bd_unlink)
+{
+	if (!bdev)
+		return;
+	if (do_bd_unlink) {
+#if   defined(COMPAT_HAVE_BD_UNLINK_DISK_HOLDER)
+		bd_unlink_disk_holder(bdev, device->vdisk);
+#elif defined(COMPAT_HAVE_BD_CLAIM_BY_DISK)
+		bd_release_from_disk(bdev, device->vdisk);
+#endif
+	}
+	blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
+}
+
+void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *ldev)
+{
+	if (ldev == NULL)
+		return;
+
+	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
+	close_backing_dev(device, ldev->backing_bdev, true);
+
+	kfree(ldev->disk_conf);
+	kfree(ldev);
+}
+
 int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
@@ -2135,7 +2251,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	sector_t min_md_device_sectors;
 	struct drbd_backing_dev *nbc; /* new_backing_conf */
 	struct disk_conf *new_disk_conf = NULL;
-	struct block_device *bdev;
 	enum drbd_state_rv rv;
 	struct drbd_peer_device *peer_device;
 	unsigned int slots_needed = 0;
@@ -2190,6 +2305,8 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
+#ifdef _WIN32_V9_PATCH_1 // V9 same!
+	struct block_device *bdev;
 	bdev = blkdev_get_by_path(new_disk_conf->backing_dev,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, device);
 #ifdef _WIN32
@@ -2230,7 +2347,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		goto fail;
 	}
 	nbc->md_bdev = bdev;
-
+#else
+	retcode = open_backing_devices(device, new_disk_conf, nbc);
+	if (retcode != NO_ERROR)
+		goto fail;
+#endif
 	if ((nbc->backing_bdev == nbc->md_bdev) !=
 	    (new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_INTERNAL ||
 	     new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_FLEX_INT)) {
@@ -2655,8 +2776,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	drbd_md_sync(device);
  fail:
 	mutex_unlock_cond(&resource->conf_update, &have_conf_update);
-	drbd_free_ldev(nbc); /* frees also new_disk_conf */
-
+	drbd_backing_dev_free(device, nbc);
 	mutex_unlock(&resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -3568,9 +3688,9 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		return retcode;
 
 #ifdef _WIN32
-    path = kzalloc(sizeof(struct drbd_path), GFP_KERNEL, '57DW');
+    path = kzalloc(transport->class->path_instance_size, GFP_KERNEL, '57DW');
 #else
-	path = kzalloc(sizeof(struct drbd_path), GFP_KERNEL);
+	path = kzalloc(transport->class->path_instance_size, GFP_KERNEL);
 #endif
 	if (!path)
 		return ERR_NOMEM;
@@ -3592,6 +3712,7 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		drbd_msg_put_info(adm_ctx->reply_skb, "add_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
+	notify_path(adm_ctx->connection, path, NOTIFY_CREATE);
 	return NO_ERROR;
 }
 
@@ -3730,6 +3851,7 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		drbd_msg_put_info(adm_ctx->reply_skb, "del_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
+	notify_path(adm_ctx->connection, path, NOTIFY_DESTROY);
 	return NO_ERROR;
 }
 
@@ -3911,6 +4033,26 @@ void resync_after_online_grow(struct drbd_peer_device *peer_device)
 	drbd_start_resync(peer_device, sync_source ? L_SYNC_SOURCE : L_SYNC_TARGET);
 }
 
+static sector_t local_possible_max_size(struct drbd_device *device) __must_hold(local)
+{
+	struct drbd_backing_dev *tmp_bdev;
+	sector_t s;
+#ifdef _WIN32_V9_PATCH_1
+	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL, 'FFDW');
+#else
+	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL);
+#endif
+	if (!tmp_bdev)
+		return 0;
+
+	*tmp_bdev = *device->ldev;
+	drbd_md_set_sector_offsets(device, tmp_bdev);
+	s = drbd_get_max_capacity(tmp_bdev);
+	kfree(tmp_bdev);
+
+	return s;
+}
+
 int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
@@ -3957,16 +4099,8 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
-	rcu_read_lock();
-	u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
-	rcu_read_unlock();
-	if (u_size && u_size == (sector_t)rs.resize_size &&
-	    device->ldev->md.al_stripes == rs.al_stripes &&
-	    device->ldev->md.al_stripe_size_4k == rs.al_stripe_size / 4) {
-		/* TODO once we can online-change the number of bitmap slots,
-		 * we need add an "unchanged" check for those above. */
-		/* This will be a no-op. Ignore. */
-		retcode = NO_ERROR;
+	if (rs.resize_size && local_possible_max_size(device) < (sector_t)rs.resize_size) {
+		retcode = ERR_DISK_TOO_SMALL;
 		goto fail_ldev;
 	}
 
@@ -3991,6 +4125,9 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
+	rcu_read_lock();
+	u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
+	rcu_read_unlock();
 	if (u_size != (sector_t)rs.resize_size) {
 #ifdef _WIN32
         new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL, 'C1DW');
@@ -4040,6 +4177,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		mutex_unlock(&device->resource->conf_update);
 		synchronize_rcu();
 		kfree(old_disk_conf);
+		new_disk_conf = NULL;
 	}
 
 	ddsf = (rs.resize_force ? DDSF_FORCED : 0) | (rs.no_resync ? DDSF_NO_RESYNC : 0);
@@ -4073,6 +4211,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 
  fail_ldev:
 	put_ldev(device);
+	kfree(new_disk_conf);
 	goto fail;
 }
 
@@ -4471,7 +4610,8 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 static int nla_put_drbd_cfg_context(struct sk_buff *skb,
 				    struct drbd_resource *resource,
 				    struct drbd_connection *connection,
-				    struct drbd_device *device)
+				    struct drbd_device *device,
+				    struct drbd_path *path)
 {
 	struct nlattr *nla;
 	nla = nla_nest_start(skb, DRBD_NLA_CFG_CONTEXT);
@@ -4487,6 +4627,10 @@ static int nla_put_drbd_cfg_context(struct sk_buff *skb,
 		if (connection->transport.net_conf && connection->transport.net_conf->name)
 			nla_put_string(skb, T_ctx_conn_name, connection->transport.net_conf->name);
 		rcu_read_unlock();
+	}
+	if (path) {
+		nla_put(skb, T_ctx_my_addr, path->my_addr_len, &path->my_addr);
+		nla_put(skb, T_ctx_peer_addr, path->peer_addr_len, &path->peer_addr);
 	}
 	nla_nest_end(skb, nla);
 	return 0;
@@ -4558,7 +4702,7 @@ put_result:
 		goto out;
 	dh->minor = -1U;
 	dh->ret_code = NO_ERROR;
-	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL);
+	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL);
 	if (err)
 		goto out;
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
@@ -4611,8 +4755,8 @@ static void device_to_statistics(struct device_statistics *s,
 #ifndef _WIN32_V9 //CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
-				      (1 << BDI_async_congested) |
-				      (1 << BDI_sync_congested));
+				      (1 << WB_async_congested) |
+				      (1 << WB_sync_congested));
 #endif
 		put_ldev(device);
 	}
@@ -4708,7 +4852,7 @@ put_result:
 	dh->minor = -1U;
 	if (retcode == NO_ERROR) {
 		dh->minor = device->minor;
-		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device);
+		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL);
 		if (err)
 			goto out;
 		if (get_ldev(device)) {
@@ -4899,7 +5043,7 @@ put_result:
 	if (retcode == NO_ERROR) {
 		struct net_conf *net_conf;
 
-		err = nla_put_drbd_cfg_context(skb, resource, connection, NULL);
+		err = nla_put_drbd_cfg_context(skb, resource, connection, NULL, NULL);
 		if (err)
 			goto out;
 		net_conf = rcu_dereference(connection->transport.net_conf);
@@ -5050,7 +5194,7 @@ put_result:
 		struct peer_device_conf *peer_device_conf;
 
 		dh->minor = minor;
-		err = nla_put_drbd_cfg_context(skb, device->resource, peer_device->connection, device);
+		err = nla_put_drbd_cfg_context(skb, device->resource, peer_device->connection, device, NULL);
 		if (err)
 			goto out;
 		peer_device_to_info(&peer_device_info, peer_device);
@@ -5753,7 +5897,7 @@ void notify_resource_state(struct sk_buff *skb,
 		goto nla_put_failure;
 	dh->minor = -1U;
 	dh->ret_code = NO_ERROR;
-	if (nla_put_drbd_cfg_context(skb, resource, NULL, NULL) ||
+	if (nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL) ||
 	    nla_put_notification_header(skb, type) ||
 	    ((type & ~NOTIFY_FLAGS) != NOTIFY_DESTROY &&
 	     resource_info_to_skb(skb, resource_info, true)))
@@ -5804,7 +5948,7 @@ void notify_device_state(struct sk_buff *skb,
 		goto nla_put_failure;
 	dh->minor = device->minor;
 	dh->ret_code = NO_ERROR;
-	if (nla_put_drbd_cfg_context(skb, device->resource, NULL, device) ||
+	if (nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL) ||
 	    nla_put_notification_header(skb, type) ||
 	    ((type & ~NOTIFY_FLAGS) != NOTIFY_DESTROY &&
 	     device_info_to_skb(skb, device_info, true)))
@@ -5854,7 +5998,7 @@ void notify_connection_state(struct sk_buff *skb,
 		goto nla_put_failure;
 	dh->minor = -1U;
 	dh->ret_code = NO_ERROR;
-	if (nla_put_drbd_cfg_context(skb, connection->resource, connection, NULL) ||
+	if (nla_put_drbd_cfg_context(skb, connection->resource, connection, NULL, NULL) ||
 	    nla_put_notification_header(skb, type) ||
 	    ((type & ~NOTIFY_FLAGS) != NOTIFY_DESTROY &&
 	     connection_info_to_skb(skb, connection_info, true)))
@@ -5905,7 +6049,7 @@ void notify_peer_device_state(struct sk_buff *skb,
 		goto nla_put_failure;
 	dh->minor = -1U;
 	dh->ret_code = NO_ERROR;
-	if (nla_put_drbd_cfg_context(skb, resource, peer_device->connection, peer_device->device) ||
+	if (nla_put_drbd_cfg_context(skb, resource, peer_device->connection, peer_device->device, NULL) ||
 	    nla_put_notification_header(skb, type) ||
 	    ((type & ~NOTIFY_FLAGS) != NOTIFY_DESTROY &&
 	     peer_device_info_to_skb(skb, peer_device_info, true)))
@@ -5925,6 +6069,53 @@ nla_put_failure:
 	nlmsg_free(skb);
 failed:
 	drbd_err(peer_device, "Error %d while broadcasting event. Event seq:%u\n",
+		 err, seq);
+}
+
+void notify_path(struct drbd_connection *connection, struct drbd_path *path,
+		 enum drbd_notification_type type)
+{
+	struct drbd_resource *resource = connection->resource;
+	struct drbd_path_info path_info;
+	unsigned int seq = atomic_inc_return(&drbd_genl_seq);
+	struct sk_buff *skb = NULL;
+	struct drbd_genlmsghdr *dh;
+	int err;
+
+	path_info.path_established = path->established;
+
+	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_NOIO);
+	err = -ENOMEM;
+	if (!skb)
+		goto fail;
+
+	err = -EMSGSIZE;
+	dh = genlmsg_put(skb, 0, seq, &drbd_genl_family, 0, DRBD_PATH_STATE);
+	if (!dh)
+		goto fail;
+
+	dh->minor = -1U;
+	dh->ret_code = NO_ERROR;
+	mutex_lock(&notification_mutex);
+	if (nla_put_drbd_cfg_context(skb, resource, connection, NULL, path) ||
+	    nla_put_notification_header(skb, type) ||
+	    drbd_path_info_to_skb(skb, &path_info, true))
+		goto unlock_fail;
+
+	genlmsg_end(skb, dh);
+	err = drbd_genl_multicast_events(skb, GFP_NOWAIT);
+	skb = NULL;
+	/* skb has been consumed or freed in netlink_broadcast() */
+	if (err && err != -ESRCH)
+		goto unlock_fail;
+	mutex_unlock(&notification_mutex);
+	return;
+
+unlock_fail:
+	mutex_unlock(&notification_mutex);
+fail:
+	nlmsg_free(skb);
+	drbd_err(resource, "Error %d while broadcasting event. Event seq:%u\n",
 		 err, seq);
 }
 
@@ -5960,7 +6151,7 @@ void notify_helper(enum drbd_notification_type type,
 	dh->minor = device ? device->minor : -1;
 	dh->ret_code = NO_ERROR;
 	mutex_lock(&notification_mutex);
-	if (nla_put_drbd_cfg_context(skb, resource, connection, device) ||
+	if (nla_put_drbd_cfg_context(skb, resource, connection, device, NULL) ||
 	    nla_put_notification_header(skb, type) ||
 	    drbd_helper_info_to_skb(skb, &helper_info, true))
 		goto unlock_fail;

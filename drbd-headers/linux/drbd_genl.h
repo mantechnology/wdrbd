@@ -309,10 +309,19 @@ GENL_struct(DRBD_NLA_CONNECT_PARMS, 29, connect_parms,
 	__flg_field_def(2,	DRBD_GENLA_F_MANDATORY,	discard_my_data, 0)
 )
 
+GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
+	__flg_field(1, 0, path_established)
+)
+
 /*
  * Notifications and commands (genlmsghdr->cmd)
  */
+ // 
+#ifdef _WIN32_V9_PATCH_1 
+	// _WIN32_V9_PATCH_1_CHECK: JHKIM: skip compile error!!!
+#else
 GENL_mc_group(events)
+#endif
 
 	/* add DRBD minor devices as volumes to resources */
 GENL_op(DRBD_ADM_NEW_MINOR, 5, GENL_doit(drbd_adm_new_minor),
@@ -529,3 +538,8 @@ GENL_op(DRBD_ADM_CHG_PEER_DEVICE_OPTS, 43,
 	GENL_doit(drbd_adm_peer_device_opts),
 	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
 	GENL_tla_expected(DRBD_NLA_PEER_DEVICE_OPTS, DRBD_F_REQUIRED))
+
+GENL_notification(
+	DRBD_PATH_STATE, 48, events,
+	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
+	GENL_tla_expected(DRBD_NLA_PATH_INFO, DRBD_F_REQUIRED))
