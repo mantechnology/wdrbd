@@ -3089,6 +3089,12 @@ int drbd_worker(struct drbd_thread *thi)
 			w = list_first_entry(&work_list, struct drbd_work, list);
 			list_del_init(&w->list);
 			update_worker_timing_details(resource, w->cb);
+#ifdef _WIN32_V9_PATCH_1
+			if (w->cb == NULL)
+			{
+				panic("_WIN32_V9_PATCH_1_CHECK: check please!!!\n");
+			}
+#endif
 			w->cb(w, 0);
 		}
 	}

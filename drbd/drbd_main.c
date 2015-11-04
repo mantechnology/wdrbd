@@ -2223,7 +2223,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	//dumpHex((void*) page, 100, 16);
 	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
 	if (!err)
-		peer_device->send_cnt += size >> 9;
+		peer_device->send_cnt += size >> 9; // _WIN32_V9_1_PATCH:JHKKIM: 여기서 가산을 하는지 원본과 비교필요.
 
 	return err;
 }
@@ -2340,13 +2340,8 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	unsigned len = peer_req->i.size;
 	int err;
 	
-	// _WIN32_V9_PATCH_1 :JHKIM 필요한가???? 일단 코멘트 
-#ifdef  _WIN32_V9_PATCH_1 
-	DbgPrint("_WIN32_V9_PATCH_1_CHECK: check _drbd_send_zc_ee!\n");
-#else
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
-#endif
-	
+
 #ifdef _WIN32_V9 // V9_XXX !!!!
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
@@ -2543,10 +2538,8 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
-	{ //_WIN32_V9
-        //dumpHex((void*) peer_req->win32_big_page, 100, 16);
 		err = _drbd_send_zc_ee(peer_device, peer_req);
-	}
+
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;

@@ -1194,10 +1194,11 @@ static void dtt_incoming_connection(struct sock *sock)
 		{ // TEST
 			DbgPrint("DRBD_TEST: path->first ok! wake_up!!");
 			wake_up(&path->first->wait);
-		} 
+		} // TEST
 		else // TEST
 		{
-			DbgPrint("DRBD_TEST: it not a first! Don't wake_up!");
+			DbgPrint("DRBD_TEST: it not a first! Don't wake_up!\n");
+			panic("dtt_incoming_connection test!!!"); // TEST: 일단 중지.
 		}
 #else
 		wake_up(&waiter->wait); // V9 old.
@@ -1721,15 +1722,13 @@ randomize:
 	}
 #endif
 #endif
-#ifdef _WIN32_V9
+	TR_ASSERT(transport, first_path == connect_to_path);
 	connect_to_path->path.established = true;
 	drbd_path_event(transport, &connect_to_path->path);
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_1_CHECK
 	dtt_put_listeners(transport);
-    //dtt_put_listener(waiter); // _WIN32_V9_PATCH_1_CHECK
-	
+    //dtt_put_listener(waiter);
 #else
-	connect_to_path->path.established = true;
-	drbd_path_event(transport, &connect_to_path->path);
 	dtt_put_listeners(transport);
 #endif
 

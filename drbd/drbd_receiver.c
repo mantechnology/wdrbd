@@ -2978,7 +2978,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 				(unsigned long long)sector, size);
 		return -EINVAL;
 	}
-    WDRBD_TRACE_RS("cmd(%s) sector(0x%x), size(%d)\n", drbd_packet_name(pi->cmd), sector, size);
+    WDRBD_TRACE_RS("cmd(%s) sector(0x%llx), size(%d)\n", drbd_packet_name(pi->cmd), sector, size);
 	min_d_state = pi->cmd == P_DATA_REQUEST ? D_UP_TO_DATE : D_OUTDATED;
 	if (!get_ldev_if_state(device, min_d_state)) {
 		verb = 1;
