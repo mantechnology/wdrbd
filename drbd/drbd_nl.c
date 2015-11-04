@@ -2305,9 +2305,8 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32_V9_PATCH_1 // CHECK
-DbgPrint("_WIN32_V9_PATCH_1_CHECK: drbd_adm_attach !!!!!!!!!!!\n");
-#if 0 // V9 org
+#ifdef _WIN32_V9_PATCH_1 // V9 same!
+	struct block_device *bdev;
 	bdev = blkdev_get_by_path(new_disk_conf->backing_dev,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, device);
 #ifdef _WIN32
@@ -2348,7 +2347,6 @@ DbgPrint("_WIN32_V9_PATCH_1_CHECK: drbd_adm_attach !!!!!!!!!!!\n");
 		goto fail;
 	}
 	nbc->md_bdev = bdev;
-#endif
 #else
 	retcode = open_backing_devices(device, new_disk_conf, nbc);
 	if (retcode != NO_ERROR)

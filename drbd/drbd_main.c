@@ -2342,6 +2342,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	
 	// _WIN32_V9_PATCH_1 :JHKIM 필요한가???? 일단 코멘트 
 #ifdef  _WIN32_V9_PATCH_1 
+	DbgPrint("_WIN32_V9_PATCH_1_CHECK: check _drbd_send_zc_ee!\n");
 #else
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 #endif
@@ -2353,6 +2354,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	if (err)
 		return err;
 #else
+	// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
 	/* hint all but last page with MSG_MORE */
 	page_chain_for_each(page) {
 		unsigned l = min_t(unsigned, len, PAGE_SIZE);
