@@ -326,6 +326,16 @@ static inline int drbd_ratelimit(void)
 }
 #endif
 
+#ifdef _WIN32_V9_PATCH_1 // JHKIM: 노드가 많을 경우 오류를 놓치는 경우 방지. 안정화 시점에 정리 또는 계속유지.
+#define D_ASSERT(x, exp) \
+	do { \
+		if (!(exp))	{ \
+			DbgPrint("\n\nASSERTION %s FAILED in %s #########\n\n",	\
+				 #exp, __func__); \
+			 panic("PANIC: check!!!!\n");\
+		} \
+	} while (0)
+#else
 #ifdef _WIN32
 #define D_ASSERT(x, exp)   ASSERT(exp)
 #else
@@ -335,6 +345,7 @@ static inline int drbd_ratelimit(void)
 			drbd_err(x, "ASSERTION %s FAILED in %s\n",		\
 				 #exp, __func__);				\
 	} while (0)
+#endif
 #endif
 /**
  * expect  -  Make an assertion

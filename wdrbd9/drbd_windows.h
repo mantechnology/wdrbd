@@ -885,7 +885,11 @@ struct scatterlist {
 
 #define MINORMASK				26
 
+#ifdef _WIN32_V9_PATCH_1 // JHKIM: BUG() 시 로직이 동작하면 원인분석이 어려워짐. panic으로 중단. 안정화 시점에 정리 또는 계속유지.
+#define BUG()   panic("PANIC!!!")
+#else
 #define BUG()   WDRBD_FATAL("BUG: failure\n")
+#endif
 
 #define BUG_ON(_condition)	\
     do {	\
