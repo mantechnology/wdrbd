@@ -774,7 +774,7 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 	good += dtt_socket_ok_or_free(socket1);
 	good += dtt_socket_ok_or_free(socket2);
 
-#ifndef _WIN32_V9_PATCH_1 // JHKIM: 일단 임시초치를 사용하고 추후 패치 내용을 적용예정 -> 일단 패치방식을 우선 적용힘
+#ifdef _WIN32_V9_PATCH_1 // JHKIM: 일단 임시초치를 사용하고 추후 패치 내용을 적용예정 -> 일단 패치방식을 우선 적용힘-> 연결 이후 송신 오류와 같은 유사문제 발생하여 다시 V9 수정본을 반영함
 #ifdef _WIN32_V9 //JHKIM:임시조치: 연결된 소켓이 정상인지 실제 통신으로 재확인한다. 추후 재정리.
 	int ret;
 	char buf = 0x77;
@@ -810,6 +810,10 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 		*socket2 = 0;
 		return false;
 	}
+
+	if (good == 0) // _WIN32_V9_PATCH_1
+		*first_path = NULL;
+
 	return *socket1 && *socket2;
 #endif
 #else
@@ -1192,7 +1196,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		path = container_of(waiter, struct dtt_path, waiter);
 		if (path->first)
 		{ // TEST
-			DbgPrint("DRBD_TEST: path->first ok! wake_up!!");
+			DbgPrint("DRBD_TEST:%p path->first ok! wake_up!!", KeGetCurrentThread());
 			wake_up(&path->first->wait);
 		} // TEST
 		else // TEST
@@ -1664,7 +1668,7 @@ retry:
 			{
 				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
 				char sbuf[64], dbuf[64];
-				WDRBD_TRACE_IP4("WDRBD_TEST: Accepted:  %s <- %s\n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+				WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
 			}
 #endif
 			int fp = dtt_receive_first_packet(tcp_transport, s);
