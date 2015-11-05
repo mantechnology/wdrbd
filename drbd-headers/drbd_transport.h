@@ -32,18 +32,20 @@
  */
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
 #ifdef _WIN32_V9
-#define tr_printk(level, transport, fmt, ...)  ({		\
+#define tr_printk(level, transport, fmt, ...)  do {		\
+	rcu_read_lock();					\
 	printk(level "drbd %s: " fmt,			\
 	       rcu_dereference((transport)->net_conf)->name,	\
 	       __VA_ARGS__);					\
-    	})
+	rcu_read_unlock();					\
+	}while (0)
 
 #define tr_err(transport, fmt, ...) \
-	WDRBD_ERROR(fmt, __VA_ARGS__)
+	tr_printk(KERN_ERR, transport, fmt, ## __VA_ARGS__)
 #define tr_warn(transport, fmt, ...) \
-	WDRBD_WARN(fmt, __VA_ARGS__)
+	tr_printk(KERN_WARNING, transport, fmt, ## __VA_ARGS__)
 #define tr_info(transport, fmt, ...) \
-	WDRBD_INFO(fmt, __VA_ARGS__)
+	tr_printk(KERN_INFO, transport, fmt, ## __VA_ARGS__)
 #else
 #define tr_printk(level, transport, fmt, args...)  ({		\
 	rcu_read_lock();					\
