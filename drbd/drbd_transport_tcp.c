@@ -836,10 +836,10 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 #endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 		struct drbd_listener *listener = path->waiter.listener;
-#if 0
+#if 0 // WDRBD_TRACE_CO
 		extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
 		char sbuf[64], dbuf[64];
-		DbgPrint("Wait_cond: s(%s) peer(%s) ac=%d \n", path->socket->name, get_ip4(dbuf, &path->path.peer_addr), listener->pending_accepts);
+		WDRBD_TRACE_CO("[%p]dtt_wait_connect_cond: peer:%s sname=%s accept=%d\n", KeGetCurrentThread(), get_ip4(sbuf, &path->path.peer_addr), path->socket->name, listener->pending_accepts);		
 #endif
 		spin_lock_bh(&listener->waiters_lock);
 		rv = listener->pending_accepts > 0 || path->socket != NULL;
@@ -1032,6 +1032,7 @@ retry:
 			goto retry_locked;
 		}
 	}
+	WDRBD_TRACE_CO("%p dtt_wait_for_connect ok done.\n", KeGetCurrentThread());
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	*socket = s_estab;
 	*ret_path = path;
@@ -1187,13 +1188,13 @@ static void dtt_incoming_connection(struct sock *sock)
 		path = container_of(waiter, struct dtt_path, waiter);
 		if (path->first)
 		{ // TEST
-			DbgPrint("DRBD_TEST:%p path->first ok! wake_up!!", KeGetCurrentThread());
+			WDRBD_TRACE_CO("%p path->first incomming ok! wake_up!!\n", KeGetCurrentThread());
 			wake_up(&path->first->wait);
 		} // TEST
 		else // TEST
 		{
-			DbgPrint("DRBD_TEST: it not a first! Don't wake_up!\n");
-			panic("dtt_incoming_connection test!!!"); // TEST: 일단 중지.
+			WDRBD_TRACE_CO("it not a first! Don't wake_up!\n");
+			panic("dtt_incoming_connection test!!!"); // TEST: 어떤 경우인가? 일단 중지.
 		}
 #else
 		wake_up(&waiter->wait); // V9 old.
@@ -1464,6 +1465,7 @@ static int dtt_connect(struct drbd_transport *transport)
 	dsocket = NULL;
 	csocket = NULL;
 
+	WDRBD_TRACE_CO("[%p] dtt_connect start..............!\n", KeGetCurrentThread());
 	if (list_empty(&transport->paths))
 		return -EDESTADDRREQ;
 
@@ -1586,6 +1588,7 @@ static int dtt_connect(struct drbd_transport *transport)
 	do {
 		struct socket *s = NULL;
 
+		WDRBD_TRACE_CO("[%p] dtt_try_connect ----------!\n", KeGetCurrentThread());
 		err = dtt_try_connect(connect_to_path, &s);
 		if (err < 0 && err != -EAGAIN)
 			goto out;
@@ -1644,7 +1647,9 @@ static int dtt_connect(struct drbd_transport *transport)
 		if (dtt_connection_established(transport, &dsocket, &csocket, &first_path))
 			break;
 
-retry:
+	retry:
+		WDRBD_TRACE_CO("[%p] dtt_wait_for_connect ----------!\n", KeGetCurrentThread());
+
 		s = NULL;
 #ifdef _WIN32_V9_PATCH_1_CHECK
         err = dtt_wait_for_connect(waiter, &s, &connect_to_path);
@@ -1727,6 +1732,7 @@ randomize:
 	dtt_put_listeners(transport);
 #endif
 
+	WDRBD_TRACE_CO("[%p]  dtt_connect ok----------!!!!!!!!!!!!!!\n", KeGetCurrentThread());
 #ifdef _WIN32
     LONG InputBuffer = 1;
 	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );

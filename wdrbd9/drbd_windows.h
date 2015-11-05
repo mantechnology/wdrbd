@@ -395,6 +395,7 @@ do { \
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4 DbgPrint
 #define WDRBD_TRACE_SB 
+#define WDRBD_TRACE_CO DbgPrint
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -983,6 +984,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
+			static int x=0; if(!(x++ %1000)) DbgPrint("DRBD_TEST:__wait_event_timeout: global x=%d time=%d ret=%d\n", x, t, ret); \
 			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
 				}  \
 		} while (0)

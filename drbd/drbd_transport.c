@@ -330,18 +330,28 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 	struct drbd_waiter *waiter;
 	struct drbd_path *path;
 
+	WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr start\n", KeGetCurrentThread());
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_waiter, waiter, &listener->waiters, list) {
+		WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr: waiter=%p\n", KeGetCurrentThread(), waiter);
 		list_for_each_entry(struct drbd_path, path, &waiter->transport->paths, list) {
 #else
 	list_for_each_entry(waiter, &listener->waiters, list) {
 		list_for_each_entry(path, &waiter->transport->paths, list) {
 #endif
+			// WDRBD_TRACE_CO
+			extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+			char sbuf[64], dbuf[64];
+			WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, &path->peer_addr), get_ip4(dbuf, addr));
+			// WDRBD_TRACE_CO
+
 			if (addr_equal(&path->peer_addr, addr))
 				return waiter;
 		}
+		WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr: waiter done\n", KeGetCurrentThread());
 	}
 
+	WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr:return NULL!!!!\n", KeGetCurrentThread());
 	return NULL;
 }
 
