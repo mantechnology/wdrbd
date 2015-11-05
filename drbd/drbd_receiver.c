@@ -4912,7 +4912,12 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	pos = 0;
 	for (i = 0; i < ARRAY_SIZE(peer_device->bitmap_uuids); i++) {
 		if (bitmap_uuids_mask & NODE_MASK(i)) {
+#ifdef _WIN32_V9
+            peer_device->bitmap_uuids[i] = be64_to_cpu(p->other_uuids[pos]);
+            pos++;
+#else
 			peer_device->bitmap_uuids[i] = be64_to_cpu(p->other_uuids[pos++]);
+#endif
 			if (peer_md && peer_md[i].bitmap_index == -1)
 				peer_md[i].flags |= MDF_NODE_EXISTS;
 		} else {
@@ -4922,8 +4927,15 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	if (peer_md)
 		put_ldev(device);
 
-	for (i = 0; i < history_uuids; i++)
+    for (i = 0; i < history_uuids; i++)
+#ifdef _WIN32_V9
+    {
+        peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos]);
+        pos++;
+    }
+#else
 		peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos++]);
+#endif
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
 #ifdef _WIN32_V9 // JHKIM: PATCH에서 적절한지.
