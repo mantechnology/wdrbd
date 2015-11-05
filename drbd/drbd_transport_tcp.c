@@ -296,7 +296,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #ifdef _WIN32
 #ifdef _WIN32_SEND_BUFFING
 		 // _dtt_send 는 dtt_connect 시점의 dtt_send_first_packet 에 의해서만 사용!! 송신버퍼링 적용 직전 임!!!
-		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, 0);
+		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
 #else
 #if 1 // 최초 연결 단계에서만 사용! stream 방향이 불필요
 		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, &tcp_transport->transport, 0);

@@ -399,18 +399,6 @@ char *GetSockErrorString(NTSTATUS status)
 	return ErrorString;
 }
 
-#ifdef _WIN32_SEND_BUFFING
-LONG
-NTAPI
-Send(
-	__in PWSK_SOCKET	WskSocket,
-	__in PVOID			Buffer,
-	__in ULONG			BufferSize,
-	__in ULONG			Flags,
-	__in ULONG			Timeout,
-	__in KEVENT			*send_buf_kill_event
-)
-#else
 LONG
 NTAPI
 Send(
@@ -423,7 +411,6 @@ Send(
 	__in struct			drbd_transport *transport,
 	__in enum			drbd_stream stream
 )
-#endif
 {
 	KEVENT		CompletionEvent = { 0 };
 	PIRP		Irp = NULL;
@@ -477,17 +464,19 @@ Send(
 			int         wObjCount = 1;
 
 			waitObjects[0] = (PVOID) &CompletionEvent;
-#ifndef _WIN32_SEND_BUFFING // WIN32_V9_REFACTO_: JHKIM: 입력인자 축소와 로그메세지 축소관련하여 추가 리팩토링 필요.
-			if (thread->has_sig_event)
-			{
-				waitObjects[1] = (PVOID) &thread->sig_event;
-				wObjCount = 2; // DRBD_DOC_V9:JHKIM: down 같은 CLI에서 요청될 때는 has_sig_event 가 없다. 이때는 wObjCount가 1 임.
-			}
+#ifndef _WIN32_SEND_BUFFING 
+			// 송신버퍼링에서 Netlink 와 call_usermodehelper 는 SendLocal로 분리됨.
+			// 송신중에 KILL 이벤트는 송신버퍼링용 스레드에서만 사용한다.
+			// WIN32_V9_REFACTO_: JHKIM: 입력인자 축소와 로그메세지 축소관련하여 추가 리팩토링 필요.
 #else
 			if (send_buf_kill_event)
 			{
 				waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: 송신버퍼링에서 송출 도중에 kill 요청을 인지하는 방법임. thread->has_sig_event를 이용한 일관성있는 중지신호 수신방안이 필요(리팩토링 필요)
 				wObjCount = 2;
+			}
+			else
+			{
+				// sndbuf_size = 0 인 경우!
 			}
 #endif
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
@@ -507,9 +496,8 @@ Send(
 
 					goto retry;
 				}
-#else
+#endif
 				// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
-				// WIN32_V9 포팅 시 송신버퍼링이 기본이되고 이 부분은 단지 시험용.(internal used only)
 				if (transport != NULL)
 				{
 					extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
@@ -518,10 +506,6 @@ Send(
 						goto retry;
 					}
 				}
-#endif
-
-                IoCancelIrp(Irp);
-                KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EAGAIN;
 				break;
 
@@ -549,8 +533,6 @@ Send(
 				break;
 
 			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
-                IoCancelIrp(Irp);
-                KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EINTR;
 				break;
 
@@ -572,6 +554,12 @@ Send(
 			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
+	}
+
+	if (BytesSent == -EINTR || BytesSent == -EAGAIN)
+	{
+		IoCancelIrp(Irp);
+		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 	}
 
 	IoFreeIrp(Irp);

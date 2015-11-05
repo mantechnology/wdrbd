@@ -171,7 +171,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 		{
 			WDRBD_TRACE_SB("send buf: disabled. sb thread=%p bab=%p (tmp:%d)\n", buffering_attr->send_buf_thread_handle, buffering_attr->bab, tmp);
 		}
-		return Send(socket->sk, buf, size, 0, timeout, NULL);
+		return Send(socket->sk, buf, size, 0, timeout, NULL, NULL, 0);
 	}
 
 	unsigned long long  tmp = (long long) buffering_attr->bab->length * 99;
@@ -310,7 +310,7 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 		}
 
 		read_ring_buffer(bab, bab->static_big_buf, tx_sz);
-		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event);
+		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
 		if (ret == -EINTR)
 		{
 			return -EINTR;
