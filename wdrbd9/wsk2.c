@@ -507,11 +507,6 @@ Send(
 
 					goto retry;
 				}
-				else
-				{
-                    WDRBD_WARN("(%s) send buffering! Not reached!?\n", current->comm);
-					BUG(); // _WIN32_V9 포팅 후 안정화뒤 제거
-				}
 #else
 				// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
 				// WIN32_V9 포팅 시 송신버퍼링이 기본이되고 이 부분은 단지 시험용.(internal used only)
