@@ -1670,7 +1670,7 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 	atomic_inc((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-	DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_start_io_acct\n");
+	// DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_start_io_acct\n");
 #endif
 }
 
