@@ -1688,7 +1688,7 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 	atomic_dec((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-	DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_end_io_acct\n");
+	// DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_end_io_acct\n");
 #endif
 }
 #endif /* __disk_stat_inc */
