@@ -519,6 +519,9 @@ Send(
 					}
 				}
 #endif
+
+                IoCancelIrp(Irp);
+                KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EAGAIN;
 				break;
 
@@ -546,6 +549,8 @@ Send(
 				break;
 
 			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
+                IoCancelIrp(Irp);
+                KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EINTR;
 				break;
 
@@ -567,12 +572,6 @@ Send(
 			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
-	}
-
-	if (BytesSent == -EINTR || BytesSent == -EAGAIN)
-	{
-		IoCancelIrp(Irp);
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 	}
 
 	IoFreeIrp(Irp);
