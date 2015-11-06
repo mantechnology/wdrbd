@@ -1338,7 +1338,14 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			khelper_cmd = "out-of-sync";
 		}
 	} else {
+#ifdef _WIN32_V9
+		if (!((n_oos - peer_device->rs_failed) == 0))
+		{
+			DbgPrint("_WIN32_v9_CHECK: n_oos=%d rs_failed=%d. Ignore assert ##########\n", n_oos, peer_device->rs_failed);
+		}
+#else
 		D_ASSERT(peer_device, (n_oos - peer_device->rs_failed) == 0);
+#endif
 
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T)
 			khelper_cmd = "after-resync-target";
