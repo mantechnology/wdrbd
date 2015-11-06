@@ -391,11 +391,11 @@ do { \
 #define WDRBD_TRACE_TR
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
-#define WDRBD_TRACE_SOK
+#define WDRBD_TRACE_SK
 #define WDRBD_TRACE_SEM
-#define WDRBD_TRACE_IP4 DbgPrint
-#define WDRBD_TRACE_SB 
-#define WDRBD_TRACE_CO DbgPrint
+#define WDRBD_TRACE_IP4
+#define WDRBD_TRACE_SB
+#define WDRBD_TRACE_CO
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop

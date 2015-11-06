@@ -1583,11 +1583,7 @@ struct drbd_device {
 
 struct drbd_bm_aio_ctx {
 	struct drbd_device *device;
-#ifdef _WIN32_V9_PATCH_1
 	struct list_head list; /* on device->pending_bitmap_io */
-#else
-	struct list_head list; /* on device->pending_bitmap_io */;
-#endif
 #ifdef _WIN32_V9
 	ULONG_PTR start_jif;
 #else

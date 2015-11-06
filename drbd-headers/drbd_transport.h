@@ -131,6 +131,9 @@ struct drbd_transport {
 	/* These members are intended to be updated by the transport: */
 	unsigned int ko_count;
 	unsigned long flags;
+#ifdef _WIN32_V9
+    long listening;
+#endif
 };
 
 struct drbd_transport_stats {

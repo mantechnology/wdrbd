@@ -481,22 +481,12 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 {
 // [choi] V8 drbd_setbufsize 적용
 #ifdef _WIN32
-#ifdef _WIN32_SEND_BUFFING
-	if (snd)
-	{
-		socket->sk_linux_attr->sk_sndbuf = snd;
-	}
-	else {  // kmpak temp.//JHKIM: 언제 사용되는지 재확인.
-		socket->sk_linux_attr->sk_sndbuf = 16384;
-	}
-#else
     if (snd) { 
         socket->sk_linux_attr->sk_sndbuf = snd;
     }
     else {  // kmpak temp.
         socket->sk_linux_attr->sk_sndbuf = 16384;
     }
-#endif
 
     if (rcv) {
         ControlSocket(socket->sk, WskSetOption, SO_RCVBUF, SOL_SOCKET,
@@ -548,7 +538,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		if (nc->sndbuf_size > 0)
 		{
 			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
-			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
+			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF; // kmpak shared lock 잡아두고 이렇게 assign 하면 문제 없을까?
 		}
 	}
 #endif
@@ -703,7 +693,7 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
 	h.length = 0;
 
 	err = _dtt_send(tcp_transport, socket, &h, sizeof(h), msg_flags);
-
+    WDRBD_TRACE_SK("send first packet %s socket(0x%p) err(%d)\n", (cmd==P_INITIAL_DATA)? "P_INITIAL_DATA" : "P_INITIAL_META", socket, err);
 	return err;
 }
 
@@ -713,30 +703,43 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
-#ifdef _WIN32
-	SIZE_T		out = 0;
-	NTSTATUS	Status;
-#else
 	int rr;
 	char tb[4];
-#endif
+
 	if (!*socket)
 		return false;
 
 #ifdef _WIN32 // 기존 구현 유지 ??? 소켓의 상태를 확인하고 상태가 유효하지 않으면 free 시키는 로직 => 소켓 상태 확인이...BACKLOG 정보 확인으로 가능한가?... history 를 알려주세요~...
-	Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
-	if (NT_SUCCESS(Status))	{
-		if (out > 0) {
-			WDRBD_INFO("socket(0x%p), ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->name, out); // _WIN32
-		}
-		return true;
+#if 0   // kmpak. sekim과 협의 후 이 로직으로 socket ok test하기에는 의도가 다르다고 결론.
+    // 하지만 다음의 로직은 보강해야 하므로 우선 disable
+    if ((rr = SendLocal((*socket)->sk, tb, 1, 0, 3000)) != 1)
+    {
+        WDRBD_INFO("socket(%s) is ok. but send error(%d)\n", (*socket)->name, rr);
+        sock_release(*socket);
+        *socket = NULL;
+        return false;
+    }
+
+    if ((rr = Receive((*socket)->sk, tb, 1, 0, 5000)) != 1)
+    {
+        WDRBD_INFO("socket(%s) is ok. but recv timeout(%d)!\n", (*socket)->name, rr);
+        sock_release(*socket);
+        *socket = NULL;
+        return false;
+    }
+#else
+    SIZE_T out = 0;
+    NTSTATUS Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
+	if (!NT_SUCCESS(Status)) {
+        WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
+        sock_release(*socket);
+        *socket = NULL;
+        return false;
 	}
-	else {
-		WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
-		sock_release(*socket);
-		*socket = NULL;
-		return false;
-	}
+
+    WDRBD_TRACE_SK("socket(0x%p) wsk(0x%p) ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->sk, (*socket)->name, out); // _WIN32
+#endif
+    return true;
 #else
 	rr = dtt_recv_short(*socket, tb, 4, MSG_DONTWAIT | MSG_PEEK);
 
@@ -774,8 +777,9 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 	good += dtt_socket_ok_or_free(socket1);
 	good += dtt_socket_ok_or_free(socket2);
 
-#ifdef _WIN32_V9_PATCH_1 // JHKIM: 일단 임시초치를 사용하고 추후 패치 내용을 적용예정 -> 일단 패치방식을 우선 적용힘-> 연결 이후 송신 오류와 같은 유사문제 발생하여 다시 V9 수정본을 반영함
-#ifdef _WIN32_V9 //JHKIM:임시조치: 연결된 소켓이 정상인지 실제 통신으로 재확인한다. 추후 재정리.
+#if 0 // kmpak move to dtt_socket_ok_or_free
+    //def _WIN32_V9_PATCH_1 // JHKIM: 일단 임시초치를 사용하고 추후 패치 내용을 적용예정 -> 일단 패치방식을 우선 적용힘-> 연결 이후 송신 오류와 같은 유사문제 발생하여 다시 V9 수정본을 반영함
+#if _WIN32_V9 //JHKIM:임시조치: 연결된 소켓이 정상인지 실제 통신으로 재확인한다. 추후 재정리.
 	int ret;
 	char buf = 0x77;
 
@@ -871,14 +875,14 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 #ifdef _WIN32_V9
 	struct sockaddr_storage_win my_addr, peer_addr;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	WSK_SOCKET*	paccept_socket = NULL;
+	PWSK_SOCKET paccept_socket = NULL;
 #else
 	struct sockaddr_storage peer_addr;
 #endif
 	int connect_int, peer_addr_len, err = 0;
 	long timeo;
 #ifdef _WIN32_V9
-	struct socket *s_estab = NULL; //리턴하기 전 *socket = s_estab; 에서 s_estab 가 잠재적으로 초기화 안됬을 수 있다고 컴파일 에러를 뱉어낸다. 
+    struct socket *s_estab = NULL; //리턴하기 전 *socket = s_estab; 에서 s_estab 가 잠재적으로 초기화 안됬을 수 있다고 컴파일 에러를 뱉어낸다. 
 #else
 	struct socket *s_estab;
 #endif
@@ -901,10 +905,12 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 
 retry:
 #ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_XXX
+    atomic_set(&(transport->listening), 1);
 	// WIN32_V9_PATCH_1_CHECK: waiter->wait 가 적절한가?
 	wait_event_interruptible_timeout(timeo, waiter->wait, 
 		(path = dtt_wait_connect_cond(transport)),
 			timeo);
+    atomic_set(&(transport->listening), 0);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->wait, 
 			(path = dtt_wait_connect_cond(transport)), 
@@ -928,7 +934,6 @@ retry:
 	if (path->socket) {
 		s_estab = path->socket;
 		path->socket = NULL;
-
 	} else if (listener->listener.pending_accepts > 0) { //pending_accepts 가 AcceptEvent callback에서 증가된다.
 		listener->listener.pending_accepts--;
 		spin_unlock_bh(&listener->listener.waiters_lock);
@@ -1069,6 +1074,7 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 	rcu_read_unlock();
 
 	err = dtt_recv_short(socket, h, header_size, 0);
+    WDRBD_TRACE_SK("socket(0x%p) err(%d) header_size(%d)\n", socket, err, header_size);
 	if (err != header_size) {
 		if (err >= 0)
 			err = -EIO;
@@ -1085,73 +1091,59 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 #ifdef _WIN32_V9
 NTSTATUS WSKAPI
 dtt_incoming_connection (
-_In_  PVOID         SocketContext,
-_In_  ULONG         Flags,
-_In_  PSOCKADDR     LocalAddress,
-_In_  PSOCKADDR     RemoteAddress,
-_In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+    _In_  PVOID         SocketContext,
+    _In_  ULONG         Flags,
+    _In_  PSOCKADDR     LocalAddress,
+    _In_  PSOCKADDR     RemoteAddress,
+    _In_opt_  PWSK_SOCKET AcceptSocket,
+    _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
+    _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 #else
 static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32_V9
-#if 0 // JHKIM:원본 방식 변경부분 // _WIN32_V9_PATCH_1: 다시 패치된 원본을 유지하는 방법으로 시험
+    struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
+
+    if (!s_estab)
+    {
+        return STATUS_REQUEST_NOT_ACCEPTED;
+    }
+
+    s_estab->sk = AcceptSocket;
+    sprintf(s_estab->name, "estab_sock");
+    s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
+
+    if (s_estab->sk_linux_attr)
+    {
+        s_estab->sk_linux_attr->sk_sndbuf = 16384;  // kmpak temp.
+    }
+    else
+    {
+        kfree(s_estab);
+        return STATUS_REQUEST_NOT_ACCEPTED;
+    }
+#if 1 // JHKIM:원본 방식 변경부분 // _WIN32_V9_PATCH_1: 다시 패치된 원본을 유지하는 방법으로 시험
     // 일단 V8 구현을 따라간다. => state change 관련 구현에 대한 V9 포팅 여부 추후 검토 필요. => Accept Event Callback 방식 적용. 2015.9.9 sekim
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
 
     spin_lock(&listener->listener.waiters_lock);
     struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
-    if (!waiter)
-    {
-        // 해당 노드의 connection을 위한 스레드를 만들기도 전에 해당 노드로 부터 try connect이 되는 경우가 있다. // JHKIM: 리스트에 등록이 안될텐데, 이런 경우가 발생을 하는가?
-        // 이런 경우는 이번 타이밍때는 넘기고 다음번 incoming시 세션을 맺어주도록 한다.
-        spin_unlock(&listener->listener.waiters_lock);
-#ifdef _WIN32_CHECK_5 // JHKIM: 다음 동작이 필요한가? 
-		// 참고: https://msdn.microsoft.com/en-us/library/windows/hardware/ff571120(v=vs.85).aspx
-		if (NULL == AcceptSocket)
-		{
-			WskCloseSocket(AcceptSocket);
-		}
-#endif
-		return STATUS_REQUEST_NOT_ACCEPTED; // rejected the incoming connection
-    }
+    struct dtt_path * path = container_of(waiter, struct dtt_path, waiter);
 
-    struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
-    if (s_estab)
+    if (path)
     {
-        s_estab->sk = AcceptSocket;
-        sprintf(s_estab->name, "estab_sock");
-        s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
-
-        if (s_estab->sk_linux_attr)
-        {
-            s_estab->sk_linux_attr->sk_sndbuf = 16384;  // kmpak temp.
-        }
-        else
-        {
-            kfree(s_estab);
-        }
-    }
-#ifdef _WIN32_V9_PATCH_1_CHECK
-    struct dtt_waiter * w = waiter;
-    if (!w->socket && s_estab)
-    {
-        w->socket = s_estab;
+        path->socket = s_estab;
     }
     else
-#else
-	// 자료구조변경됨 일단 무시
-	DbgPrint("_WIN32_V9_PATCH_1: dtt_incoming_connection!\n");
-#endif
     {
         listener->listener.pending_accepts++;
         listener->paccept_socket = AcceptSocket;
     }
     wake_up(&waiter->wait);
 	spin_unlock(&listener->listener.waiters_lock);
+    WDRBD_TRACE_SK("waiter(0x%p) s_estab(0x%p) wsk(0x%p) wake!!!!\n", waiter, s_estab, AcceptSocket);
 
 	return STATUS_SUCCESS;
 #else
@@ -1179,9 +1171,8 @@ static void dtt_incoming_connection(struct sock *sock)
 #ifdef _WIN32_V9
 		if (!waiter)
 		{
-			DbgPrint("DRBD_TEST: STATUS_REQUEST_NOT_ACCEPTED 1!!!\n");
 			spin_unlock(&listener->listener.waiters_lock);
-			return STATUS_REQUEST_NOT_ACCEPTED;
+			return STATUS_REQUEST_NOT_ACCEPTED; 
 		}
 #endif
 #ifdef _WIN32_V9_PATCH_1
@@ -1204,7 +1195,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		return STATUS_SUCCESS;
 #endif
 	}
-	DbgPrint("DRBD_TEST: STATUS_REQUEST_NOT_ACCEPTED 2!!!\n");
+	
 #ifdef _WIN32_V9
 	//WskCloseSocket(AcceptSocket);
 	return STATUS_REQUEST_NOT_ACCEPTED;
@@ -1249,10 +1240,57 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 // [choi] V8 prepare_listen_socket() 적용. WSK_ACCEPT_EVENT_CALLBACK은 disable 시켜둠. 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
+// A listening socket's WskInspectEvent event callback function
+WSK_INSPECT_ACTION WSKAPI
+dtt_inspect_incoming(
+    PVOID SocketContext,
+    PSOCKADDR LocalAddress,
+    PSOCKADDR RemoteAddress,
+    PWSK_INSPECT_ID InspectID
+)
+{
+    // Check for a valid inspect ID
+    if (NULL == InspectID)
+    {
+        return WskInspectReject;
+    }
+
+    WSK_INSPECT_ACTION action = WskInspectAccept;
+    struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
+
+    spin_lock(&listener->listener.waiters_lock);
+    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
+    if (!waiter || !atomic_read(&waiter->transport->listening))
+    {
+        action = WskInspectReject;
+        goto out;
+    }
+
+    atomic_set(&waiter->transport->listening, 0);
+out:
+    spin_unlock(&listener->listener.waiters_lock);
+ 
+    return action;
+}
+
+// A listening socket's WskAbortEvent event callback function
+NTSTATUS WSKAPI
+dtt_abort_inspect_incoming(
+    PVOID SocketContext,
+    PWSK_INSPECT_ID InspectID
+)
+{
+    // Terminate the inspection for the incoming connection
+    // request with a matching inspect ID. To test for a matching
+    // inspect ID, the contents of the WSK_INSPECT_ID structures
+    // must be compared, not the pointers to the structures.
+    return STATUS_SUCCESS;
+}
+
 const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
 	dtt_incoming_connection,
-    NULL, // WskInspectEvent is required only if conditional-accept is used.
-    NULL  // WskAbortEvent is required only if conditional-accept is used.
+    dtt_inspect_incoming,       // WskInspectEvent is required only if conditional-accept is used.
+    dtt_abort_inspect_incoming  // WskAbortEvent is required only if conditional-accept is used.
 };
 #endif
 static int dtt_create_listener(struct drbd_transport *transport,
@@ -1262,7 +1300,6 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #ifdef _WIN32
 	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	int err, sndbuf_size, rcvbuf_size, addr_len;
 	struct sockaddr_storage my_addr;
@@ -1313,6 +1350,16 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = -1;
         goto out;
     }
+
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+    NTSTATUS status = SetConditionalAccept(s_listen->sk, 1);
+	if (!NT_SUCCESS(status))
+    {
+		WDRBD_ERROR("Failed to set SO_CONDITIONAL_ACCEPT. err(0x%x)\n", status);
+        err = status;
+        goto out;
+    }
+#endif
     s_listen->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '72DW');
     if (!s_listen->sk_linux_attr)
     {
@@ -1339,7 +1386,19 @@ static int dtt_create_listener(struct drbd_transport *transport,
     status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
     if (!NT_SUCCESS(status))
     {
+        WDRBD_ERROR("Failed to socket Bind(). err(0x%x)\n", status);
         err = status;
+        goto out;
+    }
+    else
+    {
+        status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
+    	if (!NT_SUCCESS(status))
+        {
+            WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
+    		err = status;
+            goto out;
+    	}
     }
 #else
 	addr_len = addr->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6)
@@ -1361,20 +1420,16 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #endif
 
 	listener->s_listen = s_listen;
-#ifdef _WIN32 // _WIN32_V9_PATCH_1
-	// 이 시점에 event callback을 설정하면 안된다...
-	// dtt_create_listener 가 완료되고, drbd_get_listener 안에서 초기화 될 코드가 다 수행되고 난 후 이벤트 콜백을 설정해야 
+
+#ifdef WSK_ACCEPT_EVENT_CALLBACK
+	// 이 시점에 event callback을 설정하면 안된다... dtt_create_listener 가 완료되고
+    // drbd_get_listener 안에서 초기화 될 코드가 다 수행되고 난 후 이벤트 콜백을 설정해야 
 	// event callback(dtt_incoming_connection) 안의 코드수행이 안전하다.
 
-	// _WIN32_V9_PATCH_1_CHECK: JHKIM: 패치 오리지널과 유사하게 시험하기위해 일단 원복하여 시험. 정성동작중...
-    what = "enable event callbacks";
-    NTSTATUS s = STATUS_UNSUCCESSFUL;
-    s = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
-    if (!NT_SUCCESS(s)) {
-        err = s;
-        goto out;
-    }
+    // kmpak 2015.11.03 소켓 bind 후에는 사용해도 되는 것을 확인하여
+    // bind 직후 WSK_EVENT_ACCEPT 설정하였습니다.
 #endif
+
 #ifndef _WIN32
 	write_lock_bh(&s_listen->sk->sk_callback_lock);
 	listener->original_sk_state_change = s_listen->sk->sk_state_change;
@@ -1423,7 +1478,6 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 		}
 #ifdef _WIN32_V9_PATCH_1 // : JHKIM: 확인!!!!
     	//kfree(waiter);
-		DbgPrint("_WIN32_V9_PATCH_1_CHECK: dtt_put_listeners: check waiter free???\n");
 #endif
 	}
 }
@@ -1717,7 +1771,7 @@ randomize:
 #ifdef WSK_ACCEPT_EVENT_CALLBACK // dtt_put_listener 하기 전에 이벤트 콜백 해제
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("SetEventCallbacks: WSK_EVENT_DISABLE failed=0x%x\n", status); // EVENTLOG
+		WDRBD_ERROR("WSK_EVENT_DISABLE failed=0x%x\n", status);
 		//goto out; // listener 를 해제해야 하므로 일 단 진행 한다.
 	}
 #endif
@@ -1735,18 +1789,18 @@ randomize:
 	WDRBD_TRACE_CO("[%p]  dtt_connect ok----------!!!!!!!!!!!!!!\n", KeGetCurrentThread());
 #ifdef _WIN32
     LONG InputBuffer = 1;
-	status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
-	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
-		goto out;
-	}
-#ifdef _WIN32_CHECK_6 // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
-	status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL );
-	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
-		goto out;
-	}
-#endif
+    status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+        goto out;
+    }
+    // _WIN32_CHECK_6 // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
+    // kmpak. 필요함
+    status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+        goto out;
+    }
 #else
 	dsocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 	csocket->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
@@ -2206,7 +2260,7 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 		}
 		else
 		{
-			WDRBD_WARN("No send_buffering stream(%d)\n", i);
+			//WDRBD_WARN("No stream(channel:%d)\n", i);
 		}
 	}
 	return;

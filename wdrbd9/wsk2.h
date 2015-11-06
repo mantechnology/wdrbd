@@ -199,13 +199,22 @@ extern
 void ReleaseProviderNPI();
 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-
+extern
 NTSTATUS
 NTAPI
 SetEventCallbacks(
 __in PWSK_SOCKET    Socket,
 __in LONG			mask
 );
+
+extern
+NTSTATUS
+NTAPI
+SetConditionalAccept(
+    __in PWSK_SOCKET ListeningSocket,
+    __in ULONG       Mode
+);
+
 extern
 NTSTATUS WSKAPI
 AcceptEvent(

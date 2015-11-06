@@ -519,7 +519,7 @@ Send(
 				}
 				else
 				{
-					WDRBD_WARN("tx error(%s)\n", GetSockErrorString(Irp->IoStatus.Status));
+					WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
 					switch (Irp->IoStatus.Status)
 					{
 						case STATUS_IO_TIMEOUT:
@@ -1335,6 +1335,32 @@ __in LONG			mask
 
     IoFreeIrp(Irp);
     return Status;
+}
+
+/**
+ * applies to whether conditional acceptance mode is enabled on a listening socket
+ * @Mode: conditional accept mode
+ *  0 - Disable
+ *  1 - Enable
+ */
+NTSTATUS
+NTAPI
+SetConditionalAccept(
+    __in PWSK_SOCKET ListeningSocket,
+    __in ULONG       Mode
+)
+{
+    return ControlSocket(
+        ListeningSocket,
+        WskSetOption,           // RequestType
+        SO_CONDITIONAL_ACCEPT,  // ControlCode
+        SOL_SOCKET,	            // level
+        sizeof(ULONG),          // InputSize
+        &Mode,                  // NULL
+        0,                      // OutputSize
+        NULL,                   // OutputBuffer
+        NULL                    // OutputSizeReturned
+    );
 }
 
 NTSTATUS WSKAPI
