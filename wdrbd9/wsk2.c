@@ -506,6 +506,9 @@ Send(
 						goto retry;
 					}
 				}
+
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EAGAIN;
 				break;
 
@@ -533,6 +536,8 @@ Send(
 				break;
 
 			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EINTR;
 				break;
 
@@ -554,12 +559,6 @@ Send(
 			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
-	}
-
-	if (BytesSent == -EINTR || BytesSent == -EAGAIN)
-	{
-		IoCancelIrp(Irp);
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 	}
 
 	IoFreeIrp(Irp);
@@ -629,8 +628,8 @@ SendLocal(
 		switch (Status)
 		{
 		case STATUS_TIMEOUT:
-			//IoCancelIrp(Irp);
-			//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			IoCancelIrp(Irp);
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 			BytesSent = -EAGAIN;
 			break;
 
@@ -809,14 +808,9 @@ LONG NTAPI Receive(
             else
             {
                 WDRBD_INFO("RECV(%s) multiWait err(0x%x:%s)\n", thread->comm, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
-                switch (Irp->IoStatus.Status)
+                if(Irp->IoStatus.Status)
                 {
-                case STATUS_IO_TIMEOUT:
-                    BytesReceived = -EAGAIN; // possiable???
-                    break;
-                default:
                     BytesReceived = -ECONNRESET;
-                    break;
                 }
             }
             break;
