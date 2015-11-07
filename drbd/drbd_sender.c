@@ -619,7 +619,8 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
 	
 #ifdef _WIN32_V9_PATCH_1 // _CHECK: drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜! 수정할 것!!
-	DbgPrint("WIN32_V9_PATCH_1_CHECK: read_for_csum check!!\n");	
+	DbgPrint("WIN32_V9_PATCH_1_CHECK: read_for_csum check!!\n");
+	BUG();
 #else
 	if (size) {
 		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
