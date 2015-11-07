@@ -382,10 +382,22 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 	mxb = rcu_dereference(transport->net_conf)->max_buffers;
 	rcu_read_unlock();
 
+#ifdef _WIN32_V9 // JHKIM: TEST용, 추후제거
+	{
+		static int x = 0;
+		if (x++ < 1)
+			DbgPrint("DRBD_TEST:drbd_alloc_pages: drbd_pp_vacant=%d max_buffers=%d num=%d\n", drbd_pp_vacant, mxb, number);
+	}
+#endif
 	if (atomic_read(&connection->pp_in_use) < mxb)
 		mem = __drbd_alloc_pages(number);
-
+#ifdef _WIN32_V9 //JHKIM: TEST
+	int loop = 0;
+#endif
 	while (mem == NULL) {
+#ifdef _WIN32_V9
+		drbd_warn(connection, "(loop:%d) drbd_pp_vacant(%d), wait for available pages ######\n", loop++, drbd_pp_vacant);
+#endif
 		if (atomic_read(&connection->pp_in_use) < mxb) {
 			mem = __drbd_alloc_pages(number);
 			if (mem)
@@ -399,7 +411,11 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 			drbd_warn(connection, "drbd_alloc_pages interrupted!\n");
 			break;
 		}
+#ifdef _WIN32_V9
+		schedule(&drbd_pp_wait, HZ, __FUNCTION__, __LINE__);
+#else
 		schedule(&drbd_pp_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#endif
 	}
 	
 	if (mem) {
@@ -1887,12 +1903,14 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 		goto fail;
 
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
+#ifdef _WIN32
+		drbd_info(device, "Fault injection: Not supported\n");
+#else
 		struct page *page;
 		unsigned long *data;
 		drbd_err(device, "Fault injection: Corrupting data on receive, sector %llu\n",
 				d->sector);
 		page = peer_req->page_chain.head;
-#ifndef _WIN32 // peer_req->pages 의 kmap 부분은 제거=> V8의 구현
 		data = kmap(page) + page_chain_offset(page);
 		data[0] = ~data[0];
 		kunmap(page);

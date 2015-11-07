@@ -145,7 +145,7 @@ struct drbd_transport_stats {
 
 /* argument to ->recv_pages() */
 struct drbd_page_chain_head {
-	struct page *head;
+	struct page *head; // WIN32_V9:JHKIM: 주의: used by void pointer to memory which alloccated by malloc()
 	unsigned int nr_pages;
 };
 
@@ -297,7 +297,11 @@ static inline void drbd_alloc_page_chain(struct drbd_transport *t,
 
 static inline void drbd_free_page_chain(struct drbd_transport *transport, struct drbd_page_chain_head *chain, int is_net)
 {
+#ifdef _WIN32_V9 
+	drbd_free_pages(transport, chain->nr_pages, is_net);
+#else
 	drbd_free_pages(transport, chain->head, is_net);
+#endif
 	chain->head = NULL;
 	chain->nr_pages = 0;
 }
