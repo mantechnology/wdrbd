@@ -166,12 +166,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL)
 	{
-		static int tmp = 0;
-		if (tmp++ < 500) // V9_XXX!!
-		{
-			WDRBD_TRACE_SB("send buf: disabled. sb thread=%p bab=%p (tmp:%d)\n", buffering_attr->send_buf_thread_handle, buffering_attr->bab, tmp);
-		}
-		return Send(socket->sk, buf, size, 0, timeout, NULL, NULL, 0);
+		return Send(socket->sk, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
 	unsigned long long  tmp = (long long) buffering_attr->bab->length * 99;
@@ -318,8 +313,16 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 
 		if (ret != tx_sz)
 		{
-			WDRBD_WARN("count mismatch. request=(%d) sent=(%d)\n", tx_sz, ret);
-			// will be recovered by upper drbd protocol 
+			if (ret < 0)
+			{
+				WDRBD_WARN("Send Error(%d)\n", ret);
+				break;
+			}
+			else
+			{
+				WDRBD_WARN("Tx mismatch. req(%d) sent(%d)\n", tx_sz, ret);
+				// will be recovered by upper drbd protocol 
+			}
 		}
 	}
 	return 0;

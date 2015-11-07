@@ -1958,6 +1958,12 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 	do {
 		int sent;
 #ifdef _WIN32
+		if (stream == DATA_STREAM)
+		{
+			// ignore rcu_dereference
+			transport->ko_count = transport->net_conf->ko_count;
+		}
+
 #ifdef _WIN32_SEND_BUFFING 
 		sent = send_buf(transport, stream, socket, (void *)((unsigned char *)(page) +offset), len);
 		// WIN32_SEND_ERR_FIX: we_should_drop_the_connection 부분을 send_buf 내에서 처리, 
@@ -1974,7 +1980,12 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 		sent = socket->ops->sendpage(socket, page, offset, len, msg_flags);
 #endif
 		if (sent <= 0) {
-#ifndef _WIN32_SEND_BUFFING
+#ifdef _WIN32_SEND_BUFFING
+			if (sent == -EAGAIN) 
+			{
+				break;
+			}
+#else
 			if (sent == -EAGAIN) {
 				if (drbd_stream_send_timed_out(transport, stream))
 					break;
