@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <install4j version="5.1.11" transformSequenceNumber="4">
-  <directoryPresets config="E:/wdrbd_source/makeinstall/drbd/x64/x64.txt" />
+  <directoryPresets config="E:/wdrbd_9/build/drbd/x64" />
   <application name="${compiler:productName}" distributionSourceDir="" applicationId="1928-3996-4668-9110" mediaDir="${compiler:target}" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" compression="6" lzmaCompression="false" pack200Compression="false" excludeSignedFromPacking="true" commonExternalFiles="false" createMd5Sums="true" shrinkRuntime="true" shortName="${compiler:shartName}" publisher="Man Technology Inc." publisherWeb="http://www.mantech.co.kr" version="${compiler:productVersion}" allPathsRelative="false" backupOnSave="false" autoSave="false" convertDotsToUnderscores="true" macSignature="????" installerName="" javaMinVersion="1.5" javaMaxVersion="" allowBetaVM="false" jdkMode="runtimeJre" jdkName="">
     <languages skipLanguageSelection="false" languageSelectionInPrincipalLanguage="false">
       <principalLanguage id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
@@ -31,6 +31,8 @@
       <fileset name="Windows 7 x64" id="557" customizedId="" />
       <fileset name="Windows 8 x86" id="587" customizedId="" />
       <fileset name="Windows 8 x64" id="559" customizedId="" />
+      <fileset name="Windows 8.1 x86" id="1496" customizedId="" />
+      <fileset name="Windows 8.1 x64" id="1498" customizedId="" />
     </filesets>
     <roots>
       <root id="584" fileset="583" location="" />
@@ -39,6 +41,8 @@
       <root id="558" fileset="557" location="" />
       <root id="588" fileset="587" location="" />
       <root id="560" fileset="559" location="" />
+      <root id="1497" fileset="1496" location="" />
+      <root id="1499" fileset="1498" location="" />
     </roots>
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
@@ -50,6 +54,8 @@
       <mountPoint id="561" root="558" location="" mode="755" />
       <mountPoint id="626" root="588" location="" mode="755" />
       <mountPoint id="562" root="560" location="" mode="755" />
+      <mountPoint id="1500" root="1497" location="" mode="755" />
+      <mountPoint id="1501" root="1499" location="" mode="755" />
     </mountPoints>
     <entries>
       <dirEntry mountPoint="865" file="drbd/bin" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
@@ -77,6 +83,12 @@
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="562" file="drbd/x64/Win8Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win8" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="1500" file="drbd/x86/Win8.1Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win8.1Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="1501" file="drbd/x64/Win8.1Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win8.1Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
         <exclude />
       </dirEntry>
     </entries>
@@ -536,7 +548,11 @@ if(filesetName.startsWith("Windows"))
 {
     String osName;
     Float osVer = (Float)context.getVariable("os.floatver");
-    if (osVer &gt; 6.1f)
+    if (osVer &gt;= 6.3f)
+    {
+        osName = "Windows 8.1";
+    }
+    else if (osVer == 6.2f)
     {
         osName = "Windows 8";
     }
@@ -1238,6 +1254,7 @@ return true;</string>
         <entry location=".i4j_fileset_580" fileType="regular" />
         <entry location=".i4j_fileset_557" fileType="regular" />
         <entry location=".i4j_fileset_559" fileType="regular" />
+        <entry location=".i4j_fileset_1498" fileType="regular" />
       </exclude>
       <variables />
       <autoUpdate useMinUpdatableVersion="false" minUpdatableVersion="" useMaxUpdatableVersion="false" maxUpdatableVersion="">
@@ -1255,7 +1272,7 @@ return true;</string>
         <entry location=".i4j_fileset_583" fileType="regular" />
         <entry location=".i4j_fileset_585" fileType="regular" />
         <entry location=".i4j_fileset_587" fileType="regular" />
-        <entry location=".i4j_fileset_589" fileType="regular" />
+        <entry location=".i4j_fileset_1496" fileType="regular" />
       </exclude>
       <variables />
       <autoUpdate useMinUpdatableVersion="false" minUpdatableVersion="" useMaxUpdatableVersion="false" maxUpdatableVersion="">
