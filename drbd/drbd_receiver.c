@@ -523,7 +523,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
-#ifdef _WIN32_V9
+#if 0 // CHOI: 참고를 위해 남겨둠.
 	{
 		// _WIN32_V9_DW596: DW-596 이슈 보강부분
 		// JHKIM: DW-594, DW-596 임시해결, 일단 primary 시 볼륨 접근이 가능하도록 일단 임시조치! 규명되야 함!!
@@ -625,7 +625,9 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 #endif
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-	drbd_free_pages(&peer_device->connection->transport, (peer_req->i.size + PAGE_SIZE - 1) >> PAGE_SHIFT, is_net); // V9_CHOI V8 적용
+	// drbd_free_pages(&peer_device->connection->transport, (peer_req->i.size + PAGE_SIZE - 1) >> PAGE_SHIFT, is_net); // V9_CHOI V8 적용
+    // CHOI: pp_in_use 값 불일치 문제 발생. v8과 달라진 점 분석 필요. 리눅스 원본 코드로 원복함. 
+    drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
