@@ -1281,7 +1281,6 @@ int del_timer_sync(struct timer_list *t)
 }
 
 #ifdef _WIN32_V9
-#ifdef _WIN32_CHECK_TIMER
 /**
  * timer_pending - is a timer pending?
  * @timer: the timer in question
@@ -1298,19 +1297,15 @@ static __inline int timer_pending(const struct timer_list * timer)
         && !IsListEmpty(&timer->ktimer.TimerListEntry.Flink)
         && !KeReadStateTimer(&timer->ktimer);
 }
-#endif
 
 static int
 __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
-#ifdef _WIN32_CHECK_TIMER // JHKIM: 타이머는 설정되야함. 일단 펜딩처리 부부을 무시.
     if (!timer_pending(timer) && pending_only)
     {
 		//_WIN32_CHECK // JHKIM: 0으로 리턴해도 되는가? Win 에서는 타이머 적재가 되야할 듯.
-		DbgPrint("DRBD_TEST: __mod_timer: timer ignored. check please.\n"); // JHKIM
         return 0;
     }
-#endif
 
     LARGE_INTEGER nWaitTime = { .QuadPart = 0 };
     ULONG_PTR current_milisec = jiffies;
@@ -1332,8 +1327,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
     }
 
 #ifdef DBG
-//    WDRBD_TRACE("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
-//        timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
+    WDRBD_TRACE_TM("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",
+        timer->name, timer, current_milisec, timer->expires, timer->expires - current_milisec);
 #endif
     KeSetTimer(&timer->ktimer, nWaitTime, &timer->dpc);
     return 1;
@@ -1358,11 +1353,9 @@ int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
 #ifdef _WIN32_V9
-#ifdef _WIN32_CHECK_TIMER // _WIN32_CHECK: JHKIM: Windows 에서는 timer->expires 가 재계산 되지 않기에 expires 와 동일하다. 여기서 return 하면 타이머 적재가 안되어 sender 스레드의 connect_work 콜백이 이 트리거링 되지 않는다.
     if (timer_pending(timer) && timer->expires == expires)
     	return 1;
 
-#endif
     return __mod_timer(timer, expires, false);
 #else
 	LARGE_INTEGER nWaitTime;
@@ -1484,7 +1477,7 @@ void del_gendisk(struct gendisk *disk)
 
 	if (bab)
 	{
-		WDRBD_WARN("Socket(%s) bab free\n", sock->name);
+		//WDRBD_WARN("Socket(%s) bab free\n", sock->name);
 		if (bab->static_big_buf)
 		{
 			kfree(bab->static_big_buf);

@@ -42,7 +42,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 #else
 		mutex_init(&ring->cs);
 #endif
-		WDRBD_INFO("bab(%s) size(%d)\n", name, length);
+		//WDRBD_INFO("bab(%s) size(%d)\n", name, length);
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
@@ -65,10 +65,7 @@ void destroy_ring_buffer(ring_buffer *ring)
 {
 	if (ring)
 	{
-		if (ring->static_big_buf)
-		{
 			kfree(ring->static_big_buf);
-		}
 		ExFreePool(ring);
 	}
 }

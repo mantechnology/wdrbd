@@ -1064,15 +1064,9 @@ start:
 			kref_debug_get(&connection->kref_debug, 11);
 			connection->connect_timer_work.cb = connect_work;
 			timeout = twopc_retry_timeout(resource, 0);
-#if 0 // def _WIN32_V9 // JHKIM: 1차 SS_NEED_CONNECTION 오류회피:connect_work 를 바로 처리하도록 조치 -> 효과 없음
-			drbd_debug(connection, "Waiting for %ums to avoid transaction "
-				"conflicts? No, right now!\n", jiffies_to_msecs(timeout));
-			connection->connect_timer.expires = 0;
-#else
 			drbd_debug(connection, "Waiting for %ums to avoid transaction "
 				"conflicts\n", jiffies_to_msecs(timeout));
 			connection->connect_timer.expires = jiffies + timeout;
-#endif
 			add_timer(&connection->connect_timer);
 		}
 #ifdef _WIN32_V9 // JHKIM: 2차 SS_NEED_CONNECTION 오류회피:connect_work 을 사용 안하는 노드들은 약간 대기 -> 효과 없음
@@ -1089,7 +1083,6 @@ start:
 			KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
 #endif
 		}
-		drbd_debug(connection, "Wait done.\n");
 #endif
 	} else {
 #ifdef _WIN32_V9 // DEBUG: 확인 후 제거
