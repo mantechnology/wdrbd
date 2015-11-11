@@ -3102,6 +3102,11 @@ int drbd_worker(struct drbd_thread *thi)
 			{
                 w->cb(w, 0);
 			}
+			else
+			{
+				// JHKIM: 발생 빈도 분석용. 안정화 단계에서 제거요망.
+				drbd_warn(resource, "Worker got an NULL-callback list. (%s)->twopc_work.cb may be NULL(0x%x) !!!\n", resource->name, resource->twopc_work.cb);
+			}
 #else
 			w->cb(w, 0);
 #endif
