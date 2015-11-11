@@ -972,6 +972,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	do {\
 		int i = 0;\
 		int t = 0;\
+		int real_timeout = ret / 100; /*divide*/\
 		for (;;) {\
 			i++; \
 			if (condition)   \
@@ -979,13 +980,13 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				break;     \
 						}\
 			/*ret = schedule(&wq, ret, __FUNC__, __LINE__);*/\
-			if (++t > ret) \
+			if (++t > real_timeout) \
 						{\
 				ret = 0;\
 				break;\
 						}\
-			static int x=0; if(!(x++ %1000)) DbgPrint("DRBD_TEST:__wait_event_timeout: global x=%d time=%d ret=%d\n", x, t, ret); \
-			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
+			static int x=0; if(!(x++ %1000)) DbgPrint("DRBD_TEST:__wait_event_timeout(poll 0.1s): global x=%d time=%d ret=%d\n", x, t, ret); \
+			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
 				}  \
 		} while (0)
 
