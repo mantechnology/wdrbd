@@ -6878,11 +6878,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (resource->role[NOW] == R_PRIMARY && conn_highest_pdsk(connection) >= D_UNKNOWN)
 		conn_try_outdate_peer_async(connection);
 
-#ifdef _WIN32_V9
-    begin_state_change(resource, &irq_flags, CS_VERBOSE | CS_LOCAL_ONLY | CS_SERIALIZE);
-#else
 	begin_state_change(resource, &irq_flags, CS_VERBOSE | CS_LOCAL_ONLY);
-#endif
 	oc = connection->cstate[NOW];
 	if (oc >= C_UNCONNECTED) {
 		__change_cstate(connection, C_UNCONNECTED);
