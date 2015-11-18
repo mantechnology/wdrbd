@@ -186,23 +186,30 @@ fail:
 
 static void dtt_free_one_sock(struct socket *socket)
 {
-#ifdef _WIN32_V9
-	synchronize_rcu_w32_wlock(); // WIN32_CHECK_RCU: //JHKIM: 쓰기 락을 건다하더라도 크리티컬 섹션이 없기에 의미가 없다. LDRBD에서 synchronize_rcu 의미가 살아나려면 이 함수 진입 전에 어디서인가 rcu 관련 쓰기가 있다는 것이고 그 곳을 찿아 그 시점에서 처리해야 한다. 
-#endif
 	if (socket) {
 		// 함수 scope 를 벗어난 rcu 해제... V9 포팅필요.
 		// lock 획득이 제대로 되고 있는지...dtt_free_one_sock 호출 부 확인 필요 => rcu lock 에 대한 이해 부족으로 인한 주석.
 		// synchronize_rcu_w32_wlock 방식의 V8 구현 반영 
-		synchronize_rcu();
+		// synchronize_rcu();
+        // kmpak synchronize_rcu()를 대체할 만한 방식이 아직 마땅히 없어 임시로 5초 delay 사용
+        LARGE_INTEGER Interval = { .QuadPart = RELATIVE(SECONDS(3)) };
+        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+
 		kernel_sock_shutdown(socket, SHUT_RDWR);
+#ifdef _WIN32_SEND_BUFFING
+        struct _buffering_attr *attr = &socket->buffering_attr;
+        if (attr->send_buf_thread_handle)
+        {
+            KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
+            KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
+            attr->send_buf_thread_handle = NULL;
+        }
+#endif
 		sock_release(socket);
 #ifdef _WIN32_V9
 		return;
 #endif
 	}
-#ifdef _WIN32_V9
-	synchronize_rcu();
-#endif
 }
 
 static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free_op)
@@ -1838,9 +1845,7 @@ randomize:
 	dsocket->sk->sk_sndtimeo = timeout;
 	csocket->sk->sk_sndtimeo = timeout;
 #endif
-WDRBD_TRACE_RS("dsocket(0x%p), sk_linux_attr(0x%p), sk_sndbuf(%d)\n", dsocket, dsocket->sk_linux_attr, dsocket->sk_linux_attr->sk_sndbuf);
-WDRBD_TRACE_RS("csocket(0x%p), sk_linux_attr(0x%p), sk_sndbuf(%d)\n", csocket, csocket->sk_linux_attr, csocket->sk_linux_attr->sk_sndbuf);
-WDRBD_TRACE_RS("finished\n");
+
 	return 0;
 
 out_eagain:

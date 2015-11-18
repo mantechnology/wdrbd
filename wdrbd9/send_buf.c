@@ -25,7 +25,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		return NULL;
 	}
 
-	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, 'WD73');
+	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '37DW');
 	if (ring)
 	{
 		ring->mem = (char*) (ring + 1);
@@ -46,7 +46,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
-		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, 'WD74');
+		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '47DW');
 		if (!ring->static_big_buf)
 		{
 			ExFreePool(ring);
@@ -338,7 +338,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
-	WDRBD_INFO("start send_buf_thread\n");
+	//WDRBD_INFO("start send_buf_thread\n");
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
 	pTime = &nWaitTime;

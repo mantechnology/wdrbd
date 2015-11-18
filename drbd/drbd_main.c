@@ -2217,7 +2217,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-	WDRBD_TRACE_RS("_drbd_no_send_page: offset(%d) size(%d)\n", offset, size);
+	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 
 	//dumpHex((void*) page, 100, 16);
@@ -3769,7 +3769,8 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 #ifdef	_WIN32_SEND_BUFFING
 	// JHKIM: 주의! ops->free 에서 sock_release 하는데 이때 bab 가 반납된다. 
 	// 따리서 ops->free 보다 먼저 송신버퍼퍼링 스레드 2개를 종료시켜야 한다.
-	connection->transport.ops->stop_send_buffring(&connection->transport);
+    // kmpak. 이 시점에서 하면 CONNECTION_RESET로 상대방 소켓을 무효화 시킨다.
+	//connection->transport.ops->stop_send_buffring(&connection->transport);
 #endif
 	connection->transport.ops->free(&connection->transport, op);
 #ifndef _WIN32_V9 // _WIN32_SEND_BUFFING 작업중 코멘트 처리함.

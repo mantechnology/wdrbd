@@ -2814,7 +2814,6 @@ static int adm_detach(struct drbd_device *device, int force)
 #ifdef _WIN32
 	wait_event_interruptible(ret, device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
-WDRBD_TRACE("ret(%d)\n", ret);
 #else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
