@@ -112,7 +112,7 @@ static void push_msocket_entry(void * ptr)
         return;
     }
 
-    PPTR_ENTRY entry = (PPTR_ENTRY)ExAllocatePoolWithTag(NonPagedPool, sizeof(PTR_ENTRY), 'dbrd');
+    PPTR_ENTRY entry = (PPTR_ENTRY)ExAllocatePoolWithTag(NonPagedPool, sizeof(PTR_ENTRY), '57DW');
     entry->ptr = ptr;
 
     MvfAcquireResourceExclusive(&genl_multi_socket_res_lock);
