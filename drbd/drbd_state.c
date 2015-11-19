@@ -2440,7 +2440,7 @@ static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
 	status = KeWaitForSingleObject(&resource->connect_work_done, Executive, KernelMode, FALSE, &timeout);
 	if (status == STATUS_TIMEOUT) {
 		WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject 5000ms timeout\n");
-		KeSetEvent(&resource->connect_work_done, 0, FALSE);
+		//KeSetEvent(&resource->connect_work_done, 0, FALSE);
 	}
 	else {
 		KeResetEvent(&resource->connect_work_done);
