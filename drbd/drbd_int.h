@@ -1147,8 +1147,9 @@ struct drbd_resource {
 
 	struct drbd_work_queue work;
 	struct drbd_thread worker;
+#ifdef _WIN32_V9
 	KEVENT connect_work_done;
-
+#endif
 	struct list_head listeners;
 	spinlock_t listeners_lock;
 

@@ -2436,7 +2436,7 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 
 	return true;
 }
-
+#ifdef 	_WIN32_V9
 static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
 {
 	struct connect_work* pconnect_work = container_of(w, struct connect_work, w);
@@ -2445,15 +2445,19 @@ static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
 	NTSTATUS			status;
 
 	timeout.QuadPart = (-1 * 10000 * 5000);   // wait 5000 ms relative
-
-	pconnect_work->func(pconnect_work->receiver);
-	WDRBD_INFO("w_cb_receiver_thread_work: func end\n");
-
+	
+	//WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject\n");
 	status = KeWaitForSingleObject(&resource->connect_work_done, Executive, KernelMode, FALSE, &timeout);
 	if (status == STATUS_TIMEOUT) {
 		WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject 5000ms timeout\n");
+		KeSetEvent(&resource->connect_work_done, 0, FALSE);
 	}
-
+	else {
+		KeResetEvent(&resource->connect_work_done);
+	}
+	
+	pconnect_work->func(pconnect_work->receiver);
+	
 	kfree(pconnect_work);
 
 	return 0;
@@ -2468,13 +2472,14 @@ int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (
 		pconnect_work->func = func;
 		pconnect_work->receiver = thi;
 		drbd_queue_work(&resource->work, &pconnect_work->w);
+		//WDRBD_INFO("drbd_queue_receiver_thread_work: drbd_queue_work\n");
 	}
 	else {
 		WDRBD_INFO("drbd_queue_receiver_thread_work: kmalloc fail. queing fail\n");
 	}
 	return 0;
 }
-
+#endif
 
 /*
  * Perform after state change actions that may sleep.
@@ -2928,8 +2933,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 		/* Upon network configuration, we need to start the receiver */
 		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED) { // queueing drbd_thread_start sekim 2015.11.19
-			//drbd_thread_start(&connection->receiver);
+#ifdef 	_WIN32_V9
 			drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver);
+#else
+			drbd_thread_start(&connection->receiver);
+#endif
 		}
 
 		if (susp_fen[NEW]) {

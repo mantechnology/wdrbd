@@ -3646,9 +3646,9 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	setup_timer(&resource->queued_twopc_timer, queued_twopc_timer_fn, (unsigned long) resource);
 #endif
 	drbd_init_workqueue(&resource->work);
-	
-	KeInitializeEvent(&resource->connect_work_done, SynchronizationEvent, FALSE);
-	
+#ifdef _WIN32_V9	
+	KeInitializeEvent(&resource->connect_work_done, NotificationEvent, TRUE);
+#endif	
 	drbd_thread_init(resource, &resource->worker, drbd_worker, "worker");
 	drbd_thread_start(&resource->worker);
 	drbd_debugfs_resource_add(resource);

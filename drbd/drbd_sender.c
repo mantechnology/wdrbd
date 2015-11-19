@@ -3100,7 +3100,7 @@ int drbd_worker(struct drbd_thread *thi)
 #ifdef _WIN32_V9
 			if (w->cb != NULL)
 			{
-                w->cb(w, 0);
+				w->cb(w, 0);
 			}
 			else
 			{
