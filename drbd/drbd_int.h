@@ -1068,6 +1068,21 @@ struct drbd_send_buffer {
 	int additional_size;  /* additional space to be added to next packet's size */
 };
 
+struct connect_work {
+	struct drbd_work w;
+	struct drbd_resource* resource;
+	int(*func)(struct drbd_thread *thi);
+	struct drbd_thread* receiver;
+	//struct genl_ops ops;
+	//struct genl_info info;
+};
+
+struct disconnect_work {
+	struct drbd_work w;
+	struct drbd_resource* resource;
+	//struct genl_ops ops;
+	//struct genl_info info;
+};
 
 struct drbd_resource {
 	char *name;
@@ -1132,6 +1147,7 @@ struct drbd_resource {
 
 	struct drbd_work_queue work;
 	struct drbd_thread worker;
+	KEVENT connect_work_done;
 
 	struct list_head listeners;
 	spinlock_t listeners_lock;

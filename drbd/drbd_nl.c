@@ -498,6 +498,28 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 	return 0;
 }
 
+struct drbd_resource* get_resource_from_genl_info(struct genl_info* info)
+{
+	char *resource_name = NULL;
+	struct nlattr *nla = NULL;
+	int err;
+
+	if (info->attrs[DRBD_NLA_CFG_CONTEXT]) {
+		err = drbd_cfg_context_from_attrs(NULL, info);
+		if (err) {
+			return NULL;
+		}
+		nla = nested_attr_tb[__nla_type(T_ctx_resource_name)];
+		if (nla) {
+			resource_name = nla_data(nla);
+			if (resource_name) {
+				return drbd_find_resource(resource_name);
+			}
+		}
+	}
+	return NULL;
+}
+
 static void conn_md_sync(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;

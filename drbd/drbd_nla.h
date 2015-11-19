@@ -7,5 +7,6 @@
 extern int drbd_nla_parse_nested(struct nlattr *tb[], int maxtype, struct nlattr *nla,
 				 const struct nla_policy *policy);
 extern struct nlattr *drbd_nla_find_nested(int maxtype, struct nlattr *nla, int attrtype);
+extern struct drbd_resource* get_resource_from_genl_info(struct genl_info* info);
 
 #endif  /* __DRBD_NLA_H */

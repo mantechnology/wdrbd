@@ -1214,6 +1214,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
+
 static int w_flush(struct drbd_work *w, int cancel)
 {
 	struct flush_work *fw = container_of(w, struct flush_work, w);
@@ -3903,11 +3904,15 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 {
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
+	struct drbd_resource* resource = peer_device->device->resource;
+
 	enum drbd_disk_state disk_state;
 	struct net_conf *nc;
 	int hg, rule_nr, rr_conflict, peer_node_id = 0, r;
 
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, true);
+
+	KeSetEvent(&resource->connect_work_done, 0, FALSE);
 
 	disk_state = device->disk_state[NOW];
 	if (disk_state == D_NEGOTIATING)
@@ -6884,6 +6889,7 @@ void conn_disconnect(struct drbd_connection *connection)
 		__change_cstate(connection, C_UNCONNECTED);
 		/* drbd_receiver() has to be restarted after it returns */
 		drbd_thread_restart_nowait(&connection->receiver);
+		//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 	}
 	end_state_change(resource, &irq_flags);
 

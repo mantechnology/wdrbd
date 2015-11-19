@@ -3,6 +3,7 @@
 #include "drbd_wingenl.h"	/// SEO:
 #include "linux-compat/idr.h"
 #include "Drbd_int.h"
+#include "../../drbd/drbd_nla.h"
 
 extern int drbd_tla_parse(struct nlmsghdr *nlh);
 
@@ -426,11 +427,58 @@ ReleaseWskNetlink()
     
     return CloseWskEventSocket();
 }
+#if 0
+static int w_connect(struct drbd_work *w, int cancel)
+{
+	struct connect_work* pcon_work = container_of(w, struct connect_work, w);
+	struct drbd_resource* resource = pcon_work->resource;
+	LARGE_INTEGER		timeout;
+	NTSTATUS			status;
+
+	timeout.QuadPart = (-1 * 10000 * 6000);   // wait 6000 ms relative
+
+	pcon_work->ops.doit(NULL, &pcon_work->info);
+	WDRBD_INFO("w_connect:\n");
+
+	status = KeWaitForSingleObject(&resource->workerdone, Executive, KernelMode, FALSE, &timeout);
+	if (status == STATUS_TIMEOUT) {
+		WDRBD_INFO("w_connect:KeWaitForSingleObject timeout\n");
+	}
+
+	kfree(pcon_work);
+
+	return 0;
+}
+#endif
 
 static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 {
-    if (pops->doit)
+	if (pops->doit)
     {
+#if 0
+		struct drbd_config_context adm_ctx;
+
+		if (pinfo->genlhdr->cmd == DRBD_ADM_CONNECT) {
+			struct connect_work* pcon_work = NULL;
+			struct drbd_resource* resource = NULL;
+			pcon_work = kmalloc(sizeof(*pcon_work), GFP_ATOMIC, 'F1DW');
+			if (pcon_work) {
+				pcon_work->w.cb = w_connect;
+				RtlCopyMemory(&pcon_work->ops, pops, sizeof(*pops));
+				RtlCopyMemory(&pcon_work->info, pinfo, sizeof(*pinfo));
+				resource = get_resource_from_genl_info(pinfo);
+				pcon_work->resource = resource;
+				if (resource) {
+					drbd_queue_work(&resource->work, &pcon_work->w);
+					return 0;
+				}
+			}
+			return ERR_RES_NOT_KNOWN;
+		}
+		else if (pinfo->genlhdr->cmd == DRBD_ADM_DISCONNECT) {
+			struct disconnect_work* pdiscon_work;
+		}
+#endif
         return pops->doit(NULL, pinfo);
     }
 
@@ -561,8 +609,8 @@ NetlinkWorkThread(PVOID context)
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
             
             if (mutex_trylock(&g_genl_mutex))
-            {
-                err = _genl_ops(pops, pinfo);
+            {	
+				err = _genl_ops(pops, pinfo);
                 mutex_unlock(&g_genl_mutex);
             }
             else

@@ -36,6 +36,7 @@
 #include "drbd_req.h"
 #include "drbd_state_change.h"
 
+
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
@@ -418,7 +419,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 					      enum drbd_state_rv rv)
 {
 	enum chg_state_flags flags = resource->state_change_flags;
-	struct drbd_connection *connection;
+	struct drbd_connection *connection = NULL;
 	struct drbd_device *device;
 	int vnr;
 
@@ -486,6 +487,16 @@ out:
 
 	if ((flags & CS_TWOPC) && !(flags & CS_PREPARE))
 		__clear_remote_state_change(resource);
+
+//	if (connection && connection->cstate[NOW] == C_CONNECTED) {
+//		KeSetEvent(&resource->workerdone, 0, FALSE);
+//		WDRBD_INFO("___end_state_change: KeSetEvent workerdone\n");
+//	}
+	
+//	if (connection ) {
+//		WDRBD_INFO("___end_state_change cstate:%d\n", connection->cstate[NOW]);
+//	}
+	
 
 	return rv;
 }
@@ -1995,6 +2006,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		if (cstate[OLD] >= C_CONNECTING &&
 		    cstate[NEW] <= C_TEAR_DOWN && cstate[NEW] >= C_TIMEOUT) {
 			drbd_thread_restart_nowait(&connection->receiver);
+			//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 			twopc_connection_down(connection);
 		}
 
@@ -2424,6 +2436,45 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 
 	return true;
 }
+
+static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
+{
+	struct connect_work* pconnect_work = container_of(w, struct connect_work, w);
+	struct drbd_resource* resource = pconnect_work->resource;
+	LARGE_INTEGER		timeout;
+	NTSTATUS			status;
+
+	timeout.QuadPart = (-1 * 10000 * 5000);   // wait 5000 ms relative
+
+	pconnect_work->func(pconnect_work->receiver);
+	WDRBD_INFO("w_cb_receiver_thread_work: func end\n");
+
+	status = KeWaitForSingleObject(&resource->connect_work_done, Executive, KernelMode, FALSE, &timeout);
+	if (status == STATUS_TIMEOUT) {
+		WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject 5000ms timeout\n");
+	}
+
+	kfree(pconnect_work);
+
+	return 0;
+}
+
+int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (struct drbd_thread *), struct drbd_thread* thi)
+{
+	struct connect_work* pconnect_work = kmalloc(sizeof(*pconnect_work), GFP_ATOMIC, 'F1DW');
+	if (pconnect_work) {
+		pconnect_work->w.cb = w_cb_receiver_thread_work;
+		pconnect_work->resource = resource;
+		pconnect_work->func = func;
+		pconnect_work->receiver = thi;
+		drbd_queue_work(&resource->work, &pconnect_work->w);
+	}
+	else {
+		WDRBD_INFO("drbd_queue_receiver_thread_work: kmalloc fail. queing fail\n");
+	}
+	return 0;
+}
+
 
 /*
  * Perform after state change actions that may sleep.
@@ -2876,8 +2927,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		enum drbd_role *peer_role = connection_state_change->peer_role;
 
 		/* Upon network configuration, we need to start the receiver */
-		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED)
-			drbd_thread_start(&connection->receiver);
+		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED) { // queueing drbd_thread_start sekim 2015.11.19
+			//drbd_thread_start(&connection->receiver);
+			drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver);
+		}
 
 		if (susp_fen[NEW]) {
 			bool all_peer_disks_outdated = true;
@@ -3421,7 +3474,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 	request.mask = cpu_to_be32(context->mask.i);
 	request.val = cpu_to_be32(context->val.i);
 
-	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)",
+	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)\n",
 		  be32_to_cpu(request.tid),
 		  resource->res_opts.node_id,
 		  context->target_node_id,
