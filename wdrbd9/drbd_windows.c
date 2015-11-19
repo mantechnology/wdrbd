@@ -1293,9 +1293,7 @@ int del_timer_sync(struct timer_list *t)
  */
 static __inline int timer_pending(const struct timer_list * timer)
 {
-    return timer->ktimer.TimerListEntry.Flink
-        && !IsListEmpty(&timer->ktimer.TimerListEntry.Flink)
-        && !KeReadStateTimer(&timer->ktimer);
+    return timer->ktimer.Header.Inserted;
 }
 
 static int

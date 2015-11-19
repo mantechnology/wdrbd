@@ -535,7 +535,7 @@ Send(
 				}
 				break;
 
-			case STATUS_WAIT_0 + 1:// common: sender or send_bufferinf thread's kill signal
+			case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EINTR;
@@ -807,7 +807,7 @@ LONG NTAPI Receive(
             }
             else
             {
-                WDRBD_INFO("RECV(%s) multiWait err(0x%x:%s)\n", thread->comm, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
+                WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
                 if(Irp->IoStatus.Status)
                 {
                     BytesReceived = -ECONNRESET;
