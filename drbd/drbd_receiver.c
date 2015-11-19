@@ -3904,7 +3904,9 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 {
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
+#ifdef _WIN32_V9
 	struct drbd_resource* resource = peer_device->device->resource;
+#endif
 
 	enum drbd_disk_state disk_state;
 	struct net_conf *nc;

@@ -497,7 +497,7 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 	adm_ctx->reply_skb = NULL;
 	return 0;
 }
-
+#ifdef _WIN32_V9
 struct drbd_resource* get_resource_from_genl_info(struct genl_info* info)
 {
 	char *resource_name = NULL;
@@ -519,6 +519,7 @@ struct drbd_resource* get_resource_from_genl_info(struct genl_info* info)
 	}
 	return NULL;
 }
+#endif
 
 static void conn_md_sync(struct drbd_connection *connection)
 {

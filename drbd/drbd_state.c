@@ -419,7 +419,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 					      enum drbd_state_rv rv)
 {
 	enum chg_state_flags flags = resource->state_change_flags;
-	struct drbd_connection *connection = NULL;
+	struct drbd_connection *connection;
 	struct drbd_device *device;
 	int vnr;
 
@@ -487,16 +487,6 @@ out:
 
 	if ((flags & CS_TWOPC) && !(flags & CS_PREPARE))
 		__clear_remote_state_change(resource);
-
-//	if (connection && connection->cstate[NOW] == C_CONNECTED) {
-//		KeSetEvent(&resource->workerdone, 0, FALSE);
-//		WDRBD_INFO("___end_state_change: KeSetEvent workerdone\n");
-//	}
-	
-//	if (connection ) {
-//		WDRBD_INFO("___end_state_change cstate:%d\n", connection->cstate[NOW]);
-//	}
-	
 
 	return rv;
 }

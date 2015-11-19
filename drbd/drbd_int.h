@@ -1067,7 +1067,7 @@ struct drbd_send_buffer {
 	int allocated_size; /* currently allocated space */
 	int additional_size;  /* additional space to be added to next packet's size */
 };
-
+#ifdef _WIN32_V9
 struct connect_work {
 	struct drbd_work w;
 	struct drbd_resource* resource;
@@ -1083,6 +1083,7 @@ struct disconnect_work {
 	//struct genl_ops ops;
 	//struct genl_info info;
 };
+#endif
 
 struct drbd_resource {
 	char *name;

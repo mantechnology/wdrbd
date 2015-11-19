@@ -120,6 +120,8 @@ extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool);
 struct drbd_work;
 extern int abort_nested_twopc_work(struct drbd_work *, int);
 
+#ifdef _WIN32_V9
 int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (struct drbd_thread *), struct drbd_thread* thi);
+#endif
 
 #endif
