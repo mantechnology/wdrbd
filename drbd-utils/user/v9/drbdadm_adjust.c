@@ -685,6 +685,10 @@ void schedule_peer_device_options(const struct cfg_ctx *ctx)
 //ö				continue;
 			if (STAILQ_EMPTY(&peer_device->pd_options))
 				continue;
+#ifdef _WIN32_V9
+            if (peer_device->connection->peer == NULL)
+                continue;
+#endif
 
 			tmp_ctx.conn = peer_device->connection;
 			schedule_deferred_cmd(cmd, &tmp_ctx, CFG_PEER_DEVICE | SCHEDULE_ONCE);
