@@ -2877,8 +2877,13 @@ static int process_one_request(struct drbd_connection *connection)
 		}
 	} else {
 		maybe_send_barrier(connection, req->epoch);
+#ifdef _WIN32_V9
+        err = drbd_send_drequest(peer_device, P_DATA_REQUEST,
+            req->i.sector, req->i.size, (ULONG_PTR)req);
+#else
 		err = drbd_send_drequest(peer_device, P_DATA_REQUEST,
 				req->i.sector, req->i.size, (unsigned long)req);
+#endif
 		what = err ? SEND_FAILED : HANDED_OVER_TO_NETWORK;
 	}
 
