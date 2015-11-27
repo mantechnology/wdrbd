@@ -2532,7 +2532,11 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	p->seq_num = 0;  /* unused */
 	p->dp_flags = 0;
 	if (digest_size)
+#ifdef _WIN32_V9
+        drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req, p + 1);
+#else
 		drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req->page_chain.head, p + 1);
+#endif
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
     //DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
 	err = __send_command(peer_device->connection,
