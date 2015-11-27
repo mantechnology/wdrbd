@@ -621,38 +621,16 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
     // JHKIM: 일단 참고용으로 코멘트 처리.
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
 	
-#ifdef _WIN32_V9_PATCH_1 // drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜!
+    // _WIN32_V9_PATCH_1:  drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜!
     if (size) {
         drbd_alloc_page_chain(&peer_device->connection->transport,
             &peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
         if (!peer_req->page_chain.head)
-            goto defer2;
-        if (peer_req->win32_big_page)
-        {
-            ASSERT(0);
-        }
-        else
-        {
-            peer_req->win32_big_page = peer_req->page_chain.head;
-        }
-    }
-    else {
+            goto defer2;        
+        peer_req->win32_big_page = peer_req->page_chain.head;
+    } else  {
         peer_req->win32_big_page = NULL;
     }
-#else
-	if (size) {
-		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-						   DIV_ROUND_UP(size, PAGE_SIZE),
-						   GFP_TRY & ~__GFP_WAIT);
-		if (!peer_req->pages)
-			goto defer2;
-
-        peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
-	}
-    else {
-        peer_req->win32_big_page = NULL;
-    }
-#endif
 #else
 	if (size) {
 		drbd_alloc_page_chain(&peer_device->connection->transport,
