@@ -9,6 +9,7 @@
 #include "drbd_windows.h"
 
 #include "linux-compat/Backing-dev.h"
+#include "wsk2.h"
 #else
 // _WIN32_V9_PATCH_1
 #include <linux/version.h>
@@ -382,8 +383,9 @@ enum sock_shutdown_cmd {
 static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_cmd how)
 {
 #ifdef _WIN32
-    UNREFERENCED_PARAMETER(sock);
+    //UNREFERENCED_PARAMETER(sock);
     UNREFERENCED_PARAMETER(how);
+	Disconnect(sock->sk);
 #else
 	return sock->ops->shutdown(sock, how);
 #endif

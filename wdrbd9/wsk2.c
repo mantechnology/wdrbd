@@ -471,8 +471,8 @@ Send(
 #else
 			if (send_buf_kill_event)
 			{
-				waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: 송신버퍼링에서 송출 도중에 kill 요청을 인지하는 방법임. thread->has_sig_event를 이용한 일관성있는 중지신호 수신방안이 필요(리팩토링 필요)
-				wObjCount = 2;
+				//waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: 송신버퍼링에서 송출 도중에 kill 요청을 인지하는 방법임. thread->has_sig_event를 이용한 일관성있는 중지신호 수신방안이 필요(리팩토링 필요)
+				//wObjCount = 2;
 			}
 			else
 			{
@@ -484,7 +484,7 @@ Send(
 			{
 			case STATUS_TIMEOUT:
 #ifdef _WIN32_SEND_BUFFING
-				if (wObjCount == 2)
+				if (wObjCount == 1)
 				{
 					retry_count++;
 					WDRBD_WARN("(%s) sent timeout=%d sz=%d retry_count=%d WskSocket=%p IRP=%p\n",
@@ -535,11 +535,11 @@ Send(
 				}
 				break;
 
-			case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
-				IoCancelIrp(Irp);
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				BytesSent = -EINTR;
-				break;
+			//case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
+			//	IoCancelIrp(Irp);
+			//	KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			//	BytesSent = -EINTR;
+			//	break;
 
 			default:
 				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);

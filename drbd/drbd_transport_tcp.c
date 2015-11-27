@@ -192,8 +192,8 @@ static void dtt_free_one_sock(struct socket *socket)
 		// synchronize_rcu_w32_wlock 방식의 V8 구현 반영 
 		// synchronize_rcu();
         // kmpak synchronize_rcu()를 대체할 만한 방식이 아직 마땅히 없어 임시로 5초 delay 사용
-        LARGE_INTEGER Interval = { .QuadPart = RELATIVE(SECONDS(3)) };
-        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+        //LARGE_INTEGER Interval = { .QuadPart = RELATIVE(SECONDS(3)) };
+        //KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 
 		kernel_sock_shutdown(socket, SHUT_RDWR);
 #ifdef _WIN32_SEND_BUFFING
