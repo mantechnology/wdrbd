@@ -2924,7 +2924,8 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		/* Upon network configuration, we need to start the receiver */
 		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED) { // queueing drbd_thread_start sekim 2015.11.19
 #ifdef 	_WIN32_V9
-			drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver);
+			drbd_thread_start(&connection->receiver); 
+			//drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver); // DW-636 연결 순차실행 -> 원본으로 복구. sekim 2015.11.27
 #else
 			drbd_thread_start(&connection->receiver);
 #endif
