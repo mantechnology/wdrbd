@@ -722,7 +722,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 #endif
 		thi->t_state = RUNNING;
 		spin_unlock_irqrestore(&thi->t_lock, flags);
-
 #ifdef _WIN32
         wake_up_process(thi);
 #else
@@ -1041,7 +1040,6 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
 		WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) size(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
 		flush_send_buffer(connection, drbd_stream);
-
 		new_or_recycle_send_buffer_page(sbuf);
 	}
 
@@ -1136,7 +1134,6 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 		return 0;
 
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
-
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
 #ifdef _WIN32_V9
@@ -1629,13 +1626,15 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 	pdc = rcu_dereference_protected(peer_device->conf,
 		lockdep_is_held(&peer_device->device->resource->conf_update));
 #ifdef _WIN32_V9
-	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, 'FFFF'); // _WIN32_CHECK_2: 추후 메모리 할당 태그 목록정리
+    if (peer_device->rs_plan_s)
+        resync_plan = peer_device->rs_plan_s;   // kmpak. fixed memory leak
+    else
+    	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW'); // _WIN32_CHECK_2: 추후 메모리 할당 태그 목록정리
 #else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 #endif
 	if (!resync_plan)
 		goto out;
-
 #ifdef _WIN32_V9
 	resync_lru = lc_create("resync", &drbd_bm_ext_cache,
 			       1, 61, sizeof(struct bm_extent),
@@ -2196,7 +2195,6 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-
 #ifdef _WIN32_V9
 	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
 #else
@@ -2265,7 +2263,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	/* Flush send buffer and make sure PAGE_SIZE is available... */
 	alloc_send_buffer(connection, PAGE_SIZE, DATA_STREAM);
 	connection->send_buffer[DATA_STREAM].allocated_size = 0;
-	
+
 #ifdef _WIN32_V9
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
@@ -2291,6 +2289,7 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
 	bool no_zc = disable_sendpage;
+
 	/* e.g. XFS meta- & log-data is in slab pages, which have a
 	 * page_count of 0 and/or have PageSlab() set.
 	 * we cannot use send_page for those, as that does get_page();
@@ -2339,7 +2338,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	struct page *page = peer_req->page_chain.head;
 	unsigned len = peer_req->i.size;
 	int err;
-	
+
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 
 #ifdef _WIN32_V9 // V9_XXX !!!!
@@ -2543,7 +2542,6 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
 		err = _drbd_send_zc_ee(peer_device, peer_req);
-
 	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;

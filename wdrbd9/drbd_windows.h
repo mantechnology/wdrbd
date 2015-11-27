@@ -920,7 +920,7 @@ extern void * kmem_cache_alloc(void * cache, int flag, ULONG Tag);
 extern void kmem_cache_destroy(struct kmem_cache *s);
 extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *), ULONG Tag);
 extern void kmem_cache_free(void * cache, void * x);
-
+#define kfree2(x) if((x)) {ExFreePool((x)); (x)=NULL;}
 
 static __inline wait_queue_t initqueue(wait_queue_t *wq)
 {
@@ -1116,7 +1116,11 @@ static __inline int __test_and_clear_bit(int nr, volatile ULONG_PTR *addr)
 
 static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
 {
-	return 1UL & (addr[BIT_WORD(nr)] >> (nr & (BITS_PER_LONG - 1)));
+#ifdef _WIN64
+    return _bittest64(addr, nr);
+#else
+    return _bittest(addr, nr);
+#endif
 }
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -1252,7 +1256,7 @@ extern void list_del_rcu(struct list_head *entry);
 #define rcu_dereference(_PTR)		(_PTR)
 #define __rcu_assign_pointer(_p, _v) \
 	do { \
-		smp_mb(); \
+		/*smp_mb();*/ \
 		(_p) = (_v); \
 	} while (0)
 
