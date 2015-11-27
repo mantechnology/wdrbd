@@ -381,7 +381,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	enum drbd_req_event what;
 	int uptodate = bio_flagged(bio, BIO_UPTODATE);
 #endif
-	
+
 	BIO_ENDIO_FN_START;
 	if (!error && !uptodate) {
 		drbd_warn(device, "p %s: setting error to -EIO\n",
@@ -457,7 +457,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		IoFreeIrp(Irp);
 	}
 #endif
-
 	bio_put(req->private_bio);
 	req->private_bio = ERR_PTR(error);
 
@@ -500,7 +499,7 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 	
 #ifdef _WIN32 //V8 구현 유지.
 #ifdef _WIN32_V9_PATCH_1
-	DbgPrint("_WIN32_V9_PATCH_1_CHECK: check drbd_csum_pages\n");// : 아래 else 파트의 V8 을 포팅!?
+	//DbgPrint("_WIN32_V9_PATCH_1_CHECK: check drbd_csum_pages\n");// : 아래 else 파트의 V8 을 포팅!?
 #else
 	// DRBD_UPGRADE: CRYPTO
 	// discard typecasting and support other type such as md4, sha.
@@ -815,11 +814,9 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	max_sect = (pdc->c_max_rate * 2 * SLEEP_TIME) / HZ;
 	if (req_sect > max_sect)
 		req_sect = max_sect;
-
-    WDRBD_TRACE_TR("sect_in=%u in_flight=%d want=%u corr=%d steps=%d cps=%d curr_c=%d rs=%d\n",
-         sect_in, peer_device->rs_in_flight, want, correction, steps, cps,
-         curr_corr, req_sect)
-     ;
+// want = 100, steps = 20
+    WDRBD_TRACE_TR("sect_in=%u in_flight=%d corr=%d cps=%d curr_c=%d rs(%d)\n",
+         sect_in, peer_device->rs_in_flight, correction, cps, curr_corr, req_sect);
 	/*
 	drbd_warn(device, "si=%u if=%d wa=%u co=%d st=%d cps=%d pl=%d cc=%d rs=%d\n",
 		 sect_in, peer_device->rs_in_flight, want, correction,
@@ -1094,10 +1091,8 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 		// DRBD_DOC: 성능: P_OV_REQUEST 횟수는 줄이고 1회 네트웍 량은 키움!
 		size = 1024*1024; 
 		//size =  1024*256;  // for flowcontrol
-		//size =  BM_BLOCK_SIZE;  // for flowcontrol
-#else
-		size = BM_BLOCK_SIZE;
 #endif
+		size = BM_BLOCK_SIZE;
 
 		// 기존 drbd_rs_should_slow_down 선 수행 하는 구조가 변경됨. 어디선가 이와 비슷한 변경점이 있었음. V9에서 로직이 변경된 듯하다.
 		if (drbd_try_rs_begin_io(peer_device, sector, true)) {

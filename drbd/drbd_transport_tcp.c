@@ -157,7 +157,7 @@ int dtt_init(struct drbd_transport *transport)
 	tcp_transport->transport.class = &tcp_transport_class;
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 #ifdef _WIN32_V9 //적절한지 검토 필요. 할당이 실패했을 때 하단의 kfree 에서 제대로 해제가 되는지 확인 필요. => 해제 관련 문제 확인, 수정 완료.
-		void *buffer = (void *)kzalloc(4096, GFP_KERNEL, '009D'); // V9_XXX 임시 Tag '009D'
+		void *buffer = kzalloc(4096, GFP_KERNEL, '09DW');
 		if (!buffer) {
 			//DATA_STREAM 할당 실패 시 하단에서 해제 할 때 NULL 체크하기 위함. 
 			// => DATA_STREAM 할당 성공, CONTROL_STREAM 할당 실패 했을 때에는 기존 코드가 문제 없다. 그러나 DATA_STREAM 할당 부터 실패 했을 경우엔 하단의 kfree 에서 잘못된 메모리가 넘겨질 가능성이 있다.
@@ -177,7 +177,7 @@ int dtt_init(struct drbd_transport *transport)
 	return 0;
 fail:
 #ifdef _WIN32_V9 // 
-	kfree((void *)tcp_transport->rbuf[0].base);
+	kfree2(tcp_transport->rbuf[0].base);
 #else
 	free_page((unsigned long)tcp_transport->rbuf[0].base);
 #endif
@@ -822,7 +822,7 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 		return false;
 	}
 
-	if (good == 0) // _WIN32_V9_PATCH_1
+	if (good == 0)
 		*first_path = NULL;
 
 	return *socket1 && *socket2;
@@ -919,8 +919,8 @@ retry:
 			timeo);
     atomic_set(&(transport->listening), 0);
 #else
-	timeo = wait_event_interruptible_timeout(waiter->wait, 
-			(path = dtt_wait_connect_cond(transport)), 
+	timeo = wait_event_interruptible_timeout(waiter->wait,
+			(path = dtt_wait_connect_cond(transport)),
 			timeo);
 #endif
 #ifdef _WIN32_V9_PATCH_1
@@ -1511,7 +1511,6 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32
 	NTSTATUS status;
 #endif
-
 #if 1 // PATCH!!!!!
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
@@ -1708,9 +1707,8 @@ static int dtt_connect(struct drbd_transport *transport)
 		if (dtt_connection_established(transport, &dsocket, &csocket, &first_path))
 			break;
 
-	retry:
+retry:
 		WDRBD_TRACE_CO("[%p] dtt_wait_for_connect ----------!\n", KeGetCurrentThread());
-
 		s = NULL;
 #ifdef _WIN32_V9_PATCH_1_CHECK
         err = dtt_wait_for_connect(waiter, &s, &connect_to_path);
@@ -1737,7 +1735,6 @@ static int dtt_connect(struct drbd_transport *transport)
 				sock_release(s);
 				goto randomize;
 			}
-			
 			dtt_socket_ok_or_free(&dsocket);
 			dtt_socket_ok_or_free(&csocket);
 			switch (fp) {
@@ -2137,6 +2134,7 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 
 	path->waiter.transport = transport;
 	drbd_path->established = false;
+
 	list_add(&drbd_path->list, &transport->paths);
 
 	return 0;
