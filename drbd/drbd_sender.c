@@ -490,7 +490,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 }
 
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.
+#ifdef _WIN32_V9
+void drbd_csum_pages(struct crypto_hash *tfm, struct drbd_peer_request *peer_req, void *digest)
+#else
 void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
+#endif
 {
 	struct hash_desc desc;
 #ifndef _WIN32
@@ -498,16 +502,12 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 #endif
 	
 #ifdef _WIN32 //V8 구현 유지.
-#ifdef _WIN32_V9_PATCH_1
-	//DbgPrint("_WIN32_V9_PATCH_1_CHECK: check drbd_csum_pages\n");// : 아래 else 파트의 V8 을 포팅!?
-#else
 	// DRBD_UPGRADE: CRYPTO
 	// discard typecasting and support other type such as md4, sha.
 	// use int 4 bytes in desc variable
 	crypto_hash_update(&desc, peer_req->win32_big_page, peer_req->i.size); // ignore comple warning
 	crypto_hash_final(&desc, digest);
-#endif
-#else
+#else // _WIN32_V9_PATCH_1
 	desc.tfm = tfm;
 	desc.flags = 0;
 
@@ -576,7 +576,11 @@ static int w_e_send_csum(struct drbd_work *w, int cancel)
 	digest_size = crypto_hash_digestsize(peer_device->connection->csums_tfm);
 	digest = drbd_prepare_drequest_csum(peer_req, digest_size);
 	if (digest) {
+#ifdef _WIN32_V9
+        drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
+#else
 		drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
+#endif
 		/* Free peer_req and pages before send.
 		 * In case we block on congestion, we could otherwise run into
 		 * some distributed deadlock, if the other side blocks on
@@ -617,23 +621,16 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
     // JHKIM: 일단 참고용으로 코멘트 처리.
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
 	
-#ifdef _WIN32_V9_PATCH_1 // _CHECK: drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜! 수정할 것!!
-	DbgPrint("WIN32_V9_PATCH_1_CHECK: read_for_csum check!!\n");
-	BUG();
-#else
-	if (size) {
-		peer_req->pages = drbd_alloc_pages(&peer_device->connection->transport,
-						   DIV_ROUND_UP(size, PAGE_SIZE),
-						   GFP_TRY & ~__GFP_WAIT);
-		if (!peer_req->pages)
-			goto defer2;
-
-        peer_req->win32_big_page = peer_req->pages; // V8 의 구현을 따라간다. // JHKIM: 어디가 원본인지...ㅠㅠ
-	}
-    else {
+    // _WIN32_V9_PATCH_1:  drbd_alloc_pages 이 drbd_alloc_page_chain 으로 바뀜!
+    if (size) {
+        drbd_alloc_page_chain(&peer_device->connection->transport,
+            &peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+        if (!peer_req->page_chain.head)
+            goto defer2;        
+        peer_req->win32_big_page = peer_req->page_chain.head;
+    } else  {
         peer_req->win32_big_page = NULL;
     }
-#endif
 #else
 	if (size) {
 		drbd_alloc_page_chain(&peer_device->connection->transport,
@@ -1604,7 +1601,11 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 #endif
 		}
 		if (digest) {
+#ifdef _WIN32_V9
+            drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
+#else
 			drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
+#endif
 			eq = !memcmp(digest, di->digest, digest_size);
 			kfree(digest);
 		}
@@ -1656,7 +1657,11 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 	}
 
 	if (!(peer_req->flags & EE_WAS_ERROR))
+#ifdef _WIN32_V9
+        drbd_csum_pages(peer_device->connection->verify_tfm, peer_req, digest);
+#else
 		drbd_csum_pages(peer_device->connection->verify_tfm, peer_req->page_chain.head, digest);
+#endif
 	else
 		memset(digest, 0, digest_size);
 
@@ -1731,7 +1736,11 @@ int w_e_end_ov_reply(struct drbd_work *w, int cancel)
 		digest = kmalloc(digest_size, GFP_NOIO);
 #endif
 		if (digest) {
+#ifdef _WIN32_V9
+            drbd_csum_pages(peer_device->connection->verify_tfm, peer_req, digest);
+#else
 			drbd_csum_pages(peer_device->connection->verify_tfm, peer_req->page_chain.head, digest);
+#endif
 
 			D_ASSERT(device, digest_size == di->digest_size);
 			eq = !memcmp(digest, di->digest, digest_size);

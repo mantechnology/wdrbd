@@ -1915,7 +1915,11 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	}
 
 	if (digest_size) {
+#ifdef _WIN32_V9
+        drbd_csum_pages(peer_device->connection->peer_integrity_tfm, peer_req, dig_vv);
+#else
 		drbd_csum_pages(peer_device->connection->peer_integrity_tfm, peer_req->page_chain.head, dig_vv);
+#endif
 		if (memcmp(dig_in, dig_vv, digest_size)) {
 			drbd_err(device, "Digest integrity check FAILED: %llus +%u\n",
 				d->sector, d->bi_size);

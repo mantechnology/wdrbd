@@ -2282,7 +2282,11 @@ extern void drbd_csum_bio(struct crypto_hash *, struct drbd_request *, void *);
 extern void drbd_csum_bio(struct crypto_hash *, struct bio *, void *);
 #endif
 
+#ifdef _WIN32_V9
+extern void drbd_csum_pages(struct crypto_hash *, struct drbd_peer_request *, void *);
+#else
 extern void drbd_csum_pages(struct crypto_hash *, struct page *, void *);
+#endif
 /* worker callbacks */
 extern int w_e_end_data_req(struct drbd_work *, int);
 extern int w_e_end_rsdata_req(struct drbd_work *, int);
