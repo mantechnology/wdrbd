@@ -23,6 +23,7 @@
 #define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define _WIN32_V9	//_WIN32_V9 정의 
+#define _WIN32_V9_IPV6
 
 #ifdef _WIN32_V9
 // JHKIM:너무 많아서 매트로 처리 
