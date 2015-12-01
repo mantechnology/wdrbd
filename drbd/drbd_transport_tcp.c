@@ -577,7 +577,15 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	err = 0;
 	
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
+#ifdef _WIN32_V9_IPV6
+	if (my_addr.ss_family == AF_INET6) {
+		socket->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
+	} else {
+		socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
+	}
+#else
 	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
+#endif
 #else
 	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
 #endif
@@ -585,6 +593,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		err = -1;
 		goto out;
 	}
+
 	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
 	if (!socket->sk_linux_attr) {
 		err = -ENOMEM;
@@ -613,11 +622,15 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	*/
 	what = "bind before connect";
 #ifdef _WIN32
+#ifdef _WIN32_V9_IPV6
+	status = Bind(socket->sk, (PSOCKADDR)&my_addr);
+#else
 	LocalAddress.sin_family = AF_INET;
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
 	LocalAddress.sin_port = HTONS(0);
 
 	status = Bind(socket->sk, (PSOCKADDR)&LocalAddress);
+#endif
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("Bind() failed with status 0x%08X \n", status);
 		err = -EINVAL;
@@ -836,7 +849,7 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 }
 
 static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
-{
+{	
 	struct drbd_path *drbd_path;
 	bool rv;
 	// _WIN32_V9_PATCH_1_CHECK: 많이 변경됨, 리스너 관련 V9 포팅에 영향은 없는지 확인!
@@ -950,7 +963,11 @@ retry:
 		// Accept 하고, s_estab 구조를 생성한다.
 		// _WIN32_V9_PATCH_1_CHECL: JHKIM: 일단 my_addr 사용안함으로 코멘트!
 		// my_addr = dtt_path(waiter->waiter.transport)->my_addr; // my_addr 가 이전 시점에 잘 들어가 있는 지 검증 필요.=> 잘 들어가 있음.
+#ifdef _WIN32_V9_IPV6		
+		memset(&peer_addr, 0, sizeof(struct sockaddr_storage_win));
+#else
 		memset(&peer_addr, 0, sizeof(struct sockaddr_in));
+#endif
 		// Accept Event Callback 에서 paccept_socket 을 저장해 두었다. 
 		//paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
 		// 
@@ -1300,6 +1317,8 @@ const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
     dtt_abort_inspect_incoming  // WskAbortEvent is required only if conditional-accept is used.
 };
 #endif
+
+
 static int dtt_create_listener(struct drbd_transport *transport,
 			       const struct sockaddr *addr,
 			       struct drbd_listener **ret_listener)
@@ -1307,6 +1326,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #ifdef _WIN32
 	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
+	NTSTATUS status;
 #else
 	int err, sndbuf_size, rcvbuf_size, addr_len;
 	struct sockaddr_storage my_addr;
@@ -1349,7 +1369,16 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = -ENOMEM;
         goto out;
     }
+#ifdef _WIN32_V9_IPV6
+	if (my_addr.ss_family == AF_INET6) {
+		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+	} else {
+		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+	}
+#else 
 	s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+#endif
+
 #else
     s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 #endif
@@ -1359,7 +1388,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
     }
 
 #ifdef WSK_ACCEPT_EVENT_CALLBACK
-    NTSTATUS status = SetConditionalAccept(s_listen->sk, 1);
+    status = SetConditionalAccept(s_listen->sk, 1);
 	if (!NT_SUCCESS(status))
     {
 		WDRBD_ERROR("Failed to set SO_CONDITIONAL_ACCEPT. err(0x%x)\n", status);
@@ -1390,8 +1419,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 	what = "bind before listen";
 #ifdef _WIN32
-    status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
-    if (!NT_SUCCESS(status))
+	status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
+	if (!NT_SUCCESS(status))
     {
         WDRBD_ERROR("Failed to socket Bind(). err(0x%x)\n", status);
         err = status;
@@ -1521,7 +1550,11 @@ static int dtt_connect(struct drbd_transport *transport)
 	struct dtt_wait_first waiter; // _WIN32_V9_PATCH_1_CHECK: 스택영역인데 문제 없는가?
 	int timeout, err;
 	bool ok;
-
+#ifdef _WIN32_V9
+	extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+	extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+	char sbuf[128], dbuf[128];
+#endif
 	dsocket = NULL;
 	csocket = NULL;
 
@@ -1538,11 +1571,21 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 		
-		{//
+		{
+#ifdef _WIN32_V9_IPV6
+			// WDRBD_TRACE_CO
+			if (path->path.my_addr.ss_family == AF_INET6) {
+				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip6(sbuf, &path->path.my_addr), get_ip6(dbuf, &path->path.peer_addr));
+			}
+			else {
+				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip4(sbuf, &path->path.my_addr), get_ip4(dbuf, &path->path.peer_addr));
+			}
+			// WDRBD_TRACE_CO
+#else
 			extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-			char sbuf[64], dbuf[64];
 			WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip4(sbuf, &path->path.my_addr), get_ip4(dbuf, &path->path.peer_addr));
-		}//
+#endif
+		}
 
 		path->first = &waiter;
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
@@ -1556,16 +1599,28 @@ static int dtt_connect(struct drbd_transport *transport)
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	{//
-		extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-		char sbuf[64], dbuf[64];
+#ifdef _WIN32_V9_IPV6
+		if (drbd_path->my_addr.ss_family == AF_INET6) {
+			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip6(sbuf, &drbd_path->my_addr), get_ip6(dbuf, &drbd_path->peer_addr));
+		} else {
+			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip4(sbuf, &drbd_path->my_addr), get_ip4(dbuf, &drbd_path->peer_addr));
+		}
+#else
 		WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip4(sbuf, &drbd_path->my_addr), get_ip4(dbuf, &drbd_path->peer_addr));
+#endif
 	}//
 
 	connect_to_path = container_of(drbd_path, struct dtt_path, path);
 	{//
-		extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-		char sbuf[64], dbuf[64];
+#ifdef _WIN32_V9_IPV6
+		if(connect_to_path->path.my_addr.ss_family == AF_INET6) {
+			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+		} else {
+			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+		}
+#else
 		WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+#endif
 	}//
 
 #else
@@ -1656,10 +1711,16 @@ static int dtt_connect(struct drbd_transport *transport)
 		if (s) {
 #ifdef WDRBD_TRACE_IP4
 			{
-				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-				char sbuf[64], dbuf[64];
 				// _WIN32_V9_PATCH_1: 추후정리
+#ifdef _WIN32_V9_IPV6
+				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
+					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+				} else {
+					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+				}
+#else
 				WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+#endif
 			}
 #endif
 			if (!first_path) {
@@ -1721,9 +1782,15 @@ retry:
 		if (s) {
 #ifdef WDRBD_TRACE_IP4 
 			{
-				extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-				char sbuf[64], dbuf[64];
+#ifdef _WIN32_V9_IPV6
+				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
+					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+				} else {
+					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+				}				
+#else
 				WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+#endif				
 			}
 #endif
 			int fp = dtt_receive_first_packet(tcp_transport, s);

@@ -2643,4 +2643,31 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 		);
 	return buf;
 }
+#ifdef _WIN32_V9_IPV6
+char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
+{
+	//RtlIpv6AddressToString 과 같은 형식으로 출력 필요.
+	sprintf(buf, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0", 
+			sockaddr->sin6_addr.u.Byte[0],
+			sockaddr->sin6_addr.u.Byte[1],
+			sockaddr->sin6_addr.u.Byte[2],
+			sockaddr->sin6_addr.u.Byte[3],
+			sockaddr->sin6_addr.u.Byte[4],
+			sockaddr->sin6_addr.u.Byte[5],
+			sockaddr->sin6_addr.u.Byte[6],
+			sockaddr->sin6_addr.u.Byte[7],
+			sockaddr->sin6_addr.u.Byte[8],
+			sockaddr->sin6_addr.u.Byte[9],
+			sockaddr->sin6_addr.u.Byte[10],
+			sockaddr->sin6_addr.u.Byte[11],
+			sockaddr->sin6_addr.u.Byte[12],
+			sockaddr->sin6_addr.u.Byte[13],
+			sockaddr->sin6_addr.u.Byte[14],
+			sockaddr->sin6_addr.u.Byte[15],
+			HTONS(sockaddr->sin6_port)
+			);
+	return buf;
+}
+#endif
+
 #endif
