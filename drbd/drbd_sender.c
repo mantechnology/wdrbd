@@ -116,11 +116,13 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	wake_up(&device->misc_wait);
 
 #ifdef _WIN32
-	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
 	{
-		if (Irp->MdlAddress != NULL) {
+		if (Irp->MdlAddress != NULL)
+		{
 			PMDL mdl, nextMdl;
-			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
+			{
 				nextMdl = mdl->Next;
 				MmUnlockPages(mdl);
 				IoFreeMdl(mdl); // This function will also unmap pages.
@@ -496,18 +498,12 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct drbd_peer_request *peer_req
 void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 #endif
 {
+#ifdef _WIN32_V9
+	*(uint32_t *)digest = crc32c('dbrd', peer_req->win32_big_page, peer_req->i.size);	// kmpak. added key value
+#else
 	struct hash_desc desc;
-#ifndef _WIN32
 	struct scatterlist sg;
-#endif
-	
-#ifdef _WIN32 //V8 구현 유지.
-	// DRBD_UPGRADE: CRYPTO
-	// discard typecasting and support other type such as md4, sha.
-	// use int 4 bytes in desc variable
-	crypto_hash_update(&desc, peer_req->win32_big_page, peer_req->i.size); // ignore comple warning
-	crypto_hash_final(&desc, digest);
-#else // _WIN32_V9_PATCH_1
+
 	desc.tfm = tfm;
 	desc.flags = 0;
 
@@ -803,7 +799,9 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	/* What we do in this step */
 	curr_corr = fifo_push(plan, 0);
 	plan->total -= curr_corr;
-
+#ifdef _WIN32_V9
+	curr_corr = max_t(int, 8, min_t(int, curr_corr, 8));	// kmpak. minimum 8
+#endif
 	req_sect = sect_in + curr_corr;
 	if (req_sect < 0)
 		req_sect = 0;
@@ -811,9 +809,10 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	max_sect = (pdc->c_max_rate * 2 * SLEEP_TIME) / HZ;
 	if (req_sect > max_sect)
 		req_sect = max_sect;
-// want = 100, steps = 20
-    WDRBD_TRACE_TR("sect_in=%u in_flight=%d corr=%d cps=%d curr_c=%d rs(%d)\n",
+#ifdef _WIN32_V9
+    WDRBD_TRACE_TR("sect_in=%5u, %5d, corr(%d) cps(%d) curr_c(%d) rs(%d)\n",
          sect_in, peer_device->rs_in_flight, correction, cps, curr_corr, req_sect);
+#endif
 	/*
 	drbd_warn(device, "si=%u if=%d wa=%u co=%d st=%d cps=%d pl=%d cc=%d rs=%d\n",
 		 sect_in, peer_device->rs_in_flight, want, correction,
