@@ -11,6 +11,10 @@
 #include <ntdddisk.h>
 #endif
 
+#ifdef _WIN32_WPP
+#include "sub.tmh" 
+#endif
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -548,8 +552,16 @@ void _printk(const char * func, const char * format, ...)
 
     ASSERT((level_index >= 0) && (level_index < 8));
 
+#ifdef _WIN32_WPP
+	DoTraceMessage(TRCINFO, "%s", buf);
+
+	// _WIN32_V9:JHKIM: 아래 2문장은 각각 이벤트로그에 제한된 길이로 저장, WinDbg 출력 정도의 보조기능이다. 최종 배포 시에는 이벤트로그 부분은 제거요망.
+	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
+	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
+#else
     WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
     DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
+#endif
 
     ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 }
