@@ -1638,8 +1638,16 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 				    : rw == READ  ? DRBD_FAULT_DT_RD
 				    :               DRBD_FAULT_DT_RA))
 			bio_endio(bio, -EIO);
+#ifndef _WIN32_V9		
 		else
 			generic_make_request(bio);
+#else
+		else {
+			if (generic_make_request(bio)) {
+				bio_endio(bio, -EIO);
+			}
+		}
+#endif
 		put_ldev(device);
 	} else
 		bio_endio(bio, -EIO);

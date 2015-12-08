@@ -237,8 +237,18 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	device->md_io.submit_jif = jiffies;
 	if (drbd_insert_fault(device, (rw & WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
 		bio_endio(bio, -EIO);
+#ifndef _WIN32_V9
 	else
 		submit_bio(rw, bio);
+#else
+	else {
+		if (submit_bio(rw, bio)) {
+			// error
+			bio_endio(bio, -EIO);
+		}
+	}
+#endif
+
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
 #ifdef _WIN32
     // not support

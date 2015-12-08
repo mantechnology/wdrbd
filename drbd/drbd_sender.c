@@ -133,6 +133,14 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 
+#ifdef _WIN32_V9
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // release remove lock for only normal case
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 #ifdef _WIN32
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
 	{
@@ -319,6 +327,14 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
+#ifdef _WIN32_V9
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK_4
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
@@ -372,7 +388,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
-	req = bio->bi_private;
+	req = bio->bi_private; 
 	device = req->device;
 	uptodate = bio_flagged(bio, BIO_UPTODATE);
 #else
@@ -459,6 +475,9 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		IoFreeIrp(Irp);
 	}
 #endif
+
+
+
 	bio_put(req->private_bio);
 	req->private_bio = ERR_PTR(error);
 
@@ -470,6 +489,14 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	__req_mod(req, what, NULL, &m);
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 	put_ldev(device);
+
+#ifdef _WIN32_V9
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
 
 	if (m.bio)
 #ifdef _WIN32
@@ -485,6 +512,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		WDRBD_TRACE("drbd_request_endio done.(%d).................IRQL(%d)!!!\n", cnt++, KeGetCurrentIrql());
 	}
 #endif
+	
 	return STATUS_MORE_PROCESSING_REQUIRED;
 #else
 	BIO_ENDIO_FN_RETURN;

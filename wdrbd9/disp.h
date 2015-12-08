@@ -51,6 +51,9 @@ typedef struct _VOLUME_EXTENSION
 	ULONG				Flag;
 	ULONG				Magic;
 	BOOLEAN				Active;
+
+	IO_REMOVE_LOCK		RemoveLock; // RemoveLock for Block Device 
+
 	USHORT				PhysicalDeviceNameLength;
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
 	KMUTEX				CountMutex;
