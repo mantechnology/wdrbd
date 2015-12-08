@@ -1668,7 +1668,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
 		D_ASSERT(device, device->ldev->backing_bdev);
-#ifdef _WIN32_V9
+#ifdef _WIN32
         device->ldev->backing_bdev->d_size = 0;   // to recalculate size
 #endif
 		d_size = drbd_get_max_capacity(device->ldev);
