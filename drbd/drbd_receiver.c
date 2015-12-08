@@ -1897,6 +1897,10 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->bi_size);
 	if (err)
 		goto fail;
+#ifdef _WIN32_V9
+    else
+        peer_req->win32_big_page = peer_req->page_chain.head;
+#endif
 
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
 #ifdef _WIN32
