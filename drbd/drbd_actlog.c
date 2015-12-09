@@ -237,7 +237,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	device->md_io.submit_jif = jiffies;
 	if (drbd_insert_fault(device, (rw & WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
 		bio_endio(bio, -EIO);
-#ifndef _WIN32_V9
+#ifndef _WIN32_V9_REMOVELOCK
 	else
 		submit_bio(rw, bio);
 #else

@@ -629,14 +629,14 @@ void bio_free(struct bio *bio)
 	kfree(bio);
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 extern int submit_bio(int rw, struct bio *bio)
 #else
 void submit_bio(int rw, struct bio *bio)
 #endif
 {
 	bio->bi_rw |= rw; 
-#ifndef _WIN32_V9
+#ifndef _WIN32_V9_REMOVELOCK
 	generic_make_request(bio);
 #else
 	return generic_make_request(bio);
@@ -1634,24 +1634,24 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 	return 1; 
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 int generic_make_request(struct bio *bio)
 #else
 void generic_make_request(struct bio *bio)
 #endif
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	int err = 0;
 	NTSTATUS status;
-#else
 #endif
+
 	PIRP newIrp;
 	PVOID buffer;
 	LARGE_INTEGER offset;
 	ULONG io;
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	if (!q) {
 		return -EIO;
 	}
@@ -1765,11 +1765,11 @@ void generic_make_request(struct bio *bio)
 	if (!newIrp)
 	{
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;
 #else
-		return;
+		return; // => potential IRP hang bug. 2015.12.09 sekim
 #endif
 	}
 #endif
@@ -1777,7 +1777,9 @@ void generic_make_request(struct bio *bio)
 	IoSetCompletionRoutine(newIrp, bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
+#ifdef _WIN32_V9_REMOVELOCK
 	return 0;
+#endif
 }
 
 void __list_del_entry(struct list_head *entry)

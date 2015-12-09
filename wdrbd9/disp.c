@@ -175,7 +175,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         IoDeleteDevice(AttachedDeviceObject);
         return STATUS_NO_SUCH_DEVICE;
     }
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	IoInitializeRemoveLock(&VolumeExtension->RemoveLock, '00FS', 0, 0);
 #endif
     status = GetDeviceName(PhysicalDeviceObject,

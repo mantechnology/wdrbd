@@ -2480,7 +2480,7 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 
 	if (drbd_insert_fault(device, fault_type))
 		bio_endio(bio, -EIO);
-#ifndef _WIN32_V9
+#ifndef _WIN32_V9_REMOVELOCK
 	else
 		generic_make_request(bio);
 #else

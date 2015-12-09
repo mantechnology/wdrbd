@@ -133,7 +133,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // release remove lock for only normal case
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
@@ -327,7 +327,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
@@ -490,7 +490,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 	put_ldev(device);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32_V9_REMOVELOCK
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
