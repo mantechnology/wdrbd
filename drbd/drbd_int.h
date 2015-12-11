@@ -199,9 +199,7 @@ void drbd_printk_with_wrong_object_type(void);
 #define dynamic_drbd_dbg(device, fmt, args...) \
 	dynamic_dev_dbg(disk_to_dev(device->vdisk), fmt, ## args)
 #else
-#ifdef _WIN32_V9 // JHKIM: _WIN32_V9_CHECK: 출력빈도가 높아 디버깅이 어려움. 그 내용 또한 단순 비트맵 관련 추적정보로 보여 일단 코메트 처리함. 추후 재정리.
-#define dynamic_drbd_dbg(device, fmt, ...)
-#else
+#if defined(_WIN32_V9) && defined(DBG)
 #define dynamic_drbd_dbg(device, fmt, ...) \
 	drbd_dbg(device, fmt, __VA_ARGS__)
 #endif

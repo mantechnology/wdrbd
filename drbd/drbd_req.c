@@ -1324,6 +1324,10 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 
 	if (device->disk_state[NOW] == D_UP_TO_DATE)
 		return true;
+#ifdef _WIN32_V9	// FIXED : kmpak. WDRBD FsctlLockVolume fail problem. DW-643
+	else if (device->disk_state[NOW] == D_OUTDATED)
+		return true;
+#endif
 	if (device->disk_state[NOW] != D_INCONSISTENT)
 		return false;
 	esector = sector + (size >> 9) - 1;
