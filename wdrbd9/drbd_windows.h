@@ -9,6 +9,9 @@
 #include "linux-compat/drbd_endian.h"
 #include "windows/types.h"
 #include "mvolmsg.h"
+
+#define _WIN32_V9_REMOVELOCK
+
 #include "disp.h"
 
 #pragma warning(disable : 4100 4146 )
@@ -24,6 +27,7 @@
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define _WIN32_V9	//_WIN32_V9 정의 
 #define _WIN32_V9_IPV6
+
 
 #ifdef _WIN32_V9
 // JHKIM:너무 많아서 매트로 처리 
@@ -607,8 +611,13 @@ struct bio_vec {
 	unsigned int bv_offset;
 };
 
+#ifdef _WIN32_V9
+typedef void(bio_end_io_t)(void*, void*, void*);
+#else
 struct bio;
-typedef void(bio_end_io_t) (struct bio *, int);
+typedef void(bio_end_io_t)(struct bio *, int);
+#endif
+
 
 struct splitInfo {	
 	unsigned long finished;
@@ -637,6 +646,9 @@ struct bio {
 	void				*bi_private; 
 	unsigned int		bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec		bi_io_vec[1]; // only one!!!
+#ifdef _WIN32_V9_REMOVELOCK	
+	PVOLUME_EXTENSION	pVolExt; // for release removelock
+#endif
 };
 
 struct bio_set {
@@ -669,7 +681,11 @@ extern void bio_put(struct bio *);
 extern void bio_free(struct bio *bio); 
 extern void bio_endio(struct bio *, int);
 extern int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned int offset);
+#ifdef _WIN32_V9_REMOVELOCK
+extern int submit_bio(int rw, struct bio *bio);
+#else
 extern void submit_bio(int rw, struct bio *bio);
+#endif
 extern void bio_endio(struct bio *bio, int error);
 
 #define bio_get(bio)			atomic_inc(&(bio)->bi_cnt) 
@@ -1148,8 +1164,11 @@ struct retry_worker {
 
 extern void *crypto_alloc_tfm(char *name, u32 mask);
 extern unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm);
-
+#ifdef _WIN32_V9_REMOVELOCK
+extern int generic_make_request(struct bio *bio); // return value is changed for error handling 2015.12.08 by sekim (DW-649)
+#else
 extern void generic_make_request(struct bio *bio);
+#endif
 
 extern int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait);
 

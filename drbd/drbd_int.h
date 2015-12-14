@@ -1148,9 +1148,9 @@ struct drbd_resource {
 
 	struct drbd_work_queue work;
 	struct drbd_thread worker;
-#ifdef _WIN32_V9
-	KEVENT connect_work_done;
-#endif
+//#ifdef _WIN32_V9
+//	KEVENT connect_work_done;
+//#endif
 	struct list_head listeners;
 	spinlock_t listeners_lock;
 
@@ -2480,8 +2480,17 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 
 	if (drbd_insert_fault(device, fault_type))
 		bio_endio(bio, -EIO);
+#ifndef _WIN32_V9_REMOVELOCK
 	else
 		generic_make_request(bio);
+#else
+	else {
+		if (generic_make_request(bio)) {
+			// error
+			bio_endio(bio, -EIO);
+		}
+	}
+#endif
 }
 
 void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backing_dev *bdev,

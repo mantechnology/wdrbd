@@ -3921,10 +3921,10 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	int hg, rule_nr, rr_conflict, peer_node_id = 0, r;
 
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, true);
-#ifdef _WIN32_V9
-	KeSetEvent(&resource->connect_work_done, 0, FALSE);
-	WDRBD_INFO("drbd_sync_handshake: KeSetEvent connect_work_done\n");
-#endif
+//#ifdef _WIN32_V9
+//	KeSetEvent(&resource->connect_work_done, 0, FALSE);
+//	WDRBD_INFO("drbd_sync_handshake: KeSetEvent connect_work_done\n");
+//#endif
 	disk_state = device->disk_state[NOW];
 	if (disk_state == D_NEGOTIATING)
 		disk_state = disk_state_from_md(device);

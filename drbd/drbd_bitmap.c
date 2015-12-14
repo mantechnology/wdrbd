@@ -1303,6 +1303,14 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         IoFreeIrp(Irp);
     }
 #endif
+
+#ifdef _WIN32_V9_REMOVELOCK
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
 	bio_put(bio);
 
 	if (atomic_dec_and_test(&ctx->in_flight)) {
@@ -1379,10 +1387,22 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 		bio->bi_rw |= rw;
 		bio_endio(bio, -EIO);
 	} else {
+#ifndef _WIN32_V9_REMOVELOCK
 		submit_bio(rw, bio);
 		/* this should not count as user activity and cause the
-		 * resync to throttle -- see drbd_rs_should_slow_down(). */
+		* resync to throttle -- see drbd_rs_should_slow_down(). */
 		atomic_add(len >> 9, &device->rs_sect_ev);
+#else
+		if (submit_bio(rw, bio)) {
+			// error
+			bio_endio(bio, -EIO);
+		}
+		else {
+			/* this should not count as user activity and cause the
+			* resync to throttle -- see drbd_rs_should_slow_down(). */
+			atomic_add(len >> 9, &device->rs_sect_ev);
+		}
+#endif
 	}
 #ifdef _WIN32 // DV
     return;

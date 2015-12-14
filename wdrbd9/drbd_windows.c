@@ -629,10 +629,18 @@ void bio_free(struct bio *bio)
 	kfree(bio);
 }
 
+#ifdef _WIN32_V9_REMOVELOCK
+extern int submit_bio(int rw, struct bio *bio)
+#else
 void submit_bio(int rw, struct bio *bio)
+#endif
 {
 	bio->bi_rw |= rw; 
+#ifndef _WIN32_V9_REMOVELOCK
 	generic_make_request(bio);
+#else
+	return generic_make_request(bio);
+#endif
 }
 
 void bio_endio(struct bio *bio, int error)
@@ -1626,13 +1634,42 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 	return 1; 
 }
 
+#ifdef _WIN32_V9_REMOVELOCK
+int generic_make_request(struct bio *bio)
+#else
 void generic_make_request(struct bio *bio)
+#endif
 {
+#ifdef _WIN32_V9_REMOVELOCK
+	int err = 0;
+	NTSTATUS status;
+#endif
+
 	PIRP newIrp;
 	PVOID buffer;
 	LARGE_INTEGER offset;
 	ULONG io;
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+
+#ifdef _WIN32_V9_REMOVELOCK
+	if (!q) {
+		return -EIO;
+	}
+	bio->pVolExt = q->backing_dev_info.pDeviceExtension;
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (!NT_SUCCESS(status)) {
+			bio->pVolExt = NULL;
+			WDRBD_INFO("IoAcquireRemoveLock bio->pVolExt:%p fail\n", bio->pVolExt);
+			return -EIO;
+		}
+	}
+	else {
+		bio->pVolExt = NULL;
+		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high , bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
+		return -EIO;
+	}
+#endif
 
 	offset.QuadPart = bio->bi_sector << 9;
 	if (bio->win32_page_buf)
@@ -1734,12 +1771,22 @@ void generic_make_request(struct bio *bio)
 	if (!newIrp)
 	{
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-		return; 
+#ifdef _WIN32_V9_REMOVELOCK
+		bio->pVolExt = NULL;
+		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		return -ENOMEM;
+#else
+		return; // => potential IRP hang bug. 2015.12.09 sekim
+#endif
 	}
 #endif
 
 	IoSetCompletionRoutine(newIrp, bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
+
+#ifdef _WIN32_V9_REMOVELOCK
+	return 0;
+#endif
 }
 
 void __list_del_entry(struct list_head *entry)

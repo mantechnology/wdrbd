@@ -2426,6 +2426,7 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 
 	return true;
 }
+#if 0
 #ifdef 	_WIN32_V9
 static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
 {
@@ -2470,7 +2471,7 @@ int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (
 	return 0;
 }
 #endif
-
+#endif
 /*
  * Perform after state change actions that may sleep.
  */
