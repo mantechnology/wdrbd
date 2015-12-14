@@ -198,11 +198,11 @@ void drbd_printk_with_wrong_object_type(void);
 #if defined(dynamic_dev_dbg) && defined(disk_to_dev)
 #define dynamic_drbd_dbg(device, fmt, args...) \
 	dynamic_dev_dbg(disk_to_dev(device->vdisk), fmt, ## args)
-#else
-#if defined(_WIN32_V9) && defined(DBG)
+#elif defined(_WIN32_V9) && defined(DBG)
 #define dynamic_drbd_dbg(device, fmt, ...) \
 	drbd_dbg(device, fmt, __VA_ARGS__)
-#endif
+#else
+#define dynamic_drbd_dbg(device, fmt, ...)
 #endif
 
 #define drbd_emerg(device, fmt, ...) \
