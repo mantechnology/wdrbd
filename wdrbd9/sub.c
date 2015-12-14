@@ -221,6 +221,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	q = kzalloc(sizeof(struct request_queue), 0, '85DW');
 	if (!q)
 	{
+		bio_free(bio);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 

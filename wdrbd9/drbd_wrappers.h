@@ -538,8 +538,8 @@ static inline int crypto_hash_update(struct hash_desc *desc,
 #else
 	crypto_digest_update(desc->tfm->base,sg,1 /* ! */ );
 	/* ! this is not generic. Would need to convert nbytes -> nsg */
-
 #endif
+	return 0;
 }
 
 static inline int crypto_hash_final(struct hash_desc *desc, u8 *out)
