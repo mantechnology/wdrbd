@@ -1659,9 +1659,15 @@ void generic_make_request(struct bio *bio)
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
+			bio->pVolExt = NULL;
 			WDRBD_INFO("IoAcquireRemoveLock bio->pVolExt:%p fail\n", bio->pVolExt);
 			return -EIO;
 		}
+	}
+	else {
+		bio->pVolExt = NULL;
+		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high , bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
+		return -EIO;
 	}
 #endif
 
@@ -1766,6 +1772,7 @@ void generic_make_request(struct bio *bio)
 	{
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
 #ifdef _WIN32_V9_REMOVELOCK
+		bio->pVolExt = NULL;
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;
 #else
