@@ -1050,6 +1050,24 @@ retry:
 		}
 
 		if (rv == SS_NO_UP_TO_DATE_DISK && force && !with_force) {
+#ifdef _WIN32_V9    
+            u64 im;
+            idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+            {
+                struct drbd_peer_device *peer_device;
+                for_each_peer_device_ref(peer_device, im, device) {
+                    sector_t p_size = peer_device->max_size << 9;
+                    sector_t l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension);
+                    if ((device->disk_state[NOW] == D_INCONSISTENT) &&
+                        (peer_device->disk_state[NOW] == D_INCONSISTENT) &&
+                        (l_size > p_size))
+                    {
+                        rv = SS_TARGET_DISK_TOO_SMALL;
+                        goto out;
+                    }
+                }
+            }
+#endif
 			with_force = true;
 			forced = 1;
 			continue;
@@ -1252,8 +1270,12 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
 		retcode = drbd_set_role(adm_ctx.resource, R_PRIMARY, parms.assume_uptodate);
-		if (retcode >= SS_SUCCESS)
-			set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
+        if (retcode >= SS_SUCCESS)
+            set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
+#ifdef _WIN32_V9
+        else if (retcode == SS_TARGET_DISK_TOO_SMALL)
+            goto fail;
+#endif
 #ifdef _WIN32_MVFL // V9
         int vnr;
         struct drbd_device * device;
@@ -1279,7 +1301,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                 if (retcode < SS_SUCCESS)
                 {
                     FsctlUnlockVolume(device->minor);
-                    goto out;
+                    goto fail;
                 }
                 NTSTATUS status = FsctlDismountVolume(device->minor);
                 FsctlUnlockVolume(device->minor);
@@ -1287,7 +1309,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                 if (!NT_SUCCESS(status))
                 {
                     retcode = SS_UNKNOWN_ERROR;
-                    goto out;
+                    goto fail;
                 }
             }
             else
@@ -1302,6 +1324,9 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			clear_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
 	}
 
+#ifdef _WIN32_V9
+fail:
+#endif
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	genl_lock(); // [choi] dummy
 out:
@@ -4344,17 +4369,6 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	resource = device->resource;
-#ifdef _WIN32_CHECK_3 // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요// JHKIM: 특이한 케이스로 기억됨. 일단 보류.
-    sector_t p_size = resource->p_size << 9;
-    sector_t l_size = get_targetdev_volsize(resource->this_bdev->bd_disk->pDeviceExtension);
-    if ((resource->state.disk == D_INCONSISTENT) && 
-        (resource->state.pdsk == D_INCONSISTENT) &&
-        (l_size < p_size))
-    {
-        retcode = SS_TARGET_DISK_TOO_SMALL;
-        goto out;
-    }
-#endif
 	mutex_lock(&resource->adm_mutex);
 
 	if (info->attrs[DRBD_NLA_INVALIDATE_PARMS]) {
@@ -4447,17 +4461,6 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_DISK;
 		goto out;
 	}
-#ifdef _WIN32_CHECK_3 // kmpak multi resource 가 되면서 거기에 맞게 수정이 필요
-    sector_t p_size = resource->p_size << 9;
-    sector_t l_size = get_targetdev_volsize(resource->this_bdev->bd_disk->pDeviceExtension);
-    if ((resource->state.disk == D_INCONSISTENT) &&
-        (resource->state.pdsk == D_INCONSISTENT) &&
-        (l_size < p_size))
-    {
-        retcode = SS_TARGET_DISK_TOO_SMALL;
-        goto out;
-    }
-#endif
 	mutex_lock(&resource->adm_mutex);
 
 	drbd_suspend_io(device, READ_AND_WRITE);
