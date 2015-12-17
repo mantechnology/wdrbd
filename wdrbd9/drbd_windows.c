@@ -1189,6 +1189,20 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,  sector_t *err
 	return 0;
 }
 
+#ifdef _WIN32_V9 
+ULONG get_random_ulong(PULONG seed)
+{
+	LARGE_INTEGER Tick;
+	if (!seed) {
+		return 0;
+	}
+	KeQueryTickCount(&Tick);
+
+	return (Tick.LowPart + *seed);
+}
+#endif
+
+
 void get_random_bytes(void *buf, int nbytes)
 {
     ULONG rn = nbytes;
@@ -1197,7 +1211,11 @@ void get_random_bytes(void *buf, int nbytes)
 
     do
     {
-        rn = RtlRandomEx(&rn);
+#ifdef _WIN32_V9 
+		rn = get_random_ulong(&rn);
+#else // DW-667
+		rn = RtlRandomEx(&rn);
+#endif
         length = (4 > nbytes) ? nbytes : 4;
         memcpy(target, (UCHAR *)&rn, length);
         nbytes -= length;
