@@ -1248,6 +1248,15 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         error = (int)p3;
         bio = (struct bio *)p2;
     }
+
+#ifdef _WIN32_V9_REMOVELOCK //DW-670
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 #endif
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
 	struct drbd_device *device = ctx->device;
@@ -1304,13 +1313,6 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     }
 #endif
 
-#ifdef _WIN32_V9_REMOVELOCK
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
 	bio_put(bio);
 
 	if (atomic_dec_and_test(&ctx->in_flight)) {

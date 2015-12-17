@@ -91,6 +91,15 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         error = (int)p3;
         bio = (struct bio *)p2;
     }
+
+#ifdef _WIN32_V9_REMOVELOCK //DW-670
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // release remove lock for only normal case
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 #endif
 	BIO_ENDIO_FN_START;
 
@@ -130,14 +139,6 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			Irp->MdlAddress = NULL;
 		}
 		IoFreeIrp(Irp);
-	}
-#endif
-
-#ifdef _WIN32_V9_REMOVELOCK
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // release remove lock for only normal case
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
 	}
 #endif
 
@@ -284,6 +285,15 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
+
+#ifdef _WIN32_V9_REMOVELOCK //DW-670
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 #endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
@@ -324,14 +334,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 			Irp->MdlAddress = NULL;
 		}
 		IoFreeIrp(Irp);
-	}
-#endif
-
-#ifdef _WIN32_V9_REMOVELOCK
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
 	}
 #endif
 
@@ -388,6 +390,15 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
+
+#ifdef _WIN32_V9_REMOVELOCK //DW-670
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
+	}
+#endif
+
 	req = bio->bi_private; 
 	device = req->device;
 	uptodate = bio_flagged(bio, BIO_UPTODATE);
@@ -489,14 +500,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	__req_mod(req, what, NULL, &m);
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 	put_ldev(device);
-
-#ifdef _WIN32_V9_REMOVELOCK
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
 
 	if (m.bio)
 #ifdef _WIN32
@@ -1168,9 +1171,15 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 		struct resync_finished_work, pdw);
 
 	struct drbd_peer_device *peer_device = rfw->pdw.peer_device;
+#ifdef _WIN32_V9 //DW-669
+	enum drbd_disk_state new_peer_disk_state2 = rfw->new_peer_disk_state;
+	kfree(rfw);
+	drbd_resync_finished(peer_device, new_peer_disk_state2);
+#else
 	kfree(rfw);
 	drbd_resync_finished(peer_device, rfw->new_peer_disk_state);
-
+#endif
+	
 	return 0;
 }
 
