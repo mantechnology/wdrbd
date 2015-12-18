@@ -4195,6 +4195,9 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	synchronize_rcu_w32_wlock();
 #endif
 	rcu_assign_pointer(connection->transport.net_conf, new_net_conf);
+#ifdef _WIN32_V9 // [choi] fixed deadlock. DW-656  
+    synchronize_rcu(); 
+#endif
 	mutex_unlock(&connection->mutex[DATA_STREAM]);
 	mutex_unlock(&connection->resource->conf_update);
 
@@ -4209,7 +4212,9 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		drbd_info(connection, "peer data-integrity-alg: %s\n",
 			  integrity_alg[0] ? integrity_alg : "(none)");
 
+#ifndef _WIN32_V9 // [choi] fixed deadlock. DW-656  
 	synchronize_rcu(); // 함수 scope 를 벗어난 rcu 해제... V9 포팅필요. => synchronize 이름으로 인한 착오... 락 획득함수로 오인. 해제함수 이다.
+#endif
 	kfree(old_net_conf);
 	return 0;
 
