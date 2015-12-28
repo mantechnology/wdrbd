@@ -530,7 +530,7 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 #endif
 {
 #ifdef _WIN32_V9
-	*(uint32_t *)digest = crc32c('dbrd', peer_req->win32_big_page, peer_req->i.size);	// kmpak. added key value
+	*(uint32_t *)digest = crc32c(0, peer_req->win32_big_page, peer_req->i.size);
 #else
 	struct hash_desc desc;
 	struct scatterlist sg;
