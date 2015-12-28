@@ -772,12 +772,11 @@ long wait_for_completion(struct completion *completion)
 {
 	return schedule(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 }
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
+
 long wait_for_completion_timeout(struct completion *completion, long timeout)
 {
     return schedule(&completion->wait, timeout, __FUNCTION__, __LINE__);
 }
-#endif
 
 void complete(struct completion *c)
 {
@@ -2529,11 +2528,8 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 
 	sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
 	WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
     Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
-#else
-	Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
-#endif
+
 	if (Socket == NULL) {
 		WDRBD_ERROR("CreateSocket() returned NULL\n");
 		kfree(cmd_line);

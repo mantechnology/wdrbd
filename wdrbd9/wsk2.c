@@ -171,10 +171,8 @@ CreateSocket(
 	__in ADDRESS_FAMILY	AddressFamily,
 	__in USHORT			SocketType,
 	__in ULONG			Protocol,
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
     __in PVOID          *SocketContext,
     __in PWSK_CLIENT_LISTEN_DISPATCH Dispatch,
-#endif
 	__in ULONG			Flags
 )
 {
@@ -199,13 +197,8 @@ CreateSocket(
 				SocketType,
 				Protocol,
 				Flags,
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
-                SocketContext,
-                Dispatch,
-#else
-				NULL,
-				NULL,
-#endif
+				SocketContext,
+				Dispatch,
 				NULL,
 				NULL,
 				NULL,
@@ -1283,7 +1276,7 @@ ReleaseProviderNPI()
     WskReleaseProviderNPI(&gWskEventRegistration);
 }
 
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
+
 NTSTATUS
 NTAPI
 SetEventCallbacks(
@@ -1399,4 +1392,3 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 }
-#endif
