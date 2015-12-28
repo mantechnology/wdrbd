@@ -576,7 +576,6 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	socket->sk_linux_attr = 0;
 	err = 0;
 	
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
 #ifdef _WIN32_V9_IPV6
 	if (my_addr.ss_family == AF_INET6) {
 		socket->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
@@ -586,9 +585,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 #else
 	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
 #endif
-#else
-	socket->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_CONNECTION_SOCKET);
-#endif
+
 	if (socket->sk == NULL) {
 		err = -1;
 		goto out;
@@ -1262,8 +1259,7 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 	kfree(listener);
 }
 
-// [choi] V8 prepare_listen_socket() 적용. WSK_ACCEPT_EVENT_CALLBACK은 disable 시켜둠. 
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
+#ifdef _WIN32
 // A listening socket's WskInspectEvent event callback function
 WSK_INSPECT_ACTION WSKAPI
 dtt_inspect_incoming(
@@ -1363,7 +1359,6 @@ static int dtt_create_listener(struct drbd_transport *transport,
     sprintf(s_listen->name, "listen_sock\0");
     s_listen->sk_linux_attr = 0;
     err = 0;
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
 	listener = kzalloc(sizeof(struct dtt_listener), 0, 'F6DW');
 	if (!listener) {
         err = -ENOMEM;
@@ -1378,16 +1373,11 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #else 
 	s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 #endif
-
-#else
-    s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
-#endif
     if (s_listen->sk == NULL) {
         err = -1;
         goto out;
     }
 
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
     status = SetConditionalAccept(s_listen->sk, 1);
 	if (!NT_SUCCESS(status))
     {
@@ -1395,7 +1385,6 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = status;
         goto out;
     }
-#endif
     s_listen->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '72DW');
     if (!s_listen->sk_linux_attr)
     {
@@ -1456,15 +1445,13 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #endif
 
 	listener->s_listen = s_listen;
-
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
+    
 	// 이 시점에 event callback을 설정하면 안된다... dtt_create_listener 가 완료되고
     // drbd_get_listener 안에서 초기화 될 코드가 다 수행되고 난 후 이벤트 콜백을 설정해야 
 	// event callback(dtt_incoming_connection) 안의 코드수행이 안전하다.
 
     // kmpak 2015.11.03 소켓 bind 후에는 사용해도 되는 것을 확인하여
     // bind 직후 WSK_EVENT_ACCEPT 설정하였습니다.
-#endif
 
 #ifndef _WIN32
 	write_lock_bh(&s_listen->sk->sk_callback_lock);
@@ -1839,7 +1826,7 @@ randomize:
 		ok = dtt_connection_established(transport, &dsocket, &csocket, &first_path);
 	} while (!ok);
 #if 0   // kmpak No need to event disable because it will be released socket.
-#ifdef WSK_ACCEPT_EVENT_CALLBACK // dtt_put_listener 하기 전에 이벤트 콜백 해제
+#ifdef _WIN32 // dtt_put_listener 하기 전에 이벤트 콜백 해제
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("WSK_EVENT_DISABLE failed=0x%x\n", status);

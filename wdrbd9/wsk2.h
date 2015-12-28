@@ -42,10 +42,8 @@ NTAPI
     __in ADDRESS_FAMILY	AddressFamily,
     __in USHORT			SocketType,
     __in ULONG			Protocol,
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
     __in PVOID          *SocketContext,
     __in PWSK_CLIENT_LISTEN_DISPATCH Dispatch,
-#endif
     __in ULONG			Flags
     );
 
@@ -198,7 +196,6 @@ NTSTATUS CloseWskEventSocket();
 extern
 void ReleaseProviderNPI();
 
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
 extern
 NTSTATUS
 NTAPI
@@ -226,5 +223,3 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
-
-#endif

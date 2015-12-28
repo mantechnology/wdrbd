@@ -37,8 +37,6 @@
 
 #define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
 
-#define WSK_ACCEPT_EVENT_CALLBACK     
-
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// SEO: NETLINK에서 사용
@@ -659,14 +657,13 @@ struct completion {
 	//unsigned int done;
 	wait_queue_head_t wait;
 };
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
+
 struct accept_wait_data {
     struct drbd_tconn *tconn;
     struct socket *s_listen;
     struct socket *s_accept;
     struct completion door_bell;
 };
-#endif
 
 extern struct bio *bio_clone(struct bio *, int x);
 extern struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs);
@@ -950,9 +947,7 @@ static __inline wait_queue_t initqueue(wait_queue_t *wq)
 
 extern void init_completion(struct completion *x);
 extern long wait_for_completion(struct completion *x);
-#ifdef WSK_ACCEPT_EVENT_CALLBACK
 extern long wait_for_completion_timeout(struct completion *x, long timeout);
-#endif
 extern void complete(struct completion *c);
 extern void complete_all(struct completion *c);
 
