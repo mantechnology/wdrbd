@@ -88,3 +88,5 @@ extern int SockListener(unsigned short *servPort);
 
 extern DWORD StartRegistryCleaner();
 extern DWORD StopRegistryCleaner();
+
+extern void Log(WCHAR * msg, ...);

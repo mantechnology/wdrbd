@@ -172,7 +172,7 @@ int SockListener(unsigned short *servPort)
 			extern const TCHAR * ServiceName;
 			HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
 			BOOL bSuccess;
-			PCTSTR aInsertions[] = { L"call_usermodehelper:", L"Accepted", L"TCP onnection" };
+			PCTSTR aInsertions[] = { L"call_usermodehelper:", L"Accepted", L"TCP connection" };
 			bSuccess = ReportEvent(
 				hEventLog,                  // Handle to the eventlog
 				EVENTLOG_INFORMATION_TYPE,  // Type of event
@@ -298,6 +298,7 @@ int HandleTCPClient(int clntSocket)
 	wsprintf(dest, L"\"%ws\\%S\" %S", gServicePath, usermode_helper, rxcmdbuf);
 
 	ret = RunProcess(EXEC_MODE_WIN, SW_NORMAL, dest, NULL, gServicePath, dwPID, INFINITE, &dwExitCode, NULL); // wait!!!
+	Log(L"RunProcess - %ws\n", dest);
 	if (ret != ERROR_SUCCESS)
 	{
         wsprintf(tmp, L"Failed to run [%ws] process. GetLastError(%d)", gServicePath, ret);

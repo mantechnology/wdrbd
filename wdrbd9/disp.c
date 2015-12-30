@@ -378,10 +378,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
         if (device)
         {
-            NTSTATUS					status;
             PMVOL_THREAD				pThreadInfo;
 
-            InterlockedIncrement(&VolumeExtension->IrpCount);
             InterlockedIncrement64(&VolumeExtension->WriteCount.QuadPart);
 
 #ifdef DRBD_TRACE

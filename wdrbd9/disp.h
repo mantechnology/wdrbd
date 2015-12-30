@@ -29,8 +29,6 @@ typedef struct _MVOL_THREAD
 	KEVENT						RequestEvent;
 	PVOID						pThread;
 	ULONG						Id;                 // MULTI_WRITE_HOOKER_THREADS
-	ULONG						read_req_count;
-	ULONG						write_req_count;
 	KEVENT						SplitIoDoneEvent;
 } MVOL_THREAD, *PMVOL_THREAD;
 

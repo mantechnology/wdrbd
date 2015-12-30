@@ -37,4 +37,9 @@
     <TestCertificate>$(ProjectDir)mantech.pfx</TestCertificate>
     <ProductionCertificate>$(ProjectDir)mantech.pfx</ProductionCertificate>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
+    <TestCertificate>D:\repositories\wdrbd9\wdrbd9\mantech.pfx</TestCertificate>
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>D:\repositories\wdrbd9\wdrbd9\mantech.pfx</ProductionCertificate>
+  </PropertyGroup>
 </Project>

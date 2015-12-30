@@ -508,18 +508,13 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		complete_master_bio(device, &m);
 #endif
 
-#ifdef _WIN32
 #ifdef DRBD_TRACE	
 	{
 		static int cnt = 0;
 		WDRBD_TRACE("drbd_request_endio done.(%d).................IRQL(%d)!!!\n", cnt++, KeGetCurrentIrql());
 	}
 #endif
-	
-	return STATUS_MORE_PROCESSING_REQUIRED;
-#else
 	BIO_ENDIO_FN_RETURN;
-#endif
 }
 
 //v8 의 drbd_csum_ee 은 mdev 를 인자로 받았으나... 함수에서 사용되지 않는 인자였다. V9에서 제거해도 무방하다.

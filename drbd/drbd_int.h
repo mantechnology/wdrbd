@@ -154,14 +154,14 @@ struct drbd_connection;
         const struct drbd_connection *__c;			\
         const struct drbd_resource *__r;			\
         const char *__cn;					\
-        rcu_read_lock();					\
+        /*rcu_read_lock();				*/	\
         __d = (peer_device)->device;				\
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = rcu_dereference(__c->transport.net_conf)->name;	\
         printk(level "drbd %s/%u drbd%u %s: " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, __VA_ARGS__);\
-        rcu_read_unlock();					\
+        /*rcu_read_unlock();	*/				\
     } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
@@ -169,10 +169,10 @@ struct drbd_connection;
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
-        rcu_read_lock(); \
+        /*rcu_read_lock();*/ \
         printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
         rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
-        rcu_read_unlock(); \
+        /*rcu_read_unlock();*/ \
     } while(0)
 
 void drbd_printk_with_wrong_object_type(void);

@@ -49,6 +49,8 @@ VOID WriteLog(wchar_t* pMsg)
         );
 
     DeregisterEventSource(hEventLog);
+
+	Log(pMsg);
 }
 
 int _tmain(int argc, _TCHAR* argv[])

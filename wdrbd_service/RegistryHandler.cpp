@@ -49,16 +49,24 @@ bool CaseInsCompare(const wstring& s1, const wstring& s2)
 void Log(WCHAR * msg, ...)
 {
     wofstream log_file;
-    wchar_t buffer[4096] = {0, };
+	size_t size = 4096;
+	wchar_t * buffer = new wchar_t[size];
+	ZeroMemory(buffer, size * sizeof(wchar_t));
     va_list params;
 
     va_start(params, msg);
-    _vstprintf(buffer, sizeof(buffer), msg, params);
+	_vstprintf(buffer, size, msg, params);
     va_end(params);
 
-    log_file.open(g_strLogPath.c_str(), std::ios_base::out | std::ios_base::app);
-    log_file << buffer;
+	WCHAR time[128] = { 0, }, date[128] = { 0, };
+	GetTimeFormatW(LOCALE_USER_DEFAULT, 0, 0, L"HH.mm.ss", time, 128);
+	GetDateFormatW(LOCALE_USER_DEFAULT, 0, 0, L"yyyy:MM:dd", date, 128);
+
+	log_file.open(g_strLogPath.c_str(), std::ios_base::out | std::ios_base::app);
+	log_file << date << L" " << time << L" " << buffer;
     log_file.close();
+
+	delete [] buffer;
 }
 
 /**

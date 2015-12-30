@@ -104,9 +104,6 @@ mvolWorkThread(PVOID arg)
 	id = pThreadInfo->Id;
     WDRBD_TRACE("WorkThread [%ws]:id %d handle 0x%x start\n", VolumeExtension->PhysicalDeviceName, id, KeGetCurrentThread());
 
-	pThreadInfo->read_req_count = 0;
-	pThreadInfo->write_req_count = 0;
-
 	for (;;)
 	{
 		int loop = 0;
@@ -131,32 +128,29 @@ mvolWorkThread(PVOID arg)
 
 			switch (irpSp->MajorFunction)
 			{
-			case IRP_MJ_WRITE:
-				InterlockedDecrement( &VolumeExtension->IrpCount );/// deviceExtension->IrpCount--;
-				InterlockedIncrement( &pThreadInfo->write_req_count );/// pThreadInfo->write_req_count++;
-				status = mvolReadWriteDevice(VolumeExtension, irp, IRP_MJ_WRITE);
-				if (status != STATUS_SUCCESS)
-				{
-				mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
+				case IRP_MJ_WRITE:
+					status = mvolReadWriteDevice(VolumeExtension, irp, IRP_MJ_WRITE);
+					if (status != STATUS_SUCCESS)
+					{
+						mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
 
-				irp->IoStatus.Information = 0;
-				irp->IoStatus.Status = status;
-				IoCompleteRequest(irp, (CCHAR)(NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
-				}
-				break;
+						irp->IoStatus.Information = 0;
+						irp->IoStatus.Status = status;
+						IoCompleteRequest(irp, (CCHAR)(NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
+					}
+					break;
 
 			case IRP_MJ_READ:
 				if (g_read_filter)
 				{
-				InterlockedIncrement( &pThreadInfo->read_req_count );/// pThreadInfo->read_req_count++;
-				status = mvolReadWriteDevice(VolumeExtension, irp, IRP_MJ_READ);
-				if (status != STATUS_SUCCESS)
-				{
-					mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
-					irp->IoStatus.Information = 0;
-					irp->IoStatus.Status = status;
-					IoCompleteRequest(irp, (CCHAR)(NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
-				}
+					status = mvolReadWriteDevice(VolumeExtension, irp, IRP_MJ_READ);
+					if (status != STATUS_SUCCESS)
+					{
+						mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
+						irp->IoStatus.Information = 0;
+						irp->IoStatus.Status = status;
+						IoCompleteRequest(irp, (CCHAR)(NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
+					}
 				}
 				break;
 

@@ -388,13 +388,13 @@ do { \
 #define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
 #endif
 #define WDRBD_TRACE_NETLINK
-#define WDRBD_TRACE_TM
-#define WDRBD_TRACE_RCU
-#define WDRBD_TRACE_REQ_LOCK //for lock_all_resources(), unlock_all_resources()
+#define WDRBD_TRACE_TM					// about timer
+#define WDRBD_TRACE_RCU					// about rcu
+#define WDRBD_TRACE_REQ_LOCK			// for lock_all_resources(), unlock_all_resources()
 #define WDRBD_TRACE_TR
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
-#define WDRBD_TRACE_SK
+#define WDRBD_TRACE_SK					// about socket
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4
 #define WDRBD_TRACE_SB
@@ -997,7 +997,6 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			static int x=0; if(!(x++ %1000)) DbgPrint("DRBD_TEST:__wait_event_timeout(poll 0.1s): global x=%d time=%d ret=%d\n", x, t, ret); \
 			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
 				}  \
 		} while (0)
@@ -1481,7 +1480,6 @@ void list_cut_position(struct list_head *list, struct list_head *head, struct li
 	     (bit) = find_next_bit((addr), (size), (bit) + 1))
 
 extern int drbd_backing_bdev_events(struct drbd_device *device);
-
 #endif
 
 #endif // DRBD_WINDOWS_H
