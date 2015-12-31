@@ -169,10 +169,10 @@ struct drbd_connection;
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
-        /*rcu_read_lock();*/ \
+        /*rcu_read_lock();	_WIN32_V9*/ \
         printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
         rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
-        /*rcu_read_unlock();*/ \
+        /*rcu_read_unlock();	_WIN32_V9*/ \
     } while(0)
 
 void drbd_printk_with_wrong_object_type(void);
