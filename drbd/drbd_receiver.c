@@ -4897,7 +4897,6 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	struct drbd_peer_md *peer_md = NULL;
 	struct drbd_device *device;
 
-
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
 		return config_unknown_volume(connection, pi);
@@ -6016,6 +6015,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		ov_out_of_sync_print(peer_device);
 		drbd_resync_finished(peer_device, D_MASK);
 		peer_device->last_repl_state = peer_state.conn;
+		return 0;
+	}
+	
+	/* Start resync after AHEAD/BEHIND */
+	if (connection->agreed_pro_version >= 110 &&
+		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
 
