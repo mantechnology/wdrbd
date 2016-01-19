@@ -258,9 +258,7 @@ retry:
 #ifdef _WIN32_V9
 		struct nlmsghdr *nlh = (struct nlmsghdr *)iov->iov_base;
 		if (nlh->nlmsg_len < (unsigned)n) {
-			flags = 0;
 			iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
-			goto retry;
 		}
 #endif
 		flags = 0;
