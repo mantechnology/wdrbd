@@ -552,14 +552,22 @@ NetlinkWorkThread(PVOID context)
             goto cleanup;
         }
 
+		struct nlmsghdr *nlh = (struct nlmsghdr *)psock_buf;
+
         if (strstr(psock_buf, DRBD_EVENT_SOCKET_STRING))
         {
-            WDRBD_TRACE("DRBD_EVENT_SOCKET_STRING received. socket(0x%p)\n", socket);
-            push_msocket_entry(socket);
-            continue;
+			WDRBD_TRACE("DRBD_EVENT_SOCKET_STRING received. socket(0x%p)\n", socket);
+			push_msocket_entry(socket);
+			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount)
+			{
+				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
+				readcount -= strlen(DRBD_EVENT_SOCKET_STRING);
+			}
+			else
+			{
+				continue;
+			}
         }
-
-        struct nlmsghdr *nlh = (struct nlmsghdr *)psock_buf;
 
         if (pinfo)
             ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
