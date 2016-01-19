@@ -632,14 +632,6 @@ NetlinkWorkThread(PVOID context)
         }
     }
 
-    // wait for peer socket close 
-    char buf;
-    int ret;
-    if ((ret = Receive(socket, &buf, 1, 0, 1000)) > 0)
-    {
-        WDRBD_WARN("NetLink CLI done with unexpected real rx. rx count=%d. Ignored.\n", ret);
-    }
-
 cleanup:
     pop_msocket_entry(socket);
     Disconnect(socket);
