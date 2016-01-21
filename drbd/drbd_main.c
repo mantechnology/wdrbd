@@ -4029,8 +4029,11 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->seq_wait);
 #ifdef _WIN32_V9
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-    if (!pvext)
-        goto out_no_disk;
+	if (!pvext)
+	{
+		err = ERR_NO_DISK;
+		goto out_no_disk;
+	}
 
 	device->this_bdev = pvext->dev;
     q = pvext->dev->bd_disk->queue;
@@ -4048,7 +4051,14 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk = alloc_disk(1);
 #endif
 	if (!disk)
+#ifdef _WIN32_V9
+	{
+		err = ERR_NO_DISK;
+#endif
 		goto out_no_disk;
+#ifdef _WIN32_V9
+	}
+#endif
 	device->vdisk = disk;
 
 	set_disk_ro(disk, true);
