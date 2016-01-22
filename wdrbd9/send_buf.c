@@ -166,46 +166,47 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 		return Send(socket->sk, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
-	unsigned long long  tmp = (long long) buffering_attr->bab->length * 99;
+	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
 	int data_sz = get_ring_buffer_size(buffering_attr->bab);
 
 	if ((data_sz + size) > highwater)
 	{
-		int retry = 0;
-		while (1)
+		int ko_retry = 0;
+		while (!drbd_stream_send_timed_out(transport, stream))
 		{
-			// TODO: 출력부하 무시, 안정화 이후 제거
-			WDRBD_WARN("bab(%s) overflow. retry(%d). bab:total(%d) queued(%d) requested(%d) highwater(%d)", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
-
 			LARGE_INTEGER	nWaitTime;
 			KTIMER ktimer;
-			nWaitTime = RtlConvertLongToLargeInteger(-1 * 1000 * socket->sk_linux_attr->sk_sndtimeo * 10);
-			KeInitializeTimer(&ktimer);
-			KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
-			KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
-			WDRBD_WARN("time done!\n");
+			int retry;
+			int loop;
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * 100 * 1000 * 10); // unit 0.1 sec
+			retry = socket->sk_linux_attr->sk_sndtimeo / 100; // unit 0.1 sec //TODO: check min/max value?
 
-			// V8: if (we_should_drop_the_connection(tconn, socket))
-			if (drbd_stream_send_timed_out(transport, stream)) // V9 
-			{
-				WDRBD_ERROR("bab(%s) we_should_drop_the_connection.\n", buffering_attr->bab->name);
-				return -EAGAIN;
-			}
+			// TODO: 출력부하 무시, 안정화 이후 제거
+			WDRBD_WARN("bab(%s) OV. ko_retry(%d). bab:total(%d) queued(%d) requested(%d) highwater(%d) peek tx(%d)",
+				buffering_attr->bab->name, ko_retry, buffering_attr->bab->length, data_sz, size, highwater, retry);
 
-			data_sz = get_ring_buffer_size(buffering_attr->bab);
-			if ((data_sz + size) > highwater)
+			for (loop = 0; loop < retry; loop++)
 			{
-				retry++;
-				continue;
-			}
-			else
-			{
-				// TODO: 출력부하 무시, 안정화 이후 제거
-				WDRBD_WARN("bab(%s) overflow resolved at loop %d. bab:total(%d) queued(%d) requested(%d) highwater(%d)\n", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
-				goto buffering;
+				KTIMER ktimer;
+				KeInitializeTimer(&ktimer);
+				KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
+				KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+				data_sz = get_ring_buffer_size(buffering_attr->bab);
+				if ((data_sz + size) > highwater)
+				{
+					continue;
+				}
+				else
+				{
+					// TODO: 출력부하 무시, 안정화 이후 제거
+					WDRBD_WARN("bab(%s) OV resolved at loop %d. bab:total(%d) queued(%d) requested(%d) highwater(%d)\n", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
+					goto buffering;
+				}
 			}
 		}
+		WDRBD_ERROR("bab(%s) we_should_drop_the_connection. timeout!\n", buffering_attr->bab->name);
+		return -EAGAIN;
 	}
 
 #ifdef SENDBUF_TRACE
@@ -225,10 +226,11 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	LeaveCriticalSection(&bab->cs);
 #endif
 
-buffering:		
+buffering:
 	write_ring_buffer(buffering_attr->bab, buf, size);
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
 	return size;
+
 }
 
 int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
