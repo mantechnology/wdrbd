@@ -12,7 +12,7 @@
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
 
-#define MAX_ONETIME_SEND_BUF	(64*1024) // (1024*1024*10) // 10MB
+#define MAX_ONETIME_SEND_BUF	(64*1024) // 64K // (1024*1024*10) // 10MB
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
@@ -85,35 +85,61 @@ unsigned int get_ring_buffer_size(ring_buffer *ring)
 	return s;
 }
 
-void write_ring_buffer(ring_buffer *ring, const char *data, int len)
+int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, int len, int highwater, int retry)
 {
 	unsigned int remain;
+	int ringbuf_size = 0;
+	LARGE_INTEGER	Interval;
+	Interval.QuadPart = (-1 * 20 * 10000);   // wait 20ms relative
 
 	EnterCriticalSection(&ring->cs);
+
+	ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
+
+	if ((ringbuf_size + len) > highwater) {
+
+		LeaveCriticalSection(&ring->cs);
+		while (!drbd_stream_send_timed_out(transport, stream)) {
+			int loop = 0;
+			for (loop = 0; loop < retry; loop++) {
+				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+				//KTIMER ktimer;
+				//KeInitializeTimer(&ktimer);
+				//KeSetTimerEx(&ktimer, Interval, 0, NULL);
+				//KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+				EnterCriticalSection(&ring->cs);
+				ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
+				if ((ringbuf_size + len) > highwater) {
+				} else {
+					goto $GO_BUFFERING;
+				}
+				LeaveCriticalSection(&ring->cs);
+			}
+		}
+		
+		return -EAGAIN;
+	}
+
+$GO_BUFFERING:
+	////////////////////////////////////////////////////////////////////////////////
 	remain = (ring->read_pos - ring->write_pos - 1 + ring->length) % ring->length;
-	if (remain < len)
-	{
+	if (remain < len) {
 		len = remain;
 	}
 
-	if (len > 0)
-	{
+	if (len > 0) {
 		remain = ring->length - ring->write_pos;
-		if (remain < len)
-		{
+		if (remain < len) {
 			memcpy(ring->mem + (ring->write_pos), data, remain);
 			memcpy(ring->mem, data + remain, len - remain);
-		}
-		else
-		{
+		} else {
 			memcpy(ring->mem + ring->write_pos, data, len);
 		}
 
 		ring->write_pos += len;
 		ring->write_pos %= ring->length;
 	}
-	else
-	{
+	else {
 		WDRBD_ERROR("unexpected bab case\n");
 		BUG();
 	}
@@ -121,27 +147,47 @@ void write_ring_buffer(ring_buffer *ring, const char *data, int len)
 	ring->que++;
 	ring->seq++;
 	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
+
 	LeaveCriticalSection(&ring->cs);
+
+	return len;
 }
 
-void read_ring_buffer(ring_buffer *ring, char *data, int len)
+unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigned int* pLen)
 {
 	unsigned int remain;
+	unsigned int ringbuf_size = 0;
+	unsigned int tx_sz = 0;
 
 	EnterCriticalSection(&ring->cs);
-	remain = ring->length - ring->read_pos;
-	if (remain < len)
-	{
-		memcpy(data, ring->mem + ring->read_pos, remain);
-		memcpy(data + remain, ring->mem, len - remain);
+	ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
+	
+	if (ringbuf_size == 0) {
+		LeaveCriticalSection(&ring->cs);
+		return 0;
 	}
-	else
-		memcpy(data, ring->mem + ring->read_pos, len);
+ 
+	tx_sz = (ringbuf_size > MAX_ONETIME_SEND_BUF) ? MAX_ONETIME_SEND_BUF : ringbuf_size;
 
-	ring->read_pos += len;
+	remain = ring->length - ring->read_pos;
+	if (remain < tx_sz) {
+		memcpy(data, ring->mem + ring->read_pos, remain);
+		memcpy(data + remain, ring->mem, tx_sz - remain);
+	}
+	else {
+		memcpy(data, ring->mem + ring->read_pos, tx_sz);
+	}
+
+	ring->read_pos += tx_sz;
 	ring->read_pos %= ring->length;
 	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
+
+	*pLen = tx_sz;
+
 	LeaveCriticalSection(&ring->cs);
+	
+	return 1;
+
 }
 
 int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
@@ -168,6 +214,8 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
+	int retry = retry = socket->sk_linux_attr->sk_sndtimeo / 100;
+#if 0
 	int data_sz = get_ring_buffer_size(buffering_attr->bab);
 
 	if ((data_sz + size) > highwater)
@@ -208,7 +256,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 		WDRBD_ERROR("bab(%s) we_should_drop_the_connection. timeout!\n", buffering_attr->bab->name);
 		return -EAGAIN;
 	}
-
+#endif
 #ifdef SENDBUF_TRACE
 	struct _send_req *req = (struct _send_req *) kcalloc(1, sizeof(struct _send_req), 0, 'X2DW');
 	if (!req)
@@ -226,8 +274,11 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	LeaveCriticalSection(&bab->cs);
 #endif
 
-buffering:
-	write_ring_buffer(buffering_attr->bab, buf, size);
+//buffering:
+	//write_ring_buffer(buffering_attr->bab, buf, size);
+
+	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
+
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
 	return size;
 
@@ -284,27 +335,15 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 
 	while (1)
 	{
-		int tx_sz = 0;
+		unsigned int tx_sz = 0;
 
 		txloop++;
-		bab_peek = get_ring_buffer_size(bab);
-		if (bab_peek == 0)
-		{
+		
+		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
 		}
-
-		if (bab_peek > MAX_ONETIME_SEND_BUF)
-		{
-			// data too big!
-			tx_sz = MAX_ONETIME_SEND_BUF;
-		}
-		else
-		{
-			tx_sz = bab_peek;
-		}
-
-		read_ring_buffer(bab, bab->static_big_buf, tx_sz);
-		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
+		//ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
+		ret = SendEx(sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
 		if (ret == -EINTR)
 		{
 			return -EINTR;
@@ -340,6 +379,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
+	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 	//WDRBD_INFO("start send_buf_thread\n");
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);

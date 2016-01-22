@@ -52,10 +52,11 @@ struct _buffering_attr {
 
 typedef struct ring_buffer  ring_buffer;
 
-extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
 extern ring_buffer *create_ring_buffer(char *name, unsigned int length);
 extern void destroy_ring_buffer(ring_buffer *ring);
 extern int get_ring_buffer_size(ring_buffer *ring);
-extern void write_ring_buffer(ring_buffer *ring, const char *data, int len);
+//extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
+extern unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigned int* pLen);
+extern int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, int len, int highwater, int retry);
 extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size);
 #endif

@@ -1016,11 +1016,7 @@ start:
 	// JHKIM: 리팩토링: 추후 1:N 연결 transport->ops->connect() 부분이 안정화 되면, 
 	// sendbuffering 시작 시점을 이렇게 세션이 연결된 후가 아니라 data/control 소켓이 만들어지는 시점에서 처리.
 	
-	if (nc->sndbuf_size <= 0)
-	{
-		drbd_warn(connection, "send-buffering disabled\n");
-	}
-	else
+	if ((nc->wire_protocol == DRBD_PROT_A) && (nc->sndbuf_size > 0) )
 	{
 		bool send_buffring = FALSE;
 
@@ -1029,6 +1025,10 @@ start:
 			drbd_info(connection, "buffering s(%d) c(%d)\n", nc->sndbuf_size, (nc->cong_fill * 512));
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
+	}
+	else
+	{
+		drbd_warn(connection, "send-buffering disabled\n");
 	}
 #endif
 
