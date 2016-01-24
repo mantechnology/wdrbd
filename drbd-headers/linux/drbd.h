@@ -177,6 +177,7 @@ enum drbd_ret_code {
 	ERR_IMPLICIT_SHRINK     = 170,
 	ERR_INVALID_PEER_NODE_ID = 171,
 	ERR_CREATE_TRANSPORT    = 172,
+	ERR_LOCAL_AND_PEER_ADDR = 173,
 
 	/* insert new ones above this line */
 	AFTER_LAST_ERR_CODE

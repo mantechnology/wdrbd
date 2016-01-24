@@ -216,6 +216,8 @@ enum drbd_req_state_bits {
 
 	/* Set when this is a write, clear for a read */
 	__RQ_WRITE,
+	__RQ_WSAME,
+	__RQ_UNMAP,
 
 	/* Should call drbd_al_complete_io() for this request... */
 	__RQ_IN_ACT_LOG,
@@ -258,6 +260,8 @@ enum drbd_req_state_bits {
 #define RQ_NET_MASK        (((1UL << __RQ_NET_MAX)-1) & ~RQ_LOCAL_MASK)
 
 #define RQ_WRITE           (1UL << __RQ_WRITE)
+#define RQ_WSAME           (1UL << __RQ_WSAME)
+#define RQ_UNMAP           (1UL << __RQ_UNMAP)
 #define RQ_IN_ACT_LOG      (1UL << __RQ_IN_ACT_LOG)
 #define RQ_POSTPONED	   (1UL << __RQ_POSTPONED)
 #define RQ_COMPLETION_SUSP (1UL << __RQ_COMPLETION_SUSP)

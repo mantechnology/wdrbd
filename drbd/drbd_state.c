@@ -2574,7 +2574,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 /* FIXME currently broken.
  * RESTART_FROZEN_DISK_IO may need a (temporary?) dedicated kernel thread */
 				if ((disk_state[OLD] == D_ATTACHING || disk_state[OLD] == D_NEGOTIATING) &&
-				    conn_lowest_disk(connection) > D_NEGOTIATING)
+				    conn_lowest_disk(connection) == D_UP_TO_DATE)
 					what = RESTART_FROZEN_DISK_IO;
 #endif
 
@@ -2929,14 +2929,16 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		enum drbd_role *peer_role = connection_state_change->peer_role;
 
 		/* Upon network configuration, we need to start the receiver */
-		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED) { // queueing drbd_thread_start sekim 2015.11.19
+		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED)
 #ifdef 	_WIN32_V9
+		{ // queueing drbd_thread_start sekim 2015.11.19
 			drbd_thread_start(&connection->receiver); 
 			//drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver); // DW-636 연결 순차실행 -> 원본으로 복구. sekim 2015.11.27
+		}
 #else
 			drbd_thread_start(&connection->receiver);
 #endif
-		}
+
 
 		if (susp_fen[NEW]) {
 			bool all_peer_disks_outdated = true;
@@ -3480,7 +3482,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 	request.mask = cpu_to_be32(context->mask.i);
 	request.val = cpu_to_be32(context->val.i);
 
-	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)\n",
+	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)",
 		  be32_to_cpu(request.tid),
 		  resource->res_opts.node_id,
 		  context->target_node_id,

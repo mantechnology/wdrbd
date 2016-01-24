@@ -125,7 +125,9 @@ GENL_struct(DRBD_NLA_DISK_CONF, 3, disk_conf,
 	__u32_field_def(20,	DRBD_GENLA_F_MANDATORY,	disk_timeout, DRBD_DISK_TIMEOUT_DEF)
 	__u32_field_def(21, DRBD_GENLA_F_MANDATORY,     read_balancing, DRBD_READ_BALANCING_DEF)
 	__u32_field_def(22,	DRBD_GENLA_F_MANDATORY,	unplug_watermark, DRBD_UNPLUG_WATERMARK_DEF)
+	__u32_field_def(25, 0 /* OPTIONAL */,           rs_discard_granularity, DRBD_RS_DISCARD_GRANULARITY_DEF)
 	__flg_field_def(23,     0 /* OPTIONAL */,	al_updates, DRBD_AL_UPDATES_DEF)
+	__flg_field_def(24,     0 /* OPTIONAL */,       discard_zeroes_if_aligned, DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF)
 )
 
 GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,

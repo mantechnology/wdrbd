@@ -224,7 +224,6 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	if (!(rw & WRITE) && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)
 		/* special case, drbd_md_read() during drbd_adm_attach(): no get_ldev */
 		;
-
 	else if (!get_ldev_if_state(device, D_ATTACHING)) {
 		/* Corresponding put_ldev in drbd_md_endio() */
 		drbd_err(device, "ASSERT FAILED: get_ldev_if_state() == 1 in _drbd_md_sync_page_io()\n");
@@ -250,17 +249,13 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #endif
 
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
-#ifdef _WIN32
-    // not support
     err = device->md_io.error;
+#ifdef _WIN32
     if(err == STATUS_NO_SUCH_DEVICE)
     {
         drbd_err(device, "cannot find volume, PD=%ws\n", bio->bi_bdev->bd_disk->pDeviceExtension->PhysicalDeviceName);
         return err;
     }
-#else
-	if (bio_flagged(bio, BIO_UPTODATE))
-		err = device->md_io.error;
 #endif
 
 #ifndef REQ_FLUSH
@@ -277,7 +272,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	}
 #endif
 #ifdef _WIN32
-	return err;
+	return err; // _WIN32_V9_PATCH_2: JHKIM: 아래 bio_put 을 거치지 않고 여기서 리턴하는 이유 재확인 요망.
 #endif
  out:
 	bio_put(bio);
@@ -412,7 +407,7 @@ bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval 
 	bool fastpath_ok = true;
 
 
-	D_ASSERT(device, (unsigned)(last - first) <= 1);
+	D_ASSERT(device, first <= last);
 	D_ASSERT(device, atomic_read(&device->local_cnt) > 0);
 
 	/* FIXME figure out a fast path for bios crossing AL extent boundaries */
@@ -1150,10 +1145,17 @@ static bool lazy_bitmap_update_due(struct drbd_peer_device *peer_device)
 static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_device,
 						 bool rs_done)
 {
-	if (rs_done)
-		set_bit(RS_DONE, &peer_device->flags);
-		/* and also set RS_PROGRESS below */
-	else if (!lazy_bitmap_update_due(peer_device))
+	if (rs_done) {
+		if (peer_device->connection->agreed_pro_version <= 95 ||
+		    is_sync_target_state(peer_device, NOW))
+			set_bit(RS_DONE, &peer_device->flags);
+			/* and also set RS_PROGRESS below */
+
+		/* Else: rather wait for explicit notification via receive_state,
+		 * to avoid uuids-rotated-too-fast causing full resync
+		 * in next handshake, in case the replication link breaks
+		 * at the most unfortunate time... */
+	} else if (!lazy_bitmap_update_due(peer_device))
 		return;
 
 	drbd_peer_device_post_work(peer_device, RS_PROGRESS);
@@ -1215,6 +1217,13 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 	return count;
 }
 
+static bool plausible_request_size(int size)
+{
+	return size > 0
+		&& size <= DRBD_MAX_BATCH_BIO_SIZE
+		&& IS_ALIGNED(size, 512);
+}
+
 /* clear the bit corresponding to the piece of storage in question:
  * size byte of data starting from sector.  Only clear a bits of the affected
  * one ore more _aligned_ BM_BLOCK_SIZE blocks.
@@ -1235,7 +1244,7 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 	if ((mode == SET_OUT_OF_SYNC) && size == 0)
 		return 0;
 
-	if (size <= 0 || !IS_ALIGNED(size, 512) || size > DRBD_MAX_DISCARD_SIZE) {
+	if (!plausible_request_size(size)) {
 		drbd_err(device, "%s: sector=%llus size=%d nonsense!\n",
 				drbd_change_sync_fname[mode],
 				(unsigned long long)sector, size);
@@ -1352,7 +1361,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	rcu_read_unlock();
 	if (mask) {
 		int bitmap_index;
-#ifdef _WIN32_V9 // V9_XXX:JHKIM 타입 캐스팅 필요성 확인
+#ifdef _WIN32_V9
 		for_each_set_bit(bitmap_index, (ULONG_PTR*)&mask, BITS_PER_LONG) {
 #else 
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {

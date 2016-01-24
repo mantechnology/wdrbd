@@ -113,6 +113,10 @@ drbd_remove_interval(struct rb_root *root, struct drbd_interval *this)
 {
 	struct rb_node *deepest;
 
+	/* avoid endless loop */  // _WIN32_V9_PATCH_2:JHKIM: 이런 경우가 있었다는 것인지, 분석 차원에서 검토 요망.
+	if (drbd_interval_empty(this))
+		return;
+
 	deepest = rb_augment_erase_begin(&this->rb);
 	rb_erase(&this->rb, root);
 	rb_augment_erase_end(deepest, update_interval_end, NULL);

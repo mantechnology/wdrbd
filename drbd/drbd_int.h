@@ -782,9 +782,15 @@ enum {
 	/* this is/was a write request */
 	__EE_WRITE,
 
+	/* this is/was a write same request */
+	__EE_WRITE_SAME,
+
 	/* this originates from application on peer
 	 * (not some resync or verify or other DRBD internal request) */
 	__EE_APPLICATION,
+
+	/* If it contains only 0 bytes, send back P_RS_DEALLOCATED */
+	__EE_RS_THIN_REQ,
 };
 #define EE_MAY_SET_IN_SYNC     (1<<__EE_MAY_SET_IN_SYNC)
 #define EE_IS_BARRIER          (1<<__EE_IS_BARRIER)
@@ -798,7 +804,9 @@ enum {
 #define EE_IN_INTERVAL_TREE	(1<<__EE_IN_INTERVAL_TREE)
 #define EE_SUBMITTED		(1<<__EE_SUBMITTED)
 #define EE_WRITE		(1<<__EE_WRITE)
+#define EE_WRITE_SAME		(1<<__EE_WRITE_SAME)
 #define EE_APPLICATION		(1<<__EE_APPLICATION)
+#define EE_RS_THIN_REQ		(1<<__EE_RS_THIN_REQ)
 
 /* flag bits per device */
 enum {
@@ -1148,9 +1156,7 @@ struct drbd_resource {
 
 	struct drbd_work_queue work;
 	struct drbd_thread worker;
-//#ifdef _WIN32_V9
-//	KEVENT connect_work_done;
-//#endif
+
 	struct list_head listeners;
 	spinlock_t listeners_lock;
 
@@ -1768,8 +1774,6 @@ extern int  drbd_thread_start(struct drbd_thread *thi);
 extern void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait);
 
 #ifdef _WIN32
-//#define drbd_thread_current_set_cpu(A) ({})  // V9_XXX: VS2013 에서 컴파일이 되는가?
-// V9_XXX => 기존 V8 의 구현을 유지. 추후 current thread 를 cpu infinity 적용 가능한지 확인 필요.
 #define drbd_thread_current_set_cpu(A) 
 #define drbd_calc_cpu_mask(A)
 #else
@@ -1809,6 +1813,7 @@ extern int drbd_send_bitmap(struct drbd_device *, struct drbd_peer_device *);
 extern int drbd_send_dagtag(struct drbd_connection *connection, u64 dagtag);
 extern void drbd_send_sr_reply(struct drbd_connection *connection, int vnr,
 			       enum drbd_state_rv retcode);
+extern int drbd_send_rs_deallocated(struct drbd_peer_device *, struct drbd_peer_request *);
 extern void drbd_send_twopc_reply(struct drbd_connection *connection,
 				  enum drbd_packet, struct twopc_reply *);
 extern void drbd_send_peers_in_sync(struct drbd_peer_device *, u64, sector_t, int);
@@ -2028,7 +2033,7 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * we limit us to a platform agnostic constant here for now.
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
-#ifndef _WIN32 //V9_XXX // 컴파일 오류시 재확인 [choi] V8 적용. DRBD_MAX_BIO_SIZE 재확인이 필요한가?//JHKIM: 필요없을 듯.
+#ifndef _WIN32
 #if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
 #endif
@@ -2039,11 +2044,11 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 #define DRBD_MAX_SIZE_H80_PACKET (1U << 15) /* Header 80 only allows packets up to 32KiB data */
 #define DRBD_MAX_BIO_SIZE_P95    (1U << 17) /* Protocol 95 to 99 allows bios up to 128KiB */
 
-/* For now, don't allow more than one activity log extent worth of data
- * to be discarded in one go. We may need to rework drbd_al_begin_io()
- * to allow for even larger discard ranges */
-#define DRBD_MAX_DISCARD_SIZE	AL_EXTENT_SIZE
-#define DRBD_MAX_DISCARD_SECTORS (DRBD_MAX_DISCARD_SIZE >> 9)
+/* For now, don't allow more than half of what we can "activate" in one
+ * activity log transaction to be discarded in one go. We may need to rework
+ * drbd_al_begin_io() to allow for even larger discard ranges */
+#define DRBD_MAX_BATCH_BIO_SIZE	 (AL_UPDATES_PER_TRANSACTION/2*AL_EXTENT_SIZE)
+#define DRBD_MAX_BBIO_SECTORS    (DRBD_MAX_BATCH_BIO_SIZE >> 9)
 
 extern struct drbd_bitmap *drbd_bm_alloc(void);
 extern int  drbd_bm_resize(struct drbd_device *device, sector_t sectors, int set_new_bits);
@@ -2239,7 +2244,8 @@ enum determine_dev_size {
 extern enum determine_dev_size
 drbd_determine_dev_size(struct drbd_device *, enum dds_flags, struct resize_parms *) __must_hold(local);
 extern void resync_after_online_grow(struct drbd_peer_device *);
-extern void drbd_reconsider_max_bio_size(struct drbd_device *device, struct drbd_backing_dev *bdev);
+extern void drbd_reconsider_queue_parameters(struct drbd_device *device,
+			struct drbd_backing_dev *bdev, struct o_qlim *o);
 extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool);
 extern bool conn_try_outdate_peer(struct drbd_connection *connection);
 extern void conn_try_outdate_peer_async(struct drbd_connection *connection);
@@ -2371,6 +2377,8 @@ struct queued_twopc {
 	struct p_twopc_request packet_data;
 };
 
+extern int drbd_issue_discard_or_zero_out(struct drbd_device *device,
+		sector_t start, unsigned int nr_sectors, bool discard);
 extern int drbd_send_ack(struct drbd_peer_device *, enum drbd_packet,
 			 struct drbd_peer_request *);
 extern int drbd_send_ack_ex(struct drbd_peer_device *, enum drbd_packet,
@@ -2968,15 +2976,27 @@ static inline int __sub_unacked(struct drbd_peer_device *peer_device, int n)
 	return atomic_sub_return(n, &peer_device->unacked_cnt);
 }
 
-static inline bool is_sync_state(struct drbd_peer_device *peer_device,
-				 enum which_state which)
+static inline bool is_sync_target_state(struct drbd_peer_device *peer_device,
+					enum which_state which)
 {
 	enum drbd_repl_state repl_state = peer_device->repl_state[which];
 
-	return repl_state == L_SYNC_SOURCE
-		|| repl_state == L_SYNC_TARGET
-		|| repl_state == L_PAUSED_SYNC_S
-		|| repl_state  == L_PAUSED_SYNC_T;
+	return repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T;
+}
+
+static inline bool is_sync_source_state(struct drbd_peer_device *peer_device,
+					enum which_state which)
+{
+	enum drbd_repl_state repl_state = peer_device->repl_state[which];
+
+	return repl_state == L_SYNC_SOURCE || repl_state == L_PAUSED_SYNC_S;
+}
+
+static inline bool is_sync_state(struct drbd_peer_device *peer_device,
+				 enum which_state which)
+{
+	return is_sync_source_state(peer_device, which) ||
+		is_sync_target_state(peer_device, which);
 }
 
 /**
@@ -3130,11 +3150,14 @@ static inline void dec_ap_bio(struct drbd_device *device, int rw)
 		wake_up(&device->misc_wait);
 }
 
-static inline int drbd_suspended(struct drbd_device *device)
+static inline bool resource_is_suspended(struct drbd_resource *resource)
 {
-	struct drbd_resource *resource = device->resource;
-
 	return resource->susp[NOW] || resource->susp_fen[NOW] || resource->susp_nod[NOW];
+}
+
+static inline bool drbd_suspended(struct drbd_device *device)
+{
+	return resource_is_suspended(device->resource);
 }
 
 static inline bool may_inc_ap_bio(struct drbd_device *device)

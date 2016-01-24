@@ -136,6 +136,8 @@ struct state_names drbd_error_messages = {
 
 static const char *__packet_names[] = {
 	[P_DATA]	        = "P_DATA",
+	[P_WSAME]               = "P_WSAME",
+	[P_TRIM]                = "P_TRIM",
 	[P_DATA_REPLY]	        = "P_DATA_REPLY",
 	[P_RS_DATA_REPLY]	= "P_RS_DATA_REPLY",
 	[P_BARRIER]	        = "P_BARRIER",

@@ -844,6 +844,7 @@ struct backing_dev_info {
 struct queue_limits {
     unsigned int            max_discard_sectors;
     unsigned int            discard_granularity;    
+	unsigned int			discard_zeroes_data; // _WIN32_V9_PATCH_2_CHECK: JHKIM: 관련 부분 모두 코멘트 처리 필요??
 };
 #endif
 struct request_queue {
@@ -1480,6 +1481,14 @@ void list_cut_position(struct list_head *list, struct list_head *head, struct li
 	     (bit) = find_next_bit((addr), (size), (bit) + 1))
 
 extern int drbd_backing_bdev_events(struct drbd_device *device);
+
+static inline unsigned int queue_io_min(struct request_queue *q)
+{
+	DbgPrint("DRBD_TEST:queue_io_min: _WIN32_V9_PATCH_2_CHEC XXXXXXXXXX - panic!!!!\n");
+	return 0; // dummy
+	// return q->limits.io_min;
+}
+
 #endif
 
 #endif // DRBD_WINDOWS_H

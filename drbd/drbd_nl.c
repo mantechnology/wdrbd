@@ -26,6 +26,10 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "windows/drbd.h"
+
+#define		ERR_LOCAL_AND_PEER_ADDR 173	//_WIN32_V9_PATCH_2_CHECK: 직접정의 
+										// 이 매크로는 "\drbd-headers\linux\drbd.h" 에 존재하는데 이 헤더가 엔진과 공유가 안됨?
+
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"
@@ -56,7 +60,8 @@
 #include <linux/security.h>
 #include <net/genetlink.h>
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)  // _WIN32_V9_PATCH_2: 제거
 /*
  * copied from more recent kernel source
  */
@@ -112,6 +117,8 @@ bool capable(int cap)
 // [choi] genl_magic_func.h 의 ZZZ_genl_family 사용.
 // struct genl_family drbd_genl_family;
 #endif
+//#endif //XXX
+
 
 /* .doit */
 // int drbd_adm_create_resource(struct sk_buff *skb, struct genl_info *info);
@@ -546,6 +553,48 @@ static void conn_md_sync(struct drbd_connection *connection)
 	rcu_read_unlock();
 }
 
+
+/* Try to figure out where we are happy to become primary.
+   This is unsed by the crm-fence-peer mechanism
+*/
+static u64 up_to_date_nodes(struct drbd_device *device, bool op_is_fence)
+{
+	struct drbd_resource *resource = device->resource;
+	const int my_node_id = resource->res_opts.node_id;
+	u64 mask = NODE_MASK(my_node_id);
+
+	if (resource->role[NOW] == R_PRIMARY || op_is_fence) {
+		struct drbd_peer_device *peer_device;
+
+		rcu_read_lock();
+		for_each_peer_device_rcu(peer_device, device) {
+			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
+			if (pdsk == D_UP_TO_DATE)
+				mask |= NODE_MASK(peer_device->node_id);
+		}
+		rcu_read_unlock();
+	} else if (device->disk_state[NOW] == D_UP_TO_DATE) {
+		struct drbd_peer_md *peer_md = device->ldev->md.peers;
+		int node_id;
+
+		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
+			struct drbd_peer_device *peer_device;
+			if (node_id == my_node_id)
+				continue;
+
+			peer_device = peer_device_by_node_id(device, node_id);
+
+			if ((peer_device && peer_device->disk_state[NOW] == D_UP_TO_DATE) ||
+			    (peer_md[node_id].flags & MDF_NODE_EXISTS &&
+			     peer_md[node_id].bitmap_uuid == 0))
+				mask |= NODE_MASK(node_id);
+		}
+	} else
+		  mask = 0;
+
+	return mask;
+}
+
 /* Buffer to construct the environment of a user-space helper in. */
 struct env {
 	char *buffer;
@@ -732,6 +781,30 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	}
 	rcu_read_unlock();
 
+	if (strstr(cmd, "fence")) {
+		bool op_is_fence = strcmp(cmd, "fence-peer") == 0;
+		struct drbd_peer_device *peer_device;
+		u64 mask = -1ULL;
+		int vnr;
+#ifdef _WIN32_V9
+		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
+		idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
+			struct drbd_device *device = peer_device->device;
+
+			if (get_ldev(device)) {
+				u64 m = up_to_date_nodes(device, op_is_fence);
+				if (m)
+					mask &= m;
+				put_ldev(device);
+				/* Yes we outright ignore volumes that are not up-to-date
+				   on a single node. */
+			}
+		}
+		env_print(&env, "UP_TO_DATE_NODES=0x%08llX", mask);
+	}
+
 	envp = make_envp(&env);
 	if (!envp) {
 		if (env.pos == -ENOMEM) {
@@ -821,6 +894,7 @@ static bool initial_states_pending(struct drbd_connection *connection)
 
 bool conn_try_outdate_peer(struct drbd_connection *connection)
 {
+	struct drbd_resource *resource = connection->resource;
 #ifdef _WIN32_V9
     ULONG_PTR last_reconnect_jif;
 #else
@@ -831,15 +905,28 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	int r;
 	unsigned long irq_flags;
 
-	spin_lock_irq(&connection->resource->req_lock);
+	spin_lock_irq(&resource->req_lock);
 	if (connection->cstate[NOW] >= C_CONNECTED) {
 		drbd_err(connection, "Expected cstate < C_CONNECTED\n");
-		spin_unlock_irq(&connection->resource->req_lock);
+		spin_unlock_irq(&resource->req_lock);
 		return false;
 	}
 
 	last_reconnect_jif = connection->last_reconnect_jif;
-	spin_unlock_irq(&connection->resource->req_lock);
+
+	if (conn_highest_disk(connection) < D_CONSISTENT) {
+		begin_state_change_locked(resource, CS_VERBOSE | CS_HARD);
+		__change_io_susp_fencing(resource, false);
+		/* We are no longer suspended due to the fencing policy.
+		 * We may still be suspended due to the on-no-data-accessible policy.
+		 * If that was OND_IO_ERROR, fail pending requests. */
+		if (!resource_is_suspended(resource))
+			_tl_restart(connection, CONNECTION_LOST_WHILE_PENDING);
+		end_state_change_locked(resource);
+		spin_unlock_irq(&resource->req_lock);
+		return false;
+	}
+	spin_unlock_irq(&resource->req_lock);
 
 	fencing_policy = connection->fencing_policy;
 	if (fencing_policy == FP_DONT_CARE)
@@ -847,7 +934,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 
 	r = drbd_khelper(NULL, connection, "fence-peer");
 
-	begin_state_change(connection->resource, &irq_flags, CS_VERBOSE);
+	begin_state_change(resource, &irq_flags, CS_VERBOSE);
 	switch ((r>>8) & 0xff) {
 	case 3: /* peer is inconsistent */
 		ex_to_string = "peer is inconsistent or worse";
@@ -871,7 +958,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 		 * become R_PRIMARY, but finds the other peer being active. */
 		ex_to_string = "peer is active";
 		drbd_warn(connection, "Peer is primary, outdating myself.\n");
-		__change_disk_states(connection->resource, D_OUTDATED);
+		__change_disk_states(resource, D_OUTDATED);
 		break;
 	case 7:
 		/* THINK: do we need to handle this
@@ -884,7 +971,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	default:
 		/* The script is broken ... */
 		drbd_err(connection, "fence-peer helper broken, returned %d\n", (r>>8)&0xff);
-		abort_state_change(connection->resource, &irq_flags);
+		abort_state_change(resource, &irq_flags);
 		return false; /* Eventually leave IO frozen */
 	}
 
@@ -903,11 +990,11 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 		goto abort;
 	}
 
-	end_state_change(connection->resource, &irq_flags);
+	end_state_change(resource, &irq_flags);
 
 	goto out;
  abort:
-	abort_state_change(connection->resource, &irq_flags);
+	abort_state_change(resource, &irq_flags);
  out:
 	return conn_highest_pdsk(connection) <= D_OUTDATED;
 }
@@ -1848,53 +1935,172 @@ static u32 common_connection_features(struct drbd_resource *resource)
 	return features;
 }
 
+static void blk_queue_discard_granularity(struct request_queue *q, unsigned int granularity)
+{
+	q->limits.discard_granularity = granularity;
+}
+
+static unsigned int drbd_max_discard_sectors(struct drbd_resource *resource)
+{
+	struct drbd_connection *connection;
+	unsigned int s = DRBD_MAX_BBIO_SECTORS;
+
+	/* when we introduced REQ_WRITE_SAME support, we also bumped
+	 * our maximum supported batch bio size used for discards. */
+	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		if (!(connection->agreed_features & DRBD_FF_WSAME)) {
+			/* before, with DRBD <= 8.4.6, we only allowed up to one AL_EXTENT_SIZE. */
+			s = AL_EXTENT_SIZE >> 9;
+		}
+	}
+	rcu_read_unlock();
+
+	return s;
+}
+
+#ifndef _WIN32 // _WIN32_V9_PATCH_2:JHKIM: 코멘트 처리가 정상인지  재확인
+static void decide_on_discard_support(struct drbd_device *device,
+			struct request_queue *q,
+			struct request_queue *b,
+			bool discard_zeroes_if_aligned)
+{
+	/* q = drbd device queue (device->rq_queue)
+	 * b = backing device queue (device->ldev->backing_bdev->bd_disk->queue),
+	 *     or NULL if diskless
+	 */
+	bool can_do = b ? blk_queue_discard(b) : true;
+
+	if (can_do && b && !b->limits.discard_zeroes_data && !discard_zeroes_if_aligned) {
+		can_do = false;
+		drbd_info(device, "discard_zeroes_data=0 and discard_zeroes_if_aligned=no: disabling discards\n");
+	}
+	if (can_do && (common_connection_features(device->resource) & DRBD_FF_TRIM)) {
+		can_do = false;
+		drbd_info(device, "peer DRBD too old, does not support TRIM: disabling discards\n");
+	}
+	if (can_do) {
+		/* We don't care for the granularity, really.
+		 * Stacking limits below should fix it for the local
+		 * device.  Whether or not it is a suitable granularity
+		 * on the remote device is not our problem, really. If
+		 * you care, you need to use devices with similar
+		 * topology on all peers. */
+		blk_queue_discard_granularity(q, 512);
+		q->limits.max_discard_sectors = drbd_max_discard_sectors(device->resource);
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+	} else {
+		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
+		blk_queue_discard_granularity(q, 0);
+		q->limits.max_discard_sectors = 0;
+	}
+}
+
+static void fixup_discard_if_not_supported(struct request_queue *q)
+{
+	/* To avoid confusion, if this queue does not support discard, clear
+	 * max_discard_sectors, which is what lsblk -D reports to the user.
+	 * Older kernels got this wrong in "stack limits".
+	 * */
+	if (!blk_queue_discard(q)) {
+		blk_queue_max_discard_sectors(q, 0);
+		blk_queue_discard_granularity(q, 0);
+	}
+}
+
+static void decide_on_write_same_support(struct drbd_device *device,
+			struct request_queue *q,
+			struct request_queue *b, struct o_qlim *o)
+{
+#ifndef REQ_WRITE_SAME
+	drbd_dbg(device, "This kernel is too old, no WRITE_SAME support.\n");
+#else
+	bool can_do = b ? b->limits.max_write_same_sectors : true;
+
+	if (can_do && common_connection_features(device->resource) & DRBD_FF_WSAME) {
+		can_do = false;
+		drbd_info(device, "peer does not support WRITE_SAME\n");
+	}
+
+	if (o) {
+		/* logical block size; queue_logical_block_size(NULL) is 512 */
+		unsigned int peer_lbs = be32_to_cpu(o->logical_block_size);
+		unsigned int me_lbs_b = queue_logical_block_size(b);
+		unsigned int me_lbs = queue_logical_block_size(q);
+
+		if (me_lbs_b != me_lbs) {
+			drbd_warn(device,
+				"logical block size of local backend does not match (drbd:%u, backend:%u); was this a late attach?\n",
+				me_lbs, me_lbs_b);
+			/* rather disable write same than trigger some BUG_ON later in the scsi layer. */
+			can_do = false;
+		}
+		if (me_lbs_b != peer_lbs) {
+			drbd_warn(device, "logical block sizes do not match (me:%u, peer:%u); this may cause problems.\n",
+				me_lbs, peer_lbs);
+			if (can_do) {
+				drbd_dbg(device, "logical block size mismatch: WRITE_SAME disabled.\n");
+				can_do = false;
+			}
+			me_lbs = max(me_lbs, me_lbs_b);
+			/* We cannot change the logical block size of an in-use queue.
+			 * We can only hope that access happens to be properly aligned.
+			 * If not, the peer will likely produce an IO error, and detach. */
+			if (peer_lbs > me_lbs) {
+				if (device->resource->role[NOW] != R_PRIMARY) {
+					blk_queue_logical_block_size(q, peer_lbs);
+					drbd_warn(device, "logical block size set to %u\n", peer_lbs);
+				} else {
+					drbd_warn(device,
+						"current Primary must NOT adjust logical block size (%u -> %u); hope for the best.\n",
+						me_lbs, peer_lbs);
+				}
+			}
+		}
+		if (can_do && !o->write_same_capable) {
+			/* If we introduce an open-coded write-same loop on the receiving side,
+			 * the peer would present itself as "capable". */
+			drbd_dbg(device, "WRITE_SAME disabled (peer device not capable)\n");
+			can_do = false;
+		}
+	}
+
+	blk_queue_max_write_same_sectors(q, can_do ? DRBD_MAX_BBIO_SECTORS : 0);
+#endif
+}
+#endif
+
 static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backing_dev *bdev,
-				   unsigned int max_bio_size)
+				   unsigned int max_bio_size, struct o_qlim *o)
 {
 	struct request_queue * const q = device->rq_queue;
 	unsigned int max_hw_sectors = max_bio_size >> 9;
 	struct request_queue *b = NULL;
+	struct disk_conf *dc;
+	bool discard_zeroes_if_aligned = true;
 
 	if (bdev) {
 		b = bdev->backing_bdev->bd_disk->queue;
 
 		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
+		rcu_read_lock();
+		dc = rcu_dereference(device->ldev->disk_conf);
+		discard_zeroes_if_aligned = dc->discard_zeroes_if_aligned;
+		rcu_read_unlock();
 
 		blk_set_stacking_limits(&q->limits); // [choi] 구조체 변수 limits 추가. 기능 불필요시 삭제.
-#ifdef REQ_WRITE_SAME
-		blk_queue_max_write_same_sectors(q, 0);
-#endif
 	}
 
-	blk_queue_logical_block_size(q, 512);
-    WDRBD_TRACE_RS("bdev(0x%p) q(0x%p) max_hw_sectors(%d) max_bio_size(%d)\n",
-        bdev, q, max_hw_sectors, max_bio_size);
 	blk_queue_max_hw_sectors(q, max_hw_sectors);
 	/* This is the workaround for "bio would need to, but cannot, be split" */
-#ifndef _WIN32
+#ifndef _WIN32 // _WIN32_V9_PATCH_2:JHKIM: 코멘트 처리가 정상인지  재확인
 	blk_queue_segment_boundary(q, PAGE_CACHE_SIZE-1);
-#endif
+	decide_on_discard_support(device, q, b, discard_zeroes_if_aligned);
+	decide_on_write_same_support(device, q, b, o);
+
 	if (b) {
-		struct request_queue * const b = device->ldev->backing_bdev->bd_disk->queue;
-		u32 agreed_featurs = common_connection_features(device->resource);
-
-		q->limits.max_discard_sectors = DRBD_MAX_DISCARD_SECTORS;
-
-		if (blk_queue_discard(b) && (agreed_featurs & FF_TRIM)) {
-			/* We don't care, stacking below should fix it for the local device.
-			 * Whether or not it is a suitable granularity on the remote device
-			 * is not our problem, really. If you care, you need to
-			 * use devices with similar topology on all peers. */
-			q->limits.discard_granularity = 512;
-
-			queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
-		} else {
-			queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
-			q->limits.discard_granularity = 0;
-		}
-#ifndef _WIN32 // [choi] V8에서 disable 돼 있음.
 		blk_queue_stack_limits(q, b);
-#endif
+
 		if (q->backing_dev_info.ra_pages != b->backing_dev_info.ra_pages) {
 			drbd_info(device, "Adjusting my ra_pages to backing device's (%lu -> %lu)\n",
 				 q->backing_dev_info.ra_pages,
@@ -1902,16 +2108,11 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 			q->backing_dev_info.ra_pages = b->backing_dev_info.ra_pages;
 		}
 	}
-
-	/* To avoid confusion, if this queue does not support discard, clear
-	 * max_discard_sectors, which is what lsblk -D reports to the user.  */
-	if (!blk_queue_discard(q)) {
-		q->limits.max_discard_sectors = 0;
-		q->limits.discard_granularity = 0;
-	}
+	fixup_discard_if_not_supported(q);
+#endif
 }
 
-void drbd_reconsider_max_bio_size(struct drbd_device *device, struct drbd_backing_dev *bdev)
+void drbd_reconsider_queue_parameters(struct drbd_device *device, struct drbd_backing_dev *bdev, struct o_qlim *o)
 {
 	unsigned int max_bio_size = device->device_conf.max_bio_size;
 	struct drbd_peer_device *peer_device;
@@ -1928,7 +2129,7 @@ WDRBD_TRACE_RS("bdev(0x%p) max_bio_size(%d)\n", bdev, max_bio_size);
 	}
 	spin_unlock_irq(&device->resource->req_lock);
 
-	drbd_setup_queue_param(device, bdev, max_bio_size);
+	drbd_setup_queue_param(device, bdev, max_bio_size, o);
 }
 
 /* Make sure IO is suspended before calling this function(). */
@@ -2008,6 +2209,43 @@ static bool write_ordering_changed(struct disk_conf *a, struct disk_conf *b)
 		a->disk_drain != b->disk_drain;
 }
 
+static void sanitize_disk_conf(struct drbd_device *device, struct disk_conf *disk_conf,
+			       struct drbd_backing_dev *nbc)
+{
+	struct request_queue * const q = nbc->backing_bdev->bd_disk->queue;
+
+	if (disk_conf->al_extents < DRBD_AL_EXTENTS_MIN)
+		disk_conf->al_extents = DRBD_AL_EXTENTS_MIN;
+	if (disk_conf->al_extents > drbd_al_extents_max(nbc))
+		disk_conf->al_extents = drbd_al_extents_max(nbc);
+
+	if (!blk_queue_discard(q) ||
+	    (!q->limits.discard_zeroes_data && !disk_conf->discard_zeroes_if_aligned)) {
+		if (disk_conf->rs_discard_granularity) {
+			disk_conf->rs_discard_granularity = 0; /* disable feature */
+			drbd_info(device, "rs_discard_granularity feature disabled\n");
+		}
+	}
+
+	if (disk_conf->rs_discard_granularity) {
+		int orig_value = disk_conf->rs_discard_granularity;
+		int remainder;
+
+		if (q->limits.discard_granularity > disk_conf->rs_discard_granularity)
+			disk_conf->rs_discard_granularity = q->limits.discard_granularity;
+
+		remainder = disk_conf->rs_discard_granularity % q->limits.discard_granularity;
+		disk_conf->rs_discard_granularity += remainder;
+
+		if (disk_conf->rs_discard_granularity > q->limits.max_discard_sectors << 9)
+			disk_conf->rs_discard_granularity = q->limits.max_discard_sectors << 9;
+
+		if (disk_conf->rs_discard_granularity != orig_value)
+			drbd_info(device, "rs_discard_granularity changed to %d\n",
+				  disk_conf->rs_discard_granularity);
+	}
+}
+
 int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
@@ -2055,10 +2293,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		goto fail_unlock;
 	}
 
-	if (new_disk_conf->al_extents < DRBD_AL_EXTENTS_MIN)
-		new_disk_conf->al_extents = DRBD_AL_EXTENTS_MIN;
-	if (new_disk_conf->al_extents > drbd_al_extents_max(device->ldev))
-		new_disk_conf->al_extents = drbd_al_extents_max(device->ldev);
+	sanitize_disk_conf(device, new_disk_conf, device->ldev);
 
 	drbd_suspend_io(device, READ_AND_WRITE);
 	wait_event(device->al_wait, lc_try_lock(device->act_log));
@@ -2104,6 +2339,9 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 
 	if (write_ordering_changed(old_disk_conf, new_disk_conf))
 		drbd_bump_write_ordering(device->resource, NULL, WO_BIO_BARRIER);
+
+	if (old_disk_conf->discard_zeroes_if_aligned != new_disk_conf->discard_zeroes_if_aligned)
+		drbd_reconsider_queue_parameters(device, device->ldev, NULL);
 
 	drbd_md_sync(device);
 
@@ -2446,10 +2684,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-	if (new_disk_conf->al_extents < DRBD_AL_EXTENTS_MIN)
-		new_disk_conf->al_extents = DRBD_AL_EXTENTS_MIN;
-	if (new_disk_conf->al_extents > drbd_al_extents_max(nbc))
-		new_disk_conf->al_extents = drbd_al_extents_max(nbc);
+	sanitize_disk_conf(device, new_disk_conf, nbc);
 
 	if (drbd_get_max_capacity(nbc) < new_disk_conf->disk_size) {
 		drbd_err(device, "max capacity %llu smaller than disk size %llu\n",
@@ -2666,7 +2901,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	device->read_cnt = 0;
 	device->writ_cnt = 0;
 
-	drbd_reconsider_max_bio_size(device, device->ldev);
+	drbd_reconsider_queue_parameters(device, device->ldev, NULL);
 
 	/* If I am currently not R_PRIMARY,
 	 * but meta data primary indicator is set,
@@ -3666,11 +3901,13 @@ static enum drbd_ret_code
 check_path_against_nla(const struct drbd_path *path,
 		       const struct nlattr *my_addr, const struct nlattr *peer_addr)
 {
+	enum drbd_ret_code ret = NO_ERROR;
+
 	if (addr_eq_nla(&path->my_addr, path->my_addr_len, my_addr))
-		return ERR_LOCAL_ADDR;
+		ret = ERR_LOCAL_ADDR;
 	if (addr_eq_nla(&path->peer_addr, path->peer_addr_len, peer_addr))
-		return ERR_PEER_ADDR;
-	return NO_ERROR;
+		ret = (ret == ERR_LOCAL_ADDR ? ERR_LOCAL_AND_PEER_ADDR : ERR_PEER_ADDR);
+	return ret;
 }
 
 static enum drbd_ret_code
@@ -3701,8 +3938,8 @@ check_path_usable(const struct drbd_config_context *adm_ctx,
 				if (retcode == NO_ERROR)
 					continue;
 				/* Within the same resource, it is ok to use
-				 * the same local endpoint several times */
-				if (retcode == ERR_LOCAL_ADDR &&
+				 * the same endpoint several times */
+				if (retcode != ERR_LOCAL_AND_PEER_ADDR &&
 				    resource == adm_ctx->resource)
 					continue;
 				return retcode;
