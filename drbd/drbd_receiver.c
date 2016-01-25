@@ -1318,8 +1318,11 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 				continue;
 			kref_get(&device->kref);
 			rcu_read_unlock();
-
+#ifdef _WIN32_V9
+			//_WIn32_V9_PATCH_2_CHECK:JHKIM: blkdev_issue_flush 와 같은 맥락으로 일단 무시, DW-82 이슈에서 정리예정
+#else
 			submit_one_flush(device, &ctx);
+#endif
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();// _WIN32_V9_PATCH_2_CHECK: 재확인
 #else
