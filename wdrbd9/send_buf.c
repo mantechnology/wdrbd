@@ -12,7 +12,7 @@
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
 
-#define MAX_ONETIME_SEND_BUF	(64*1024) // 64K // (1024*1024*10) // 10MB
+#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB //(64*1024) // 64K // (1024*1024*10) // 10MB
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
@@ -214,7 +214,8 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
-	int retry = retry = socket->sk_linux_attr->sk_sndtimeo / 100;
+	// 기존에 비해 buffer write time 대기시간을 줄이고 재시도 횟수를 늘려 송신버퍼링 타임아웃 설정에 맞춤.(성능 관련 튜닝 포인트)
+	int retry = socket->sk_linux_attr->sk_sndtimeo / 20; //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 #if 0
 	int data_sz = get_ring_buffer_size(buffering_attr->bab);
 
@@ -284,7 +285,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 }
 
-int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
+int do_send(PIRP pReuseIrp, PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 {
 	int ret = 0, bab_peek = 0;
 
@@ -332,7 +333,7 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 #endif
 
 	int txloop = 0;
-
+	
 	while (1)
 	{
 		unsigned int tx_sz = 0;
@@ -343,14 +344,16 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 			break;
 		}
 		//ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
-		ret = SendEx(sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
+		ret = SendEx(pReuseIrp, sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
 		if (ret == -EINTR)
 		{
-			return -EINTR;
+			ret = -EINTR;
+			break;
 		}
 
 		if (ret != tx_sz)
 		{
+			ret = 0;
 			if (ret < 0)
 			{
 				WDRBD_WARN("Send Error(%d)\n", ret);
@@ -363,7 +366,8 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 			}
 		}
 	}
-	return 0;
+
+	return ret;
 }
 
 //
@@ -379,7 +383,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
-	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
+	//KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 	//WDRBD_INFO("start send_buf_thread\n");
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
@@ -389,6 +393,13 @@ VOID NTAPI send_buf_thread(PVOID p)
 	PVOID waitObjects[MAX_EVT];
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
+
+	// 패킷을 한번에 하나씩만 보내는 구조이므로, Irp 재사용 하여 중복되는 Irp 할당/해제 코드를 개선.
+	PIRP		pReuseIrp = IoAllocateIrp(1, FALSE);
+	if (pReuseIrp == NULL) {
+		WDRBD_ERROR("WSK alloc. reuse Irp is NULL.\n");
+		return;
+	}
 
 	while (TRUE)
 	{
@@ -403,7 +414,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 			goto done;
 
 		case (STATUS_WAIT_0 + 1) :
-			if (do_send(socket->sk, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR)
+			if (do_send(pReuseIrp , socket->sk, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR)
 			{
 				goto done;
 			}
@@ -415,6 +426,9 @@ VOID NTAPI send_buf_thread(PVOID p)
 	}
 
 done:
+
+	IoFreeIrp(pReuseIrp);
+
 	WDRBD_INFO("send_buf_killack_event!\n");
 	KeSetEvent(&buffering_attr->send_buf_killack_event, 0, FALSE);
 	WDRBD_INFO("sendbuf thread done.!!\n");

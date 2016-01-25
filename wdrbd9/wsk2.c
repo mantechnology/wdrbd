@@ -395,6 +395,7 @@ char *GetSockErrorString(NTSTATUS status)
 LONG
 NTAPI
 SendEx(
+__in PIRP           pIrp,
 __in PWSK_SOCKET	WskSocket,
 __in PVOID			Buffer,
 __in ULONG			BufferSize,
@@ -404,14 +405,13 @@ __in enum			drbd_stream stream
 )
 {
 	KEVENT		CompletionEvent = { 0 };
-	PIRP		Irp = NULL;
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
 	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 
-	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0))
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !pIrp || ((int)BufferSize <= 0))
 		return SOCKET_ERROR;
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
@@ -419,11 +419,15 @@ __in enum			drbd_stream stream
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
-	if (!NT_SUCCESS(Status)) {
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
-	}
+	//Status = InitWskData(&Irp, &CompletionEvent);
+	//if (!NT_SUCCESS(Status)) {
+	//	FreeWskBuffer(&WskBuffer);
+	//	return SOCKET_ERROR;
+	//}
+	IoReuseIrp(pIrp, STATUS_UNSUCCESSFUL);
+	KeInitializeEvent(&CompletionEvent, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(pIrp, CompletionRoutine, &CompletionEvent, TRUE, TRUE, TRUE);
+
 
 	Flags |= WSK_FLAG_NODELAY;
 
@@ -431,15 +435,15 @@ __in enum			drbd_stream stream
 		WskSocket,
 		&WskBuffer,
 		Flags,
-		Irp);
+		pIrp);
 
 	if (Status == STATUS_PENDING) {
 		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = Irp->IoStatus.Status;
+		Status = pIrp->IoStatus.Status;
 	}
 
 	if (NT_SUCCESS(Status)) {
-		BytesSent = (LONG)Irp->IoStatus.Information;
+		BytesSent = (LONG)pIrp->IoStatus.Information;
 	}
 	else {
 		switch (Status) {
@@ -455,7 +459,7 @@ __in enum			drbd_stream stream
 		}
 	}
 
-	IoFreeIrp(Irp);
+	//IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
 	return BytesSent;
 }

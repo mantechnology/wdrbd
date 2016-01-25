@@ -78,6 +78,7 @@ NTAPI
 LONG
 NTAPI
 SendEx(
+__in PIRP           pIrp,
 __in PWSK_SOCKET	WskSocket,
 __in PVOID			Buffer,
 __in ULONG			BufferSize,
