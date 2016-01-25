@@ -392,6 +392,7 @@ char *GetSockErrorString(NTSTATUS status)
 	return ErrorString;
 }
 
+#ifdef _WSK_IRP_REUSE
 LONG
 NTAPI
 SendEx(
@@ -403,31 +404,54 @@ __in ULONG			Flags,
 __in struct			drbd_transport *transport,
 __in enum			drbd_stream stream
 )
+#else
+LONG
+NTAPI
+SendEx(
+__in PWSK_SOCKET	WskSocket,
+__in PVOID			Buffer,
+__in ULONG			BufferSize,
+__in ULONG			Flags,
+__in struct			drbd_transport *transport,
+__in enum			drbd_stream stream
+)
+#endif
 {
 	KEVENT		CompletionEvent = { 0 };
+#ifndef _WSK_IRP_REUSE
+	PIRP		pIrp = NULL;
+#endif
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
 	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
-
+#ifdef _WSK_IRP_REUSE
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !pIrp || ((int)BufferSize <= 0))
 		return SOCKET_ERROR;
+#else
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0))
+		return SOCKET_ERROR;
+#endif
+		
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
 
-	//Status = InitWskData(&Irp, &CompletionEvent);
-	//if (!NT_SUCCESS(Status)) {
-	//	FreeWskBuffer(&WskBuffer);
-	//	return SOCKET_ERROR;
-	//}
+#ifdef _WSK_IRP_REUSE
 	IoReuseIrp(pIrp, STATUS_UNSUCCESSFUL);
 	KeInitializeEvent(&CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(pIrp, CompletionRoutine, &CompletionEvent, TRUE, TRUE, TRUE);
-
+#else
+	Status = InitWskData(&pIrp, &CompletionEvent);
+	if (!NT_SUCCESS(Status)) {
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+#endif
+	
 
 	Flags |= WSK_FLAG_NODELAY;
 
@@ -459,7 +483,9 @@ __in enum			drbd_stream stream
 		}
 	}
 
-	//IoFreeIrp(Irp);
+#ifndef _WSK_IRP_REUSE
+	IoFreeIrp(pIrp);
+#endif
 	FreeWskBuffer(&WskBuffer);
 	return BytesSent;
 }
