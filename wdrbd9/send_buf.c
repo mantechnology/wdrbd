@@ -346,11 +346,11 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
 		}
-		//ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
+		
 #ifdef _WSK_IRP_REUSE
 		ret = SendEx(pReuseIrp, sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
 #else
-		ret = SendEx(sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
+		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
 #endif
 		if (ret == -EINTR)
 		{

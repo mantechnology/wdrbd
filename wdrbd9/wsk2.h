@@ -86,17 +86,6 @@ __in ULONG			Flags,
 __in struct			drbd_transport *transport,
 __in enum			drbd_stream stream
 );
-#else
-LONG
-NTAPI
-SendEx(
-__in PWSK_SOCKET	WskSocket,
-__in PVOID			Buffer,
-__in ULONG			BufferSize,
-__in ULONG			Flags,
-__in struct			drbd_transport *transport,
-__in enum			drbd_stream stream
-);
 #endif
 
 LONG

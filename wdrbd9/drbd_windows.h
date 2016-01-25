@@ -20,7 +20,7 @@
 //#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
 
 #define _WIN32_SEND_BUFFING				// V9 포팅을 위해 임시 제거. // 송신버퍼링 사용. 최종 안정화 후 제거
-#define _WSK_IRP_REUSE
+#define _WSK_IRP_REUSE					// IRP reuse 방식. (WSK IRP 할당 해제 반복 연산 제거) => WSK socket send 를 순차적(한번에 하나씩 보내는)으로 수행하는 구현에 적합.
 #define _WIN32_EVENTLOG			        // Windows Eventlog 포팅지점
 
 #define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복

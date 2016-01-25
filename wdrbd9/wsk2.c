@@ -393,6 +393,7 @@ char *GetSockErrorString(NTSTATUS status)
 }
 
 #ifdef _WSK_IRP_REUSE
+// Reuse IRP 를 사용할 경우 IRP 를 외부에서 생성하여 SendEx의 파라미터로 입력한다. Irp 의 해제는 finalize 시점에 해제
 LONG
 NTAPI
 SendEx(
@@ -404,35 +405,15 @@ __in ULONG			Flags,
 __in struct			drbd_transport *transport,
 __in enum			drbd_stream stream
 )
-#else
-LONG
-NTAPI
-SendEx(
-__in PWSK_SOCKET	WskSocket,
-__in PVOID			Buffer,
-__in ULONG			BufferSize,
-__in ULONG			Flags,
-__in struct			drbd_transport *transport,
-__in enum			drbd_stream stream
-)
-#endif
 {
 	KEVENT		CompletionEvent = { 0 };
-#ifndef _WSK_IRP_REUSE
-	PIRP		pIrp = NULL;
-#endif
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
 	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
-#ifdef _WSK_IRP_REUSE
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !pIrp || ((int)BufferSize <= 0))
 		return SOCKET_ERROR;
-#else
-	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0))
-		return SOCKET_ERROR;
-#endif
 		
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
@@ -440,17 +421,9 @@ __in enum			drbd_stream stream
 		return SOCKET_ERROR;
 	}
 
-#ifdef _WSK_IRP_REUSE
 	IoReuseIrp(pIrp, STATUS_UNSUCCESSFUL);
 	KeInitializeEvent(&CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(pIrp, CompletionRoutine, &CompletionEvent, TRUE, TRUE, TRUE);
-#else
-	Status = InitWskData(&pIrp, &CompletionEvent);
-	if (!NT_SUCCESS(Status)) {
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
-	}
-#endif
 	
 
 	Flags |= WSK_FLAG_NODELAY;
@@ -470,6 +443,7 @@ __in enum			drbd_stream stream
 		BytesSent = (LONG)pIrp->IoStatus.Information;
 	}
 	else {
+		WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(pIrp->IoStatus.Status), WskSocket);
 		switch (Status) {
 		case STATUS_IO_TIMEOUT:
 			BytesSent = -EAGAIN;
@@ -483,12 +457,10 @@ __in enum			drbd_stream stream
 		}
 	}
 
-#ifndef _WSK_IRP_REUSE
-	IoFreeIrp(pIrp);
-#endif
 	FreeWskBuffer(&WskBuffer);
 	return BytesSent;
 }
+#endif
 
 LONG
 NTAPI
