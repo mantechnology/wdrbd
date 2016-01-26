@@ -1,6 +1,6 @@
 @echo off
 ::
-:: USAGE: drbdlog [filename.etl] [/F <TXT|EVTX>][-h|-help]
+:: USAGE: drbdlog [filename.etl] [-f {txt|evtx}] [-h|-help]
 ::
 
 setlocal
@@ -30,7 +30,7 @@ if /i "%var1%"=="-help" (
 	goto HELP
 )
 
-if /i "%var1%" == "/F" (
+if /i "%var1%" == "-F" (
 	if not !%3==! (
 		goto ERROR
 	)
@@ -101,12 +101,12 @@ goto END
 
 :HELP
 :ERROR
-echo USAGE: drbdlog [filename.etl] [/F ^<TXT^|EVTX^>][-h^|-help]
+echo USAGE: drbdlog [filename.etl] [-f {txt^|evtx}] [-h^|-help]
 echo EXAMPLES:
 echo 	drbdlog
-echo 	drbdlog /f txt
+echo 	drbdlog -f txt
 echo 	drbdlog tracelog.etl
-echo 	drbdlog tracelog_20160125_180343.etl /f evtx
+echo 	drbdlog tracelog_20160125_180343.etl -f evtx
 :END
 cd "%PWD%"
 
