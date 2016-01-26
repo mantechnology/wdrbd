@@ -1,6 +1,6 @@
 @echo off
 ::
-:: USAGE: drbdlog [filename.etl] [-f {txt|evtx}] [-h|-help]
+:: USAGE: drbdlog [EtlFile] [-f {txt|evtx}] [-h|-help]
 ::
 
 setlocal
@@ -101,7 +101,7 @@ goto END
 
 :HELP
 :ERROR
-echo USAGE: drbdlog [filename.etl] [-f {txt^|evtx}] [-h^|-help]
+echo USAGE: drbdlog [EtlFile] [-f {txt^|evtx}] [-h^|-help]
 echo EXAMPLES:
 echo 	drbdlog
 echo 	drbdlog -f txt
