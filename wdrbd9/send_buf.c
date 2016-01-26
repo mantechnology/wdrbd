@@ -196,19 +196,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
 
-#if 0 //WDRBD_TRACE_IP4
-	{
-		extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-		char sbuf[64], dbuf[64];
-		DbgPrint("WDRBD_TEST: send_buf:(%s:%d) %s -> %s\n",
-			socket->name, size,
-			get_ip4(sbuf, &list_first_entry_or_null(&transport->paths, struct drbd_path, list)->my_addr),
-			get_ip4(dbuf, &list_first_entry_or_null(&transport->paths, struct drbd_path, list)->peer_addr));
-	}
-#endif
-
-	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL)
-	{
+	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL) {
 		return Send(socket->sk, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
@@ -216,67 +204,6 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
 	// 기존에 비해 buffer write time 대기시간을 줄이고 재시도 횟수를 늘려 송신버퍼링 타임아웃 설정에 맞춤.(성능 관련 튜닝 포인트)
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
-#if 0
-	int data_sz = get_ring_buffer_size(buffering_attr->bab);
-
-	if ((data_sz + size) > highwater)
-	{
-		int ko_retry = 0;
-		while (!drbd_stream_send_timed_out(transport, stream))
-		{
-			LARGE_INTEGER	nWaitTime;
-			KTIMER ktimer;
-			int retry;
-			int loop;
-			nWaitTime = RtlConvertLongToLargeInteger(-1 * 100 * 1000 * 10); // unit 0.1 sec
-			retry = socket->sk_linux_attr->sk_sndtimeo / 100; // unit 0.1 sec //TODO: check min/max value?
-
-			// TODO: 출력부하 무시, 안정화 이후 제거
-			WDRBD_WARN("bab(%s) OV. ko_retry(%d). bab:total(%d) queued(%d) requested(%d) highwater(%d) peek tx(%d)",
-				buffering_attr->bab->name, ko_retry, buffering_attr->bab->length, data_sz, size, highwater, retry);
-
-			for (loop = 0; loop < retry; loop++)
-			{
-				KTIMER ktimer;
-				KeInitializeTimer(&ktimer);
-				KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
-				KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
-				data_sz = get_ring_buffer_size(buffering_attr->bab);
-				if ((data_sz + size) > highwater)
-				{
-					continue;
-				}
-				else
-				{
-					// TODO: 출력부하 무시, 안정화 이후 제거
-					WDRBD_WARN("bab(%s) OV resolved at loop %d. bab:total(%d) queued(%d) requested(%d) highwater(%d)\n", buffering_attr->bab->name, retry, buffering_attr->bab->length, data_sz, size, highwater);
-					goto buffering;
-				}
-			}
-		}
-		WDRBD_ERROR("bab(%s) we_should_drop_the_connection. timeout!\n", buffering_attr->bab->name);
-		return -EAGAIN;
-	}
-#endif
-#ifdef SENDBUF_TRACE
-	struct _send_req *req = (struct _send_req *) kcalloc(1, sizeof(struct _send_req), 0, 'X2DW');
-	if (!req)
-	{
-		WDRBD_ERROR("bab(%d) malloc failed!\n", sizeof(struct _send_req));
-		return -EAGAIN;
-	}
-	req->who = sender_id;
-	req->seq = bab->seq;
-	req->buf = bab->write_pos * bab->frame_size;
-	req->size = BufferSize;
-
-	EnterCriticalSection(&bab->cs);
-	list_add(&req->list, &bab->send_req_list);
-	LeaveCriticalSection(&bab->cs);
-#endif
-
-//buffering:
-	//write_ring_buffer(buffering_attr->bab, buf, size);
 
 	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
 
@@ -284,65 +211,23 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	return size;
 
 }
+
 #ifdef _WSK_IRP_REUSE
 int do_send(PIRP pReuseIrp, PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 #else
 int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 #endif
 {
-	int ret = 0, bab_peek = 0;
+	int ret = 0;
 
-	if (bab == NULL)
-	{
+	if (bab == NULL) {
 		WDRBD_ERROR("bab is null.\n");
 		return 0;
 	}
 
-#ifdef SENDBUF_TRACE 
-	EnterCriticalSection(&bab->cs);
-	if (!list_empty(&bab->send_req_list))
-	{
-		struct _send_req *req, *tmp;
-		int accu = 0;
-		int loop = 0;
-		char sbuf[1024] = { 0 };
-		int pos;
-		int big = 0;
-
-		list_for_each_entry_safe(struct _send_req, req, tmp, &bab->send_req_list, list)
-		{
-			loop++;
-			if (((pos = strlen(sbuf)) + 10) > 1024)
-			{
-				DbgPrint("SENDBUF_TRACE: who list(%d) too big. ignore!\n", loop); // ASYNC 일 경우 발생!
-				list_del(&req->list);
-				kfree(req);
-				big = 1;
-				break;
-			}
-			sprintf(sbuf + pos, "%1d(%d) ", req->who, req->size); // reverse list
-
-			accu += req->size;
-			list_del(&req->list);
-			kfree(req);
-		}
-
-		if (!big)
-		{
-			DbgPrint("SENDBUF_TRACE: do_send: %4s req=%3d accu sz=%d list=%s\n", bab->name, loop, accu, sbuf);
-		}
-	}
-	LeaveCriticalSection(&bab->cs);
-#endif
-
-	int txloop = 0;
-	
-	while (1)
-	{
+	while (1) {
 		unsigned int tx_sz = 0;
 
-		txloop++;
-		
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
 		}
@@ -352,22 +237,17 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 #else
 		ret = Send(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
 #endif
-		if (ret == -EINTR)
-		{
-			ret = -EINTR;
-			break;
-		}
-
-		if (ret != tx_sz)
-		{
-			ret = 0;
-			if (ret < 0)
-			{
-				WDRBD_WARN("Send Error(%d)\n", ret);
+		if (ret != tx_sz) {
+			if (ret < 0) {
+				if (ret == -EINTR) {
+					ret = -EINTR;
+				}
+				else {
+					WDRBD_WARN("Send Error(%d)\n", ret);
+					ret = 0;
+				}
 				break;
-			}
-			else
-			{
+			} else {
 				WDRBD_WARN("Tx mismatch. req(%d) sent(%d)\n", tx_sz, ret);
 				// will be recovered by upper drbd protocol 
 			}
