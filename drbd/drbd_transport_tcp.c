@@ -1644,6 +1644,7 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 	}//
 
+	mutex_unlock(&tcp_transport->paths_mutex);// _WIN32_V9_PATCH_2
 #else
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
