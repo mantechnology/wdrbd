@@ -192,7 +192,7 @@ static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
 #ifndef COMPAT_HAVE_BDEV_DISCARD_ALIGNMENT
 static inline int bdev_discard_alignment(struct block_device *bdev)
 {
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK_TRIM
 	return 0;
 #else
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
@@ -1777,7 +1777,7 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 }
 #endif
 
-#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK
+#ifndef _WIN32_V9
 #ifndef COMPAT_HAVE_IB_CQ_INIT_ATTR
 #include <rdma/ib_verbs.h>
 

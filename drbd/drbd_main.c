@@ -2522,12 +2522,12 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
 
 	if (wsame) {
-#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK
+#ifndef _WIN32_V9
 		additional_size_command(peer_device->connection, DATA_STREAM,
 					bio_iovec(req->master_bio) BVD bv_len);
 		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
 #else
-		DbgPrint("DRBD_TEST:_WIN32_V9_PATCH_2_CHECK: ignore additional_size_command!!!!!!!!!!!!\n");
+		// _WIN32_V9_PATCH_2_CHECK_TRIM
 #endif
 	} else {
 		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);

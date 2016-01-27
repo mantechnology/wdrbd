@@ -844,7 +844,7 @@ struct backing_dev_info {
 struct queue_limits {
     unsigned int            max_discard_sectors;
     unsigned int            discard_granularity;    
-	unsigned int			discard_zeroes_data; // _WIN32_V9_PATCH_2_CHECK: JHKIM: 관련 부분 모두 코멘트 처리 필요??
+	unsigned int			discard_zeroes_data; // _WIN32_V9_PATCH_2_CHECK_TRIM
 };
 #endif
 struct request_queue {

@@ -1143,7 +1143,7 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 	return 0;
 }
 
-static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi) // _WIN32_V9_PATCH_2_CHECK: 수정많음.
+static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
 	unsigned int size = drbd_header_size(connection);
@@ -1187,7 +1187,7 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
     WDRBD_TRACE_SK("cmd(%s)\n", drbd_packet_name(pi->cmd));
 	return err;
 }
-// _WIN32_V9_PATCH_2_CHECK: 수정많음.
+
 /* This is blkdev_issue_flush, but asynchronous.
  * We want to submit to all component volumes in parallel,
  * then wait for all completions.
@@ -1204,16 +1204,14 @@ struct one_flush_context {
 #ifdef _WIN32
 BIO_ENDIO_TYPE one_flush_endio(void *p1, void *p2, void *p3)
 #else
-BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error) // _WIN32_V9_PATCH_2_CHECK: 재확인
+BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
 	struct bio *bio = NULL;
 	PIRP Irp = NULL;
 	int error = 0;
-#if 1 // def DRBD_TRACE // _WIN32_V9_PATCH_2 
-	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) one_flush_endio: IRQL(%d) ..check _WIN32_V9_PATCH_2 !!!\n", current->comm, KeGetCurrentIrql());
-#endif
+
 	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
 		Irp = p2;
 		error = Irp->IoStatus.Status;
@@ -1258,9 +1256,6 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error) // _WI
 
 static int submit_one_flush(struct drbd_device *device, struct issue_flush_context *ctx)
 {
-#if 0 // def _WIN32_V9
-DbgPrint("DRBD-TEST:_WIN32_V9_PATCH_2_CHECK:submit_one_flush() ignored!!!!!!!!!!!!\n");
-#else
 #ifdef _WIN32_V9
 	struct bio *bio = bio_alloc(GFP_NOIO, 1, '77DW');
 	struct one_flush_context *octx = kmalloc(sizeof(*octx), GFP_NOIO, '78DW');
@@ -1291,7 +1286,6 @@ DbgPrint("DRBD-TEST:_WIN32_V9_PATCH_2_CHECK:submit_one_flush() ignored!!!!!!!!!!
 	set_bit(FLUSH_PENDING, &device->flags);
 	atomic_inc(&ctx->pending);
 	submit_bio(WRITE_FLUSH, bio);
-#endif
 	return 0;
 }
 
@@ -1319,12 +1313,12 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 #ifdef _WIN32_V9
-			//_WIn32_V9_PATCH_2_CHECK:JHKIM: blkdev_issue_flush 와 같은 맥락으로 일단 무시, DW-82 이슈에서 정리예정
+			//_WIN32_V9_PATCH_2_CHECK_FLUSH:JHKIM: blkdev_issue_flush 와 같은 맥락으로 일단 무시, DW-82 이슈에서 정리예정
 #else
 			submit_one_flush(device, &ctx);
 #endif
 #ifdef _WIN32
-			rcu_read_lock_w32_inner();// _WIN32_V9_PATCH_2_CHECK: 재확인
+			rcu_read_lock_w32_inner();
 #else
 			rcu_read_lock();
 #endif
@@ -1584,8 +1578,9 @@ int drbd_issue_discard_or_zero_out(struct drbd_device *device, sector_t start, u
 	unsigned int max_discard_sectors, granularity;
 	int alignment;
 	int err = 0;
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK
-	DbgPrint("DRBD_TEST:_WIN32_V9_PATCH_2_CHECK: ignore drbd_issue_discard_or_zero_out !!!!");
+
+#ifdef _WIN32_V9
+	// _WIN32_V9_PATCH_2_CHECK_TRIM
 #else
 	if (!discard)
 		goto zero_out;

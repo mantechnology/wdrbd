@@ -1161,20 +1161,8 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 		container_of(w, struct drbd_peer_device_work, w),
 		struct resync_finished_work, pdw);
 
-#ifdef _WIN32_V9_PATCH_2_CHECK // fix 된 것인지 재 확인!
-	struct drbd_peer_device *peer_device = rfw->pdw.peer_device;
-#ifdef _WIN32_V9 //DW-669
-	enum drbd_disk_state new_peer_disk_state2 = rfw->new_peer_disk_state;
-	kfree(rfw);
-	drbd_resync_finished(peer_device, new_peer_disk_state2);
-#else
-	kfree(rfw);
-	drbd_resync_finished(peer_device, rfw->new_peer_disk_state);
-#endif
-#else
 	drbd_resync_finished(rfw->pdw.peer_device, rfw->new_peer_disk_state);
 	kfree(rfw);
-#endif
 	
 	return 0;
 }
@@ -1569,7 +1557,7 @@ int w_e_end_data_req(struct drbd_work *w, int cancel)
 
 static bool all_zero(struct drbd_peer_request *peer_req)
 {
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK:JHKIM: ignore!???
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK_TRIM
 	return false;
 #else
 	struct page *page = peer_req->page_chain.head;

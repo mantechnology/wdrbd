@@ -27,7 +27,7 @@
 #ifdef _WIN32
 #include "windows/drbd.h"
 
-#define		ERR_LOCAL_AND_PEER_ADDR 173	//_WIN32_V9_PATCH_2_CHECK: 직접정의 
+#define		ERR_LOCAL_AND_PEER_ADDR 173	//_WIN32_V9_PATCH_2: 직접정의 
 										// 이 매크로는 "\drbd-headers\linux\drbd.h" 에 존재하는데 이 헤더가 엔진과 공유가 안됨?
 
 #include "drbd_int.h"

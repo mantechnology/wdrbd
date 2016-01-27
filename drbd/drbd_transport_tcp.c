@@ -1611,11 +1611,7 @@ static int dtt_connect(struct drbd_transport *transport)
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
 			dtt_create_listener);
 		if (err)
-		{// test
-			goto out_unlock; // _WIN32_V9_PATCH_2_CHECK
-			// DbgPrint("DRBD_TEST: drbd_get_listener err!\n");
-			// goto out;
-		}
+			goto out_unlock;
 	}
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
