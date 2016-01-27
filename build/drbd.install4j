@@ -945,44 +945,6 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="Compile MOF" id="1730" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="false" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="MOF compile fail!">
-                <serializedBean>
-                  <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
-                      <void property="arguments">
-                        <array class="java.lang.String" length="1">
-                          <void index="0">
-                            <string>log\drbd.mof</string>
-                          </void>
-                        </array>
-                      </void>
-                      <void property="executable">
-                        <object class="java.io.File">
-                          <string>${installer:sys.system32Dir}/wbem/mofcomp</string>
-                        </object>
-                      </void>
-                      <void property="stderrRedirectionMode">
-                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="LOG_FILE" />
-                      </void>
-                      <void property="stdoutRedirectionMode">
-                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="LOG_FILE" />
-                      </void>
-                      <void property="wait">
-                        <boolean>true</boolean>
-                      </void>
-                      <void property="waitForStreams">
-                        <boolean>false</boolean>
-                      </void>
-                      <void property="workingDirectory">
-                        <object class="java.io.File">
-                          <string>.</string>
-                        </object>
-                      </void>
-                    </object>
-                  </java>
-                </serializedBean>
-                <condition />
-              </action>
               <action name="Delete Message Trace" id="1732" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
