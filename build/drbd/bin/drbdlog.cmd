@@ -76,28 +76,25 @@ if /i "%FORMAT%" == "txt" (
 logman stop wdrbdtrace -ets > nul 2>&1
 if %errorlevel% gtr 0 (
 	echo ERROR: Failed to start logger
-	goto ERROR
+	goto END
 )
 
 netsh trace convert "%FILENAME%" dump=%FORMAT% overwrite=yes > nul 2>&1
 if %errorlevel% gtr 0 (
 	echo ERROR: Cannot convert "%FILENAME%"
-	goto ERROR
+	goto LOG_START
 )
 
 start /B cmd /c "%DIR%\%OUTPUTNAME%.%FORMAT%" > nul 2>&1
 
 if %errorlevel% gtr 0 (
 	echo ERROR: Cannot open "%DIR%\%OUTPUTNAME%.%FORMAT%"
-	goto ERROR
+	goto LOG_START
 )
 
-logman start trace "wdrbdtrace" -p %drbd_LogGuid% 0xffffffff 0xff -o "%DIR%\tracelog.etl" -mode 0x00001200 -ct system -ft 1 -max %MAXSIZE% -a -ets >nul 2>&1
-if %errorlevel% gtr 0 (
-	echo ERROR: Failed to start logger
-	goto ERROR
-)
+
 goto END
+
 
 :HELP
 :ERROR
@@ -107,6 +104,13 @@ echo 	drbdlog
 echo 	drbdlog -f txt
 echo 	drbdlog tracelog.etl
 echo 	drbdlog tracelog_20160125_180343.etl -f evtx
+
+:LOG_START
+logman start trace "wdrbdtrace" -p %drbd_LogGuid% 0xffffffff 0xff -o "%DIR%\tracelog.etl" -mode 0x00001200 -ct system -ft 1 -max %MAXSIZE% -a -ets >nul 2>&1
+if %errorlevel% gtr 0 (
+	echo ERROR: Failed to start logger
+)
+
 :END
 cd "%PWD%"
 
