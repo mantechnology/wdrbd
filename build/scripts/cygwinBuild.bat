@@ -13,6 +13,6 @@ if not defined CYGWIN_HOME (
 	echo "ERROR : CYGWIN_HOME is not set, skipping cli build"
 ) else (
 	set "path=%path%;%CYGWIN_HOME%\bin";
-	%CYGWIN_HOME%\bin\vi "+set ff=unix" +wq %1
+	%CYGWIN_HOME%\bin\vi "+set ff=unix" +wq! %1
 	%CYGWIN_HOME%\bin\bash.exe %*
 )

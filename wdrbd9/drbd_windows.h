@@ -41,6 +41,15 @@
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// SEO: NETLINK에서 사용
 
+#define _WIN32_WPP
+
+#ifdef _WIN32_WPP
+#define WPP_CONTROL_GUIDS \
+	WPP_DEFINE_CONTROL_GUID(LogGuid, \
+	(998bdf51, 0349, 4fbc, 870c, d6130a955a5f), \
+	WPP_DEFINE_BIT(TRCERROR) \
+	WPP_DEFINE_BIT(TRCINFO))
+#endif
 
 /// SEO: 리눅스 코드 유지용
 #define inline					__inline

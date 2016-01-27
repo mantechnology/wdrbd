@@ -9,6 +9,10 @@
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
+#ifdef _WIN32_WPP
+#include "disp.tmh"
+#endif
+
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD mvolUnload;
 DRIVER_ADD_DEVICE mvolAddDevice;
@@ -97,6 +101,11 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 #ifdef _WIN32_V9
 	downup_rwlock_init(&transport_classes_lock); //transport 에서 사용할 spinlock 초기화.
 #endif
+	
+#ifdef _WIN32_WPP
+	WPP_INIT_TRACING(DriverObject, RegistryPath);
+	DoTraceMessage(TRCINFO, "WDRBD V9(1:1) MVF Driver loaded.");
+#endif
     // Init DRBD engine
     drbd_init();
 
@@ -109,6 +118,10 @@ VOID
 mvolUnload(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
+#ifdef _WIN32_WPP
+	// JHKIM: 엔진 드라이버는 종료가 안됨으로 이 함수 진입이 안됨. 일단 WPP 종료 의미를 부여하기 위해 삽입함.
+	WPP_CLEANUP(DriverObject);
+#endif
 }
 
 NTSTATUS
