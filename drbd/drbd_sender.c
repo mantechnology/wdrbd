@@ -297,7 +297,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
-	int uptodate = bio_flagged(bio, BIO_UPTODATE);
 	int is_write = bio_data_dir(bio) == WRITE;
 	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
 
@@ -307,16 +306,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				is_write ? (is_discard ? "discard" : "write")
 					: "read", error,
 				(unsigned long long)peer_req->i.sector);
-	if (!error && !uptodate) {
-		if (drbd_ratelimit())
-			drbd_warn(device, "%s: setting error to -EIO s=%llus\n",
-					is_write ? "write" : "read",
-					(unsigned long long)peer_req->i.sector);
-		/* strange behavior of some lower level drivers...
-		 * fail the request by clearing the uptodate flag,
-		 * but do not return any error?! */
-		error = -EIO;
-	}
 
 	if (error)
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
@@ -369,8 +358,9 @@ BIO_ENDIO_TYPE drbd_request_endio(void *p1, void *p2, void *p3)
 BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
-#ifdef _WIN32
 	unsigned long flags;
+#ifdef _WIN32
+
 	struct drbd_request *req = NULL;
 	struct drbd_device *device = NULL;
 	struct bio_and_error m;
@@ -403,7 +393,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device = req->device;
 	uptodate = bio_flagged(bio, BIO_UPTODATE);
 #else
-	unsigned long flags;
 	struct drbd_request *req = bio->bi_private;
 	struct drbd_device *device = req->device;
 	struct bio_and_error m;
@@ -412,14 +401,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 	BIO_ENDIO_FN_START;
-	if (!error && !uptodate) {
-		drbd_warn(device, "p %s: setting error to -EIO\n",
-			 bio_data_dir(bio) == WRITE ? "write" : "read");
-		/* strange behavior of some lower level drivers...
-		 * fail the request by clearing the uptodate flag,
-		 * but do not return any error?! */
-		error = -EIO;
-	}
 
 	/* If this request was aborted locally before,
 	 * but now was completed "successfully",
@@ -575,6 +556,10 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 	bio_for_each_segment(bvec, bio, iter) {
 		sg_set_page(&sg, bvec BVD bv_page, bvec BVD bv_len, bvec BVD bv_offset);
 		crypto_hash_update(&desc, &sg, sg.length);
+		/* REQ_WRITE_SAME has only one segment,
+		 * checksum the payload only once. */
+		if (bio->bi_rw & DRBD_REQ_WSAME)
+			break;
 	}
 	crypto_hash_final(&desc, digest);
 #endif
@@ -901,6 +886,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	int number, rollback_i, size;
 	int align, requeue = 0;
 	int i = 0;
+	int discard_granularity = 0;
 	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 
 	if (unlikely(cancel))
@@ -919,6 +905,12 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		   all */
 		drbd_err(device, "Disk broke down during resync!\n");
 		return 0;
+	}
+
+	if (peer_device->connection->agreed_features & DRBD_FF_THIN_RESYNC) {
+		rcu_read_lock();
+		discard_granularity = rcu_dereference(device->ldev->disk_conf)->rs_discard_granularity;
+		rcu_read_unlock();
 	}
 
 	max_bio_size = queue_max_hw_sectors(device->rq_queue) << 9;
@@ -1007,6 +999,9 @@ next_sector:
 			if (sector & ((1<<(align+3))-1))
 				break;
 
+			if (discard_granularity && size == discard_granularity)
+				break;
+
 			/* do not cross extent boundaries */
 			if (((bit+1) & BM_BLOCKS_PER_BM_EXT_MASK) == 0)
 				break;
@@ -1053,7 +1048,8 @@ next_sector:
 			int err;
 
 			inc_rs_pending(peer_device);
-			err = drbd_send_drequest(peer_device, P_RS_DATA_REQUEST,
+			err = drbd_send_drequest(peer_device,
+						 size == discard_granularity ? P_RS_THIN_REQ : P_RS_DATA_REQUEST,
 						 sector, size, ID_SYNCER);
 			if (err) {
 				drbd_err(device, "drbd_send_drequest() failed, aborting...\n");
@@ -1165,15 +1161,8 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 		container_of(w, struct drbd_peer_device_work, w),
 		struct resync_finished_work, pdw);
 
-	struct drbd_peer_device *peer_device = rfw->pdw.peer_device;
-#ifdef _WIN32_V9 //DW-669
-	enum drbd_disk_state new_peer_disk_state2 = rfw->new_peer_disk_state;
+	drbd_resync_finished(rfw->pdw.peer_device, rfw->new_peer_disk_state);
 	kfree(rfw);
-	drbd_resync_finished(peer_device, new_peer_disk_state2);
-#else
-	kfree(rfw);
-	drbd_resync_finished(peer_device, rfw->new_peer_disk_state);
-#endif
 	
 	return 0;
 }
@@ -1452,7 +1441,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 out_unlock:
 	end_state_change_locked(device->resource);
 	put_ldev(device);
-out:
+
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
@@ -1473,6 +1462,7 @@ out:
 	}
 	spin_unlock_irq(&device->resource->req_lock);
 
+out:
 	/* reset start sector, if we reached end of device */
 	if (verify_done && peer_device->ov_left == 0)
 		peer_device->ov_start_sector = 0;
@@ -1482,6 +1472,32 @@ out:
 	if (khelper_cmd)
 		drbd_khelper(device, connection, khelper_cmd);
 
+	/* If we have been sync source, and have an effective fencing-policy,
+	 * once *all* volumes are back in sync, call "unfence". */
+	if (old_repl_state == L_SYNC_SOURCE || old_repl_state == L_PAUSED_SYNC_S) {
+		enum drbd_disk_state disk_state = D_MASK;
+		enum drbd_disk_state pdsk_state = D_MASK;
+		enum drbd_fencing_policy fencing_policy = FP_DONT_CARE;
+
+		rcu_read_lock();
+		fencing_policy = connection->fencing_policy;
+		if (fencing_policy != FP_DONT_CARE) {
+			struct drbd_peer_device *peer_device;
+			int vnr;
+#ifdef _WIN32_V9
+			idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
+			idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif
+				struct drbd_device *device = peer_device->device;
+				disk_state = min_t(enum drbd_disk_state, disk_state, device->disk_state[NOW]);
+				pdsk_state = min_t(enum drbd_disk_state, pdsk_state, peer_device->disk_state[NOW]);
+			}
+		}
+		rcu_read_unlock();
+		if (disk_state == D_UP_TO_DATE && pdsk_state == D_UP_TO_DATE)
+			drbd_khelper(NULL, connection, "unfence-peer");
+	}
 
 	return 1;
 }
@@ -1539,6 +1555,34 @@ int w_e_end_data_req(struct drbd_work *w, int cancel)
 	return err;
 }
 
+static bool all_zero(struct drbd_peer_request *peer_req)
+{
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK_TRIM
+	return false;
+#else
+	struct page *page = peer_req->page_chain.head;
+	unsigned int len = peer_req->i.size;
+
+	page_chain_for_each(page) {
+		unsigned int l = min_t(unsigned int, len, PAGE_SIZE);
+		unsigned int i, words = l / sizeof(long);
+		unsigned long *d;
+
+		d = drbd_kmap_atomic(page, KM_USER1);
+		for (i = 0; i < words; i++) {
+			if (d[i]) {
+				drbd_kunmap_atomic(d, KM_USER1);
+				return false;
+			}
+		}
+		drbd_kunmap_atomic(d, KM_USER1);
+		len -= l;
+	}
+
+	return true;
+#endif
+}
+
 /**
  * w_e_end_rsdata_req() - Worker callback to send a P_RS_DATA_REPLY packet in response to a P_RS_DATA_REQUEST
  * @w:		work object.
@@ -1567,8 +1611,10 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	} else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
 			inc_rs_pending(peer_device);
-			//DbgPrint("DRBD_TEST:w_e_end_rsdata_req! drbd_send_block!");
-			err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
+			if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
+				err = drbd_send_rs_deallocated(peer_device, peer_req);
+			else
+				err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
 		} else {
 			if (drbd_ratelimit())
 				drbd_err(peer_device, "Not sending RSDataReply, "
@@ -1709,9 +1755,6 @@ int w_e_end_ov_req(struct drbd_work *w, int cancel)
 	err = drbd_send_command(peer_device, P_OV_REPLY, DATA_STREAM);
 	if (err)
 		dec_rs_pending(peer_device);
-#ifndef _WIN32_V9 // fixed BAD_POOL_CALLER
-	kfree(digest);
-#endif
 
 out:
 	if (peer_req)
@@ -2284,7 +2327,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     drbd_repl_str(repl_state),
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
-        DbgPrint("\n");
 		if (side == L_SYNC_TARGET) {
 			device->bm_resync_fo = 0;
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
@@ -2835,7 +2877,7 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 		if (send_barrier)
 			maybe_send_barrier(connection,
 					connection->send.current_epoch_nr + 1);
-		
+
 		if (test_and_clear_bit(SEND_STATE_AFTER_AHEAD_C, &connection->flags))
 			maybe_send_state_afer_ahead(connection);
 

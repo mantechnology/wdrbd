@@ -182,6 +182,33 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 }
 #endif
 
+#ifndef COMPAT_QUEUE_LIMITS_HAS_DISCARD_ZEROES_DATA
+static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
+{
+	return 0;
+}
+#endif
+
+#ifndef COMPAT_HAVE_BDEV_DISCARD_ALIGNMENT
+static inline int bdev_discard_alignment(struct block_device *bdev)
+{
+#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK_TRIM
+	return 0;
+#else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
+	return 0;
+#else
+	struct request_queue *q = bdev_get_queue(bdev);
+
+	if (bdev != bdev->bd_contains)
+		return bdev->bd_part->discard_alignment;
+
+	return q->limits.discard_alignment;
+#endif
+#endif
+}
+#endif
+
 #ifdef COMPAT_HAVE_VOID_MAKE_REQUEST
 /* in Commit 5a7bbad27a410350e64a2d7f5ec18fc73836c14f (between Linux-3.1 and 3.2)
    make_request() becomes type void. Before it had type int. */
@@ -272,13 +299,11 @@ static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 #define drbd_bio_uptodate(bio) bio_flagged(bio, BIO_UPTODATE)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
-/* Before Linux-2.6.24 bie_endio() had the size of the bio as second argument.
-   See 6712ecf8f648118c3363c142196418f89a510b90 */
-#define bio_endio(B,E) bio_endio(B, (B)->bi_size, E)
-#define BIO_ENDIO_TYPE int
-#define BIO_ENDIO_ARGS(b,e) (b, unsigned int bytes_done, e)
-#define BIO_ENDIO_FN_START if (bio->bi_size) return 1
-#define BIO_ENDIO_FN_RETURN return 0
+#define BIO_ENDIO_TYPE void
+#define BIO_ENDIO_ARGS(b,e) (b)
+#define BIO_ENDIO_FN_START int error = bio->bi_error
+#define BIO_ENDIO_FN_RETURN return
+
 #elif defined(_WIN32)
 typedef NTSTATUS BIO_ENDIO_TYPE;
 #define FAULT_TEST_FLAG     (ULONG_PTR)0x11223344
@@ -296,6 +321,10 @@ typedef NTSTATUS BIO_ENDIO_TYPE;
 extern BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
+
+#ifdef COMPAT_HAVE_BIO_BI_ERROR
+#define bio_endio(B,E) do { (B)->bi_error = E; bio_endio(B); } while (0)
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 #define part_inc_in_flight(A, B) part_inc_in_flight(A)
@@ -846,6 +875,10 @@ enum {
 #define DRBD_REQ_UNPLUG		0
 #endif
 
+#ifdef REQ_WRITE_SAME
+#define DRBD_REQ_WSAME         REQ_WRITE_SAME
+#endif
+
 #else				/* "older", and hopefully not
 				 * "partially backported" kernel */
 
@@ -871,6 +904,16 @@ enum {
 /* we don't support DISCARDS yet, anyways.
  * cannot test on defined(BIO_RW_DISCARD), it may be an enum */
 #define DRBD_REQ_DISCARD	0
+#endif
+#ifndef DRBD_REQ_WSAME
+#define DRBD_REQ_WSAME          0
+#endif
+
+#ifndef WRITE_FLUSH
+#ifndef WRITE_SYNC
+#error  FIXME WRITE_SYNC undefined??
+#endif
+#define WRITE_FLUSH	(WRITE_SYNC | DRBD_REQ_FLUSH)
 #endif
 
 /* this results in:
@@ -1713,6 +1756,50 @@ static inline int simple_positive(struct dentry *dentry)
 {
         return dentry->d_inode && !d_unhashed(dentry);
 }
+#endif
+#endif
+
+#ifndef COMPAT_HAVE_ATOMIC_DEC_IF_POSITIVE
+static inline int atomic_dec_if_positive(atomic_t *v)
+{
+        int c, old, dec;
+        c = atomic_read(v);
+        for (;;) {
+                dec = c - 1;
+                if (unlikely(dec < 0))
+                        break;
+                old = atomic_cmpxchg((v), c, dec);
+                if (likely(old == c))
+                        break;
+                c = old;
+        }
+        return dec;
+}
+#endif
+
+#ifndef _WIN32_V9
+#ifndef COMPAT_HAVE_IB_CQ_INIT_ATTR
+#include <rdma/ib_verbs.h>
+
+struct ib_cq_init_attr {
+	unsigned int    cqe;
+	int             comp_vector;
+	u32             flags;
+};
+
+static inline struct ib_cq *
+drbd_ib_create_cq(struct ib_device *device,
+		  ib_comp_handler comp_handler,
+		  void (*event_handler)(struct ib_event *, void *),
+		  void *cq_context,
+		  const struct ib_cq_init_attr *cq_attr)
+{
+	return ib_create_cq(device, comp_handler, event_handler, cq_context,
+			    cq_attr->cqe, cq_attr->comp_vector);
+}
+
+#define ib_create_cq(DEV, COMP_H, EVENT_H, CTX, ATTR) \
+	drbd_ib_create_cq(DEV, COMP_H, EVENT_H, CTX, ATTR)
 #endif
 #endif
 #endif

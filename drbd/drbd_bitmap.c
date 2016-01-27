@@ -702,7 +702,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 		/* don't overrun buffers with MERGE or EXTRACT,
 		 * jump to the kunmap and then out... */
 		if (start > end)
-			goto next_page; // _WIN32_V9_PATCH_1 에서 추가!!!
+			goto next_page;
 
 		switch(op) {
 		default:
@@ -1262,16 +1262,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	struct drbd_device *device = ctx->device;
 	struct drbd_bitmap *b = device->bitmap;
 	unsigned int idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
-	int uptodate = bio_flagged(bio, BIO_UPTODATE);
 
 	BIO_ENDIO_FN_START;
-
-	/* strange behavior of some lower level drivers...
-	 * fail the request by clearing the uptodate flag,
-	 * but do not return any error?!
-	 * do we want to WARN() on this? */
-	if (!error && !uptodate)
-		error = -EIO;
 
 	if ((ctx->flags & BM_AIO_COPY_PAGES) == 0 &&
 	    !bm_test_page_unchanged(b->bm_pages[idx]))

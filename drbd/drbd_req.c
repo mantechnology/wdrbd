@@ -62,8 +62,6 @@ static void _drbd_start_io_acct(struct drbd_device *device, struct drbd_request 
 	disk_round_stats(device->vdisk);
 	atomic_inc((atomic_t*)&device->vdisk->in_flight);
 }
-
-/* Update disk stats when completing request upwards */
 static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *req)
 {
 	const int rw = bio_data_dir(req->master_bio);
@@ -75,8 +73,7 @@ static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *r
 
 #endif
 
-static struct drbd_request *drbd_req_new(struct drbd_device *device,
-					       struct bio *bio_src)
+static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio *bio_src)
 {
 	struct drbd_request *req;
 	int i;
@@ -111,10 +108,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device,
 
 	kref_get(&device->kref);
 	kref_debug_get(&device->kref_debug, 6);
-	req->device      = device;
 
-	req->master_bio  = bio_src;
-	req->epoch       = 0;
+	req->device = device;
+	req->master_bio = bio_src;
+	req->epoch = 0;
 
 	drbd_clear_interval(&req->i);
 	req->i.sector = DRBD_BIO_BI_SECTOR(bio_src);
@@ -131,10 +128,11 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device,
 	/* one kref as long as completion_ref > 0 */
 	kref_init(&req->kref);
 
-	for (i = 0; i < ARRAY_SIZE(req->rq_state); i++)
+	req->rq_state[0] = (bio_data_dir(bio_src) == WRITE ? RQ_WRITE : 0)
+	              | (bio_src->bi_rw & DRBD_REQ_WSAME ? RQ_WSAME : 0)
+	              | (bio_src->bi_rw & DRBD_REQ_DISCARD ? RQ_UNMAP : 0);
+	for (i = 1; i < ARRAY_SIZE(req->rq_state); i++)
 		req->rq_state[i] = 0;
-	if (bio_data_dir(bio_src) == WRITE)
-		req->rq_state[0] |= RQ_WRITE;
 
 	return req;
 }
@@ -1478,17 +1476,15 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 
 	if (congested) {
 		struct drbd_resource *resource = device->resource;
+
 		/* start a new epoch for non-mirrored writes */
-		
 		start_new_tl_epoch(resource);
-		
+
 		begin_state_change_locked(resource, CS_VERBOSE | CS_HARD);
-		
 		if (on_congestion == OC_PULL_AHEAD)
 			__change_repl_state(peer_device, L_AHEAD);
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
-
 		end_state_change_locked(resource);
 	}
 	put_ldev(device);
@@ -1628,6 +1624,13 @@ static int drbd_process_write_request(struct drbd_request *req)
 	return count;
 }
 
+static void drbd_process_discard_req(struct drbd_request *req)
+{
+	int err = drbd_issue_discard_or_zero_out(req->device,
+				req->i.sector, req->i.size >> 9, true);
+	bio_endio(req->private_bio, err ? -EIO : 0);
+}
+
 static void
 drbd_submit_req_private_bio(struct drbd_request *req)
 {
@@ -1648,13 +1651,15 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 				    : rw == READ  ? DRBD_FAULT_DT_RD
 				    :               DRBD_FAULT_DT_RA))
 			bio_endio(bio, -EIO);
+		else if (bio->bi_rw & DRBD_REQ_DISCARD)
+			drbd_process_discard_req(req);
 #ifndef _WIN32_V9_REMOVELOCK		
 		else
 			generic_make_request(bio);
 #else
 		else {
 			if (generic_make_request(bio)) {
-				bio_endio(bio, -EIO);
+				bio_endio(bio, -EIO); // _WIN32_V9_PATCH_2:JHKIM: 패치중 endio 위치에 의문, 재확인
 			}
 		}
 #endif
@@ -1711,6 +1716,10 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 	/* Update disk stats */
 	_drbd_start_io_acct(device, req);
 
+	/* process discards always from our submitter thread */
+	if (bio->bi_rw & DRBD_REQ_DISCARD)
+		goto queue_for_submitter_thread;
+
 	if (rw == WRITE && req->i.size) {
 		/* Unconditionally defer to worker,
 		 * if we still need to bumpt our data generation id */
@@ -1728,8 +1737,37 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 			req->in_actlog_jif = jiffies;
 		}
 	}
-
 	return req;
+
+ queue_for_submitter_thread:
+	atomic_inc(&device->ap_actlog_cnt);
+	drbd_queue_write(device, req);
+	return NULL;
+}
+
+/* Require at least one path to current data.
+ * We don't want to allow writes on C_STANDALONE D_INCONSISTENT:
+ * We would not allow to read what was written,
+ * we would not have bumped the data generation uuids,
+ * we would cause data divergence for all the wrong reasons.
+ *
+ * If we don't see at least one D_UP_TO_DATE, we will fail this request,
+ * which either returns EIO, or, if OND_SUSPEND_IO is set, suspends IO,
+ * and queues for retry later.
+ */
+static bool may_do_writes(struct drbd_device *device)
+{
+	struct drbd_peer_device *peer_device;
+
+	if (device->disk_state[NOW] == D_UP_TO_DATE)
+		return true;
+
+	for_each_peer_device(peer_device, device) {
+		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
+		    return true;
+	}
+
+	return false;
 }
 
 static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request *req)
@@ -1805,6 +1843,12 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	}
 
 	if (rw == WRITE) {
+		if (req->private_bio && !may_do_writes(device)) {
+			bio_put(req->private_bio);
+			req->private_bio = NULL;
+			put_ldev(device);
+			goto nodata;
+		}
 		if (!drbd_process_write_request(req))
 			no_remote = true;
 		else
@@ -1999,6 +2043,8 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &incoming, &pending, &busy);
 			if (!list_empty(&pending))
 				break;
+				
+			drbd_kick_lo(device);
 #ifdef _WIN32_V9
 			schedule(&device->al_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
@@ -2074,6 +2120,7 @@ void do_submit(struct work_struct *ws)
 
 		send_and_submit_pending(device, &pending);
 	}
+	drbd_kick_lo(device);
 }
 
 MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
@@ -2094,12 +2141,17 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 		MAKE_REQUEST_RETURN;
 	}
 #endif
+#ifdef HAVE_BLK_QUEUE_SPLIT
+/* 54efd50 block: make generic_make_request handle arbitrarily sized bios
+ * introduced blk_queue_split(), which is supposed to split (and put on the
+ * current->bio_list bio chain) any bio that is violating the queue limits.
+ * Before that, any user was supposed to go through bio_add_page(), which
+ * would call our merge bvec function, and that should already be sufficient
+ * to not violate queue limits.
+ */
+	blk_queue_split(q, &bio, q->bio_split);
+#endif
 	start_jif = jiffies;
-
-	/*
-	 * what we "blindly" assume:
-	 */
-	D_ASSERT(device, IS_ALIGNED(DRBD_BIO_BI_SIZE(bio), 512));
 
 	inc_ap_bio(device, bio_data_dir(bio));
 	__drbd_make_request(device, bio, start_jif);
@@ -2117,13 +2169,11 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
  * As long as the BIO is empty we have to allow at least one bvec,
  * regardless of size and offset, so no need to ask lower levels.
  */
+#ifdef COMPAT_HAVE_BLK_QUEUE_MERGE_BVEC
 int drbd_merge_bvec(struct request_queue *q,
 		struct bvec_merge_data *bvm,
 		struct bio_vec *bvec)
 {
-#ifdef _WIN32_V9 // kmpak wdrbd 8 에서는 사용안한다고 함수정의 까지 없는데 9에서는 함수원형은 남겨둠
-    return 0;
-#else
 	struct drbd_device *device = (struct drbd_device *) q->queuedata;
 	unsigned int bio_size = bvm->bi_size;
 	int limit = DRBD_MAX_BIO_SIZE;
@@ -2143,8 +2193,9 @@ int drbd_merge_bvec(struct request_queue *q,
 			limit = max_hw_sectors << 9;
 	}
 	return limit;
-#endif
 }
+#endif
+
 #ifdef _WIN32_V9
 static ULONG_PTR time_min_in_future(ULONG_PTR now,
 		ULONG_PTR t1, ULONG_PTR t2)

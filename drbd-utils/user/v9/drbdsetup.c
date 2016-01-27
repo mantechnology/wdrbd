@@ -2686,10 +2686,14 @@ static char *address_str(char *buffer, void* address, int addr_len)
 			 ntohs(a.addr4.sin_port));
 		return buffer;
 	} else if (a.addr.sa_family == AF_INET6) {
-		char buffer2[INET6_ADDRSTRLEN];
-		snprintf(buffer, ADDRESS_STR_MAX, "%s:[%s]:%u",
-		        af_to_str(a.addr6.sin6_family),
-		        inet_ntop(a.addr6.sin6_family, &a.addr6.sin6_addr, buffer2, INET6_ADDRSTRLEN),
+		char buf2[ADDRESS_STR_MAX];
+		int n;
+		buf2[0] = 0;
+		/* inet_ntop does not include scope info */
+		getnameinfo(&a.addr, addr_len, buf2, sizeof(buf2),
+			NULL, 0, NI_NUMERICHOST|NI_NUMERICSERV);
+		n = snprintf(buffer, ADDRESS_STR_MAX, "%s:[%s]:%u",
+		        af_to_str(a.addr6.sin6_family), buf2,
 		        ntohs(a.addr6.sin6_port));
 		return buffer;
 	} else
@@ -3375,6 +3379,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_CONNECTION_STATE] = "connection",
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
+		[DRBD_PATH_STATE] = "path",
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;
@@ -3591,6 +3596,22 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 					print_peer_device_statistics(0, old ? &old->s : NULL,
 								     &new.s, nowrap_printf);
 			}
+			free(old);
+		} else
+			update_info(&key, NULL, 0);
+		break;
+	case DRBD_PATH_STATE:
+		if (action != NOTIFY_DESTROY) {
+			struct drbd_path_info new = {}, *old;
+
+			if (drbd_path_info_from_attrs(&new, info)) {
+				dbg(1, "path info missing\n");
+				goto nl_out;
+			}
+			old = update_info(&key, &new, sizeof(new));
+			if (!old || old->path_established != new.path_established)
+				printf(" established:%s",
+				       new.path_established ? "yes" : "no");
 			free(old);
 		} else
 			update_info(&key, NULL, 0);

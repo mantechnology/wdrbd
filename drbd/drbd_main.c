@@ -1220,7 +1220,6 @@ void drbd_cork(struct drbd_connection *connection, enum drbd_stream stream)
 
 void drbd_uncork(struct drbd_connection *connection, enum drbd_stream stream)
 {
-	struct drbd_send_buffer *sbuf = &connection->send_buffer[stream];
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 
@@ -1658,6 +1657,37 @@ out:
 	return err;
 }
 
+#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+/* communicated if (agreed_features & DRBD_FF_WSAME) */
+void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct request_queue *q)
+{
+	if (q) {
+		p->qlim->physical_block_size = cpu_to_be32(queue_physical_block_size(q));
+		p->qlim->logical_block_size = cpu_to_be32(queue_logical_block_size(q));
+		p->qlim->alignment_offset = cpu_to_be32(queue_alignment_offset(q));
+		p->qlim->io_min = cpu_to_be32(queue_io_min(q));
+		p->qlim->io_opt = cpu_to_be32(queue_io_opt(q));
+		p->qlim->discard_enabled = blk_queue_discard(q);
+		p->qlim->discard_zeroes_data = queue_discard_zeroes_data(q);
+#ifdef REQ_WRITE_SAME
+		p->qlim->write_same_capable = !!q->limits.max_write_same_sectors;
+#else
+		p->qlim->write_same_capable = 0;
+#endif
+	} else {
+		q = device->rq_queue;
+		p->qlim->physical_block_size = cpu_to_be32(queue_physical_block_size(q));
+		p->qlim->logical_block_size = cpu_to_be32(queue_logical_block_size(q));
+		p->qlim->alignment_offset = 0;
+		p->qlim->io_min = cpu_to_be32(queue_io_min(q));
+		p->qlim->io_opt = cpu_to_be32(queue_io_opt(q));
+		p->qlim->discard_enabled = 0;
+		p->qlim->discard_zeroes_data = 0;
+		p->qlim->write_same_capable = 0;
+	}
+}
+#endif
+
 int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
 {
 	struct drbd_device *device = peer_device->device;
@@ -1665,30 +1695,47 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 	sector_t d_size, u_size;
 	int q_order_type;
 	unsigned int max_bio_size;
+	unsigned int packet_size;
 
+	packet_size = sizeof(*p);
+	if (peer_device->connection->agreed_features & DRBD_FF_WSAME)
+		packet_size += sizeof(p->qlim[0]);
+
+	p = drbd_prepare_command(peer_device, packet_size, DATA_STREAM);
+	if (!p)
+		return -EIO;
+
+	memset(p, 0, packet_size);
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
-		D_ASSERT(device, device->ldev->backing_bdev);
+		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
+		
 #ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;   // to recalculate size
+        device->ldev->backing_bdev->d_size = 0;   // to recalculate size // _WIN32_V9_PATCH_2:JHKKIM: P2에서 크기 구하는 부분이 assign_p_sizes_qlim 변경됨. 유지하는 이유에 대해 관련 이슈 재확인 필요. 
 #endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 		q_order_type = drbd_queue_order_type(device);
+#ifdef _WIN32_V9 // WIN32_V9_PATCH2_CHECK: JHKIM: 일단 P1을 유지함. P2와 차이 재확인
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
+#else
+		max_bio_size = queue_max_hw_sectors(q) << 9;
 		max_bio_size = min(max_bio_size, DRBD_MAX_BIO_SIZE);
+#endif
+#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+		assign_p_sizes_qlim(device, p, q);
+#endif
 		put_ldev(device);
 	} else {
 		d_size = 0;
 		u_size = 0;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
+#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+		assign_p_sizes_qlim(device, p, NULL);
+#endif
 	}
-
-	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
-	if (!p)
-		return -EIO;
 
 	if (peer_device->connection->agreed_pro_version <= 94)
 		max_bio_size = min(max_bio_size, DRBD_MAX_SIZE_H80_PACKET);
@@ -2120,6 +2167,20 @@ void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set
 	send_command(connection, -1, P_BARRIER_ACK, CONTROL_STREAM);
 }
 
+int drbd_send_rs_deallocated(struct drbd_peer_device *peer_device,
+			     struct drbd_peer_request *peer_req)
+{
+	struct p_block_desc *p;
+
+	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
+	if (!p)
+		return -EIO;
+	p->sector = cpu_to_be64(peer_req->i.sector);
+	p->blksize = cpu_to_be32(peer_req->i.size);
+	p->pad = 0;
+	return drbd_send_command(peer_device, P_RS_DEALLOCATED, DATA_STREAM);
+}
+
 int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 		       sector_t sector, int size, u64 block_id)
 {
@@ -2237,7 +2298,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 	void *from_base;
 	void *buffer2;
 	int err;
-// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
+
 	buffer2 = alloc_send_buffer(connection, size, DATA_STREAM);
 	from_base = drbd_kmap_atomic(page, KM_USER0);
 	memcpy(buffer2, from_base + offset, size);
@@ -2262,7 +2323,6 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
 #endif
-// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
 	/* Flush send buffer and make sure PAGE_SIZE is available... */
 	alloc_send_buffer(connection, PAGE_SIZE, DATA_STREAM);
 	connection->send_buffer[DATA_STREAM].allocated_size = 0;
@@ -2282,6 +2342,9 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 					 bio_iter_last(bvec, iter) ? 0 : MSG_MORE);
 		if (err)
 			return err;
+		/* REQ_WRITE_SAME has only one segment */
+		if (bio->bi_rw & DRBD_REQ_WSAME)
+			break;
 	}
 #endif
 	return 0;
@@ -2381,6 +2444,7 @@ static u32 bio_flags_to_wire(struct drbd_connection *connection, unsigned long b
 			(bi_rw & DRBD_REQ_UNPLUG ? DP_UNPLUG : 0) |
 			(bi_rw & DRBD_REQ_FUA ? DP_FUA : 0) |
 			(bi_rw & DRBD_REQ_FLUSH ? DP_FLUSH : 0) |
+			(bi_rw & DRBD_REQ_WSAME ? DP_WSAME : 0) |
 			(bi_rw & DRBD_REQ_DISCARD ? DP_DISCARD : 0);
 
 	/* else: we used to communicate one bit only in older DRBD */
@@ -2395,6 +2459,12 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	struct drbd_device *device = peer_device->device;
 	struct p_trim *trim = NULL;
 	struct p_data *p;
+	struct p_wsame *wsame = NULL;
+#ifdef _WIN32_V9
+	void *digest_out = 0;
+#else
+	void *digest_out;
+#endif
 	unsigned int dp_flags = 0;
 	int digest_size = 0;
 	int err;
@@ -2409,9 +2479,20 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	} else {
 		if (peer_device->connection->integrity_tfm)
 			digest_size = crypto_hash_digestsize(peer_device->connection->integrity_tfm);
-		p = drbd_prepare_command(peer_device, sizeof(*p) + digest_size, DATA_STREAM);
-		if (!p)
-			return -EIO;
+
+		if (req->master_bio->bi_rw & DRBD_REQ_WSAME) {
+			wsame = drbd_prepare_command(peer_device, sizeof(*wsame) + digest_size, DATA_STREAM);
+			if (!wsame)
+				return -EIO;
+			p = &wsame->p_data;
+			wsame->size = cpu_to_be32(req->i.size);
+			digest_out = wsame + 1;
+		} else {
+			p = drbd_prepare_command(peer_device, sizeof(*p) + digest_size, DATA_STREAM);
+			if (!p)
+				return -EIO;
+			digest_out = p + 1;
+		}
 	}
 
 	p->sector = cpu_to_be64(req->i.sector);
@@ -2432,24 +2513,26 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	}
 	p->dp_flags = cpu_to_be32(dp_flags);
 
-	/* our digest is still only over the payload.
-	 * TRIM does not carry any payload. */
-	if (digest_size)
-#ifdef _WIN32 // V9_CHECK: network buffer duplicated // JHKIM: 어떤 의미인가?
-		drbd_csum_bio(peer_device->connection->integrity_tfm, req, p + 1);
-#else
-		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, p + 1);
-#endif
-
 	if (trim) {
 		err = __send_command(peer_device->connection, device->vnr, P_TRIM, DATA_STREAM);
 		goto out;
 	}
-#ifdef DRBD_TRACE
-	WDRBD_TRACE("P_DATA: sect: 0x%llx sz: %d\n", req->i.sector, req->i.size);
+
+	if (digest_size) // _WIN32_V9_PATCH_2:JHKIM: csum관련 로직이 변경됨. 확인필수!!
+		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
+
+	if (wsame) {
+#ifndef _WIN32_V9
+		additional_size_command(peer_device->connection, DATA_STREAM,
+					bio_iovec(req->master_bio) BVD bv_len);
+		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
+#else
+		// _WIN32_V9_PATCH_2_CHECK_TRIM
 #endif
-	additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
-	err = __send_command(peer_device->connection, device->vnr, P_DATA, DATA_STREAM);
+	} else {
+		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
+		err = __send_command(peer_device->connection, device->vnr, P_DATA, DATA_STREAM);
+	}
 	if (!err) {
 		/* For protocol A, we have to memcpy the payload into
 		 * socket buffers, as we may complete right away
@@ -4085,7 +4168,9 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #endif
 #ifndef _WIN32
 	blk_queue_bounce_limit(q, BLK_BOUNCE_ANY);
+#ifdef COMPAT_HAVE_BLK_QUEUE_MERGE_BVEC
 	blk_queue_merge_bvec(q, drbd_merge_bvec);
+#endif
 #endif
 	q->queue_lock = &resource->req_lock; /* needed since we use */
 #ifdef blk_queue_plugged
@@ -4477,21 +4562,6 @@ fail:
 	else
 		pr_err("initialization failure\n");
 	return err;
-}
-
-void drbd_free_ldev(struct drbd_backing_dev *ldev)
-{
-	if (ldev == NULL)
-		return;
-
-	if (ldev->backing_bdev)
-		blkdev_put(ldev->backing_bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-
-	if (ldev->md_bdev)
-		blkdev_put(ldev->md_bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-
-	kfree(ldev->disk_conf);
-	kfree(ldev);
 }
 
 /* meta data management */
@@ -5005,24 +5075,17 @@ static u64 initial_resync_nodes(struct drbd_device *device)
 	return nodes;
 }
 
-u64 drbd_weak_nodes_device(struct drbd_device *device)
+u64 drbd_weak_nodes_device(struct drbd_device *device) // _WIN32_V9_PATCH_2:JHKIM: 참고: 이 함수가 많이 변함. 혹시 2PC 핑퐁 문제 해결(?)과 연관은 없는가?.
 {
 	struct drbd_peer_device *peer_device;
-	int my_node_id = device->resource->res_opts.node_id;
-	int node_id;
-	u64 not_weak = NODE_MASK(my_node_id);
+	u64 not_weak = NODE_MASK(device->resource->res_opts.node_id);
 
 	rcu_read_lock();
-	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
-		if (node_id == my_node_id)
-			continue;
+	for_each_peer_device_rcu(peer_device, device) {
+		enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
+		if (!(pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED))
+			not_weak |= NODE_MASK(peer_device->node_id);
 
-		peer_device = peer_device_by_node_id(device, node_id);
-		if (peer_device) {
-			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
-			if (!(pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED))
-				not_weak |= NODE_MASK(node_id);
-		}
 	}
 	rcu_read_unlock();
 
