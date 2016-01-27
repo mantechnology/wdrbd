@@ -93,7 +93,7 @@ if %errorlevel% gtr 0 (
 )
 
 
-goto END
+goto LOG_START
 
 
 :HELP
