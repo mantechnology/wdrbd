@@ -294,6 +294,16 @@ int test_and_change_bit(int nr, const ULONG_PTR *addr)
     return (old & mask) != 0;
 }
 
+ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value)
+{
+#ifdef _WIN64
+    return (InterlockedExchange64(target, value));
+#else
+    return (InterlockedExchange(target, value));
+#endif
+}
+
+
 void atomic_set(const atomic_t *v, int i)
 {
 	InterlockedExchange(v, i);

@@ -303,11 +303,7 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 	struct drbd_resource *resource;
 	struct drbd_listener *listener;
 
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2:JHKIM: ignore lock
-	listener = waiter->listener;
-#else
-	listener = xchg(&waiter->listener, NULL);
-#endif
+    listener = xchg(&waiter->listener, NULL);
 	if (!listener)
 		return;
 

@@ -820,6 +820,7 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define atomic_inc(_v)			atomic_inc_return(_v)
 #define atomic_dec(_v)			atomic_dec_return(_v)
 
+extern ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value);
 extern void atomic_set(const atomic_t *v, int i);
 extern void atomic_add(int i, atomic_t *v);
 extern void atomic_sub(int i, atomic_t *v);
