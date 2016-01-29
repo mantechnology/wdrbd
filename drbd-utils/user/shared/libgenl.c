@@ -268,11 +268,13 @@ retry:
 	if (msg.msg_namelen != sizeof(struct sockaddr_nl))
 		return -E_RCV_NO_SOURCE_ADDR;
 
+#ifndef _WIN32_V9 //_WIN32_V9_PATCH_2
 	if (addr.nl_pid != 0) {
 		dbg(3, "ignoring message from sender pid %u != 0\n",
 				addr.nl_pid);
 		goto retry;
 	}
+#endif
 
 	return n;
 }
