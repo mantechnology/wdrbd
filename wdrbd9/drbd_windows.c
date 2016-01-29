@@ -297,9 +297,9 @@ int test_and_change_bit(int nr, const ULONG_PTR *addr)
 ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value)
 {
 #ifdef _WIN64
-    return (InterlockedExchange64(target, value));
+	return (InterlockedExchange64(target, value));
 #else
-    return (InterlockedExchange(target, value));
+	return (InterlockedExchange(target, value));
 #endif
 }
 

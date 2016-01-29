@@ -303,7 +303,7 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 	struct drbd_resource *resource;
 	struct drbd_listener *listener;
 
-    listener = xchg(&waiter->listener, NULL);
+	listener = xchg(&waiter->listener, NULL);
 	if (!listener)
 		return;
 
