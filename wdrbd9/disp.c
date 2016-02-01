@@ -668,6 +668,9 @@ char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid)
         if (REG_BINARY == valueInfo->Type)
         {
             PWCHAR dos_name = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
+			if (!dos_name) {
+				goto cleanup;
+			}
             RtlZeroMemory(dos_name, valueInfo->NameLength + sizeof(WCHAR));
             RtlCopyMemory(dos_name, valueInfo->Name, valueInfo->NameLength);
 

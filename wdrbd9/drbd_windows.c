@@ -374,6 +374,7 @@ retry: // DV
 	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
 	if (!mem)
 	{
+		return NULL;
         WDRBD_WARN("kzalloc: no memory! fail_count=%d\n", fail_count); 
         // DV TEST시 빈도가 높으면 제거! 
         // 현재 Win7 64에서 시험중 간헐적으로 출력되며 
@@ -2356,6 +2357,9 @@ BOOLEAN do_add_minor(unsigned int minor)
     }
 
     UNICODE_STRING new_reg = {0, MAX_TEXT_BUF, new_reg_buf};
+	if (!prext->RegistryPath.Buffer) {
+		goto cleanup;
+	}
     RtlCopyUnicodeString(&new_reg, &prext->RegistryPath);
     RtlAppendUnicodeToString(&new_reg, DRBD_REGISTRY_VOLUMES);
 

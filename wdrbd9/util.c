@@ -1032,11 +1032,17 @@ PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
     USHORT size = src->Length + sizeof(WCHAR);
 
     dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
-    dst->MaximumLength = size;
-
-    RtlCopyUnicodeString(dst, src);
-
-    return dst;
+	if (dst->Buffer) {
+		dst->MaximumLength = size;
+		RtlCopyUnicodeString(dst, src);
+		return dst;
+	}
+	else {
+		dst->Buffer = NULL;
+		dst->MaximumLength = 0;
+		return NULL;
+	}
+    
 }
 
 /**

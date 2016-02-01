@@ -1919,15 +1919,24 @@ out:
 }
 
 #ifdef _WIN32
-void __drbd_make_request(struct drbd_device *device, struct bio *bio, ULONG_PTR start_jif)
+NTSTATUS __drbd_make_request(struct drbd_device *device, struct bio *bio, ULONG_PTR start_jif)
 #else
 void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned long start_jif)
 #endif
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 	if (IS_ERR_OR_NULL(req))
+#ifdef _WIN32_V9
+		return STATUS_UNSUCCESSFUL;
+#else
 		return;
+#endif
+	
 	drbd_send_and_submit(device, req);
+
+#ifdef _WIN32_V9
+	return STATUS_SUCCESS;
+#endif
 }
 
 static void submit_fast_path(struct drbd_device *device, struct list_head *incoming)
@@ -2127,6 +2136,7 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct drbd_device *device = (struct drbd_device *) q->queuedata;
 #ifdef _WIN32
+	NTSTATUS	status;
 	ULONG_PTR start_jif;
 #else
 	unsigned long start_jif;
@@ -2142,21 +2152,27 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 	}
 #endif
 #ifdef HAVE_BLK_QUEUE_SPLIT
-/* 54efd50 block: make generic_make_request handle arbitrarily sized bios
- * introduced blk_queue_split(), which is supposed to split (and put on the
- * current->bio_list bio chain) any bio that is violating the queue limits.
- * Before that, any user was supposed to go through bio_add_page(), which
- * would call our merge bvec function, and that should already be sufficient
- * to not violate queue limits.
- */
+	/* 54efd50 block: make generic_make_request handle arbitrarily sized bios
+	 * introduced blk_queue_split(), which is supposed to split (and put on the
+	 * current->bio_list bio chain) any bio that is violating the queue limits.
+	 * Before that, any user was supposed to go through bio_add_page(), which
+	 * would call our merge bvec function, and that should already be sufficient
+	 * to not violate queue limits.
+	 */
 	blk_queue_split(q, &bio, q->bio_split);
 #endif
 	start_jif = jiffies;
 
 	inc_ap_bio(device, bio_data_dir(bio));
-	__drbd_make_request(device, bio, start_jif);
 
+#ifdef _WIN32_V9
+	status = __drbd_make_request(device, bio, start_jif);
+	return status;
+#else
+	__drbd_make_request(device, bio, start_jif);
 	MAKE_REQUEST_RETURN;
+#endif
+	
 }
 
 /* This is called by bio_add_page().

@@ -106,14 +106,17 @@ PTR_ENTRY gSocketList =
 /**
 * @brief    Multicast를 위한 socket 포인터를 list에 push 한다.
 */
-static void push_msocket_entry(void * ptr)
+static bool push_msocket_entry(void * ptr)
 {
     if (!ptr)
     {
-        return;
+        return FALSE;
     }
 
     PPTR_ENTRY entry = (PPTR_ENTRY)ExAllocatePoolWithTag(NonPagedPool, sizeof(PTR_ENTRY), '57DW');
+	if (!entry) {
+		return FALSE;
+	}
     entry->ptr = ptr;
 
     MvfAcquireResourceExclusive(&genl_multi_socket_res_lock);
@@ -557,7 +560,10 @@ NetlinkWorkThread(PVOID context)
         if (strstr(psock_buf, DRBD_EVENT_SOCKET_STRING))
         {
 			WDRBD_TRACE("DRBD_EVENT_SOCKET_STRING received. socket(0x%p)\n", socket);
-			push_msocket_entry(socket);
+			if (!push_msocket_entry(socket)) {
+				goto cleanup;
+			}
+
 			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount)
 			{
 				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
