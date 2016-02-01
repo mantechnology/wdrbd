@@ -1925,10 +1925,11 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 #endif
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
-	if (IS_ERR_OR_NULL(req))
 #ifdef _WIN32_V9
-		return STATUS_UNSUCCESSFUL;
+	if (IS_ERR_OR_NULL(req))
+		return STATUS_SUCCESS;
 #else
+	if (IS_ERR_OR_NULL(req))
 		return;
 #endif
 	
