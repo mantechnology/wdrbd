@@ -1021,10 +1021,7 @@ int mutex_trylock(struct mutex *m)
 
 void mutex_unlock(struct mutex *m)
 {
-#ifdef _WIN32_V9
-    if (mutex_is_locked(m)) //_WIN32_CHECK_7 choi: 이미 unlock 상태인 mutex를 unlock 하는 경우가 발생함. // JHKIM: 그런 경우는 BUG로 처리하여 스택을 보면서 위치를 찾아야 함. 보도디버깅 코드 삽입 필요 _WIN32_V9_MUTEX_TEST
-#endif
-        KeReleaseMutex(&m->mtx, FALSE);
+	KeReleaseMutex(&m->mtx, FALSE);
 }
 
 #ifdef _WIN32_V9
