@@ -1926,7 +1926,9 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 #ifdef _WIN32_V9
-	if (IS_ERR_OR_NULL(req))
+	if (req == -ENOMEM) //only memory allocation fail case
+		return STATUS_UNSUCCESSFUL;
+	if (IS_ERR_OR_NULL(req)) //retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
 		return STATUS_SUCCESS;
 #else
 	if (IS_ERR_OR_NULL(req))
