@@ -1444,6 +1444,9 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         WDRBD_INFO("incoming connection on a listening socket.\n");
         struct accept_wait_data *ad = (struct accept_wait_data*)SocketContext;        
         ad->s_accept = kzalloc(sizeof(struct socket), 0, '89DW');
+        if(!ad->s_accept) {
+        	return STATUS_REQUEST_NOT_ACCEPTED;
+        }
         ad->s_accept->sk = AcceptSocket;
         sprintf(ad->s_accept->name, "estab_sock");
         ad->s_accept->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
