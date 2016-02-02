@@ -6510,7 +6510,11 @@ static int
 receive_bitmap_plain(struct drbd_peer_device *peer_device, unsigned int size,
 		     struct bm_xfer_ctx *c)
 {
+#ifdef _WIN32_V9
+	ULONG_PTR *p;
+#else
 	unsigned long *p;
+#endif
 	unsigned int data_size = DRBD_SOCKET_BUFFER_SIZE -
 				 drbd_header_size(peer_device->connection);
 	unsigned int num_words = min_t(size_t, data_size / sizeof(*p),
