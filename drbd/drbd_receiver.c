@@ -1145,17 +1145,21 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
+#ifdef _WIN32_V9	// No adjust about linux drbd 3d552f8 commit
+	void *buffer;
+	int err;
+
+	err = drbd_recv_all_warn(connection, &buffer, drbd_header_size(connection));
+	if (err)
+		return err;
+#else
 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
 	unsigned int size = drbd_header_size(connection);
 	void *buffer;
 	int err;
-#ifdef _WIN32_V9 // _WIN32_V9_PATCh_2_CHECK:JHKIM: MSG_DONTWAIT 처리가 실제 WSK 수신부에서 적절히 반영되는가?
+
 	err = tr_ops->recv(&connection->transport, DATA_STREAM, &buffer,
-			   size, 0);
-#else
-	err = tr_ops->recv(&connection->transport, DATA_STREAM, &buffer,
-		size, MSG_NOSIGNAL | MSG_DONTWAIT);
-#endif
+			   size, MSG_NOSIGNAL | MSG_DONTWAIT);
 	if (err != size) {
 		int rflags = 0;
 
@@ -1181,10 +1185,10 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 		if (err)
 			return err;
 	}
-
+#endif
 	err = decode_header(connection, buffer, pi);
 	connection->last_received = jiffies;
-    WDRBD_TRACE_SK("cmd(%s)\n", drbd_packet_name(pi->cmd));
+
 	return err;
 }
 

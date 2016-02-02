@@ -25,7 +25,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		return NULL;
 	}
 
-	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '37DW');
+	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
 	if (ring)
 	{
 		ring->mem = (char*) (ring + 1);
@@ -46,7 +46,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
-		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '47DW');
+		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '1ADW');
 		if (!ring->static_big_buf)
 		{
 			ExFreePool(ring);

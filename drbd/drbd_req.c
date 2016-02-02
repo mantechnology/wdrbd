@@ -2055,8 +2055,9 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &incoming, &pending, &busy);
 			if (!list_empty(&pending))
 				break;
-				
+#ifndef _WIN32_V9	// Skipped 3d552f8 commit(linux drbd)
 			drbd_kick_lo(device);
+#endif
 #ifdef _WIN32_V9
 			schedule(&device->al_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
@@ -2132,7 +2133,9 @@ void do_submit(struct work_struct *ws)
 
 		send_and_submit_pending(device, &pending);
 	}
+#ifndef _WIN32_V9	// Skipped 3d552f8 commit(linux drbd)
 	drbd_kick_lo(device);
+#endif
 }
 
 MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
