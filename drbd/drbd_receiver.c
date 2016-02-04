@@ -1295,6 +1295,10 @@ static int submit_one_flush(struct drbd_device *device, struct issue_flush_conte
 
 static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
+	// kmpak skipped ldrbd ee63e9b, 7f33065
+	// http://git.drbd.org/drbd-9.0.git/commit/ee63e9bd3ed3fc8f480ccdb756b9de1a81e80b62
+	// http://git.drbd.org/drbd-9.0.git/commit/7f33065dd4cf8ddedbb025ee9b385d3af8fc3fb5
+#ifndef _WIN32_V9
 	struct drbd_resource *resource = connection->resource;
 
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
@@ -1342,6 +1346,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
 		}
 	}
+#endif
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
