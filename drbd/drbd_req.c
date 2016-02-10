@@ -100,6 +100,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 #ifdef _WIN32 // DV
     if (drbd_req_make_private_bio(req, bio_src) == NULL)
     {
+		kfree(req->win32_page_buf);
+		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
 #else
