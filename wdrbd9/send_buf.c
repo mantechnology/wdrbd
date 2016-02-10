@@ -107,6 +107,29 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 				//KeInitializeTimer(&ktimer);
 				//KeSetTimerEx(&ktimer, Interval, 0, NULL);
 				//KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+
+				// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 추후 멤버함수로 drbd_tcp_transport 에 접근하도록 처리하고 다음 2개 자료구조는 제거
+				struct buffer {
+					void *base;
+					void *pos;
+				};
+
+				struct drbd_tcp_transport {
+					struct drbd_transport transport; /* Must be first! */
+					struct mutex paths_mutex;
+					unsigned long flags;
+					struct socket *stream[2];
+					struct buffer rbuf[2];
+				};
+
+				struct drbd_tcp_transport *tcp_transport =
+					container_of(transport, struct drbd_tcp_transport, transport);
+				if (tcp_transport->stream[stream]->buffering_attr.quit == TRUE)
+				{
+					WDRBD_INFO("Stop send and quit\n");
+					return -EIO;
+				}
+
 				EnterCriticalSection(&ring->cs);
 				ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
 				if ((ringbuf_size + len) > highwater) {
@@ -269,6 +292,8 @@ VOID NTAPI send_buf_thread(PVOID p)
 	NTSTATUS status;
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
+
+	buffering_attr->quit = FALSE;
 
 	//KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 	//WDRBD_INFO("start send_buf_thread\n");

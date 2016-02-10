@@ -306,7 +306,7 @@ Disconnect(
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskDisconnect(
 		WskSocket,
 		NULL,
-		0,
+		WSK_FLAG_ABORTIVE,
 		Irp);
 
 	if (Status == STATUS_PENDING) {

@@ -371,7 +371,11 @@ tail_recursion:
 				 * without recursing into the destructor.
 				 */
 				if (atomic_dec_and_test(&req->kref.refcount))
+#ifndef _WIN32_V9 // DW-689 임시보강
+					break;
+#else
 					goto tail_recursion;
+#endif
 				break;
 			}
 		}
