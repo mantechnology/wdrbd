@@ -358,6 +358,7 @@ tail_recursion:
 		mempool_free(req, drbd_request_mempool);
 #endif
 
+#ifndef _WIN32_V9 //tail recursion disable 
 	if (s & RQ_WRITE && req_size) {
 #ifdef _WIN32
         list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
@@ -380,6 +381,7 @@ tail_recursion:
 			}
 		}
 	}
+#endif
 
 out:
 	kref_debug_sub(&device->kref_debug, device_refs, 6);
@@ -1828,10 +1830,12 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	/* no point in adding empty flushes to the transfer log,
 	 * they are mapped to drbd barriers already. */
 	if (likely(req->i.size != 0)) {
+
 		if (rw == WRITE) {
 			struct drbd_request *req2;
 
 			resource->current_tle_writes++;
+#ifndef _WIN32_V9 //tail recursion disable
 #ifdef _WIN32
             list_for_each_entry_reverse(struct drbd_request, req2, &resource->transfer_log, tl_requests) {
 #else
@@ -1844,7 +1848,9 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 					break;
 				}
 			}
+#endif
 		}
+
 		list_add_tail(&req->tl_requests, &resource->transfer_log);
 	}
 

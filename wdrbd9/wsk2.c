@@ -306,7 +306,7 @@ Disconnect(
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskDisconnect(
 		WskSocket,
 		NULL,
-		WSK_FLAG_ABORTIVE,
+		0,//WSK_FLAG_ABORTIVE,=> ABORTIVE 적용할 경우 disconnect 시... standalone 으로 빠지는 현상으로 인해 제거.
 		Irp);
 
 	if (Status == STATUS_PENDING) {
