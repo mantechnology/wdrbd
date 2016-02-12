@@ -359,6 +359,7 @@ tail_recursion:
 #endif
 
 #ifndef _WIN32_V9 //tail recursion disable 
+//#if 1
 	if (s & RQ_WRITE && req_size) {
 #ifdef _WIN32
         list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
@@ -378,6 +379,18 @@ tail_recursion:
 					goto tail_recursion;
 #endif
 				break;
+			}
+		}
+	}
+#else
+	// drbd request trace code 추후 제거
+	if (s & RQ_WRITE && req_size) {
+		list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
+			if (req->rq_state[0] & RQ_WRITE) {
+				int refcount = atomic_read(&req->kref.refcount);
+				if (refcount <= 0) {
+					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspiciouos drbd req refcount:%d\n", refcount);
+				}
 			}
 		}
 	}
@@ -1836,6 +1849,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 
 			resource->current_tle_writes++;
 #ifndef _WIN32_V9 //tail recursion disable
+//#if 1
 #ifdef _WIN32
             list_for_each_entry_reverse(struct drbd_request, req2, &resource->transfer_log, tl_requests) {
 #else
