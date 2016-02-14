@@ -389,7 +389,7 @@ tail_recursion:
 			if (req->rq_state[0] & RQ_WRITE) {
 				int refcount = atomic_read(&req->kref.refcount);
 				if (refcount <= 0) {
-					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspiciouos drbd req refcount:%d\n", refcount);
+					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspicious drbd req:%p refcount:%d...recursion point\n",req , refcount);
 				}
 			}
 		}
