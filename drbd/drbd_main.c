@@ -502,7 +502,21 @@ void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 #else
 	list_for_each_entry_safe(req, r, &resource->transfer_log, tl_requests) {
 #endif
+#ifdef _WIN32_V9 // DW-689 임시보강
+		if (NULL == req->device)
+		{
+			DbgPrint("DRBD_TEST: req->device is null! ignore!");
+			break;
+		}
+#endif
 		peer_device = conn_peer_device(connection, req->device->vnr);
+#ifdef _WIN32_V9 // DW-689 임시보강
+		if (NULL == peer_device)
+		{
+			DbgPrint("DRBD_TEST: peer_device is null! ignore!");
+			break;
+		}
+#endif
 		_req_mod(req, what, peer_device);
 	}
 }
@@ -3854,6 +3868,35 @@ fail:
 /* free the transport specific members (e.g., sockets) of a connection */
 void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_free_op op)
 {
+#ifdef _WIN32_V9
+	// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 추후 멤버함수로 drbd_tcp_transport 에 접근하도록 처리하고 다음 2개 자료구조는 제거
+	struct buffer {
+		void *base;
+		void *pos;
+	};
+
+	struct drbd_tcp_transport {
+		struct drbd_transport transport; /* Must be first! */
+		struct mutex paths_mutex;
+		unsigned long flags;
+		struct socket *stream[2];
+		struct buffer rbuf[2];
+	};
+
+	// set socket quit signal first
+	struct drbd_tcp_transport *tcp_transport =
+		container_of(&connection->transport, struct drbd_tcp_transport, transport);
+	if (tcp_transport)
+	{
+		if (tcp_transport->stream[DATA_STREAM])
+			tcp_transport->stream[DATA_STREAM]->buffering_attr.quit = TRUE;
+
+		if (tcp_transport->stream[CONTROL_STREAM])
+			tcp_transport->stream[CONTROL_STREAM]->buffering_attr.quit = TRUE;
+	}
+	// 이 조치는 아래의 락 설정 이전에 처리되야 한다.
+#endif
+
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	mutex_lock(&connection->mutex[CONTROL_STREAM]);
 

@@ -233,7 +233,12 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
     q->queuedata = device;
 
 	status = drbd_make_request(q, bio); // drbd local I/O entry point 
-	
+	if (STATUS_SUCCESS != status)
+	{
+		bio_free(bio);
+		status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+
 	kfree(q);
 	return status;
 	

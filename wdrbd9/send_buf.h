@@ -48,6 +48,7 @@ struct _buffering_attr {
 	KEVENT send_buf_thr_start_event;
 	KEVENT ring_buf_event;
 	struct ring_buffer *bab;
+	bool quit;
 };
 
 typedef struct ring_buffer  ring_buffer;

@@ -100,6 +100,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 #ifdef _WIN32 // DV
     if (drbd_req_make_private_bio(req, bio_src) == NULL)
     {
+		kfree(req->win32_page_buf);
+		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
 #else
@@ -356,6 +358,8 @@ tail_recursion:
 		mempool_free(req, drbd_request_mempool);
 #endif
 
+#ifndef _WIN32_V9 //tail recursion disable 
+//#if 1
 	if (s & RQ_WRITE && req_size) {
 #ifdef _WIN32
         list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
@@ -369,11 +373,28 @@ tail_recursion:
 				 * without recursing into the destructor.
 				 */
 				if (atomic_dec_and_test(&req->kref.refcount))
+#ifndef _WIN32_V9 // DW-689 임시보강
+					break;
+#else
 					goto tail_recursion;
+#endif
 				break;
 			}
 		}
 	}
+#else
+	// drbd request trace code 추후 제거
+	if (s & RQ_WRITE && req_size) {
+		list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
+			if (req->rq_state[0] & RQ_WRITE) {
+				int refcount = atomic_read(&req->kref.refcount);
+				if (refcount <= 0) {
+					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspicious drbd req:%p refcount:%d...recursion point\n",req , refcount);
+				}
+			}
+		}
+	}
+#endif
 
 out:
 	kref_debug_sub(&device->kref_debug, device_refs, 6);
@@ -1822,10 +1843,13 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	/* no point in adding empty flushes to the transfer log,
 	 * they are mapped to drbd barriers already. */
 	if (likely(req->i.size != 0)) {
+
 		if (rw == WRITE) {
 			struct drbd_request *req2;
 
 			resource->current_tle_writes++;
+#ifndef _WIN32_V9 //tail recursion disable
+//#if 1
 #ifdef _WIN32
             list_for_each_entry_reverse(struct drbd_request, req2, &resource->transfer_log, tl_requests) {
 #else
@@ -1838,7 +1862,9 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 					break;
 				}
 			}
+#endif
 		}
+
 		list_add_tail(&req->tl_requests, &resource->transfer_log);
 	}
 
