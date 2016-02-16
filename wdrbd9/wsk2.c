@@ -294,7 +294,9 @@ Disconnect(
 	KEVENT		CompletionEvent = { 0 };
 	PIRP		Irp = NULL;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
+	LARGE_INTEGER	nWaitTime;
+	nWaitTime.QuadPart = (-1 * 1000 * 10000);   // wait 1000ms relative 
+	
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return STATUS_INVALID_PARAMETER;
 
@@ -310,7 +312,13 @@ Disconnect(
 		Irp);
 
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
+		if(STATUS_TIMEOUT == Status) { // DW-712 timeout process for fast closesocket in congestion mode, instead of WSK_FLAG_ABORTIVE
+			WDRBD_INFO("Timeout... Cancel Disconnect socket:%p\n",WskSocket);
+			IoCancelIrp(Irp);
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		} 
+
 		Status = Irp->IoStatus.Status;
 	}
 
