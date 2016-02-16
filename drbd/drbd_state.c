@@ -2000,7 +2000,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		if (cstate[OLD] >= C_CONNECTING &&
 		    cstate[NEW] <= C_TEAR_DOWN && cstate[NEW] >= C_TIMEOUT) {
 			drbd_thread_restart_nowait(&connection->receiver);
-			//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 			twopc_connection_down(connection);
 		}
 
@@ -2648,13 +2647,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 						peer_device);
 
 			/* Lost contact to peer's copy of the data */
-			if (!(peer_disk_state[OLD] < D_INCONSISTENT ||
-			      peer_disk_state[OLD] == D_UNKNOWN ||
-			      peer_disk_state[OLD] == D_OUTDATED) &&
-			    (peer_disk_state[NEW] < D_INCONSISTENT ||
-			     peer_disk_state[NEW] == D_UNKNOWN ||
-			     peer_disk_state[NEW] == D_OUTDATED)) {
-
+			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
 				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
 				    (disk_state[NEW] == D_UP_TO_DATE || one_peer_disk_up_to_date[NEW]))
 					create_new_uuid = true;
@@ -2957,7 +2950,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #else
 			drbd_thread_start(&connection->receiver);
 #endif
-
 
 		if (susp_fen[NEW]) {
 			bool all_peer_disks_outdated = true;
