@@ -32,9 +32,9 @@ extern const char *drbd_buildtag(void);
 
 /* End of external module for 2.6.33 stuff */
 
-#define REL_VERSION "9.0.0"
+#define REL_VERSION "9.0.1-1"
 #define PRO_VERSION_MIN 86
-#define PRO_VERSION_MAX 110
+#define PRO_VERSION_MAX 111
 
 #ifndef __CHECKER__   /* for a sparse run, we need all STATICs */
 #define DBG_ALL_SYMBOLS /* no static functs, improves quality of OOPS traces */

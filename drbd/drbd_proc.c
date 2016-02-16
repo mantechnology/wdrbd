@@ -28,7 +28,7 @@
 #else
 #include <linux/module.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/proc_fs.h>
@@ -40,7 +40,6 @@
 #ifdef _WIN32
 	// not support
 	// MVF ioctl 을 사용함
-
 #else
 static int drbd_proc_open(struct inode *inode, struct file *file);
 static int drbd_proc_release(struct inode *inode, struct file *file);
@@ -66,6 +65,7 @@ static int drbd_seq_show(struct seq_file *seq, void *v)
 	print_kref_debug_info(seq);
 #endif
 	drbd_print_transports_loaded(seq);
+
 	return 0;
 }
 

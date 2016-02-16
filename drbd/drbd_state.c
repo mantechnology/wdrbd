@@ -36,7 +36,6 @@
 #include "drbd_req.h"
 #include "drbd_state_change.h"
 
-
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
@@ -45,7 +44,6 @@ struct after_state_change_work {
 	struct drbd_state_change *state_change;
 	struct completion *done;
 };
-
 
 static void count_objects(struct drbd_resource *resource,
 			  unsigned int *n_devices,
@@ -2432,6 +2430,27 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 
 	return true;
 }
+
+/* takes old and new peer disk state */
+static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
+{
+	if ((os >= D_INCONSISTENT && os != D_UNKNOWN && os != D_OUTDATED)
+	&&  (ns < D_INCONSISTENT || ns == D_UNKNOWN || ns == D_OUTDATED))
+		return true;
+
+	/* Scenario, starting with normal operation
+	 * Connected Primary/Secondary UpToDate/UpToDate
+	 * NetworkFailure Primary/Unknown UpToDate/DUnknown (frozen)
+	 * ...
+	 * Connected Primary/Secondary UpToDate/Diskless (resumed; needs to bump uuid!)
+	 */
+	if (os == D_UNKNOWN
+	&&  (ns == D_DISKLESS || ns == D_FAILED || ns == D_OUTDATED))
+		return true;
+
+	return false;
+}
+
 #if 0
 #ifdef 	_WIN32_V9
 static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
@@ -3519,7 +3538,6 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
             twopc_timeout(resource));
         if (t)
 #else
-        
 		if (wait_event_timeout(resource->state_wait,
 				       cluster_wide_reply_ready(resource),
 				       twopc_timeout(resource)))

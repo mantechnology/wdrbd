@@ -47,6 +47,9 @@
 #include <linux/crypto.h>
 #include <linux/ratelimit.h>
 #include <linux/mutex.h>
+#include <linux/major.h>
+#include <linux/blkdev.h>
+#include <linux/backing-dev.h>
 #include <linux/genhd.h>
 #include <linux/idr.h>
 #include <linux/lru_cache.h>
@@ -138,7 +141,7 @@ struct drbd_device;
 struct drbd_connection;
 
 /* I want to be able to grep for "drbd $resource_name"
-* and get all relevant log lines. */
+ * and get all relevant log lines. */
 #ifdef _WIN32
 #define __drbd_printk_device(level, device, fmt, ...)		\
     do {								\
@@ -859,11 +862,26 @@ enum {
 	SEND_STATE_AFTER_AHEAD,
 };
 
+/* We could make these currently hardcoded constants configurable
+ * variables at create-md time (or even re-configurable at runtime?).
+ * Which will require some more changes to the DRBD "super block"
+ * and attach code.
+ *
+ * updates per transaction:
+ *   This many changes to the active set can be logged with one transaction.
+ *   This number is arbitrary.
+ * context per transaction:
+ *   This many context extent numbers are logged with each transaction.
+ *   This number is resulting from the transaction block size (4k), the layout
+ *   of the transaction header, and the number of updates per transaction.
+ *   See drbd_actlog.c:struct al_transaction_on_disk
+ * */
+#define AL_UPDATES_PER_TRANSACTION	 64	// arbitrary
+#define AL_CONTEXT_PER_TRANSACTION	919	// (4096 - 36 - 6*64)/4
+
 /* definition of bits in bm_flags to be used in drbd_bm_lock
  * and drbd_bitmap_io and friends. */
 enum bm_flag {
-	BM_P_VMALLOCED = 0x10000,  /* do we need to kfree or vfree bm_pages? */
-
 	/*
 	 * The bitmap can be locked to prevent others from clearing, setting,
 	 * and/or testing bits.  The following combinations of lock flags make
@@ -904,6 +922,17 @@ struct drbd_bitmap {
 
 	enum bm_flag bm_flags;
 	unsigned int bm_max_peers;
+
+	/* exclusively to be used by __al_write_transaction(),
+	 * and drbd_bm_write_hinted() -> bm_rw() called from there.
+	 * One activity log extent represents 4MB of storage, which are 1024
+	 * bits (at 4k per bit), times at most DRBD_PEERS_MAX (currently 32).
+	 * The bitmap is created interleaved, with a potentially odd number
+	 * of peer slots determined at create-md time.  Which means that one
+	 * AL-extent may be associated with one or two bitmap pages.
+	 */
+	unsigned int n_bitmap_hints;
+	unsigned int al_bitmap_hints[2*AL_UPDATES_PER_TRANSACTION];
 
 	/* debugging aid, in case we are still racy somewhere */
 	char          *bm_why;
@@ -1123,6 +1152,7 @@ struct drbd_resource {
 	struct list_head peer_ack_list;  /* requests to send peer acks for */
 	u64 last_peer_acked_dagtag;  /* dagtag of last PEER_ACK'ed request */
 	struct drbd_request *peer_ack_req;  /* last request not yet PEER_ACK'ed */
+
 	struct semaphore state_sem;
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
@@ -1186,19 +1216,6 @@ struct drbd_connection {
 	unsigned long flags;
 	enum drbd_fencing_policy fencing_policy;
 	wait_queue_head_t ping_wait;	/* Woken upon reception of a ping, and a state change */
-
-#ifdef _WIN32_V9
-    struct sockaddr_storage_win my_addr;
-#else
-	struct sockaddr_storage my_addr;
-#endif
-	int my_addr_len;
-#ifdef _WIN32_V9
-    struct sockaddr_storage_win peer_addr;
-#else
-	struct sockaddr_storage peer_addr;
-#endif
-	int peer_addr_len;
 
 	struct drbd_send_buffer send_buffer[2];
 	struct mutex mutex[2]; /* Protect assembling of new packet until sending it (in send_buffer) */
@@ -1338,6 +1355,12 @@ struct drbd_connection {
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal
 					    implementation might have more members than the
 					    abstract one. */
+};
+
+/* used to get the next lower or next higher peer_device depending on device node-id */
+enum drbd_neighbor {
+	NEXT_LOWER,
+	NEXT_HIGHER
 };
 
 struct drbd_peer_device {
@@ -1916,23 +1939,6 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 #define AL_EXTENT_SHIFT 22
 #define AL_EXTENT_SIZE (1<<AL_EXTENT_SHIFT)
 
-/* We could make these currently hardcoded constants configurable
- * variables at create-md time (or even re-configurable at runtime?).
- * Which will require some more changes to the DRBD "super block"
- * and attach code.
- *
- * updates per transaction:
- *   This many changes to the active set can be logged with one transaction.
- *   This number is arbitrary.
- * context per transaction:
- *   This many context extent numbers are logged with each transaction.
- *   This number is resulting from the transaction block size (4k), the layout
- *   of the transaction header, and the number of updates per transaction.
- *   See drbd_actlog.c:struct al_transaction_on_disk
- * */
-#define AL_UPDATES_PER_TRANSACTION	 64	// arbitrary
-#define AL_CONTEXT_PER_TRANSACTION	919	// (4096 - 36 - 6*64)/4
-
 /* drbd_bitmap.c */
 /*
  * We need to store one bit for a block.
@@ -2080,6 +2086,7 @@ extern int drbd_bm_test_bit(struct drbd_peer_device *, unsigned long);
 #endif
 
 extern int  drbd_bm_read(struct drbd_device *, struct drbd_peer_device *) __must_hold(local);
+extern void drbd_bm_reset_al_hints(struct drbd_device *device) __must_hold(local);
 #ifdef _WIN32
 extern void drbd_bm_mark_range_for_writeout(struct drbd_device *, ULONG_PTR, ULONG_PTR);
 #else
@@ -2206,6 +2213,9 @@ extern struct drbd_connection *drbd_create_connection(struct drbd_resource *reso
 						      struct drbd_transport_class *tc);
 extern void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_free_op op);
 extern void drbd_destroy_connection(struct kref *kref);
+#ifdef _WIN32_V9
+extern void drbd_destroy_path(struct kref *kref);
+#endif
 extern struct drbd_resource *drbd_find_resource(const char *name);
 extern void drbd_destroy_resource(struct kref *kref);
 extern void conn_free_crypto(struct drbd_connection *connection);
@@ -2337,7 +2347,6 @@ void __update_timing_details(
 #define update_worker_timing_details(r, cb) \
 	__update_timing_details(r->w_timing_details, &r->w_cb_nr, cb, __func__ , __LINE__ )
 
-
 /* drbd_receiver.c */
 struct packet_info {
 	enum drbd_packet cmd;
@@ -2397,7 +2406,6 @@ extern int drbd_submit_peer_request(struct drbd_device *,
 extern int drbd_free_peer_reqs(struct drbd_resource *, struct list_head *, bool is_net_ee);
 //drbd_alloc_peer_req 내부에서 수행하던 drbd_alloc_pages가 V9에선 분리 수행된다.따라서 기존 V8의 인자에서 alloc 관련 인자가 제거됨.
 extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *, gfp_t) __must_hold(local);
-
 extern void __drbd_free_peer_req(struct drbd_peer_request *, int);
 #define drbd_free_peer_req(pr) __drbd_free_peer_req(pr, 0)
 #define drbd_free_net_peer_req(pr) __drbd_free_peer_req(pr, 1)

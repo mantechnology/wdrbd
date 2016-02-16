@@ -26,10 +26,8 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
 #include "windows/drbd.h"
-
 #define		ERR_LOCAL_AND_PEER_ADDR 173	//_WIN32_V9_PATCH_2: 직접정의 
 										// 이 매크로는 "\drbd-headers\linux\drbd.h" 에 존재하는데 이 헤더가 엔진과 공유가 안됨?
-
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"
@@ -59,31 +57,6 @@
 #include <linux/kthread.h>
 #include <linux/security.h>
 #include <net/genetlink.h>
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)  // _WIN32_V9_PATCH_2: 제거
-/*
- * copied from more recent kernel source
- */
-int genl_register_family_with_ops(struct genl_family *family,
-	struct genl_ops *ops, size_t n_ops)
-{
-	int err, i;
-
-	err = genl_register_family(family);
-	if (err)
-		return err;
-
-	for (i = 0; i < n_ops; ++i, ++ops) {
-		err = genl_register_ops(family, ops);
-		if (err)
-			goto err_out;
-	}
-	return 0;
-err_out:
-	genl_unregister_family(family);
-	return err;
-}
 #endif
 
 #ifdef _WIN32_V9
@@ -553,7 +526,6 @@ static void conn_md_sync(struct drbd_connection *connection)
 	rcu_read_unlock();
 }
 
-
 /* Try to figure out where we are happy to become primary.
    This is unsed by the crm-fence-peer mechanism
 */
@@ -936,15 +908,15 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 
 	begin_state_change(resource, &irq_flags, CS_VERBOSE);
 	switch ((r>>8) & 0xff) {
-	case 3: /* peer is inconsistent */
+	case P_INCONSISTENT: /* peer is inconsistent */
 		ex_to_string = "peer is inconsistent or worse";
 		__change_peer_disk_states(connection, D_INCONSISTENT);
 		break;
-	case 4: /* peer got outdated, or was already outdated */
+	case P_OUTDATED: /* peer got outdated, or was already outdated */
 		ex_to_string = "peer was fenced";
 		__change_peer_disk_states(connection, D_OUTDATED);
 		break;
-	case 5: /* peer was down */
+	case P_DOWN: /* peer was down */
 		if (conn_highest_disk(connection) == D_UP_TO_DATE) {
 			/* we will(have) create(d) a new UUID anyways... */
 			ex_to_string = "peer is unreachable, assumed to be dead";
@@ -953,16 +925,16 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 			ex_to_string = "peer unreachable, doing nothing since disk != UpToDate";
 		}
 		break;
-	case 6: /* Peer is primary, voluntarily outdate myself.
+	case P_PRIMARY: /* Peer is primary, voluntarily outdate myself.
 		 * This is useful when an unconnected R_SECONDARY is asked to
 		 * become R_PRIMARY, but finds the other peer being active. */
 		ex_to_string = "peer is active";
 		drbd_warn(connection, "Peer is primary, outdating myself.\n");
 		__change_disk_states(resource, D_OUTDATED);
 		break;
-	case 7:
+	case P_FENCING:
 		/* THINK: do we need to handle this
-		 * like case 4, or more like case 5? */
+		 * like case 4 P_OUTDATED, or more like case 5 P_DOWN? */
 		if (fencing_policy != FP_STONITH)
 			drbd_err(connection, "fence-peer() = 7 && fencing != Stonith !!!\n");
 		ex_to_string = "peer was stonithed";
@@ -1357,8 +1329,8 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
 		retcode = drbd_set_role(adm_ctx.resource, R_PRIMARY, parms.assume_uptodate);
-        if (retcode >= SS_SUCCESS)
-            set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
+		if (retcode >= SS_SUCCESS)
+			set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
 #ifdef _WIN32_V9
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
@@ -1971,7 +1943,7 @@ static void decide_on_discard_support(struct drbd_device *device,
 	 */
 	bool can_do = b ? blk_queue_discard(b) : true;
 
-	if (can_do && b && !b->limits.discard_zeroes_data && !discard_zeroes_if_aligned) {
+	if (can_do && b && !queue_discard_zeroes_data(b) && !discard_zeroes_if_aligned) {
 		can_do = false;
 		drbd_info(device, "discard_zeroes_data=0 and discard_zeroes_if_aligned=no: disabling discards\n");
 	}
@@ -2220,7 +2192,7 @@ static void sanitize_disk_conf(struct drbd_device *device, struct disk_conf *dis
 		disk_conf->al_extents = drbd_al_extents_max(nbc);
 
 	if (!blk_queue_discard(q) ||
-	    (!q->limits.discard_zeroes_data && !disk_conf->discard_zeroes_if_aligned)) {
+	    (!queue_discard_zeroes_data(q) && !disk_conf->discard_zeroes_if_aligned)) {
 		if (disk_conf->rs_discard_granularity) {
 			disk_conf->rs_discard_granularity = 0; /* disable feature */
 			drbd_info(device, "rs_discard_granularity feature disabled\n");
@@ -3984,9 +3956,11 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	path->peer_addr_len = nla_len(peer_addr);
 	memcpy(&path->peer_addr, nla_data(peer_addr), path->peer_addr_len);
 
+	kref_init(&path->kref);
+
 	err = transport->ops->add_path(transport, path);
 	if (err) {
-		kfree(path);
+		kref_put(&path->kref, drbd_destroy_path);
 #ifdef _WIN32
         struct drbd_connection * connection = adm_ctx->connection;
         drbd_err(connection, "add_path() failed with %d\n", err);
@@ -4097,9 +4071,11 @@ int drbd_adm_new_path(struct sk_buff *skb, struct genl_info *info)
 static enum drbd_ret_code
 adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 {
-	struct drbd_transport *transport = &adm_ctx->connection->transport;
+	struct drbd_connection *connection = adm_ctx->connection;
+	struct drbd_transport *transport = &connection->transport;
 	struct nlattr *my_addr = NULL, *peer_addr = NULL;
 	struct drbd_path *path;
+	int nr_paths = 0;
 	int err;
 
 	/* parse and validate only */
@@ -4111,6 +4087,18 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	my_addr = nested_attr_tb[__nla_type(T_my_addr)];
 	peer_addr = nested_attr_tb[__nla_type(T_peer_addr)];
 #ifdef _WIN32
+	list_for_each_entry(struct drbd_path, path, &transport->paths, list)
+#else
+	list_for_each_entry(path, &transport->paths, list)
+#endif
+		nr_paths++;
+
+	if (nr_paths == 1 && connection->cstate[NOW] >= C_CONNECTING) {
+		drbd_msg_put_info(adm_ctx->reply_skb,
+				  "Can not delete last path, use disconnect first!");
+		return ERR_INVALID_REQUEST;
+	}
+#ifdef _WIN32
     list_for_each_entry(struct drbd_path, path, &transport->paths, list) {
 #else
 	list_for_each_entry(path, &transport->paths, list) {
@@ -4121,21 +4109,23 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 			continue;
 
 		err = transport->ops->remove_path(transport, path);
-		if (!err)
-			kfree(path);
+		if (!err) {
+#ifndef _WIN32_V9
+			synchronize_rcu();
+#endif
+			/* Transport modules might use RCU on the path list.
+			   We do the synchronize_rcu() here in the generic code */
+			INIT_LIST_HEAD(&path->list);
+			kref_put(&path->kref, drbd_destroy_path);
+		}
 		break;
 	}
 	if (err) {
-#ifdef _WIN32
-        struct drbd_connection * connection = adm_ctx->connection;
-        drbd_err(connection, "del_path() failed with %d\n", err);
-#else
-		drbd_err(adm_ctx->connection, "del_path() failed with %d\n", err);
-#endif
+		drbd_err(connection, "del_path() failed with %d\n", err);
 		drbd_msg_put_info(adm_ctx->reply_skb, "del_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
-	notify_path(adm_ctx->connection, path, NOTIFY_DESTROY);
+	notify_path(connection, path, NOTIFY_DESTROY);
 	return NO_ERROR;
 }
 
@@ -4187,6 +4177,20 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 	default:;
 		/* no special handling necessary */
 	}
+
+	if (rv >= SS_SUCCESS)
+#ifdef _WIN32_V9
+	{
+		long timeo;
+		wait_event_interruptible_timeout(timeo, resource->state_wait,
+						 connection->cstate[NOW] == C_STANDALONE,
+						 HZ);
+	}
+#else
+		wait_event_interruptible_timeout(resource->state_wait,
+						 connection->cstate[NOW] == C_STANDALONE,
+						 HZ);
+#endif
 	return rv;
 }
 
@@ -4300,14 +4304,23 @@ void resync_after_online_grow(struct drbd_peer_device *peer_device)
 {
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_device *device = peer_device->device;
-	bool sync_source;
+	bool sync_source = false;
+	s32 peer_id;
 
 	drbd_info(peer_device, "Resync of new storage after online grow\n");
 	if (device->resource->role[NOW] != connection->peer_role[NOW])
 		sync_source = (device->resource->role[NOW] == R_PRIMARY);
-	else
+	else if (connection->agreed_pro_version < 111)
 		sync_source = test_bit(RESOLVE_CONFLICTS,
-				       &peer_device->connection->transport.flags);
+				&peer_device->connection->transport.flags);
+	else if (get_ldev(device)) {
+		/* multiple or no primaries, proto new enough, resolve by node-id */
+		s32 self_id = device->ldev->md.node_id;
+		put_ldev(device);
+		peer_id = peer_device->node_id;
+
+		sync_source = self_id < peer_id ? 1 : 0;
+	}
 
 	if (!sync_source && connection->agreed_pro_version < 110) {
 		stable_change_repl_state(peer_device, L_WF_SYNC_UUID,
@@ -4350,7 +4363,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	sector_t u_size;
 	int err;
 	struct drbd_peer_device *peer_device;
-	bool has_primary;
+	bool has_primary = false, resolve_by_node_id = true;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -4395,9 +4408,11 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 				has_primary = true;
 				break;
 			}
+			if (peer_device->connection->agreed_pro_version < 111)
+				resolve_by_node_id = false;
 		}
 	}
-	if (!has_primary) {
+	if (!has_primary && !resolve_by_node_id) {
 		retcode = ERR_NO_PRIMARY;
 		goto fail_ldev;
 	}
@@ -4606,6 +4621,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	resource = device->resource;
+
 	mutex_lock(&resource->adm_mutex);
 
 	if (info->attrs[DRBD_NLA_INVALIDATE_PARMS]) {
@@ -4698,6 +4714,7 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_DISK;
 		goto out;
 	}
+
 	mutex_lock(&resource->adm_mutex);
 
 	drbd_suspend_io(device, READ_AND_WRITE);
@@ -6675,9 +6692,7 @@ void nl_policy_init_by_manual()
     extern void manual_nl_policy_init(void);
     manual_nl_policy_init();
 }
-#endif
 
-#ifdef _WIN32_V9
 struct genl_ops * get_drbd_genl_ops(u8 cmd)
 {
     struct genl_ops * pops = NULL;
@@ -6691,5 +6706,4 @@ struct genl_ops * get_drbd_genl_ops(u8 cmd)
 
     return NULL;
 }
-
 #endif

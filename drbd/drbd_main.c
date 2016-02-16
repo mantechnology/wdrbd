@@ -35,7 +35,7 @@
 #include <linux/module.h>
 #include <linux/jiffies.h>
 #include <linux/drbd.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/types.h>
 #include <net/sock.h>
 #include <linux/ctype.h>
@@ -523,9 +523,12 @@ void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 
 void tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 {
-	spin_lock_irq(&connection->resource->req_lock);
+	struct drbd_resource *resource = connection->resource;
+
+	del_timer_sync(&resource->peer_ack_timer);
+	spin_lock_irq(&resource->req_lock);
 	_tl_restart(connection, what);
-	spin_unlock_irq(&connection->resource->req_lock);
+	spin_unlock_irq(&resource->req_lock);
 }
 
 
@@ -1545,7 +1548,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
 	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
-	if (peer_device->connection->last_reconnect_jif)
+	if (test_bit(RECONNECT, &peer_device->connection->flags))
 		uuid_flags |= UUID_FLAG_RECONNECT;
 	if (drbd_device_stable(device, &authoritative_mask)) {
 		uuid_flags |= UUID_FLAG_STABLE;
@@ -2474,11 +2477,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	struct p_trim *trim = NULL;
 	struct p_data *p;
 	struct p_wsame *wsame = NULL;
-#ifdef _WIN32_V9
-	void *digest_out = 0;
-#else
-	void *digest_out;
-#endif
+	void *digest_out = NULL;
 	unsigned int dp_flags = 0;
 	int digest_size = 0;
 	int err;
@@ -2532,7 +2531,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		goto out;
 	}
 
-	if (digest_size) // _WIN32_V9_PATCH_2:JHKIM: csum관련 로직이 변경됨. 확인필수!!
+	if (digest_size && digest_out) // _WIN32_V9_PATCH_2:JHKIM: csum관련 로직이 변경됨. 확인필수!!
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
 
 	if (wsame) {
@@ -3913,6 +3912,13 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 #endif
 	mutex_unlock(&connection->mutex[CONTROL_STREAM]);
 	mutex_unlock(&connection->mutex[DATA_STREAM]);
+}
+
+void drbd_destroy_path(struct kref *kref)
+{
+	struct drbd_path *path = container_of(kref, struct drbd_path, kref);
+
+	kfree(path);
 }
 
 void drbd_destroy_connection(struct kref *kref)
@@ -6072,4 +6078,5 @@ module_exit(drbd_cleanup)
 
 /* For transport layer */
 EXPORT_SYMBOL(drbd_destroy_connection);
+EXPORT_SYMBOL(drbd_destroy_path);
 #endif

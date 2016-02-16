@@ -43,6 +43,8 @@
 #endif
 
 #ifndef _WIN32
+MODULE_AUTHOR("Philipp Reisner <philipp.reisner@linbit.com>");
+MODULE_AUTHOR("Lars Ellenberg <lars.ellenberg@linbit.com>");
 MODULE_AUTHOR("Roland Kammerer <roland.kammerer@linbit.com>");
 MODULE_DESCRIPTION("TCP (SDP, SSOCKS) transport layer for DRBD");
 MODULE_LICENSE("GPL");
@@ -232,7 +234,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 			tcp_transport->stream[i] = NULL;
 		}
 	}
-	
+
 	mutex_lock(&tcp_transport->paths_mutex);
 #ifdef _WIN32_V9_PATCH_1
 	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
@@ -262,7 +264,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 		list_for_each_entry_safe(drbd_path, tmp, &transport->paths, list) {
 #endif
 			list_del(&drbd_path->list);
-			kfree(drbd_path);
+			kref_put(&drbd_path->kref, drbd_destroy_path);
 		}
 	}
 	mutex_unlock(&tcp_transport->paths_mutex);
@@ -862,7 +864,7 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 	struct dtt_path *path;
 #endif
 	bool rv = false;
-	
+
 	mutex_lock(&tcp_transport->paths_mutex);
 	
 	// _WIN32_V9_PATCH_1_CHECK: 많이 변경됨, 리스너 관련 V9 포팅에 영향은 없는지 확인!
@@ -1505,7 +1507,7 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_path *drbd_path;
-	
+
 	mutex_lock(&tcp_transport->paths_mutex);
 	clear_bit(DTT_CONNECTING, &tcp_transport->flags);
 
@@ -1545,6 +1547,7 @@ static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, 
 		drbd_path = list_next_entry(&path->path, list);
 #endif
 	mutex_unlock(&tcp_transport->paths_mutex);
+
 	return container_of(drbd_path, struct dtt_path, path);
 }
 
@@ -1577,10 +1580,11 @@ static int dtt_connect(struct drbd_transport *transport)
 
 	waiter.transport = transport;
 	init_waitqueue_head(&waiter.wait);
+
 	mutex_lock(&tcp_transport->paths_mutex);
 	set_bit(DTT_CONNECTING, &tcp_transport->flags);
+
 	err = -EDESTADDRREQ;
-	
 	if (list_empty(&transport->paths))
 		goto out_unlock;
 		
@@ -1609,7 +1613,7 @@ static int dtt_connect(struct drbd_transport *transport)
 
 		path->first = &waiter;
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
-			dtt_create_listener);
+					dtt_create_listener);
 		if (err)
 			goto out_unlock;
 	}
@@ -1745,9 +1749,10 @@ static int dtt_connect(struct drbd_transport *transport)
 			if (!first_path) {
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
-				tr_warn(transport, "initial pathes crossed\n");
+				tr_warn(transport, "initial pathes crossed A\n");
 				sock_release(s);
-				goto randomize;
+				connect_to_path = first_path;
+				continue;
 			}
 
 			if (!dsocket) {
@@ -1817,8 +1822,9 @@ retry:
 			if (!first_path) {
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
-				tr_warn(transport, "initial pathes crossed\n");
+				tr_warn(transport, "initial pathes crossed P\n");
 				sock_release(s);
+				connect_to_path = first_path;
 				goto randomize;
 			}
 			dtt_socket_ok_or_free(&dsocket);

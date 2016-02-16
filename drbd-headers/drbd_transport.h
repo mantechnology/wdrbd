@@ -109,6 +109,7 @@ struct drbd_path {
 	struct sockaddr_storage my_addr;
 	struct sockaddr_storage peer_addr;
 #endif
+	struct kref kref;
 
 	int my_addr_len;
 	int peer_addr_len;

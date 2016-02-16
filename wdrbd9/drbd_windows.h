@@ -59,7 +59,8 @@
 #define __GFP_HIGHMEM           (0x02u)
 #define __GFP_ZERO              (0x8000u) 
 #define __GFP_WAIT              (0x10u) 
-#define __GFP_NOWARN            (0x200u) 
+#define __GFP_NOWARN            (0x200u)
+#define __GFP_RECLAIM           (0x400u)
 #define GFP_HIGHUSER            (7)
 
 #define	KERN_EMERG				"<0>"	/* system is unusable			*/
@@ -254,6 +255,9 @@ enum rq_flag_bits {
 #define	BIO_UPTODATE			1
 
 #define cond_resched()		    __noop
+
+#define U32_MAX		((u32)~0U)
+#define S32_MAX		((s32)(U32_MAX>>1))
 
 enum km_type {
 	KM_BOUNCE_READ,
@@ -941,6 +945,7 @@ extern void * kcalloc(int e_count, int x, int flag, ULONG Tag);
 extern void * kzalloc(int x, int flag, ULONG Tag);
 extern void * kmalloc(int size, int flag, ULONG Tag);
 extern void kfree(void * x);
+extern void kvfree(void * x);
 extern void * kmem_cache_alloc(void * cache, int flag, ULONG Tag);
 extern void kmem_cache_destroy(struct kmem_cache *s);
 extern struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align, unsigned long flags, void (*ctor)(void *), ULONG Tag);

@@ -301,6 +301,11 @@ static void bm_set_page_need_writeout(struct page *page)
 	set_bit(BM_PAGE_NEED_WRITEOUT, &page_private(page));
 }
 
+void drbd_bm_reset_al_hints(struct drbd_device *device)
+{
+	device->bitmap->n_bitmap_hints = 0;
+}
+
 static int bm_test_page_unchanged(struct page *page)
 {
 #ifdef _WIN32_V9
@@ -346,7 +351,7 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 #ifdef _WIN32_V9
 	ULONG_PTR i;
 #else
-    unsigned long i;
+	unsigned long i;
 #endif
 	if (!pages)
 		return;
@@ -360,21 +365,6 @@ static void bm_free_pages(struct page **pages, unsigned long number)
 		__free_page(pages[i]);
 		pages[i] = NULL;
 	}
-}
-
-static void bm_vk_free(void *ptr, int v)
-{
-#ifdef _WIN32//[choi] _WIN32_V8 적용
-    if (v)
-        ;
-    else
-        kfree(ptr);
-#else
-	if (v)
-		vfree(ptr);
-	else
-		kfree(ptr);
-#endif
 }
 
 /*
@@ -429,7 +419,7 @@ static struct page **bm_realloc_pages(struct drbd_bitmap *b, unsigned long want)
 			page = alloc_page(GFP_NOIO | __GFP_HIGHMEM | __GFP_ZERO);
 			if (!page) {
 				bm_free_pages(new_pages + have, i - have);
-				bm_vk_free(new_pages, vmalloced);
+				kvfree(new_pages);
 				return NULL;
 			}
 			/* we want to know which page it is
@@ -444,12 +434,6 @@ static struct page **bm_realloc_pages(struct drbd_bitmap *b, unsigned long want)
 		bm_free_pages(old_pages + want, have - want);
 		*/
 	}
-
-	if (vmalloced)
-		b->bm_flags |= BM_P_VMALLOCED;
-	else
-		b->bm_flags &= ~BM_P_VMALLOCED;
-
 	return new_pages;
 }
 
@@ -487,7 +471,7 @@ sector_t drbd_bm_capacity(struct drbd_device *device)
 void drbd_bm_free(struct drbd_bitmap *bitmap)
 {
 	bm_free_pages(bitmap->bm_pages, bitmap->bm_number_of_pages);
-	bm_vk_free(bitmap->bm_pages, (BM_P_VMALLOCED & bitmap->bm_flags));
+	kvfree(bitmap->bm_pages);
 	kfree(bitmap);
 }
 
@@ -980,8 +964,8 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 	unsigned long want, have, onpages; /* number of pages */
 #endif
 	struct page **npages, **opages = NULL;
-	int err = 0, growing;
-	int opages_vmalloced;
+	int err = 0;
+	bool growing;
 
 	if (!expect(device, b))
 		return -ENOMEM;
@@ -993,8 +977,6 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 
 	if (capacity == b->bm_dev_capacity)
 		goto out;
-
-	opages_vmalloced = (BM_P_VMALLOCED & b->bm_flags);
 
 	if (capacity == 0) {
 		unsigned int bitmap_index;
@@ -1011,7 +993,7 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		b->bm_dev_capacity = 0;
 		spin_unlock_irq(&b->bm_lock);
 		bm_free_pages(opages, onpages);
-		bm_vk_free(opages, opages_vmalloced);
+		kvfree(opages);
 		goto out;
 	}
 	bits  = BM_SECT_TO_BIT(ALIGN(capacity, BM_SECT_PER_BIT));
@@ -1065,11 +1047,21 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 	b->bm_words = words;
 	b->bm_dev_capacity = capacity;
 
-	if (growing && set_new_bits) {
+	if (growing) {
 		unsigned int bitmap_index;
 
-		for (bitmap_index = 0; bitmap_index < b->bm_max_peers; bitmap_index++)
-			___bm_op(device, bitmap_index, obits, -1UL, BM_OP_SET, NULL, KM_IRQ1);
+		for (bitmap_index = 0; bitmap_index < b->bm_max_peers; bitmap_index++) {
+			unsigned long bm_set = b->bm_set[bitmap_index];
+
+			if (set_new_bits) {
+				___bm_op(device, bitmap_index, obits, -1UL, BM_OP_SET, NULL, KM_IRQ1);
+				bm_set += bits - obits;
+			}
+			else
+				___bm_op(device, bitmap_index, obits, -1UL, BM_OP_CLEAR, NULL, KM_IRQ1);
+
+			b->bm_set[bitmap_index] = bm_set;
+		}
 	}
 
 	if (want < have) {
@@ -1079,7 +1071,7 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 
 	spin_unlock_irq(&b->bm_lock);
 	if (opages != npages)
-		bm_vk_free(opages, opages_vmalloced);
+		kvfree(opages);
 	if (!growing)
 		bm_count_bits(device);
 	drbd_info(device, "resync bitmap: bits=%lu words=%lu pages=%lu\n", bits, words, want);
@@ -1355,7 +1347,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	bm_set_page_unchanged(b->bm_pages[page_nr]);
 
 	if (ctx->flags & BM_AIO_COPY_PAGES) {
-		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_WAIT);
+		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_RECLAIM);
 #ifdef _WIN32_V9
         if (!page)   // DV
         {
@@ -1384,7 +1376,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 #ifndef _WIN32_V9_REMOVELOCK
 		submit_bio(rw, bio);
 		/* this should not count as user activity and cause the
-		* resync to throttle -- see drbd_rs_should_slow_down(). */
+		 * resync to throttle -- see drbd_rs_should_slow_down(). */
 		atomic_add(len >> 9, &device->rs_sect_ev);
 #else
 		if (submit_bio(rw, bio)) {
@@ -1491,12 +1483,34 @@ static int bm_rw_range(struct drbd_device *device,
 	now = jiffies;
 
 	/* let the layers below us try to merge these bios... */
-	for (i = start_page; i <= end_page; i++) {
-		if (!(flags & BM_AIO_READ)) {
-			if ((flags & BM_AIO_WRITE_HINTED) &&
-			    !test_and_clear_bit(BM_PAGE_HINT_WRITEOUT,
-				    &page_private(b->bm_pages[i])))
+
+	if (flags & BM_AIO_READ) {
+		for (i = start_page; i <= end_page; i++) {
+			atomic_inc(&ctx->in_flight);
+			bm_page_io_async(ctx, i);
+			++count;
+			cond_resched();
+		}
+	} else if (flags & BM_AIO_WRITE_HINTED) {
+		/* ASSERT: BM_AIO_WRITE_ALL_PAGES is not set. */
+		unsigned int hint;
+		for (hint = 0; hint < b->n_bitmap_hints; hint++) {
+			i = b->al_bitmap_hints[hint];
+			if (i > end_page)
 				continue;
+			/* Several AL-extents may point to the same page. */
+			if (!test_and_clear_bit(BM_PAGE_HINT_WRITEOUT,
+			    &page_private(b->bm_pages[i])))
+				continue;
+			/* Has it even changed? */
+			if (bm_test_page_unchanged(b->bm_pages[i]))
+				continue;
+			atomic_inc(&ctx->in_flight);
+			bm_page_io_async(ctx, i);
+			++count;
+		}
+	} else {
+		for (i = start_page; i <= end_page; i++) {
 			/* ignore completely unchanged pages,
 			 * unless specifically requested to write ALL pages */
 			if (!(flags & BM_AIO_WRITE_ALL_PAGES) &&
@@ -1511,11 +1525,11 @@ static int bm_rw_range(struct drbd_device *device,
 				dynamic_drbd_dbg(device, "skipped bm lazy write for idx %u\n", i);
 				continue;
 			}
+			atomic_inc(&ctx->in_flight);
+			bm_page_io_async(ctx, i);
+			++count;
+			cond_resched();
 		}
-		atomic_inc(&ctx->in_flight);
-		bm_page_io_async(ctx, i);
-		++count;
-		cond_resched();
 	}
 
 	/*
@@ -1533,10 +1547,14 @@ static int bm_rw_range(struct drbd_device *device,
 		kref_put(&ctx->kref, &drbd_bm_aio_ctx_destroy);
 
 	/* summary for global bitmap IO */
-	if (flags == 0 && count)
-		drbd_info(device, "bitmap %s of %u pages took %ums\n",
-			 (flags & BM_AIO_READ) ? "READ" : "WRITE",
-			 count, jiffies_to_msecs(jiffies - now));
+	if (flags == 0 && count) {
+		unsigned int ms = jiffies_to_msecs(jiffies - now);
+		if (ms > 5) {
+			drbd_info(device, "bitmap %s of %u pages took %u ms\n",
+				 (flags & BM_AIO_READ) ? "READ" : "WRITE",
+				 count, ms);
+		}
+	}
 
 	if (ctx->error) {
 		drbd_alert(device, "we had at least one MD IO ERROR during bitmap IO\n");
@@ -1573,6 +1591,15 @@ int drbd_bm_read(struct drbd_device *device,
 	return bm_rw(device, BM_AIO_READ);
 }
 
+static void push_al_bitmap_hint(struct drbd_device *device, unsigned int page_nr)
+{
+	struct drbd_bitmap *b = device->bitmap;
+	struct page *page = b->bm_pages[page_nr];
+	BUG_ON(b->n_bitmap_hints >= ARRAY_SIZE(b->al_bitmap_hints));
+	if (!test_and_set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page)))
+		b->al_bitmap_hints[b->n_bitmap_hints++] = page_nr;
+}
+
 /**
  * drbd_bm_mark_range_for_writeout() - mark with a "hint" to be considered for writeout
  * @device:	DRBD device.
@@ -1589,17 +1616,14 @@ void drbd_bm_mark_range_for_writeout(struct drbd_device *device, unsigned long s
 {
 	struct drbd_bitmap *bitmap = device->bitmap;
 	unsigned int page_nr, last_page;
-	struct page *page;
 
 	if (end >= bitmap->bm_bits)
 		end = bitmap->bm_bits - 1;
 
 	page_nr = bit_to_page_interleaved(bitmap, 0, start);
 	last_page = bit_to_page_interleaved(bitmap, bitmap->bm_max_peers - 1, end);
-	for (; page_nr <= last_page; page_nr++) {
-		page = device->bitmap->bm_pages[page_nr];
-		set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page));
-	}
+	for (; page_nr <= last_page; page_nr++)
+		push_al_bitmap_hint(device, page_nr);
 }
 
 

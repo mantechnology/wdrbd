@@ -177,7 +177,7 @@ struct p_trim {
 
 struct p_wsame {
 	struct p_data p_data;
-	uint32_t size;	/* == bio->bi_size */
+	uint32_t size;     /* == bio->bi_size */
 } __packed;
 
 /*
