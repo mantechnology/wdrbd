@@ -717,7 +717,7 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
 	h.length = 0;
 
 	err = _dtt_send(tcp_transport, socket, &h, sizeof(h), msg_flags);
-    WDRBD_TRACE_SK("send first packet %s socket(0x%p) err(%d)\n", (cmd==P_INITIAL_DATA)? "P_INITIAL_DATA" : "P_INITIAL_META", socket, err);
+
 	return err;
 }
 
@@ -847,7 +847,7 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 #else
 	if (good == 0)
 		*first_path = NULL;
-		
+
 	return good == 2;
 #endif
 }
@@ -1511,7 +1511,6 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 	mutex_lock(&tcp_transport->paths_mutex);
 	clear_bit(DTT_CONNECTING, &tcp_transport->flags);
 
-
 #ifdef _WIN32_V9_PATCH_1
 	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
 #else
@@ -1574,10 +1573,6 @@ static int dtt_connect(struct drbd_transport *transport)
 	dsocket = NULL;
 	csocket = NULL;
 
-	WDRBD_TRACE_CO("[%p] dtt_connect start..............!\n", KeGetCurrentThread());
-	if (list_empty(&transport->paths))
-		return -EDESTADDRREQ;
-
 	waiter.transport = transport;
 	init_waitqueue_head(&waiter.wait);
 
@@ -1587,7 +1582,7 @@ static int dtt_connect(struct drbd_transport *transport)
 	err = -EDESTADDRREQ;
 	if (list_empty(&transport->paths))
 		goto out_unlock;
-		
+
 #ifdef _WIN32_V9_PATCH_1
 	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
 #else
@@ -1726,7 +1721,6 @@ static int dtt_connect(struct drbd_transport *transport)
 	do {
 		struct socket *s = NULL;
 
-		WDRBD_TRACE_CO("[%p] dtt_try_connect ----------!\n", KeGetCurrentThread());
 		err = dtt_try_connect(connect_to_path, &s);
 		if (err < 0 && err != -EAGAIN)
 			goto out;
@@ -1793,7 +1787,6 @@ static int dtt_connect(struct drbd_transport *transport)
 			break;
 
 retry:
-		WDRBD_TRACE_CO("[%p] dtt_wait_for_connect ----------!\n", KeGetCurrentThread());
 		s = NULL;
 #ifdef _WIN32_V9_PATCH_1_CHECK
         err = dtt_wait_for_connect(waiter, &s, &connect_to_path);
@@ -1877,12 +1870,10 @@ randomize:
 	drbd_path_event(transport, &connect_to_path->path);
 #ifdef _WIN32_V9 // _WIN32_V9_PATCH_1
 	dtt_put_listeners(transport);
-    //dtt_put_listener(waiter);
 #else
 	dtt_put_listeners(transport);
 #endif
 
-	WDRBD_TRACE_CO("[%p]  dtt_connect ok----------!!!!!!!!!!!!!!\n", KeGetCurrentThread());
 #ifdef _WIN32
     LONG InputBuffer = 1;
     status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL);
@@ -1945,12 +1936,8 @@ out_unlock:
 		mutex_unlock(&tcp_transport->paths_mutex);
 	}
 out:
-#ifdef _WIN32_V9
-    //dtt_put_listener(waiter);// _WIN32_V9_PATCH_1
 	dtt_put_listeners(transport);
-#else
-	dtt_put_listeners(transport);
-#endif
+
 	if (dsocket)
 		sock_release(dsocket);
 	if (csocket)
