@@ -168,7 +168,6 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
 #endif
 			return v6a1->sin6_scope_id == v6a2->sin6_scope_id;
-
 		return true;
 	} else /* AF_INET, AF_SSOCKS, AF_SDP */ {
 		const struct sockaddr_in *v4a1 = (const struct sockaddr_in *)addr1;
@@ -177,7 +176,6 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 		return v4a1->sin_addr.s_addr == v4a2->sin_addr.s_addr;
 	}
 }
-
 
 #ifdef _WIN32_V9
 static bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
@@ -231,7 +229,6 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection,
 		if (addr_and_port_equal(&listener->listen_addr, addr)) {
 			kref_get(&listener->kref);
 			return listener;
-
 		}
 	}
 	return NULL;
@@ -331,7 +328,6 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 	struct drbd_waiter *waiter;
 	struct drbd_path *path;
 
-	WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr start\n", KeGetCurrentThread());
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_waiter, waiter, &listener->waiters, list) {
 		WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr: waiter=%p\n", KeGetCurrentThread(), waiter);
@@ -362,10 +358,8 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 			if (addr_equal(&path->peer_addr, addr))
 				return waiter;
 		}
-		WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr: waiter done\n", KeGetCurrentThread());
 	}
 
-	WDRBD_TRACE_CO("[%p] drbd_find_waiter_by_addr:return NULL!!!!\n", KeGetCurrentThread());
 	return NULL;
 }
 

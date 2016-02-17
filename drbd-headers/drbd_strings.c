@@ -30,7 +30,7 @@
 #include "drbd_strings.h"
 #include "drbd_protocol.h"
 
-static const char *__conn_state_names[] = {
+static const char * const __conn_state_names[] = {
 	[C_STANDALONE]       = "StandAlone",
 	[C_DISCONNECTING]    = "Disconnecting",
 	[C_UNCONNECTED]      = "Unconnected",
@@ -48,7 +48,7 @@ struct state_names drbd_conn_state_names = {
 	.size = sizeof __conn_state_names / sizeof __conn_state_names[0],
 };
 
-static const char *__repl_state_names[] = {
+static const char * const __repl_state_names[] = {
 	[L_OFF]              = "Off",
 	[L_ESTABLISHED]      = "Established",
 	[L_STARTING_SYNC_S]  = "StartingSyncS",
@@ -71,7 +71,7 @@ struct state_names drbd_repl_state_names = {
 	.size = sizeof __repl_state_names / sizeof __repl_state_names[0],
 };
 
-static const char *__role_state_names[] = {
+static const char * const __role_state_names[] = {
 	[R_UNKNOWN]   = "Unknown",
 	[R_PRIMARY]   = "Primary",
 	[R_SECONDARY] = "Secondary",
@@ -82,7 +82,7 @@ struct state_names drbd_role_state_names = {
 	.size = sizeof __role_state_names / sizeof __role_state_names[0],
 };
 
-static const char *__disk_state_names[] = {
+static const char * const __disk_state_names[] = {
 	[D_DISKLESS]     = "Diskless",
 	[D_ATTACHING]    = "Attaching",
 	[D_DETACHING]    = "Detaching",
@@ -100,7 +100,7 @@ struct state_names drbd_disk_state_names = {
 	.size = sizeof __disk_state_names / sizeof __disk_state_names[0],
 };
 
-static const char *__error_messages[] = {
+static const char * const __error_messages[] = {
 	[-SS_TWO_PRIMARIES] = "Multiple primaries not allowed by config",
 	[-SS_NO_UP_TO_DATE_DISK] = "Need access to UpToDate data",
 	[-SS_NO_LOCAL_DISK] = "Can not resync without local disk",
@@ -134,7 +134,7 @@ struct state_names drbd_error_messages = {
 	.size = sizeof __error_messages / sizeof __error_messages[0],
 };
 
-static const char *__packet_names[] = {
+static const char * const __packet_names[] = {
 	[P_DATA]	        = "P_DATA",
 	[P_WSAME]               = "P_WSAME",
 	[P_TRIM]                = "P_TRIM",

@@ -2213,9 +2213,6 @@ extern struct drbd_connection *drbd_create_connection(struct drbd_resource *reso
 						      struct drbd_transport_class *tc);
 extern void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_free_op op);
 extern void drbd_destroy_connection(struct kref *kref);
-#ifdef _WIN32_V9
-extern void drbd_destroy_path(struct kref *kref);
-#endif
 extern struct drbd_resource *drbd_find_resource(const char *name);
 extern void drbd_destroy_resource(struct kref *kref);
 extern void conn_free_crypto(struct drbd_connection *connection);

@@ -256,7 +256,6 @@ enum drbd_req_state_bits {
 #define RQ_NET_OK          (1UL << __RQ_NET_OK)
 #define RQ_NET_SIS         (1UL << __RQ_NET_SIS)
 
-/* 0x1f8 */
 #define RQ_NET_MASK        (((1UL << __RQ_NET_MAX)-1) & ~RQ_LOCAL_MASK)
 
 #define RQ_WRITE           (1UL << __RQ_WRITE)
@@ -343,7 +342,6 @@ extern void complete_master_bio(struct drbd_device *device,
 #else
 extern void request_timer_fn(unsigned long data);
 #endif
-
 extern void tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
 extern void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
 extern void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *req);

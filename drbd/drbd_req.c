@@ -2204,7 +2204,6 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 
 	MAKE_REQUEST_RETURN;
 #endif
-	
 }
 
 /* This is called by bio_add_page().

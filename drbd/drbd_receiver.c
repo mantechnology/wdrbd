@@ -927,6 +927,7 @@ int connect_work(struct drbd_work *work, int cancel)
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
 }
+
 /*
  * Returns true if we have a valid connection.
  */
@@ -1044,7 +1045,6 @@ start:
 	drbd_thread_start(&connection->ack_receiver);
 	connection->ack_sender =
 // #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0) // WIN32_V9_PATCH_2
-
 #ifndef _WIN32_V9
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
@@ -2191,7 +2191,6 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 		data = kmap(page) + page_chain_offset(page);
 		data[0] = ~data[0];
 		kunmap(page);
-
 #endif
 	}
 
@@ -2902,6 +2901,7 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 			list_add_tail(&peer_req->w.list, &device->done_ee);
             // V9 기존 wake_asender 에서 work queue 방식으로 변경.
 			queue_work(connection->ack_sender, &peer_req->peer_device->send_acks_work);
+
 			err = -ENOENT;
 			goto out;
 		} else {
@@ -3196,7 +3196,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 #ifdef _WIN32_V9
 	int curr_events = 0; // _WIN32_V9_PATCH_1
 #else
-	int curr_events; 
+	int curr_events;
 #endif
 
 	rcu_read_lock();
@@ -4473,7 +4473,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	}
 
 	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => alertable mutex_lock 으로 구현 완료.
-	if (mutex_lock_interruptible(&connection->resource->conf_update)) { 
+	if (mutex_lock_interruptible(&connection->resource->conf_update)) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		goto disconnect;
 	}
@@ -5213,7 +5213,6 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 
 	return err;
 }
-
 
 // 기존 receive_uuids 에서 다 구현하던 것을 __receive_uuids 로 배분한듯.
 static int receive_uuids(struct drbd_connection *connection, struct packet_info *pi)
@@ -7335,7 +7334,6 @@ void conn_disconnect(struct drbd_connection *connection)
 		__change_cstate(connection, C_UNCONNECTED);
 		/* drbd_receiver() has to be restarted after it returns */
 		drbd_thread_restart_nowait(&connection->receiver);
-		//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 	}
 	end_state_change(resource, &irq_flags);
 
@@ -8345,7 +8343,6 @@ found:
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
-	
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;

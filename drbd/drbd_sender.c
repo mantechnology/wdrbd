@@ -468,8 +468,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 
-
-
 	bio_put(req->private_bio);
 	req->private_bio = ERR_PTR(error);
 

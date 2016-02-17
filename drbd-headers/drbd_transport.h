@@ -16,7 +16,7 @@
    So that transport compiled against an older version of this
    header will no longer load in a module that assumes a newer
    version. */
-#define DRBD_TRANSPORT_API_VERSION 13
+#define DRBD_TRANSPORT_API_VERSION 14
 
 /* MSG_MSG_DONTROUTE and MSG_PROBE are not used by DRBD. I.e.
    we can reuse these flags for our purposes */
@@ -30,7 +30,7 @@
  * write-out because in a criss-cross setup, the write-out could lead to memory
  * pressure on the peer, eventually leading to deadlock.
  */
-#define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_WAIT)
+#define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_RECLAIM)
 #ifdef _WIN32_V9
 #define tr_printk(level, transport, fmt, ...)  do {		\
 	rcu_read_lock();					\
@@ -257,6 +257,9 @@ struct drbd_waiter {
 	struct list_head list;
 	struct drbd_listener *listener;
 };
+
+/* drbd_main.c */
+extern void drbd_destroy_path(struct kref *kref);
 
 /* drbd_transport.c */
 extern int drbd_register_transport_class(struct drbd_transport_class *transport_class,
