@@ -35,7 +35,7 @@
 #else
 #include <linux/module.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <net/sock.h>
 
 #include <linux/drbd.h>
@@ -95,6 +95,7 @@ static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct 
 static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_hold(local);
 #endif
 static void drbd_unplug_all_devices(struct drbd_resource *resource);
+
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	struct drbd_epoch *prev;
@@ -171,7 +172,6 @@ static int page_chain_free(struct page *page)
 {
 	struct page *tmp;
 	int i = 0;
-
 	page_chain_for_each_safe(page, tmp) {
 #ifdef _WIN32 //V8에 사용된 코드를 적용.
 		set_page_chain_next_offset_size(page, NULL, 0, 0);
@@ -231,7 +231,6 @@ static void * __drbd_alloc_pages(unsigned int number)
 #else
 
 static struct page *__drbd_alloc_pages(unsigned int number, gfp_t gfp_mask)
-
 {
 	struct page *page = NULL;
 	struct page *tmp = NULL;
@@ -308,7 +307,7 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 #ifdef _WIN32_V9
 	list_for_each_entry_safe(struct drbd_peer_request, peer_req, tmp, &connection->net_ee, w.list) {
 #else 
-	list_for_each_entry_safe( peer_req, tmp, &connection->net_ee, w.list) {
+	list_for_each_entry_safe(peer_req, tmp, &connection->net_ee, w.list) {
 #endif
 		if (drbd_peer_req_has_active_page(peer_req))
 			break;
@@ -431,7 +430,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 	rcu_read_unlock();
 
 	if (atomic_read(&connection->pp_in_use) < mxb)
-		page = __drbd_alloc_pages(number, gfp_mask & ~__GFP_WAIT);
+		page = __drbd_alloc_pages(number, gfp_mask & ~__GFP_RECLAIM);
 
 	/* Try to keep the fast path fast, but occasionally we need
 	 * to reclaim the pages we lended to the network stack. */
@@ -450,7 +449,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 				break;
 		}
 
-		if (!(gfp_mask & __GFP_WAIT))
+		if (!(gfp_mask & __GFP_RECLAIM))
 			break;
 
 		if (signal_pending(current)) {
@@ -928,6 +927,7 @@ int connect_work(struct drbd_work *work, int cancel)
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
 }
+
 /*
  * Returns true if we have a valid connection.
  */
@@ -951,9 +951,11 @@ start:
 	connection->agreed_pro_version = 80;
 
 	err = transport->ops->connect(transport);
-	if (err == -EAGAIN)
+	if (err == -EAGAIN) {
+		if (connection->cstate[NOW] == C_DISCONNECTING)
+			return false;
 		goto retry;
-	else if (err < 0) {
+	} else if (err < 0) {
 		drbd_warn(connection, "Failed to initiate connection, err=%d\n", err);
 		goto abort;
 	}
@@ -1043,7 +1045,6 @@ start:
 	drbd_thread_start(&connection->ack_receiver);
 	connection->ack_sender =
 // #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0) // WIN32_V9_PATCH_2
-
 #ifndef _WIN32_V9
 		alloc_ordered_workqueue("drbd_as_%s", WQ_MEM_RECLAIM, connection->resource->name);
 #else
@@ -1061,7 +1062,7 @@ start:
 			connection->connect_timer_work.cb = connect_work;
 			timeout = twopc_retry_timeout(resource, 0);
 			drbd_debug(connection, "Waiting for %ums to avoid transaction "
-				"conflicts\n", jiffies_to_msecs(timeout));
+				   "conflicts\n", jiffies_to_msecs(timeout));
 			connection->connect_timer.expires = jiffies + timeout;
 			add_timer(&connection->connect_timer);
 		}
@@ -1168,8 +1169,8 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 		 * quickly as possible, and let remote TCP know what we have
 		 * received so far. */
 		if (err == -EAGAIN) {
-			drbd_unplug_all_devices(connection->resource);
 			tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
+			drbd_unplug_all_devices(connection->resource);
 		} else if (err > 0) {
 			size -= err;
 			rflags |= GROW_BUFFER;
@@ -1349,7 +1350,6 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 #endif
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
-
 
 static int w_flush(struct drbd_work *w, int cancel)
 {
@@ -1643,7 +1643,7 @@ static bool can_do_reliable_discards(struct drbd_device *device)
 	if (!blk_queue_discard(q))
 		return false;
 
-	if (q->limits.discard_zeroes_data)
+	if (queue_discard_zeroes_data(q))
 		return true;
 
 	rcu_read_lock();
@@ -1928,7 +1928,7 @@ int w_e_reissue(struct drbd_work *w, int cancel) __releases(local)
 		drbd_remove_peer_req_interval(device, peer_req);
 		spin_unlock_irq(&device->resource->req_lock);
 		drbd_al_complete_io(device, &peer_req->i);
-		drbd_may_finish_epoch(peer_device->connection, peer_req->epoch, EV_PUT + EV_CLEANUP);
+		drbd_may_finish_epoch(peer_device->connection, peer_req->epoch, EV_PUT | EV_CLEANUP);
 		drbd_free_peer_req(peer_req);
 		drbd_err(device, "submit failed, triggering re-connect\n");
 		return err;
@@ -2011,10 +2011,12 @@ static void drbd_unplug_all_devices(struct drbd_resource *resource)
 
 static int receive_Barrier(struct drbd_connection *connection, struct packet_info *pi)
 {
+	struct drbd_transport_ops *tr_ops = connection->transport.ops;
 	int rv, issue_flush;
 	struct p_barrier *p = pi->data;
 	struct drbd_epoch *epoch;
 
+	tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
 	drbd_unplug_all_devices(connection->resource);
 
 	/* FIXME these are unacked on connection,
@@ -2189,7 +2191,6 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 		data = kmap(page) + page_chain_offset(page);
 		data[0] = ~data[0];
 		kunmap(page);
-
 #endif
 	}
 
@@ -2686,7 +2687,7 @@ static inline int overlaps(sector_t s1, int l1, sector_t s2, int l2)
 static bool overlapping_resync_write(struct drbd_device *device, struct drbd_peer_request *peer_req)
 {
 	struct drbd_peer_request *rs_req;
-	bool rv = 0;
+	bool rv = false;
 
 	spin_lock_irq(&device->resource->req_lock);
 #ifdef _WIN32
@@ -2696,7 +2697,7 @@ static bool overlapping_resync_write(struct drbd_device *device, struct drbd_pee
 #endif
 		if (overlaps(peer_req->i.sector, peer_req->i.size,
 			     rs_req->i.sector, rs_req->i.size)) {
-			rv = 1;
+			rv = true;
 			break;
 		}
 	}
@@ -2900,6 +2901,7 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 			list_add_tail(&peer_req->w.list, &device->done_ee);
             // V9 기존 wake_asender 에서 work queue 방식으로 변경.
 			queue_work(connection->ack_sender, &peer_req->peer_device->send_acks_work);
+
 			err = -ENOENT;
 			goto out;
 		} else {
@@ -3194,7 +3196,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 #ifdef _WIN32_V9
 	int curr_events = 0; // _WIN32_V9_PATCH_1
 #else
-	int curr_events; 
+	int curr_events;
 #endif
 
 	rcu_read_lock();
@@ -3911,7 +3913,8 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 				return rv;
 		}
 
-		*rule_nr = 35;
+
+		*rule_nr = 38;
 		/* Peer crashed as primary, I survived, resync from me */
 		if (peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY &&
 		    test_bit(RECONNECT, &peer_device->connection->flags))
@@ -4151,12 +4154,17 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 
 static void disk_states_to_goodness(struct drbd_device *device,
 				    enum drbd_disk_state peer_disk_state,
-				    int *hg)
+				    int *hg, int rule_nr)
 {
 	enum drbd_disk_state disk_state = device->disk_state[NOW];
+	bool p = false;
 
-	if (*hg != 0)
+	if (*hg != 0 && rule_nr != 40)
 		return;
+
+	/* rule_nr 40 means that the current UUIDs are equal. The decision
+	   was found by looking at the crashed_primary bits.
+	   The current disk states might give a better basis for decision-making! */
 
 	if (disk_state == D_NEGOTIATING)
 		disk_state = disk_state_from_md(device);
@@ -4164,9 +4172,16 @@ static void disk_states_to_goodness(struct drbd_device *device,
 	if ((disk_state == D_INCONSISTENT && peer_disk_state > D_INCONSISTENT) ||
 	    (peer_disk_state == D_INCONSISTENT && disk_state > D_INCONSISTENT)) {
 		*hg = disk_state > D_INCONSISTENT ? 1 : -1;
+		p = true;
+	} else if ((disk_state == D_OUTDATED && peer_disk_state > D_OUTDATED) ||
+		   (peer_disk_state == D_OUTDATED && disk_state > D_OUTDATED)) {
+		*hg = disk_state > D_OUTDATED ? 1 : -1;
+		p = true;
+	}
+
+	if (p)
 		drbd_info(device, "Becoming sync %s due to disk states.\n",
 			  *hg > 0 ? "source" : "target");
-	}
 }
 
 static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_device,
@@ -4180,7 +4195,7 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 		return -1;
 
 	bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
-	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg);
+	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg, rule_nr);
 
 	return goodness_to_repl_state(peer_device, peer_device->connection->peer_role[NOW], hg);
 }
@@ -4220,7 +4235,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 		return -1;
 	}
 
-	disk_states_to_goodness(device, peer_disk_state, &hg);
+	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
 
 	if (abs(hg) == 100)
 		drbd_khelper(device, connection, "initial-split-brain");
@@ -4458,7 +4473,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	}
 
 	// V9 에 새롭게 추가된 mutex. 기존 mutex 와의 차이점이 무엇인지, 기존 구현으로 대체 가능한지 파악 필요. => alertable mutex_lock 으로 구현 완료.
-	if (mutex_lock_interruptible(&connection->resource->conf_update)) { 
+	if (mutex_lock_interruptible(&connection->resource->conf_update)) {
 		drbd_err(connection, "Interrupted while waiting for conf_update\n");
 		goto disconnect;
 	}
@@ -4826,9 +4841,44 @@ static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 		return DRBD_MAX_SIZE_H80_PACKET;
 }
 
+static struct drbd_peer_device *get_neighbor(struct drbd_device *device,
+		enum drbd_neighbor neighbor)
+{
+	s32 self_id, peer_id, pivot;
+	struct drbd_peer_device *peer_device, *peer_device_ret = NULL;
+
+	if (!get_ldev(device))
+		return NULL;
+	self_id = device->ldev->md.node_id;
+	put_ldev(device);
+
+	pivot = neighbor == NEXT_LOWER ? 0 : neighbor == NEXT_HIGHER ? S32_MAX : -1;
+	if (pivot == -1)
+		return NULL;
+
+	rcu_read_lock();
+	for_each_peer_device_rcu(peer_device, device) {
+		bool found_new = false;
+		peer_id = peer_device->node_id;
+
+		if (neighbor == NEXT_LOWER && peer_id < self_id && peer_id >= pivot)
+			found_new = true;
+		else if (neighbor == NEXT_HIGHER && peer_id > self_id && peer_id <= pivot)
+			found_new = true;
+
+		if (found_new) {
+			pivot = peer_id;
+			peer_device_ret = peer_device;
+		}
+	}
+	rcu_read_unlock();
+
+	return peer_device_ret;
+}
+
 static int receive_sizes(struct drbd_connection *connection, struct packet_info *pi)
 {
-	struct drbd_peer_device *peer_device;
+	struct drbd_peer_device *peer_device, *peer_device_it = NULL;
 	struct drbd_device *device;
 	struct p_sizes *p = pi->data;
 	struct o_qlim *o = (connection->agreed_features & DRBD_FF_WSAME) ? p->qlim : NULL;
@@ -5003,11 +5053,15 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 	// 기존 if (mdev->state.conn > C_WF_REPORT_PARAMS) { 에서 L_OFF 로 변경.
 	if (peer_device->repl_state[NOW] > L_OFF) {
-		if (be64_to_cpu(p->c_size) !=
+		if (peer_device->max_size !=
 		    drbd_get_capacity(device->this_bdev) || ldsc) {
-			/* we have different sizes, probably peer
-			 * needs to know my new size... */
-			drbd_send_sizes(peer_device, 0, ddsf);
+			/* we have different sizes, probably peers
+			 * need to know my new size... */
+			rcu_read_lock();
+			for_each_peer_device_rcu(peer_device_it, device) {
+				drbd_send_sizes(peer_device_it, 1, ddsf);
+			}
+			rcu_read_unlock();
 		}
 		if (test_and_clear_bit(RESIZE_PENDING, &peer_device->flags) ||
 		    (dd == DS_GREW && peer_device->repl_state[NOW] == L_ESTABLISHED)) {
@@ -5015,8 +5069,12 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			    device->disk_state[NOW] >= D_INCONSISTENT) {
 				if (ddsf & DDSF_NO_RESYNC)
 					drbd_info(device, "Resync of new storage suppressed with --assume-clean\n");
-				else
-					resync_after_online_grow(peer_device);
+				else {
+					if ((peer_device_it = get_neighbor(device, NEXT_HIGHER)))
+						resync_after_online_grow(peer_device_it);
+					if ((peer_device_it = get_neighbor(device, NEXT_LOWER)))
+						resync_after_online_grow(peer_device_it);
+				}
 			} else
 				set_bit(RESYNC_AFTER_NEG, &peer_device->flags);
 		}
@@ -5156,7 +5214,6 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 	return err;
 }
 
-
 // 기존 receive_uuids 에서 다 구현하던 것을 __receive_uuids 로 배분한듯.
 static int receive_uuids(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -5185,7 +5242,6 @@ static int receive_uuids(struct drbd_connection *connection, struct packet_info 
 	return __receive_uuids(peer_device, 0);
 }
 
-
 // V9에 새롭게 추가된 함수.
 static int receive_uuids110(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -5195,6 +5251,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	u64 bitmap_uuids_mask;
 	struct drbd_peer_md *peer_md = NULL;
 	struct drbd_device *device;
+
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -5246,7 +5303,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	if (peer_md)
 		put_ldev(device);
 
-    for (i = 0; i < history_uuids; i++)
+	for (i = 0; i < history_uuids; i++)
 #ifdef _WIN32_V9
     {
         peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos]);
@@ -5720,7 +5777,6 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	bool was_empty, already_queued = false;
 
 	spin_lock_irq(&resource->queued_twopc_lock);
-
 #ifdef _WIN32
 	list_for_each_entry(struct queued_twopc, q, &resource->queued_twopc, w.list) {
 #else
@@ -5938,7 +5994,7 @@ static int process_twopc(struct drbd_connection *connection,
 #ifdef _WIN32_V9
 	union drbd_state mask , val;
 #else
-    union drbd_state mask = {}, val = {};
+	union drbd_state mask = {}, val = {};
 #endif
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
@@ -6843,13 +6899,12 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 {
 	struct drbd_transport *transport = &connection->transport;
 
-	/* just unplug all devices always, regardless which volume number */
-	drbd_unplug_all_devices(connection->resource);
-
 	/* Make sure we've acked all the data associated
 	 * with the data requests being unplugged */
-	// 기존 V8 drbd_tcp_quickack 구현에서 hint 로 변경.
 	transport->ops->hint(transport, DATA_STREAM, QUICKACK);
+
+	/* just unplug all devices always, regardless which volume number */
+	drbd_unplug_all_devices(connection->resource);
 
 	return 0;
 }
@@ -7279,7 +7334,6 @@ void conn_disconnect(struct drbd_connection *connection)
 		__change_cstate(connection, C_UNCONNECTED);
 		/* drbd_receiver() has to be restarted after it returns */
 		drbd_thread_restart_nowait(&connection->receiver);
-		//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 	}
 	end_state_change(resource, &irq_flags);
 
@@ -8240,7 +8294,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, 
 			 sizeof(node_ids) * BITS_PER_BYTE) {
 #else
-	for_each_set_bit(node_id, (unsigned long *)&node_ids, 
+	for_each_set_bit(node_id, (unsigned long *)&node_ids,
 			 sizeof(node_ids) * BITS_PER_BYTE) {
 #endif
 		int bitmap_bit = peer_md[node_id].bitmap_index;
@@ -8289,7 +8343,6 @@ found:
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
-	
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;

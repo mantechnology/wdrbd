@@ -31,7 +31,7 @@ static void seq_print_age_or_dash(struct seq_file *m, bool valid, unsigned long 
 	if (valid)
 		seq_printf(m, "\t%d", jiffies_to_msecs(dt));
 	else
-		seq_printf(m, "\t-");
+		seq_puts(m, "\t-");
 }
 
 static void __seq_print_rq_state_bit(struct seq_file *m,
@@ -90,7 +90,7 @@ static void seq_print_request_state(struct seq_file *m, struct drbd_request *req
 		if (sep == ' ')
 			seq_puts(m, " -");
 
-		seq_printf(m, " :");
+		seq_puts(m, " :");
 		sep = ' ';
 		seq_print_rq_state_bit(m, s & RQ_EXP_RECEIVE_ACK, &sep, "B");
 		seq_print_rq_state_bit(m, s & RQ_EXP_WRITE_ACK, &sep, "C");
@@ -98,7 +98,7 @@ static void seq_print_request_state(struct seq_file *m, struct drbd_request *req
 		if (sep == ' ')
 			seq_puts(m, " -");
 	}
-	seq_printf(m, "\n");
+	seq_putc(m, '\n');
 }
 
 #define memberat(PTR, TYPE, OFFSET) (*(TYPE *)((char *)PTR + OFFSET))
@@ -119,7 +119,7 @@ static void print_one_age_or_dash(struct seq_file *m, struct drbd_request *req,
 			return;
 		}
 	}
-	seq_printf(m, "\t-");
+	seq_puts(m, "\t-");
 }
 
 static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, unsigned long now)
@@ -1240,7 +1240,7 @@ static int drbd_version_open(struct inode *inode, struct file *file)
 	return single_open(file, drbd_version_show, NULL);
 }
 
-static struct file_operations drbd_version_fops = {
+static const struct file_operations drbd_version_fops = {
 	.owner = THIS_MODULE,
 	.open = drbd_version_open,
 	.llseek = seq_lseek,

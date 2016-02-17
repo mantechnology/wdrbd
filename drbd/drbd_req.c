@@ -70,7 +70,6 @@ static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *r
 	disk_round_stats(device->vdisk);
 	atomic_dec((atomic_t*)&device->vdisk->in_flight);
 }
-
 #endif
 
 static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio *bio_src)
@@ -161,7 +160,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	}
 	rcu_read_unlock();
 
-    if (!queued)
+	if (!queued)
 #ifdef _WIN32_V9
     {
         if (req->win32_page_buf)
@@ -1444,6 +1443,7 @@ static void complete_conflicting_writes(struct drbd_request *req)
 		}
 		if (!i)	/* if any */
 			break;
+
 		/* Indicate to wake up device->misc_wait on progress.  */
 		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE); // _WIN32_V9_PATCH_1
 		i->waiting = true;
@@ -1511,7 +1511,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 	put_ldev(device);
 }
 
-/* called within req_lock and rcu_read_lock() */
+/* called within req_lock */
 static void maybe_pull_ahead(struct drbd_device *device)
 {
 	struct drbd_connection *connection;
@@ -1843,7 +1843,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	/* no point in adding empty flushes to the transfer log,
 	 * they are mapped to drbd barriers already. */
 	if (likely(req->i.size != 0)) {
-
 		if (rw == WRITE) {
 			struct drbd_request *req2;
 
@@ -1864,7 +1863,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			}
 #endif
 		}
-
 		list_add_tail(&req->tl_requests, &resource->transfer_log);
 	}
 
@@ -2183,16 +2181,17 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 		MAKE_REQUEST_RETURN;
 	}
 #endif
-#ifdef HAVE_BLK_QUEUE_SPLIT
-	/* 54efd50 block: make generic_make_request handle arbitrarily sized bios
-	 * introduced blk_queue_split(), which is supposed to split (and put on the
-	 * current->bio_list bio chain) any bio that is violating the queue limits.
-	 * Before that, any user was supposed to go through bio_add_page(), which
-	 * would call our merge bvec function, and that should already be sufficient
-	 * to not violate queue limits.
-	 */
+#ifdef COMPAT_HAVE_BLK_QUEUE_SPLIT
+/* 54efd50 block: make generic_make_request handle arbitrarily sized bios
+ * introduced blk_queue_split(), which is supposed to split (and put on the
+ * current->bio_list bio chain) any bio that is violating the queue limits.
+ * Before that, any user was supposed to go through bio_add_page(), which
+ * would call our merge bvec function, and that should already be sufficient
+ * to not violate queue limits.
+ */
 	blk_queue_split(q, &bio, q->bio_split);
 #endif
+
 	start_jif = jiffies;
 
 	inc_ap_bio(device, bio_data_dir(bio));
@@ -2202,9 +2201,9 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 	return status;
 #else
 	__drbd_make_request(device, bio, start_jif);
+
 	MAKE_REQUEST_RETURN;
 #endif
-	
 }
 
 /* This is called by bio_add_page().

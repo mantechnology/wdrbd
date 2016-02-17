@@ -297,8 +297,8 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
-	int is_write = bio_data_dir(bio) == WRITE;
-	int is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
+	bool is_write = bio_data_dir(bio) == WRITE;
+	bool is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
 
 	BIO_ENDIO_FN_START;
 	if (error && drbd_ratelimit())
@@ -468,8 +468,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 
-
-
 	bio_put(req->private_bio);
 	req->private_bio = ERR_PTR(error);
 
@@ -620,7 +618,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 		return -EIO;
 
 	/* Do not wait if no memory is immediately available.  */
-	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_WAIT);
+	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_RECLAIM);
 	if (!peer_req)
 		goto defer;
 #ifdef _WIN32_V9 
@@ -1163,7 +1161,7 @@ static int w_resync_finished(struct drbd_work *w, int cancel)
 
 	drbd_resync_finished(rfw->pdw.peer_device, rfw->new_peer_disk_state);
 	kfree(rfw);
-	
+
 	return 0;
 }
 
@@ -1440,6 +1438,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 
 out_unlock:
 	end_state_change_locked(device->resource);
+
 	put_ldev(device);
 
 	peer_device->rs_total  = 0;
@@ -1520,7 +1519,6 @@ static void move_to_net_ee_or_free(struct drbd_connection *connection, struct dr
 
 /**
  * w_e_end_data_req() - Worker callback, to send a P_DATA_REPLY packet in response to a P_DATA_REQUEST
- * @device:	DRBD device.
  * @w:		work object.
  * @cancel:	The connection will be closed anyways
  */
@@ -2213,7 +2211,7 @@ static bool use_checksum_based_resync(struct drbd_connection *connection, struct
 	rcu_read_unlock();
 	return connection->agreed_pro_version >= 89 &&		/* supported? */
 		connection->csums_tfm &&			/* configured? */
-		(csums_after_crash_only == 0			/* use for each resync? */
+		(csums_after_crash_only == false		/* use for each resync? */
 		 || test_bit(CRASHED_PRIMARY, &device->flags));	/* or only after Primary crash? */
 }
 
@@ -2331,7 +2329,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			device->bm_resync_fo = 0;
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
 		} else {
-			peer_device->use_csums = 0;
+			peer_device->use_csums = false;
 		}
 
 		if ((side == L_SYNC_TARGET || side == L_PAUSED_SYNC_T) &&
@@ -2569,7 +2567,6 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 #else
 	} while (cmpxchg(flags, old, new) != old);
 #endif
-	
 	return old & mask;
 }
 

@@ -1,5 +1,4 @@
-﻿//_WIN32_V9_PATCH_1 : 어디서????
-/*
+﻿/*
   drbd.h
   Kernel module for 2.6.x Kernels
 
@@ -397,6 +396,15 @@ enum drbd_notification_type {
 
 	NOTIFY_CONTINUES = 0x8000,
 	NOTIFY_FLAGS = NOTIFY_CONTINUES,
+};
+
+/* These values are part of the ABI! */
+enum drbd_peer_state {
+	P_INCONSISTENT = 3,
+	P_OUTDATED = 4,
+	P_DOWN = 5,
+	P_PRIMARY = 6,
+	P_FENCING = 7,
 };
 
 /* magic numbers used in meta data and network packets */

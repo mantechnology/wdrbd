@@ -7,7 +7,6 @@
 #include <linux/module.h>
 #endif
 
-
 #ifndef _WIN32
 MODULE_AUTHOR("xxx");
 MODULE_DESCRIPTION("xxx transport layer for DRBD");

@@ -36,7 +36,6 @@
 #include "drbd_req.h"
 #include "drbd_state_change.h"
 
-
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
@@ -45,7 +44,6 @@ struct after_state_change_work {
 	struct drbd_state_change *state_change;
 	struct completion *done;
 };
-
 
 static void count_objects(struct drbd_resource *resource,
 			  unsigned int *n_devices,
@@ -2002,7 +2000,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		if (cstate[OLD] >= C_CONNECTING &&
 		    cstate[NEW] <= C_TEAR_DOWN && cstate[NEW] >= C_TIMEOUT) {
 			drbd_thread_restart_nowait(&connection->receiver);
-			//drbd_queue_receiver_thread_work(resource, drbd_thread_restart_nowait, &connection->receiver);
 			twopc_connection_down(connection);
 		}
 
@@ -2432,6 +2429,27 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 
 	return true;
 }
+
+/* takes old and new peer disk state */
+static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
+{
+	if ((os >= D_INCONSISTENT && os != D_UNKNOWN && os != D_OUTDATED)
+	&&  (ns < D_INCONSISTENT || ns == D_UNKNOWN || ns == D_OUTDATED))
+		return true;
+
+	/* Scenario, starting with normal operation
+	 * Connected Primary/Secondary UpToDate/UpToDate
+	 * NetworkFailure Primary/Unknown UpToDate/DUnknown (frozen)
+	 * ...
+	 * Connected Primary/Secondary UpToDate/Diskless (resumed; needs to bump uuid!)
+	 */
+	if (os == D_UNKNOWN
+	&&  (ns == D_DISKLESS || ns == D_FAILED || ns == D_OUTDATED))
+		return true;
+
+	return false;
+}
+
 #if 0
 #ifdef 	_WIN32_V9
 static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
@@ -2629,13 +2647,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 						peer_device);
 
 			/* Lost contact to peer's copy of the data */
-			if (!(peer_disk_state[OLD] < D_INCONSISTENT ||
-			      peer_disk_state[OLD] == D_UNKNOWN ||
-			      peer_disk_state[OLD] == D_OUTDATED) &&
-			    (peer_disk_state[NEW] < D_INCONSISTENT ||
-			     peer_disk_state[NEW] == D_UNKNOWN ||
-			     peer_disk_state[NEW] == D_OUTDATED)) {
-
+			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
 				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
 				    (disk_state[NEW] == D_UP_TO_DATE || one_peer_disk_up_to_date[NEW]))
 					create_new_uuid = true;
@@ -2938,7 +2950,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #else
 			drbd_thread_start(&connection->receiver);
 #endif
-
 
 		if (susp_fen[NEW]) {
 			bool all_peer_disks_outdated = true;
@@ -3519,7 +3530,6 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
             twopc_timeout(resource));
         if (t)
 #else
-        
 		if (wait_event_timeout(resource->state_wait,
 				       cluster_wide_reply_ready(resource),
 				       twopc_timeout(resource)))

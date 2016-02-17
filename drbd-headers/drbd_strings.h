@@ -2,7 +2,7 @@
 #define __DRBD_STRINGS_H
 
 struct state_names {
-	const char **names;
+	const char * const *names;
 	unsigned int size;
 };
 

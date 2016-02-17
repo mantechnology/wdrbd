@@ -36,7 +36,6 @@
 #include <linux/drbd_limits.h>
 #include <linux/dynamic_debug.h>
 #endif
-
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
@@ -249,7 +248,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #endif
 
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
-    err = device->md_io.error;
+	err = device->md_io.error;
 #ifdef _WIN32
     if(err == STATUS_NO_SUCH_DEVICE)
     {
@@ -495,6 +494,8 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 	buffer->tr_number = cpu_to_be32(device->al_tr_number);
 
 	i = 0;
+
+	drbd_bm_reset_al_hints(device);
 
 	/* Even though no one can start to change this list
 	 * once we set the LC_LOCKED -- from drbd_al_begin_io(),

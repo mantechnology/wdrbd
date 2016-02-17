@@ -462,6 +462,14 @@ __inline void kfree(void * x)
 	}
 }
 
+__inline void kvfree(void * x)
+{
+	if (x)
+	{
+		ExFreePool(x);
+	}
+}
+
 mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_data)
 {
 	mempool_t *p_pool;
