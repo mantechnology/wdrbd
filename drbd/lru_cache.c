@@ -44,6 +44,12 @@
 	BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags)); \
 } while (0)
 
+#ifdef _WIN32_V9
+#define RETURN_VOID()     do { \
+	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
+	return; } while (0)
+#endif
+
 #ifdef _WIN32_V9_PATCH_1
 #define RETURN(x)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
@@ -75,7 +81,7 @@ int lc_try_lock(struct lru_cache *lc)
 	unsigned long val;
 	do {
 #ifdef _WIN32
-		val = atomic_cmpxchg(&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
+		val = atomic_cmpxchg((LONG_PTR*)&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
 #else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
 #endif
@@ -180,7 +186,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	/* preallocate all objects */
 	for (i = 0; i < e_count; i++) {
 #ifdef _WIN32
-		void *p = ExAllocateFromNPagedLookasideList(cache);
+		UCHAR* p = (UCHAR*)ExAllocateFromNPagedLookasideList(cache);
 		if (!p) break;
 #else
 		void *p = kmem_cache_alloc(cache, GFP_KERNEL);
@@ -189,7 +195,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 #endif
 		memset(p, 0, lc->element_size);
 #ifdef _WIN32
-        e = (size_t)p + e_off;
+        e = (struct lc_element*)(p + e_off);
 #else
 		e = p + e_off;
 #endif
@@ -204,10 +210,11 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 
 	/* else: could not allocate all elements, give up */
 	for (i--; i; i--) {
-		void *p = element[i];
 #ifdef _WIN32
-		ExFreeToNPagedLookasideList(cache, (size_t)p - e_off); // _V9_XXX: (size_t) 캐스팅이 적절한지 재확인
+		UCHAR* p = (UCHAR*)element[i];
+		ExFreeToNPagedLookasideList(cache, p - e_off); // _V9_XXX: (size_t) 캐스팅이 적절한지 재확인 => uchar 형 포인터연산으로 수정.
 #else
+		void *p = element[i];
 		kmem_cache_free(cache, p - e_off);
 #endif
 	}
@@ -220,11 +227,16 @@ out_fail:
 
 static void lc_free_by_index(struct lru_cache *lc, unsigned i)
 {
+#ifdef _WIN32_V9
+	UCHAR* p = (UCHAR*)lc->lc_element[i];
+#else
 	void *p = lc->lc_element[i];
+#endif
+	
 	WARN_ON(!p);
 	if (p) {
 #ifdef _WIN32
-        (size_t)p -= lc->element_off;
+        p -= lc->element_off;
         ExFreeToNPagedLookasideList(lc->lc_cache, p);
 #else
 		p -= lc->element_off;
@@ -276,12 +288,12 @@ void lc_reset(struct lru_cache *lc)
 
 	for (i = 0; i < lc->nr_elements; i++) {
 		struct lc_element *e = lc->lc_element[i];
-		void *p = e;
 #ifdef _WIN32
-        (size_t)p -= lc->element_off;
+		UCHAR* p = (UCHAR*)e;
 #else
-		p -= lc->element_off;
+		void *p = e;
 #endif
+		p -= lc->element_off;
 		memset(p, 0, lc->element_size);
 		/* re-init it */
 		e->lc_index = i;
@@ -395,7 +407,11 @@ void lc_del(struct lru_cache *lc, struct lc_element *e)
 	e->lc_number = e->lc_new_number = LC_FREE;
 	hlist_del_init(&e->colision);
 	list_move(&e->list, &lc->free);
+#ifdef _WIN32_V9
+	RETURN_VOID();
+#else
 	RETURN();
+#endif
 }
 
 static struct lc_element *lc_prepare_for_change(struct lru_cache *lc, unsigned new_number)
@@ -627,7 +643,11 @@ void lc_committed(struct lru_cache *lc)
 		list_move(&e->list, &lc->in_use);
 	}
 	lc->pending_changes = 0;
+#ifdef _WIN32_V9
+	RETURN_VOID();
+#else
 	RETURN();
+#endif
 }
 
 

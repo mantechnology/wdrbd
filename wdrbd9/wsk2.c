@@ -470,6 +470,8 @@ __in enum			drbd_stream stream
 }
 #endif
 
+extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+
 LONG
 NTAPI
 Send(
@@ -571,7 +573,6 @@ Send(
 				// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
 				if (transport != NULL)
 				{
-					extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 					if (!drbd_stream_send_timed_out(transport, stream))
 					{
 						goto retry;

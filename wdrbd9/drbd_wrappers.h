@@ -414,7 +414,7 @@ static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_c
 #ifdef _WIN32
     //UNREFERENCED_PARAMETER(sock);
     UNREFERENCED_PARAMETER(how);
-	Disconnect(sock->sk);
+	return Disconnect(sock->sk);
 #else
 	return sock->ops->shutdown(sock, how);
 #endif
@@ -563,7 +563,8 @@ static inline int crypto_hash_update(struct hash_desc *desc,
 	// sha1, md5, and crc32c.
 	// support crc only!!!
 
-	*(int*)desc = crc32c(0, (char*)sg, nbytes);
+	//*(int*)desc = crc32c(0, (char*)sg, nbytes);
+	*(int*)desc = crc32c(0, (uint8_t *)sg, nbytes);
 #else
 	crypto_digest_update(desc->tfm->base,sg,1 /* ! */ );
 	/* ! this is not generic. Would need to convert nbytes -> nsg */

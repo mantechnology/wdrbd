@@ -15,7 +15,6 @@
 #include "disp.h"
 
 #pragma warning(disable : 4100 4146 )
-
 //#define DRBD_TRACE				    // 복제흐름보기(기본), 성능 개선후 제거
 //#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
 
@@ -82,7 +81,13 @@
 #define GFP_NOIO				(__GFP_WAIT)
 #define GFP_NOWAIT	            0
 #define gfp_t					int
-#define atomic_t				volatile long
+
+#ifdef _WIN64
+#define atomic_t				volatile LONGLONG
+#else
+#define atomic_t				volatile LONG
+#endif
+
 
 #define WARN_ON(x)				__noop
 #define ATOMIC_INIT(i)			(i)
@@ -546,7 +551,7 @@ extern void init_timer_key(struct timer_list *timer, const char *name, struct lo
 static __inline void setup_timer_key(_In_ struct timer_list * timer,
     const char *name,
     struct lock_class_key *key,
-    void(*function)(void *),
+	void(*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2),
     void * data)
 {
     timer->function = function;
@@ -575,7 +580,7 @@ struct block_device_operations {
 };
 
 struct kobj_type {
-	void (*release)();
+	void(*release)(struct kobject *);
 };
 
 #define DISK_NAME_LEN		16
@@ -624,6 +629,7 @@ struct bio_vec {
 
 #ifdef _WIN32_V9
 typedef void(bio_end_io_t)(void*, void*, void*);
+//PIO_COMPLETION_ROUTINE bio_end_io_t;
 #else
 struct bio;
 typedef void(bio_end_io_t)(struct bio *, int);
@@ -819,19 +825,20 @@ extern void mempool_destroy(void *p);
 extern void *mempool_alloc_slab(gfp_t gfp_mask, void *pool_data);
 extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 
-#define	atomic_inc_return(_p)		InterlockedIncrement((_p))
-#define	atomic_dec_return(_p)		InterlockedDecrement((_p))
+#define	atomic_inc_return(_p)		InterlockedIncrement((LONG volatile*)(_p))
+#define	atomic_dec_return(_p)		InterlockedDecrement((LONG volatile*)(_p))
 #define atomic_inc(_v)			atomic_inc_return(_v)
 #define atomic_dec(_v)			atomic_dec_return(_v)
 
-extern ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value);
-extern void atomic_set(const atomic_t *v, int i);
+extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
+extern void atomic_set(atomic_t *v, int i);
 extern void atomic_add(int i, atomic_t *v);
 extern void atomic_sub(int i, atomic_t *v);
 extern int atomic_sub_return(int i, atomic_t *v); 
 extern int atomic_dec_and_test(atomic_t *v);
 extern int atomic_sub_and_test(int i, atomic_t *v);
-extern long atomic_cmpxchg(atomic_t *v, int old, int new);
+//extern long atomic_cmpxchg(atomic_t *v, int old, int new);
+extern LONG_PTR atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
 extern int atomic_xchg(atomic_t *v, int n);
 
@@ -895,7 +902,7 @@ extern struct lc_element *lc_element_by_index(struct lru_cache *lc, unsigned i);
 extern unsigned int lc_index_of(struct lru_cache *lc, struct lc_element *e);
 
 struct page {
-	ULONG_PTR *private;
+	ULONG_PTR private;
 	void *addr;
 };
 
@@ -904,7 +911,7 @@ struct page {
 
 extern void *page_address(const struct page *page);
 extern int page_count(struct page *page);
-extern void __free_page(const struct page *page);
+extern void __free_page(struct page *page);
 extern struct page * alloc_page(int flag);
 
 struct scatterlist {
@@ -1078,7 +1085,7 @@ extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
 #ifdef _WIN32_V9
 extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //linux 3.x 커널 구현 참고.+ 64비트 대응 추가 sekim
 #endif
-extern size_t find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
+extern ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
 extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
 
 __inline
@@ -1141,12 +1148,12 @@ static __inline int __test_and_clear_bit(int nr, volatile ULONG_PTR *addr)
 	return (old & mask) != 0;
 }
 
-static __inline int test_bit(int nr, const volatile ULONG_PTR *addr)
+static __inline int test_bit(int nr, const ULONG_PTR *addr)
 {
 #ifdef _WIN64
-    return _bittest64(addr, nr);
+	return _bittest64((LONG64 *)addr, nr);
 #else
-    return _bittest(addr, nr);
+	return _bittest((LONG_PTR *)addr, nr);
 #endif
 }
 
@@ -1316,7 +1323,7 @@ extern EX_SPIN_LOCK g_rcuLock;
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 extern void ct_init_thread_list();
-extern struct task_struct * ct_add_thread(PKTHREAD id, char *name, BOOLEAN event, ULONG Tag);
+extern struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event, ULONG Tag);
 extern void ct_delete_thread(PKTHREAD id);
 extern struct task_struct* ct_find_thread(PKTHREAD id);
 
@@ -1456,9 +1463,9 @@ extern KSPIN_LOCK transport_classes_lock;
 
 extern void downup_rwlock_init(KSPIN_LOCK* lock); // 스핀락 초기화 함수 추가 => driverentry 에서 한번 초기화.
 //extern void down_write(struct semaphore *sem);
-extern void down_write(KSPIN_LOCK* lock);
+extern KIRQL down_write(KSPIN_LOCK* lock);
 //extern void down_read(struct semaphore *sem);
-extern void down_read(KSPIN_LOCK* lock);
+extern KIRQL down_read(KSPIN_LOCK* lock);
 //extern void up_write(struct semaphore *sem);
 extern void up_write(KSPIN_LOCK* lock);
 //extern void up_read(struct semaphore *sem);

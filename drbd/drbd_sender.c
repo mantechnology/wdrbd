@@ -345,8 +345,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 
 void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *device)
 {
+#ifdef _WIN32_V9
+	WDRBD_ERROR("drbd%u %s / %u", device->minor, device->resource->name, device->vnr);
+	panic("potential random memory corruption caused by delayed completion of aborted local request\n");
+#else
 	panic("drbd%u %s/%u potential random memory corruption caused by delayed completion of aborted local request\n",
 		device->minor, device->resource->name, device->vnr);
+#endif
 }
 
 
@@ -542,7 +547,7 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 
 #ifdef _WIN32 //V8 구현 유지.
 	if (req->win32_page_buf)
-		crypto_hash_update(&desc, req->win32_page_buf, req->i.size); // ignore compile warning
+		crypto_hash_update(&desc, (struct scatterlist *)req->win32_page_buf, req->i.size); // ignore compile warning
 	crypto_hash_final(&desc, digest);
 #else
 	desc.tfm = tfm;
@@ -1645,7 +1650,12 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
 	struct digest_info *di;
+#ifdef _WIN32_V9
+	int digest_size = 0; 
+#else
 	int digest_size;
+#endif
+	
 	void *digest = NULL;
 	int err, eq = 0;
 
@@ -1979,7 +1989,11 @@ static bool drbd_pause_after(struct drbd_device *device)
 		struct drbd_peer_device *other_peer_device;
 
 		begin_state_change_locked(other_device->resource, CS_HARD);
+#ifdef _WIN32_V9 // other_device->disk_state compare original bug.
+		if (other_device->disk_state[NOW] == D_DISKLESS) {
+#else
 		if (other_device->disk_state == D_DISKLESS) {
+#endif
 			abort_state_change_locked(other_device->resource);
 			continue;
 		}
@@ -2017,7 +2031,12 @@ static bool drbd_resume_next(struct drbd_device *device)
 		struct drbd_peer_device *other_peer_device;
 
 		begin_state_change_locked(other_device->resource, CS_HARD);
+#ifdef _WIN32_V9 // other_device->disk_state compare original bug.
+		if (other_device->disk_state[NOW] == D_DISKLESS) {
+#else
 		if (other_device->disk_state == D_DISKLESS) {
+#endif
+		
 			abort_state_change_locked(other_device->resource);
 			continue;
 		}
@@ -2519,8 +2538,12 @@ void __update_timing_details(
 
 	++(*cb_nr);
 }
-
+#ifdef _WIN32_V9
+static void do_device_work(struct drbd_device *device, const ULONG_PTR todo)
+#else
 static void do_device_work(struct drbd_device *device, const unsigned long todo)
+#endif
+
 {
 	if (test_bit(MD_SYNC, &todo))
 		do_md_sync(device);
@@ -2529,8 +2552,11 @@ static void do_device_work(struct drbd_device *device, const unsigned long todo)
 	if (test_bit(DESTROY_DISK, &todo))
 		drbd_ldev_destroy(device);
 }
-
+#ifdef _WIN32_V9
+static void do_peer_device_work(struct drbd_peer_device *peer_device, const ULONG_PTR todo)
+#else
 static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsigned long todo)
+#endif
 {
 	if (test_bit(RS_DONE, &todo) ||
 	    test_bit(RS_PROGRESS, &todo))
@@ -2553,17 +2579,26 @@ static void do_peer_device_work(struct drbd_peer_device *peer_device, const unsi
 	|(1UL << RS_PROGRESS)		\
 	|(1UL << RS_DONE)		\
 	)
-
+#ifdef _WIN32_V9
+static ULONG_PTR get_work_bits(const ULONG_PTR mask, ULONG_PTR *flags)
+#else
 static unsigned long get_work_bits(const unsigned long mask, unsigned long *flags)
+#endif
+
 {
+#ifdef _WIN32_V9
+	LONG_PTR old, new;
+#else
 	unsigned long old, new;
+#endif
+	
 
 	// cmpxchg linux kernel func. V9 포팅 필요. => 이미 포팅되어 있는 atomic_cmpxchg 사용.
 	do {
 		old = *flags;
 		new = old & ~mask;
 #ifdef _WIN32
-	} while (atomic_cmpxchg(flags, old, new) != old);
+	} while (atomic_cmpxchg((LONG_PTR*)flags, old, new) != old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
 #endif
@@ -2582,7 +2617,12 @@ static void __do_unqueued_peer_device_work(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
 		struct drbd_device *device = peer_device->device;
+#ifdef _WIN32_V9
+		ULONG_PTR todo = get_work_bits(DRBD_PEER_DEVICE_WORK_MASK, &peer_device->flags);
+#else
 		unsigned long todo = get_work_bits(DRBD_PEER_DEVICE_WORK_MASK, &peer_device->flags);
+#endif
+		
 		if (!todo)
 			continue;
 
@@ -2615,7 +2655,13 @@ static void do_unqueued_device_work(struct drbd_resource *resource)
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
+
+#ifdef _WIN32_V9
+		ULONG_PTR todo = get_work_bits(DRBD_DEVICE_WORK_MASK, &device->flags);
+#else
 		unsigned long todo = get_work_bits(DRBD_DEVICE_WORK_MASK, &device->flags);
+#endif
+		
 		if (!todo)
 			continue;
 
@@ -2630,7 +2676,12 @@ static void do_unqueued_device_work(struct drbd_resource *resource)
 
 static void do_unqueued_resource_work(struct drbd_resource *resource)
 {
+#ifdef _WIN32_V9
+	ULONG_PTR todo = get_work_bits(DRBD_RESOURCE_WORK_MASK, &resource->flags);
+#else
 	unsigned long todo = get_work_bits(DRBD_RESOURCE_WORK_MASK, &resource->flags);
+#endif
+	
 
 	if (test_bit(TRY_BECOME_UP_TO_DATE, &todo))
 		try_become_up_to_date(resource);

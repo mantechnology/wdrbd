@@ -94,6 +94,7 @@ int fls(int x)
 	return r;
 }
 
+#pragma warning (disable : 4706)
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
 #ifdef _WIN32_V9
@@ -294,7 +295,7 @@ int test_and_change_bit(int nr, const ULONG_PTR *addr)
     return (old & mask) != 0;
 }
 
-ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value)
+LONG_PTR xchg(LONG_PTR *target, LONG_PTR value)
 {
 #ifdef _WIN64
 	return (InterlockedExchange64(target, value));
@@ -304,14 +305,23 @@ ULONG_PTR xchg(ULONG_PTR *target, ULONG_PTR value)
 }
 
 
-void atomic_set(const atomic_t *v, int i)
+void atomic_set(atomic_t *v, int i)
 {
+#ifdef _WIN64
+	InterlockedExchange64(v, i);
+#else
 	InterlockedExchange(v, i);
+#endif
+	
 }
 
 void atomic_add(int i, atomic_t *v)
 {
+#ifdef _WIN64
+	InterlockedExchangeAdd64(v, i);
+#else
 	InterlockedExchangeAdd(v, i);
+#endif
 }
 
 void atomic_sub(int i, atomic_t *v)
@@ -322,37 +332,41 @@ void atomic_sub(int i, atomic_t *v)
 int atomic_sub_return(int i, atomic_t *v)
 {
 	int retval;
-	retval = InterlockedExchangeAdd(v, -i);
+	retval = InterlockedExchangeAdd((LONG*)v, -i);
 	retval -= i;
 	return retval;
 }
 
 int atomic_dec_and_test(atomic_t *v)
 {
-	return (0 == InterlockedDecrement(v));
+	return (0 == InterlockedDecrement((LONG*)v));
 }
 
 int atomic_sub_and_test(int i, atomic_t *v)
 {
-	int retval;
-	retval = InterlockedExchangeAdd(v, -i);
+	LONG_PTR retval;
+	retval = InterlockedExchangeAdd((LONG*)v, -i);
 	retval -= i;
 	return (retval == 0);
 }
 
-long atomic_cmpxchg(atomic_t *v, int old, int new)
+LONG_PTR atomic_cmpxchg(atomic_t *v, int old, int new)
 {
+#ifdef _WIN64
+	return InterlockedCompareExchange64(v, new, old);
+#else
 	return InterlockedCompareExchange(v, new, old);
+#endif
 }
 
 int atomic_xchg(atomic_t *v, int n)
 {
-	return InterlockedExchange(v, n);
+	return InterlockedExchange((LONG*)v, n);
 }
 
 int atomic_read(const atomic_t *v)
 {
-	return InterlockedAnd((atomic_t *)v, 0xffffffff);
+	return InterlockedAnd((LONG*)v, 0xffffffff);
 }
 
 void * kmalloc(int size, int flag, ULONG Tag)
@@ -433,7 +447,7 @@ struct page  *alloc_page(int flag)
 	return p;
 }
 
-void __free_page(const struct page *page)
+void __free_page(struct page *page)
 {
 	kfree(page->addr);
 	kfree(page); 
@@ -508,7 +522,7 @@ mempool_t *mempool_create_slab_pool(int min_nr, int order)
 	p_pool->page_alloc = 1; 
 	return p_pool; 
 }
-#endif
+
 void *mempool_alloc_slab(gfp_t gfp_mask, void *pool_data)
 {
 	return 1; // skip error!
@@ -518,6 +532,7 @@ void *mempool_free_slab(gfp_t gfp_mask, void *pool_data)
 {
 	return 1; // skip error!
 }
+#endif
 
 void *mempool_alloc(mempool_t *pool, gfp_t gfp_mask)
 {
@@ -587,7 +602,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
     WARN_ON(release == NULL);
     WARN_ON(release == (void (*)(struct kref *))kfree);
 
-    if (atomic_dec_and_test(&kref->refcount))
+    if (atomic_dec_and_test((LONG_PTR*)&kref->refcount))
     {
         release(kref);
         return 1;
@@ -605,7 +620,7 @@ int kref_get(struct kref *kref)
 
 void kref_init(struct kref *kref)
 {
-	atomic_set(&kref->refcount, 1);
+	atomic_set((LONG_PTR*)&kref->refcount, 1);
 }
 
 struct request_queue *bdev_get_queue(struct block_device *bdev)
@@ -835,7 +850,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 	//WDRBD_INFO("thread(%s) from(%s:%d): start. req timeout=%d(0x%x) nWaitTime=0x%llx(0x%x %d : 0x%x %d) with q=%s -------!!!!!!!\n",
 	//	current->comm, func, line, timeout, timeout, nWaitTime.QuadPart,  nWaitTime.HighPart, nWaitTime.HighPart, nWaitTime.LowPart, nWaitTime.LowPart, q ? q->eventName : "no-queue");
 
-	if ((q == NULL) || (q == SCHED_Q_INTERRUPTIBLE))
+	if ((q == NULL) || (q == (wait_queue_head_t *)SCHED_Q_INTERRUPTIBLE))
 	{
 		KTIMER ktimer;
 		KeInitializeTimer(&ktimer);
@@ -1102,7 +1117,7 @@ void downup_rwlock_init(KSPIN_LOCK* lock)
 }
 
 //void down_write(struct semaphore *sem) // rw_semaphore *sem)
-void down_write(KSPIN_LOCK* lock)
+KIRQL down_write(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
 	return KeAcquireSpinLock(lock, &du_OldIrql);
@@ -1112,11 +1127,12 @@ void down_write(KSPIN_LOCK* lock)
 void up_write(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
-	return KeReleaseSpinLock(lock, du_OldIrql);
+	KeReleaseSpinLock(lock, du_OldIrql);
+	return;
 }
 
 //void down_read(struct semaphore *sem) // rw_semaphore *sem)
-void down_read(KSPIN_LOCK* lock)
+KIRQL down_read(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
 	return KeAcquireSpinLock(lock, &du_OldIrql);
@@ -1126,7 +1142,8 @@ void down_read(KSPIN_LOCK* lock)
 void up_read(KSPIN_LOCK* lock)
 {
 	// mutex/spin lock 으로 대체 가능할 듯.
-	return KeReleaseSpinLock(lock, du_OldIrql);
+	KeReleaseSpinLock(lock, du_OldIrql);
+	return;
 }
 
 #endif
@@ -1425,8 +1442,11 @@ void kobject_put(struct kobject *kobj)
             //WDRBD_WARN("%p name is null.\n", kobj);
             return;
         }
-
-        if (atomic_sub_and_test(1, &kobj->kref.refcount)) 
+#ifdef _WIN32_V9
+		if (atomic_sub_and_test(1, (LONG_PTR*)&kobj->kref.refcount))
+#else
+		if (atomic_sub_and_test(1, &kobj->kref.refcount))
+#endif
         { 
             void(*release)(struct kobject *kobj);
             release = kobj->ktype->release; 
@@ -1579,7 +1599,7 @@ static void __delete_thread(struct task_struct *t)
     }
 }
 
-struct task_struct * ct_add_thread(PKTHREAD id, char *name, BOOLEAN event, ULONG Tag)
+struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event, ULONG Tag)
 {
     struct task_struct *t;
 
@@ -1664,7 +1684,7 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 {
     // DRBD_DOC: CRYPTO 개선. sha1, md5
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
-	return 1; 
+	return (void *)1;
 }
 
 #ifdef _WIN32_V9_REMOVELOCK
@@ -1814,7 +1834,7 @@ void generic_make_request(struct bio *bio)
 	}
 #endif
 
-	IoSetCompletionRoutine(newIrp, bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
 #ifdef _WIN32_V9_REMOVELOCK
@@ -2626,7 +2646,7 @@ void panic(char *msg)
 #ifdef _WIN32_EVENTLOG
 	WriteEventLogEntryData((ULONG) DEV_ERR_3003, 0, 0, 1, L"%S", msg);
 #endif
-	KeBugCheckEx(0xddbd, __FILE__, __func__, 0x12345678, 0xd8bdd8bd);
+	KeBugCheckEx(0xddbd, (ULONG_PTR)__FILE__, (ULONG_PTR)__func__, 0x12345678, 0xd8bdd8bd);
 }
 
 // [choi] 사용되는 곳 없음.

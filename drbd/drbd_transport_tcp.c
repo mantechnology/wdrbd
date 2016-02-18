@@ -61,7 +61,12 @@ struct buffer {
 struct drbd_tcp_transport {
 	struct drbd_transport transport; /* Must be first! */
 	struct mutex paths_mutex;
+#ifdef _WIN32_V9
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
+	
 	struct socket *stream[2];
 	struct buffer rbuf[2];
 };
@@ -276,6 +281,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 {
 #ifdef _WIN32
 	size_t iov_len = size;
+	char* DataBuffer = (char*)buf;
 #else
 	struct kvec iov;
 	struct msghdr msg;
@@ -313,12 +319,12 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #ifdef _WIN32
 #ifdef _WIN32_SEND_BUFFING
 		 // _dtt_send 는 dtt_connect 시점의 dtt_send_first_packet 에 의해서만 사용!! 송신버퍼링 적용 직전 임!!!
-		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
+		rv = Send(socket->sk, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
 #else
 #if 1 // 최초 연결 단계에서만 사용! stream 방향이 불필요
-		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, &tcp_transport->transport, 0);
+		rv = Send(socket->sk, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, &tcp_transport->transport, 0);
 #else // old V8 org
-		rv = Send(socket->sk, buf, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo);
+		rv = Send(socket->sk, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo);
         WDRBD_TRACE_RS("kernel_sendmsg(%d) socket(0x%p) iov_len(%d)\n", rv, socket, iov_len);
 #endif
 #endif
@@ -344,7 +350,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 			break;
 		sent += rv;
 #ifdef _WIN32 //기존 구현 유지
-		(char*)buf += rv;
+		DataBuffer += rv;
 		iov_len -= rv;
 #else
 		iov.iov_base += rv;
@@ -903,7 +909,7 @@ static void unregister_state_change(struct sock *sock, struct dtt_listener *list
 	write_unlock_bh(&sock->sk_callback_lock);
 #endif
 }
-
+#pragma warning (disable: 4706)
 static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **socket,
 				struct dtt_path **ret_path)
 {
@@ -941,12 +947,12 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 
 retry:
 #ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_XXX
-    atomic_set(&(transport->listening), 1);
+    atomic_set((LONG_PTR*)&(transport->listening), 1);
 	// WIN32_V9_PATCH_1_CHECK: waiter->wait 가 적절한가?
 	wait_event_interruptible_timeout(timeo, waiter->wait, 
 		(path = dtt_wait_connect_cond(transport)),
 			timeo);
-    atomic_set(&(transport->listening), 0);
+	atomic_set((LONG_PTR*)&(transport->listening), 0);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->wait,
 			(path = dtt_wait_connect_cond(transport)),
@@ -1169,7 +1175,7 @@ static void dtt_incoming_connection(struct sock *sock)
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext; //context 설정 dtt_listener 로...
 
     spin_lock(&listener->listener.waiters_lock);
-    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
+    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
     struct dtt_path * path = container_of(waiter, struct dtt_path, waiter);
 
     if (path)
@@ -1298,7 +1304,7 @@ dtt_inspect_incoming(
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
 
     spin_lock(&listener->listener.waiters_lock);
-    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, RemoteAddress);
+	struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
     if (!waiter || !atomic_read(&waiter->transport->listening))
     {
         action = WskInspectReject;
@@ -1326,7 +1332,7 @@ dtt_abort_inspect_incoming(
     return STATUS_SUCCESS;
 }
 
-const WSK_CLIENT_LISTEN_DISPATCH dispatch = {
+WSK_CLIENT_LISTEN_DISPATCH dispatch = {
 	dtt_incoming_connection,
     dtt_inspect_incoming,       // WskInspectEvent is required only if conditional-accept is used.
     dtt_abort_inspect_incoming  // WskAbortEvent is required only if conditional-accept is used.
@@ -1385,9 +1391,9 @@ static int dtt_create_listener(struct drbd_transport *transport,
     }
 #ifdef _WIN32_V9_IPV6
 	if (my_addr.ss_family == AF_INET6) {
-		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, (PVOID*)listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	} else {
-		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, (PVOID*)listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	}
 #else 
 	s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
@@ -1549,6 +1555,10 @@ static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, 
 
 	return container_of(drbd_path, struct dtt_path, path);
 }
+#ifdef _WIN32_V9
+extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+#endif
 
 static int dtt_connect(struct drbd_transport *transport)
 {
@@ -1566,9 +1576,8 @@ static int dtt_connect(struct drbd_transport *transport)
 	int timeout, err;
 	bool ok;
 #ifdef _WIN32_V9
-	extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-	extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
 	char sbuf[128], dbuf[128];
+	ok = FALSE;
 #endif
 	dsocket = NULL;
 	csocket = NULL;
@@ -1594,10 +1603,10 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32_V9_IPV6
 			// WDRBD_TRACE_CO
 			if (path->path.my_addr.ss_family == AF_INET6) {
-				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip6(sbuf, &path->path.my_addr), get_ip6(dbuf, &path->path.peer_addr));
+				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip6(sbuf, (struct sockaddr_in6*)&path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&path->path.peer_addr));
 			}
 			else {
-				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip4(sbuf, &path->path.my_addr), get_ip4(dbuf, &path->path.peer_addr));
+				WDRBD_TRACE_IP4("WDRBD_TEST: dtt_connect: path: %s -> %s.\n", get_ip4(sbuf, (struct sockaddr_in*)&path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&path->path.peer_addr));
 			}
 			// WDRBD_TRACE_CO
 #else
@@ -1617,9 +1626,9 @@ static int dtt_connect(struct drbd_transport *transport)
 	{//
 #ifdef _WIN32_V9_IPV6
 		if (drbd_path->my_addr.ss_family == AF_INET6) {
-			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip6(sbuf, &drbd_path->my_addr), get_ip6(dbuf, &drbd_path->peer_addr));
+			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip6(sbuf, (struct sockaddr_in6*)&drbd_path->my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&drbd_path->peer_addr));
 		} else {
-			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip4(sbuf, &drbd_path->my_addr), get_ip4(dbuf, &drbd_path->peer_addr));
+			WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip4(sbuf, (struct sockaddr_in*)&drbd_path->my_addr), get_ip4(dbuf, (struct sockaddr_in*)&drbd_path->peer_addr));
 		}
 #else
 		WDRBD_TRACE_IP4("WDRBD_TEST: drbd_path: %s -> %s \n", get_ip4(sbuf, &drbd_path->my_addr), get_ip4(dbuf, &drbd_path->peer_addr));
@@ -1630,9 +1639,9 @@ static int dtt_connect(struct drbd_transport *transport)
 	{//
 #ifdef _WIN32_V9_IPV6
 		if(connect_to_path->path.my_addr.ss_family == AF_INET6) {
-			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 		} else {
-			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+			WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 		}
 #else
 		WDRBD_TRACE_IP4("WDRBD_TEST: connect_to_path: %s -> %s \n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
@@ -1731,9 +1740,9 @@ static int dtt_connect(struct drbd_transport *transport)
 				// _WIN32_V9_PATCH_1: 추후정리
 #ifdef _WIN32_V9_IPV6
 				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
-					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 				} else {
-					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+					WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 				}
 #else
 				WDRBD_TRACE_IP4("WDRBD_TEST: Connected: %s -> %s\n", get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
@@ -1801,9 +1810,9 @@ retry:
 			{
 #ifdef _WIN32_V9_IPV6
 				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
-					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip6(sbuf, &connect_to_path->path.my_addr), get_ip6(dbuf, &connect_to_path->path.peer_addr));
+					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 				} else {
-					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
+					WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 				}				
 #else
 				WDRBD_TRACE_IP4("WDRBD_TEST:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, &connect_to_path->path.my_addr), get_ip4(dbuf, &connect_to_path->path.peer_addr));
@@ -1876,14 +1885,14 @@ randomize:
 
 #ifdef _WIN32
     LONG InputBuffer = 1;
-    status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL);
+    status = ControlSocket(dsocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
         goto out;
     }
     // _WIN32_CHECK_6 // data socket 에 대해선 옵션을 설정하는데, 컨트롤소켓(메타소켓)에 대해선 옵션을 설정 안하는 이유? //JHKIM: 함께 해줘야 할 듯.
     // kmpak. 필요함
-    status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, NULL, NULL, NULL);
+    status = ControlSocket(csocket->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
         goto out;
@@ -2282,6 +2291,9 @@ static void __exit dtt_cleanup(void)
 }
 
 #ifdef _WIN32_SEND_BUFFING
+
+extern VOID NTAPI send_buf_thread(PVOID p);
+
 static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 {
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
@@ -2314,7 +2326,6 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 
 				if ((attr->bab = create_ring_buffer(tcp_transport->stream[i]->name, size)) != NULL)
 				{
-					extern VOID NTAPI send_buf_thread(PVOID p);
 					KeInitializeEvent(&attr->send_buf_kill_event, SynchronizationEvent, FALSE);
 					KeInitializeEvent(&attr->send_buf_killack_event, SynchronizationEvent, FALSE);
 					KeInitializeEvent(&attr->send_buf_thr_start_event, SynchronizationEvent, FALSE);
@@ -2329,7 +2340,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 					}
 
 					// wait send buffering thread start...
-					KeWaitForSingleObject(&attr->send_buf_thr_start_event, SynchronizationEvent, Executive, KernelMode, FALSE, NULL);
+					KeWaitForSingleObject(&attr->send_buf_thr_start_event, Executive, KernelMode, FALSE, NULL);
 				}
 				else
 				{

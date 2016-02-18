@@ -132,7 +132,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     PDEVICE_OBJECT      ReferenceDeviceObject = NULL;
     PVOLUME_EXTENSION   VolumeExtension = NULL;
     ULONG               deviceType = 0;
-    static BOOLEAN      IsEngineStart = FALSE;
+	static volatile LONG      IsEngineStart = FALSE;
 
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
@@ -259,12 +259,13 @@ mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return mvolSendToNextDriver(DeviceObject, Irp);
 }
 
+void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
+
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
-    void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
     drbd_cleanup_by_win_shutdown(VolumeExtension);
 
     return mvolSendToNextDriver(DeviceObject, Irp);
@@ -435,6 +436,9 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
 }
 
+extern int seq_file_idx;
+extern int drbd_seq_show(struct seq_file *seq, void *v);
+
 NTSTATUS
 mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
@@ -447,8 +451,6 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     {
         case IOCTL_MVOL_GET_PROC_DRBD:
         {
-            extern int seq_file_idx;
-            extern int drbd_seq_show(struct seq_file *seq, void *v);
             PMVOL_VOLUME_INFO p = NULL;
 
             p = (PMVOL_VOLUME_INFO)Irp->AssociatedIrp.SystemBuffer;

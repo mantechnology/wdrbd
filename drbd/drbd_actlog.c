@@ -549,8 +549,11 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 		device->al_tr_cycle = 0;
 
 	sector = al_tr_number_to_on_disk_sector(device);
-
+#ifdef _WIN32_V9
+	crc = crc32c(0, (uint8_t*)buffer, 4096);
+#else
 	crc = crc32c(0, buffer, 4096);
+#endif
 	buffer->crc32c = cpu_to_be32(crc);
 
 	if (drbd_bm_write_hinted(device))

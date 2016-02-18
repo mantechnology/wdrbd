@@ -27,6 +27,7 @@
 #define _DRBD_INT_H
 
 #ifdef _WIN32
+#pragma warning(disable : 4221 4706)
 #include "stddef.h"
 #include "windows/types.h"
 #include "linux-compat/list.h"
@@ -686,7 +687,11 @@ struct drbd_epoch {
 	unsigned int barrier_nr;
 	atomic_t epoch_size; /* increased on every request added. */
 	atomic_t active;     /* increased on every req. added, and dec on every finished. */
+#ifdef _WIN32_V9	
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
 };
 
 /* drbd_epoch flag bits */
@@ -1145,8 +1150,11 @@ struct drbd_resource {
 	u64 dagtag_sector;		/* Protected by req_lock.
 					 * See also dagtag_sector in
 					 * &drbd_request */
+#ifdef _WIN32_V9	
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
-
+#endif
 	struct list_head transfer_log;	/* all requests not yet fully processed */
 
 	struct list_head peer_ack_list;  /* requests to send peer acks for */
@@ -1212,8 +1220,12 @@ struct drbd_connection {
 	struct idr peer_devices;	/* volume number to peer device mapping */
 	enum drbd_conn_state cstate[2];
 	enum drbd_role peer_role[2];
-
+#ifdef _WIN32_V9
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
+	
 	enum drbd_fencing_policy fencing_policy;
 	wait_queue_head_t ping_wait;	/* Woken upon reception of a ping, and a state change */
 
@@ -1385,8 +1397,12 @@ struct drbd_peer_device {
 	sector_t max_size;  /* maximum disk size allowed by peer */
 	int bitmap_index;
 	int node_id;
-
+#ifdef _WIN32_V9
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
+	
 
 	enum drbd_repl_state start_resync_side;
 	enum drbd_repl_state last_repl_state; /* What we received from the peer */
@@ -2334,8 +2350,9 @@ extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
 void __update_timing_details(
 		struct drbd_thread_timing_details *tdp,
 		unsigned int *cb_nr,
-		void *cb,
-		const char *fn, const unsigned int line);
+		void* cb,
+		const char *fn, 
+		const unsigned int line);
 
 #define update_sender_timing_details(c, cb) \
 	__update_timing_details(c->s_timing_details, &c->s_cb_nr, cb, __func__ , __LINE__ )
@@ -3293,7 +3310,11 @@ static inline void drbd_kick_lo(struct drbd_device *device)
 struct bm_extent {
 	int rs_left; /* number of bits set (out of sync) in this extent. */
 	int rs_failed; /* number of failed resync requests in this extent. */
+#ifdef _WIN32_V9
+	ULONG_PTR flags;
+#else
 	unsigned long flags;
+#endif
 	struct lc_element lce;
 };
 

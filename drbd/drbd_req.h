@@ -284,7 +284,7 @@ enum drbd_req_state_bits {
 #define MR_READ        2
 
 #ifdef _WIN32 //DV
-static inline int drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
+static inline bool drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
 #else
 static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
 #endif
@@ -295,7 +295,7 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 #ifdef _WIN32
     if (!bio) // DV
     {
-        return NULL;
+        return FALSE;
     }
 	bio->win32_page_buf = bio_src->win32_page_buf;
 #endif
@@ -305,8 +305,9 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 	bio->bi_private  = req;
 	bio->bi_end_io   = drbd_request_endio;
 	bio->bi_next     = NULL;
+
 #ifdef _WIN32 // DV
-    return 1;
+    return TRUE;
 #endif
 }
 

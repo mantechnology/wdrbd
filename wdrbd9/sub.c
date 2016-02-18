@@ -79,6 +79,8 @@ mvolStartDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return status;
 }
 
+extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
+
 NTSTATUS
 mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
@@ -115,7 +117,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
-	extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
+
     struct drbd_device *device;
     if (VolumeExtension->Active)
     {
@@ -531,7 +533,7 @@ char * printk_str(const char *fmt, ...)
 
 	return buf;
 }
-
+#pragma warning (disable : 4212)
 void _printk(const char * func, const char * format, ...)
 {
     int ret = 0;
@@ -680,18 +682,18 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		/* Get next data item */
         if (!wcscmp(l_FormatStr, L"%S")) {
 			l_CurPtrDataItem = va_arg(l_Argptr, PCHAR);
-            ret = _char_to_wchar(l_Ptr, l_BufSize >> 1, l_CurPtrDataItem);
+            ret = _char_to_wchar((wchar_t*)l_Ptr, l_BufSize >> 1, l_CurPtrDataItem);
 		}
 		else if (!wcscmp(l_FormatStr, L"%s")) {
 			l_CurPtrDataItem = va_arg(l_Argptr, PWCHAR);
 			/* convert to string */
-            swprintf_s(l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
+			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
             //status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
 		}
 		else {
 			l_CurDataItem = va_arg(l_Argptr, int);
 			/* convert to string */
-            swprintf_s(l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
+			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
 			//status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR) l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
 		}
 

@@ -86,6 +86,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
 #ifdef _WIN32  // _WIN32_V9 : STATIC -> static
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+extern void nl_policy_init_by_manual(void);
 #else
 static void md_sync_timer_fn(unsigned long data);
 #endif
@@ -2480,7 +2481,12 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	void *digest_out = NULL;
 	unsigned int dp_flags = 0;
 	int digest_size = 0;
+#ifdef _WIN32_V9
+	int err = 0;
+#else
 	int err;
+#endif
+	
 	const unsigned s = drbd_req_state_by_peer_device(req, peer_device);
 
 	if (req->master_bio->bi_rw & DRBD_REQ_DISCARD) {
@@ -2532,7 +2538,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	}
 
 	if (digest_size && digest_out) // _WIN32_V9_PATCH_2:JHKIM: csum관련 로직이 변경됨. 확인필수!!
-		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
+		drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest_out);
 
 	if (wsame) {
 #ifndef _WIN32_V9
@@ -3337,7 +3343,7 @@ static void drbd_cleanup(void)
 #ifdef _WIN32_V9 // V9_XXX [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
-    unsigned int i;
+    int i;
     struct drbd_device *device;
 
     struct device_list {
@@ -4496,7 +4502,6 @@ static int __init drbd_init(void)
 {
 	int err;
 #ifdef _WIN32
-	extern void nl_policy_init_by_manual(void);
 
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock

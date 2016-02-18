@@ -11,7 +11,7 @@
 
 static LIST_HEAD(transport_classes);
 #ifdef _WIN32_V9
-//struct semaphore transport_classes_lock; // 전역??
+extern int __init dtt_initialize(void);
 KSPIN_LOCK	transport_classes_lock;	//spinlock 으로 포팅.
 #else
 static DECLARE_RWSEM(transport_classes_lock);
@@ -94,7 +94,6 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 		// 드라이버 사용안함!
 		// 드라이버 로드 요청은 무시하고 직접 초기화, 이 작업으로 drbd_transport_ops 사용가능.
 		// 최종 버전에서는 class 부분을 통째로 무시해도 될 듯
-		extern int __init dtt_initialize(void);
 		dtt_initialize();
 #else
 		request_module("drbd_transport_%s", name);
@@ -209,6 +208,7 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection,
 #ifdef _WIN32_V9_PATCH_1
 	//JHKIM: 변경되었음. 재확인 필요 
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)addr)) {
 #if 0 // V8 org 참고
 	struct drbd_path *path;
 #ifdef _WIN32
@@ -225,8 +225,9 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection,
 #endif // V8 org
 #else
 	list_for_each_entry(listener, &resource->listeners, list) {
-#endif
 		if (addr_and_port_equal(&listener->listen_addr, addr)) {
+#endif
+		
 			kref_get(&listener->kref);
 			return listener;
 		}
@@ -299,8 +300,11 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 {
 	struct drbd_resource *resource;
 	struct drbd_listener *listener;
-
+#ifdef _WIN32_V9
+	listener = (struct drbd_listener*)xchg((LONG_PTR*)&waiter->listener, (LONG_PTR)NULL);
+#else
 	listener = xchg(&waiter->listener, NULL);
+#endif
 	if (!listener)
 		return;
 
@@ -318,6 +322,11 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 	spin_unlock_bh(&resource->listeners_lock);
 	kref_put(&listener->kref, drbd_listener_destroy);
 }
+
+#ifdef _WIN32_V9_IPV6
+extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+#endif
 
 #ifdef _WIN32_V9
 struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, struct sockaddr_storage_win *addr)
@@ -339,13 +348,11 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 
 #ifdef _WIN32_V9_IPV6
 			// WDRBD_TRACE_CO
-			extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-			extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
 			char sbuf[128], dbuf[128];
 			if (path->peer_addr.ss_family == AF_INET6) {
-				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip6(sbuf, &path->peer_addr), get_ip6(dbuf, addr));
+				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip6(sbuf, (struct sockaddr_in6*)&path->peer_addr), get_ip6(dbuf, (struct sockaddr_in6*)addr));
 			} else {
-				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, &path->peer_addr), get_ip4(dbuf, addr));
+				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&path->peer_addr), get_ip4(dbuf, (struct sockaddr_in*)addr));
 			}
 			// WDRBD_TRACE_CO
 #else

@@ -2,6 +2,7 @@
 #define __DRBD_INTERVAL_H
 
 #ifdef _WIN32
+#pragma warning(disable : 4067)
 #include "windows/types.h"
 #include "linux-compat/rbtree.h"
 #define inline __inline
