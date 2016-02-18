@@ -27,7 +27,7 @@ struct _send_req {
 struct ring_buffer {
 	char *name;
 	char *mem;
-	ULONGLONG length;
+	unsigned int length;
 	unsigned int read_pos;
 	unsigned int write_pos;
 	struct mutex cs;
@@ -53,7 +53,7 @@ struct _buffering_attr {
 
 typedef struct ring_buffer  ring_buffer;
 
-extern ring_buffer *create_ring_buffer(char *name, ULONGLONG length);
+extern ring_buffer *create_ring_buffer(char *name, unsigned int length);
 extern void destroy_ring_buffer(ring_buffer *ring);
 extern unsigned int get_ring_buffer_size(ring_buffer *ring);
 //extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
