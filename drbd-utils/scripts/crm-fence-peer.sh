@@ -101,7 +101,7 @@ fence_peer_init()
 # shoot it, just to be sure.
 #
 # --dc-timeout is how long we try to contact a DC before we give up.
-# This is neccessary, because placing the constraint will fail (with some
+# This is necessary, because placing the constraint will fail (with some
 # internal timeout) if no DC was available when we request the constraint.
 # Which is likely if the DC crashed. Then the surviving DRBD Primary needs
 # to wait for a new DC to be elected. Usually such election takes only
@@ -130,8 +130,8 @@ fence_peer_init()
 #
 #       If peer is still reachable according to the cib,
 #	we first poll the cib/try to confirm with crmadmin,
-#	until either crmadim confirms reachability, timeout has elapsed,
-#	or the peer becomes definetely unreachable.
+#	until either crmadmin confirms reachability, timeout has elapsed,
+#	or the peer becomes definitely unreachable.
 #
 #	This gives STONITH the chance to kill us.
 #	With "fencing resource-and-stontith;" this protects us against
@@ -172,8 +172,8 @@ fence_peer_init()
 #	without doing additional waiting.  If the peer is still reachable, we
 #	place the constraint - if the peer had better data, it should have a
 #	higher master score, and we should not have been asked to become
-#	primary.  If the peer is not reachable, we don't do anything, and drbd
-#	will refuse to be promoted. This is neccessary to avoid problems
+#	primary.  If the peer is not reachable, we don't do anything, and DRBD
+#	will refuse to be promoted. This is necessary to avoid problems
 #	With data diversion, in case this "crash" was due to a STONITH operation,
 #	maybe the reboot did not fix our cluster communications!
 #
@@ -213,6 +213,21 @@ check_cluster_properties()
 	crm_is_not_false $stonith_enabled && stonith_enabled=true || stonith_enabled=false
 }
 
+
+#
+# In case this is a two-node cluster (still common with
+# DRBD clusters) it does not have real quorum.
+# If it is configured to do STONITH, and reboot,
+# and after reboot that STONITHed node cluster comm is
+# still broken, it will shoot the still online node,
+# and try to go online with stale data.
+# Exactly what this "fence" handler should prevent.
+# But setting constraints in a cluster partition with
+# "no-quorum-policy=ignore" will usually succeed.
+#
+# So we need to differentiate between node reachable or
+# not, and DRBD "Consistent" or "UpToDate".
+#
 try_place_constraint()
 {
 	local peer_state
@@ -230,15 +245,13 @@ try_place_constraint()
 
 	set_states_from_proc_drbd
 	: == DEBUG == DRBD_peer=${DRBD_peer[*]} ===
-	case "${DRBD_peer[*]}" in
-	*Secondary*|*Primary*)
-		# WTF? We are supposed to fence the peer,
-		# but the replication link is just fine?
-		echo WARNING "peer is not Unknown, did not place the constraint!"
+	: == DEBUG == DRBD_pdsk=${DRBD_pdsk[*]} ===
+	if $DRBD_pdsk_all_uptodate ; then
+		echo WARNING "All peer disks are UpToDate! Did not place the constraint."
 		rc=0
 		return
-		;;
-	esac
+	fi
+
 	: == DEBUG == CTS_mode=$CTS_mode ==
 	: == DEBUG == DRBD_disk_all_consistent=$DRBD_disk_all_consistent ==
 	: == DEBUG == DRBD_disk_all_uptodate=$DRBD_disk_all_uptodate ==
@@ -361,12 +374,7 @@ drbd_peer_fencing()
 	get_cib_xml -Ql || return
 	fence_peer_init || return
 
-	case $1 in
-	fence)
-
-		local startup_fencing stonith_enabled
-		check_cluster_properties
-
+	if [[ $1 = fence ]] || $unfence_only_if_owner_match ; then
 		if [[ $fencing_attribute = "#uname" ]]; then
 			fencing_value=$HOSTNAME
 		elif ! fencing_value=$(crm_attribute -Q -t nodes -n $fencing_attribute 2>/dev/null); then
@@ -380,22 +388,16 @@ drbd_peer_fencing()
     <expression attribute=\"$fencing_attribute\" operation=\"ne\" value=\"$fencing_value\" id=\"$id_prefix-expr-$master_id\"/>
   </rule>
 </rsc_location>"
+	fi
+
+	case $1 in
+	fence)
+
+		local startup_fencing stonith_enabled
+		check_cluster_properties
+
 		if [[ -z $have_constraint ]] ; then
 			# try to place it.
-
-			# interessting:
-			# In case this is a two-node cluster (still common with
-			# drbd clusters) it does not have real quorum.
-			# If it is configured to do stonith, and reboot,
-			# and after reboot that stonithed node cluster comm is
-			# still broken, it will shoot the still online node,
-			# and try to go online with stale data.
-			# Exactly what this "fence" hanler should prevent.
-			# But setting contraints in a cluster partition with
-			# "no-quorum-policy=ignore" will usually succeed.
-			#
-			# So we need to differentiate between node reachable or
-			# not, and DRBD "Consistent" or "UpToDate".
 
 			try_place_constraint && return
 
@@ -443,12 +445,39 @@ drbd_peer_fencing()
 		;;
 	unfence)
 		if [[ -n $have_constraint ]]; then
-			# remove it based on that id
-			remove_constraint
+			set_states_from_proc_drbd
+			if $DRBD_disk_all_uptodate && $DRBD_pdsk_all_uptodate; then
+				if $unfence_only_if_owner_match && [[ "$have_constraint" != "$(set +x; echo "$new_constraint" |
+					sed_rsc_location_suitable_for_string_compare "$id_prefix-$master_id")" ]]
+				then
+					echo WARNING "Constraint owner does not match, leaving constraint in place."
+				else
+					# try to remove it based on that xml-id
+					remove_constraint && echo INFO "Removed constraint '$id_prefix-$master_id'"
+				fi
+			else
+				local w="My"
+				$DRBD_disk_all_uptodate && w="Peer's"
+				echo WARNING "$w disk(s) are NOT all UpToDate, leaving constraint in place."
+				return 1
+			fi
 		else
+			$quiet || echo "No constraint in place, nothing to do."
 			return 0
 		fi
 	esac
+}
+
+double_check_after_fencing()
+{
+	set_states_from_proc_drbd
+	: == DEBUG == DRBD_peer=${DRBD_peer[*]} ===
+	: == DEBUG == DRBD_pdsk=${DRBD_pdsk[*]} ===
+	if $DRBD_pdsk_all_uptodate ; then
+		echo WARNING "All peer disks are UpToDate (again), trying to remove the constraint again."
+		remove_constraint && drbd_fence_peer_exit_code=1 rc=0
+		return
+	fi
 }
 
 guess_if_pacemaker_will_fence()
@@ -699,7 +728,7 @@ check_peer_node_reachable()
 
 set_states_from_proc_drbd()
 {
-	local IFS line lines i disk
+	local IFS line lines i disk pdsk
 	# DRBD_MINOR exported by drbdadm since 8.3.3
 	[[ $DRBD_MINOR ]] || DRBD_MINOR=$(drbdadm ${DRBD_CONF:+ -c "$DRBD_CONF"} sh-minor $DRBD_RESOURCE) || return
 
@@ -711,14 +740,14 @@ set_states_from_proc_drbd()
 	# We must not recurse into netlink,
 	# this may be a callback triggered by "drbdsetup primary".
 	# grep /proc/drbd instead
-	# This magic does not work, if 
-	#
 
 	DRBD_peer=()
 	DRBD_role=()
 	DRBD_disk=()
+	DRBD_pdsk=()
 	DRBD_disk_all_uptodate=true
 	DRBD_disk_all_consistent=true
+	DRBD_pdsk_all_uptodate=true
 
 	IFS=$'\n'
 	lines=($(sed -nre "/^ *$DRBD_MINOR: cs:/ { s/:/ /g; p; }" /proc/drbd))
@@ -729,8 +758,10 @@ set_states_from_proc_drbd()
 		set -- $line
 		DRBD_peer[i]=${5#*/}
 		DRBD_role[i]=${5%/*}
+		pdsk=${7#*/}
 		disk=${7%/*}
 		DRBD_disk[i]=${disk:-Unconfigured}
+		DRBD_pdsk[i]=${pdsk:-DUnknown}
 		case $disk in
 		UpToDate) ;;
 		Consistent)
@@ -739,9 +770,11 @@ set_states_from_proc_drbd()
 			DRBD_disk_all_uptodate=false
 			DRBD_disk_all_consistent=false ;;
 		esac
+		[[ $pdsk != UpToDate ]] && DRBD_pdsk_all_uptodate=false
 		let i++
 	done
 	if (( i = 0 )) ; then
+		DRBD_pdsk_all_uptodate=false
 		DRBD_disk_all_uptodate=false
 		DRBD_disk_all_consistent=false
 	fi
@@ -779,11 +812,15 @@ fi
 
 # clean environment just in case.
 unset fencing_attribute id_prefix timeout dc_timeout unreachable_peer_is
+unset flock_timeout flock_required lock_dir lock_file
+quiet=false
+unfence_only_if_owner_match=false
 CTS_mode=false
 suicide_on_failure_if_primary=false
 
 # poor mans command line argument parsing,
 # allow for command line overrides
+set -- "$@" $OCF_RESKEY_unfence_extra_args
 while [[ $# != 0 ]]; do
 	case $1 in
 	--logfacility=*)
@@ -842,6 +879,36 @@ while [[ $# != 0 ]]; do
 		dc_timeout=$2
 		shift
 		;;
+	--quiet)
+		quiet=true
+		;;
+	--unfence-only-if-owner-match)
+		unfence_only_if_owner_match=true
+		;;
+	--flock-required)
+		flock_required=true
+		;;
+	--flock-timeout=*)
+		flock_timeout=${1#*=}
+		;;
+	--flock-timeout)
+		flock_timeout=$2
+		shift
+		;;
+	--lock-dir=*)
+		lock_dir=${1#*=}
+		;;
+	--lock-dir)
+		lock_dir=$2
+		shift
+		;;
+	--lock-file=*)
+		lock_file=${1#*=}
+		;;
+	--lock-file)
+		lock_file=$2
+		shift
+		;;
 	--net-hickup=*|--network-hickup=*)
 		net_hickup_time=${1#*=}
 		;;
@@ -871,6 +938,25 @@ while [[ $# != 0 ]]; do
 	esac
 	shift
 done
+
+#
+# Sanitize lock_file and lock_dir
+#
+if [[ ${lock_dir:=/var/lock/drbd} != /* ]] ; then
+	echo WARNING "lock_dir needs to be an absolute path, not [$lock_dir]; using default."
+	lock_dir=/var/lock/drbd
+fi
+case $lock_file in
+"")	lock_file=$lock_dir/fence.${DRBD_RESOURCE//\//_} ;;
+NONE)	: ;;
+/*)	: ;;
+*)	lock_file=$lock_dir/$lock_file ;;
+esac
+if [[ $lock_file != NONE && $lock_file != $lock_dir/* ]]; then
+	lock_dir=${lock_file%/*}; : ${lock_dir:=/}
+	: == DEBUG == "override: lock_dir=$lock_dir to match lock_file=$lock_file"
+fi
+
 # DRBD_RESOURCE: from environment
 # master_id: parsed from cib
 
@@ -884,6 +970,11 @@ done
 : "== net_hickup_time     == ${net_hickup_time:=0}"
 : "== timeout             == ${timeout:=90}"
 : "== dc_timeout          == ${dc_timeout:=20}"
+: "== flock_timeout       == ${flock_timeout:=120}"
+: "== flock_required      == ${flock_required:=false}"
+: "== lock_file           == ${lock_file}"
+: "== lock_dir            == ${lock_dir}"
+
 
 # check envars normally passed in by drbdadm
 # TODO DRBD_CONF is also passed in.  we may need to use it in the
@@ -912,16 +1003,35 @@ fi
 # make sure it contains what we expect
 HOSTNAME=$(uname -n)
 
-echo "invoked for $DRBD_RESOURCE${master_id:+" (master-id: $master_id)"}"
+$quiet || echo "invoked for $DRBD_RESOURCE${master_id:+" (master-id: $master_id)"}"
 
 # to be set by drbd_peer_fencing()
 drbd_fence_peer_exit_code=1
+
+got_flock=false
+if [[ $lock_file != NONE ]] ; then
+	test -d "$lock_dir"			||
+		mkdir -p -m 0700 "$lock_dir"	||
+		echo WARNING "mkdir -p $lock_dir failed"
+
+	if exec 9>"$lock_file" && flock --exclusive --timeout $flock_timeout 9
+	then
+		got_flock=true
+	else
+		echo WARNING "Could not get flock on $lock_file"
+		$flock_required && exit 1
+
+		# If I cannot get the lock file, I can at least still try to place the constraint
+	fi
+	: == DEBUG == $SECONDS seconds, got_flock=$got_flock ==
+fi
 
 case $PROG in
     crm-fence-peer.sh)
 	if drbd_peer_fencing fence; then
 		: == DEBUG == $cibadmin_invocations cibadmin calls ==
 		: == DEBUG == $SECONDS seconds ==
+		[[ $drbd_fence_peer_exit_code = [347] ]] && double_check_after_fencing
 		exit $drbd_fence_peer_exit_code
 	fi
 	;;
@@ -931,7 +1041,7 @@ case $PROG in
 		: == DEBUG == $SECONDS seconds ==
 		exit 0
 	fi
-esac
+esac 9>&- # Don't want to "leak" the lock fd to child processes.
 
 # 1: unexpected error
 exit 1

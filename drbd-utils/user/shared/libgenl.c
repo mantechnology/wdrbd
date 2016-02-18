@@ -212,8 +212,9 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 		iov->iov_len = 8192;
 		iov->iov_base = malloc(iov->iov_len);
 	}
-	flags = MSG_PEEK; 
-retry: 
+
+	flags = MSG_PEEK;
+retry:
 	pfd.fd = s->s_fd;
 	pfd.events = POLLIN;
 	if ((poll(&pfd, 1, timeout_ms) != 1) || !(pfd.revents & POLLIN))
@@ -224,15 +225,15 @@ retry:
 	 * chance to realloc before the rest of the datagram is discarded.
 	 */
 	n = recvmsg(s->s_fd, &msg, flags);
-    if (!n)
-        return 0;
+	if (!n)
+		return 0;
 	else if (n < 0) {
 		if (errno == EINTR) {
 			dbg(3, "recvmsg() returned EINTR, retrying\n");
 #ifdef _WIN32
             return -EINTR;
 #else
-            goto retry;
+			goto retry;
 #endif
 		} else if (errno == EAGAIN) {
 			dbg(3, "recvmsg() returned EAGAIN, aborting\n");
@@ -275,7 +276,6 @@ retry:
 		goto retry;
 	}
 #endif
-
 	return n;
 }
 
