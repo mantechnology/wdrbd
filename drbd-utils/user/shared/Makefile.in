@@ -84,7 +84,7 @@ drbd_buildtag.c:
 		grep return $@ ;						\
 	fi ;									\
 	echo -e "\t\t\" build by $$USER@$$HOSTNAME, `date "+%F %T"`\";\n}";	\
-	mv --force $@.new $@
+	mv -f $@.new $@
 
 drbdmeta_scanner.c: drbdmeta_scanner.fl drbdmeta_parser.h
 	flex -s -odrbdmeta_scanner.c drbdmeta_scanner.fl
@@ -98,8 +98,16 @@ clean:
 
 distclean: clean
 
-install:
-	true
+install: ; @true
 
-uninstall:
-	true
+uninstall: ; @true
+
+.PHONY: install uninstall clean distclean
+../../configure:
+	@echo "please (re-)run ./autogen.sh with appropriate arguments"; exit 1
+../../config.status: ../../configure
+	@echo "please (re-)run ./configure with appropriate arguments"; exit 1
+Makefile.in: ;
+Makefile: Makefile.in ../../config.status
+	cd ../.. && ./config.status user/shared/Makefile
+
