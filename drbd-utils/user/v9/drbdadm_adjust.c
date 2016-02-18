@@ -212,11 +212,13 @@ static struct path *find_path_by_addrs(struct connection *conn, struct path *pat
 	return NULL;
 }
 
-static int adjust_paths(const struct cfg_ctx *ctx, struct connection *running_conn)
+static bool adjust_paths(const struct cfg_ctx *ctx, struct connection *running_conn)
 {
 	struct connection *configured_conn = ctx->conn;
 	struct path *configured_path, *running_path;
 	struct cfg_ctx tmp_ctx = *ctx;
+	int nr_running = 0;
+	bool del_path = false;
 
 	for_each_path(configured_path, &configured_conn->paths) {
 		running_path = find_path_by_addrs(running_conn, configured_path);
@@ -229,13 +231,22 @@ static int adjust_paths(const struct cfg_ctx *ctx, struct connection *running_co
 	}
 
 	for_each_path(running_path, &running_conn->paths) {
+		nr_running++;
 		if (!running_path->adj_seen) {
 			tmp_ctx.path = running_path;
 			schedule_deferred_cmd(&del_path_cmd, &tmp_ctx, CFG_NET_PREP_DOWN);
+			del_path = true;
 		}
 	}
 
-	return 1;
+	if (nr_running == 1 && del_path) {
+		/* Deleting the last path fails is the connection is C_CONNECTING */
+		if (!running_conn->is_standalone)
+			schedule_deferred_cmd(&disconnect_cmd, &tmp_ctx, CFG_NET_DISCONNECT);
+		return true;
+	}
+
+	return false;
 }
 
 static struct connection *matching_conn(struct connection *pattern, struct connections *pool)
@@ -364,7 +375,7 @@ static int proxy_reconf(const struct cfg_ctx *ctx, struct connection *running_co
 	int reconn = 0;
 	struct connection *conn = ctx->conn;
 	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
-	struct path *running_path = STAILQ_FIRST(&running_conn->paths); /* multiple paths via proxy, later! */
+	struct path *running_path; /* multiple paths via proxy, later! */
 	struct d_option* res_o, *run_o;
 	unsigned long long v1, v2, minimum;
 	char *plugin_changes[MAX_PLUGINS], *cp, *conn_name;
@@ -378,6 +389,8 @@ static int proxy_reconf(const struct cfg_ctx *ctx, struct connection *running_co
 
 	if (!running_conn)
 		goto redo_whole_conn;
+
+	running_path = STAILQ_FIRST(&running_conn->paths); /* multiple paths via proxy, later! */
 
 	res_o = find_opt(&path->my_proxy->options, "memlimit");
 	run_o = find_opt(&running_path->my_proxy->options, "memlimit");
@@ -548,7 +561,7 @@ void compare_volume(struct d_volume *conf, struct d_volume *kern)
 		report_compare(1, "vol:%u minor differs: r=%u c=%u\n",
 			conf->vnr, kern->device_minor, conf->device_minor);
 
-	if (!disk_equal(conf, kern)) {
+	if (!disk_equal(conf, kern) || conf->adj_new_minor) {
 		conf->adj_attach = conf->disk != NULL;
 		conf->adj_detach = kern->disk != NULL;
 	}
@@ -681,8 +694,9 @@ void schedule_peer_device_options(const struct cfg_ctx *ctx)
 	} else if (!tmp_ctx.conn) {
 		STAILQ_FOREACH(peer_device, &tmp_ctx.vol->peer_devices, volume_link) {
 
-// ö			if (!peer_device->connection->my_address || !peer_device->connection->connect_to)
-//ö				continue;
+			if (!peer_device->connection->paths.stqh_first->my_address ||
+					!peer_device->connection->paths.stqh_first->connect_to)
+				continue;
 			if (STAILQ_EMPTY(&peer_device->pd_options))
 				continue;
 #ifdef _WIN32_V9
@@ -697,6 +711,17 @@ void schedule_peer_device_options(const struct cfg_ctx *ctx)
 		err("vol and conn set in schedule_peer_devices_options()!");
 		exit(E_THINKO);
 	}
+}
+
+static struct d_volume *matching_volume(struct d_volume *conf_vol, struct volumes *kern_head)
+{
+	struct d_volume *vol;
+
+	for_each_volume(vol, kern_head) {
+		if (vol->vnr == conf_vol->vnr)
+			return vol;
+	}
+	return NULL;
 }
 
 /*
@@ -863,7 +888,7 @@ int adm_adjust(const struct cfg_ctx *ctx)
 			if (new_path)
 				schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
 			else
-				adjust_paths(&tmp_ctx, running_conn);
+				connect |= adjust_paths(&tmp_ctx, running_conn);
 
 			if (connect)
 				schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
@@ -873,7 +898,7 @@ int adm_adjust(const struct cfg_ctx *ctx)
 
 		path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 		if (path->my_proxy && can_do_proxy)
-			proxy_reconf(ctx, running_conn);
+			proxy_reconf(&tmp_ctx, running_conn);
 	}
 
 
@@ -885,10 +910,16 @@ int adm_adjust(const struct cfg_ctx *ctx)
 	 * or is this just some attribute change? */
 	for_each_volume(vol, &ctx->res->me->volumes) {
 		struct cfg_ctx tmp_ctx = { .res = ctx->res, .vol = vol };
-		if (vol->adj_detach)
-			schedule_deferred_cmd(&detach_cmd, &tmp_ctx, CFG_DISK_PREP_DOWN);
-		if (vol->adj_del_minor)
-			schedule_deferred_cmd(&del_minor_cmd, &tmp_ctx, CFG_DISK_PREP_DOWN);
+		if (vol->adj_detach || vol->adj_del_minor) {
+			struct d_volume *kern_vol = matching_volume(vol, &running->me->volumes);
+			struct cfg_ctx k_ctx = tmp_ctx;
+			if (kern_vol != NULL)
+				k_ctx.vol = kern_vol;
+			if (vol->adj_detach)
+				schedule_deferred_cmd(&detach_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
+			if (vol->adj_del_minor)
+				schedule_deferred_cmd(&del_minor_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
+	        }
 		if (vol->adj_new_minor) {
 			schedule_deferred_cmd(&new_minor_cmd, &tmp_ctx, CFG_DISK_PREP_UP);
 			schedule_peer_device_options(&tmp_ctx);

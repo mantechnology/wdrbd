@@ -336,7 +336,7 @@ static struct adm_cmd secondary_cmd = {"secondary", adm_drbdsetup, ACF1_RESNAME 
 static struct adm_cmd invalidate_cmd = {"invalidate", adm_invalidate, ACF1_MINOR_ONLY };
 static struct adm_cmd invalidate_remote_cmd = {"invalidate-remote", adm_drbdsetup, ACF1_PEER_DEVICE .takes_long = 1};
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT};
-/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, ACF1_DEFNET .disk_required = 1};
+/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, ACF1_DEFAULT .disk_required = 1};
 static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd pause_sync_cmd = {"pause-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd resume_sync_cmd = {"resume-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
@@ -399,6 +399,8 @@ static struct adm_cmd khelper08_cmd = {"pri-lost", adm_khelper, ACF3_RES_HANDLER
 static struct adm_cmd khelper09_cmd = {"initial-split-brain", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper10_cmd = {"split-brain", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper11_cmd = {"out-of-sync", adm_khelper, ACF3_RES_HANDLER};
+static struct adm_cmd khelper12_cmd = {"unfence-peer", adm_khelper, ACF3_RES_HANDLER};
+
 
 static struct adm_cmd suspend_io_cmd = {"suspend-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
 static struct adm_cmd resume_io_cmd = {"resume-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
@@ -495,6 +497,7 @@ struct adm_cmd *cmds[] = {
 	&khelper09_cmd,
 	&khelper10_cmd,
 	&khelper11_cmd,
+	&khelper12_cmd,
 
 	&suspend_io_cmd,
 	&resume_io_cmd,
@@ -694,6 +697,7 @@ static char *drbd_cfg_stage_string[] = {
 	[CFG_DISK_PREP_DOWN] = "prepare disk",
 	[CFG_DISK_PREP_UP] = "prepare disk",
 	[CFG_DISK] = "adjust disk",
+	[CFG_NET_DISCONNECT] = "prepare net",
 	[CFG_NET_PREP_DOWN] = "prepare net",
 	[CFG_NET_PREP_UP] = "prepare net",
 	[CFG_NET] = "adjust net",
