@@ -533,7 +533,7 @@ char * printk_str(const char *fmt, ...)
 
 	return buf;
 }
-#pragma warning (disable : 4212)
+
 void _printk(const char * func, const char * format, ...)
 {
     int ret = 0;

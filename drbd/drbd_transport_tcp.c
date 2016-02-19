@@ -909,7 +909,7 @@ static void unregister_state_change(struct sock *sock, struct dtt_listener *list
 	write_unlock_bh(&sock->sk_callback_lock);
 #endif
 }
-#pragma warning (disable: 4706)
+
 static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **socket,
 				struct dtt_path **ret_path)
 {

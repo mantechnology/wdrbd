@@ -30,7 +30,7 @@
 #define __LITTLE_ENDIAN_BITFIELD
 
 #ifdef WINNT
-#pragma warning(disable : 4005 4018 4101 4115 4121 4127 4131 4152 4189 4200 4201 4204 4218 4242 4244 4245 4267 4389 4702)
+#pragma warning (disable : 4005 4018 4101 4115 4121 4127 4131 4152 4189 4200 4201 4204 4212 4218 4242 4244 4245 4267 4307 4389 4702 4706)
 /* warning disable list
 // drbd.h
 4005: macro redefinition
@@ -46,13 +46,16 @@
 4200: nonstandard extension used : zero-sized array in struct/union
 4201: nonstandard extension used : nameless struct/union
 4204: nonstandard extension used : non-constant aggregate initializer
+4212: nonstandard extension used : function declaration used ellipsis
 4218: nonstandard extension used : must specify at least a storage class or a type
 4242: '=' : conversion from 'sector_t' to 'long', possible loss of data
 4244: '=' : conversion from 'int' to 'uint8_t', possible loss of data
 4245: 'function' : conversion from 'int' to 'unsigned short', signed/unsigned mismatch
 4267: conversion from 'size_t' to '__u32', possible loss of data
+4307: integral constant overflow warning disable (about DRBD_SNDBUF_SIZE_MAX define)
 4389: '!=' : signed/unsigned mismatch
 4702: unreachable code
+4706: assignment within conditional expression
 
 //drbd_int.h
 4221: cannot be initialized using address of automatic variable
@@ -64,10 +67,7 @@
 //drbd_windows.h
 4100: unreferenced formal parameter
 4146: unary minus operator applied to unsigned type, result still unsigned
-
 */
-
-
 #endif
 
 #include "windows/types.h"

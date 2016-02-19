@@ -94,7 +94,6 @@ int fls(int x)
 	return r;
 }
 
-#pragma warning (disable : 4706)
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
 #ifdef _WIN32_V9
@@ -126,7 +125,6 @@ found:
 }
 #endif
 
-#pragma warning ( disable : 4706 )
 ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 {
 	const ULONG_PTR *p = addr + BITOP_WORD(offset);
@@ -629,9 +627,9 @@ struct request_queue *bdev_get_queue(struct block_device *bdev)
  }
 
 // bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
-#pragma warning ( disable : 4716 )
 struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
+	return NULL;
 }
 
 struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
@@ -2033,10 +2031,10 @@ void blk_queue_flush(struct request_queue *q, unsigned int flush)
 }
 
 // bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
-#pragma warning ( disable : 4716 )
 struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 {
 	// 방식이 다름
+	return NULL;
 }
 
 //

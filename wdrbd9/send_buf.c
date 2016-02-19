@@ -13,7 +13,6 @@
 #define LeaveCriticalSection mutex_unlock
 
 #define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB //(64*1024) // 64K // (1024*1024*10) // 10MB
-#pragma warning (disable : 4307) // integral constant overflow warning disable (about DRBD_SNDBUF_SIZE_MAX define)
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
