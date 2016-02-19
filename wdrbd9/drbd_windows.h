@@ -35,6 +35,7 @@
 #endif
 
 #define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
+#define _WIN32_V9_DW_663_LINBIT_PATCH 
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 

@@ -3875,6 +3875,11 @@ void __outdate_myself(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
+#ifdef _WIN32_V9_DW_663_LINBIT_PATCH
+	if (resource->role[NOW] == R_PRIMARY)
+		return;
+#endif
+
 #ifdef _WIN32_V9
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
