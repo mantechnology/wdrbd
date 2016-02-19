@@ -872,32 +872,6 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="install engine" id="132" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install engine">
-                <serializedBean>
-                  <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
-                      <void property="arguments">
-                        <array class="java.lang.String" length="1">
-                          <void index="0">
-                            <string>${installer:sys.installationDir}\bin</string>
-                          </void>
-                        </array>
-                      </void>
-                      <void property="executable">
-                        <object class="java.io.File">
-                          <string>bin/install.bat</string>
-                        </object>
-                      </void>
-                      <void property="workingDirectory">
-                        <object class="java.io.File">
-                          <string>bin</string>
-                        </object>
-                      </void>
-                    </object>
-                  </java>
-                </serializedBean>
-                <condition />
-              </action>
               <action name="install drbdService" id="422" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
@@ -1237,6 +1211,32 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
             <preActivation />
             <postActivation />
             <actions>
+              <action name="install engine" id="1841" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install engine">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="1">
+                          <void index="0">
+                            <string>${installer:sys.installationDir}\bin</string>
+                          </void>
+                        </array>
+                      </void>
+                      <void property="executable">
+                        <object class="java.io.File">
+                          <string>bin/install.bat</string>
+                        </object>
+                      </void>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
               <action name="start a DRBD daemon service if it is running." id="715" customizedId="" beanClass="com.install4j.runtime.beans.actions.services.StartServiceAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
@@ -1786,7 +1786,7 @@ return true;</string>
       <excludedComponents />
       <includedDownloadableComponents />
     </windows>
-    <windows name="Windows 64bit" id="572" customizedId="" mediaFileName="" installDir="drbd" overridePrincipalLanguage="false" jreBitType="64" runPostProcessor="false" postProcessor="" failOnPostProcessorError="false" useLegacyMediaFileIds="false" legacyMediaFileIds="" includedJRE="windows-amd64-1.8.0_66" manualJREEntry="false" bundleType="1" jreURL="" jreShared="false" directDownload="false" installOnlyIfNecessary="false" customInstallBaseDir="" contentFilesType="1" downloadURL="" verifyIntegrity="true">
+    <windows name="Windows 64bit" id="572" customizedId="" mediaFileName="" installDir="drbd" overridePrincipalLanguage="false" jreBitType="64" runPostProcessor="false" postProcessor="" failOnPostProcessorError="false" useLegacyMediaFileIds="false" legacyMediaFileIds="" includedJRE="windows-amd64-1.8.0_72" manualJREEntry="false" bundleType="1" jreURL="" jreShared="false" directDownload="false" installOnlyIfNecessary="false" customInstallBaseDir="" contentFilesType="1" downloadURL="" verifyIntegrity="true">
       <excludedLaunchers />
       <excludedBeans />
       <overriddenPrincipalLanguage id="en" customLocalizationFile="" />
