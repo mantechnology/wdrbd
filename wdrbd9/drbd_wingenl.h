@@ -22,7 +22,7 @@ static __inline int skb_is_nonlinear(const struct sk_buff *skb)
 
 static __inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
 {
-	return (size_t)skb->data + (size_t) skb->tail;
+	return (unsigned char*)((size_t)skb->data + (size_t) skb->tail);
 }
 
 /**
@@ -766,7 +766,8 @@ static __inline struct nlmsghdr *
 
 	if (NLMSG_ALIGN(size) - size != 0)
 	{
-		memset((int)nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
+		//memset( (int)nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size);
+		memset((unsigned char*)nlmsg_data(nlh) + len, 0, NLMSG_ALIGN(size) - size); // 기존 (int)로 형변환 이유?... 확인필요.
 	}
 
 	return nlh;
@@ -775,7 +776,7 @@ static __inline struct nlmsghdr *
 static __inline struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32 seq,
 	int type, int payload, int flags)
 {
-	return __nlmsg_put(skb, portid, seq, type, payload, flags);
+	return __nlmsg_put((void *)skb, portid, seq, type, payload, flags);
 }
 
 static __inline int nlmsg_end(struct sk_buff *skb, struct nlmsghdr *nlh)
@@ -786,7 +787,7 @@ static __inline int nlmsg_end(struct sk_buff *skb, struct nlmsghdr *nlh)
 
 static __inline int genlmsg_end(struct sk_buff *skb, void *hdr)
 {
-    return nlmsg_end(skb, (ULONG_PTR)hdr - GENL_HDRLEN - NLMSG_HDRLEN);
+    return nlmsg_end(skb, (void*)((ULONG_PTR)hdr - GENL_HDRLEN - NLMSG_HDRLEN) );
 }
 
 /**

@@ -42,15 +42,25 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 /* Update disk stats at start of I/O request */
 static void _drbd_start_io_acct(struct drbd_device *device, struct drbd_request *req)
 {
+#ifdef _WIN32_V9
 	generic_start_io_acct(bio_data_dir(req->master_bio), req->i.size >> 9,
-			      &device->vdisk->part0);
+		(struct hd_struct*)&device->vdisk->part0);
+#else
+	generic_start_io_acct(bio_data_dir(req->master_bio), req->i.size >> 9,
+		&device->vdisk->part0);
+#endif
 }
 
 /* Update disk stats when completing request upwards */
 static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *req)
 {
+#ifdef _WIN32_V9
 	generic_end_io_acct(bio_data_dir(req->master_bio),
-			    &device->vdisk->part0, req->start_jif);
+		(struct hd_struct*)&device->vdisk->part0, req->start_jif);
+#else
+	generic_end_io_acct(bio_data_dir(req->master_bio),
+		&device->vdisk->part0, req->start_jif);
+#endif
 }
 #else
 static void _drbd_start_io_acct(struct drbd_device *device, struct drbd_request *req)
@@ -97,7 +107,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 #endif
 
 #ifdef _WIN32 // DV
-    if (drbd_req_make_private_bio(req, bio_src) == NULL)
+    if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree(req->win32_page_buf);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -217,8 +227,9 @@ void drbd_req_destroy(struct kref *kref)
 	struct drbd_device *device;
 	struct drbd_peer_device *peer_device;
 	unsigned int req_size, s, device_refs = 0;
-
+#ifndef _WIN32_V9
 tail_recursion:
+#endif
 	device = req->device;
 	s = req->rq_state[0];
 	req_size = req->i.size;
@@ -271,7 +282,11 @@ tail_recursion:
 		if ((s & (RQ_POSTPONED|RQ_LOCAL_MASK|RQ_NET_MASK)) != RQ_POSTPONED &&
 		    req->i.size && get_ldev_if_state(device, D_DETACHING)) {
 			struct drbd_peer_md *peer_md = device->ldev->md.peers;
+#ifdef _WIN32_V9
+			ULONG_PTR bits = -1, mask = -1;
+#else
 			unsigned long bits = -1, mask = -1;
+#endif
 			int node_id, max_node_id = device->resource->max_node_id;
 
 			for (node_id = 0; node_id <= max_node_id; node_id++) {
@@ -386,7 +401,7 @@ tail_recursion:
 	if (s & RQ_WRITE && req_size) {
 		list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
 			if (req->rq_state[0] & RQ_WRITE) {
-				int refcount = atomic_read(&req->kref.refcount);
+				int refcount = atomic_read((LONG_PTR*)&req->kref.refcount);
 				if (refcount <= 0) {
 					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspicious drbd req:%p refcount:%d...recursion point\n",req , refcount);
 				}
@@ -495,7 +510,7 @@ void complete_master_bio(struct drbd_device *device,
         }
 #endif
 
-        if (atomic_inc_return(&m->bio->splitInfo->finished) == (long)m->bio->split_total_id)
+		if (atomic_inc_return((volatile LONG *)&m->bio->splitInfo->finished) == (long)m->bio->split_total_id)
         {
             if (m->bio->pMasterIrp->IoStatus.Status == 0)
             {
@@ -927,7 +942,12 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		/* Completion does it's own kref_put.  If we are going to
 		 * kref_sub below, we need req to be still around then. */
 		int at_least = k_put + !!c_put;
+#ifdef _WIN32_V9
+		int refcount = atomic_read((LONG_PTR*)&req->kref.refcount);
+#else
 		int refcount = atomic_read(&req->kref.refcount);
+#endif
+		
 		if (refcount < at_least)
 #ifdef _WIN32
             drbd_err(device,
@@ -1950,7 +1970,7 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 #ifdef _WIN32_V9
-	if (req == -ENOMEM) //only memory allocation fail case
+	if ((LONG_PTR)req == -ENOMEM) //only memory allocation fail case
 		return STATUS_UNSUCCESSFUL;
 	if (IS_ERR_OR_NULL(req)) //retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
 		return STATUS_SUCCESS;

@@ -435,7 +435,7 @@ mvolAddDeviceList( PVOLUME_EXTENSION pEntry )
 	if( pList == NULL )
 	{
 		RootExtension->Head = pEntry;
-		InterlockedIncrement16( &RootExtension->Count );
+		InterlockedIncrement16( (SHORT*)&RootExtension->Count );
 		return ;
 	}
 
@@ -445,7 +445,7 @@ mvolAddDeviceList( PVOLUME_EXTENSION pEntry )
 	}
 
 	pList->Next = pEntry;
-	InterlockedIncrement16( &RootExtension->Count );
+	InterlockedIncrement16((SHORT*)&RootExtension->Count);
 	return ;
 }
 
@@ -462,7 +462,7 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
     if (pList == pEntry)
 	{
 		RootExtension->Head = pList->Next;
-		InterlockedDecrement16( &RootExtension->Count );
+		InterlockedDecrement16((SHORT*)&RootExtension->Count);
 		return ;
 	}
 
@@ -476,7 +476,7 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
 
 	pTemp = pList->Next;
 	pList->Next = pTemp->Next;
-	InterlockedDecrement16( &RootExtension->Count );
+	InterlockedDecrement16((SHORT*)&RootExtension->Count);
 }
 
 ULONG
@@ -943,7 +943,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 #endif
 
 	// set bypass_level
-	status = GetRegistryValue(L"bypass_level", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"bypass_level", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_bypass_level = *(int*) aucTemp;
 	}
@@ -953,7 +953,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set read_filter
-	status = GetRegistryValue(L"read_filter", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"read_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_read_filter = *(int*) aucTemp;
 	}
@@ -963,7 +963,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set use_volume_lock
-	status = GetRegistryValue(L"use_volume_lock", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"use_volume_lock", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_use_volume_lock = *(int*) aucTemp;
 	}
@@ -973,7 +973,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set g_netlink_tcp_port
-	status = GetRegistryValue(L"netlink_tcp_port", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"netlink_tcp_port", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_netlink_tcp_port = *(int*) aucTemp;;
 	}
@@ -983,7 +983,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set daemon_tcp_port
-	status = GetRegistryValue(L"daemon_tcp_port", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"daemon_tcp_port", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_daemon_tcp_port = *(int*) aucTemp;
 	}
@@ -994,7 +994,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 
 	// set ver
     // DRBD_DOC: 용도 미정
-	status = GetRegistryValue(L"ver", &ulLength, &aucTemp, RegPath_unicode);
+	status = GetRegistryValue(L"ver", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		RtlCopyMemory(g_ver, aucTemp, ulLength * 2);
 	}

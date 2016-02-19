@@ -125,6 +125,8 @@ static bool push_msocket_entry(void * ptr)
     //WDRBD_TRACE("Added entry(0x%p), slink(0x%p), socket(0x%p)\n", entry, entry->slink, entry->ptr);
 
     MvfReleaseResource(&genl_multi_socket_res_lock);
+
+	return TRUE;
 }
 
 /**
@@ -207,9 +209,13 @@ NTSTATUS reply_error(int type, int flags, int error, struct genl_info * pinfo)
 
     if (reply_skb)
     {
-        struct nlmsghdr * nlh = nlmsg_put(reply_skb, pinfo->nlhdr->nlmsg_pid,
-            pinfo->nlhdr->nlmsg_seq, type, GENL_HDRLEN, flags);
-
+#ifdef _WIN32_V9
+		struct nlmsghdr * nlh = nlmsg_put((struct msg_buff*)reply_skb, pinfo->nlhdr->nlmsg_pid,
+			pinfo->nlhdr->nlmsg_seq, type, GENL_HDRLEN, flags);
+#else
+		struct nlmsghdr * nlh = nlmsg_put(reply_skb, pinfo->nlhdr->nlmsg_pid,
+			pinfo->nlhdr->nlmsg_seq, type, GENL_HDRLEN, flags);
+#endif
         if (nlh)
         {
             struct nlmsgerr * err = nlmsg_data(nlh);
@@ -235,11 +241,20 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
 
     if (0 == err)
     {
-        nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
+#ifdef _WIN32_V9
+		nlh = nlmsg_put((struct msg_buff*)skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
+#else
+		nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
+#endif
     }
     else if (err < 0)
     {
-        nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
+#ifdef _WIN32_V9
+		nlh = nlmsg_put((struct msg_buff*)skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
+#else
+		nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
+#endif
+        
         // -ENODEV : occured by first drbdadm adjust. response?
         WDRBD_WARN("drbd_adm_get_status_all err = %d\n", err);
     }
@@ -517,6 +532,8 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 
         return 0;
     }
+
+	return 0;
 }
 
 VOID
@@ -526,7 +543,7 @@ NetlinkWorkThread(PVOID context)
 
     PWSK_SOCKET socket = ((PNETLINK_WORK_ITEM)context)->Socket;
     LONG readcount, minor = 0;
-    int err;
+    int err = 0;
     struct genl_info * pinfo = NULL;
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');

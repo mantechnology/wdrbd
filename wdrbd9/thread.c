@@ -27,7 +27,7 @@ mvolInitializeThread( PVOLUME_EXTENSION VolumeExtension,
 	se_quality_service.EffectiveOnly = FALSE;
 
 	status = SeCreateClientSecurity( PsGetCurrentThread(), &se_quality_service,
-		FALSE, &pThreadInfo->se_client_context );
+		FALSE, (PSECURITY_CLIENT_CONTEXT)&pThreadInfo->se_client_context);
 	if( !NT_SUCCESS(status) )
 	{
 		WDRBD_ERROR("cannot create client security, err=0x%x\n", status);

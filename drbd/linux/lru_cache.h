@@ -41,7 +41,8 @@
 #include "compat.h"
 #endif
 #ifndef COMPAT_HAVE_CLEAR_BIT_UNLOCK
-static inline void clear_bit_unlock(unsigned nr, volatile unsigned long *addr)
+//static inline void clear_bit_unlock(unsigned nr, volatile ULONG_PTR *addr)
+static inline void clear_bit_unlock(unsigned nr, ULONG_PTR *addr)
 {
 #if defined(__x86_64__) ||  defined(__i386__) || defined(__arch_um__)
 	barrier();

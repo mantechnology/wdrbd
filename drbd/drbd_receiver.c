@@ -23,6 +23,7 @@
  */
 
 #ifdef _WIN32
+
 #include "windows/drbd.h"
 
 #include "drbd_int.h"
@@ -1083,7 +1084,7 @@ start:
 #endif
 	} else {
 #ifdef _WIN32_V9 // DEBUG: 확인 후 제거
-		panic("DRBD_CHECK: unexpected agreed_pro_version (%d)!!!\n", connection->agreed_pro_version);
+		panic("DRBD_CHECK: unexpected agreed_pro_version !!!\n");
 #endif
 		enum drbd_state_rv rv;
 		rv = change_cstate(connection, C_CONNECTED,
@@ -1763,7 +1764,10 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	 * Plain bio_alloc is good enough here, this is no DRBD internally
 	 * generated bio, but a bio allocated on behalf of the peer.
 	 */
+#ifndef _WIN32_V9
 next_bio:
+#endif
+
 #ifdef _WIN32
     bio = bio_alloc(GFP_NOIO, nr_pages, '02DW');
 #else
@@ -2391,7 +2395,7 @@ find_request(struct drbd_device *device, struct rb_root *root, u64 id,
 	struct drbd_request *req;
 
 #ifdef _WIN32 //V8 구현
-	req = (struct drbd_request *)id;
+	req = (struct drbd_request *)(ULONG_PTR)id;
 #else
 	/* Request object according to our peer */
 	req = (struct drbd_request *)(unsigned long)id;
@@ -3253,7 +3257,11 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	struct drbd_peer_request *peer_req;
 	struct digest_info *di = NULL;
 	int size, verb;
+#ifdef _WIN32_V9
+	unsigned int fault_type = 0;
+#else
 	unsigned int fault_type;
+#endif
 	struct p_block_req *p =	pi->data;
 	enum drbd_disk_state min_d_state;
 	int err;
@@ -4544,7 +4552,8 @@ static struct crypto_hash *drbd_crypto_alloc_digest_safe(const struct drbd_devic
 		return NULL;
 
 #ifdef _WIN32
-    tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC, 'A6DW');
+	char* alg2 = (char*)alg;
+	tfm = crypto_alloc_hash(alg2, 0, CRYPTO_ALG_ASYNC, 'A6DW');
 #else
 	tfm = crypto_alloc_hash(alg, 0, CRYPTO_ALG_ASYNC);
 #endif
@@ -5992,7 +6001,8 @@ static int process_twopc(struct drbd_connection *connection,
 	struct drbd_peer_device *peer_device = NULL;
 	struct p_twopc_request *p = pi->data;
 #ifdef _WIN32_V9
-	union drbd_state mask , val;
+	union drbd_state mask = { 0, };
+	union drbd_state val = { 0, };
 #else
 	union drbd_state mask = {}, val = {};
 #endif
@@ -8045,7 +8055,12 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 	struct p_block_ack *p = pi->data;
 	sector_t sector = be64_to_cpu(p->sector);
 	int blksize = be32_to_cpu(p->blksize);
+#ifdef _WIN32_V9
+	enum drbd_req_event what = 0;
+#else
 	enum drbd_req_event what;
+#endif
+	
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("pi-cmd 0x%x(%s) sect:0x%llx sz:%d\n", pi->cmd, drbd_packet_name(pi->cmd), sector, blksize);
 #endif
