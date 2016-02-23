@@ -446,107 +446,102 @@ void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
 #endif
 {
+#ifdef _WIN32_V9
+	struct bio* master_bio = NULL;
+#endif
+
 	int rw = bio_data_dir(m->bio);
+
+#ifdef _WIN32_V9
+	ASSERT(m->bio->bi_end_io_cb == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
+#endif
 	bio_endio(m->bio, m->error);
+
 #ifdef _WIN32
     ASSERT(m->bio->pMasterIrp);
+    // if bio has pMasterIrp, process to complete master bio.
+    if(m->bio->pMasterIrp) {
 
-    if (!m->bio->splitInfo)
-    {
-        if (m->bio->bi_size <= 0 || m->bio->bi_size > 1024 * 1024)
-        {
-            WDRBD_ERROR("szie 0x%x ERROR!\n", m->bio->bi_size);
-            BUG();
-        }
+		master_bio =  m->bio; // if pMasterIrp is exist, bio is master bio.
+		 
+		if (!master_bio->splitInfo) {
+	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
+	            WDRBD_ERROR("szie 0x%x ERROR!\n", master_bio->bi_size);
+	            BUG();
+	        }
 
-        if (NT_SUCCESS(m->error))
-        {
-            m->bio->pMasterIrp->IoStatus.Information = m->bio->bi_size;
-        }
-        else
-        {
-            m->bio->pMasterIrp->IoStatus.Status = m->error;
-            m->bio->pMasterIrp->IoStatus.Information = 0;
-        }
+	        if (NT_SUCCESS(m->error)) {
+	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
+	        } else {
+	            master_bio->pMasterIrp->IoStatus.Status = m->error;
+	            master_bio->pMasterIrp->IoStatus.Information = 0;
+	        }
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-        if (NT_SUCCESS(m->error) && (bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
-        {
-            PVOID	buffer = NULL;
-            buffer = MmGetSystemAddressForMdlSafe(m->bio->pMasterIrp->MdlAddress, NormalPagePriority);
-            if (buffer == NULL)
-            {
-                WDRBD_ERROR("MmGetSystemAddressForMdlSafe ERROR!\n");
-                BUG();
-            }
-
-            if (buffer)
-            {
-                memcpy(buffer, m->bio->win32_page_buf, m->bio->pMasterIrp->IoStatus.Information);
-            }
-        }
+	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
+	            PVOID	buffer = NULL;
+	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
+				if (buffer == NULL) {
+	                WDRBD_ERROR("MmGetSystemAddressForMdlSafe ERROR!\n");
+	                BUG();
+	            }
+	            if (buffer) {
+	                memcpy(buffer, master_bio->win32_page_buf, master_bio->pMasterIrp->IoStatus.Information);
+	            }
+	        }
 #endif
-        NT_SUCCESS(m->bio->pMasterIrp->IoStatus.Status) ?
-            IoCompleteRequest(m->bio->pMasterIrp, IO_DISK_INCREMENT) :
-            IoCompleteRequest(m->bio->pMasterIrp, IO_NO_INCREMENT);
-    }
-    else
-    {
+	        NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ?
+	            IoCompleteRequest(master_bio->pMasterIrp, IO_DISK_INCREMENT) :
+	            IoCompleteRequest(master_bio->pMasterIrp, IO_NO_INCREMENT);
+
+	    } else {
 
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-        if (NT_SUCCESS(m->error) && (bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
-        {
-            PVOID	buffer = NULL;
-            buffer = MmGetSystemAddressForMdlSafe(m->bio->pMasterIrp->MdlAddress, NormalPagePriority);
-            if (buffer == NULL)
-            {
-                WDRBD_ERROR("splitIO: MmGetSystemAddressForMdlSafe ERROR!\n");
-                BUG();
-            }
+	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
+	            PVOID	buffer = NULL;
+	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
+	            if (buffer == NULL) {
+	                WDRBD_ERROR("splitIO: MmGetSystemAddressForMdlSafe ERROR!\n");
+	                BUG();
+	            }
 
-            m->bio->pMasterIrp->IoStatus.Information = m->bio->bi_size;
+	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
 
-            // get offset and copy
-            memcpy((char *)buffer + (m->bio->split_id * MAX_SPILT_BLOCK_SZ), m->bio->win32_page_buf, m->bio->pMasterIrp->IoStatus.Information);
-        }
+	            // get offset and copy
+	            memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->win32_page_buf, master_bio->pMasterIrp->IoStatus.Information);
+	        }
 #endif
 
-		if (atomic_inc_return((volatile LONG *)&m->bio->splitInfo->finished) == (long)m->bio->split_total_id)
-        {
-            if (m->bio->pMasterIrp->IoStatus.Status == 0)
-            {
-                m->bio->pMasterIrp->IoStatus.Information = m->bio->split_total_length;
-            }
-            else
-            {
-                WDRBD_ERROR("0x%x ERRROR!\n", m->bio->pMasterIrp->IoStatus.Status);
-                m->bio->pMasterIrp->IoStatus.Information = 0;
-            }
+			if (!NT_SUCCESS(m->error)) {
+	        	master_bio->splitInfo->LastError = m->error;
+	        }
+			
+			if (atomic_inc_return((volatile LONG *)&master_bio->splitInfo->finished) == (long)master_bio->split_total_id) {
 
-            NT_SUCCESS(m->bio->pMasterIrp->IoStatus.Status) ?
-                IoCompleteRequest(m->bio->pMasterIrp, IO_DISK_INCREMENT) :
-                IoCompleteRequest(m->bio->pMasterIrp, IO_NO_INCREMENT);
-
-            //WDRBD_INFO("IoCompleteRequest! id(%d/%d/%d) setevent!(%d)\n", m->bio->split_id, m->bio->splitInfo->finished, m->bio->split_total_id, KeReadStateEvent(&mdev->this_bdev->bd_disk->pDeviceExtension->WorkThreadInfo.SplitIoDoneEvent));
-            //KeSetEvent(&mdev->this_bdev->bd_disk->pDeviceExtension->WorkThreadInfo.SplitIoDoneEvent, IO_NO_INCREMENT, FALSE); 
-
-            kfree(m->bio->splitInfo);
-        }
-
-        if (!NT_SUCCESS(m->error))
-        {
-            m->bio->pMasterIrp->IoStatus.Status = m->error;
-        }
-    }
+				if(master_bio->splitInfo->LastError == STATUS_SUCCESS) {
+					master_bio->pMasterIrp->IoStatus.Status = STATUS_SUCCESS;
+					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
+				} else {
+					WDRBD_ERROR("0x%x ERRROR! sec:%d size:%d\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size);
+					master_bio->pMasterIrp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+					master_bio->pMasterIrp->IoStatus.Information = 0;
+				}
+				
+	            NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ?
+	                IoCompleteRequest(master_bio->pMasterIrp, IO_DISK_INCREMENT) :
+	                IoCompleteRequest(master_bio->pMasterIrp, IO_NO_INCREMENT);
+	        } 
+	    }	    
 
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-    if ((bio_rw(m->bio) == READ) && m->bio->win32_page_buf)
-    {
-        kfree(m->bio->win32_page_buf);
-    }
+	   	if ((bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
+	   	    kfree(master_bio->win32_page_buf);
+	   	}
 #endif
+		kfree(master_bio);
 
-    kfree(m->bio);
 #endif
+	}
+	
 	dec_ap_bio(device, rw);
 }
 

@@ -677,10 +677,14 @@ void submit_bio(int rw, struct bio *bio)
 
 void bio_endio(struct bio *bio, int error)
 {
-	if (bio->bi_end_io)
-	{
-        WDRBD_INFO("thread(%s) bio_endio fault test with err=%d.\n", current->comm, error);
-        bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
+	if (bio->bi_end_io_cb) {
+		if(error) {
+			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
+        	bio->bi_end_io_cb((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
+		} else {
+			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
+        	bio->bi_end_io_cb((void*)error, (void*) bio, (void*) error);
+		}
 	}
 }
 
@@ -1684,6 +1688,10 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
 	return (void *)1;
 }
+#define WRITE_IO_ERROR_TEST
+#ifdef WRITE_IO_ERROR_TEST
+ULONG testcount = 0;
+#endif
 
 #ifdef _WIN32_V9_REMOVELOCK
 int generic_make_request(struct bio *bio)
@@ -1810,6 +1818,13 @@ void generic_make_request(struct bio *bio)
 	}
 #else
 
+#ifdef WRITE_IO_ERROR_TEST
+	if( (io == IRP_MJ_WRITE) && ( ++testcount > 1000 ) ) { 
+		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP offset:%llu size:%i\n",offset.QuadPart,bio->bi_size);
+		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		return -ENOMEM;
+	}
+#endif	
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
 				q->backing_dev_info.pDeviceExtension->TargetDeviceObject,
@@ -1823,7 +1838,6 @@ void generic_make_request(struct bio *bio)
 	{
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
 #ifdef _WIN32_V9_REMOVELOCK
-		bio->pVolExt = NULL;
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;
 #else
@@ -1832,7 +1846,7 @@ void generic_make_request(struct bio *bio)
 	}
 #endif
 
-	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io_cb, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
 #ifdef _WIN32_V9_REMOVELOCK

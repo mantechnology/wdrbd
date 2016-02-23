@@ -919,6 +919,12 @@ int connect_work(struct drbd_work *work, int cancel)
 		connection->connect_timer.expires = jiffies + HZ/20;
 		add_timer(&connection->connect_timer);
 		return 0; /* Return early. Keep the reference on the connection! */
+#ifdef _WIN32_V9_DW_663_LINBIT_PATCH		
+	} else if (rv == SS_TWO_PRIMARIES) { 
+		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		drbd_alert(connection, "Split-Brain since more primaries than allowed; dropping connection!\n");
+		drbd_khelper(NULL, connection, "split-brain");
+#endif		
 	} else {
 		drbd_info(connection, "Failure to connect; retrying\n");
 		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
@@ -1284,7 +1290,7 @@ static int submit_one_flush(struct drbd_device *device, struct issue_flush_conte
 	octx->ctx = ctx;
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
-	bio->bi_end_io = one_flush_endio;
+	bio->bi_end_io_cb = one_flush_endio;
 
 	BUG_ON(test_bit(FLUSH_PENDING, &device->flags));
 
@@ -1784,7 +1790,7 @@ next_bio:
 	 * (REQ_UNPLUG, REQ_FLUSH, or BIO_RW_BARRIER in older kernels) */
 	bio->bi_rw = rw;
 	bio->bi_private = peer_req;
-	bio->bi_end_io = drbd_peer_request_endio;
+	bio->bi_end_io_cb = drbd_peer_request_endio;
 
 	bio->bi_next = bios;
 	bios = bio;
@@ -2175,7 +2181,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 
 	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
-	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->bi_size);
+	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->length);
 	if (err)
 		goto fail;
 #ifdef _WIN32_V9

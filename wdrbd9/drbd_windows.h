@@ -35,6 +35,7 @@
 #endif
 
 #define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
+#define _WIN32_V9_DW_663_LINBIT_PATCH 
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
@@ -628,7 +629,7 @@ struct bio_vec {
 };
 
 #ifdef _WIN32_V9
-typedef void(bio_end_io_t)(void*, void*, void*);
+typedef void(BIO_END_IO_CALLBACK)(void*, void*, void*);
 //PIO_COMPLETION_ROUTINE bio_end_io_t;
 #else
 struct bio;
@@ -637,34 +638,42 @@ typedef void(bio_end_io_t)(struct bio *, int);
 
 
 struct splitInfo {	
-	unsigned long finished;
+	unsigned long 	finished;
+	NTSTATUS 		LastError; // 0 :STATUS_SUCCESS, 
 };
 
 struct bio {
-	PIRP pMasterIrp;  /* _WIN32: for upper layer's  IRP */
+	PIRP 					pMasterIrp;  /* _WIN32: for upper layer's  IRP */
 
-	unsigned int split_id;
-	unsigned int split_total_id;
-	unsigned int split_total_length;
+	unsigned int 			split_id;
+	unsigned int 			split_total_id;
+	unsigned int 			split_total_length;
+	char*					win32_page_buf; 
+	struct splitInfo*		splitInfo;
 
-	char *win32_page_buf; 
-	struct splitInfo *splitInfo;
-
-	sector_t			bi_sector;	/* device address in 512 byte sectors */
-	struct bio			*bi_next;	/* request queue link */
-	struct block_device	*bi_bdev;
-	unsigned long		bi_flags;	/* status, command, etc */
-	unsigned long		bi_rw;		
-	unsigned short		bi_vcnt;	/* how many bio_vec's */
-	unsigned short		bi_idx;		/* current index into bvl_vec */
-	unsigned int		bi_size;	/* residual I/O count */
-	atomic_t			bi_cnt;		/* pin count */
-	bio_end_io_t		*bi_end_io;
-	void				*bi_private; 
-	unsigned int		bi_max_vecs;    /* max bvl_vecs we can hold */
-	struct bio_vec		bi_io_vec[1]; // only one!!!
+	sector_t				bi_sector;	/* device address in 512 byte sectors */
+	struct bio*				bi_next;	/* request queue link */
+	struct block_device*	bi_bdev;
+	unsigned long			bi_flags;	/* status, command, etc */
+	unsigned long			bi_rw;		
+	unsigned short			bi_vcnt;	/* how many bio_vec's */
+	unsigned short			bi_idx;		/* current index into bvl_vec */
+	unsigned int			bi_size;	/* residual I/O count */
+	atomic_t				bi_cnt;		/* pin count */
+	/* bi_end_io_cb is assigned in next comment places.
+	Blkdev_issue_zeroout.c (drbd\drbd-kernel-compat):		bio->bi_end_io_cb = bio_batch_end_io;
+	Drbd_actlog.c (drbd):	bio->bi_end_io_cb = drbd_md_endio;
+	Drbd_bitmap.c (drbd):	bio->bi_end_io_cb = drbd_bm_endio;
+	Drbd_receiver.c (drbd):	bio->bi_end_io_cb = one_flush_endio;
+	Drbd_receiver.c (drbd):	bio->bi_end_io_cb = drbd_peer_request_endio;
+	Drbd_req.h (drbd):	bio->bi_end_io_cb   = drbd_request_endio;
+	*/
+	BIO_END_IO_CALLBACK*	bi_end_io_cb; // rename to 'bi_end_io_cb', for not confusing with bi_endio. 2016.02.22 sekim
+	void*					bi_private; 
+	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
+	struct bio_vec			bi_io_vec[1]; // only one!!!
 #ifdef _WIN32_V9_REMOVELOCK	
-	PVOLUME_EXTENSION	pVolExt; // for release removelock
+	PVOLUME_EXTENSION		pVolExt; // for release removelock
 #endif
 };
 
