@@ -458,7 +458,7 @@ void complete_master_bio(struct drbd_device *device,
 	bio_endio(m->bio, m->error);
 
 #ifdef _WIN32
-    ASSERT(m->bio->pMasterIrp);
+    
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
@@ -536,6 +536,9 @@ void complete_master_bio(struct drbd_device *device,
 		kfree(master_bio);
 
 #endif
+	} else {
+		ASSERT(m->bio->pMasterIrp);
+		WDRBD_ERROR("ERRROR! pMasterIrp is NULL\n");
 	}
 	
 	dec_ap_bio(device, rw);
