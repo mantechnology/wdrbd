@@ -537,8 +537,7 @@ void complete_master_bio(struct drbd_device *device,
 
 #endif
 	} else {
-		ASSERT(m->bio->pMasterIrp);
-		WDRBD_ERROR("ERRROR! pMasterIrp is NULL\n");
+		panic("complete_master_bio ERRROR! pMasterIrp is NULL\n");
 	}
 	
 	dec_ap_bio(device, rw);
