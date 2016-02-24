@@ -1367,7 +1367,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	 * according to api.  Do we want to assert that? */
 	bio_add_page(bio, page, len, 0);
 	bio->bi_private = ctx;
-	bio->bi_end_io_cb = drbd_bm_endio;
+	bio->bi_end_io = drbd_bm_endio;
 
 	if (drbd_insert_fault(device, (rw & WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD)) {
 		bio->bi_rw |= rw;

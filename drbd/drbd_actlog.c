@@ -217,7 +217,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	if (bio_add_page(bio, device->md_io.page, size, 0) != size)
 		goto out;
 	bio->bi_private = device;
-	bio->bi_end_io_cb = drbd_md_endio;
+	bio->bi_end_io = drbd_md_endio;
 	bio->bi_rw = rw;
 
 	if (!(rw & WRITE) && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)

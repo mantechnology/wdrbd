@@ -678,13 +678,13 @@ void submit_bio(int rw, struct bio *bio)
 
 void bio_endio(struct bio *bio, int error)
 {
-	if (bio->bi_end_io_cb) {
+	if (bio->bi_end_io) {
 		if(error) {
 			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
-        	bio->bi_end_io_cb((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
+        	bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
 		} else { // if bio_endio is called with success(just in case)
 			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
-        	bio->bi_end_io_cb((void*)error, (void*) bio, (void*) error);
+        	bio->bi_end_io((void*)error, (void*) bio, (void*) error);
 		}
 	}
 }
@@ -1837,7 +1837,7 @@ void generic_make_request(struct bio *bio)
 	}
 #endif
 
-	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io_cb, bio, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
 #ifdef _WIN32_V9_REMOVELOCK

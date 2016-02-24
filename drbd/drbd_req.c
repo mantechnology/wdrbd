@@ -453,7 +453,7 @@ void complete_master_bio(struct drbd_device *device,
 	int rw = bio_data_dir(m->bio);
 
 #ifdef _WIN32_V9
-	ASSERT(m->bio->bi_end_io_cb == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
+	ASSERT(m->bio->bi_end_io == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
 #endif
 	bio_endio(m->bio, m->error);
 

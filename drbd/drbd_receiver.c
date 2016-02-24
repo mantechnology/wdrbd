@@ -1284,7 +1284,7 @@ static int submit_one_flush(struct drbd_device *device, struct issue_flush_conte
 	octx->ctx = ctx;
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
-	bio->bi_end_io_cb = one_flush_endio;
+	bio->bi_end_io = one_flush_endio;
 
 	BUG_ON(test_bit(FLUSH_PENDING, &device->flags));
 
@@ -1784,7 +1784,7 @@ next_bio:
 	 * (REQ_UNPLUG, REQ_FLUSH, or BIO_RW_BARRIER in older kernels) */
 	bio->bi_rw = rw;
 	bio->bi_private = peer_req;
-	bio->bi_end_io_cb = drbd_peer_request_endio;
+	bio->bi_end_io = drbd_peer_request_endio;
 
 	bio->bi_next = bios;
 	bios = bio;

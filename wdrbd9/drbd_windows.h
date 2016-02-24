@@ -660,15 +660,15 @@ struct bio {
 	unsigned short			bi_idx;		/* current index into bvl_vec */
 	unsigned int			bi_size;	/* residual I/O count */
 	atomic_t				bi_cnt;		/* pin count */
-	/* bi_end_io_cb is assigned in next comment places.
-	Blkdev_issue_zeroout.c (drbd\drbd-kernel-compat):		bio->bi_end_io_cb = bio_batch_end_io;
-	Drbd_actlog.c (drbd):	bio->bi_end_io_cb = drbd_md_endio;
-	Drbd_bitmap.c (drbd):	bio->bi_end_io_cb = drbd_bm_endio;
-	Drbd_receiver.c (drbd):	bio->bi_end_io_cb = one_flush_endio;
-	Drbd_receiver.c (drbd):	bio->bi_end_io_cb = drbd_peer_request_endio;
-	Drbd_req.h (drbd):	bio->bi_end_io_cb   = drbd_request_endio;
+	/* bi_end_io is assigned in next comment places.
+	Blkdev_issue_zeroout.c (drbd\drbd-kernel-compat):		bio->bi_end_io = bio_batch_end_io;
+	Drbd_actlog.c (drbd):	bio->bi_end_io = drbd_md_endio;
+	Drbd_bitmap.c (drbd):	bio->bi_end_io = drbd_bm_endio;
+	Drbd_receiver.c (drbd):	bio->bi_end_io = one_flush_endio;
+	Drbd_receiver.c (drbd):	bio->bi_end_io = drbd_peer_request_endio;
+	Drbd_req.h (drbd):	bio->bi_end_io   = drbd_request_endio;
 	*/
-	BIO_END_IO_CALLBACK*	bi_end_io_cb; // rename to 'bi_end_io_cb', for not confusing with bi_endio. 2016.02.22 sekim
+	BIO_END_IO_CALLBACK*	bi_end_io; 
 	void*					bi_private; 
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
