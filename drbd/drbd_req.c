@@ -489,9 +489,7 @@ void complete_master_bio(struct drbd_device *device,
 	            }
 	        }
 #endif
-	        NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ?
-	            IoCompleteRequest(master_bio->pMasterIrp, IO_DISK_INCREMENT) :
-	            IoCompleteRequest(master_bio->pMasterIrp, IO_NO_INCREMENT);
+	        IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
 	    } else {
 
@@ -522,13 +520,11 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
 				} else {
 					WDRBD_ERROR("0x%x ERRROR! sec:%d size:%d\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size);
-					master_bio->pMasterIrp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+					master_bio->pMasterIrp->IoStatus.Status = master_bio->splitInfo->LastError;
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}
-				
-	            NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ?
-	                IoCompleteRequest(master_bio->pMasterIrp, IO_DISK_INCREMENT) :
-	                IoCompleteRequest(master_bio->pMasterIrp, IO_NO_INCREMENT);
+
+				IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	        } 
 	    }	    
 

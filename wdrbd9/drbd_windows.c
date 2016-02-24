@@ -31,6 +31,7 @@ WCHAR g_ver[64];
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
 
+
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
 {
@@ -681,7 +682,7 @@ void bio_endio(struct bio *bio, int error)
 		if(error) {
 			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
         	bio->bi_end_io_cb((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
-		} else {
+		} else { // if bio_endio is called with success(just in case)
 			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
         	bio->bi_end_io_cb((void*)error, (void*) bio, (void*) error);
 		}
@@ -1688,10 +1689,7 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
 	return (void *)1;
 }
-#define WRITE_IO_ERROR_TEST
-#ifdef WRITE_IO_ERROR_TEST
-ULONG testcount = 0;
-#endif
+
 
 #ifdef _WIN32_V9_REMOVELOCK
 int generic_make_request(struct bio *bio)
@@ -1818,13 +1816,6 @@ void generic_make_request(struct bio *bio)
 	}
 #else
 
-#ifdef WRITE_IO_ERROR_TEST
-	if( (io == IRP_MJ_WRITE) && ( ++testcount > 1000 ) ) { 
-		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP offset:%llu size:%i\n",offset.QuadPart,bio->bi_size);
-		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		return -ENOMEM;
-	}
-#endif	
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
 				q->backing_dev_info.pDeviceExtension->TargetDeviceObject,
