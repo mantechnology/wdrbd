@@ -81,7 +81,7 @@ int lc_try_lock(struct lru_cache *lc)
 	unsigned long val;
 	do {
 #ifdef _WIN32
-		val = atomic_cmpxchg((LONG_PTR*)&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
+		val = atomic_cmpxchg((atomic_t *)&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
 #else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
 #endif

@@ -401,7 +401,7 @@ tail_recursion:
 	if (s & RQ_WRITE && req_size) {
 		list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
 			if (req->rq_state[0] & RQ_WRITE) {
-				int refcount = atomic_read((LONG_PTR*)&req->kref.refcount);
+				int refcount = atomic_read(&req->kref.refcount);
 				if (refcount <= 0) {
 					WDRBD_INFO("%%%%%%%%%%%%%%%%%%%%% suspicious drbd req:%p refcount:%d...recursion point\n",req , refcount);
 				}
@@ -935,11 +935,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		/* Completion does it's own kref_put.  If we are going to
 		 * kref_sub below, we need req to be still around then. */
 		int at_least = k_put + !!c_put;
-#ifdef _WIN32_V9
-		int refcount = atomic_read((LONG_PTR*)&req->kref.refcount);
-#else
 		int refcount = atomic_read(&req->kref.refcount);
-#endif
 		
 		if (refcount < at_least)
 #ifdef _WIN32

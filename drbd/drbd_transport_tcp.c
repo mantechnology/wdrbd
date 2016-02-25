@@ -947,12 +947,12 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 
 retry:
 #ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_XXX
-    atomic_set((LONG_PTR*)&(transport->listening), 1);
+    atomic_set(&(transport->listening), 1);
 	// WIN32_V9_PATCH_1_CHECK: waiter->wait 가 적절한가?
 	wait_event_interruptible_timeout(timeo, waiter->wait, 
 		(path = dtt_wait_connect_cond(transport)),
 			timeo);
-	atomic_set((LONG_PTR*)&(transport->listening), 0);
+	atomic_set(&(transport->listening), 0);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->wait,
 			(path = dtt_wait_connect_cond(transport)),

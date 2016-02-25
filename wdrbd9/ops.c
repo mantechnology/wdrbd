@@ -397,7 +397,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         goto out;
     }
 
-    int irp_count = atomic_read((LONG_PTR*)&pvext->IrpCount);
+    int irp_count = atomic_read((atomic_t *)&pvext->IrpCount);
     if (irp_count > 0)
     {
         status = STATUS_DEVICE_BUSY;

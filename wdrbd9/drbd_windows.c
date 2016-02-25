@@ -306,21 +306,12 @@ LONG_PTR xchg(LONG_PTR *target, LONG_PTR value)
 
 void atomic_set(atomic_t *v, int i)
 {
-#ifdef _WIN64
-	InterlockedExchange64(v, i);
-#else
-	InterlockedExchange(v, i);
-#endif
-	
+	InterlockedExchange((long *)v, i);
 }
 
 void atomic_add(int i, atomic_t *v)
 {
-#ifdef _WIN64
-	InterlockedExchangeAdd64(v, i);
-#else
-	InterlockedExchangeAdd(v, i);
-#endif
+	InterlockedExchangeAdd((long *)v, i);
 }
 
 void atomic_sub(int i, atomic_t *v)
@@ -349,13 +340,9 @@ int atomic_sub_and_test(int i, atomic_t *v)
 	return (retval == 0);
 }
 
-LONG_PTR atomic_cmpxchg(atomic_t *v, int old, int new)
+int atomic_cmpxchg(atomic_t *v, int old, int new)
 {
-#ifdef _WIN64
-	return InterlockedCompareExchange64(v, new, old);
-#else
-	return InterlockedCompareExchange(v, new, old);
-#endif
+	return InterlockedCompareExchange((long *)v, new, old);
 }
 
 int atomic_xchg(atomic_t *v, int n)
@@ -601,7 +588,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
     WARN_ON(release == NULL);
     WARN_ON(release == (void (*)(struct kref *))kfree);
 
-    if (atomic_dec_and_test((LONG_PTR*)&kref->refcount))
+    if (atomic_dec_and_test(&kref->refcount))
     {
         release(kref);
         return 1;
@@ -619,7 +606,7 @@ int kref_get(struct kref *kref)
 
 void kref_init(struct kref *kref)
 {
-	atomic_set((LONG_PTR*)&kref->refcount, 1);
+	atomic_set(&kref->refcount, 1);
 }
 
 struct request_queue *bdev_get_queue(struct block_device *bdev)
@@ -1445,20 +1432,17 @@ void kobject_put(struct kobject *kobj)
             //WDRBD_WARN("%p name is null.\n", kobj);
             return;
         }
-#ifdef _WIN32_V9
-		if (atomic_sub_and_test(1, (LONG_PTR*)&kobj->kref.refcount))
-#else
+
 		if (atomic_sub_and_test(1, &kobj->kref.refcount))
-#endif
-        { 
-            void(*release)(struct kobject *kobj);
-            release = kobj->ktype->release; 
-            if (release == 0)
-            {
-                return;
-            }
-            release(kobj); 
-        }
+		{
+			void(*release)(struct kobject *kobj);
+			release = kobj->ktype->release;
+			if (release == 0)
+			{
+				return;
+			}
+			release(kobj);
+		}
     }
     else
     {
