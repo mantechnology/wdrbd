@@ -306,7 +306,7 @@ int HandleTCPClient(int clntSocket)
 	}
 
 	// send response
-	rxcmdbuf[0] = dwExitCode;
+	rxcmdbuf[0] = (char)dwExitCode;
 
 	if (send(clntSocket, rxcmdbuf, 1, 0) != 1)
 	{
