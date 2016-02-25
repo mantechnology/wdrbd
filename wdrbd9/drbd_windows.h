@@ -84,12 +84,7 @@
 #define GFP_NOWAIT	            0
 #define gfp_t					int
 
-#ifdef _WIN64
-#define atomic_t				volatile LONGLONG
-#else
-#define atomic_t				volatile LONG
-#endif
-
+#define atomic_t				int
 
 #define WARN_ON(x)				__noop
 #define ATOMIC_INIT(i)			(i)
@@ -847,8 +842,7 @@ extern void atomic_sub(int i, atomic_t *v);
 extern int atomic_sub_return(int i, atomic_t *v); 
 extern int atomic_dec_and_test(atomic_t *v);
 extern int atomic_sub_and_test(int i, atomic_t *v);
-//extern long atomic_cmpxchg(atomic_t *v, int old, int new);
-extern LONG_PTR atomic_cmpxchg(atomic_t *v, int old, int new);
+extern int atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
 extern int atomic_xchg(atomic_t *v, int n);
 

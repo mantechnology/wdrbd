@@ -2598,7 +2598,7 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 		old = *flags;
 		new = old & ~mask;
 #ifdef _WIN32
-	} while (atomic_cmpxchg((LONG_PTR*)flags, old, new) != old);
+	} while (atomic_cmpxchg((atomic_t *)flags, old, new) != old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
 #endif

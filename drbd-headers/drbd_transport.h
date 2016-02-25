@@ -138,7 +138,7 @@ struct drbd_transport {
 #endif
 	
 #ifdef _WIN32_V9
-    LONG_PTR listening;
+    atomic_t listening;
 #endif
 };
 
