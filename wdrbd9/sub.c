@@ -314,6 +314,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 				goto fail;
 			}
 			splitInfo->finished = 0;
+			splitInfo->LastError = STATUS_SUCCESS; 
 		}
 
 		for (io_id = 0; io_id < loop; io_id++)

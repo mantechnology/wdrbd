@@ -2181,7 +2181,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 
 	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
 	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
-	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->length);
+	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->bi_size);
 	if (err)
 		goto fail;
 #ifdef _WIN32_V9

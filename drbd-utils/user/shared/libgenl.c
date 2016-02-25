@@ -258,9 +258,7 @@ retry:
 		/* Buffer is big enough, do the actual reading */
 #ifdef _WIN32_V9
 		struct nlmsghdr *nlh = (struct nlmsghdr *)iov->iov_base;
-		if (nlh->nlmsg_len < (unsigned)n) {
-			iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
-		}
+		iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
 #endif
 		flags = 0;
 		goto retry;

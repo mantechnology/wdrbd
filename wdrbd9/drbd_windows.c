@@ -31,6 +31,7 @@ WCHAR g_ver[64];
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
 
+
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
 {
@@ -677,10 +678,14 @@ void submit_bio(int rw, struct bio *bio)
 
 void bio_endio(struct bio *bio, int error)
 {
-	if (bio->bi_end_io)
-	{
-        WDRBD_INFO("thread(%s) bio_endio fault test with err=%d.\n", current->comm, error);
-        bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
+	if (bio->bi_end_io) {
+		if(error) {
+			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
+        	bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
+		} else { // if bio_endio is called with success(just in case)
+			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
+        	bio->bi_end_io((void*)error, (void*) bio, (void*) error);
+		}
 	}
 }
 
@@ -1685,6 +1690,7 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 	return (void *)1;
 }
 
+
 #ifdef _WIN32_V9_REMOVELOCK
 int generic_make_request(struct bio *bio)
 #else
@@ -1823,7 +1829,6 @@ void generic_make_request(struct bio *bio)
 	{
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
 #ifdef _WIN32_V9_REMOVELOCK
-		bio->pVolExt = NULL;
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;
 #else
