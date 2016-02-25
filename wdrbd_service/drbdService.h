@@ -82,6 +82,12 @@
 //
 #define ONELINE_ERROR                    0xC0000BB9L
 
+#define SERVICE_HANDLER_EX	//Windows vista or later version
+
+#ifdef SERVICE_HANDLER_EX
+DWORD WINAPI ServiceHandlerEx(_In_ DWORD  fdwControl, _In_ DWORD  dwEventType, _In_ LPVOID lpEventData, _In_ LPVOID lpContext);
+#endif
+
 extern VOID WriteLog(wchar_t* pMsg);
 
 extern int SockListener(unsigned short *servPort);

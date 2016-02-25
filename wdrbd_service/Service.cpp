@@ -318,11 +318,14 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 
     g_tServiceStatus.dwServiceType = SERVICE_WIN32;
     g_tServiceStatus.dwCurrentState = SERVICE_START_PENDING;
-    g_tServiceStatus.dwControlsAccepted =
-        SERVICE_ACCEPT_STOP |
-        SERVICE_ACCEPT_PAUSE_CONTINUE |
-        SERVICE_ACCEPT_SHUTDOWN |
-        SERVICE_ACCEPT_PRESHUTDOWN;
+	g_tServiceStatus.dwControlsAccepted =
+		SERVICE_ACCEPT_STOP |
+		SERVICE_ACCEPT_PAUSE_CONTINUE |
+#ifdef SERVICE_HANDLER_EX
+		SERVICE_ACCEPT_PRESHUTDOWN; // don't use SERVICE_ACCEPT_PRESHUTDOWN flag with SERVICE_ACCEPT_SHUTDOWN 2016.2.25 sekim
+#else
+		SERVICE_ACCEPT_SHUTDOWN;
+#endif
 
     //SERVICE_ACCEPT_NETBINDCHANGE 
     //SERVICE_ACCEPT_SESSIONCHANGE 
@@ -334,8 +337,12 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
     g_tServiceStatus.dwServiceSpecificExitCode = 0;
     g_tServiceStatus.dwCheckPoint = 0;
     g_tServiceStatus.dwWaitHint = 0;
-
-    g_hServiceStatusHandle = RegisterServiceCtrlHandler(ServiceName, ServiceHandler);
+#ifdef SERVICE_HANDLER_EX
+	g_hServiceStatusHandle = RegisterServiceCtrlHandlerEx(ServiceName, ServiceHandlerEx, NULL);
+#else
+	g_hServiceStatusHandle = RegisterServiceCtrlHandler(ServiceName, ServiceHandler);
+#endif
+    
     if (g_hServiceStatusHandle == 0)
     {
         long nError = GetLastError();
@@ -384,8 +391,12 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 
     //DrbdSetStatus(SERVICE_STOPPED);
 }
-
+#ifdef SERVICE_HANDLER_EX
+DWORD WINAPI ServiceHandlerEx(_In_ DWORD  fdwControl, _In_ DWORD  dwEventType, _In_ LPVOID lpEventData, _In_ LPVOID lpContext)
+#else
 VOID WINAPI ServiceHandler(DWORD fdwControl)
+#endif
+
 {
     wchar_t pTemp[1024];
 
@@ -417,7 +428,11 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         default:
             wsprintf(pTemp, L"ServiceHandler: unexpected Control 0x%x occured! ignored.\n", fdwControl);
             WriteLog(pTemp);
+#ifdef SERVICE_HANDLER_EX
+			return 0;
+#else
             return;
+#endif
     };
 
     if (!SetServiceStatus(g_hServiceStatusHandle, &g_tServiceStatus))
@@ -425,7 +440,11 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         long nError = GetLastError();
         wsprintf(pTemp, L"SetServiceStatus failed, error code = %d\n", nError);
         WriteLog(pTemp);
+#ifdef SERVICE_HANDLER_EX
+		return 0;
+#else
         return;
+#endif
     }
 
     switch (fdwControl)
@@ -452,6 +471,9 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
             wsprintf(pTemp, L"ServiceHandler SERVICE_STOPPED done.\n");
             WriteLog(pTemp);
     }
+#ifdef SERVICE_HANDLER_EX
+	return 0;
+#endif
 }
 
 void AddEventSource()
@@ -548,7 +570,7 @@ DWORD RcDrbdStop()
     WCHAR tmp[1024];
     DWORD dwLength;
     DWORD ret;
-
+	
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
     {
         wsprintf(tmp, L"Error: cmd too long(%d)\n", dwLength);
@@ -556,9 +578,8 @@ DWORD RcDrbdStop()
         return -1;
     }
     wsprintf(szFullPath, L"\"%ws\\%ws\" %ws", gServicePath, g_pwdrbdRcBat, L"stop");
-
     ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
-
+	
     if (ret)
     {
         wsprintf(tmp, L"Faild rc_drbd_stop: return val %d\n", ret);
