@@ -525,6 +525,8 @@ void complete_master_bio(struct drbd_device *device,
 				}
 
 				IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+
+				kfree(master_bio->splitInfo);
 	        } 
 	    }	    
 
