@@ -601,7 +601,7 @@ PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj)
 
         KeInitializeEvent(&evnt, NotificationEvent, FALSE);
 
-        guid = (PMOUNTDEV_UNIQUE_ID)ExAllocatePool(PagedPool, cbBuf);
+        guid = (PMOUNTDEV_UNIQUE_ID)ExAllocatePoolWithTag(PagedPool, cbBuf, '08DW');
         if (NULL == guid)
         {
             WDRBD_TRACE("Out of memory.\n");
@@ -798,7 +798,7 @@ OUT PUNICODE_STRING DosName
 	}
 
 	if (c <= 'Z') {
-		DosName->Buffer = ExAllocatePool(PagedPool, 3 * sizeof(WCHAR));
+		DosName->Buffer = ExAllocatePoolWithTag(PagedPool, 3 * sizeof(WCHAR), '18DW');
 		if (!DosName->Buffer) {
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}

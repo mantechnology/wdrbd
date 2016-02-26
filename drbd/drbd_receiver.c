@@ -7662,8 +7662,11 @@ int drbd_do_auth(struct drbd_connection *connection)
 		rv = -1;
 		goto fail;
 	}
-
+#ifdef _WIN32_V9
+	peers_ch = kmalloc(sizeof(*peers_ch), GFP_NOIO, '98DW');
+#else
 	peers_ch = kmalloc(sizeof(*peers_ch), GFP_NOIO);
+#endif
 	if (peers_ch == NULL) {
 		drbd_err(connection, "kmalloc of peers_ch failed\n");
 		rv = -1;
@@ -7739,8 +7742,12 @@ int drbd_do_auth(struct drbd_connection *connection)
 		rv = 0;
 		goto fail;
 	}
-
+#ifdef _WIN32_V9
+	right_response = kmalloc(resp_size, GFP_NOIO, 'A8DW' );
+#else
 	right_response = kmalloc(resp_size, GFP_NOIO);
+#endif
+	
 	if (right_response == NULL) {
 		drbd_err(connection, "kmalloc of right_response failed\n");
 		rv = -1;

@@ -3001,9 +3001,9 @@ static int drbd_create_mempools(void)
 	/* caches */
 #ifdef _WIN32
 	ExInitializeNPagedLookasideList(&drbd_bm_ext_cache, NULL, NULL,
-		0, sizeof(struct bm_extent), 'TYUI', 0);
+		0, sizeof(struct bm_extent), '28DW', 0);
 	ExInitializeNPagedLookasideList(&drbd_al_ext_cache, NULL, NULL,
-		0, sizeof(struct lc_element), 'GHJK', 0);
+		0, sizeof(struct lc_element), '38DW', 0);
 #else
 	drbd_request_cache = kmem_cache_create(
 		"drbd_req", sizeof(struct drbd_request), 0, 0, NULL);
@@ -3038,9 +3038,9 @@ static int drbd_create_mempools(void)
 
 #ifdef _WIN32
 	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
-		0, sizeof(struct drbd_request), 'TQER', 0);
+		0, sizeof(struct drbd_request), '48DW', 0);
 	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
-		0, sizeof(struct drbd_peer_request), 'QERP', 0);
+		0, sizeof(struct drbd_peer_request), '58DW', 0);
 #else
 	drbd_request_mempool = mempool_create_slab_pool(number, drbd_request_cache);
 	if (drbd_request_mempool == NULL)

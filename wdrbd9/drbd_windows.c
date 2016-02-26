@@ -903,7 +903,7 @@ int queue_work(struct workqueue_struct* queue, struct work_struct* work)
 void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 {
-    struct work_struct_wrapper * wr = kmalloc(sizeof(struct work_struct_wrapper), 0, '1111');
+    struct work_struct_wrapper * wr = kmalloc(sizeof(struct work_struct_wrapper), 0, '68DW');
     wr->w = work;
     ExInterlockedInsertTailList(&queue->list_head, &wr->element, &queue->list_lock);
     KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
