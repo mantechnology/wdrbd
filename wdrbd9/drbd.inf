@@ -63,7 +63,7 @@ HKLM, System\CurrentControlSet\Control\Class\{71A27CDD-812A-11D0-BEC7-08002BE209
 HKR,,"proc_details",0x00010001,0
 HKR,,"debug_level",0x00010001,0
 HKR,,"bypass_level",0x00010001,0
-HKR,,"read_filter",0x00010001,1
+HKR,,"read_filter",0x00010001,0
 HKR,,"use_volume_lock",0x00010001,1
 HKR,,"dbgwin_output",0x00010001,0
 HKR,,"netlink_tcp_port",0x00010001,5678

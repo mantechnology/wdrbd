@@ -323,6 +323,7 @@ _Use_decl_annotations_
 NTSTATUS
 mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	NTSTATUS 	status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
     if (DeviceObject == mvolRootDeviceObject)
@@ -347,9 +348,22 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
     }
 
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
+		if (!NT_SUCCESS(status)) {
+			Irp->IoStatus.Status = status;
+			Irp->IoStatus.Information = 0;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+	} 
+	
     IoSkipCurrentIrpStackLocation(Irp);
-
-    return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+	status = IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		IoReleaseRemoveLock(&VolumeExtension->RemoveLock, NULL);
+	}
+	return status;
 
 async_read_filter:
     {
@@ -377,6 +391,7 @@ invalid_device:
 NTSTATUS
 mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
     if (DeviceObject == mvolRootDeviceObject)
@@ -432,8 +447,22 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
     }
 
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
+		if (!NT_SUCCESS(status)) {
+			Irp->IoStatus.Status = status;
+			Irp->IoStatus.Information = 0;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+	}
+
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+    status = IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		IoReleaseRemoveLock(&VolumeExtension->RemoveLock, NULL);
+	}
+	return status;
 }
 
 extern int seq_file_idx;
