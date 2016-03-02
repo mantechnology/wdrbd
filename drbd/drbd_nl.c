@@ -3322,24 +3322,7 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
-#ifdef _WIN32_V9
-	// if all peer_device's replication state is L_OFF, net options can be changed. DW-730 2016.2.29 sekim
-	if(connection) {
-		struct drbd_peer_device* peer_device = NULL;
-		int i = 0;
-		idr_for_each_entry(struct drbd_peer_device* , &connection->peer_devices, peer_device, i) {
-			if (peer_device->repl_state[NOW] > L_OFF) {
-				drbd_msg_put_info(adm_ctx.reply_skb, "if all peer_device's replication state is L_OFF, net options can be changed. maybe you should drbdadm down.");
-				retcode = ERR_INVALID_REQUEST;
-				goto out;		
-			}
-		}
-	} else {
-		drbd_msg_put_info(adm_ctx.reply_skb, "drbd_adm_net_opts's internal error, connection is null.");
-		retcode = ERR_INVALID_REQUEST;
-		goto out;		
-	}
-#endif
+
 
 	
 #ifdef _WIN32
@@ -3378,6 +3361,30 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	retcode = check_net_options(connection, new_net_conf);
 	if (retcode != NO_ERROR)
 		goto fail;
+
+#ifdef _WIN32_V9
+	// if all peer_device's replication state is L_OFF, net options can be changed. DW-730 2016.2.29 sekim
+
+	if (new_net_conf->wire_protocol != old_net_conf->wire_protocol)
+	{
+		if (connection) {
+			struct drbd_peer_device* peer_device = NULL;
+			int i = 0;
+			idr_for_each_entry(struct drbd_peer_device*, &connection->peer_devices, peer_device, i) {
+				if (peer_device->repl_state[NOW] > L_OFF) {
+					drbd_msg_put_info(adm_ctx.reply_skb, "if all peer_device's replication state is L_OFF, net options can be changed. maybe you should drbdadm down.");
+					retcode = ERR_INVALID_REQUEST;
+					goto fail;
+				}
+			}
+		}
+		else {
+			drbd_msg_put_info(adm_ctx.reply_skb, "drbd_adm_net_opts's internal error, connection is null.");
+			retcode = ERR_INVALID_REQUEST;
+			goto fail;
+		}
+	}	
+#endif
 
 	/* re-sync running */
 	rsr = conn_resync_running(connection);
