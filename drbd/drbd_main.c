@@ -375,6 +375,76 @@ struct drbd_peer_device *__drbd_next_peer_device_ref(u64 *visited,
 	return peer_device;
 }
 
+/* This is a list walk that holds a reference on the next element! The
+   reason for that is that one of the requests might hold a reference to a
+   following request. A _req_mod() that destroys the current req might drop
+   the references on the next request as well! I.e. the "save" of a
+   list_for_each_entry_safe() element gets destroyed! -- With holding a
+   reference that destroy gets delayed as necessary */
+
+#define tl_for_each_req_ref_from(req, next, tl)		\
+	for (req = __tl_first_req_ref(&next, req, tl);	\
+	     req;					\
+	     req = __tl_next_req_ref(&next, req, tl))
+
+#define tl_for_each_req_ref(req, next, tl)				\
+	for (req = __tl_first_req_ref(&next,				\
+	list_first_entry_or_null(tl, struct drbd_request, tl_requests), \
+				      tl);				\
+	     req;							\
+	     req = __tl_next_req_ref(&next, req, tl))
+
+static struct drbd_request *__tl_first_req_ref(struct drbd_request **pnext,
+					       struct drbd_request *req,
+					       struct list_head *transfer_log)
+{
+	if (req) {
+#ifdef _WIN32
+		struct drbd_request *next = list_next_entry(struct drbd_request, req, tl_requests);
+#else
+		struct drbd_request *next = list_next_entry(req, tl_requests);
+#endif
+		
+		if (&next->tl_requests != transfer_log)
+			kref_get(&next->kref);
+		*pnext = next;
+	}
+	return req;
+}
+
+static struct drbd_request *__tl_next_req_ref(struct drbd_request **pnext,
+					      struct drbd_request *req,
+					      struct list_head *transfer_log)
+{
+	struct drbd_request *next = *pnext;
+	bool next_is_head = (&next->tl_requests == transfer_log);
+
+	do {
+		if (next_is_head)
+			return NULL;
+		req = next;
+#ifdef _WIN32
+		next = list_next_entry(struct drbd_request, req, tl_requests);
+#else
+		next = list_next_entry(req, tl_requests);
+#endif
+		
+		next_is_head = (&next->tl_requests == transfer_log);
+		if (!next_is_head)
+			kref_get(&next->kref);
+	} while (kref_put(&req->kref, drbd_req_destroy));
+	*pnext = next;
+	return req;
+}
+
+static void tl_abort_for_each_req_ref(struct drbd_request *next, struct list_head *transfer_log)
+{
+	if (&next->tl_requests != transfer_log)
+		kref_put(&next->kref, drbd_req_destroy);
+}
+
+
+
 /**
  * tl_release() - mark as BARRIER_ACKED all requests in the corresponding transfer log epoch
  * @device:	DRBD device.
@@ -458,14 +528,13 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 #endif
 		if (req->epoch == expect_epoch)
 			break;
-#ifdef _WIN32
-    list_for_each_entry_safe_from(struct drbd_request, req, r, &resource->transfer_log, tl_requests) {
-#else
-	list_for_each_entry_safe_from(req, r, &resource->transfer_log, tl_requests) {
-#endif
+
+	tl_for_each_req_ref_from(req, r, &resource->transfer_log) {	
 		struct drbd_peer_device *peer_device;
-		if (req->epoch != expect_epoch)
+		if (req->epoch != expect_epoch) {
+			tl_abort_for_each_req_ref(r, &resource->transfer_log);
 			break;
+		}
 		peer_device = conn_peer_device(connection, req->device->vnr);
 		_req_mod(req, BARRIER_ACKED, peer_device);
 	}
@@ -498,25 +567,15 @@ void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
 	struct drbd_request *req, *r;
-#ifdef _WIN32
-    list_for_each_entry_safe(struct drbd_request, req, r, &resource->transfer_log, tl_requests) {
-#else
-	list_for_each_entry_safe(req, r, &resource->transfer_log, tl_requests) {
-#endif
+
+	tl_for_each_req_ref(req, r, &resource->transfer_log) {
 #ifdef _WIN32_V9 // DW-689 임시보강
-		if (NULL == req->device)
-		{
-			DbgPrint("DRBD_TEST: req->device is null! ignore!");
-			break;
-		}
+		if (NULL == req->device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: req->device is null! ignore!"); break; }
 #endif
 		peer_device = conn_peer_device(connection, req->device->vnr);
+
 #ifdef _WIN32_V9 // DW-689 임시보강
-		if (NULL == peer_device)
-		{
-			DbgPrint("DRBD_TEST: peer_device is null! ignore!");
-			break;
-		}
+		if (NULL == peer_device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: peer_device is null! ignore!"); break; }
 #endif
 		_req_mod(req, what, peer_device);
 	}
@@ -556,11 +615,7 @@ void tl_abort_disk_io(struct drbd_device *device)
         struct drbd_request *req, *r;
 
         spin_lock_irq(&resource->req_lock);
-#ifdef _WIN32
-        list_for_each_entry_safe(struct drbd_request, req, r, &resource->transfer_log, tl_requests) {
-#else
-        list_for_each_entry_safe(req, r, &resource->transfer_log, tl_requests) {
-#endif
+		tl_for_each_req_ref(req, r, &resource->transfer_log) {
                 if (!(req->rq_state[0] & RQ_LOCAL_PENDING))
                         continue;
                 if (req->device != device)
