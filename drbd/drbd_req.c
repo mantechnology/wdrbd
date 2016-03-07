@@ -224,13 +224,14 @@ static void drbd_remove_request_interval(struct rb_root *root,
 void drbd_req_destroy(struct kref *kref)
 {
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
+	struct drbd_request *destroy_next;
 #ifdef _WIN32_V9
 	struct drbd_device *device = NULL;
 #else
 	struct drbd_device *device;
 #endif
 	struct drbd_peer_device *peer_device;
-	unsigned int req_size, s, device_refs = 0;
+	unsigned int s, device_refs = 0;
 
  tail_recursion:
 	if (device_refs > 0 && device != req->device) {
@@ -247,7 +248,7 @@ void drbd_req_destroy(struct kref *kref)
 	}
 	device = req->device;
 	s = req->rq_state[0];
-	req_size = req->i.size;
+	destroy_next = req->destroy_next;
 
 	/* paranoia */
 	for_each_peer_device(peer_device, device) {
@@ -387,25 +388,17 @@ void drbd_req_destroy(struct kref *kref)
 		mempool_free(req, drbd_request_mempool);
 #endif
 
-
-	if (s & RQ_WRITE && req_size) {
-#ifdef _WIN32
-        list_for_each_entry(struct drbd_request, req, &device->resource->transfer_log, tl_requests) {
-#else
-		list_for_each_entry(req, &device->resource->transfer_log, tl_requests) {
-#endif
-			if (req->rq_state[0] & RQ_WRITE) {
-				/*
-				 * Do the equivalent of:
-				 *   kref_put(&req->kref, drbd_req_destroy)
-				 * without recursing into the destructor.
-				 */
-				if (atomic_dec_and_test(&req->kref.refcount))
-					goto tail_recursion;
-				break;
-			}
-		}
+	/*
+	 * Do the equivalent of:
+	 *   kref_put(&req->kref, drbd_req_destroy)
+	 * without recursing into the destructor.
+	 */
+	if(destroy_next) {
+		req = destroy_next;
+		if (atomic_dec_and_test(&req->kref.refcount))
+			goto tail_recursion;
 	}
+	
 
 out:
 	kref_debug_sub(&device->kref_debug, device_refs, 6);
@@ -1863,6 +1856,8 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 				if (req2->rq_state[0] & RQ_WRITE) {
 					/* Make the new write request depend on
 					 * the previous one. */
+					BUG_ON(req2->destroy_next);
+					req2->destroy_next = req;
 					kref_get(&req->kref);
 					break;
 				}
