@@ -923,11 +923,7 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 #endif
 	int connect_int, peer_addr_len, err = 0;
 	long timeo;
-#ifdef _WIN32_V9
-    struct socket *s_estab = NULL; //리턴하기 전 *socket = s_estab; 에서 s_estab 가 잠재적으로 초기화 안됬을 수 있다고 컴파일 에러를 뱉어낸다. 
-#else
-	struct socket *s_estab;
-#endif
+    struct socket *s_estab = NULL; 
 	struct net_conf *nc;
 	struct drbd_waiter *waiter2_gen;
 	struct dtt_listener *listener;
