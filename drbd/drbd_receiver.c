@@ -4677,14 +4677,8 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 				drbd_err(device, "verify-alg too long, "
 					 "peer wants %u, accepting only %u byte\n",
 					 data_size, SHARED_SECRET_MAX);
-				err = -EIO;
 				goto reconnect;
 			}
-
-			// V8 에 있던 아래 코드 사라짐. why?
-			//err = drbd_recv_all(mdev->tconn, p->verify_alg, data_size);
-			//if (err)
-			//	goto reconnect;
 			p->verify_alg[data_size] = 0;
 
 		} else /* apv >= 89 */ {
