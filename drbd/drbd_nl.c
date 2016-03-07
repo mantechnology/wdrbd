@@ -5122,11 +5122,9 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct device_statistics device_statistics;
 	struct idr *idr_to_search;
 	
-#ifdef _WIN32_V9
-	rcu_read_lock(); // patch case of goto put_result;
-#endif
-
 	resource = (struct drbd_resource *)cb->args[0];
+
+	rcu_read_lock();
 	if (!cb->args[0] && !cb->args[1]) {
 		resource_filter = find_cfg_context_attr(cb->nlh, T_ctx_resource_name);
 		if (resource_filter) {
@@ -5142,9 +5140,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 		}
 	}
-#ifndef _WIN32_V9
-	rcu_read_lock();
-#endif
+
 	minor = cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_get_next(idr_to_search, &minor);
@@ -5464,11 +5460,9 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct drbd_genlmsghdr *dh;
 	struct idr *idr_to_search;
 
-#ifdef _WIN32_V9
-	rcu_read_lock(); // patch case of goto put_result;
-#endif
-	
 	resource = (struct drbd_resource *)cb->args[0];
+
+	rcu_read_lock();
 	if (!cb->args[0] && !cb->args[1]) {
 		resource_filter = find_cfg_context_attr(cb->nlh, T_ctx_resource_name);
 		if (resource_filter) {
@@ -5485,9 +5479,7 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		cb->args[0] = (long)resource;
 #endif
 	}
-#ifndef _WIN32_V9
-	rcu_read_lock();
-#endif
+
 	minor = cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_find(idr_to_search, minor);
