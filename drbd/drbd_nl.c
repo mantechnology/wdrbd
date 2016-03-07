@@ -3529,7 +3529,7 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	if (err && err != -ENOMSG) {
 		retcode = ERR_MANDATORY_TAG;
 		drbd_msg_put_info(adm_ctx.reply_skb, from_attrs_err_to_txt(err));
-		goto fail;
+		goto fail_ret_set;
 	}
 
 	if (!expect(peer_device, new_peer_device_conf->resync_rate >= 1))
@@ -3553,6 +3553,7 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	if (0) {
 fail:
 		retcode = ERR_NOMEM;
+fail_ret_set:
 		kfree(new_peer_device_conf);
 	}
 
