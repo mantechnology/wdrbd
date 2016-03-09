@@ -1326,6 +1326,10 @@ extern EX_SPIN_LOCK g_rcuLock;
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
+
+extern void local_irq_disable();
+extern void local_irq_enable();
+
 extern void ct_init_thread_list();
 extern struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event, ULONG Tag);
 extern void ct_delete_thread(PKTHREAD id);

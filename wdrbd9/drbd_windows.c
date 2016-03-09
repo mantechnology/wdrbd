@@ -1199,6 +1199,17 @@ void spin_unlock_bh(spinlock_t *lock)
 	//V9_XXX: dummy!!! spin unlock  적용해도 문제 없을 듯.
 	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 }
+
+spinlock_t g_irqLock;
+void local_irq_disable()
+{	
+	spin_lock_irq(&g_irqLock);
+}
+
+void local_irq_enable()
+{
+	spin_unlock_irq(&g_irqLock);
+}
 #endif
 
 

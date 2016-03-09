@@ -5930,34 +5930,33 @@ void lock_all_resources(void)
 	int __maybe_unused i = 0;
 
 	mutex_lock(&resources_mutex);
-    // kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규
-    //[choi] local_irq_disable(), spin_lock_nested()를 합쳐 spin_lock_irq()로 변경.
-    /*
-    126 static inline void __raw_spin_lock_irq(raw_spinlock_t *lock)
-    127 {
-    128         local_irq_disable();
-    129         preempt_disable();
-    130         spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
-    131         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
-    132 }
-    358 void __lockfunc _raw_spin_lock_nested(raw_spinlock_t *lock, int subclass)
-    359 {
-    360         preempt_disable();
-    361         spin_acquire(&lock->dep_map, subclass, 0, _RET_IP_);
-    362         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
-    363 }
-    */
+	// kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규    
+	// [choi] spin_lock_nested() -> spin_lock_irq()로 포팅
+	/*
+	126 static inline void __raw_spin_lock_irq(raw_spinlock_t *lock)
+	127 {
+	128         local_irq_disable();
+	129         preempt_disable();
+	130         spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
+	131         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
+	132 }
+	358 void __lockfunc _raw_spin_lock_nested(raw_spinlock_t *lock, int subclass)
+	359 {
+	360         preempt_disable();
+	361         spin_acquire(&lock->dep_map, subclass, 0, _RET_IP_);
+	362         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
+	363 }
+	*/
 
+	// [DW-759] 인터럽트 금지 설정. 전역 lock을 사용해 DISPATCH_LEVEL을 유지하도록 함  
+	local_irq_disable();    
+	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32_V9
-    KIRQL irql = KeGetCurrentIrql();
-    for_each_resource(resource, &drbd_resources)
-    {
-        spin_lock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
-        resource->req_lock.saved_oldIrql = irql;
-    }
+	{
+		spin_lock_irq(&resource->req_lock);
+		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());        
+	}
 #else
-	local_irq_disable();
 	for_each_resource(resource, &drbd_resources)
 		spin_lock_nested(&resource->req_lock, i++);
 #endif
@@ -5969,14 +5968,16 @@ void unlock_all_resources(void)
 
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32_V9
-    {
-        spin_unlock_irq(&resource->req_lock);
-        WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
-    }
+	{
+		spin_unlock_irq(&resource->req_lock);
+		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
+	}
 #else
-		spin_unlock(&resource->req_lock);
-	local_irq_enable();
+		spin_unlock(&resource->req_lock);	
 #endif
+	// [DW-759] 인터럽트 금지 해제. 전역 lock을 release하여 PASSIVE_LEVEL로 내림
+	local_irq_enable();
+	WDRBD_TRACE_REQ_LOCK("local_irq_enable : CurrentIrql(%d)\n", KeGetCurrentIrql());
 	mutex_unlock(&resources_mutex);
 }
 
