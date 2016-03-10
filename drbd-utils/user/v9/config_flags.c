@@ -661,6 +661,27 @@ const char *read_balancing_map[] = {
 	[RB_1M_STRIPING] = "1M-striping"
 };
 
+
+#ifdef _WIN32_V9
+#define CHANGEABLE_DISK_OPTIONS								\
+	{ "on-io-error", ENUM(on_io_error, ON_IO_ERROR) },				\
+	/*{ "fencing", ENUM(fencing_policy, FENCING) },*/				\
+	/*{ "disk-barrier", BOOLEAN(disk_barrier, DISK_BARRIER) }, */			\
+	/*{ "disk-flushes", BOOLEAN(disk_flushes, DISK_FLUSHES) }, */			\
+	/*{ "disk-drain", BOOLEAN(disk_drain, DISK_DRAIN) }, */				\
+	/*{ "md-flushes", BOOLEAN(md_flushes, MD_FLUSHES) }, */				\ 
+	{ "unplug-watermark", NUMERIC(unplug_watermark, UNPLUG_WATERMARK) },		\
+	{ "resync-after", NUMERIC(resync_after, MINOR_NUMBER), .checked_in_postparse = true}, \
+	{ "al-extents", NUMERIC(al_extents, AL_EXTENTS), .implicit_clamp = true, },	\
+	{ "al-updates", BOOLEAN(al_updates, AL_UPDATES) },				\
+	{ "discard-zeroes-if-aligned",							\
+	BOOLEAN(discard_zeroes_if_aligned, DISCARD_ZEROES_IF_ALIGNED) },	\
+	{ "disk-timeout", NUMERIC(disk_timeout,	DISK_TIMEOUT),				\
+	.unit = "1/10 seconds" },							\
+	{ "read-balancing", ENUM(read_balancing, READ_BALANCING) },			\
+	{ "rs-discard-granularity",							\
+	NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY) }
+#else
 #define CHANGEABLE_DISK_OPTIONS								\
 	{ "on-io-error", ENUM(on_io_error, ON_IO_ERROR) },				\
 	/*{ "fencing", ENUM(fencing_policy, FENCING) },*/				\
@@ -679,7 +700,7 @@ const char *read_balancing_map[] = {
 	{ "read-balancing", ENUM(read_balancing, READ_BALANCING) },			\
 	{ "rs-discard-granularity",							\
 		NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY) }
-
+#endif
 #define CHANGEABLE_NET_OPTIONS								\
 	{ "protocol", ENUM_NOCASE(wire_protocol, PROTOCOL) },				\
 	{ "timeout", NUMERIC(timeout, TIMEOUT),						\
