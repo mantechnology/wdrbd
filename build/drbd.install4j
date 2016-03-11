@@ -1237,29 +1237,6 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="start a DRBD daemon service if it is running." id="715" customizedId="" beanClass="com.install4j.runtime.beans.actions.services.StartServiceAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
-                <serializedBean>
-                  <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.services.StartServiceAction">
-                      <void property="autostartOnly">
-                        <boolean>true</boolean>
-                      </void>
-                      <void property="executable">
-                        <object class="java.io.File">
-                          <string>bin/drbdService.exe</string>
-                        </object>
-                      </void>
-                      <void property="launcherId">
-                        <null />
-                      </void>
-                      <void property="serviceName">
-                        <string>drbdService</string>
-                      </void>
-                    </object>
-                  </java>
-                </serializedBean>
-                <condition />
-              </action>
               <action name="" id="118" customizedId="" beanClass="com.install4j.runtime.beans.actions.finish.RebootAction" enabled="false" commentSet="false" comment="" actionElevationType="none" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
@@ -1269,27 +1246,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 <condition />
               </action>
             </actions>
-            <formComponents>
-              <formComponent name="Execute launcher" id="117" customizedId="" beanClass="com.install4j.runtime.beans.formcomponents.CheckboxComponent" enabled="true" commentSet="false" comment="" insetTop="" insetLeft="" insetBottom="" insetRight="" resetInitOnPrevious="false">
-                <serializedBean>
-                  <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.formcomponents.CheckboxComponent">
-                      <void property="checkboxText">
-                        <string>${i18n:RunEntryExec("${compiler:sys.fullName}")}</string>
-                      </void>
-                      <void property="initiallySelected">
-                        <boolean>true</boolean>
-                      </void>
-                      <void property="variableName">
-                        <string>executeLauncherAction</string>
-                      </void>
-                    </object>
-                  </java>
-                </serializedBean>
-                <initScript />
-                <visibilityScript />
-              </formComponent>
-            </formComponents>
+            <formComponents />
           </screen>
         </screens>
       </application>
