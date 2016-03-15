@@ -32,10 +32,10 @@
 #define PACKAGE_NAME "DRBD"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "DRBD 8.9.3"
+#define PACKAGE_STRING "DRBD 8.9.6"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "drbd"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "8.9.3"
+#define PACKAGE_VERSION "8.9.6"

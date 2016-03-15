@@ -1675,7 +1675,7 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 			bio_endio(bio, -EIO);
 		else if (bio->bi_rw & DRBD_REQ_DISCARD)
 			drbd_process_discard_req(req);
-#ifndef _WIN32_V9_REMOVELOCK		
+#ifndef _WIN32
 		else
 			generic_make_request(bio);
 #else

@@ -85,21 +85,15 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
     }
     else
     {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
-
-#ifdef _WIN32_V9_REMOVELOCK //DW-670
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // release remove lock for only normal case
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
-
 #endif
 	BIO_ENDIO_FN_START;
 
@@ -281,19 +275,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		Irp = p2;
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)p3;
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
-
-#ifdef _WIN32_V9_REMOVELOCK //DW-670
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
-
 #endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
@@ -365,7 +353,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 {
 	unsigned long flags;
 #ifdef _WIN32
-
 	struct drbd_request *req = NULL;
 	struct drbd_device *device = NULL;
 	struct bio_and_error m;
@@ -381,18 +368,13 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		Irp = p2;
 		bio = (struct bio *)p3;
 		error = Irp->IoStatus.Status;
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
 	}
-
-#ifdef _WIN32_V9_REMOVELOCK //DW-670
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
 
 	req = bio->bi_private; 
 	device = req->device;

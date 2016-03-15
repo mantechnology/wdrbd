@@ -1228,20 +1228,14 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		Irp = p2;
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)p3;
+		if (bio->pVolExt != NULL) {
+			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		}
 	}
 	else {
 		error = (int) p3;
 		bio = (struct bio *)p2;
 	}
-
-#ifdef _WIN32_V9_REMOVELOCK //DW-670
-	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
-		}
-	}
-#endif
-
 #endif
 	struct one_flush_context *octx = bio->bi_private;
 	struct drbd_device *device = octx->device;
