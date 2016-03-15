@@ -1752,65 +1752,6 @@ void generic_make_request(struct bio *bio)
 		offset.QuadPart / 512, bio->bi_size, KeGetCurrentIrql(), &offset, buffer, q->backing_dev_info.pDeviceExtension->Letter);
 #endif
 
-#ifdef _WIN32_TMP_IoAllocateIrp //DISPATCH_LEVEL 회피용
-	newIrp = IoAllocateIrp(q->backing_dev_info.pDeviceExtension->TargetDeviceObject->StackSize, FALSE);
-	if (NULL == newIrp) {
-		WDRBD_ERROR("IoAllocateIrp: cannot alloc new IRP\n");
-		return STATUS_INSUFFICIENT_RESOURCES; // vold!
-	}
-	// 
-	// Obtain a pointer to the stack location of the first driver that will be
-	// invoked.  This is where the function codes and the parameters are set.
-	// 
-	PIO_STACK_LOCATION  nextStack;
-	nextStack = IoGetNextIrpStackLocation(newIrp);
-	nextStack->MajorFunction = io;
-	nextStack->Parameters.Write.Length = bio->bi_size;
-	nextStack->Parameters.Write.ByteOffset = offset;
-
-
-	if (q->backing_dev_info.pDeviceExtension->TargetDeviceObject->Flags & DO_BUFFERED_IO) {
-		newIrp->AssociatedIrp.SystemBuffer = buffer;
-		newIrp->MdlAddress = NULL;
-	}
-	else if (q->backing_dev_info.pDeviceExtension->TargetDeviceObject->Flags & DO_DIRECT_IO) {
-		// 
-		// The target device supports direct I/O operations.  Allocate
-		// an MDL large enough to map the buffer and lock the pages into
-		// memory.
-		// 
-		// The target device supports direct I/O operations.  Allocate
-		// an MDL large enough to map the buffer and lock the pages into
-		// memory.
-		// 
-		newIrp->MdlAddress = IoAllocateMdl(buffer,
-			bio->bi_size,
-			FALSE,
-			FALSE,
-			(PIRP) NULL);
-
-		if (newIrp->MdlAddress == NULL) {
-			IoFreeIrp(newIrp);
-			return STATUS_INSUFFICIENT_RESOURCES;// vold!
-		}
-
-		try {
-			static int x = 0;
-			MmProbeAndLockPages(newIrp->MdlAddress,
-				KernelMode,
-				(LOCK_OPERATION) (nextStack->MajorFunction == IRP_MJ_WRITE ? IoReadAccess : IoWriteAccess));
-
-		} except(EXCEPTION_EXECUTE_HANDLER) {
-			if (newIrp->MdlAddress != NULL) {
-				IoFreeMdl(newIrp->MdlAddress);
-			}
-			IoFreeIrp(newIrp);
-			WDRBD_ERROR("DO_DIRECT_IO: cannot MmProbeAndLockPages\n");
-			return  GetExceptionCode();
-		}
-	}
-#else
-
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
 				q->backing_dev_info.pDeviceExtension->TargetDeviceObject,
@@ -1830,7 +1771,6 @@ void generic_make_request(struct bio *bio)
 		return; // => potential IRP hang bug. 2015.12.09 sekim
 #endif
 	}
-#endif
 
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
@@ -1988,9 +1928,9 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      __list_add_rcu(new, head->prev, head);
 }
 
- struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag)
+ struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
  {
-     return kzalloc(sizeof(struct request_queue), 0, Tag);
+     return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
  }
 
 /**
