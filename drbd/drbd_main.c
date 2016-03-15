@@ -4244,20 +4244,13 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk = alloc_disk(1);
 #endif
 	if (!disk)
-#ifdef _WIN32_V9
-	{
-		err = ERR_NO_DISK;
-#endif
 		goto out_no_disk;
-#ifdef _WIN32_V9
-	}
-#endif
-	device->vdisk = disk;
 
+	device->vdisk = disk;
+#ifndef _WIN32
 	set_disk_ro(disk, true);
 
 	disk->queue = q;
-#ifndef _WIN32 // V8 적용
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
 #endif
@@ -4295,13 +4288,9 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->bitmap = drbd_bm_alloc();
 	if (!device->bitmap)
 		goto out_no_bitmap;
-#ifdef _WIN32 // V8 적용
-    memset(&device->read_requests, 0, sizeof(struct rb_root));
-    memset(&device->write_requests, 0, sizeof(struct rb_root));
-#else
+
 	device->read_requests = RB_ROOT;
 	device->write_requests = RB_ROOT;
-#endif
 
 	BUG_ON(!mutex_is_locked(&resource->conf_update));
 	for_each_connection(connection, resource) {

@@ -783,7 +783,7 @@ extern void kref_init(struct kref *kref);
 
 extern struct request_queue *bdev_get_queue(struct block_device *bdev);
 extern void blk_cleanup_queue(struct request_queue *q);
-extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask, ULONG Tag);
+extern struct request_queue *blk_alloc_queue(gfp_t gfp_mask);
 typedef void (make_request_fn) (struct request_queue *q, struct bio *bio);
 extern void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn);
 extern void blk_queue_flush(struct request_queue *q, unsigned int flush);

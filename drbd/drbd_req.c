@@ -2347,6 +2347,10 @@ void request_timer_fn(unsigned long data)
 	struct drbd_connection *connection;
 	struct drbd_request *req_read, *req_write;
 #ifdef _WIN32_V9
+	UNREFERENCED_PARAMETER(Dpc);
+	UNREFERENCED_PARAMETER(SystemArgument1);
+	UNREFERENCED_PARAMETER(SystemArgument2);
+
 	ULONG_PTR oldest_submit_jif;
 	ULONG_PTR dt = 0;
 	ULONG_PTR et = 0;
@@ -2383,8 +2387,13 @@ void request_timer_fn(unsigned long data)
 
 		if (device->disk_state[NOW] > D_FAILED) {
 			et = min_not_zero(et, dt);
+#ifdef _WIN32
+			next_trigger_time = time_min_in_future(now,
+					next_trigger_time + dt, oldest_submit_jif + dt);
+#else
 			next_trigger_time = time_min_in_future(now,
 					next_trigger_time, oldest_submit_jif + dt);
+#endif
 			restart_timer = true;
 		}
 

@@ -204,7 +204,6 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	NTSTATUS				status;
 	struct bio				*bio;
 	unsigned int			nr_pages;
-	struct request_queue	*q;
 
 	nr_pages = (length + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	bio = bio_alloc(GFP_NOIO, nr_pages, '75DW');
@@ -225,25 +224,14 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	bio->bi_rw |= (io == IRP_MJ_WRITE) ? WRITE : READ;
 	bio->bi_size = length;
 
-	q = kzalloc(sizeof(struct request_queue), 0, '85DW');
-	if (!q)
-	{
-		bio_free(bio);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-    q->queuedata = device;
-
-	status = drbd_make_request(q, bio); // drbd local I/O entry point 
+	status = drbd_make_request(device->rq_queue, bio); // drbd local I/O entry point 
 	if (STATUS_SUCCESS != status)
 	{
 		bio_free(bio);
 		status = STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	kfree(q);
 	return status;
-	
 }
 
 NTSTATUS
@@ -798,7 +786,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
     dev->bd_disk->disk_name[1] = ':';
     dev->bd_disk->disk_name[2] = '\n';
 
-    dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, 'E5DW');
+    dev->bd_disk->queue = blk_alloc_queue(0);
     if (!dev->bd_disk->queue)
     {
         WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
