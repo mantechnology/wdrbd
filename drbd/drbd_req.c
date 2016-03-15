@@ -117,6 +117,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	drbd_req_make_private_bio(req, bio_src);
 #endif
 
+#ifdef _WIN32_V9
+	req->private_bio->win32_page_buf = req->win32_page_buf; // fix bugcheck DW-776 (private bio's buffer is invalid when memory-overflow occured)
+#endif
+
 	kref_get(&device->kref);
 	kref_debug_get(&device->kref_debug, 6);
 
