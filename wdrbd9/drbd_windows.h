@@ -42,7 +42,8 @@
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// SEO: NETLINK에서 사용
 
-#define _WIN32_WPP
+//#define _WIN32_WPP
+#define _WIN32_LOGLINK			// NEW: socket link for eventlog between engine and drbdService 
 
 #ifdef _WIN32_WPP
 #define WPP_CONTROL_GUIDS \

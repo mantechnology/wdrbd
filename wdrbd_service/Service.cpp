@@ -53,6 +53,29 @@ VOID WriteLog(wchar_t* pMsg)
 	Log(pMsg);
 }
 
+#ifdef _WIN32_LOGLINK	
+VOID WriteLog(wchar_t* pMsg, WORD wType)
+{
+	HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
+	PCTSTR aInsertions [] = { pMsg };
+	ReportEvent(
+		hEventLog,                  // Handle to the eventlog
+		wType,						// Type of event
+		0,							// Category (could also be 0)
+		ONELINE_INFO,				// Event id
+		NULL,                       // User's sid (NULL for none)
+		1,                          // Number of insertion strings
+		0,                          // Number of additional bytes
+		aInsertions,                // Array of insertion strings
+		NULL                        // Pointer to additional bytes
+		);
+
+	DeregisterEventSource(hEventLog);
+
+	Log(pMsg);
+}
+#endif
+
 int _tmain(int argc, _TCHAR* argv[])
 {
     TCHAR szPath[MAX_PATH] = { 0, };
@@ -371,6 +394,15 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
         WriteLog(L"pthread_create() failed\n");
         return;
     }
+
+#ifdef _WIN32_LOGLINK	
+	extern int LogLink_Daemon(unsigned short *port);
+	if (CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) LogLink_Daemon, NULL, 0, (LPDWORD) &threadID) == NULL)
+	{
+		WriteLog(L"LogLink_Daemon failed\n");
+		return;
+	}
+#endif
 
     RcDrbdStart();
 

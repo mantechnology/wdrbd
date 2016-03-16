@@ -164,7 +164,7 @@ int SockListener(unsigned short *servPort)
 
 	servSock = CreateTCPServerSocket(*servPort);
 
-	for (;;) 
+	for (;;)
 	{
 		clntSock = AcceptTCPConnection(servSock);
 		{
@@ -172,19 +172,19 @@ int SockListener(unsigned short *servPort)
 			extern const TCHAR * ServiceName;
 			HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
 			BOOL bSuccess;
-			PCTSTR aInsertions[] = { L"call_usermodehelper:", L"Accepted", L"TCP connection" };
+			PCTSTR aInsertions [] = { L"call_usermodehelper:", L"Accepted", L"TCP connection" };
 			bSuccess = ReportEvent(
 				hEventLog,                  // Handle to the eventlog
 				EVENTLOG_INFORMATION_TYPE,  // Type of event
-				0,							 // Category (could also be 0)
-				MSG_ACCEPT_TCP,				// Event id
+				0,                             // Category (could also be 0)
+				MSG_ACCEPT_TCP,                // Event id
 				NULL,                       // User's sid (NULL for none)
 				3,                          // Number of insertion strings
 				0,                          // Number of additional bytes
 				aInsertions,                // Array of insertion strings
 				NULL                        // Pointer to additional bytes
 				);
-			
+
 			DeregisterEventSource(hEventLog);
 		}
 
@@ -317,3 +317,128 @@ int HandleTCPClient(int clntSocket)
 	closesocket(clntSocket);
 	return 0;
 }
+
+#ifdef _WIN32_LOGLINK	
+
+#define MAX_LOG_STRING	512
+
+int LogLink_Daemon(unsigned short *port)
+{
+	wchar_t tmp[TMPBUF];
+
+	WSADATA WsaDat;
+	if (WSAStartup(MAKEWORD(2, 2), &WsaDat) != 0)
+	{
+		WriteLog(L"LogLink: Winsock initialization failed\r\n");
+		WSACleanup();
+		return 0;
+	}
+
+	int loop = 0;
+
+	while (1) // forever
+	{ 
+		int ret;
+
+		wsprintf(tmp, L"LogLink: daemon main loop(#%d)\r\n", loop++);
+		WriteLog(tmp);
+
+		SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (sock == INVALID_SOCKET)
+		{
+			wsprintf(tmp, L"LogLink: Socket creation Failed err=0x%x\r\n", WSAGetLastError());
+			WriteLog(tmp);
+			Sleep(10000);
+			continue;
+		}
+
+		struct hostent *host;
+		if ((host = gethostbyname("127.0.0.1")) == NULL)
+		{
+			wsprintf(tmp, L"LogLink: Failed to resolve hostname err=0x%x\r\n", WSAGetLastError());
+			WriteLog(tmp);
+			Sleep(10000);
+			continue;
+		}
+
+		SOCKADDR_IN sock_addr;
+		sock_addr.sin_port = htons(DRBD_EVENTLOG_LINK_PORT);
+		sock_addr.sin_family = AF_INET;
+		sock_addr.sin_addr.s_addr = *((unsigned long*) host->h_addr);
+
+		// Attempt to connect to drbd-engine
+		int conn_loop = 0;
+		while(1)
+		{
+			if ((ret = connect(sock, (SOCKADDR*) (&sock_addr), sizeof(sock_addr))) == 0)
+			{
+				wsprintf(tmp, L"LogLink: connected to drbd engine ok. retry#=%d\r\n", conn_loop);
+				WriteLog(tmp);
+				break;
+			}
+			else
+			{
+				if (!(conn_loop++ % 120))
+				{
+					// accumulated? don't care.
+					wsprintf(tmp, L"LogLink: connect(#%d) failed ret=%d err=0x%x\r\n", conn_loop++, ret, WSAGetLastError());
+					WriteLog(tmp);
+				}
+
+				Sleep(500);
+			}
+		}
+
+		while (1)
+		{
+			int sz;
+			char buffer[1000];
+			wchar_t buffer2[1000];
+
+			memset(buffer, 0, sizeof(buffer));
+
+			// recv msg size
+			if ((ret = recv(sock, (char*) &sz, sizeof(int), 0)) != sizeof(int))
+			{
+				wsprintf(tmp, L"LogLink: rx header ret=%d err=0x%x\r\n", ret, WSAGetLastError());
+				WriteLog(tmp);
+				break;
+			}
+
+			// check rx boundary
+			//wsprintf(tmp, L"EventLongLink: rx1 sz= %d\n", sz);
+			//WriteLog(tmp);
+
+			if ((ret = recv(sock, (char*) &buffer, sz, 0)) != sz)
+			{
+				wsprintf(tmp, L"LogLink: rx log ret=%d err=0x%x\r\n", ret, WSAGetLastError());
+				WriteLog(tmp);
+				break;
+			}
+
+			// eventlog!
+			// size check!
+			// parse log level
+
+			// EVENTLOG_INFORMATION_TYPE
+
+			memset(buffer2, 0, sizeof(buffer2));
+			wsprintf(buffer2, L"%S", buffer);
+			WriteLog(buffer2);
+
+			// send ok
+
+			if ((ret = send(sock, (char*) &sz, sizeof(int), 0)) != sizeof(int))
+			{
+				wsprintf(tmp, L"LogLink: tx ret=%d err=0x%x\r\n", ret, WSAGetLastError());
+				WriteLog(tmp);
+				break;
+			}
+		}
+
+		closesocket(sock);
+	}
+
+	return 0;
+}
+#endif

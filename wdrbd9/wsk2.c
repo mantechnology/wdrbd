@@ -1,18 +1,11 @@
 ﻿
 #include "drbd_windows.h"
 #include "wsk2.h"
-enum
-{
-	DEINITIALIZED,
-	DEINITIALIZING,
-	INITIALIZING,
-	INITIALIZED
-};
 
 WSK_REGISTRATION			g_WskRegistration;
 static WSK_PROVIDER_NPI		g_WskProvider;
 static WSK_CLIENT_DISPATCH	g_WskDispatch = { MAKE_WSK_VERSION(1, 0), 0, NULL };
-static LONG					g_SocketsState = DEINITIALIZED;
+LONG						g_SocketsState = DEINITIALIZED; // for  _WIN32_LOGLINK	
 
 NTSTATUS
 NTAPI CompletionRoutine(

@@ -4,6 +4,14 @@
 
 #define SOCKET_ERROR -1
 
+enum
+{
+	DEINITIALIZED,
+	DEINITIALIZING,
+	INITIALIZING,
+	INITIALIZED
+};
+
 NTSTATUS NTAPI SocketsInit();
 VOID NTAPI SocketsDeinit();
 
