@@ -644,7 +644,7 @@ struct bio {
 	unsigned int 			split_id;
 	unsigned int 			split_total_id;
 	unsigned int 			split_total_length;
-	char*					win32_page_buf; 
+	char* 					bio_databuf;
 	struct splitInfo*		splitInfo;
 
 	sector_t				bi_sector;	/* device address in 512 byte sectors */

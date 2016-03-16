@@ -293,7 +293,7 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
     {
         return FALSE;
     }
-	bio->win32_page_buf = bio_src->win32_page_buf;
+	bio->bio_databuf = bio_src->bio_databuf;
 #endif
 
 	req->private_bio = bio;

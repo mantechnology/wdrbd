@@ -441,7 +441,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 		return -ENOMEM;
 #ifdef _WIN32
 	// 기존 drbd_recv_all_warn 으로 처리되던 부분이 dtt_recv_short 로 간략하게 처리되고 있다.(drbd_recv_all_warn 내부로직이 복잡) 차이점에 대한 추후 분석 필요.
-	err = dtt_recv_short(socket, page, size, 0); // *win32_big_page 포인터 버퍼 , size 값 유효성 디버깅 필요
+	err = dtt_recv_short(socket, page, size, 0); // *peer_req_databuf 포인터 버퍼 , size 값 유효성 디버깅 필요
 	WDRBD_TRACE_RS("kernel_recvmsg(%d) socket(0x%p) size(%d) all_pages(0x%p)\n", err, socket, size, page);
     if (err < 0) {
 		goto fail;
@@ -2028,7 +2028,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 
 // kmpak
 // 이 함수에서는 page 구조체로 argument를 받지만 실은 실제 buffer의 주소를 받도록 한다.
-// 상위에서 win32_page_buf 를 주는 경우도 발생하기 때문이다.
+// 상위에서 bio_databuf,req_databuf,peer_req_databuf 를 주는 경우에 대해서도 처리하기 위함.
 static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stream,
 			 struct page *page, int offset, size_t size, unsigned msg_flags)
 {

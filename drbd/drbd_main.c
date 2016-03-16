@@ -2402,7 +2402,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 
 #ifdef _WIN32_V9
 	int err;
-	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
+	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
 #else
@@ -2437,7 +2437,7 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 	 * by someone, leading to some obscure delayed Oops somewhere else. */
 #ifdef _WIN32
 	int err;
-	err = _drbd_no_send_page(peer_device, bio->win32_page_buf, 0, bio->bi_size, 0);
+	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
 #else
@@ -2483,7 +2483,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 #ifdef _WIN32_V9 // V9_XXX !!!!
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
-	err = _drbd_no_send_page(peer_device, peer_req->win32_big_page, 0, len, 0);
+	err = _drbd_no_send_page(peer_device, peer_req->peer_req_databuf, 0, len, 0);
 	if (err)
 		return err;
 #else
@@ -2625,7 +2625,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #ifdef DRBD_TRACE
             WDRBD_TRACE("_drbd_send_bio! ASYNC protocol!"); 
 #endif
-			err = _drbd_no_send_page(peer_device, req->win32_page_buf, 0, req->i.size, 0);
+			err = _drbd_no_send_page(peer_device, req->req_databuf, 0, req->i.size, 0);
 		}
 #else
 			err = _drbd_send_bio(peer_device, req->master_bio);
@@ -2636,7 +2636,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #ifdef DRBD_TRACE
             WDRBD_TRACE("_drbd_send_zc_bio! SYNC/Semi-SYNC protocol!\n");
 #endif
-			err = _drbd_no_send_page(peer_device, req->win32_page_buf, 0, req->i.size, 0);
+			err = _drbd_no_send_page(peer_device, req->req_databuf, 0, req->i.size, 0);
 		}
 #else
 			err = _drbd_send_zc_bio(peer_device, req->master_bio);
@@ -2648,7 +2648,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 			 * currently supported in kernel crypto. */
 			unsigned char digest[64];
 #ifdef _WIN32_V9
-			// if (req->win32_page_buf)
+			// if (req->req_databuf)
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest);
 #else
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest);

@@ -571,7 +571,7 @@ struct drbd_request {
 	 * see drbd_request_endio(). */
 	struct bio *private_bio;
 #ifdef _WIN32
-	char *win32_page_buf;
+	char*	req_databuf;
 #endif
 	struct drbd_interval i;
 
@@ -741,7 +741,7 @@ struct drbd_peer_request {
 	};
 	u64 dagtag_sector;
 #ifdef _WIN32
-	void *win32_big_page;
+	void* peer_req_databuf;
 #endif
 };
 

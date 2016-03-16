@@ -509,7 +509,7 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 #endif
 {
 #ifdef _WIN32_V9
-	*(uint32_t *)digest = crc32c(0, peer_req->win32_big_page, peer_req->i.size);
+	*(uint32_t *)digest = crc32c(0, peer_req->peer_req_databuf, peer_req->i.size);
 #else
 	struct hash_desc desc;
 	struct scatterlist sg;
@@ -546,8 +546,8 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 #endif
 
 #ifdef _WIN32 //V8 구현 유지.
-	if (req->win32_page_buf)
-		crypto_hash_update(&desc, (struct scatterlist *)req->win32_page_buf, req->i.size); // ignore compile warning
+	if (req->req_databuf)
+		crypto_hash_update(&desc, (struct scatterlist *)req->req_databuf, req->i.size); // ignore compile warning
 	crypto_hash_final(&desc, digest);
 #else
 	desc.tfm = tfm;
@@ -627,7 +627,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 	if (!peer_req)
 		goto defer;
 #ifdef _WIN32_V9 
-    // JHKIM: win32_big_page가 이미 할당 됨!!!
+    // JHKIM: peer_req_databuf가 이미 할당 됨!!!
     // JHKIM: 일단 참고용으로 코멘트 처리.
     // -> CHOI: 코멘트 처리된 것 풀음. peer_req->pages가 drbd_receiver와 drbd_sender 두 곳에서 할당 됨.
 	
@@ -637,9 +637,9 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
             &peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
         if (!peer_req->page_chain.head)
             goto defer2;        
-        peer_req->win32_big_page = peer_req->page_chain.head;
+        peer_req->peer_req_databuf = peer_req->page_chain.head;
     } else  {
-        peer_req->win32_big_page = NULL;
+        peer_req->peer_req_databuf = NULL;
     }
 #else
 	if (size) {
