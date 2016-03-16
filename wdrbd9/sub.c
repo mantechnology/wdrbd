@@ -93,8 +93,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		WDRBD_ERROR("cannot remove device, status=0x%x\n", status);
 	}
 
-	IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
-	IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
+	if (NT_SUCCESS(IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL)))
+		IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	{
