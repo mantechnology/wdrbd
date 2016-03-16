@@ -397,7 +397,8 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 
 #ifdef _WIN32_LOGLINK	
 	extern int LogLink_Daemon(unsigned short *port);
-	if (CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) LogLink_Daemon, NULL, 0, (LPDWORD) &threadID) == NULL)
+	extern HANDLE g_LogLinkThread;
+	if ((g_LogLinkThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) LogLink_Daemon, NULL, 0, (LPDWORD) &threadID)) == NULL)
 	{
 		WriteLog(L"LogLink_Daemon failed\n");
 		return;
@@ -488,6 +489,15 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
             RcDrbdStop();
             StopRegistryCleaner();
 
+#ifdef _WIN32_LOGLINK
+			extern HANDLE g_LogLinkThread;
+			if (g_LogLinkThread)
+			{
+				TerminateThread(g_LogLinkThread, 0);
+				CloseHandle(g_LogLinkThread);
+				g_LogLinkThread = NULL;
+			}
+#endif
             g_bProcessStarted = FALSE;
             g_tServiceStatus.dwWin32ExitCode = 0;
             g_tServiceStatus.dwCurrentState = SERVICE_STOPPED;

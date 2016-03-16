@@ -321,12 +321,14 @@ int HandleTCPClient(int clntSocket)
 #ifdef _WIN32_LOGLINK	
 
 #define MAX_LOG_STRING	512
+HANDLE g_LogLinkThread = NULL;
+extern VOID WriteLog(wchar_t* pMsg, WORD wType);
 
 int LogLink_Daemon(unsigned short *port)
 {
 	wchar_t tmp[TMPBUF];
-
 	WSADATA WsaDat;
+
 	if (WSAStartup(MAKEWORD(2, 2), &WsaDat) != 0)
 	{
 		WriteLog(L"LogLink: Winsock initialization failed\r\n");
@@ -336,7 +338,7 @@ int LogLink_Daemon(unsigned short *port)
 
 	int loop = 0;
 
-	while (1) // forever
+	while (1) // forever: killed by TerminateThread
 	{ 
 		int ret;
 
@@ -372,13 +374,13 @@ int LogLink_Daemon(unsigned short *port)
 		{
 			if ((ret = connect(sock, (SOCKADDR*) (&sock_addr), sizeof(sock_addr))) == 0)
 			{
-				wsprintf(tmp, L"LogLink: connected to drbd engine ok. retry#=%d\r\n", conn_loop);
+				wsprintf(tmp, L"LogLink: connected to drbd engine ok. retry=%d\r\n", conn_loop);
 				WriteLog(tmp);
 				break;
 			}
 			else
 			{
-				if (!(conn_loop++ % 120))
+				if (!(conn_loop++ % 30))
 				{
 					// accumulated? don't care.
 					wsprintf(tmp, L"LogLink: connect(#%d) failed ret=%d err=0x%x\r\n", conn_loop++, ret, WSAGetLastError());
@@ -392,8 +394,8 @@ int LogLink_Daemon(unsigned short *port)
 		while (1)
 		{
 			int sz;
-			char buffer[1000];
-			wchar_t buffer2[1000];
+			char buffer[MAX_LOG_STRING];
+			wchar_t buffer2[MAX_LOG_STRING];
 
 			memset(buffer, 0, sizeof(buffer));
 
@@ -405,10 +407,16 @@ int LogLink_Daemon(unsigned short *port)
 				break;
 			}
 
-			// check rx boundary
-			//wsprintf(tmp, L"EventLongLink: rx1 sz= %d\n", sz);
-			//WriteLog(tmp);
+			// checkmsg size
+			if (sz > (MAX_LOG_STRING - 1))
+			{
+				wsprintf(tmp, L"%S", "LogLink: msg size too big(%d)\r\n", sz);
+				WriteLog(tmp, EVENTLOG_WARNING_TYPE);
 
+				sz = MAX_LOG_STRING - 1;
+			}
+
+			// recv message
 			if ((ret = recv(sock, (char*) &buffer, sz, 0)) != sz)
 			{
 				wsprintf(tmp, L"LogLink: rx log ret=%d err=0x%x\r\n", ret, WSAGetLastError());
@@ -416,18 +424,33 @@ int LogLink_Daemon(unsigned short *port)
 				break;
 			}
 
-			// eventlog!
-			// size check!
-			// parse log level
+			// mapping drbd-engine err-level to windows eventlog 
 
-			// EVENTLOG_INFORMATION_TYPE
+			WORD wType;
+			switch (buffer[1] - '0')
+			{
+				case 0: // PRINTK_EMERG
+				case 1: // PRINTK_ALERT
+				case 2: // PRINTK_CRIT
+				case 3: // PRINTK_ERR
+					wType = EVENTLOG_ERROR_TYPE;
+					break;
+				case 4: // PRINTK_WARN
+				case 5: // PRINTK_NOTICE
+					wType = EVENTLOG_WARNING_TYPE;
+					break;
+				case 6: // PRINTK_INFO
+				default: // PRINTK_DBG or unexpected cases
+					wType = EVENTLOG_INFORMATION_TYPE;
+			}
 
-			memset(buffer2, 0, sizeof(buffer2));
-			wsprintf(buffer2, L"%S", buffer);
-			WriteLog(buffer2);
+			wsprintf(buffer2, L"%S", buffer + 3);
+			WriteLog(buffer2, wType);
+
+			//WriteLog(buffer2, EVENTLOG_ERROR_TYPE); // test
+			//WriteLog(buffer2, EVENTLOG_WARNING_TYPE); // test
 
 			// send ok
-
 			if ((ret = send(sock, (char*) &sz, sizeof(int), 0)) != sizeof(int))
 			{
 				wsprintf(tmp, L"LogLink: tx ret=%d err=0x%x\r\n", ret, WSAGetLastError());

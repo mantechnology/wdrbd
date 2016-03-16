@@ -705,7 +705,11 @@ SendLocal(
 			}
 			else
 			{
+#ifdef _WIN32_LOGLINK
+				DbgPrint("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+#else
 				WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+#endif
 				switch (Irp->IoStatus.Status)
 				{
 				case STATUS_IO_TIMEOUT:
@@ -722,7 +726,11 @@ SendLocal(
 			break;
 
 		default:
+#ifdef _WIN32_LOGLINK
+			DbgPrint("KeWaitForSingleObject failed. status 0x%x\n", Status);
+#else
 			WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
+#endif
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -731,11 +739,19 @@ SendLocal(
 		if (Status == STATUS_SUCCESS)
 		{
 			BytesSent = (LONG) Irp->IoStatus.Information;
+#ifdef _WIN32_LOGLINK
+			DbgPrint("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+#else
 			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+#endif
 		}
 		else
 		{
+#ifdef _WIN32_LOGLINK
+			DbgPrint("(%s) WskSend error(0x%x)\n", current->comm, Status);
+#else
 			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+#endif
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -872,8 +888,12 @@ LONG NTAPI Receive(
             }
             else
             {
-                WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
-                if(Irp->IoStatus.Status)
+#ifdef _WIN32_LOGLINK // TODO: wsk2.c 의 로그는 상위에서 적절한 오류처리에서 기록/확인이 가능함으로 최종적으로는 삭제요망.
+                DbgPrint("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
+#else
+				WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
+#endif
+				if(Irp->IoStatus.Status)
                 {
                     BytesReceived = -ECONNRESET;
                 }
@@ -898,11 +918,19 @@ LONG NTAPI Receive(
 		if (Status == STATUS_SUCCESS)
 		{
 			BytesReceived = (LONG) Irp->IoStatus.Information;
+#ifdef _WIN32_LOGLINK
+			DbgPrint("(%s) Rx No pending and data(%d) is avail\n", current->comm, BytesReceived);
+#else
 			WDRBD_INFO("(%s) Rx No pending and data(%d) is avail\n", current->comm, BytesReceived);
+#endif
 		}
 		else
 		{
+#ifdef _WIN32_LOGLINK
+			DbgPrint("WskReceive Error Status=0x%x\n", Status); // EVENT_LOG!
+#else
 			WDRBD_TRACE("WskReceive Error Status=0x%x\n", Status); // EVENT_LOG!
+#endif
 		}
 	}
 

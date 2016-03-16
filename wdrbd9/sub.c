@@ -524,6 +524,9 @@ char * printk_str(const char *fmt, ...)
 }
 
 #ifdef _WIN32_LOGLINK
+#define DRBD_EVENTLOG_LINK_PORT		5677
+#define LOGLINK_TIMEOUT				3
+
 PWSK_SOCKET g_SockLogLink = NULL;
 
 VOID NTAPI LogLinkThread(PVOID p)
@@ -546,7 +549,7 @@ VOID NTAPI LogLinkThread(PVOID p)
 		KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 	}
 
-	// start Event LogLink daemon
+	// start LogLink kernel daemon
 
 	ListenSock = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
 	if (ListenSock == NULL) {
@@ -556,7 +559,15 @@ VOID NTAPI LogLinkThread(PVOID p)
 
 	LocalAddress.sin_family = AF_INET;
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
-	LocalAddress.sin_port = HTONS(5677); // DRBD_EVENTLOG_LINK_PORT
+	LocalAddress.sin_port = HTONS(DRBD_EVENTLOG_LINK_PORT);
+
+	LONG InputBuffer = 1;
+	Status = ControlSocket(ListenSock, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
+	if (!NT_SUCCESS(Status)) {
+		DbgPrint("DRBD_ERROR:LogLink: SO_REUSEADDR: failed=0x%x\n", Status);
+		CloseSocket(ListenSock);
+		PsTerminateSystemThread(Status);
+	}
 
 	Status = Bind(ListenSock, (PSOCKADDR) &LocalAddress);
 	if (!NT_SUCCESS(Status)) {
@@ -569,9 +580,7 @@ VOID NTAPI LogLinkThread(PVOID p)
 	{
 		PWSK_SOCKET		AcceptSock = NULL;
 
-		DbgPrint("DRBD_TEST: LogLink Thread accept loop...\n");
-
-		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 5)) == NULL)
+		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 10)) == NULL)
 		{
 			if (Status == STATUS_TIMEOUT)
 			{
@@ -580,60 +589,52 @@ VOID NTAPI LogLinkThread(PVOID p)
 			else
 			{
 				DbgPrint("DRBD_ERROR:LogLink: accept error=0x%x\n", Status);
-				// continue or break?
+				
 				LARGE_INTEGER	Interval;
 				Interval.QuadPart = (-1 * 5000 * 10000);   // 5 sec
 				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 				
 				continue;
-				// break;
 			}
 		}
 
-		// lock???
+		// lock ignore
 		if (g_SockLogLink)
 		{
 			DbgPrint("DRBD_ERROR:LogLink: close prev socket");
-			CloseSocket(ListenSock);
+			CloseSocket(g_SockLogLink);
 			// ignore error
 		}
 
 		DbgPrint("DRBD_TEST: New EventLog Link Socket");
 		g_SockLogLink = AcceptSock;
-		// unlock
 	}
 
 	// not reached here.
 	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-int Send_EventLogEntryData(PWSK_SOCKET *sock, char *msg, int *err)
+int Send_EventLogEntryData(PWSK_SOCKET sock, char *msg, int *err)
 {
-	int sz = strlen(msg);
-	// check max size
-
 	if (sock)
 	{
 		int ret;
-		
-		// set timeout!!!
-		if ((ret = SendLocal(sock, &sz, sizeof(int), 0, 0)) != sizeof(int))
+		int sz = strlen(msg);
+
+		if ((ret = SendLocal(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
 		{
 			*err = ret;
 			return -1;
 		}
 
-		if ((ret = SendLocal(sock, msg, sz, 0, 0)) != sz)
+		if ((ret = SendLocal(sock, msg, sz, 0, LOGLINK_TIMEOUT)) != sz)
 		{
-			DbgPrint("send2 fail stat=0x%x\n", ret);
 			*err = ret;
 			return -2;
 		}
 
-		// set timeout!!!
-		if ((ret = Receive(sock, &sz, sizeof(int), 0, 0)) != sizeof(int))
+		if ((ret = Receive(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
 		{
-			DbgPrint("recv fail sz=%d\n", ret);
 			*err = ret;
 			return -3;
 		}
@@ -687,7 +688,9 @@ void _printk(const char * func, const char * format, ...)
 #else
 #ifdef _WIN32_LOGLINK
 
-	// lock?
+	// lock? 
+	// max length?
+
 	ret = 0;
 	int err = 0;
 
@@ -695,7 +698,9 @@ void _printk(const char * func, const char * format, ...)
 	{
 		DbgPrint("DRBD EventLog Daemon not ready yet. sock=0x%x ret=%d err=%d\n", g_SockLogLink, ret, err);
 
-		// No upper eventlog link! Save log message in kernel mode!
+		// No application level LogLink daemon. 
+		// Save log message to eventlog in kernel mode
+
 		WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	}
 
