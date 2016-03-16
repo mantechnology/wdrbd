@@ -1707,9 +1707,9 @@ int generic_make_request(struct bio *bio)
 	}
 
 	offset.QuadPart = bio->bi_sector << 9;
-	if (bio->win32_page_buf)
+	if (bio->bio_databuf)
 	{
-		buffer = bio->win32_page_buf;
+		buffer = bio->bio_databuf;
 	}
 	else
 	{

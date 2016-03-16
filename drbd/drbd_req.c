@@ -96,25 +96,29 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
-	req->win32_page_buf = kmalloc(bio_src->bi_size, 0, '63DW');
-	if (!req->win32_page_buf)
+	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
+	if (!req->req_databuf)
 	{
-		WDRBD_ERROR("req->win32_page_buf failed\n");
+		WDRBD_ERROR("req->req_databuf failed\n");
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		return NULL;
 	}
-	memcpy(req->win32_page_buf, bio_src->win32_page_buf, bio_src->bi_size);
+	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
 #ifdef _WIN32 // DV
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
-		kfree(req->win32_page_buf);
+		kfree(req->req_databuf);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
 #else
 	drbd_req_make_private_bio(req, bio_src);
+#endif
+
+#ifdef _WIN32_V9
+	req->private_bio->bio_databuf = req->req_databuf; // fix bugcheck DW-776 (private bio's buffer is invalid when memory-overflow occured)
 #endif
 
 	kref_get(&device->kref);
@@ -173,10 +177,10 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	if (!queued)
 #ifdef _WIN32_V9
     {
-        if (req->win32_page_buf)
+        if (req->req_databuf)
         {
-            // _WIN32_V9_DW596: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
-            kfree(req->win32_page_buf);
+            // _WIN32_V9_DW596: req_databuf를 여기에서 반납해도 되는지 확인 필요.
+            kfree(req->req_databuf);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -358,9 +362,9 @@ void drbd_req_destroy(struct kref *kref)
 			} else
 #ifdef _WIN32_V9
 			{
-				if (peer_ack_req->win32_page_buf)
+				if (peer_ack_req->req_databuf)
 				{
-					kfree(peer_ack_req->win32_page_buf);
+					kfree(peer_ack_req->req_databuf);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 			}
@@ -378,9 +382,9 @@ void drbd_req_destroy(struct kref *kref)
 	} else
 #ifdef _WIN32
     {
-    	if (req->win32_page_buf)
+    	if (req->req_databuf)
     	{
-    		kfree(req->win32_page_buf);
+    		kfree(req->req_databuf);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }
@@ -467,7 +471,7 @@ void complete_master_bio(struct drbd_device *device,
 	            master_bio->pMasterIrp->IoStatus.Information = 0;
 	        }
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
+	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
 	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
 				if (buffer == NULL) {
@@ -475,7 +479,7 @@ void complete_master_bio(struct drbd_device *device,
 	                BUG();
 	            }
 	            if (buffer) {
-	                memcpy(buffer, master_bio->win32_page_buf, master_bio->pMasterIrp->IoStatus.Information);
+	                memcpy(buffer, master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
 	            }
 	        }
 #endif
@@ -484,7 +488,7 @@ void complete_master_bio(struct drbd_device *device,
 	    } else {
 
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
+	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
 	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
 	            if (buffer == NULL) {
@@ -495,7 +499,7 @@ void complete_master_bio(struct drbd_device *device,
 	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
 
 	            // get offset and copy
-	            memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->win32_page_buf, master_bio->pMasterIrp->IoStatus.Information);
+	            memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
 	        }
 #endif
 
@@ -521,8 +525,8 @@ void complete_master_bio(struct drbd_device *device,
 	    }	    
 
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-	   	if ((bio_rw(master_bio) == READ) && master_bio->win32_page_buf) {
-	   	    kfree(master_bio->win32_page_buf);
+	   	if ((bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
+	   	    kfree(master_bio->bio_databuf);
 	   	}
 #endif
 		kfree(master_bio);

@@ -527,7 +527,7 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 		//   - 네트웍 송신에서 사용하는 페이지 버퍼가 반납될 때 중복으로 반납이 처리되는 듯.
 		//   - 유독, 상대노드의 got_peer_ack 처리에서 반납이 될 때 음수 발생하는 듯.
 		// 임시조치에 따른 사이드이펙:
-		//  - win32_big_page 버퍼는 정상 반납됨으로 메모리 오버플로에는 문제 없을 듯.
+		//  - peer_req_databuf 버퍼는 정상 반납됨으로 메모리 오버플로에는 문제 없을 듯.
 		//  - 오리지널도 어차피 pp_in_use 오동작 시에는 경고로 조치하는 듯.
 
 		// 32/64비트에서 포멧/페일오버 시험완료. 출력 빈도가 높아 disable 함.
@@ -610,11 +610,11 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 #ifdef _WIN32_V9
 	// V9에 새롭게 들어간 might_sleep. => lock을 갖지 않아서 sleep될 수 있음을 나타내는 코드... 리눅스의 스케줄링 관련 함수인데... 윈도우즈로의 포팅이 애매하다.
 	//might_sleep(); //peer request 를 해제하는데... sleep 이 필요하나?... => might_sleep V9 포팅에서 배제. 메모리 해제 시 런타임 확인 필요.  
-#ifdef _WIN32 // V9_CHOI V8 적용 // JHKIM: win32_big_page 해제 위치 재확인
-    if (peer_req->win32_big_page)
+#ifdef _WIN32 // V9_CHOI V8 적용 // JHKIM: peer_req_databuf 해제 위치 재확인
+    if (peer_req->peer_req_databuf)
     {
-        kfree(peer_req->win32_big_page);
-        peer_req->win32_big_page = NULL;
+        kfree(peer_req->peer_req_databuf);
+        peer_req->peer_req_databuf = NULL;
         //peer_req->pages = NULL; //_WIN32_V9_PATCH_1
     }
 #endif
@@ -1793,7 +1793,7 @@ next_bio:
 
 #ifdef _WIN32 //V8 의 구현을 따라간다.
 	bio->bi_size = data_size;
-    bio->win32_page_buf = peer_req->win32_big_page = page; // V9
+    bio->bio_databuf = peer_req->peer_req_databuf = page; // V9
     page = NULL;
 #else
 	page_chain_for_each(page) {
@@ -2174,14 +2174,14 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	if (d->length == 0)
 		return peer_req;
 
-	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 win32_big_page 에 저장한다.=> V8의 구현을 적용한것.
-	// => (V8 구조와 맞지 않아) win32_big_page 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
+	//recv_pages 내부에서 drbd_alloc_pages 를 호출한다. tr_ops->recv_pages 가 성공하면 peer_req->pages 포인터를 peer_req_databuf 에 저장한다.=> V8의 구현을 적용한것.
+	// => (V8 구조와 맞지 않아) peer_req_databuf 를 recv_pages 구현 안에서 처리하도록 수정한다. sekim
 	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->bi_size);
 	if (err)
 		goto fail;
 #ifdef _WIN32_V9
     else
-        peer_req->win32_big_page = peer_req->page_chain.head;
+        peer_req->peer_req_databuf = peer_req->page_chain.head;
 #endif
 
 	if (drbd_insert_fault(device, DRBD_FAULT_RECEIVE)) {
@@ -2216,7 +2216,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 
 fail:
 #ifdef _WIN32_V9 //기존 V8 에서 예외처리되던 부분이 V9에서는 goto 분기로 예외처리한다.
-	peer_req->win32_big_page = NULL;
+	peer_req->peer_req_databuf = NULL;
 #endif
 	drbd_free_peer_req(peer_req);
 	return NULL;
@@ -2266,14 +2266,14 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
     struct drbd_device * device = peer_device->device;
 	//D_ASSERT(sector == req->master_bio->bi_sector);
 
-	if (req->master_bio->win32_page_buf) {
+	if (req->master_bio->bio_databuf) {
 		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨.
         // => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  V9_XXX !!!!!!!!!!!!!!
 		// => CHOI : map 구현은 필요 없을 듯. drbd_recv_into로 변경.
 #ifdef _WIN32_V9
-        err = drbd_recv_into(peer_device->connection, req->master_bio->win32_page_buf, data_size);
+        err = drbd_recv_into(peer_device->connection, req->master_bio->bio_databuf, data_size);
 #else
-        err = drbd_recv_all_warn(peer_device->connection, req->master_bio->win32_page_buf, data_size);
+        err = drbd_recv_all_warn(peer_device->connection, req->master_bio->bio_databuf, data_size);
 #endif
 		if (err)
 			return err;
@@ -3326,12 +3326,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		if (!peer_req->page_chain.head)
 			goto fail2;
 #ifdef _WIN32
-		peer_req->win32_big_page = peer_req->page_chain.head; /// _WIN32_V9_PATCH_1
+		peer_req->peer_req_databuf = peer_req->page_chain.head; /// _WIN32_V9_PATCH_1
 #endif
 	}
 #ifdef _WIN32
 	else {
-		peer_req->win32_big_page = NULL; //V8의 구현을 따라간다.
+		peer_req->peer_req_databuf = NULL; //V8의 구현을 따라간다.
 	}
 #endif
 	peer_req->i.size = size;
@@ -7790,9 +7790,9 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
 	list_del(&req->tl_requests);
 #ifdef _WIN32_V9
-    if (req->win32_page_buf)
+    if (req->req_databuf)
     {
-        kfree(req->win32_page_buf);
+        kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -8429,10 +8429,10 @@ static void destroy_request(struct kref *kref)
 
 	list_del(&req->tl_requests);
 #ifdef _WIN32_V9
-	// _WIN32_V9_DW596:JHKIM: win32_page_buf를 여기에서 반납해도 되는지 확인 필요.
-    if (req->win32_page_buf)
+	// _WIN32_V9_DW596:JHKIM: req_databuf를 여기에서 반납해도 되는지 확인 필요.
+    if (req->req_databuf)
     {
-        kfree(req->win32_page_buf);
+        kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);

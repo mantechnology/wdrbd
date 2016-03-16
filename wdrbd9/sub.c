@@ -216,7 +216,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	bio->split_total_id = split_total_id;
 	bio->split_total_length = split_total_length;
 	bio->splitInfo = splitInfo;
-	bio->win32_page_buf = buffer;
+	bio->bio_databuf = buffer;
 	bio->pMasterIrp = upper_pirp; 
 
 	bio->bi_sector = offset.QuadPart >> 9; 

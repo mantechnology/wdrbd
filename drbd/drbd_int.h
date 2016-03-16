@@ -570,7 +570,9 @@ struct drbd_request {
 	 * or, after local IO completion, the ERR_PTR(error).
 	 * see drbd_request_endio(). */
 	struct bio *private_bio;
-
+#ifdef _WIN32
+	char*	req_databuf;
+#endif
 	struct drbd_interval i;
 
 	/* epoch: used to check on "completion" whether this req was in
@@ -680,9 +682,6 @@ struct drbd_request {
 	/* rq_state[0] is for local disk,
 	 * rest is indexed by peer_device->bitmap_index + 1 */
 	unsigned rq_state[1 + DRBD_NODE_ID_MAX];
-#ifdef _WIN32
-	char *win32_page_buf;
-#endif
 };
 
 struct drbd_epoch {
@@ -742,7 +741,7 @@ struct drbd_peer_request {
 	};
 	u64 dagtag_sector;
 #ifdef _WIN32
-	void *win32_big_page;
+	void* peer_req_databuf;
 #endif
 };
 
