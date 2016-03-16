@@ -47,7 +47,6 @@
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
       <mountPoint id="866" root="" location="etc" mode="755" />
-      <mountPoint id="999" root="" location="drbdusage" mode="755" />
       <mountPoint id="867" root="584" location="bin" mode="755" />
       <mountPoint id="868" root="581" location="bin" mode="755" />
       <mountPoint id="613" root="586" location="" mode="755" />
@@ -62,9 +61,6 @@
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="866" file="drbd/etc" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
-        <exclude />
-      </dirEntry>
-      <dirEntry mountPoint="999" file="drbd/drbdusage" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="867" file="drbd/x86/bin" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
@@ -380,7 +376,7 @@ return true;</string>
             <actions />
             <formComponents />
           </screen>
-          <screen name="" id="1149" customizedId="" beanClass="com.install4j.runtime.beans.screens.FormScreen" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="2" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
+          <screen name="send information" id="1149" customizedId="" beanClass="com.install4j.runtime.beans.screens.FormScreen" enabled="false" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="2" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
             <serializedBean>
               <java class="java.beans.XMLDecoder">
                 <object class="com.install4j.runtime.beans.screens.FormScreen">
@@ -582,7 +578,7 @@ else
                 </serializedBean>
                 <condition />
               </action>
-              <action name="Send drbd usage info to Google Spreadsheet" id="946" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+              <action name="Send drbd usage info to Google Spreadsheet" id="946" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="false" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
