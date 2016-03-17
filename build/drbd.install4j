@@ -272,18 +272,60 @@ return true;</string>
           </screen>
         </startup>
         <screens>
+          <screen name="Update" id="1942" customizedId="" beanClass="com.install4j.runtime.beans.screens.BannerFormScreen" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="3" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
+            <serializedBean>
+              <java class="java.beans.XMLDecoder">
+                <object class="com.install4j.runtime.beans.screens.BannerFormScreen">
+                  <void property="infoText">
+                    <string>${i18n:ConsoleWelcomeLabel(${compiler:productName})}
+
+${i18n:PreviousInstallationLabel}
+
+
+${i18n:ClickNext}</string>
+                  </void>
+                  <void property="title">
+                    <string>${i18n:WelcomeLabel1(${compiler:productName})}</string>
+                  </void>
+                </object>
+              </java>
+            </serializedBean>
+            <condition>context.isUpdateInstallation()</condition>
+            <validation />
+            <preActivation />
+            <postActivation />
+            <actions>
+              <action name="" id="1946" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.LoadResponseFileAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="true" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.misc.LoadResponseFileAction">
+                      <void property="excludedVariables">
+                        <array class="java.lang.String" length="1">
+                          <void index="0">
+                            <string>sys.installationDir</string>
+                          </void>
+                        </array>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition>context.isUpdateInstallation()</condition>
+              </action>
+            </actions>
+            <formComponents />
+          </screen>
           <screen name="" id="2" customizedId="" beanClass="com.install4j.runtime.beans.screens.WelcomeScreen" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="2" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
             <serializedBean>
               <java class="java.beans.XMLDecoder">
                 <object class="com.install4j.runtime.beans.screens.WelcomeScreen" />
               </java>
             </serializedBean>
-            <condition />
+            <condition>!context.isUpdateInstallation()</condition>
             <validation />
             <preActivation />
             <postActivation />
             <actions>
-              <action name="" id="3" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.LoadResponseFileAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="true" failureStrategy="1" errorMessage="">
+              <action name="" id="3" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.LoadResponseFileAction" enabled="false" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="true" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.misc.LoadResponseFileAction">
@@ -308,7 +350,7 @@ return true;</string>
                 <object class="com.install4j.runtime.beans.screens.InstallationDirectoryScreen" />
               </java>
             </serializedBean>
-            <condition>!context.getBooleanVariable("sys.confirmedUpdateInstallation")</condition>
+            <condition>!context.isUpdateInstallation()</condition>
             <validation />
             <preActivation />
             <postActivation />
@@ -369,7 +411,7 @@ return true;</string>
                 </object>
               </java>
             </serializedBean>
-            <condition>!context.getBooleanVariable("sys.confirmedUpdateInstallation")</condition>
+            <condition>!context.isUpdateInstallation()</condition>
             <validation />
             <preActivation />
             <postActivation />
@@ -868,47 +910,26 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="install drbdService" id="422" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
+              <action name="Install drbdService" id="1931" customizedId="" beanClass="com.install4j.runtime.beans.actions.services.InstallServiceAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
-                      <void property="arguments">
-                        <array class="java.lang.String" length="1">
-                          <void index="0">
-                            <string>/i</string>
-                          </void>
-                        </array>
-                      </void>
+                    <object class="com.install4j.runtime.beans.actions.services.InstallServiceAction">
                       <void property="executable">
                         <object class="java.io.File">
                           <string>bin/drbdService.exe</string>
                         </object>
                       </void>
-                      <void property="workingDirectory">
-                        <object class="java.io.File">
-                          <string>bin</string>
-                        </object>
+                      <void property="interactive">
+                        <boolean>true</boolean>
                       </void>
-                    </object>
-                  </java>
-                </serializedBean>
-                <condition />
-              </action>
-              <action name="" id="1382" customizedId="" beanClass="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
-                <serializedBean>
-                  <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction">
-                      <void property="keyName">
-                        <string>SYSTEM\CurrentControlSet\Services\drbdService</string>
+                      <void property="launcherId">
+                        <null />
                       </void>
-                      <void property="registryRoot">
-                        <object class="com.install4j.api.windows.RegistryRoot" field="HKEY_LOCAL_MACHINE" />
+                      <void property="serviceName">
+                        <string>drbdService</string>
                       </void>
-                      <void property="value">
+                      <void property="windowsDependencies">
                         <string>nsi</string>
-                      </void>
-                      <void property="valueName">
-                        <string>DependOnService</string>
                       </void>
                     </object>
                   </java>
@@ -1759,7 +1780,6 @@ return true;</string>
     </windows>
   </mediaSets>
   <buildIds buildAll="false">
-    <mediaSet refId="194" />
     <mediaSet refId="572" />
   </buildIds>
   <buildOptions verbose="false" faster="false" disableSigning="false" debug="false" />
