@@ -78,7 +78,11 @@
  /* timeout for the ping packets.*/
 #define DRBD_PING_TIMEO_MIN  1
 #define DRBD_PING_TIMEO_MAX  300
+#if _WIN32
+#define DRBD_PING_TIMEO_DEF  30
+#else
 #define DRBD_PING_TIMEO_DEF  5
+#endif
 #define DRBD_PING_TIMEO_SCALE '1'
 
   /* max number of write requests between write barriers */
@@ -89,7 +93,7 @@
 
   /* I don't think that a tcp send buffer of more than 10M is useful */
 #define DRBD_SNDBUF_SIZE_MIN  0
-#if 1  // _WIN32_SEND_BUFFING_TODO // JHKIM: 헤더파일 영역이 다름? 일단, 강제 정의
+#if _WIN32  // _WIN32_SEND_BUFFING_TODO // JHKIM: 헤더파일 영역이 다름? 일단, 강제 정의
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20) // 100MB->50MB 축소-> 1:N 시험에서는 메모리 부족 현상 발생, 20MB로 다시 축소
 #else
