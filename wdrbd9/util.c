@@ -972,6 +972,19 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_use_volume_lock = 0;
 	}
 
+#ifdef _WIN32_LOGLINK
+	// set loglink_tcp_port
+	extern int g_loglink_tcp_port;
+	status = GetRegistryValue(L"loglink_tcp_port", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		g_loglink_tcp_port = *(int*) aucTemp;
+	}
+	else
+	{
+		g_loglink_tcp_port = 5677;
+	}
+#endif
+
 	// set g_netlink_tcp_port
 	status = GetRegistryValue(L"netlink_tcp_port", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
@@ -1005,13 +1018,13 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 
 	// _WIN32_V9: proc_details 제거함.
     WDRBD_INFO("registry_path[%wZ]\n"
-        "bypass_level=%d, read_filter=%d, use_volume_lock=%d, netlink_tcp_port=%d, "
+        "bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, "
         "netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
         RegPath_unicode,
         g_bypass_level,
         g_read_filter,
         g_use_volume_lock,
-        g_netlink_tcp_port,
+        g_loglink_tcp_port,
         g_netlink_tcp_port,
         g_daemon_tcp_port,
         g_ver

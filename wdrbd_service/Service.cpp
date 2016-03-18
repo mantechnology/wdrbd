@@ -403,6 +403,7 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 		WriteLog(L"LogLink_Daemon failed\n");
 		return;
 	}
+	// wait ultil LogLink connected ???!!!!
 #endif
 
     RcDrbdStart();
@@ -497,6 +498,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				CloseHandle(g_LogLinkThread);
 				g_LogLinkThread = NULL;
 			}
+			Sleep(3000); // enough
 #endif
             g_bProcessStarted = FALSE;
             g_tServiceStatus.dwWin32ExitCode = 0;

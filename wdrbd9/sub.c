@@ -524,9 +524,10 @@ char * printk_str(const char *fmt, ...)
 }
 
 #ifdef _WIN32_LOGLINK
-#define DRBD_EVENTLOG_LINK_PORT		5677
-#define LOGLINK_TIMEOUT				3
 
+#define LOGLINK_TIMEOUT				3000
+
+int g_loglink_tcp_port;
 PWSK_SOCKET g_SockLogLink = NULL;
 
 VOID NTAPI LogLinkThread(PVOID p)
@@ -559,7 +560,7 @@ VOID NTAPI LogLinkThread(PVOID p)
 
 	LocalAddress.sin_family = AF_INET;
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
-	LocalAddress.sin_port = HTONS(DRBD_EVENTLOG_LINK_PORT);
+	LocalAddress.sin_port = HTONS(g_loglink_tcp_port);
 
 	LONG InputBuffer = 1;
 	Status = ControlSocket(ListenSock, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
@@ -601,12 +602,12 @@ VOID NTAPI LogLinkThread(PVOID p)
 		// lock ignore
 		if (g_SockLogLink)
 		{
-			DbgPrint("DRBD_ERROR:LogLink: close prev socket");
+			DbgPrint("DRBD_TEST:LogLink: close previous socket.");
 			CloseSocket(g_SockLogLink);
 			// ignore error
 		}
 
-		DbgPrint("DRBD_TEST: New EventLog Link Socket");
+		DbgPrint("DRBD_TEST:LogLink: accept new LogLink socket");
 		g_SockLogLink = AcceptSock;
 	}
 
@@ -687,10 +688,6 @@ void _printk(const char * func, const char * format, ...)
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 #else
 #ifdef _WIN32_LOGLINK
-
-	// lock? 
-	// max length?
-
 	ret = 0;
 	int err = 0;
 
@@ -699,7 +696,7 @@ void _printk(const char * func, const char * format, ...)
 		DbgPrint("DRBD EventLog Daemon not ready yet. sock=0x%x ret=%d err=%d\n", g_SockLogLink, ret, err);
 
 		// No application level LogLink daemon. 
-		// Save log message to eventlog in kernel mode
+		// Save log message to eventlog in kernel mode otherwise make retry-handshake
 
 		WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	}

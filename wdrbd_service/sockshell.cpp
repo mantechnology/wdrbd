@@ -370,6 +370,7 @@ int LogLink_Daemon(unsigned short *port)
 
 		// Attempt to connect to drbd-engine
 		int conn_loop = 0;
+
 		while(1)
 		{
 			if ((ret = connect(sock, (SOCKADDR*) (&sock_addr), sizeof(sock_addr))) == 0)
@@ -435,10 +436,12 @@ int LogLink_Daemon(unsigned short *port)
 				case 3: // PRINTK_ERR
 					wType = EVENTLOG_ERROR_TYPE;
 					break;
+
 				case 4: // PRINTK_WARN
 				case 5: // PRINTK_NOTICE
 					wType = EVENTLOG_WARNING_TYPE;
 					break;
+
 				case 6: // PRINTK_INFO
 				default: // PRINTK_DBG or unexpected cases
 					wType = EVENTLOG_INFORMATION_TYPE;
@@ -447,9 +450,19 @@ int LogLink_Daemon(unsigned short *port)
 			wsprintf(buffer2, L"%S", buffer + 3);
 			WriteLog(buffer2, wType);
 
+#if LOGLONK_TEST
 			//WriteLog(buffer2, EVENTLOG_ERROR_TYPE); // test
 			//WriteLog(buffer2, EVENTLOG_WARNING_TYPE); // test
+			
+			wsprintf(buffer2, L"linklog load test !!!!!!!!!!");
+			WriteLog(buffer2, EVENTLOG_WARNING_TYPE);
 
+			for (int i = 0; i < 10; i++)
+			{
+				wsprintf(buffer2, L"linklog load test ..........%d", i);
+				WriteLog(buffer2, EVENTLOG_ERROR_TYPE);
+			}
+#endif
 			// send ok
 			if ((ret = send(sock, (char*) &sz, sizeof(int), 0)) != sizeof(int))
 			{
