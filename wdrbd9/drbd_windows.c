@@ -1686,6 +1686,8 @@ int generic_make_request(struct bio *bio)
 	PVOID buffer;
 	LARGE_INTEGER offset;
 	ULONG io;
+	PIO_STACK_LOCATION	pIoNextStackLocation = NULL;
+	
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
 
 	if (!q) {
@@ -1751,6 +1753,11 @@ int generic_make_request(struct bio *bio)
 		return -ENOMEM;
 	}
 
+	if(IRP_MJ_WRITE == io) {
+		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
+		pIoNextStackLocation->Flags |= (SL_FT_SEQUENTIAL_WRITE | SL_WRITE_THROUGH);
+	}
+	
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
