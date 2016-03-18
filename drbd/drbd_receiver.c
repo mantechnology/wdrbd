@@ -1256,7 +1256,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	if (atomic_dec_and_test(&ctx->pending))
 		complete(&ctx->done);
-	WDRBD_TRACE("BIO_ENDIO_FN: one_flush_endio: done\n"); // _WIN32_V9_PATCH_2
+	
 	BIO_ENDIO_FN_RETURN;
 }
 
@@ -1308,7 +1308,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	// http://git.drbd.org/drbd-9.0.git/commit/ee63e9bd3ed3fc8f480ccdb756b9de1a81e80b62
 	// http://git.drbd.org/drbd-9.0.git/commit/7f33065dd4cf8ddedbb025ee9b385d3af8fc3fb5
 	struct drbd_resource *resource = connection->resource;
-
+	
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
 		struct drbd_device *device;
 		struct issue_flush_context ctx;
@@ -1349,7 +1349,9 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
 			/* Any error is already reported by bio_endio callback. */
+#ifndef _WIN32_V9 // WDRBD support only WRITE_FLUSH
 			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
+#endif
 		}
 	}
 

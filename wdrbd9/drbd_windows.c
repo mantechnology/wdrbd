@@ -1751,9 +1751,12 @@ int generic_make_request(struct bio *bio)
 		return -ENOMEM;
 	}
 
-	if(IRP_MJ_WRITE == io) {
-		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
-		pIoNextStackLocation->Flags |= (SL_FT_SEQUENTIAL_WRITE | SL_WRITE_THROUGH);
+	if( IRP_MJ_WRITE == io) {
+		struct drbd_device* device = minor_to_device(bio->pVolExt->VolIndex);
+		if(device->resource->write_ordering > WO_BDEV_FLUSH) {
+			pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
+			pIoNextStackLocation->Flags |= (SL_FT_SEQUENTIAL_WRITE | SL_WRITE_THROUGH);
+		}
 	}
 	
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
