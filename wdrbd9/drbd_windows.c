@@ -1680,12 +1680,12 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 int generic_make_request(struct bio *bio)
 {
 	int err = 0;
-	NTSTATUS status;
+	NTSTATUS status = STATUS_SUCCESS;
 
-	PIRP newIrp;
-	PVOID buffer;
-	LARGE_INTEGER offset;
-	ULONG io;
+	PIRP newIrp = NULL;
+	PVOID buffer = NULL;;
+	LARGE_INTEGER offset = {0,};
+	ULONG io = 0;
 	PIO_STACK_LOCATION	pIoNextStackLocation = NULL;
 	
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
@@ -1708,27 +1708,26 @@ int generic_make_request(struct bio *bio)
 		return -EIO;
 	}
 
-	offset.QuadPart = bio->bi_sector << 9;
-	if (bio->bio_databuf)
-	{
-		buffer = bio->bio_databuf;
-	}
-	else
-	{
-		if (bio->bi_max_vecs > 1)
-		{
-			BUG(); // DRBD_PANIC
+	if(bio->bi_rw == WRITE_FLUSH) {
+		io = IRP_MJ_FLUSH_BUFFERS;
+		buffer = NULL;
+		bio->bi_size = 0;
+		offset.QuadPart = 0;
+	} else {
+		if (bio->bi_rw & WRITE) {
+			io = IRP_MJ_WRITE;
+		} else {
+			io = IRP_MJ_READ;
 		}
-		buffer = (PVOID) bio->bi_io_vec[0].bv_page->addr; 
-	}
-
-	if (bio->bi_rw & WRITE)
-	{
-		io = IRP_MJ_WRITE;
-	}
-	else
-	{
-		io = IRP_MJ_READ;
+		offset.QuadPart = bio->bi_sector << 9;
+		if (bio->bio_databuf) {
+			buffer = bio->bio_databuf;
+		} else {
+			if (bio->bi_max_vecs > 1) {
+				BUG(); // DRBD_PANIC
+			}
+			buffer = (PVOID) bio->bi_io_vec[0].bv_page->addr; 
+		}
 	}
 
 #ifdef DRBD_TRACE
@@ -1746,8 +1745,7 @@ int generic_make_request(struct bio *bio)
 				NULL
 				);
 
-	if (!newIrp)
-	{
+	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;

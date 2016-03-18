@@ -1293,7 +1293,13 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 	device->flush_jif = jiffies;
 	set_bit(FLUSH_PENDING, &device->flags);
 	atomic_inc(&ctx->pending);
+#ifdef _WIN32_V9
+	if(submit_bio(WRITE_FLUSH, bio)) {
+		bio_endio(bio, -EIO);
+	}
+#else
 	submit_bio(WRITE_FLUSH, bio);
+#endif
 }
 
 static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
@@ -1301,7 +1307,6 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	// kmpak skipped ldrbd ee63e9b, 7f33065
 	// http://git.drbd.org/drbd-9.0.git/commit/ee63e9bd3ed3fc8f480ccdb756b9de1a81e80b62
 	// http://git.drbd.org/drbd-9.0.git/commit/7f33065dd4cf8ddedbb025ee9b385d3af8fc3fb5
-#ifndef _WIN32_V9
 	struct drbd_resource *resource = connection->resource;
 
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
@@ -1347,7 +1352,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
 		}
 	}
-#endif
+
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
@@ -6926,6 +6931,9 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
+#ifdef _WIN32_V9 // remove unexpected debug log 2016.3.18 sekim
+	case L_SYNC_TARGET:
+#endif
 			break;
 	default:
 		drbd_err(device, "ASSERT FAILED cstate = %s, expected: WFSyncUUID|WFBitMapT|Behind\n",
