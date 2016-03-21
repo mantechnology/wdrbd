@@ -335,7 +335,11 @@ static struct adm_cmd primary_cmd = {"primary", adm_drbdsetup, &primary_cmd_ctx,
 static struct adm_cmd secondary_cmd = {"secondary", adm_drbdsetup, ACF1_RESNAME .takes_long = 1};
 static struct adm_cmd invalidate_cmd = {"invalidate", adm_invalidate, ACF1_MINOR_ONLY };
 static struct adm_cmd invalidate_remote_cmd = {"invalidate-remote", adm_drbdsetup, ACF1_PEER_DEVICE .takes_long = 1};
+#ifdef _WIN32_V9 // DW-774
+static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT .backend_res_name = 0};
+#else
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT};
+#endif
 /*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, ACF1_DEFAULT .disk_required = 1};
 static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd pause_sync_cmd = {"pause-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
@@ -1297,7 +1301,12 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 	argv[NA(argc)] = (char *)ctx->cmd->name;
 	if (argument)
 		argv[NA(argc)] = argument;
+#ifdef _WIN32_V9 // DW-774
+	if (ctx->cmd->drbdsetup_ctx)
+		add_setup_options(argv, &argc);
+#else
 	add_setup_options(argv, &argc);
+#endif
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, flags, ctx->res->name);
