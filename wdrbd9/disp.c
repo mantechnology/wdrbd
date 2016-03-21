@@ -147,8 +147,8 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
             return Status;
         }
 #ifdef _WIN32_LOGLINK
-		extern VOID NTAPI LogLinkThread(PVOID p);
-		Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLinkThread, NULL);
+		extern VOID NTAPI LogLink_ListenThread(PVOID p);
+		Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
 		if (!NT_SUCCESS(Status))
 		{
 			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
