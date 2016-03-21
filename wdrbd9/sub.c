@@ -626,7 +626,7 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		static int accept_timeoout_retry = 0;
 		static int accept_error_retry = 0;
 
-		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 5)) == NULL)
+		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 5000)) == NULL)
 		{
 			accept_timeoout_retry++;
 
@@ -684,7 +684,9 @@ void LogLink_Sender(struct work_struct *ws)
 		int step = 0;
 		int ret = 0;
 
-		DbgPrint("DRBD_TEST: LogLink_Sender: loop(%d) buf=(%s)\n", count++, p->buf);
+		count++;
+
+		// DbgPrint("DRBD_TEST: LogLink_Sender: loop(%d) buf=(%s)", count, p->buf);
 
 		if (sock)
 		{
@@ -714,7 +716,8 @@ void LogLink_Sender(struct work_struct *ws)
 			step = 4;
 
 		error:
-			DbgPrint("DRBD_ERROR:LogLink: sender error: step=%d sock=0x%x ret=%d. Save to eventlog\n", step, sock, ret);
+			// DRBD_TEST!
+			DbgPrint("DRBD_ERROR:LogLink: sender error: step=%d sock=0x%x ret=%d. Save to eventlog in engine level\n", step, sock, ret);
 			// self log-tag for this err?
 
 			level_index = p->buf[1] - '0';
@@ -725,6 +728,12 @@ void LogLink_Sender(struct work_struct *ws)
 		list_del(&p->list);
 		kfree(p);
 	}
+
+	if (count > 5)
+	{
+		DbgPrint("DRBD_TEST:LogLink: sender big loop(#%d)?\n", count);
+	}
+
 	//TODO: check unlock?
 }
 #endif
@@ -784,10 +793,12 @@ void _printk(const char * func, const char * format, ...)
 		loglink_msg->buf = buf;
 		list_add(&loglink_msg->list, &loglink.loglist);
 		queue_work(loglink.wq, &loglink.worker);
+
+		DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to WinDbg
 	}
 	else
 	{
-		DbgPrint("DRBD_TEST: loglink.wq not ready yet.\n");
+		DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n");
 		
 	error:
 		WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
@@ -996,7 +1007,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 
 		/* Write the packet */
 		IoWriteErrorLogEntry(l_pErrorLogEntry);
-		DbgPrint("DRBD_TEST: one line l_Size=%d", l_Size); // _WIN32_MULTILINE_LOG test!
+		// DbgPrint("DRBD_TEST: one line l_Size=%d", l_Size); // _WIN32_MULTILINE_LOG test!
 		return l_Size;	// _WIN32_MULTILINE_LOG test!
 
 	} /* OK */
