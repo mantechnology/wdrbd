@@ -46,6 +46,7 @@
     <IntDir>$(ProjectDir)$(Configuration)</IntDir>
     <LinkIncremental>false</LinkIncremental>
     <TargetName>drbdService</TargetName>
+    <TargetExt>.exe</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(ProjectDir)$(Configuration)</OutDir>
@@ -131,6 +132,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="loglink.cpp" />
     <ClCompile Include="RegistryHandler.cpp" />
     <ClCompile Include="Service.cpp" />
     <ClCompile Include="sockshell.cpp" />

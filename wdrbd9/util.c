@@ -7,6 +7,10 @@
 #include "proto.h"
 #include "drbd_int.h"
 
+#ifdef _WIN32_LOGLINK
+#include "loglink.h"
+#endif
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, RetrieveVolumeGuid)
 #ifdef _WIN32_MVFL
@@ -974,7 +978,6 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 
 #ifdef _WIN32_LOGLINK
 	// set loglink_tcp_port
-	extern int g_loglink_tcp_port;
 	status = GetRegistryValue(L"loglink_tcp_port", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_loglink_tcp_port = *(int*) aucTemp;
@@ -982,6 +985,16 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	else
 	{
 		g_loglink_tcp_port = 5677;
+	}
+
+	// set g_loglink_usage
+	status = GetRegistryValue(L"loglink_usage", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		g_loglink_usage = *(int*) aucTemp;
+	}
+	else
+	{
+		g_loglink_usage = LOGLINK_NOT_USED;
 	}
 #endif
 
@@ -1015,20 +1028,34 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		RtlCopyMemory(g_ver, "test", 4 * 2); 
 	}
-
-	// _WIN32_V9: proc_details 제거함.
+#ifdef _WIN32_LOGLINK
     WDRBD_INFO("registry_path[%wZ]\n"
-        "bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, "
+        "bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, loglink_usage=%d "
         "netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
         RegPath_unicode,
         g_bypass_level,
         g_read_filter,
         g_use_volume_lock,
         g_loglink_tcp_port,
+		g_loglink_usage,
         g_netlink_tcp_port,
         g_daemon_tcp_port,
         g_ver
         );
+#else
+	// _WIN32_V9: proc_details 제거함.
+	WDRBD_INFO("registry_path[%wZ]\n"
+		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
+		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
+		RegPath_unicode,
+		g_bypass_level,
+		g_read_filter,
+		g_use_volume_lock,
+		g_netlink_tcp_port,
+		g_daemon_tcp_port,
+		g_ver
+		);
+#endif
 	return 0;
 }
 

@@ -15,6 +15,10 @@
 #include "sub.tmh" 
 #endif
 
+#ifdef _WIN32_LOGLINK
+#include "loglink.h"
+#endif
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -523,7 +527,7 @@ char * printk_str(const char *fmt, ...)
 	return buf;
 }
 
-static DWORD msgids [] = {
+DWORD msgids [] = {
 	PRINTK_EMERG,
 	PRINTK_ALERT,
 	PRINTK_CRIT,
@@ -534,209 +538,28 @@ static DWORD msgids [] = {
 	PRINTK_DBG
 };
 
-#ifdef _WIN32_LOGLINK
-
-#define LOGLINK_TIMEOUT				3000
-
-extern void LogLink_Sender(struct work_struct *ws);
-int g_loglink_tcp_port;
-static PWSK_SOCKET g_loglink_sock = NULL;
-
-struct loglink_msg_list {
-	char  *buf;
-	struct list_head list;
-};
-
-struct loglink_worker {
-	struct workqueue_struct *wq;
-	struct work_struct worker;
-	struct list_head loglist;
-};
-
-static struct loglink_worker loglink = {0};
-
-VOID NTAPI LogLink_ListenThread(PVOID p)
+// _WIN32_MULTILINE_LOG
+void save_to_system_event(char * buf, int length, int level_index)
 {
-	PWSK_SOCKET		ListenSock = NULL;
-	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
-	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
+	int offset = 3;
+	char *p = buf + offset;
+	int i = 0;
 
-	// start LogLink kernel daemon
-
-	while (1)
+	while (offset < length)
 	{
-		extern LONG	g_SocketsState;
-		if (g_SocketsState == INITIALIZED)
+		int line_sz = WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p);
+		if (line_sz > 0)
 		{
-			DbgPrint("DRBD LogLink: WSK subsystem initialized. Start LogLink\n");
-			break;
-		}
-
-		LARGE_INTEGER	Interval;
-		Interval.QuadPart = (-1 * 100 * 10000);   // 0.1 sec
-		KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-	}
-
-	printk("DRBD_TEST: LogLink_ListenThread start."); // check
-
-	loglink.wq = create_singlethread_workqueue("loglink");
-	if (!loglink.wq) 
-	{
-		printk(KERN_ERR "LogLink: create_singlethread_workqueue failed\n");
-		PsTerminateSystemThread(STATUS_SUCCESS);
-		// panic!
-	}
-
-	INIT_WORK(&loglink.worker, LogLink_Sender);
-	INIT_LIST_HEAD(&loglink.loglist);
-
-	ListenSock = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
-	if (ListenSock == NULL) 
-	{
-		printk(KERN_ERR "LogLink: ListenSock failed\n");
-		PsTerminateSystemThread(STATUS_SUCCESS);
-		// panic!
-	}
-
-	LocalAddress.sin_family = AF_INET;
-	LocalAddress.sin_addr.s_addr = INADDR_ANY;
-	LocalAddress.sin_port = HTONS(g_loglink_tcp_port);
-
-	LONG InputBuffer = 1;
-	Status = ControlSocket(ListenSock, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
-	if (!NT_SUCCESS(Status)) 
-	{
-		printk(KERN_ERR "LogLink: SO_REUSEADDR failed = 0x%x\n", Status);
-		CloseSocket(ListenSock);
-		PsTerminateSystemThread(Status);
-		// panic!
-	}
-
-	Status = Bind(ListenSock, (PSOCKADDR) &LocalAddress);
-	if (!NT_SUCCESS(Status)) {
-		printk(KERN_ERR "LogLink: Bind() failed with status 0x%08X\n", Status);
-		CloseSocket(ListenSock);
-		PsTerminateSystemThread(Status);
-		// retry?
-	}
-
-	while (TRUE) // always
-	{
-		PWSK_SOCKET		AcceptSock = NULL;
-		static int accept_timeoout_retry = 0;
-		static int accept_error_retry = 0;
-
-		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 5000)) == NULL)
-		{
-			accept_timeoout_retry++;
-
-			if (Status == STATUS_TIMEOUT)
-			{
-				if (accept_timeoout_retry < 3)
-				{
-					printk(KERN_DEBUG "LogLink: accept timeout. retry(%d)\n", Status, accept_timeoout_retry);
-				}
-				continue;
-			}
-			else
-			{
-				if (accept_error_retry < 3)
-				{
-					printk(KERN_ERR "LogLink: accept error=0x%08X. retry(%d)\n", Status, accept_error_retry);
-				}
-
-				LARGE_INTEGER	Interval;
-				Interval.QuadPart = (-1 * 5000 * 10000);   // 5 sec
-				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-				continue;
-			}
-		}
-
-		// TODO: check lock? don't care! ignore it.
-		if (g_loglink_sock)
-		{
-			printk(KERN_DEBUG "LogLink: close previous socket first.\n");
-			CloseSocket(g_loglink_sock);
-			// ignore error
-		}
-
-		printk(KERN_INFO "LogLink: accept new loglink socket success. retry:timeout(%d), error(%d)\n", accept_timeoout_retry, accept_error_retry);
-		g_loglink_sock = AcceptSock;
-		accept_timeoout_retry = 0;
-		accept_error_retry = 0;
-	}
-
-	// not reached here.
-	destroy_workqueue(loglink.wq);
-	PsTerminateSystemThread(STATUS_SUCCESS);
-}
-
-void LogLink_Sender(struct work_struct *ws)
-{
-	struct loglink_worker *worker = container_of(ws, struct loglink_worker, worker);
-	struct loglink_msg_list *p, *q;
-	PWSK_SOCKET	sock = g_loglink_sock;
-
-	//TODO: check lock?
-	int count = 0;
-	list_for_each_entry_safe(struct loglink_msg_list, p, q, &worker->loglist, list)
-	{
-		int step = 0;
-		int ret = 0;
-
-		count++;
-
-		// DbgPrint("DRBD_TEST: LogLink_Sender: loop(%d) buf=(%s)", count, p->buf);
-
-		if (sock)
-		{
-			int sz = strlen(p->buf);
-
-			if ((ret = SendLocal(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
-			{
-				step = 1;
-				goto error;
-			}
-
-			if ((ret = SendLocal(sock, p->buf, sz, 0, LOGLINK_TIMEOUT)) != sz)
-			{
-				step = 2;
-				goto error;
-			}
-
-			if ((ret = Receive(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
-			{
-				step = 3;
-				goto error;
-			}
+			offset = offset + (line_sz / 2);
+			p = buf + offset;
 		}
 		else
 		{
-			int level_index;
-			step = 4;
-
-		error:
-			// DRBD_TEST!
-			DbgPrint("DRBD_ERROR:LogLink: sender error: step=%d sock=0x%x ret=%d. Save to eventlog in engine level\n", step, sock, ret);
-			// self log-tag for this err?
-
-			level_index = p->buf[1] - '0';
-			WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p->buf);
+			WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", KERN_ERR "LogLink: save_to_system_event: unexpected ret\n");
+			break;
 		}
-
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, p->buf);
-		list_del(&p->list);
-		kfree(p);
 	}
-
-	if (count > 5)
-	{
-		DbgPrint("DRBD_TEST:LogLink: sender big loop(#%d)?\n", count);
-	}
-
-	//TODO: check unlock?
 }
-#endif
 
 void _printk(const char * func, const char * format, ...)
 {
@@ -781,63 +604,54 @@ void _printk(const char * func, const char * format, ...)
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #else
 #ifdef _WIN32_LOGLINK
-	if (loglink.wq)
-	{
-		//TODO: check lock 
-		struct loglink_msg_list  *loglink_msg;
-		if ((loglink_msg = kmalloc(sizeof(struct loglink_msg_list), GFP_KERNEL, 'C0DW')) == NULL)
-		{
-			DbgPrint("DRBD_ERROR:loglink: no memory\n");
-			goto error;
-		}
-		loglink_msg->buf = buf;
-		list_add(&loglink_msg->list, &loglink.loglist);
-		queue_work(loglink.wq, &loglink.worker);
 
-		DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to WinDbg
+	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to DbgWin
+
+	if (g_loglink_usage == LOGLINK_NOT_USED)
+	{
+		save_to_system_event(buf, length, level_index);
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 	}
 	else
 	{
-		DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n");
-		
-	error:
-		WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
-		DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
+		struct loglink_msg_list  *loglink_msg;
 
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+		if (loglink.wq)
+		{
+			loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&linklog_printk_msg);
+			if (loglink_msg == NULL)
+			{
+				DbgPrint("DRBD_ERROR:loglink: no memory\n");
+				goto error;
+			}
+			loglink_msg->buf = buf;
+			mutex_lock(&loglink_mutex);
+			list_add(&loglink_msg->list, &loglink.loglist);
+			mutex_unlock(&loglink_mutex);
+			queue_work(loglink.wq, &loglink.worker);
+
+			if (g_loglink_usage == LOGLINK_DUAL) // TEST
+			{
+				save_to_system_event(buf, length, level_index);
+			}
+		}
+		else
+		{
+			DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n"); // TEST!
+
+		error:
+			save_to_system_event(buf, length, level_index);
+			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+		}
 	}
 #else
-#if 0
-    WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
+    // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
+	save_to_system_event(buf, length, level_index);
     DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-#else
-	// _WIN32_MULTILINE_LOG
-	int real_len = length - 3;
-	int offset = 3;
-	char *p = buf + offset;
-	int i = 0;
-
-	while (offset < length)
-	{
-		int line_sz = WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p);
-		offset = offset + (line_sz/2);
-
-		DbgPrint("DRBD_TEST: copy len=%d off=%d done_sz=%d\n", length, offset, line_sz);
-		p = buf + offset;
-		if (++i > 1)
-		{
-			DbgPrint("DRBD_TEST: _WIN32_MULTILINE_LOG linw #%d\n", i);
-		}
-	}
-
-	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #endif
 #endif
-#endif
-
-
 }
 #endif
 
@@ -910,7 +724,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 #endif
 	if (mvolRootDeviceObject == NULL) {
 		ASSERT(mvolRootDeviceObject != NULL);
-		return 2;
+		return -2;
 	}
 
 	/* Init the variable argument list */
@@ -959,7 +773,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		}
 
         if (!ret)
-			return 3;
+			return -3;
 
 		/* prepare the next loop */
         l_StrSize = wcslen((PWCHAR)l_Ptr) * sizeof(WCHAR);
@@ -1011,7 +825,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		return l_Size;	// _WIN32_MULTILINE_LOG test!
 
 	} /* OK */
-    return 0;
+    return -4;
 } /* WriteEventLogEntry */
 
 NTSTATUS DeleteDriveLetterInRegistry(char letter)

@@ -13,6 +13,10 @@
 #include "disp.tmh"
 #endif
 
+#ifdef _WIN32_LOGLINK
+#include "loglink.h"
+#endif
+
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD mvolUnload;
 DRIVER_ADD_DEVICE mvolAddDevice;
@@ -147,12 +151,14 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
             return Status;
         }
 #ifdef _WIN32_LOGLINK
-		extern VOID NTAPI LogLink_ListenThread(PVOID p);
-		Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
-		if (!NT_SUCCESS(Status))
+		if (g_loglink_usage > LOGLINK_NOT_USED)
 		{
-			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
-			return Status;
+			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
+			if (!NT_SUCCESS(Status))
+			{
+				WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
+				return Status;
+			}
 		}
 #endif
         Status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_NetlinkServerThread, NULL);
