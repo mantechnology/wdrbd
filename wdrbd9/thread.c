@@ -153,7 +153,9 @@ mvolWorkThread(PVOID arg)
 					}
 				}
 				break;
-
+			case IRP_MJ_FLUSH_BUFFERS:
+				mvolSendToNextDriver(VolumeExtension->DeviceObject, irp);
+				break;
 			default:
 				WDRBD_ERROR("WorkThread: invalid IRP MJ=0x%x\n", irpSp->MajorFunction);
 				irp->IoStatus.Status = STATUS_UNSUCCESSFUL;

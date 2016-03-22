@@ -667,6 +667,7 @@ struct bio {
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
 	PVOLUME_EXTENSION		pVolExt; // for release removelock
+	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
 };
 
 struct bio_set {
@@ -1207,6 +1208,7 @@ extern void panic(char *msg);
 extern int proc_details;
 extern int g_bypass_level;
 extern int g_read_filter;
+extern int g_mj_flush_buffers_filter;
 extern int g_use_volume_lock;
 extern int g_netlink_tcp_port;
 extern int g_daemon_tcp_port;

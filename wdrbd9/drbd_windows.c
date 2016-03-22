@@ -15,6 +15,7 @@
 
 int g_bypass_level;
 int g_read_filter;
+int g_mj_flush_buffers_filter;
 int g_use_volume_lock;
 int g_netlink_tcp_port;
 int g_daemon_tcp_port;
@@ -1752,10 +1753,16 @@ int generic_make_request(struct bio *bio)
 	}
 
 	if( IRP_MJ_WRITE == io) {
-		struct drbd_device* device = minor_to_device(bio->pVolExt->VolIndex);
-		if(device && (device->resource->write_ordering >= WO_BDEV_FLUSH) ) {
-			pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
-			pIoNextStackLocation->Flags |= (SL_FT_SEQUENTIAL_WRITE | SL_WRITE_THROUGH);
+		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
+		if(bio->MasterIrpStackFlags) { // Only Local I/O 
+			pIoNextStackLocation->Flags |= (bio->MasterIrpStackFlags & SL_WRITE_THROUGH) ? SL_WRITE_THROUGH : 0;
+			pIoNextStackLocation->Flags |= (bio->MasterIrpStackFlags & SL_FT_SEQUENTIAL_WRITE) ? SL_FT_SEQUENTIAL_WRITE : 0;
+			if(pIoNextStackLocation->Flags & SL_WRITE_THROUGH) {
+				WDRBD_INFO("pIoNextStackLocation->Flags:%x\n",pIoNextStackLocation->Flags);
+			} else if(pIoNextStackLocation->Flags & SL_FT_SEQUENTIAL_WRITE) {
+				WDRBD_INFO("pIoNextStackLocation->Flags:%x\n",pIoNextStackLocation->Flags);
+			}
+		} else { 
 		}
 	}
 	
