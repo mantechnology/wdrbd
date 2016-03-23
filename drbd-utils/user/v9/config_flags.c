@@ -667,7 +667,7 @@ const char *read_balancing_map[] = {
 	{ "on-io-error", ENUM(on_io_error, ON_IO_ERROR) },				\
 	/*{ "fencing", ENUM(fencing_policy, FENCING) },*/				\
 	/*{ "disk-barrier", BOOLEAN(disk_barrier, DISK_BARRIER) }, */			\
-	/*{ "disk-flushes", BOOLEAN(disk_flushes, DISK_FLUSHES) }, */			\
+	{ "disk-flushes", BOOLEAN(disk_flushes, DISK_FLUSHES) }, 			\
 	/*{ "disk-drain", BOOLEAN(disk_drain, DISK_DRAIN) }, */				\
 	/*{ "md-flushes", BOOLEAN(md_flushes, MD_FLUSHES) }, */				\ 
 	{ "unplug-watermark", NUMERIC(unplug_watermark, UNPLUG_WATERMARK) },		\

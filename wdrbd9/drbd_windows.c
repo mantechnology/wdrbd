@@ -1754,15 +1754,15 @@ int generic_make_request(struct bio *bio)
 
 	if( IRP_MJ_WRITE == io) {
 		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
-		if(bio->MasterIrpStackFlags) { // Only Local I/O 
-			pIoNextStackLocation->Flags |= (bio->MasterIrpStackFlags & SL_WRITE_THROUGH) ? SL_WRITE_THROUGH : 0;
-			pIoNextStackLocation->Flags |= (bio->MasterIrpStackFlags & SL_FT_SEQUENTIAL_WRITE) ? SL_FT_SEQUENTIAL_WRITE : 0;
-			if(pIoNextStackLocation->Flags & SL_WRITE_THROUGH) {
-				WDRBD_INFO("pIoNextStackLocation->Flags:%x\n",pIoNextStackLocation->Flags);
-			} else if(pIoNextStackLocation->Flags & SL_FT_SEQUENTIAL_WRITE) {
-				WDRBD_INFO("pIoNextStackLocation->Flags:%x\n",pIoNextStackLocation->Flags);
-			}
+		if(bio->MasterIrpStackFlags) { 
+			//copy original Local I/O's Flags for private_bio instead of drbd's write_ordering, because of performance issue. (2016.03.23 sekim)
+			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
 		} else { 
+			//apply meta I/O's write_ordering
+			struct drbd_device* device = minor_to_device( bio->pVolExt->VolIndex);	
+			if(device && device->resource->write_ordering >= WO_BDEV_FLUSH) {
+				pIoNextStackLocation->Flags |= (SL_WRITE_THROUGH | SL_FT_SEQUENTIAL_WRITE);
+			}
 		}
 	}
 	
