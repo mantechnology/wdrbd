@@ -2341,15 +2341,15 @@ fail_unlock:
  fail:
 	kfree(new_disk_conf);
 success:
-	if (retcode != NO_ERROR)
 #ifdef _WIN32_V9
-        // moved 
-        // [choi] rcu_assign_pointer 사용 후 바로 정리. 
+    //if (retcode != NO_ERROR)	
+	//	synchronize_rcu();
 #else
+	if (retcode != NO_ERROR)	
 		synchronize_rcu();
 #endif
 	put_ldev(device);
- out:
+out:
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
