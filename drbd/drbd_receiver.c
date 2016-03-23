@@ -6933,9 +6933,6 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
-#ifdef _WIN32_V9 // remove unexpected debug log 2016.3.18 sekim
-	case L_SYNC_TARGET:
-#endif
 			break;
 	default:
 		drbd_err(device, "ASSERT FAILED cstate = %s, expected: WFSyncUUID|WFBitMapT|Behind\n",
