@@ -12,14 +12,14 @@ DWORD RunService(const TCHAR * pName);
 VOID ExecuteSubProcess();
 VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv);
 VOID WINAPI ServiceHandler(DWORD fdwControl);
-VOID AddEventSource();
-DWORD RemoveEventSource(TCHAR *csApp);
+VOID AddEventSource(TCHAR * caPath, TCHAR * csApp);
+DWORD RemoveEventSource(TCHAR *caPath, TCHAR * csApp);
 DWORD RcDrbdStart();
 DWORD RcDrbdStop();
 
 BOOL g_bProcessStarted = TRUE;
 
-const TCHAR * ServiceName = _T("drbdService");
+TCHAR * ServiceName = _T("drbdService");
 
 SERVICE_TABLE_ENTRY		g_lpServiceStartTable[] =
 {
@@ -152,7 +152,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
     else
     {
         CloseServiceHandle(schService);
-        AddEventSource();
+		AddEventSource(L"Application", ServiceName);
     }
 
     CloseServiceHandle(schSCManager);
@@ -372,6 +372,25 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
         return;
     }
 
+#ifdef _WIN32_LOGLINK
+	extern int LogLink_Daemon(unsigned short *port);
+	extern HANDLE g_LogLinkThread;
+	extern int g_loglink_usage;
+	extern void get_linklog_reg();
+
+	get_linklog_reg();
+
+	if (g_loglink_usage != LOGLINK_NOT_USED)
+	{
+		if ((g_LogLinkThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) LogLink_Daemon, NULL, 0, (LPDWORD) &threadID)) == NULL)
+		{
+			WriteLog(L"LogLink_Daemon failed\n");
+			return;
+		}
+		// wait ultil LogLink connected ?
+	}
+#endif
+
     RcDrbdStart();
 
     StartRegistryCleaner();
@@ -456,6 +475,22 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
             RcDrbdStop();
             StopRegistryCleaner();
 
+#ifdef _WIN32_LOGLINK
+			extern int g_loglink_usage;
+			if (g_loglink_usage != LOGLINK_NOT_USED)
+			{
+				extern HANDLE g_LogLinkThread;
+				if (g_LogLinkThread)
+				{
+					TerminateThread(g_LogLinkThread, 0);
+					CloseHandle(g_LogLinkThread);
+					g_LogLinkThread = NULL;
+				}
+				// clear test registry!
+
+				Sleep(3000); // enough
+			}
+#endif
             g_bProcessStarted = FALSE;
             g_tServiceStatus.dwWin32ExitCode = 0;
             g_tServiceStatus.dwCurrentState = SERVICE_STOPPED;
@@ -476,30 +511,45 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 #endif
 }
 
-void AddEventSource()
+void AddEventSource(TCHAR * csPath, TCHAR * csApp)
 {
     HKEY    hRegKey = NULL;
     DWORD   dwError = 0;
     TCHAR   szPath[MAX_PATH];
 
-    _stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\%s"), ServiceName);
+	if (csPath)
+	{
+		_stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\%s\\%s"), csPath, csApp);
+	}
+	else
+	{
+		_stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\%s"), csApp);
+	}
 
     // Create the event source registry key
     dwError = RegCreateKey(HKEY_LOCAL_MACHINE, szPath, &hRegKey);
     GetModuleFileName(NULL, szPath, MAX_PATH);
     dwError = RegSetValueEx(hRegKey, _T("EventMessageFile"), 0, REG_EXPAND_SZ, (PBYTE)szPath, (_tcslen(szPath) + 1) * sizeof TCHAR);
-
     DWORD dwTypes = EVENTLOG_ERROR_TYPE | EVENTLOG_WARNING_TYPE | EVENTLOG_INFORMATION_TYPE;
     dwError = RegSetValueEx(hRegKey, _T("TypesSupported"), 0, REG_DWORD, (LPBYTE)&dwTypes, sizeof dwTypes);
 
     RegCloseKey(hRegKey);
 }
 
-DWORD RemoveEventSource(TCHAR *csApp)
+DWORD RemoveEventSource(TCHAR *csPath, TCHAR *csApp)
 {
     TCHAR szPath[MAX_PATH];
 
-    _stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\%s"), csApp);
+   // _stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\%s"), csApp);
+	if (csPath)
+	{
+		_stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\%s\\%s"), csPath, csApp);
+
+	}
+	else
+	{
+		_stprintf_s(szPath, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\%s"), csApp);
+	}
     return RegDeleteKey(HKEY_LOCAL_MACHINE, szPath);
 }
 

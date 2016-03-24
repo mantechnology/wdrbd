@@ -534,6 +534,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     <ClCompile Include="linux-compat\netlink.c" />
     <ClCompile Include="linux-compat\rbtree.c" />
     <ClCompile Include="linux-compat\seq_file.c" />
+    <ClCompile Include="loglink.c" />
     <ClCompile Include="ops.c" />
     <ClCompile Include="send_buf.c" />
     <ClCompile Include="sub.c" />
@@ -575,6 +576,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     <ClInclude Include="linux-compat\seq_file.h" />
     <ClInclude Include="linux-compat\spinlock.h" />
     <ClInclude Include="linux-compat\Wait.h" />
+    <ClInclude Include="loglink.h" />
     <ClInclude Include="mvolmsg.h" />
     <ClInclude Include="mvolse.h" />
     <ClInclude Include="proto.h" />

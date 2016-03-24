@@ -164,27 +164,27 @@ int SockListener(unsigned short *servPort)
 
 	servSock = CreateTCPServerSocket(*servPort);
 
-	for (;;) 
+	for (;;)
 	{
 		clntSock = AcceptTCPConnection(servSock);
 		{
 			// DRBD_DOC: EVENTLOG 보강/정리
-			extern const TCHAR * ServiceName;
+			extern TCHAR *ServiceName;
 			HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
 			BOOL bSuccess;
-			PCTSTR aInsertions[] = { L"call_usermodehelper:", L"Accepted", L"TCP connection" };
+			PCTSTR aInsertions [] = { L"call_usermodehelper:", L"Accepted", L"TCP connection" };
 			bSuccess = ReportEvent(
 				hEventLog,                  // Handle to the eventlog
 				EVENTLOG_INFORMATION_TYPE,  // Type of event
-				0,							 // Category (could also be 0)
-				MSG_ACCEPT_TCP,				// Event id
+				0,                             // Category (could also be 0)
+				MSG_ACCEPT_TCP,                // Event id
 				NULL,                       // User's sid (NULL for none)
 				3,                          // Number of insertion strings
 				0,                          // Number of additional bytes
 				aInsertions,                // Array of insertion strings
 				NULL                        // Pointer to additional bytes
 				);
-			
+
 			DeregisterEventSource(hEventLog);
 		}
 

@@ -15,6 +15,10 @@
 #include "sub.tmh" 
 #endif
 
+#ifdef _WIN32_LOGLINK
+#include "loglink.h"
+#endif
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -523,36 +527,72 @@ char * printk_str(const char *fmt, ...)
 	return buf;
 }
 
+DWORD msgids [] = {
+	PRINTK_EMERG,
+	PRINTK_ALERT,
+	PRINTK_CRIT,
+	PRINTK_ERR,
+	PRINTK_WARN,
+	PRINTK_NOTICE,
+	PRINTK_INFO,
+	PRINTK_DBG
+};
+
+// _WIN32_MULTILINE_LOG
+void save_to_system_event(char * buf, int length, int level_index)
+{
+	int offset = 3;
+	char *p = buf + offset;
+	int i = 0;
+
+	while (offset < length)
+	{
+		int line_sz = WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p);
+		if (line_sz > 0)
+		{
+			offset = offset + (line_sz / 2);
+			p = buf + offset;
+		}
+		else
+		{
+			WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", KERN_ERR "LogLink: save_to_system_event: unexpected ret\n");
+			break;
+		}
+	}
+}
+
 void _printk(const char * func, const char * format, ...)
 {
-    int ret = 0;
+	int ret = 0;
 	va_list args;
 
-    char * buf = (char *)ExAllocateFromNPagedLookasideList(&drbd_printk_msg);
-    if (!buf)
-    {
-        return;
-    }
-    RtlZeroMemory(buf, MAX_ELOG_BUF);
+	char * buf = (char *) ExAllocateFromNPagedLookasideList(&drbd_printk_msg);
+	if (!buf)
+	{
+		return;
+	}
+	RtlZeroMemory(buf, MAX_ELOG_BUF);
 
-    va_start(args, format);
-    ret = vsprintf(buf, format, args); // DRBD_DOC: vsnprintf 개선
+	va_start(args, format);
+	ret = vsprintf(buf, format, args); // DRBD_DOC: vsnprintf 개선
 	va_end(args);
 
-    ULONG msgid = PRINTK_INFO;
-    int level_index = format[1] - '0';
-    static DWORD msgids[] = {
-        PRINTK_EMERG,
-        PRINTK_ALERT,
-        PRINTK_CRIT,
-        PRINTK_ERR,
-        PRINTK_WARN,
-        PRINTK_NOTICE,
-        PRINTK_INFO,
-        PRINTK_DBG
-    };
+	int length = strlen(buf);
+	if (length > MAX_ELOG_BUF)
+	{
+		// DbgPrint("DRBD_TEST: unexpected err length=%d", length); // may be crashed already!!! but 512 is big enough
+		length = MAX_ELOG_BUF - 1;
+		buf[MAX_ELOG_BUF - 1] = 0;
+	}
+	else
+	{
+		// TODO: chekc min?
+	}
 
-    ASSERT((level_index >= 0) && (level_index < 8));
+	ULONG msgid = PRINTK_INFO;
+	int level_index = format[1] - '0';
+
+	ASSERT((level_index >= 0) && (level_index < 8));
 
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
@@ -560,12 +600,58 @@ void _printk(const char * func, const char * format, ...)
 	// _WIN32_V9:JHKIM: 아래 2문장은 각각 이벤트로그에 제한된 길이로 저장, WinDbg 출력 정도의 보조기능이다. 최종 배포 시에는 이벤트로그 부분은 제거요망.
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-#else
-    WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-#endif
 
-    ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+#else
+#ifdef _WIN32_LOGLINK
+
+	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to DbgWin
+
+	if (g_loglink_usage == LOGLINK_NOT_USED)
+	{
+		save_to_system_event(buf, length, level_index);
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+	}
+	else
+	{
+		struct loglink_msg_list  *loglink_msg;
+
+		if (loglink.wq)
+		{
+			loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&linklog_printk_msg);
+			if (loglink_msg == NULL)
+			{
+				DbgPrint("DRBD_ERROR:loglink: no memory\n");
+				goto error;
+			}
+			loglink_msg->buf = buf;
+			mutex_lock(&loglink_mutex);
+			list_add(&loglink_msg->list, &loglink.loglist);
+			mutex_unlock(&loglink_mutex);
+			queue_work(loglink.wq, &loglink.worker);
+
+			if (g_loglink_usage == LOGLINK_DUAL) // TEST
+			{
+				save_to_system_event(buf, length, level_index);
+			}
+		}
+		else
+		{
+			DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n"); // TEST!
+
+		error:
+			save_to_system_event(buf, length, level_index);
+			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+		}
+	}
+#else
+    // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
+	save_to_system_event(buf, length, level_index);
+    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
+
+	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+#endif
+#endif
 }
 #endif
 
@@ -638,7 +724,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 #endif
 	if (mvolRootDeviceObject == NULL) {
 		ASSERT(mvolRootDeviceObject != NULL);
-		return 2;
+		return -2;
 	}
 
 	/* Init the variable argument list */
@@ -687,7 +773,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		}
 
         if (!ret)
-			return 3;
+			return -3;
 
 		/* prepare the next loop */
         l_StrSize = wcslen((PWCHAR)l_Ptr) * sizeof(WCHAR);
@@ -735,9 +821,11 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 
 		/* Write the packet */
 		IoWriteErrorLogEntry(l_pErrorLogEntry);
+		// DbgPrint("DRBD_TEST: one line l_Size=%d", l_Size); // _WIN32_MULTILINE_LOG test!
+		return l_Size;	// _WIN32_MULTILINE_LOG test!
 
 	} /* OK */
-    return 0;
+    return -4;
 } /* WriteEventLogEntry */
 
 NTSTATUS DeleteDriveLetterInRegistry(char letter)
