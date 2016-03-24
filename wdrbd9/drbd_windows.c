@@ -15,6 +15,7 @@
 
 int g_bypass_level;
 int g_read_filter;
+int g_mj_flush_buffers_filter;
 int g_use_volume_lock;
 int g_netlink_tcp_port;
 int g_daemon_tcp_port;
@@ -1680,12 +1681,14 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 int generic_make_request(struct bio *bio)
 {
 	int err = 0;
-	NTSTATUS status;
+	NTSTATUS status = STATUS_SUCCESS;
 
-	PIRP newIrp;
-	PVOID buffer;
-	LARGE_INTEGER offset;
-	ULONG io;
+	PIRP newIrp = NULL;
+	PVOID buffer = NULL;;
+	LARGE_INTEGER offset = {0,};
+	ULONG io = 0;
+	PIO_STACK_LOCATION	pIoNextStackLocation = NULL;
+	
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
 
 	if (!q) {
@@ -1706,27 +1709,26 @@ int generic_make_request(struct bio *bio)
 		return -EIO;
 	}
 
-	offset.QuadPart = bio->bi_sector << 9;
-	if (bio->bio_databuf)
-	{
-		buffer = bio->bio_databuf;
-	}
-	else
-	{
-		if (bio->bi_max_vecs > 1)
-		{
-			BUG(); // DRBD_PANIC
+	if(bio->bi_rw == WRITE_FLUSH) {
+		io = IRP_MJ_FLUSH_BUFFERS;
+		buffer = NULL;
+		bio->bi_size = 0;
+		offset.QuadPart = 0;
+	} else {
+		if (bio->bi_rw & WRITE) {
+			io = IRP_MJ_WRITE;
+		} else {
+			io = IRP_MJ_READ;
 		}
-		buffer = (PVOID) bio->bi_io_vec[0].bv_page->addr; 
-	}
-
-	if (bio->bi_rw & WRITE)
-	{
-		io = IRP_MJ_WRITE;
-	}
-	else
-	{
-		io = IRP_MJ_READ;
+		offset.QuadPart = bio->bi_sector << 9;
+		if (bio->bio_databuf) {
+			buffer = bio->bio_databuf;
+		} else {
+			if (bio->bi_max_vecs > 1) {
+				BUG(); // DRBD_PANIC
+			}
+			buffer = (PVOID) bio->bi_io_vec[0].bv_page->addr; 
+		}
 	}
 
 #ifdef DRBD_TRACE
@@ -1744,13 +1746,26 @@ int generic_make_request(struct bio *bio)
 				NULL
 				);
 
-	if (!newIrp)
-	{
+	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -ENOMEM;
 	}
 
+	if( IRP_MJ_WRITE == io) {
+		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
+		if(bio->MasterIrpStackFlags) { 
+			//copy original Local I/O's Flags for private_bio instead of drbd's write_ordering, because of performance issue. (2016.03.23 sekim)
+			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
+		} else { 
+			//apply meta I/O's write_ordering
+			struct drbd_device* device = minor_to_device( bio->pVolExt->VolIndex);	
+			if(device && device->resource->write_ordering >= WO_BDEV_FLUSH) {
+				pIoNextStackLocation->Flags |= (SL_WRITE_THROUGH | SL_FT_SEQUENTIAL_WRITE);
+			}
+		}
+	}
+	
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 

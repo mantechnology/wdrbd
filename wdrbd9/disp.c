@@ -249,16 +249,31 @@ NTSTATUS
 mvolSendToNextDriver(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
-
-    if (DeviceObject == mvolRootDeviceObject)
-    {
+	NTSTATUS 	status = STATUS_SUCCESS;
+	
+    if (DeviceObject == mvolRootDeviceObject) {
         Irp->IoStatus.Status = STATUS_SUCCESS;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     }
 
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
+		if (!NT_SUCCESS(status)) {
+			Irp->IoStatus.Status = status;
+			Irp->IoStatus.Information = 0;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+	}
+		
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+    status = IoCallDriver(VolumeExtension->TargetDeviceObject, Irp);
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		IoReleaseRemoveLock(&VolumeExtension->RemoveLock, NULL);
+	}
+
+	return status;
 }
 
 NTSTATUS
@@ -288,7 +303,31 @@ mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-    return mvolSendToNextDriver(DeviceObject, Irp);
+	NTSTATUS	status = STATUS_SUCCESS;
+	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
+	 
+	if (g_mj_flush_buffers_filter && VolumeExtension->Active) {
+        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
+        if (device) {
+			PMVOL_THREAD				pThreadInfo;
+			pThreadInfo = &VolumeExtension->WorkThreadInfo;
+            IoMarkIrpPending(Irp);
+            ExInterlockedInsertTailList(&pThreadInfo->ListHead,
+                &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
+            IO_THREAD_SIG(pThreadInfo);
+			return STATUS_PENDING;
+        } else {
+        	Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+            return STATUS_INVALID_DEVICE_REQUEST;
+        }
+	}
+		
+	status = mvolSendToNextDriver(DeviceObject, Irp);
+
+	return status;
 }
 
 _Use_decl_annotations_

@@ -64,6 +64,7 @@ HKR,,"proc_details",0x00010001,0
 HKR,,"debug_level",0x00010001,0
 HKR,,"bypass_level",0x00010001,0
 HKR,,"read_filter",0x00010001,0
+HKR,,"flush_filter",0x00010001,1
 HKR,,"use_volume_lock",0x00010001,1
 HKR,,"dbgwin_output",0x00010001,0
 HKR,,"loglink_tcp_port",0x00010001,5677
@@ -78,6 +79,7 @@ HKR,,"proc_details"
 HKR,,"debug_level"
 HKR,,"bypass_level"
 HKR,,"read_filter"
+HKR,,"flush_filter"
 HKR,,"use_volume_lock"
 HKR,,"dbgwin_output"
 HKR,,"netlink_tcp_port"

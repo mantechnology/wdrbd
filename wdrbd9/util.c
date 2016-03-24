@@ -966,6 +966,16 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_read_filter = 0;
 	}
 
+	//set g_mj_flush_buffers_filter
+	status = GetRegistryValue(L"flush_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS) {
+		g_mj_flush_buffers_filter = *(int*) aucTemp;
+	}
+	else
+	{
+		g_mj_flush_buffers_filter = 0;
+	}
+	
 	// set use_volume_lock
 	status = GetRegistryValue(L"use_volume_lock", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
