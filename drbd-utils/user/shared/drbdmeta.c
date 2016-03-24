@@ -2603,17 +2603,16 @@ int v07_style_md_open(struct format *cfg)
 		// by volume name
 		sprintf(buf, "\\\\.\\Volume{%s}", cfg->md_device_name);
 		//sprintf(buf, "//./Volume{%s}", cfg->md_device_name);
-		free(cfg->md_device_name);
-		cfg->md_device_name = buf;
 	}
 	else
 	{
 		// by letter
 		sprintf(buf, "\\\\.\\%1s:", cfg->md_device_name);
 		//sprintf(buf, "//./%1s:", cfg->md_device_name);
-		free(cfg->md_device_name);
-		cfg->md_device_name = buf;
 	}
+
+	free(cfg->md_device_name);
+	cfg->md_device_name = buf;
 #endif
 
 	/* For old-style fixed size indexed external meta data,
@@ -2670,7 +2669,9 @@ int v07_style_md_open(struct format *cfg)
 	if (format_version(cfg) >= DRBD_V08) {
 		ASSERT(cfg->md_index != DRBD_MD_INDEX_INTERNAL);
 	}
-#ifdef _WIN32_V9_GET_SECT //  kmpak Windows용에 맞는 sector 크기 구해오는 방식으로 대체 필요
+#ifdef _WIN32_V9
+	cfg->md_hard_sect_size = bdev_sect_size_nt(cfg->md_device_name);
+#else
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
 	if (ioctl_err) {
 		fprintf(stderr, "ioctl(md_fd, BLKSSZGET) returned %d, "
@@ -2682,11 +2683,9 @@ int v07_style_md_open(struct format *cfg)
 			fprintf(stderr, "hard_sect_size is %d Byte\n",
 				cfg->md_hard_sect_size);
 	}
-#else
-    cfg->md_hard_sect_size = 512; // V9_CHOI exception 회피를 위한 임시코드.
 #endif
 #ifdef _WIN32
-	cfg->bd_size = bdev_size(cfg->md_fd, cfg->md_device_name);
+	cfg->bd_size = bdev_size(cfg->md_device_name);
 #else
 	cfg->bd_size = bdev_size(cfg->md_fd);
 #endif

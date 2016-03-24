@@ -3093,7 +3093,7 @@ static int check_resize_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		}
 
 #ifdef _WIN32
-        char buf[1024];
+        char buf[256];
         memset(buf, 0, sizeof(buf));
         sprintf(buf, "\\\\.\\%1s", device->disk_conf.backing_dev);
         strcpy(device->disk_conf.backing_dev, buf);
@@ -3105,7 +3105,7 @@ static int check_resize_cmd(struct drbd_cmd *cm, int argc, char **argv)
 			break;
 		}
 #ifdef _WIN32
-        bd_size = bdev_size(fd, device->disk_conf.backing_dev);
+        bd_size = bdev_size(device->disk_conf.backing_dev);
 #else
 		bd_size = bdev_size(fd);
 #endif
