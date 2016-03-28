@@ -358,7 +358,7 @@ int atomic_read(const atomic_t *v)
 
 void * kmalloc(int size, int flag, ULONG Tag)
 {
-	return kcalloc(1, size, flag, Tag);
+	return kcalloc(size, 1, flag, Tag); // => adjust size, count parameter mismatch
 }
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
@@ -424,13 +424,20 @@ void *page_address(const struct page *page)
 struct page  *alloc_page(int flag)
 {
 	struct page *p = kmalloc(sizeof(struct page),0, 'D3DW'); 
-	if (!p)
-	{
-		WDRBD_ERROR("malloc failed\n");
-		return 0;
+	if (!p)	{
+		WDRBD_INFO("alloc_page struct page failed\n");
+		return NULL;
 	}	
-
+	RtlZeroMemory(p, sizeof(struct page));
+	
 	p->addr = kzalloc(PAGE_SIZE, 0, 'E3DW');
+	if (!p->addr)	{
+		kfree(p); 
+		WDRBD_INFO("alloc_page PAGE_SIZE failed\n");
+		return NULL;
+	}
+	RtlZeroMemory(p->addr, PAGE_SIZE);
+
 	return p;
 }
 
@@ -545,7 +552,8 @@ void mempool_free(void *p, mempool_t *mempool)
 {
 	if (mempool->page_alloc)
 	{
-		kfree(p);
+		__free_page(p);
+		
 	}
 	else
 	{
