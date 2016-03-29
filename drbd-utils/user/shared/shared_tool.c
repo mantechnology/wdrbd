@@ -235,106 +235,136 @@ int sget_token(char *s, int size, const char** text)
 #include <windows.h>
 #include <winioctl.h>
 
-//#define wszDrive L"\\\\.\\PhysicalDrive0"
-
 /**
 * @brief
 * 디스크 혹은 볼륨의 size를 구해오는 함수
-* 볼륨의 size를 구해올 경우라면 인자로 "\\.\X:" 형태의 문자열을 줘야한다.
+*
+* @param
+* - device_name : "\\\\.\\d:", "\\\\.\\HarddiskVolume1", "\\\\.\\PhysicalDrive0" and so on
 *
 * @return
-*   성공시 - 볼륨의 size
-*   실패시 - 0
+*   success - 0, fail - GetLastError()
 */
-long long GetDriveGeometry(LPWSTR wszPath, DISK_GEOMETRY *pdg)
+static
+DWORD _GetVolumeSize(LPSTR device_name, GET_LENGTH_INFORMATION * pgli)
 {
-	HANDLE hDevice = INVALID_HANDLE_VALUE;  // handle to the drive to be examined
-	BOOL bResult = FALSE;                   // results flag
-	DWORD junk = 0;                         // discard results
-	GET_LENGTH_INFORMATION li = { 0, };
-	//printf("Drive wszPath = %S\n", wszPath);
+	DWORD err = 0, junk = 0;
 
-	hDevice = CreateFileW(wszPath,          // drive to open
-		GENERIC_READ | GENERIC_WRITE,       // no access to the drive
-		FILE_SHARE_READ |                   // share mode
-		FILE_SHARE_WRITE,
-		NULL,                               // default security attributes
-		OPEN_EXISTING,                      // disposition
-		0,                                  // file attributes
-		NULL);                              // do not copy file attributes
+	HANDLE hDevice = CreateFileA(device_name,	// drive to open
+		GENERIC_READ | GENERIC_WRITE,       	// no access to the drive
+		FILE_SHARE_READ | FILE_SHARE_WRITE,    	// share mode
+		NULL,                               	// default security attributes
+		OPEN_EXISTING,                      	// disposition
+		0,                                  	// file attributes
+		NULL);                              	// do not copy file attributes
 
-	if (hDevice == INVALID_HANDLE_VALUE)    // cannot open the drive
+	if (INVALID_HANDLE_VALUE == hDevice)
 	{
-		printf("Drive(%S) INVALID_HANDLE_VALUE\n", wszPath);
-		return FALSE;
+		err = GetLastError();
+		fprintf(stderr, "Failed to CreateFile(%s). error_code=%d\n", device_name, err);
+		return err;
 	}
 
-	bResult = DeviceIoControl(hDevice, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &li, sizeof(li), &junk, NULL);
+	BOOL bResult = DeviceIoControl(hDevice,		// device to be queried
+		IOCTL_DISK_GET_LENGTH_INFO,				// operation to perform
+		NULL, 0,								// no input buffer
+		pgli, sizeof(*pgli),					// output buffer
+		&junk,									// # bytes returned
+		NULL);									// synchronous I/O
+
 	if (!bResult)
 	{
-		printf("IOCTL_DISK_GET_LENGTH_INFO GetLastError(%d)\n", GetLastError());
+		err = GetLastError();
+		fprintf(stderr, "Failed to IOCTL_DISK_GET_LENGTH_INFO(%s) error_code=%d\n", device_name, err);
 		CloseHandle(hDevice);
-		return FALSE;
+		return err;
 	}
 
 	CloseHandle(hDevice);
-
-	return (li.Length.QuadPart);
+	//fprintf(stdout, "(%s)'s size = %lld\n", device_name, pgli->Length.QuadPart);
+	return err;
 }
 
-uint64_t bdev_size_win32(char *letter)
+/**
+* @param
+* - device_name : "\\\\.\\d:", "\\\\.\\HarddiskVolume1", "\\\\.\\PhysicalDrive0" and so on
+*
+* @return
+*   success - 0, fail - GetLastError()
+*/
+static
+DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY_EX *pdg)
 {
-	DISK_GEOMETRY pdg; // disk drive geometry structure
-	long long bResult; //  = FALSE;      // generic results flag
-	long long DiskSize = 0;    // size of the drive, in bytes
-	//CHAR	letter[16]="\\\\.\\ :";
-	WCHAR	 wLetter[16];
+	DWORD err = 0, junk = 0;
+	
+	HANDLE hDevice = CreateFileA(device_name,	// drive to open
+		0,										// no access to the drive
+		FILE_SHARE_READ | FILE_SHARE_WRITE,		// share mode
+		NULL,									// default security attributes
+		OPEN_EXISTING,							// disposition
+		0,										// file attributes
+		NULL);									// do not copy file attributes
 
-	//letter[4] = DriveLetter;
-
-	memset(wLetter, 0, 32);
-	MultiByteToWideChar(CP_ACP, 0, letter, -1, wLetter, 16);
-
-	bResult = GetDriveGeometry(wLetter, &pdg);
-
-	// K \\.\Volume{f9242cdb-3f80-11e3-89e9-005056c00008}
-	//bResult = GetDriveGeometry (L"\\\\.\\Volume{f9242cdb-3f80-11e3-89e9-005056c00008}", &pdg); // K
-	/*
-	if (bResult)
+	if (INVALID_HANDLE_VALUE == hDevice)
 	{
-	printf("Drive path      = %S\n",   wLetter);
-	printf("Cylinders       = %lld\n", pdg.Cylinders);
-	printf("Tracks/cylinder = %ld\n",   (ULONG) pdg.TracksPerCylinder);
-	printf("Sectors/track   = %ld\n",   (ULONG) pdg.SectorsPerTrack);
-	printf("Bytes/sector    = %ld\n",   (ULONG) pdg.BytesPerSector);
-	DiskSize = pdg.Cylinders.QuadPart * (ULONG)pdg.TracksPerCylinder *
-	(ULONG)pdg.SectorsPerTrack * (ULONG)pdg.BytesPerSector;
-	printf("Disk size       = %ld (Bytes)\n", DiskSize);
-	printf("Disk size       = %lld (Bytes)\n"
-	"                = %ld(MB)\n",
-	DiskSize, DiskSize / (1024 * 1024));
+		err = GetLastError();
+		fprintf(stderr, "Failed to CreateFile(%s). error_code=%d\n", device_name, err);
+		return err;
 	}
-	else
+
+	BOOL bResult = DeviceIoControl(hDevice,		// device to be queried
+		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,		// operation to perform
+		NULL, 0,								// no input buffer
+		pdg, sizeof(*pdg),						// output buffer
+		&junk,									// # bytes returned
+		(LPOVERLAPPED)NULL);					// synchronous I/O
+
+	if (!bResult)
 	{
-	wprintf (L"GetDriveGeometry failed. Error %ld.\n", GetLastError ());
+		err = GetLastError();
+		fprintf(stderr, "Failed to IOCTL_DISK_GET_DRIVE_GEOMETRY_EX(%s) error_code=%d\n", device_name, err);
+		CloseHandle(hDevice);
+		return err;
 	}
-	*/
-	return bResult;
+
+	CloseHandle(hDevice);
+	//fprintf(stdout, "(%s)'s sector size = %d\n", device_name, pdg->Geometry.BytesPerSector);
+	return err;
+}
+
+static
+uint64_t _bdev_size_nt(char * device_name)
+{
+	GET_LENGTH_INFORMATION gli = { .Length.QuadPart = 0, };
+	
+	DWORD ret = _GetVolumeSize(device_name, &gli);
+
+	return ret ? 0 : gli.Length.QuadPart;
+}
+
+int bdev_sect_size_nt(char * device_name)
+{
+	DISK_GEOMETRY_EX dg = { .Geometry.BytesPerSector = 0, };
+
+	DWORD ret = _GetDriveGeometry(device_name, &dg);
+
+	return ret ? 0 : dg.Geometry.BytesPerSector;
 }
 #endif
 
 #ifdef _WIN32
-uint64_t bdev_size(int fd, char *letter)
+uint64_t bdev_size(char * device_name)
 #else
 uint64_t bdev_size(int fd)
 #endif
 {
 	uint64_t size64;		/* size in byte. */
+#ifdef _WIN32
+	size64 = _bdev_size_nt(device_name); 
+#else
 	long size;		/* size in sectors. */
 	int err;
-#ifdef _WIN32
-	size64 = bdev_size_win32(letter); 
-#else
+
 	err = ioctl(fd, BLKGETSIZE64, &size64);
 	if (err) {
 		if (errno == EINVAL) {

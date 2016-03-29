@@ -570,7 +570,7 @@ int adm_create_md(const struct cfg_ctx *ctx)
 	fd = open(ctx->vol->disk,O_RDONLY);
 	if( fd != -1) {
 #ifdef _WIN32
-		device_size = bdev_size(fd, ctx->vol->meta_disk);
+		device_size = bdev_size(ctx->vol->meta_disk);
 #else
 		device_size = bdev_size(fd);
 #endif
