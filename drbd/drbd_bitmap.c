@@ -1346,7 +1346,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
             goto no_memory;
         }
         page->private = b->bm_pages[page_nr]->private;
-        memcpy(page->addr, b->bm_pages[page_nr]->addr, 4096);
+        memcpy(page->addr, b->bm_pages[page_nr]->addr, PAGE_SIZE);
 #else
 		copy_highpage(page, b->bm_pages[page_nr]);
 #endif
