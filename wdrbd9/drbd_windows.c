@@ -358,7 +358,7 @@ int atomic_read(const atomic_t *v)
 
 void * kmalloc(int size, int flag, ULONG Tag)
 {
-	return kcalloc(1, size, flag, Tag);
+	return kcalloc(size, 1, flag, Tag); // => adjust size, count parameter mismatch
 }
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
@@ -424,13 +424,20 @@ void *page_address(const struct page *page)
 struct page  *alloc_page(int flag)
 {
 	struct page *p = kmalloc(sizeof(struct page),0, 'D3DW'); 
-	if (!p)
-	{
-		WDRBD_ERROR("malloc failed\n");
-		return 0;
+	if (!p)	{
+		WDRBD_INFO("alloc_page struct page failed\n");
+		return NULL;
 	}	
-
+	RtlZeroMemory(p, sizeof(struct page));
+	
 	p->addr = kzalloc(PAGE_SIZE, 0, 'E3DW');
+	if (!p->addr)	{
+		kfree(p); 
+		WDRBD_INFO("alloc_page PAGE_SIZE failed\n");
+		return NULL;
+	}
+	RtlZeroMemory(p->addr, PAGE_SIZE);
+
 	return p;
 }
 
@@ -491,13 +498,73 @@ mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_
 mempool_t *mempool_create_page_pool(int min_nr, int order)
 {
 	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
-	if (!p_pool)
-	{
+	if (!p_pool) {
 		return 0;
 	}
 	p_pool->page_alloc = 1; 
+
+	ExInitializeNPagedLookasideList(&p_pool->pageLS, NULL, NULL, 0, sizeof(struct page), 'B8DW', 0);
+
+	ExInitializeNPagedLookasideList(&p_pool->page_addrLS, NULL, NULL, 0, PAGE_SIZE, 'C8DW', 0);
+	
 	return p_pool; 
 }
+
+void mempool_destroy_page_pool (mempool_t *p_pool)
+{	
+	if(p_pool) {
+		ExDeleteNPagedLookasideList(&p_pool->page_addrLS);
+		ExDeleteNPagedLookasideList(&p_pool->pageLS);
+		kfree(p_pool);
+	} 
+	
+	return;
+}
+
+void* mempool_alloc(mempool_t *pool, gfp_t gfp_mask)
+{
+	void* p = NULL;
+
+	if (pool->page_alloc) {
+		struct page* _page = NULL;
+		//p = alloc_page(0);
+		_page = ExAllocateFromNPagedLookasideList (&pool->pageLS);
+		if(_page) {
+			_page->addr = ExAllocateFromNPagedLookasideList (&pool->page_addrLS);
+			if(_page->addr) {
+				p = _page;	
+			} else {
+				ExFreeToNPagedLookasideList (&pool->pageLS, _page);
+			}
+		} 
+		
+	} else {
+		p = kzalloc(pool->p_cache->size, gfp_mask, '14DW');
+	}
+
+	if (!p) {
+		WDRBD_ERROR("mempool_alloc failed");
+	}
+
+	return p;
+}
+
+void mempool_free(void *p, mempool_t *pool)
+{
+	if (pool->page_alloc) {
+		struct page* _page = (struct page*)p;	
+		//__free_page(p);
+		ExFreeToNPagedLookasideList (&pool->page_addrLS, _page->addr);
+		ExFreeToNPagedLookasideList (&pool->pageLS, _page);
+			
+	} else {
+		kfree(p);
+	}
+
+	return;
+}
+
+
 #ifndef _WIN32_V9
 mempool_t *mempool_create_slab_pool(int min_nr, int order)
 {
@@ -521,41 +588,9 @@ void *mempool_free_slab(gfp_t gfp_mask, void *pool_data)
 }
 #endif
 
-void *mempool_alloc(mempool_t *pool, gfp_t gfp_mask)
-{
-	void *p;
-
-	if (pool->page_alloc)
-	{
-		p = alloc_page(0);
-	}
-	else
-	{
-		p = kzalloc(pool->p_cache->size, gfp_mask, '14DW');
-	}
-	if (!p)
-	{
-		WDRBD_ERROR("kmalloc failed");
-	}
-
-	return p;
-}
-
-void mempool_free(void *p, mempool_t *mempool)
-{
-	if (mempool->page_alloc)
-	{
-		kfree(p);
-	}
-	else
-	{
-		kfree(p);
-	}
-}
-
 void mempool_destroy(void *p)
 {
-
+	
 }
 
 void kmem_cache_destroy(struct kmem_cache *s)

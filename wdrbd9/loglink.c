@@ -168,7 +168,7 @@ void LogLink_Sender(struct work_struct *ws)
 				}
 				else
 				{
-					sprintf(tmp, KERN_ERR "LogLink: send error: step=%d sock=0x%x ret=%d. Save it to system eventlog\n", step, sock, ret);
+					sprintf(tmp, KERN_ERR "LogLink: send error: step=%d sock=0x%p ret=%d. Save it to system eventlog\n", step, sock, ret);
 					WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", tmp);
 					kfree(tmp);
 				}

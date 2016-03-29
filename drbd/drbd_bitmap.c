@@ -1271,11 +1271,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	bm_page_unlock_io(device, idx);
 
-	if (ctx->flags & BM_AIO_COPY_PAGES)
-		mempool_free(bio->bi_io_vec[0].bv_page, drbd_md_io_page_pool);
 #ifdef _WIN32_V9
-    if (Irp) // DRBD_DOC: FAULT_TEST
-    {
+    if (Irp) { // DRBD_DOC: FAULT_TEST
         if (Irp->MdlAddress != NULL) {
             PMDL mdl, nextMdl;
             for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -1290,6 +1287,9 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     }
 #endif
 
+	if (ctx->flags & BM_AIO_COPY_PAGES) 
+		mempool_free(bio->bi_io_vec[0].bv_page, drbd_md_io_page_pool);
+	
 	bio_put(bio);
 
 	if (atomic_dec_and_test(&ctx->in_flight)) {
@@ -1342,12 +1342,11 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	if (ctx->flags & BM_AIO_COPY_PAGES) {
 		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_RECLAIM);
 #ifdef _WIN32_V9
-        if (!page)   // DV
-        {
+        if (!page) {
             goto no_memory;
         }
         page->private = b->bm_pages[page_nr]->private;
-        memcpy(page->addr, b->bm_pages[page_nr]->addr, 4096);
+        memcpy(page->addr, b->bm_pages[page_nr]->addr, PAGE_SIZE);
 #else
 		copy_highpage(page, b->bm_pages[page_nr]);
 #endif

@@ -615,6 +615,10 @@ typedef struct kmem_cache {
 typedef struct mempool_s {
 	struct kmem_cache *p_cache;
 	int page_alloc;
+#ifdef _WIN32_V9
+	NPAGED_LOOKASIDE_LIST pageLS;
+	NPAGED_LOOKASIDE_LIST page_addrLS;
+#endif
 } mempool_t;
 
 struct bio_vec {
