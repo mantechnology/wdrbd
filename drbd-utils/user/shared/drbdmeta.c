@@ -2781,6 +2781,10 @@ int v07_parse(struct format *cfg, char **argv, int argc, int *ai)
 		index = DRBD_MD_INDEX_FLEX_EXT;
 	} else if (!strcmp(argv[1],"flex-internal")) {
 		index = DRBD_MD_INDEX_FLEX_INT;
+#ifdef _WIN32_V9
+	} else if (F_OK == access(argv[1], R_OK)) {
+		index = DRBD_MD_INDEX_FLEX_EXT;
+#endif
 	} else {
 		e = argv[1];
 		errno = 0;
