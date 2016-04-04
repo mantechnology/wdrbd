@@ -1538,12 +1538,15 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 	   and the second resync (which was paused first) is from an Outdated node.
 	   And that second resync gets canceled by the resync target due to the first
 	   resync finished successfully.
+
+       Exceptions to the above are when the peer's UUID is not known yet
 	 */
 
 	rcu_read_lock();
 	peer_device = peer_device_by_node_id(device, node_id);
 
 	if (bitmap_uuid == 0 && peer_device &&
+		peer_device->current_uuid != 0 &&
 	    (peer_device->current_uuid & ~UUID_PRIMARY) !=
 	    (drbd_current_uuid(device) & ~UUID_PRIMARY))
 		bitmap_uuid = -1;
@@ -2919,18 +2922,13 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 #endif
 }
 
-#ifdef blk_queue_plugged
-static void drbd_unplug_fn(struct request_queue *q)
+/* need to hold resource->req_lock */
+void drbd_queue_unplug(struct drbd_device *device)
 {
-	struct drbd_device *device = q->queuedata;
+#ifdef _WIN32_V9_PLUG
 	struct drbd_resource *resource = device->resource;
 	struct drbd_connection *connection;
 	u64 dagtag_sector;
-
-	/* unplug FIRST */
-	/* note: q->queue_lock == resource->req_lock */
-	spin_lock_irq(&resource->req_lock);
-	blk_remove_plug(q);
 
 	dagtag_sector = resource->dagtag_sector;
 
@@ -2940,6 +2938,23 @@ static void drbd_unplug_fn(struct request_queue *q)
 		connection->todo.unplug_dagtag_sector[i] = dagtag_sector;
 		wake_up(&connection->sender_work.q_wait);
 	}
+#endif	
+}
+
+#ifdef blk_queue_plugged
+static void drbd_unplug_fn(struct request_queue *q)
+{
+	struct drbd_device *device = q->queuedata;
+	struct drbd_resource *resource = device->resource;
+
+	/* unplug FIRST */
+	/* note: q->queue_lock == resource->req_lock */
+	spin_lock_irq(&resource->req_lock);
+	blk_remove_plug(q);
+
+	/* only if connected */
+	drbd_queue_unplug(device);
+
 	spin_unlock_irq(&resource->req_lock);
 
 	drbd_kick_lo(device);
@@ -5350,8 +5365,6 @@ u64 drbd_uuid_resync_finished(struct drbd_peer_device *peer_device) __must_hold(
 	_drbd_uuid_push_history(device, drbd_current_uuid(device));
 	__drbd_uuid_set_current(device, peer_device->current_uuid);
 	spin_unlock_irqrestore(&device->ldev->md.uuid_lock, flags);
-
-	drbd_propagate_uuids(device, newer | equal | NODE_MASK(peer_device->node_id));
 
 	return newer;
 }

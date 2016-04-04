@@ -95,8 +95,7 @@ static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_ho
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, unsigned long);
 static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_hold(local);
 #endif
-static void drbd_unplug_all_devices(struct drbd_resource *resource);
-
+static void drbd_unplug_all_devices(struct drbd_connection *connection);
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	struct drbd_epoch *prev;
@@ -1151,23 +1150,66 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 	return 0;
 }
 
+#ifdef blk_queue_plugged
+static void drbd_unplug_all_devices(struct drbd_connection *connection)
+{
+	struct drbd_resource *resource = connection->resource;
+	struct drbd_device *device;
+	int vnr;
+
+	rcu_read_lock();
+	idr_for_each_entry(&resource->devices, device, vnr) {
+		kref_get(&device->kref);
+		rcu_read_unlock();
+		drbd_kick_lo(device);
+		kref_put(&device->kref, drbd_destroy_device);
+		rcu_read_lock();
+	}
+	rcu_read_unlock();
+}
+#else
+static void drbd_unplug_all_devices(struct drbd_connection *connection)
+{
+#ifdef _WIN32_V9_PLUG
+	if (current->plug == &connection->receiver_plug) {
+
+		blk_finish_plug(&connection->receiver_plug);
+		blk_start_plug(&connection->receiver_plug);
+	} /* else: maybe just schedule() ?? */
+#endif	
+}
+#endif
+
+
 static int drbd_recv_header(struct drbd_connection *connection, struct packet_info *pi)
 {
-#ifdef _WIN32_V9	// No adjust about linux drbd 3d552f8 commit
 	void *buffer;
 	int err;
-
 	err = drbd_recv_all_warn(connection, &buffer, drbd_header_size(connection));
-	if (err)
+	if(err)
 		return err;
-#else
-	struct drbd_transport_ops *tr_ops = connection->transport.ops;
+
+	err = decode_header(connection, buffer, pi);
+	connection->last_received = jiffies;
+
+	return err;
+}
+
+static int drbd_recv_header_maybe_unplug(struct drbd_connection *connection, struct packet_info *pi)
+{
+ 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
 	unsigned int size = drbd_header_size(connection);
 	void *buffer;
 	int err;
 
+#ifdef _WIN32_V9
+	err = tr_ops->recv(&connection->transport, DATA_STREAM, &buffer,
+			   size, MSG_NOSIGNAL );
+#else
 	err = tr_ops->recv(&connection->transport, DATA_STREAM, &buffer,
 			   size, MSG_NOSIGNAL | MSG_DONTWAIT);
+#endif
+	
 	if (err != size) {
 		int rflags = 0;
 
@@ -1177,7 +1219,7 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 		 * received so far. */
 		if (err == -EAGAIN) {
 			tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
-			drbd_unplug_all_devices(connection->resource);
+			drbd_unplug_all_devices(connection);
 		} else if (err > 0) {
 			size -= err;
 			rflags |= GROW_BUFFER;
@@ -1193,11 +1235,12 @@ static int drbd_recv_header(struct drbd_connection *connection, struct packet_in
 		if (err)
 			return err;
 	}
-#endif
+	
 	err = decode_header(connection, buffer, pi);
 	connection->last_received = jiffies;
 
 	return err;
+
 }
 
 /* This is blkdev_issue_flush, but asynchronous.
@@ -1997,28 +2040,6 @@ static void conn_wait_done_ee_empty(struct drbd_connection *connection)
 	rcu_read_unlock();
 }
 
-#ifdef blk_queue_plugged
-static void drbd_unplug_all_devices(struct drbd_resource *resource)
-{
-	struct drbd_device *device;
-	int vnr;
-
-	rcu_read_lock();
-	idr_for_each_entry(&resource->devices, device, vnr) {
-		kref_get(&device->kref);
-		rcu_read_unlock();
-		drbd_kick_lo(device);
-		kref_put(&device->kref, drbd_destroy_device);
-		rcu_read_lock();
-	}
-	rcu_read_unlock();
-}
-#else
-static void drbd_unplug_all_devices(struct drbd_resource *resource)
-{
-}
-#endif
-
 static int receive_Barrier(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_transport_ops *tr_ops = connection->transport.ops;
@@ -2027,8 +2048,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	struct drbd_epoch *epoch;
 
 	tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
-	drbd_unplug_all_devices(connection->resource);
-
+	drbd_unplug_all_devices(connection);
 	/* FIXME these are unacked on connection,
 	 * not a specific (peer)device.
 	 */
@@ -3998,6 +4018,9 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			continue;
 		if (i == device->ldev->md.node_id)
 			continue;
+		/* Skip bitmap indexes which are not assigned to a peer. */
+		if (device->ldev->md.peers[i].bitmap_index == -1)
+			continue;
 		self = device->ldev->md.peers[i].bitmap_uuid & ~UUID_PRIMARY;
 		if (self == peer) {
 			*peer_node_id = i;
@@ -5124,6 +5147,26 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	}
 }
 
+static void update_bitmap_slot_of_peer(struct drbd_peer_device *peer_device, int node_id, u64 bitmap_uuid)
+{
+	if (peer_device->bitmap_uuids[node_id] && bitmap_uuid == 0) {
+		/* If we learn from a neighbor that it no longer has a bitmap
+		   against a third node, we need to deduce from that knowledge
+		   that in the other direction the bitmap was cleared as well.
+		 */
+		struct drbd_peer_device *peer_device2;
+
+		rcu_read_lock();
+		peer_device2 = peer_device_by_node_id(peer_device->device, node_id);
+		if (peer_device2) {
+			int node_id2 = peer_device->connection->peer_node_id;
+			peer_device2->bitmap_uuids[node_id2] = 0;
+		}
+		rcu_read_unlock();
+	}
+	peer_device->bitmap_uuids[node_id] = bitmap_uuid;
+}
+
 static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 {
 	enum drbd_repl_state repl_state = peer_device->repl_state[NOW];
@@ -5293,18 +5336,22 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		peer_md = device->ldev->md.peers;
 	pos = 0;
 	for (i = 0; i < ARRAY_SIZE(peer_device->bitmap_uuids); i++) {
+		u64 bitmap_uuid;
+
 		if (bitmap_uuids_mask & NODE_MASK(i)) {
 #ifdef _WIN32_V9
-            peer_device->bitmap_uuids[i] = be64_to_cpu(p->other_uuids[pos]);
+            bitmap_uuid = be64_to_cpu(p->other_uuids[pos]);
             pos++;
 #else
-			peer_device->bitmap_uuids[i] = be64_to_cpu(p->other_uuids[pos++]);
+			bitmap_uuid = be64_to_cpu(p->other_uuids[pos++]);
 #endif
 			if (peer_md && peer_md[i].bitmap_index == -1)
 				peer_md[i].flags |= MDF_NODE_EXISTS;
 		} else {
-			peer_device->bitmap_uuids[i] = 0;
+			bitmap_uuid = 0;
 		}
+
+		update_bitmap_slot_of_peer(peer_device, i, bitmap_uuid);
 	}
 	if (peer_md)
 		put_ldev(device);
@@ -5312,11 +5359,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	for (i = 0; i < history_uuids; i++)
 #ifdef _WIN32_V9
     {
-        peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos]);
+        peer_device->history_uuids[i] = be64_to_cpu(p->other_uuids[pos]);
         pos++;
     }
 #else
-		peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos++]);
+		peer_device->history_uuids[i] = be64_to_cpu(p->other_uuids[pos++]);
 #endif
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
@@ -6913,8 +6960,7 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 	transport->ops->hint(transport, DATA_STREAM, QUICKACK);
 
 	/* just unplug all devices always, regardless which volume number */
-	drbd_unplug_all_devices(connection->resource);
-
+	drbd_unplug_all_devices(connection);
 	return 0;
 }
 
@@ -7216,8 +7262,8 @@ static void drbdd(struct drbd_connection *connection)
 		struct data_cmd const *cmd;
 
 		drbd_thread_current_set_cpu(&connection->receiver);
-		update_receiver_timing_details(connection, drbd_recv_header);
-		if (drbd_recv_header(connection, &pi))
+		update_receiver_timing_details(connection, drbd_recv_header_maybe_unplug);
+		if (drbd_recv_header_maybe_unplug(connection, &pi))
 			goto err_out;
 
 		cmd = &drbd_cmd_handler[pi.cmd];
@@ -7781,8 +7827,17 @@ int drbd_receiver(struct drbd_thread *thi)
 {
 	struct drbd_connection *connection = thi->connection;
 
-	if (conn_connect(connection))
+	if (conn_connect(connection)) {
+
+#ifdef _WIN32_V9_PLUG		
+		blk_start_plug(&connection->receiver_plug);
+#endif
 		drbdd(connection);
+
+#ifdef _WIN32_V9_PLUG
+		blk_finish_plug(&connection->receiver_plug);
+#endif
+	}
 
 	conn_disconnect(connection);
 	return 0;

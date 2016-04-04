@@ -34,6 +34,7 @@
 
 #define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
 #define _WIN32_V9_DW_663_LINBIT_PATCH 
+//#define _WIN32_V9_DRBD_PLUG
 
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
@@ -815,6 +816,9 @@ struct task_struct {
     KEVENT sig_event;
     BOOLEAN has_sig_event;
 	int sig; 
+
+	struct blk_plug *plug;
+	
     char comm[TASK_COMM_LEN];
 };
 
@@ -1513,6 +1517,38 @@ static inline unsigned int queue_io_min(struct request_queue *q)
 	return 0; // dummy
 	// return q->limits.io_min;
 }
+
+#endif
+
+#ifdef _WIN32_V9
+/*
+ * blk_plug permits building a queue of related requests by holding the I/O
+ * fragments for a short period. This allows merging of sequential requests
+ * into single larger request. As the requests are moved from a per-task list to
+ * the device's request_queue in a batch, this results in improved scalability
+ * as the lock contention for request_queue lock is reduced.
+ *
+ * It is ok not to disable preemption when adding the request to the plug list
+ * or when attempting a merge, because blk_schedule_flush_list() will only flush
+ * the plug list when the task sleeps by itself. For details, please see
+ * schedule() where blk_schedule_flush_plug() is called.
+ */
+struct blk_plug {
+	ULONG_PTR magic; /* detect uninitialized use-cases */
+	struct list_head list; /* requests */
+	struct list_head mq_list; /* blk-mq requests */
+	struct list_head cb_list; /* md requires an unplug callback */
+};
+
+struct blk_plug_cb;
+typedef void (*blk_plug_cb_fn)(struct blk_plug_cb *, bool);
+struct blk_plug_cb {
+	struct list_head list;
+	blk_plug_cb_fn callback;
+	void *data;
+};
+
+extern struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data, int size);
 
 #endif
 
