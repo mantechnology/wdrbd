@@ -95,8 +95,7 @@ static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_ho
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, unsigned long);
 static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_hold(local);
 #endif
-static void drbd_unplug_all_devices(struct drbd_resource *resource);
-
+static void drbd_unplug_all_devices(struct drbd_connection *connection);
 static struct drbd_epoch *previous_epoch(struct drbd_connection *connection, struct drbd_epoch *epoch)
 {
 	struct drbd_epoch *prev;
@@ -1152,8 +1151,9 @@ int decode_header(struct drbd_connection *connection, void *header, struct packe
 }
 
 #ifdef blk_queue_plugged
-static void drbd_unplug_all_devices(struct drbd_resource *resource)
+static void drbd_unplug_all_devices(struct drbd_connection *connection)
 {
+	struct drbd_resource *resource = connection->resource;
 	struct drbd_device *device;
 	int vnr;
 
@@ -1168,8 +1168,15 @@ static void drbd_unplug_all_devices(struct drbd_resource *resource)
 	rcu_read_unlock();
 }
 #else
-static void drbd_unplug_all_devices(struct drbd_resource *resource)
+static void drbd_unplug_all_devices(struct drbd_connection *connection)
 {
+#ifdef _WIN32_V9_PLUG
+	if (current->plug == &connection->receiver_plug) {
+
+		blk_finish_plug(&connection->receiver_plug);
+		blk_start_plug(&connection->receiver_plug);
+	} /* else: maybe just schedule() ?? */
+#endif	
 }
 #endif
 
@@ -1212,7 +1219,7 @@ static int drbd_recv_header_maybe_unplug(struct drbd_connection *connection, str
 		 * received so far. */
 		if (err == -EAGAIN) {
 			tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
-			drbd_unplug_all_devices(connection->resource);
+			drbd_unplug_all_devices(connection);
 		} else if (err > 0) {
 			size -= err;
 			rflags |= GROW_BUFFER;
@@ -2041,8 +2048,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	struct drbd_epoch *epoch;
 
 	tr_ops->hint(&connection->transport, DATA_STREAM, QUICKACK);
-	drbd_unplug_all_devices(connection->resource);
-
+	drbd_unplug_all_devices(connection);
 	/* FIXME these are unacked on connection,
 	 * not a specific (peer)device.
 	 */
@@ -6927,8 +6933,7 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 	transport->ops->hint(transport, DATA_STREAM, QUICKACK);
 
 	/* just unplug all devices always, regardless which volume number */
-	drbd_unplug_all_devices(connection->resource);
-
+	drbd_unplug_all_devices(connection);
 	return 0;
 }
 
@@ -7795,8 +7800,17 @@ int drbd_receiver(struct drbd_thread *thi)
 {
 	struct drbd_connection *connection = thi->connection;
 
-	if (conn_connect(connection))
+	if (conn_connect(connection)) {
+
+#ifdef _WIN32_V9_PLUG		
+		blk_start_plug(&connection->receiver_plug);
+#endif
 		drbdd(connection);
+
+#ifdef _WIN32_V9_PLUG
+		blk_finish_plug(&connection->receiver_plug);
+#endif
+	}
 
 	conn_disconnect(connection);
 	return 0;

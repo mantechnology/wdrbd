@@ -1875,30 +1875,35 @@ static int drbd_send_barrier(struct drbd_connection *connection)
 	return err;
 }
 
-#ifdef blk_queue_plugged
+
 static bool need_unplug(struct drbd_connection *connection)
 {
+#ifdef _WIN32_V9_PLUG
 	unsigned i = connection->todo.unplug_slot;
 	return dagtag_newer_eq(connection->send.current_dagtag_sector,
 			connection->todo.unplug_dagtag_sector[i]);
+#else
+	return FALSE;
+#endif
 }
 
-static void maybe_send_write_hint(struct drbd_connection *connection)
+static void maybe_send_unplug_remote(struct drbd_connection *connection, bool send_anyways)
 {
-	if (!need_unplug(connection))
+#ifdef _WIN32_V9_PLUG
+	if (need_unplug(connection)) {
+		/* Yes, this is non-atomic wrt. its use in drbd_unplug_fn.
+		 * We save a spin_lock_irq, and worst case
+		 * we occasionally miss an unplug event. */
+
+		/* Paranoia: to avoid a continuous stream of unplug-hints,
+		 * in case we never get any unplug events */
+		connection->todo.unplug_dagtag_sector[connection->todo.unplug_slot] =
+			connection->send.current_dagtag_sector + (1ULL << 63);
+		/* advance the current unplug slot */
+		connection->todo.unplug_slot ^= 1;
+	} else if (!send_anyways)
 		return;
-
-	/* Yes, this is non-atomic wrt. its use in drbd_unplug_fn.
-	 * We save a spin_lock_irq, and worst case
-	 * we occasionally miss an unplug event. */
-
-	/* Paranoia: to avoid a continuous stream of unplug-hints,
-	 * in case we never get any unplug events */
-	connection->todo.unplug_dagtag_sector[connection->todo.unplug_slot] =
-		connection->send.current_dagtag_sector + (1ULL << 63);
-	/* advance the current unplug slot */
-	connection->todo.unplug_slot ^= 1;
-
+ 
 	if (connection->cstate[NOW] < C_CONNECTED)
 		return;
 
@@ -1906,17 +1911,9 @@ static void maybe_send_write_hint(struct drbd_connection *connection)
 		return;
 
 	send_command(connection, -1, P_UNPLUG_REMOTE, DATA_STREAM);
-}
-#else
-static bool need_unplug(struct drbd_connection *connection)
-{
-	return false;
-}
-static void maybe_send_write_hint(struct drbd_connection *connection)
-{
-}
 #endif
-
+}
+ 
 static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *other_device = peer_device->device;
@@ -2839,7 +2836,9 @@ static bool check_sender_todo(struct drbd_connection *connection)
 	spin_unlock(&connection->sender_work.q_lock);
 
 	return connection->todo.req
+#ifdef _WIN32_V9_PLUG		
 		|| need_unplug(connection)
+#endif		
 		|| !list_empty(&connection->todo.work_list);
 }
 // wait_for_work 에서 이름 변경된 듯. 스케줄링 및 lock 관련 코드 전반적으로 포팅 및 검토 필요.
@@ -2967,6 +2966,9 @@ static int process_one_request(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device =
 			conn_peer_device(connection, device->vnr);
 	unsigned s = drbd_req_state_by_peer_device(req, peer_device);
+#ifdef _WIN32_V9_PLUG	
+	bool do_send_unplug = req->rq_state[0] & RQ_UNPLUG;
+#endif
 	int err;
 	enum drbd_req_event what;
 
@@ -3036,8 +3038,10 @@ static int process_one_request(struct drbd_connection *connection)
 		complete_master_bio(device, &m);
 #endif
 
-	maybe_send_write_hint(connection);
-
+#ifdef _WIN32_V9_PLUG
+	do_send_unplug = do_send_unplug && what == HANDED_OVER_TO_NETWORK;
+	maybe_send_unplug_remote(connection, do_send_unplug);
+#endif
 	return err;
 }
 
@@ -3055,8 +3059,10 @@ static int process_sender_todo(struct drbd_connection *connection)
 	 */
 
 	if (!connection->todo.req) {
-		update_sender_timing_details(connection, maybe_send_write_hint);
-		maybe_send_write_hint(connection);
+#ifdef _WIN32_V9_PLUG		
+		update_sender_timing_details(connection, maybe_send_unplug_remote);
+		maybe_send_unplug_remote(connection, false);
+#endif
 	}
 
 	else if (list_empty(&connection->todo.work_list)) {
