@@ -5332,11 +5332,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	for (i = 0; i < history_uuids; i++)
 #ifdef _WIN32_V9
     {
-        peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos]);
+        peer_device->history_uuids[i] = be64_to_cpu(p->other_uuids[pos]);
         pos++;
     }
 #else
-		peer_device->history_uuids[i++] = be64_to_cpu(p->other_uuids[pos++]);
+		peer_device->history_uuids[i] = be64_to_cpu(p->other_uuids[pos++]);
 #endif
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
