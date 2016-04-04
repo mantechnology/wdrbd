@@ -109,6 +109,9 @@
 #define SECONDS(seconds) \
 (((signed __int64)(seconds)) * MILLISECONDS(1000L))
 
+#define TIMER_PERIOD_MIN			(10)
+#define TIMER_PERIOD_MAX			(5000)
+
 // from bio.h
 #define BIO_RW					    0       /* Must match RW in req flags (blkdev.h) */
 #define BIO_RW_AHEAD				1       /* Must match FAILFAST in req flags */
