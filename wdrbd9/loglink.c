@@ -118,9 +118,12 @@ void LogLink_Sender(struct work_struct *ws)
 	PWSK_SOCKET	sock = g_loglink_sock;
 	int count = 0;
 
+	LIST_HEAD(work_list);	
 	mutex_lock(&loglink_mutex);
+	list_splice_init(&worker->loglist, &work_list);
+	mutex_unlock(&loglink_mutex);
 
-	list_for_each_entry_safe(struct loglink_msg_list, msg, q, &worker->loglist, list)
+	list_for_each_entry_safe(struct loglink_msg_list, msg, q, &work_list, list)
 	{
 		int step = 0;
 		int ret = 0;
@@ -192,6 +195,4 @@ void LogLink_Sender(struct work_struct *ws)
 	{
 		DbgPrint("DRBD_TEST:LogLink: sender big loop(#%d)?\n", count); // TEST!
 	}
-
-	mutex_unlock(&loglink_mutex);
 }
