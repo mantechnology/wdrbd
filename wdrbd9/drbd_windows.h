@@ -874,7 +874,7 @@ struct backing_dev_info {
 struct queue_limits {
     unsigned int            max_discard_sectors;
     unsigned int            discard_granularity;    
-	unsigned int			discard_zeroes_data; // _WIN32_V9_PATCH_2_CHECK_TRIM
+	unsigned int			discard_zeroes_data;
 };
 #endif
 struct request_queue {

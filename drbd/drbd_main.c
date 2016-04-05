@@ -2596,8 +2596,6 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		additional_size_command(peer_device->connection, DATA_STREAM,
 					bio_iovec(req->master_bio) BVD bv_len);
 		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
-#else
-		// _WIN32_V9_PATCH_2_CHECK_TRIM
 #endif
 	} else {
 		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);

@@ -1638,9 +1638,7 @@ int drbd_issue_discard_or_zero_out(struct drbd_device *device, sector_t start, u
 	int alignment;
 	int err = 0;
 
-#ifdef _WIN32_V9
-	// _WIN32_V9_PATCH_2_CHECK_TRIM
-#else
+#ifndef _WIN32_V9
 	if (!discard)
 		goto zero_out;
 

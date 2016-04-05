@@ -1525,7 +1525,7 @@ int w_e_end_data_req(struct drbd_work *w, int cancel)
 
 static bool all_zero(struct drbd_peer_request *peer_req)
 {
-#ifdef _WIN32_V9 // _WIN32_V9_PATCH_2_CHECK_TRIM
+#ifdef _WIN32_V9
 	return false;
 #else
 	struct page *page = peer_req->page_chain.head;
