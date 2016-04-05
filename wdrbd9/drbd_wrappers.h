@@ -1,5 +1,4 @@
-﻿// _WIN32_CHECK_1: JHKIM: 이 파일은 drbd 오리지널인데  wdrbd9 폴더로 이동한 이유는? 확인 후 원복
-#ifndef _DRBD_WRAPPERS_H
+﻿#ifndef _DRBD_WRAPPERS_H
 #define _DRBD_WRAPPERS_H
 
 #ifdef _WIN32
