@@ -8803,9 +8803,13 @@ void drbd_send_acks_wf(struct work_struct *ws)
 	if (tcp_cork)
 		drbd_uncork(connection, CONTROL_STREAM);
 
+#ifdef _WIN32_V9
+	if (err)
+		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD); // DW-637 "change_state(C_DISCONNECTING)" is a problem that go to standalone status on disconnecting phase.
+#else
 	if (err)
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
-
+#endif
 	return;
 }
 
