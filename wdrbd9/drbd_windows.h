@@ -1487,12 +1487,9 @@ extern void up_read(KSPIN_LOCK* lock);
 static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 	sector_t nr_sects, gfp_t gfp_mask, bool discard)
 {
-	// _WIN32_V9_blkdev_issue_zeroout: zero fill bio 관련 linux 의존 기능인 듯. 구현이 불필요 할 수도 있을 듯. 
-	// -> JHKIM: !blk_queue_discard(q) 가 항상 true 가 되어 불려질 듯!! 일단 BSOS로 처리하여 사용됨을 식별!
-	DbgPrint("_WIN32_V9_blkdev_issue_zeroout: not support yet! sorry.\n");
-	BUG();
+	// WDRBD: Not support
+	return 0;
 }
-
 
 #endif
 
