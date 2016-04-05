@@ -8767,11 +8767,7 @@ reconnect:
 	}
 	if (0) {
 disconnect:
-#ifdef _WIN32_V9
-		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD); //DW-637 "change_state(C_DISCONNECTING)" is a problem that go to standalone status on disconnecting phase.
-#else
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
-#endif
 	}
 
 	drbd_info(connection, "ack_receiver terminated\n");
