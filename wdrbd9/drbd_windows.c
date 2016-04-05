@@ -2080,7 +2080,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	last_msg = now;
 
 	__ret = 0; 
-#ifdef _WIN32_CHECK_8 // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
+#ifdef _WIN32_MESSAGE_SUPPRESS // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	
 		toks = ratelimit_burst * ratelimit_jiffies;	
