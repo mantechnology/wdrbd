@@ -1388,7 +1388,7 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 	switch (rbm) {
 	case RB_CONGESTED_REMOTE:
 #ifdef _WIN32
-        // DRBD_DOC: DRBD_CONGESTED_PORTING
+		// WDRBD: not support data socket congestion
         // Linux에서 아래 bdi_read_congested 에 의해 drbd_congested 함수가 콜백되는지 시험했으나 불려지지 않았다.
         // drbd_seq_show 함수에서 시도했 듯이 직접 drbd_congested 콜백을 호출하여 효과를 볼 수 있겠으나
         // 현재 디스크 혼잡 상태 판단 기능을 지원 못함으로 시도 자체가 의미없다.
@@ -1796,71 +1796,6 @@ static bool may_do_writes(struct drbd_device *device)
 	return false;
 }
 
-#ifndef blk_queue_plugged
-
-#ifdef _WIN32_V9_PLUG
-struct drbd_plug_cb {
-	struct blk_plug_cb cb;
-	struct drbd_request *most_recent_req;
-	/* do we need more? */
-};
-#endif
-static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
-{
-#ifdef _WIN32_V9_PLUG
-	struct drbd_plug_cb *plug = container_of(cb, struct drbd_plug_cb, cb);
-	struct drbd_resource *resource = plug->cb.data;
-	struct drbd_request *req = plug->most_recent_req;
-
-	if (!req)
-		return;
-
-	spin_lock_irq(&resource->req_lock);
-	/* In case the sender did not process it yet, raise the flag to
-	 * have it followed with P_UNPLUG_REMOTE just after. */
-	req->rq_state[0] |= RQ_UNPLUG;
-	/* but also queue a generic unplug */
-	drbd_queue_unplug(req->device);
-	spin_unlock_irq(&resource->req_lock);
-	kref_put(&req->kref, drbd_req_destroy);
-#endif	
-}
-
-static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
-{
-#ifdef _WIN32_V9_PLUG
-	/* A lot of text to say
-	 * return (struct drbd_plug_cb*)blk_check_plugged(); */
-	struct drbd_plug_cb *plug;
-	struct blk_plug_cb *cb = blk_check_plugged(drbd_unplug, resource, sizeof(*plug));
-
-	if (cb)
-		plug = container_of(cb, struct drbd_plug_cb, cb);
-	else
-		plug = NULL;
-	return plug;
-#endif	
-}
-
-static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req)
-{
-#ifdef _WIN32_V9_PLUG
-	struct drbd_request *tmp = plug->most_recent_req;
-	/* Will be sent to some peer.
-	 * Remember to tag it with UNPLUG_REMOTE on unplug */
-	kref_get(&req->kref);
-	plug->most_recent_req = req;
-	if (tmp)
-		kref_put(&tmp->kref, drbd_req_destroy);
-#endif	
-}
-
-#else
-struct drbd_plug_cb { };
-static void * drbd_check_plugged(struct drbd_resource *resource) { return NULL; };
-static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req) { };
-#endif
-
 static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request *req)
 {
 	struct drbd_resource *resource = device->resource;
@@ -1869,9 +1804,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	struct bio_and_error m = { NULL, };
 	bool no_remote = false;
 	bool submit_private_bio = false;
-#ifdef _WIN32_V9_PLUG
-	struct drbd_plug_cb *plug = drbd_check_plugged(resource);
-#endif
+
 	spin_lock_irq(&resource->req_lock);
 	if (rw == WRITE) {
 		/* This may temporarily give up the req_lock,
@@ -1956,10 +1889,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		} else
 			no_remote = true;
 	}
-#ifdef _WIN32_V9_PLUG
-	if (plug != NULL && no_remote == false)
-		drbd_update_plug(plug, req);
-#endif
+
 	/* If it took the fast path in drbd_request_prepare, add it here.
 	 * The slow path has added it already. */
 	if (list_empty(&req->req_pending_master_completion))

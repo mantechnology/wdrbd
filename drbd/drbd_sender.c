@@ -911,26 +911,11 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 			int queued, sndbuf;
 
 			transport->ops->stats(transport, &transport_stats);
-
-#if 0 // def _WIN32 // JHKIM:_WIN32_SEND_BUFFING_TODO: 정리할 것!. 
-#ifdef _WIN32_SEND_BUFFING
-			struct ring_buffer *bab = mdev->tconn->data.socket->bab;
-			if (bab)
-			{
-				queued = bab->sk_wmem_queued;
-			}
-			else
-			{
-				queued = 0;
-			}
-#else
-			queued = mdev->tconn->data.socket->sk_linux_attr->sk_wmem_queued;
-#endif
-			sndbuf = mdev->tconn->data.socket->sk_linux_attr->sk_sndbuf;
-#else
 			queued = transport_stats.send_buffer_used;
 			sndbuf = transport_stats.send_buffer_size;
-#endif
+
+			WDRBD_TRACE_TR("make_resync_request: %d/%d: queued=%d sndbuf=%d\n", i, number, queued, sndbuf);
+
 			if (queued > sndbuf / 2) {
 				requeue = 1;
 				transport->ops->hint(transport, DATA_STREAM, NOSPACE);

@@ -5063,7 +5063,7 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
-#ifndef _WIN32_V9 //CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
+#ifndef _WIN32_V9  // WDRBD: not support data socket congestion
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << WB_async_congested) |

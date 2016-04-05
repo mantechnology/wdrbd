@@ -28,6 +28,7 @@
 #include <wsk2.h>
 #include <linux-compat\drbd_endian.h>
 #include <drbd_int.h>
+#include <linux/drbd_limits.h>
 #else
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -111,7 +112,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport);
 static int dtt_add_path(struct drbd_transport *, struct drbd_path *path);
 static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 
-#ifdef _WIN32_SEND_BUFFING // _WIN32_V9
+#ifdef _WIN32_SEND_BUFFING
 static bool dtt_start_send_buffring(struct drbd_transport *, int size);
 static void dtt_stop_send_buffring(struct drbd_transport *);
 #endif
@@ -141,7 +142,7 @@ static struct drbd_transport_ops dtt_ops = {
 	.debugfs_show = dtt_debugfs_show,
 	.add_path = dtt_add_path,
 	.remove_path = dtt_remove_path,
-#ifdef _WIN32_SEND_BUFFING // _WIN32_V9
+#ifdef _WIN32_SEND_BUFFING
 	.start_send_buffring = dtt_start_send_buffring,
 	.stop_send_buffring = dtt_stop_send_buffring,
 #endif
@@ -473,7 +474,7 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 
 	if (socket) {
 #ifdef _WIN32_V9
-        struct sock *sk = socket->sk_linux_attr;
+		struct sock *sk = socket->sk_linux_attr;
 #else
 		struct sock *sk = socket->sk;
 		struct tcp_sock *tp = tcp_sk(sk);
@@ -481,11 +482,23 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 		stats->unread_received = tp->rcv_nxt - tp->copied_seq;
 		stats->unacked_send = tp->write_seq - tp->snd_una;
 #endif
-        // TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
-        // unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
+		// TCP 전송 상태를 확인하여 부가 동작(dtt_hint)을 취할 수 있는 기능. => WSK 에 제공 기능이 없음. 현재로서는 포팅하지 않아도 무방. 추후 검토.
+		// unread_received, unacked_send 정보 열람용. send_buffer_size, send_buffer_used 는 두 값을 비교하여 TCP 전송에 부하가 걸려있는 상태에 따라 dtt_hint 호출.
 		stats->send_buffer_size = sk->sk_sndbuf;
 #ifdef _WIN32_SEND_BUFFING
-		// unused! // _WIN32_SEND_BUFFING_TODO
+		{
+			struct _buffering_attr *buffering_attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
+			struct ring_buffer *bab = buffering_attr->bab;
+
+			if (bab)
+			{
+				stats->send_buffer_used = bab->sk_wmem_queued;
+			}
+			else
+			{
+				stats->send_buffer_used = 0; // JHKIM: don't know how to get WSK tx buffer usage yet. Ignore it.
+			}
+		}
 #else
 		stats->send_buffer_used = sk->sk_wmem_queued;
 #endif
@@ -545,9 +558,6 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	}
 
 #ifdef _WIN32_SEND_BUFFING
-// JHKIM: drbd_limits.h  헤더파일 영역이 다름? 일단, 강제 정의, _WIN32_SEND_BUFFING_TODO: 추후 정리!
-#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)   // 100MB->50MB 축소 -> 1:N 시험에서는 메모리 부족 현상 발생, 20MB로 다시 축소
-
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
 	{
 		if (nc->sndbuf_size > 0)
@@ -1969,14 +1979,9 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
-#ifdef _WIN32 //_WIN32_SEND_BUFFING_TODO:재확인 // JHKIM: 혼잡모드 재확인! --> CHOI : tcp_transport->stream[DATA_STREAM]가 null이라 BSOD남.
-    // DRBD_DOC: DRBD_CONGESTED_PORTING
-    // 송출시 혼잡 정도를 체크한다.
-    //  - sk_wmem_queued is the amount of memory used by the socket send buffer queued in the transmit queue 
-    // WDRBD WSK는 송출 혼잡 판단 API를 제공하지 않는다. 또한 송출 버퍼가 없다.
-    // 따라서 WDRBD는 drbd_update_congested 기능을 제공 못함.
-
-#ifdef _WIN32_SEND_BUFFING //_WIN32_SEND_BUFFING_TODO:재확인
+#ifdef _WIN32
+#if 0 
+	// WDRBD: not support data socket congestion
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk_linux_attr;
 	struct _buffering_attr *buffering_attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
 	struct ring_buffer *bab = buffering_attr->bab;
@@ -1986,6 +1991,13 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
     {
         sk_wmem_queued = bab->sk_wmem_queued;
     }
+	else
+	{
+		// JHKIM: don't know how to get WSK tx buffer usage yet. Ignore it.
+	}
+	
+	WDRBD_TRACE_TR("dtt_update_congested:  sndbuf=%d sk_wmem_queued=%d\n", sock->sk_sndbuf, sk_wmem_queued);
+
 	if (sk_wmem_queued > sock->sk_sndbuf * 4 / 5) // reached 80%
     {
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
@@ -1993,7 +2005,7 @@ static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 #endif
 #else
 	struct sock *sock = tcp_transport->stream[DATA_STREAM]->sk;
-	// sk_wmem_queued 에 대해 현재 구현하고 있지 않다. 추후 검토 필요. //_WIN32_SEND_BUFFING_TODO:재확인
+
 	if (sock->sk_wmem_queued > sock->sk_sndbuf * 4 / 5)
 		set_bit(NET_CONGESTED, &tcp_transport->transport.flags);
 #endif

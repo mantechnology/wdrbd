@@ -2319,7 +2319,7 @@ int drbd_send_ov_request(struct drbd_peer_device *peer_device, sector_t sector, 
  * As a workaround, we disable sendpage on pages
  * with page_count == 0 or PageSlab.
  */
-// #ifndef _WIN32_SEND_BUFFING // send buffering 은 버퍼링 없이 동작하는 것을 transport 드라이버에 우선 적용하여 정상 동작을 확인 한 후에 처리함. 
+
 static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			    int offset, size_t size, unsigned msg_flags)
 {
@@ -3483,7 +3483,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 
 #ifdef _WIN32_V9
 	
-	// _WIN32_V9_DEBUGFS // JHKIM
+	// WDRBD: not support data socket congestion
 	// V8에서는 drbd_seq_show 에서 이 함수가 강제로 불려지도록하여 혼잡상태를 파악하여 표현하였으나
 	// V9에서는 DEBUGFS가 사용되면서 이 함수가 불려지지 않는다(또는 방식이 바뀐 듯)
 	// DEBUGFS 포팅 시점에 재 확인하고 의미없으면 not_suppported 로 처리한다.
@@ -3512,7 +3512,6 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 
 	if (get_ldev(device)) {
 #ifdef _WIN32
-		// DRBD_DOC: DRBD_CONGESTED_PORTING
         // Linux 확인결과 아래 bdi_congested 에 의해 이 drbd_congested 콜백 함수는 다시 불려지지 않는다.
         // 아래 bdi_congested 는 단지 커널이 관리하는 해당 디바이스의 bdi->state 값을 리턴할 뿐이다.
         // 따라서 Windows 에서는 아래 bdi->state 값과 유사한 결과를 제공해야 한다.
@@ -3975,7 +3974,7 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 	//connection->transport.ops->stop_send_buffring(&connection->transport);
 #endif
 	connection->transport.ops->free(&connection->transport, op);
-#ifndef _WIN32_V9 // _WIN32_SEND_BUFFING 작업중 코멘트 처리함.
+#ifndef _WIN32_V9
 	if (op == DESTROY_TRANSPORT)
 		drbd_put_transport_class(connection->transport.class);
 #endif
