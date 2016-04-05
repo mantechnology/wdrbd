@@ -86,13 +86,6 @@ bool capable(int cap)
 }
 #endif
 
-#ifdef _WIN32 
-// [choi] genl_magic_func.h 의 ZZZ_genl_family 사용.
-// struct genl_family drbd_genl_family;
-#endif
-//#endif //XXX
-
-
 /* .doit */
 // int drbd_adm_create_resource(struct sk_buff *skb, struct genl_info *info);
 // int drbd_adm_delete_resource(struct sk_buff *skb, struct genl_info *info);

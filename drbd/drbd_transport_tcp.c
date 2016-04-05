@@ -27,7 +27,7 @@
 #include "drbd_wrappers.h"
 #include <wsk2.h>
 #include <linux-compat\drbd_endian.h>
-#include <drbd_int.h> // _WIN32_V9_XXX:JHKIM:DW_552:
+#include <drbd_int.h>
 #else
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -304,8 +304,6 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 
 	/* THINK  if (signal_pending) return ... ? */
 
-	// V9_XXX 기존 V8에서 data 소켓인지 비교하여 rcu_dereference 하고 drbd_update_congested 하는 구현이 제거 되었다. 추후 확인 요망.
-
 	do {
 		/* STRANGE
 		 * tcp_sendmsg does _not_ use its size parameter at all ?
@@ -358,9 +356,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	} while (sent < size);
 
-	// V9_XXX 기존 V8에서 data 소켓인지 비교하여 clear_bit하는 구현이 제거 되었다. 추후 확인 요망.
-
-	if (rv <= 0) // V9_XXX 기존 V8에서 rv <=0 인 경우 conn_request_state 상태를 바꾸는 구현이 제거됨. 추후 확인 요망.
+	if (rv <= 0)
 		return rv;
 
 	return sent;
@@ -382,7 +378,7 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 	flags = WSK_FLAG_WAITALL;
 	return Receive(socket->sk, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
-	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags); //_V9_XXX 기존 V8에서 사용한 sock_recvmsg 와 차이점이 있는지 검토 필요.
+	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags);
 #endif
 }
 
@@ -525,7 +521,6 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
-// Connect(socket->sk, (struct sockaddr *) &peer_addr); 부분 ipv6 처리되는지 여부 확인 필요. V9_XXX
 static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 {
 	struct drbd_transport *transport = path->waiter.transport;
@@ -942,7 +937,7 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 	timeo += (prandom_u32() & 1) ? timeo / 7 : -timeo / 7; /* 28.5% random jitter */
 
 retry:
-#ifdef _WIN32 // V8에서 accept 전 wait 하는 구조는 제거 되었으나... V9에서 구조가 많이 변경되어 일단 남겨 둔다.=> if (timeo <= 0)return -EAGAIN; => timeo에 따라 EAGAIN 리턴되는 구조. V9_XXX
+#ifdef _WIN32
     atomic_set(&(transport->listening), 1);
 	// WIN32_V9_PATCH_1_CHECK: waiter->wait 가 적절한가?
 	wait_event_interruptible_timeout(timeo, waiter->wait, 
@@ -1691,21 +1686,6 @@ static int dtt_connect(struct drbd_transport *transport)
 		if (err)
 			goto out;
 	}
-
-#ifdef _WIN32_V9_PATCH_1_XXX
-// V9 원본참고
-#ifdef _WIN32_V9
-    waiter->waiter.transport = transport;
-    waiter->socket = NULL;
-    err = drbd_get_listener(&waiter->waiter, dtt_create_listener);
-#else
-	waiter.waiter.transport = transport;
-	waiter.socket = NULL;
-	err = drbd_get_listener(&waiter.waiter, dtt_create_listener);
-#endif
-	if (err)
-		return out;
-#endif
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	connect_to_path = container_of(drbd_path, struct dtt_path, path);

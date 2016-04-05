@@ -641,7 +641,6 @@ static int drbd_thread_setup(void *arg)
     if (!thi->nt)
     {
         WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
-        // kref_put(&tconn->kref, &conn_destroy); //V9_XXX: V9에서 사용 안되는 이유 규명// JHKIM: 별도 메타니즘 사용
         PsTerminateSystemThread(STATUS_SUCCESS);
         // BUG();
     }
@@ -739,8 +738,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
 #endif
-		// kref_get(&thi->tconn->kref); // V9_XXX: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함 // JHKIM: drbd_thread_setup 함수 종료 시점에 krep_put 이 없음. 쌍으로 존재해야 하는 의미로 미루워 볼 때 사용 안함이 정상임. 
-
 		init_completion(&thi->stop);
 		D_ASSERT(resource, thi->task == NULL);
 		thi->reset_cpu_mask = 1;
@@ -759,8 +756,6 @@ int drbd_thread_start(struct drbd_thread *thi)
             KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
             Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
             if (!NT_SUCCESS(Status)) {
-                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명 // JHKIM: 확인완료
-                //kref_put(&tconn->kref, &conn_destroy); // _WIN32_XXX
                 return false;
             }
             ZwClose(hThread);
@@ -769,8 +764,6 @@ int drbd_thread_start(struct drbd_thread *thi)
         KeWaitForSingleObject(&thi->start_event, Executive, KernelMode, FALSE, NULL);
         if (!thi->nt)
         {
-            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");//V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명  // JHKIM: 확인완료: 
-           // kref_put(&tconn->kref, &conn_destroy);  // JHKIM: 확인완료:  _WIN32_XXX
             return false;
         }
 #else
@@ -2483,7 +2476,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 
-#ifdef _WIN32_V9 // V9_XXX !!!!
+#ifdef _WIN32_V9
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
 	err = _drbd_no_send_page(peer_device, peer_req->peer_req_databuf, 0, len, 0);
@@ -3410,7 +3403,7 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32_V9 // V9_XXX [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
+#ifdef _WIN32_V9
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
@@ -3534,7 +3527,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
-#ifdef _WIN32_XXX 	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
+#ifdef 0	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
     // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
@@ -4407,21 +4400,12 @@ out_remove_peer_device:
     }
 #endif
 out_idr_remove_minor:
-#ifdef _WIN32_XXX // [choi] _WIN32_V9_RCU 필요없으면 삭제//JHKIM: 끄기 보호대상 list_add_rcu은 위에서 처리되어 이곳은 의미 없음(V8 원본도 오류인듯)
-    {
-        synchronize_rcu_w32_wlock();
-#endif
 	idr_remove(&drbd_devices, minor);
-#ifdef _WIN32_XXX // [choi] _WIN32_V9_RCU 필요없으면 삭제
-        synchronize_rcu();
-    }
-#endif
+
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
-#ifdef _WIN32_V9
-	DbgPrint("_WIN32_XXX: check synchronize_rcu!!!!\n"); // _WIN32_V9_RCU [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..//JHKIM: 정상
-#else
+#ifndef _WIN32_V9
 	synchronize_rcu();
 #endif
 
@@ -5955,8 +5939,7 @@ void lock_all_resources(void)
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32_V9
 	{
-		spin_lock_irq(&resource->req_lock);
-		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());        
+		spin_lock_irq(&resource->req_lock);     
 	}
 #else
 	for_each_resource(resource, &drbd_resources)
@@ -5972,7 +5955,6 @@ void unlock_all_resources(void)
 #ifdef _WIN32_V9
 	{
 		spin_unlock_irq(&resource->req_lock);
-		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
 	}
 #else
 		spin_unlock(&resource->req_lock);	

@@ -840,7 +840,6 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	}
 	rcu_read_unlock();
 
-	// 뭔지모를 코드가 추가됨. 분석 필요. V9_XXX
 	/* Don't have more than "max-buffers"/2 in-flight.
 	 * Otherwise we may cause the remote site to stall on drbd_alloc_pages(),
 	 * potentially causing a distributed deadlock on congestion during

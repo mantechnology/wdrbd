@@ -475,7 +475,7 @@ struct page *drbd_alloc_pages(struct drbd_transport *transport, unsigned int num
 /* wdrbd에서는 실질적으로 page pool 할당을 해주진 않는다.
 * 다만 pool_size의 영향을 받게 하기 위해 page_count 관리를 받도록만 하며
 * 따라서 여기서 page반환같은 실질적인 메모리 free를 하지 않는다.
-* 그점이 __drbd_free_peer_req() 과 다른 부분이다. ===========> 이 주석이 의미하는 바를 정확히 이해 못함... 추후 확인 요망???... V9_XXX
+* 그점이 __drbd_free_peer_req() 과 다른 부분이다
 */
 #ifdef _WIN32_V9
 void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net) //V9 형식으로 재정의 (page_count 인자받게 재정의)
@@ -2292,9 +2292,6 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	//D_ASSERT(sector == req->master_bio->bi_sector);
 
 	if (req->master_bio->bio_databuf) {
-		// drbd_recv_all_warn 함수가 drbd_recv_into 로 변경 됨.
-        // => drbd_recv_into로 변경하려니... map 구현이 병행되어 있어서 이 부분은 우선 drbd_recv_all_warn 함수로 놔둔다.  V9_XXX !!!!!!!!!!!!!!
-		// => CHOI : map 구현은 필요 없을 듯. drbd_recv_into로 변경.
 #ifdef _WIN32_V9
         err = drbd_recv_into(peer_device->connection, req->master_bio->bio_databuf, data_size);
 #else
@@ -2924,8 +2921,6 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 					  (unsigned long long)sector, size,
 					  discard ? "local" : "remote");
 
-            //V9_XXX V8에 존재했던 inc_unacked(mdev); 가 제거됨. 의미 파악 필요.
-
 			peer_req->w.cb = discard ? e_send_discard_write :
 						   e_send_retry_write;
 			list_add_tail(&peer_req->w.list, &device->done_ee);
@@ -3411,7 +3406,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			D_ASSERT(device, connection->agreed_pro_version >= 89);
 			peer_req->w.cb = w_e_end_csum_rs_req;
 			/* remember to report stats in drbd_resync_finished */
-			peer_device->use_csums = true; //V9_XXX 기존 코드 => //mdev->bm_resync_fo = BM_SECT_TO_BIT(sector);
+			peer_device->use_csums = true;
 		} else if (pi->cmd == P_OV_REPLY) {
 			/* track progress, we may need to throttle */
 			atomic_add(size >> 9, &peer_device->rs_sect_in);
@@ -4940,7 +4935,6 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	 * take his (user-capped or) backing disk size anyways.
 	 */
 #ifdef _WIN32_V9
-		// V9_XXX: 의미가 정확히 적용됬는지 확인 필요. => 일단 ? : C99 문법 의미대로 풀어서 포팅. 추후 런타임 동작 시 값 추적 필요.
 	peer_device->max_size =
 			be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
 #else 
@@ -5801,7 +5795,6 @@ static int abort_local_transaction(struct drbd_resource *resource)
 	spin_unlock_irq(&resource->req_lock);
 	wake_up(&resource->state_wait);
 #ifdef _WIN32
-	//V9_XXX t 인자 적용 맞는 지 확인 필요.
 	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
@@ -5930,7 +5923,7 @@ void queue_queued_twopc(struct drbd_resource *resource)
 	if (q) {
 		resource->starting_queued_twopc = q;
 #ifdef _WIN32
-		smp_mb(); //기존의 smp_mb 가 mb() 를 대체 가능한지 확인 필요 V9_XXX
+		smp_mb();
 #else
 		mb();
 #endif
@@ -8600,14 +8593,13 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 	int expect   = header_size;
 	bool ping_timeout_active = false;
 	// linux kernel data type V9 포팅 필요
-#ifndef _WIN32_V9 // V9_XXX
+#ifndef _WIN32_V9
 	struct sched_param param = { .sched_priority = 2 };
 #endif
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 
-	// linux kernel func. V9 포팅 필요
-#ifndef _WIN32_V9 // V9_XXX //스케줄러 관련은 우선 pass 한다. => 쓰레드 priority 설정이 필요하다면 추후에 보강.
+#ifndef _WIN32_V9
 	rv = sched_setscheduler(current, SCHED_RR, &param);
 	if (rv < 0)
 		drbd_err(connection, "drbd_ack_receiver: ERROR set priority, ret=%d\n", rv);

@@ -903,7 +903,7 @@ block_device_failed:
     return NULL;
 }
 
-// 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_XXX 정보로 사용.
+// 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_??? 정보로 사용.
 // 구축된 disk 자료구조의 free 는 스레드 종료시 개별적으로 처리함. 
 // MVF dev 와 DRBD mdev 자료구조 통합, drbdadm 명령 통합 고려
 

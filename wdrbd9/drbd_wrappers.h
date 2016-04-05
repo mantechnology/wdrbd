@@ -255,9 +255,7 @@ void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 #endif
 }
 #endif
-#ifdef _WIN32
-// move to windows.c // V9_XXX: JHKIM: V8에서 이동.이유는 기억이 안남. 일단 이동.
-#else
+#ifndef _WIN32
 static inline struct block_device *blkdev_get_by_path(const char *path,
 		fmode_t mode, void *holder)
 {
@@ -1578,18 +1576,7 @@ static inline void genl_unlock(void)  { }
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9 // _WIN32_XXX [choi] 리눅스 queue_flag_set_unlocked 메소드를 보면 다음과 같기 때문에 __set_bit, clear_bit으로 대체하면 될듯. // JHKIM: 정상.
-/*
-static inline void queue_flag_set_unlocked(unsigned int flag, struct request_queue *q)
-{
-       __set_bit(flag, &q->queue_flags);
-}
-
-static inline void queue_flag_clear_unlocked(unsigned int flag, struct request_queue *q)
-{
-        __clear_bit(flag, &q->queue_flags);
-}
-*/
+#ifdef _WIN32_V9
 # define queue_flag_set_unlocked(F, Q)				\
     do {							\
         if ((F) != -1)					\
@@ -1684,7 +1671,6 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
 #else
-// V9_XXX ACCESS_ONCE 부분 확인 필요.
 #define list_first_or_null_rcu(conn, ptr, type, member) \
     do {    \
         struct list_head *__ptr = (ptr);    \
