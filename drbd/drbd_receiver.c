@@ -7262,10 +7262,15 @@ static void drbdd(struct drbd_connection *connection)
 		struct data_cmd const *cmd;
 
 		drbd_thread_current_set_cpu(&connection->receiver);
+#ifdef _WIN32_V9_PLUG
 		update_receiver_timing_details(connection, drbd_recv_header_maybe_unplug);
 		if (drbd_recv_header_maybe_unplug(connection, &pi))
 			goto err_out;
-
+#else
+		update_receiver_timing_details(connection, drbd_recv_header);
+		if (drbd_recv_header(connection, &pi))
+			goto err_out;
+#endif
 		cmd = &drbd_cmd_handler[pi.cmd];
 		if (unlikely(pi.cmd >= ARRAY_SIZE(drbd_cmd_handler) || !cmd->fn)) {
 			drbd_err(connection, "Unexpected data packet %s (0x%04x)",
