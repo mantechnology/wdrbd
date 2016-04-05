@@ -314,7 +314,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 #endif
 
-	// FAULT_TEST_FLAG 일때도 bio_put 을 하나???... drbd_md_endio 와 차이가 있다. _WIN32_CHECK_4
 	bio_put(bio); /* no need for the bio anymore */
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)

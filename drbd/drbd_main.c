@@ -1697,7 +1697,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
     if (peer_device->rs_plan_s)
         resync_plan = peer_device->rs_plan_s;   // kmpak. fixed memory leak
     else
-    	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW'); // _WIN32_CHECK_2: 추후 메모리 할당 태그 목록정리
+    	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW');
 #else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 #endif
