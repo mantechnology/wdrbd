@@ -1861,6 +1861,7 @@ static int drbd_send_barrier(struct drbd_connection *connection)
 
 	p->barrier = connection->send.current_epoch_nr;
 	p->pad = 0;
+	connection->send.last_sent_epoch_nr = connection->send.current_epoch_nr;
 	connection->send.current_epoch_writes = 0;
 	// jiffies 연산 추가됨. 
 	connection->send.last_sent_barrier_jif = jiffies;
