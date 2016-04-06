@@ -6933,6 +6933,11 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		 * other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
 		    drbd_repl_str(peer_device->repl_state[NOW]));
+#ifdef _WIN32_V9 //DW-778
+		err = -EIO;
+		goto out;
+#endif
+
 	}
 	err = 0;
 
