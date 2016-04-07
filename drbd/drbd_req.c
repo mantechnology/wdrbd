@@ -537,6 +537,7 @@ void complete_master_bio(struct drbd_device *device,
 	}
 	
 	dec_ap_bio(device, rw);
+	WDRBD_INFO("complete_master_bio pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
 }
 
 
@@ -1726,6 +1727,8 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 	req = drbd_req_new(device, bio);
 	if (!req) {
 		dec_ap_bio(device, rw);
+		WDRBD_INFO("drbd_request_prepare pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
+
 		/* only pass the error to the upper layers.
 		 * if user cannot handle io errors, that's not our business. */
 		drbd_err(device, "could not kmalloc() req\n");
@@ -2283,8 +2286,8 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 #endif
 
 	start_jif = jiffies;
-
 	inc_ap_bio(device, bio_data_dir(bio));
+	WDRBD_INFO("drbd_make_request pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
 
 #ifdef _WIN32_V9
 	status = __drbd_make_request(device, bio, start_jif);
