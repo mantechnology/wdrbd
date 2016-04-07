@@ -12,7 +12,7 @@
 
 #include "disp.h"
 
-#pragma warning (disable : 4100 4146 )
+#pragma warning (disable : 4100 4146 4221)
 //#define DRBD_TRACE				    // 복제흐름보기(기본), 성능 개선후 제거
 //#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
 

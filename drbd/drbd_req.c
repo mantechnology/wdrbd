@@ -1811,6 +1811,7 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 	struct drbd_resource *resource = plug->cb.data;
 	struct drbd_request *req = plug->most_recent_req;
 
+	kfree(cb);
 	if (!req)
 		return;
 
@@ -2045,7 +2046,15 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 
 static void submit_fast_path(struct drbd_device *device, struct list_head *incoming)
 {
+#ifdef _WIN32_V9_PLUG
+	struct blk_plug plug;
+#endif
 	struct drbd_request *req, *tmp;
+
+#ifdef _WIN32_V9_PLUG
+	blk_start_plug(&plug);
+#endif
+
 #ifdef _WIN32
     list_for_each_entry_safe(struct drbd_request, req, tmp, incoming, tl_requests) {
 #else
@@ -2066,6 +2075,9 @@ static void submit_fast_path(struct drbd_device *device, struct list_head *incom
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
 	}
+#ifdef _WIN32_V9_PLUG
+	blk_finish_plug(&plug);
+#endif
 }
 
 static bool prepare_al_transaction_nonblock(struct drbd_device *device,
@@ -2073,16 +2085,13 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 					    struct list_head *pending,
 					    struct list_head *later)
 {
-	struct drbd_request *req, *tmp;
+	struct drbd_request *req;
 	int wake = 0;
 	int err;
 
 	spin_lock_irq(&device->al_lock);
-#ifdef _WIN32
-    list_for_each_entry_safe(struct drbd_request, req, tmp, incoming, tl_requests) {
-#else
-	list_for_each_entry_safe(req, tmp, incoming, tl_requests) {
-#endif
+
+	while ((req = list_first_entry_or_null(incoming, struct drbd_request, tl_requests))) {
 		err = drbd_al_begin_io_nonblock(device, &req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -2099,20 +2108,26 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 	return !list_empty(pending);
 }
 
-void send_and_submit_pending(struct drbd_device *device, struct list_head *pending)
+static void send_and_submit_pending(struct drbd_device *device, struct list_head *pending)
 {
-	struct drbd_request *req, *tmp;
-#ifdef _WIN32
-    list_for_each_entry_safe(struct drbd_request, req, tmp, pending, tl_requests) {
-#else
-	list_for_each_entry_safe(req, tmp, pending, tl_requests) {
+#ifdef _WIN32_V9_PLUG
+	struct blk_plug plug;
 #endif
+	struct drbd_request *req;
+
+#ifdef _WIN32_V9_PLUG
+	blk_start_plug(&plug);
+#endif
+	while ((req = list_first_entry_or_null(pending, struct drbd_request, tl_requests))) {
 		req->rq_state[0] |= RQ_IN_ACT_LOG;
 		req->in_actlog_jif = jiffies;
 		atomic_dec(&device->ap_actlog_cnt);
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
 	}
+#ifdef _WIN32_V9_PLUG
+	blk_finish_plug(&plug);
+#endif
 }
 
 

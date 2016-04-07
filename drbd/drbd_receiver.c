@@ -6924,6 +6924,11 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		 * other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
 		    drbd_repl_str(peer_device->repl_state[NOW]));
+#ifdef _WIN32_V9 //DW-778
+		err = -EIO;
+		goto out;
+#endif
+
 	}
 	err = 0;
 
@@ -7253,10 +7258,15 @@ static void drbdd(struct drbd_connection *connection)
 		struct data_cmd const *cmd;
 
 		drbd_thread_current_set_cpu(&connection->receiver);
+#ifdef _WIN32_V9_PLUG
 		update_receiver_timing_details(connection, drbd_recv_header_maybe_unplug);
 		if (drbd_recv_header_maybe_unplug(connection, &pi))
 			goto err_out;
-
+#else
+		update_receiver_timing_details(connection, drbd_recv_header);
+		if (drbd_recv_header(connection, &pi))
+			goto err_out;
+#endif
 		cmd = &drbd_cmd_handler[pi.cmd];
 		if (unlikely(pi.cmd >= ARRAY_SIZE(drbd_cmd_handler) || !cmd->fn)) {
 			drbd_err(connection, "Unexpected data packet %s (0x%04x)",
@@ -8793,9 +8803,13 @@ void drbd_send_acks_wf(struct work_struct *ws)
 	if (tcp_cork)
 		drbd_uncork(connection, CONTROL_STREAM);
 
+#ifdef _WIN32_V9
+	if (err)
+		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD); // DW-637 "change_state(C_DISCONNECTING)" is a problem that go to standalone status on disconnecting phase.
+#else
 	if (err)
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
-
+#endif
 	return;
 }
 

@@ -1345,6 +1345,8 @@ struct drbd_connection {
 #else
 		unsigned long last_sent_barrier_jif;
 #endif
+		int last_sent_epoch_nr;
+
 		/* whether this sender thread
 		 * has processed a single write yet. */
 		bool seen_any_write_yet;
