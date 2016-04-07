@@ -363,7 +363,8 @@ static void ___begin_state_change(struct drbd_resource *resource)
 
 static void __begin_state_change(struct drbd_resource *resource)
 {
-#ifdef _WIN32_V9 // _WIN32_V9_RCU [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+#ifdef _WIN32_V9 
+	// _WIN32_V9_RCU //(4) [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
     WDRBD_TRACE_RCU("rcu_read_lock()\n");
 #else
 	rcu_read_lock();
@@ -477,7 +478,8 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 out:
 	// __begin_state_change 진입 시점에 락을 걸로 진입함.
 	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-#ifdef _WIN32_V9 // _WIN32_V9_RCU [choi] 일단 더미처리.
+#ifdef _WIN32_V9 
+	// _WIN32_V9_RCU //(5) [choi] 일단 더미처리.
     WDRBD_TRACE_RCU("rcu_read_unlock()\n");
 #else
 	rcu_read_unlock();
@@ -609,7 +611,8 @@ static void begin_remote_state_change(struct drbd_resource *resource, unsigned l
 {
 	// __begin_state_change 진입 시점에 락을 걸로 진입함.
 	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-#ifdef _WIN32_V9 // _WIN32_V9_RCU [choi] 일단 더미처리.
+#ifdef _WIN32_V9 
+	// _WIN32_V9_RCU //(6) [choi] 일단 더미처리.
     WDRBD_TRACE_RCU("rcu_read_unlock()");
 #else
 	rcu_read_unlock();
@@ -619,7 +622,8 @@ static void begin_remote_state_change(struct drbd_resource *resource, unsigned l
 
 static void __end_remote_state_change(struct drbd_resource *resource, enum chg_state_flags flags)
 {
-#ifdef _WIN32_V9 // _WIN32_V9_RCU [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+#ifdef _WIN32_V9 
+	// _WIN32_V9_RCU //(7) [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
     WDRBD_TRACE_RCU("rcu_read_lock()");
 #else
 	rcu_read_lock();

@@ -1090,7 +1090,7 @@ void pread_or_die(struct format *cfg, void *buf, size_t count, off_t offset, con
 			tag, (int)count, (int)c);
 		exit(10);
 	}
-//#ifndef _WIN32_XXX: too big? [choi] 10으로 해도 문제없음
+
 	if (verbose > 10)
 		fprintf_hex(stderr, offset, buf, count);
 }
@@ -2577,8 +2577,6 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 			(unsigned long long)cfg->max_usable_sect);
 		cfg->md.effective_size = cfg->max_usable_sect;
 	}
-// _WIN64 _WIN32_XXX : 64bit check!  [choi] 9.0.0코드는 sizeof(long) * 부분이 없기 때문에 x64 매크로로 구분할 필요가 없음.
-// kmpak [choi]맞음
 	cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 }
 

@@ -544,7 +544,7 @@ extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
 
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
-#ifdef _WIN32_V9 // V9_XXX: kmpak 29150729 신규-> JHKIM:typecheck 무시. 추후 재확인
+#ifdef _WIN32_V9
 #define dagtag_newer_eq(a,b)      \
 	((s64)(a) - (s64)(b) >= 0)
 
@@ -1237,10 +1237,6 @@ struct drbd_connection {
 	int agreed_pro_version;		/* actually used protocol version */
 	u32 agreed_features;
 
-#ifdef V9_XXX // [choi] thread 종료시 listen 소켓을 닫기위해 V8에서 추가되었던 변수인데 V9에서도 필요한지 확인후 정리.
-    struct socket *s_listen; // to close when thread_stop.
-#endif
-
 #ifdef _WIN32
 	ULONG_PTR last_received;	/* in jiffies, either socket */
 #else
@@ -1527,10 +1523,6 @@ struct submit_worker {
 
 	/* protected by ..->resource->req_lock */
 	struct list_head writes;
-
-#ifdef _WIN32 // V9_XXX: JHKIM:	task_struct task 자료구조 위치가 변함. 찾아서 반드시 처리! 매우 중요! //JHKIM: 방식이 바뀜
-   // struct drbd_thread thi; //// V9_XXX
-#endif
 };
 
 struct drbd_device {
@@ -1977,7 +1969,7 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 /* mostly arbitrarily set the represented size of one bitmap extent,
  * aka resync extent, to 128 MiB (which is also 4096 Byte worth of bitmap
  * at 4k per bit resolution) */
-#define BM_EXT_SHIFT	 27	/* 128 MiB per resync extent */  // _WIN32_XXX: 24->27로 변경됨, 이로 인한 사이트에펙트는 없는지 재확인 // JHKIM: 기본 extent가 커짐, 정상.
+#define BM_EXT_SHIFT	 27	/* 128 MiB per resync extent */
 #define BM_EXT_SIZE	 (1<<BM_EXT_SHIFT)
 
 #if (BM_BLOCK_SHIFT != 12)
@@ -2188,9 +2180,6 @@ extern mempool_t *drbd_ee_mempool;
  * frequent calls to alloc_page(), and still will be able to make progress even
  * under memory pressure.
  */
-#ifndef _WIN32 // V9_XXX: 성은 차장님 이 놈이 필요 없을 겁니다. receive 스레드에서 V8의 코멘트를 유지해 주시길.
-extern struct page *drbd_pp_pool; // V9_XXX
-#endif
 
 extern spinlock_t   drbd_pp_lock;
 extern int	    drbd_pp_vacant;

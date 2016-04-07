@@ -1,4 +1,6 @@
-﻿struct loglink_msg_list {
+﻿#pragma warning (disable : 4221 4706)
+
+struct loglink_msg_list {
 	char  *buf;
 	struct list_head list;
 };
