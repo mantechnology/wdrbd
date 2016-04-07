@@ -1820,8 +1820,8 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 	req->rq_state[0] |= RQ_UNPLUG;
 	/* but also queue a generic unplug */
 	drbd_queue_unplug(req->device);
-	spin_unlock_irq(&resource->req_lock);
 	kref_put(&req->kref, drbd_req_destroy);
+	spin_unlock_irq(&resource->req_lock);
 #endif    
 }
 
@@ -1869,9 +1869,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	struct bio_and_error m = { NULL, };
 	bool no_remote = false;
 	bool submit_private_bio = false;
-#ifdef _WIN32_V9_PLUG
-	struct drbd_plug_cb *plug = drbd_check_plugged(resource);
-#endif
 
 	spin_lock_irq(&resource->req_lock);
 	if (rw == WRITE) {
@@ -1959,8 +1956,11 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	}
 
 #ifdef _WIN32_V9_PLUG
-	if (plug != NULL && no_remote == false)
-		drbd_update_plug(plug, req);
+	if (no_remote == false) {
+		struct drbd_plug_cb *plug = drbd_check_plugged(resource);
+		if (plug)
+			drbd_update_plug(plug, req);
+	}
 #endif
 
 	/* If it took the fast path in drbd_request_prepare, add it here.
