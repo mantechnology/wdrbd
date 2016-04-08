@@ -36,12 +36,12 @@ if %errorlevel% gtr 0 (
 )
 
 REM User interruptible version of wait-connect all
-drbdadm -c /etc/drbd.conf  wait-con-int 
-echo return code %errorlevel%
+::drbdadm -c /etc/drbd.conf  wait-con-int 
+::echo return code %errorlevel%
 
 REM Become primary if configured
-drbdadm -c /etc/drbd.conf  sh-b-pri all 
-echo return code %errorlevel%
+::drbdadm -c /etc/drbd.conf  sh-b-pri all 
+::echo return code %errorlevel%
 
 ::for /f "usebackq tokens=*" %%a in (`drbdadm sh-resources-list`) do (
 	REM MVL: check registered first!
