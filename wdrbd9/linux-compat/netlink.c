@@ -636,17 +636,21 @@ NetlinkWorkThread(PVOID context)
 
         if (pops)
         {
+			NTSTATUS status = STATUS_UNSUCCESSFUL;
+
             WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
-            
-            if (mutex_trylock(&g_genl_mutex))
+
+			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_LONG_DEF * 1000);
+
+			if (STATUS_SUCCESS == status)
             {	
 				err = _genl_ops(pops, pinfo);
                 mutex_unlock(&g_genl_mutex);
             }
             else
             {
-                WDRBD_WARN("Failed to acquire the mutex\n");
+                WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
             }
         }
         else

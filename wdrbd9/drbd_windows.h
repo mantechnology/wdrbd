@@ -112,6 +112,8 @@
 #define TIMER_PERIOD_MIN			(10)
 #define TIMER_PERIOD_MAX			(5000)
 
+#define CMD_TIMEOUT_LONG_DEF		600		/* should be synchronized with defined value in shared_main.h */
+
 // from bio.h
 #define BIO_RW					    0       /* Must match RW in req flags (blkdev.h) */
 #define BIO_RW_AHEAD				1       /* Must match FAILFAST in req flags */
@@ -770,6 +772,7 @@ extern void sema_init(struct semaphore *s, int limit);
 extern NTSTATUS mutex_lock(struct mutex *m);
 #ifdef _WIN32_V9
 extern NTSTATUS mutex_lock_interruptible(struct mutex *m);
+extern NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG timeout);
 #endif
 extern int mutex_is_locked(struct mutex *m);
 extern void mutex_unlock(struct mutex *m);
