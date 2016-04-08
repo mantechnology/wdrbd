@@ -633,7 +633,7 @@ Send(
 	return BytesSent;
 }
 
-// _WIN32_V9: _WIN32_SEND_BUFFING NEW!
+// _WIN32_V9:
 LONG
 NTAPI
 SendLocal(

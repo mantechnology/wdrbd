@@ -81,7 +81,7 @@ int lc_try_lock(struct lru_cache *lc)
 	unsigned long val;
 	do {
 #ifdef _WIN32
-		val = atomic_cmpxchg((atomic_t *)&lc->flags, 0, LC_LOCKED); // V9_XXX: 기능이 동일한 지 재확인
+		val = atomic_cmpxchg((atomic_t *)&lc->flags, 0, LC_LOCKED);
 #else
 		val = cmpxchg(&lc->flags, 0, LC_LOCKED);
 #endif
@@ -212,7 +212,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	for (i--; i; i--) {
 #ifdef _WIN32
 		UCHAR* p = (UCHAR*)element[i];
-		ExFreeToNPagedLookasideList(cache, p - e_off); // _V9_XXX: (size_t) 캐스팅이 적절한지 재확인 => uchar 형 포인터연산으로 수정.
+		ExFreeToNPagedLookasideList(cache, p - e_off);
 #else
 		void *p = element[i];
 		kmem_cache_free(cache, p - e_off);
