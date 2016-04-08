@@ -1024,7 +1024,7 @@ void mutex_init(struct mutex *m)
 #endif
 }
 
-NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG timeout)
+NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG msTimeout)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	LARGE_INTEGER nWaitTime = { 0, };
@@ -1035,7 +1035,7 @@ NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG timeout)
 	}
 
 	nWaitTime.QuadPart = (-1 * 10000);
-	nWaitTime.QuadPart *= timeout;		// multiply timeout value separately to avoid overflow.
+	nWaitTime.QuadPart *= msTimeout;		// multiply timeout value separately to avoid overflow.
 	
 	status = KeWaitForMutexObject(&m->mtx, Executive, KernelMode, FALSE, &nWaitTime);
 
