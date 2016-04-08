@@ -104,7 +104,7 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 	return tc;
 }
 
-#ifndef _WIN32_V9 // _WIN32_SEND_BUFFING 작업중 코멘트 처리함.
+#ifndef _WIN32_V9
 void drbd_put_transport_class(struct drbd_transport_class *tc)
 {
 	/* convenient in the error cleanup path */

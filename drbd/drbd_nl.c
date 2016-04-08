@@ -86,13 +86,6 @@ bool capable(int cap)
 }
 #endif
 
-#ifdef _WIN32 
-// [choi] genl_magic_func.h 의 ZZZ_genl_family 사용.
-// struct genl_family drbd_genl_family;
-#endif
-//#endif //XXX
-
-
 /* .doit */
 // int drbd_adm_create_resource(struct sk_buff *skb, struct genl_info *info);
 // int drbd_adm_delete_resource(struct sk_buff *skb, struct genl_info *info);
@@ -4276,8 +4269,9 @@ void del_connection(struct drbd_connection *connection)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifndef _WIN32_V9 
-    //_WIN32_V9_RCU [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
+#ifdef _WIN32_V9
+	//_WIN32_V9_RCU //(1) [choi] synchronize_rcu_w32_wlock() 라인을 추가하면 Assertion: *** DPC watchdog timeout이 발생해서, disable 시킴.
+#else
 	synchronize_rcu();
 #endif
 	drbd_put_connection(connection);
@@ -5070,7 +5064,7 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
-#ifndef _WIN32_V9 //CHECK // [choi] 디스크 혼잡 지원안함? V8 DRBD_DOC: DRBD_CONGESTED_PORTING 부분 참고
+#ifndef _WIN32_V9  // WDRBD: not support data socket congestion
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << WB_async_congested) |
@@ -5941,10 +5935,8 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	 * "destroy" event to come last.
 	 */
 	drbd_flush_workqueue(&resource->work);
-#ifdef _WIN32_V9_RCU	//spinlock hang 으로 주석처리.
 #ifdef _WIN32_V9
-    synchronize_rcu_w32_wlock();
-#endif
+    //synchronize_rcu_w32_wlock(); 	// _WIN32_V9_RCU //(2) spinlock hang 으로 주석처리.
 #endif
 	drbd_unregister_device(device);
 
@@ -5954,7 +5946,9 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 					 NOTIFY_DESTROY | NOTIFY_CONTINUES);
 	notify_device_state(NULL, 0, device, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
-#ifdef _WIN32_V9_RCU
+#ifdef _WIN32_V9
+	// _WIN32_V9_RCU //(3)
+#else
 	synchronize_rcu();
 #endif
 	drbd_put_device(device);

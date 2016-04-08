@@ -631,7 +631,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
     }
     return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
 #else
-	kref_sub(kref, 1, release); //V9_XXX
+	kref_sub(kref, 1, release);
 #endif
 }
 
@@ -1218,13 +1218,11 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 #ifdef _WIN32_V9
 void spin_lock_bh(spinlock_t *lock)
 {
-	//V9_XXX: dummy!!! spin lock  적용해도 문제 없을 듯.
 	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
 }
 
 void spin_unlock_bh(spinlock_t *lock)
 {
-	//V9_XXX: dummy!!! spin unlock  적용해도 문제 없을 듯.
 	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 }
 
@@ -1352,9 +1350,8 @@ int del_timer_sync(struct timer_list *t)
 #ifdef _WIN32_V9
     del_timer(t);
     return 0;
-#ifdef _WIN32_V9
-	// V9_XXX // linux kernel 2.6.24에서 가져왔지만 이후 버전에서 조금 다르다. return 값이 어떤 것인지 파악 필요
-#else
+#ifndef _WIN32_V9
+	// from linux kernel 2.6.24
   	for (;;) {
 		int ret = try_to_del_timer_sync(timer);
 		if (ret >= 0)
@@ -2083,7 +2080,7 @@ int _DRBD_ratelimit(char * __FILE, int __LINE)
 	last_msg = now;
 
 	__ret = 0; 
-#ifdef _WIN32_CHECK_8 // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
+#ifdef _WIN32_MESSAGE_SUPPRESS // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
 
 	if (toks > (ratelimit_burst * ratelimit_jiffies))	
 		toks = ratelimit_burst * ratelimit_jiffies;	

@@ -641,7 +641,6 @@ static int drbd_thread_setup(void *arg)
     if (!thi->nt)
     {
         WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
-        // kref_put(&tconn->kref, &conn_destroy); //V9_XXX: V9에서 사용 안되는 이유 규명// JHKIM: 별도 메타니즘 사용
         PsTerminateSystemThread(STATUS_SUCCESS);
         // BUG();
     }
@@ -739,8 +738,6 @@ int drbd_thread_start(struct drbd_thread *thi)
 			drbd_info(resource, "Starting %s thread (from %s [%d])\n",
 				 thi->name, current->comm, current->pid);
 #endif
-		// kref_get(&thi->tconn->kref); // V9_XXX: 이 라인이 V8에서 사용되었는데 V9에서 제거됨. 변경된 이유가 규명되야 함 // JHKIM: drbd_thread_setup 함수 종료 시점에 krep_put 이 없음. 쌍으로 존재해야 하는 의미로 미루워 볼 때 사용 안함이 정상임. 
-
 		init_completion(&thi->stop);
 		D_ASSERT(resource, thi->task == NULL);
 		thi->reset_cpu_mask = 1;
@@ -759,8 +756,6 @@ int drbd_thread_start(struct drbd_thread *thi)
             KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
             Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
             if (!NT_SUCCESS(Status)) {
-                //conn_err(tconn, "Couldn't start thread. status=0x%08X\n", Status); // _V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명 // JHKIM: 확인완료
-                //kref_put(&tconn->kref, &conn_destroy); // _WIN32_XXX
                 return false;
             }
             ZwClose(hThread);
@@ -769,8 +764,6 @@ int drbd_thread_start(struct drbd_thread *thi)
         KeWaitForSingleObject(&thi->start_event, Executive, KernelMode, FALSE, NULL);
         if (!thi->nt)
         {
-            //conn_err(tconn, "Couldn't start thread. thi->nt is null.\n");//V9_XXX: 오류보강 및 kref_put이 V9에서 사용 안되는 이유 규명  // JHKIM: 확인완료: 
-           // kref_put(&tconn->kref, &conn_destroy);  // JHKIM: 확인완료:  _WIN32_XXX
             return false;
         }
 #else
@@ -1704,7 +1697,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
     if (peer_device->rs_plan_s)
         resync_plan = peer_device->rs_plan_s;   // kmpak. fixed memory leak
     else
-    	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW'); // _WIN32_CHECK_2: 추후 메모리 할당 태그 목록정리
+    	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW');
 #else
 	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 #endif
@@ -2326,7 +2319,7 @@ int drbd_send_ov_request(struct drbd_peer_device *peer_device, sector_t sector, 
  * As a workaround, we disable sendpage on pages
  * with page_count == 0 or PageSlab.
  */
-// #ifndef _WIN32_SEND_BUFFING // send buffering 은 버퍼링 없이 동작하는 것을 transport 드라이버에 우선 적용하여 정상 동작을 확인 한 후에 처리함. 
+
 static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *page,
 			    int offset, size_t size, unsigned msg_flags)
 {
@@ -2483,7 +2476,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 
-#ifdef _WIN32_V9 // V9_XXX !!!!
+#ifdef _WIN32_V9
 	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
 	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
 	err = _drbd_no_send_page(peer_device, peer_req->peer_req_databuf, 0, len, 0);
@@ -2603,8 +2596,6 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		additional_size_command(peer_device->connection, DATA_STREAM,
 					bio_iovec(req->master_bio) BVD bv_len);
 		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
-#else
-		// _WIN32_V9_PATCH_2_CHECK_TRIM
 #endif
 	} else {
 		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
@@ -3410,7 +3401,7 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32_V9 // V9_XXX [choi] drbdadm up 성공 이후 재부팅 동작확인 필요. 
+#ifdef _WIN32_V9
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
@@ -3490,7 +3481,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 
 #ifdef _WIN32_V9
 	
-	// _WIN32_V9_DEBUGFS // JHKIM
+	// WDRBD: not support data socket congestion
 	// V8에서는 drbd_seq_show 에서 이 함수가 강제로 불려지도록하여 혼잡상태를 파악하여 표현하였으나
 	// V9에서는 DEBUGFS가 사용되면서 이 함수가 불려지지 않는다(또는 방식이 바뀐 듯)
 	// DEBUGFS 포팅 시점에 재 확인하고 의미없으면 not_suppported 로 처리한다.
@@ -3519,7 +3510,6 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 
 	if (get_ldev(device)) {
 #ifdef _WIN32
-		// DRBD_DOC: DRBD_CONGESTED_PORTING
         // Linux 확인결과 아래 bdi_congested 에 의해 이 drbd_congested 콜백 함수는 다시 불려지지 않는다.
         // 아래 bdi_congested 는 단지 커널이 관리하는 해당 디바이스의 bdi->state 값을 리턴할 뿐이다.
         // 따라서 Windows 에서는 아래 bdi->state 값과 유사한 결과를 제공해야 한다.
@@ -3534,7 +3524,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
-#ifdef _WIN32_XXX 	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
+#ifdef 0	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
     // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
@@ -3982,7 +3972,7 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 	//connection->transport.ops->stop_send_buffring(&connection->transport);
 #endif
 	connection->transport.ops->free(&connection->transport, op);
-#ifndef _WIN32_V9 // _WIN32_SEND_BUFFING 작업중 코멘트 처리함.
+#ifndef _WIN32_V9
 	if (op == DESTROY_TRANSPORT)
 		drbd_put_transport_class(connection->transport.class);
 #endif
@@ -4407,21 +4397,12 @@ out_remove_peer_device:
     }
 #endif
 out_idr_remove_minor:
-#ifdef _WIN32_XXX // [choi] _WIN32_V9_RCU 필요없으면 삭제//JHKIM: 끄기 보호대상 list_add_rcu은 위에서 처리되어 이곳은 의미 없음(V8 원본도 오류인듯)
-    {
-        synchronize_rcu_w32_wlock();
-#endif
 	idr_remove(&drbd_devices, minor);
-#ifdef _WIN32_XXX // [choi] _WIN32_V9_RCU 필요없으면 삭제
-        synchronize_rcu();
-    }
-#endif
+
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
-#ifdef _WIN32_V9
-	DbgPrint("_WIN32_XXX: check synchronize_rcu!!!!\n"); // _WIN32_V9_RCU [choi] idr_remove() 위 라인으로 이동시킴. 위치가 맞는지는 확인필요..//JHKIM: 정상
-#else
+#ifndef _WIN32_V9
 	synchronize_rcu();
 #endif
 
@@ -5955,8 +5936,7 @@ void lock_all_resources(void)
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32_V9
 	{
-		spin_lock_irq(&resource->req_lock);
-		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());        
+		spin_lock_irq(&resource->req_lock);     
 	}
 #else
 	for_each_resource(resource, &drbd_resources)
@@ -5972,7 +5952,6 @@ void unlock_all_resources(void)
 #ifdef _WIN32_V9
 	{
 		spin_unlock_irq(&resource->req_lock);
-		WDRBD_TRACE_REQ_LOCK("V9_XXX : CurrentIrql(%d)\n", KeGetCurrentIrql());
 	}
 #else
 		spin_unlock(&resource->req_lock);	

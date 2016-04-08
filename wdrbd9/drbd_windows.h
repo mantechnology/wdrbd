@@ -409,7 +409,7 @@ do { \
 #define WDRBD_TRACE_TM					// about timer
 #define WDRBD_TRACE_RCU					// about rcu
 #define WDRBD_TRACE_REQ_LOCK			// for lock_all_resources(), unlock_all_resources()
-#define WDRBD_TRACE_TR
+#define WDRBD_TRACE_TR		DbgPrint
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SK					// about socket
@@ -874,7 +874,7 @@ struct backing_dev_info {
 struct queue_limits {
     unsigned int            max_discard_sectors;
     unsigned int            discard_granularity;    
-	unsigned int			discard_zeroes_data; // _WIN32_V9_PATCH_2_CHECK_TRIM
+	unsigned int			discard_zeroes_data;
 };
 #endif
 struct request_queue {
@@ -1060,7 +1060,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
         sig = __ret; \
     } while (0)
 
-#ifdef _WIN32_V9  // _WIN32_V9_XXX:JHKIM:DW_552:  JHKIM: 재확인!!
+#ifdef _WIN32_V9  // DW_552
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
@@ -1174,7 +1174,6 @@ static __inline int test_bit(int nr, const ULONG_PTR *addr)
 #define generic_find_next_le_bit(addr, size, offset)	find_next_bit(addr, size, offset)
 #endif
 
-// V9_XXX: 헤더가 windrv.h 로 이동시킨 이유는 기억이 안남. 일단 V8과 동일하게 유지히고 추후 정리!!
 struct retry_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1412,11 +1411,11 @@ typedef struct _PTR_ENTRY
 #define MSG_PROBE		0x10	/* Do not send. Only probe path f.e. for MTU */
 
 //pagemap.h
-#define PAGE_CACHE_SHIFT	PAGE_SHIFT //V9_XXX Windows환경으로 포팅필요
+#define PAGE_CACHE_SHIFT	PAGE_SHIFT
 
 // Bio.h
-#define BIO_MAX_PAGES		256		//V9_XXX Windows환경으로 포팅필요
-#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT) //V9_XXX Windows환경으로 포팅필요
+#define BIO_MAX_PAGES		256
+#define BIO_MAX_SIZE		(BIO_MAX_PAGES << PAGE_CACHE_SHIFT)
 
 //asm-x86 , asm-generic 
 #define	EDESTADDRREQ	89	/* Destination address required */
@@ -1488,12 +1487,9 @@ extern void up_read(KSPIN_LOCK* lock);
 static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 	sector_t nr_sects, gfp_t gfp_mask, bool discard)
 {
-	// _WIN32_V9_blkdev_issue_zeroout: zero fill bio 관련 linux 의존 기능인 듯. 구현이 불필요 할 수도 있을 듯. 
-	// -> JHKIM: !blk_queue_discard(q) 가 항상 true 가 되어 불려질 듯!! 일단 BSOS로 처리하여 사용됨을 식별!
-	DbgPrint("_WIN32_V9_blkdev_issue_zeroout: not support yet! sorry.\n");
-	BUG();
+	// WDRBD: Not support
+	return 0;
 }
-
 
 #endif
 
@@ -1516,9 +1512,7 @@ extern int drbd_backing_bdev_events(struct drbd_device *device);
 
 static inline unsigned int queue_io_min(struct request_queue *q)
 {
-	DbgPrint("DRBD_TEST:queue_io_min: _WIN32_V9_PATCH_2_CHEC XXXXXXXXXX - panic!!!!\n");
-	return 0; // dummy
-	// return q->limits.io_min;
+	return 0; // dummy: q->limits.io_min;
 }
 
 #endif

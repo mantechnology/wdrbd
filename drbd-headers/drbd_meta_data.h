@@ -51,7 +51,7 @@ struct meta_data_on_disk_9 {
 
 	struct peer_dev_md_on_disk_9 peers[DRBD_PEERS_MAX];
 	be_u64 history_uuids[HISTORY_UUIDS];
-#if defined(_WIN32) && defined(__KERNEL__) // _WIN32_XXX // GCC가 아닌 MS 스타일의 패딩 방식 알아보기 
+#if defined(_WIN32) && defined(__KERNEL__)
     char padding[1];
 };
 #pragma pack (pop)
