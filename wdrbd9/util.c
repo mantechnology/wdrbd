@@ -1028,6 +1028,44 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_daemon_tcp_port = 5679;
 	}
 
+#ifdef _WIN32_HANDLER_TIMEOUT
+	status = GetRegistryValue(L"handler_use", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		g_handler_use = *(int*) aucTemp;
+	}
+	else
+	{
+		g_handler_use = 0;
+	}
+	
+	status = GetRegistryValue(L"handler_timeout", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		g_handler_timeout = *(int*) aucTemp;
+		if (g_handler_timeout < 0)
+		{
+			g_handler_timeout = 600;
+		}
+	}
+	else
+	{
+		g_handler_timeout = 1;
+	}	
+	g_handler_timeout = g_handler_timeout * 1000; // change to ms
+	
+	status = GetRegistryValue(L"handler_retry", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		g_handler_retry = *(int*) aucTemp;
+		if (g_handler_retry < 0)
+		{
+			g_handler_retry = 0;
+		}
+	}
+	else
+	{
+		g_handler_retry = 0;
+	}
+#endif
+
 	// set ver
     // DRBD_DOC: 용도 미정
 	status = GetRegistryValue(L"ver", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
@@ -1039,9 +1077,10 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		RtlCopyMemory(g_ver, "test", 4 * 2); 
 	}
 #ifdef _WIN32_LOGLINK
+#ifdef _WIN32_HANDLER_TIMEOUT
     WDRBD_INFO("registry_path[%wZ]\n"
         "bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, loglink_usage=%d "
-        "netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
+        "netlink_tcp_port=%d, daemon_tcp_port=%d, handler_use=%d, handler_timeout=%d, handler_retry=%d, ver=%ws\n",
         RegPath_unicode,
         g_bypass_level,
         g_read_filter,
@@ -1050,8 +1089,26 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_loglink_usage,
         g_netlink_tcp_port,
         g_daemon_tcp_port,
+		g_handler_use,
+		g_handler_timeout,
+		g_handler_retry,
         g_ver
         );
+#else
+	WDRBD_INFO("registry_path[%wZ]\n"
+		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, loglink_usage=%d "
+		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
+		RegPath_unicode,
+		g_bypass_level,
+		g_read_filter,
+		g_use_volume_lock,
+		g_loglink_tcp_port,
+		g_loglink_usage,
+		g_netlink_tcp_port,
+		g_daemon_tcp_port,
+		g_ver
+		);
+#endif
 #else
 	// _WIN32_V9: proc_details 제거함.
 	WDRBD_INFO("registry_path[%wZ]\n"

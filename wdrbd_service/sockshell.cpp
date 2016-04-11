@@ -1,8 +1,4 @@
 ﻿#include "stdafx.h" 
-#include <stdio.h> 
-#include <winsock.h> 
-#include <stdlib.h> 
-#include <Shlwapi.h>
 
 #define MAXPENDING		5
 #define RCVBUFSIZE		1024  
@@ -151,7 +147,6 @@ int SockListener(unsigned short *servPort)
 	int servSock; /* Socket descriptor for server */
 	int clntSock; /* Socket descriptor for client */
 	DWORD threadID; /* Thread ID from CreateThread() */
-	struct ThreadArgs *threadArgs; /* Pointer to argument structure for thread */
 	WSADATA wsaData; /* Structure for WinSock setup communication */
 	wchar_t tmp[TMPBUF];
 
@@ -189,9 +184,9 @@ int SockListener(unsigned short *servPort)
 		}
 
 		/* Create separate memory for client argument */
-		threadArgs = (struct ThreadArgs *) malloc(sizeof(struct ThreadArgs));
-		threadArgs->clntSock = clntSock;
-		if (CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) ThreadMain, threadArgs, 0, (LPDWORD) &threadID) == NULL)
+
+		HANDLE h;
+		if ((h = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) ThreadMain, &clntSock, 0, (LPDWORD) &threadID)) == NULL)
 		{
 			wsprintf(tmp, L"call_usermodehelper: CreateThread failed. err(%d)", GetLastError());
 			WriteLog(tmp);
@@ -203,11 +198,7 @@ int SockListener(unsigned short *servPort)
 
 void *ThreadMain(void *threadArgs)
 {
-	int clntSock; 
-
-	clntSock = ((struct ThreadArgs *) threadArgs)->clntSock;
-	free(threadArgs); /* Deallocate memory for argument */
-	HandleTCPClient(clntSock);
+	HandleTCPClient(*(int*)threadArgs);
 	return (NULL);
 }
 
@@ -237,6 +228,13 @@ int CreateTCPServerSocket(unsigned short port)
 	svrAddr.sin_addr.s_addr = htonl(INADDR_ANY); /* Any incoming interface */
 	svrAddr.sin_port = htons(port); /* Local port */
 	
+	BOOL    bValid = 1;
+	setsockopt(sock,                // SOCKET
+		SOL_SOCKET,                // level
+		SO_REUSEADDR,            // Option
+		(const char *) &bValid,    // Option Value
+		sizeof(bValid));             // Option length
+
 	/* Bind to the local address */
 	if (bind(sock, (struct sockaddr *) &svrAddr, sizeof(svrAddr)) < 0)
 	{
@@ -261,7 +259,7 @@ int AcceptTCPConnection(int servSock)
 	unsigned int clntLen; 
 	
 	clntLen = sizeof(clientAddr);
-	
+
 	/* Wait for a client to connect */
 	if ((clntSock = accept(servSock, (struct sockaddr *) &clientAddr, (int*) &clntLen)) < 0)
 	{
@@ -278,9 +276,20 @@ int HandleTCPClient(int clntSocket)
 	char rxcmdbuf[RCVBUFSIZE]; 
 	int recvMsgSize; 
 	wchar_t tmp[TMPBUF];
+	DWORD ret;
 
 	memset(tmp, 0, 256);
 	memset(rxcmdbuf, 0, RCVBUFSIZE);
+
+	if ((ret = send(clntSocket, "HI", 2, 0)) != 2)
+	{
+		wsprintf(tmp, L"HandleTCPClient: send HI (0x%x) failed", WSAGetLastError());
+		WriteLog(tmp);
+		shutdown(clntSocket, 2);
+		closesocket(clntSocket);
+		return -1;
+	}
+
 	if ((recvMsgSize = recv(clntSocket, rxcmdbuf, RCVBUFSIZE, 0)) < 0)
 	{
 		wsprintf(tmp, L"HandleTCPClient: recv failed(%d)\n", recvMsgSize);
@@ -291,14 +300,18 @@ int HandleTCPClient(int clntSocket)
 	DWORD dwPID;
 	WCHAR dest[RCVBUFSIZE];
 	DWORD dwExitCode = 0;
-	DWORD ret;
+
 	extern TCHAR gServicePath[];
 	char *usermode_helper = "drbdadm.exe";
 
 	wsprintf(dest, L"\"%ws\\%S\" %S", gServicePath, usermode_helper, rxcmdbuf);
-
+	WriteLog(dest);
+	
 	ret = RunProcess(EXEC_MODE_WIN, SW_NORMAL, dest, NULL, gServicePath, dwPID, INFINITE, &dwExitCode, NULL); // wait!!!
-	Log(L"RunProcess - %ws\n", dest);
+
+	wsprintf(tmp, L"RunProcess(%ws) done\n", dest);
+	WriteLog(tmp);
+
 	if (ret != ERROR_SUCCESS)
 	{
         wsprintf(tmp, L"Failed to run [%ws] process. GetLastError(%d)", gServicePath, ret);
@@ -308,12 +321,37 @@ int HandleTCPClient(int clntSocket)
 	// send response
 	rxcmdbuf[0] = (char)dwExitCode;
 
-	if (send(clntSocket, rxcmdbuf, 1, 0) != 1)
+
+	if ((ret = send(clntSocket, rxcmdbuf, 1, 0)) != 1)
 	{
-		WriteLog(L"HandleTCPClient: send() failed");
+		wsprintf(tmp, L"HandleTCPClient: send(0x%x) failed !!!!", WSAGetLastError());
+		WriteLog(tmp);
+		shutdown(clntSocket, 2);
+		closesocket(clntSocket);
 		return -1;
 	}
+	wsprintf(tmp, L"wait for engine BYE message.\n"); // TEST
+	WriteLog(tmp);// TEST
 
+	if ((recvMsgSize = recv(clntSocket, rxcmdbuf, 3, 0)) != 3)
+	{
+		wsprintf(tmp, L"HandleTCPClient: recv failed(%d) 0x%x\n", recvMsgSize, WSAGetLastError());
+		WriteLog(tmp);
+	}
+	else
+	{
+		//wsprintf(tmp, L"HandleTCPClient: received BYE sz=%d\n", recvMsgSize);// TEST
+		//WriteLog(tmp);// TEST
+	}
+
+	//wsprintf(tmp, L"shutdown and close start\n");// TEST
+	//WriteLog(tmp);// TEST
+
+	//shutdown(clntSocket, 2);
 	closesocket(clntSocket);
+
+	//wsprintf(tmp, L"handler-app closed\n");// TEST
+	//WriteLog(tmp);// TEST
+
 	return 0;
 }

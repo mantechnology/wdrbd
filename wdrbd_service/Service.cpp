@@ -49,8 +49,8 @@ VOID WriteLog(wchar_t* pMsg)
         );
 
     DeregisterEventSource(hEventLog);
-
 	Log(pMsg);
+
 }
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -59,7 +59,7 @@ int _tmain(int argc, _TCHAR* argv[])
     DWORD dwSize = GetModuleFileName(NULL, szPath, MAX_PATH);
     TCHAR * pdest = _tcsrchr(szPath, '\\');
     _tcsncpy_s(gServicePath, sizeof(gServicePath) / sizeof(TCHAR), szPath, (size_t)(pdest - szPath));
-    
+
     if (argc < 2)
     {
         ExecuteSubProcess();
@@ -102,6 +102,28 @@ int _tmain(int argc, _TCHAR* argv[])
         free(szServicePath);
         return ERROR_SUCCESS;
     }
+#if 1 // _WIN32_HANDLER_TIMEOUT: 데몬이 아닌 독자적인 응용으로 시험: 검증 후 추후 삭제.
+	else if (_tcsicmp(L"/n", argv[1]) == 0) 
+	{
+		// internal test only: no-daemon test
+
+		unsigned short servPort = DRBD_DAEMON_TCP_PORT;
+		DWORD threadID;
+
+		if (CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) SockListener, &servPort, 0, (LPDWORD) &threadID) == NULL)
+		{
+			WriteLog(L"pthread_create() failed\n");
+			return 0;
+		}
+
+		int i = 0;
+		while (1)
+		{
+			printf("test main loop(%d)...\n", i++);
+			Sleep(10000);
+		}
+	}
+#endif
     else
     {
         TCHAR msg[256];

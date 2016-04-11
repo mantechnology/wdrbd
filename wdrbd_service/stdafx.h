@@ -4,21 +4,10 @@
 //
 
 #pragma once
-
-#include <process.h>
-#include <iostream>
+#include <winsock2.h>
 #include <tchar.h>
 #include <stdio.h>
-#include <windows.h>
-#include <winbase.h>
-#include <winsvc.h>
-
 #include "drbdService.h"
-
-#include <psapi.h>
-#include <string>
-#include <strsafe.h>
-#include <assert.h>
 
 DWORD RunProcess(
 	__in WORD wExecMode,

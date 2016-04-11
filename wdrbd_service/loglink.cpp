@@ -1,8 +1,4 @@
 ﻿#include "stdafx.h" 
-#include <stdio.h> 
-#include <winsock.h> 
-#include <stdlib.h> 
-#include <Shlwapi.h>
 
 #define TMPBUF			256  
 #define MAX_LOG_STRING	512
@@ -120,7 +116,7 @@ int LogLink_Daemon(unsigned short *port)
 		}
 
 		struct hostent *host;
-		if ((host = gethostbyname("127.0.0.1")) == NULL)
+		if ((host = gethostbyname((const char*)"127.0.0.1")) == NULL)
 		{
 			wsprintf(tmp, L"LogLink: Failed to resolve hostname err=0x%x\r\n", WSAGetLastError());
 			WriteLog(tmp);

@@ -43,6 +43,7 @@
 
 //#define _WIN32_WPP
 #define _WIN32_LOGLINK			// NEW: socket link for eventlog between engine and drbdService 
+#define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
 
 #ifdef _WIN32_WPP
 #define WPP_CONTROL_GUIDS \
@@ -1223,10 +1224,20 @@ extern int proc_details;
 extern int g_bypass_level;
 extern int g_read_filter;
 extern int g_mj_flush_buffers_filter;
+
+#ifdef _WIN32_HANDLER_TIMEOUT
 extern int g_use_volume_lock;
 extern int g_netlink_tcp_port;
 extern int g_daemon_tcp_port;
+#endif
+
 extern WCHAR g_ver[];
+
+#ifdef _WIN32_HANDLER_TIMEOUT
+int g_handler_use;
+int g_handler_timeout;
+int g_handler_retry;
+#endif
 
 extern PETHREAD	g_NetlinkServerThread;
 extern union drbd_state g_mask; 

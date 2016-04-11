@@ -808,7 +808,15 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	magic_printk(KERN_INFO, "helper command: %s %s\n", usermode_helper, cmd);
 #endif
 	notify_helper(NOTIFY_CALL, device, connection, cmd, 0);
+#ifdef _WIN32_HANDLER_TIMEOUT
+	if (g_handler_use)
+	{
+		ret = call_usermodehelper(usermode_helper, argv, envp, UMH_WAIT_PROC);
+	}
+	ret = 0;
+#else
 	ret = call_usermodehelper(usermode_helper, argv, envp, UMH_WAIT_PROC);
+#endif
 #ifdef _WIN32_V9
 	// _WIN32_V9_DOC:JHKIM: BSOD 발생. 로직 무시 가능. 추후 보강
 #else
@@ -4638,6 +4646,55 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
 		return retcode;
+
+#if 0 // _WIN32_HANDLER_TIMEOUT: loadtest 검증 후 삭제.
+	static int c = 0;
+	int i = 0;
+
+	c++;
+	DbgPrint("DRBD_TEST: _WIN32_HANDLER_TIMEOUT test c = %d\n", c);
+
+	if (c == 1)
+	{
+		DbgPrint("DRBD_TEST: call_usermodehelper once!\n"); // 1 회만
+		call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
+		goto out_no_ldev;
+	}
+
+	if (c == 2)
+	{
+		DbgPrint("DRBD_TEST: loop 2\n");
+		for (i = 0; i < 2; i++)
+		{
+			DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
+			call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
+		}
+		DbgPrint("DRBD_TEST: done\n");
+		goto out_no_ldev;
+	}
+
+	if (c == 3)
+	{
+		DbgPrint("DRBD_TEST: loop 10\n");
+		for (i = 0; i < 10; i++)
+		{
+			DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
+			call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
+		}
+		DbgPrint("DRBD_TEST: done\n");
+		goto out_no_ldev;
+	}
+
+	DbgPrint("DRBD_TEST: load test loop 50\n");
+	for (i = 0; i < 50; i++)
+	{
+		DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
+		call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
+	}
+	DbgPrint("DRBD_TEST: done\n");
+	
+	goto out_no_ldev;
+#endif
 
 	device = adm_ctx.device;
 
