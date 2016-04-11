@@ -1045,12 +1045,12 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		{
 			g_handler_timeout = 600;
 		}
-		g_handler_timeout = g_handler_timeout * 1000; // change to ms
 	}
 	else
 	{
 		g_handler_timeout = 1;
 	}	
+	g_handler_timeout = g_handler_timeout * 1000; // change to ms
 	
 	status = GetRegistryValue(L"handler_retry", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
