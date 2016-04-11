@@ -19,6 +19,13 @@ int g_mj_flush_buffers_filter;
 int g_use_volume_lock;
 int g_netlink_tcp_port;
 int g_daemon_tcp_port;
+
+#ifdef _WIN32_HANDLER_TIMEOUT
+int g_handler_use;
+int g_handler_timeout;
+int g_handler_retry;
+#endif
+
 WCHAR g_ver[64];
 
 /// SEO: from idr.c of LINUX 3.15
@@ -2529,8 +2536,19 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	PWSK_SOCKET		Socket = NULL;
 	char *cmd_line;
 	int leng;
+	char ret = 0;
 
+	if (0 == g_handler_use)
+	{
+		return -1;
+	}
+
+#if 0 // _WIN32_HANDLER-TIMEOUT: invalidate 에서 직접 불리는시허에서는 이 부분을 풀 것.
+	leng = 1024; 
+#else
 	leng = strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1;
+#endif
+
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line)
 	{
@@ -2538,8 +2556,11 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
-	sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+#if 0 // _WIN32_HANDLER-TIMEOUT: invalidate 에서 직접 불리는시허에서는 이 부분을 풀 것.
+	sprintf(cmd_line, "%s %s\0", "aaa", "bbb"); //  argv[1], argv[2]); // except "drbdadm.exe" string
 	WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
+#endif
+
     Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
 
 	if (Socket == NULL) {
@@ -2584,33 +2605,96 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 
 	{
 		LONG readcount;
-		char ret; 
-#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
-		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, 0)) != (long) strlen(cmd_line))
-#endif
+		char hello[2];
+		WDRBD_INFO("Wait Hi\n");
+		if ((readcount = Receive(Socket, &hello, 2, 0, g_handler_timeout)) == 2)
 		{
-			WDRBD_ERROR("send fail stat=0x%x\n", Status);
-			goto error;
-		}
-
-		if ((readcount = Receive(Socket, &ret, 1, 0, 0)) > 0)
-		{
-			WDRBD_INFO("recv val=0x%x\n", ret);
-			CloseSocket(Socket);
-			kfree(cmd_line);
-			return ret; 
+			WDRBD_INFO("recv HI!!! \n");
+			//CloseSocket(Socket);
+			//kfree(cmd_line);
+			//return ret; 
 		}
 		else
 		{
-			WDRBD_INFO("error recv status=0x%x\n", readcount);
+			if (readcount == -EAGAIN)
+			{
+				WDRBD_INFO("error rx hi timeout(%d) g_handler_retry(%d) !!!!\n", g_handler_timeout, g_handler_retry);
+			}
+			else
+			{
+
+				WDRBD_INFO("error recv status=0x%x\n", readcount);
+			}
+			ret = -1;
+
+			// _WIN32_HANDLER_TIMEOUT
+			// retry?? -> 추후 재 검증 시 보완
+			// if (g_handler_retry)
+
 			goto error;
 		}
+
+#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line))
+#endif
+		{
+			WDRBD_ERROR("send command fail stat=0x%x\n", Status);
+			ret = -1;
+			goto error;
+		}
+
+		//WDRBD_INFO("send local done %s! Disconnect\n", Status);
+		//Disconnect(Socket);
+
+		if ((readcount = Receive(Socket, &ret, 1, 0, g_handler_timeout)) > 0)
+		{
+			WDRBD_INFO("recv val=0x%x\n", ret);
+			//CloseSocket(Socket);
+			//kfree(cmd_line);
+			//return ret; 
+		}
+		else
+		{
+			if (readcount == -EAGAIN)
+			{
+				WDRBD_INFO("recv retval timeout(%d)! ###########\n", g_handler_timeout);
+			}
+			else
+			{
+			
+				WDRBD_INFO("recv status=0x%x\n", readcount);
+			}
+			ret = -1;
+			goto error;
+		}
+
+#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+		// WDRBD_INFO("send BYE!\n");
+		if ((Status = SendLocal(Socket, "BYE", 3, 0, g_handler_timeout)) != 3)
+#endif
+		{
+			WDRBD_ERROR("send bye fail stat=0x%x\n", Status); // ignore!
+		}
+
+		WDRBD_INFO("Disconnect:shutdown...\n", Status);
+		Disconnect(Socket);
+
+		/*
+		if ((readcount = Receive(Socket, &ret, 1, 0, 0)) > 0)
+		{
+			WDRBD_INFO("recv dummy  val=0x%x\n", ret);// ignore!
+		}
+		else
+		{
+			WDRBD_INFO("recv dummy  status=%d\n", readcount);// ignore!
+		}
+		*/
 	}
 
 error:
 	CloseSocket(Socket);
 	kfree(cmd_line);
-	return -1;
+	return ret;
 }
 
 void panic(char *msg)

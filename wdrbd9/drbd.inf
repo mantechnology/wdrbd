@@ -71,6 +71,9 @@ HKR,,"loglink_tcp_port",0x00010001,5677
 HKR,,"loglink_usage",0x00010001,0
 HKR,,"netlink_tcp_port",0x00010001,5678
 HKR,,"daemon_tcp_port",0x00010001,5679
+HKR,,"g_handler_use",0x00010001,0
+HKR,,"g_handler_timeout",0x00010001,1
+HKR,,"g_handler_retry",0x00010001,0
 HKR,,"ver",0x00000000, "va.9"
 
 [DRBD.DelRegistry]
