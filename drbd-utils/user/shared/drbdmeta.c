@@ -302,6 +302,10 @@ struct format {
 	const struct format_ops *ops;
 	char *md_device_name;	/* well, in 06 it is file name */
 	char *drbd_dev_name;
+#ifdef FEATURE_VHD_META_SUPPORT
+	char *vhd_dev_path;
+	int peer_count;
+#endif
 	unsigned minor;		/* cache, determined from drbd_dev_name */
 	int lock_fd;
 	int drbd_fd;		/* no longer used!   */
@@ -2579,6 +2583,96 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 	}
 	cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 }
+#ifdef FEATURE_VHD_META_SUPPORT
+static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * letter)
+{
+	// to adjust Windows diskpart script ('/' -> '\')
+	char * c;
+	for (c = vhd_path; *c != '\0'; ++c) {
+		switch (*c) {
+			case '/': *c = '\\'; break;
+		}
+	}
+
+	FILE * fp = fopen("./"CREATE_VHD_SCRIPT, "w");
+	if (!fp) {
+		perror("fopen failed [%m]\n");
+		return 1;
+	}
+
+	char buf[512];
+	sprintf(buf,
+		"create vdisk file=\"%s\" maximum=%d\n"
+		"attach vdisk\n"
+		"create partition primary\n"
+		"assign letter=%s",
+		vhd_path, size_mb, letter);
+	fputs(buf, fp);
+	fclose(fp);
+
+	return 0;
+}
+
+static int _attach_vhd_script(char * vhd_path)
+{
+	// to adjust Windows diskpart script ('/' -> '\')
+	char * c;
+	for (c = vhd_path; *c != '\0'; ++c) {
+		switch (*c) {
+			case '/': *c = '\\'; break;
+		}
+	}
+
+	FILE * fp = fopen("./"ATTACH_VHD_SCRIPT, "w");
+	if (!fp) {
+		perror("fopen failed [%m]\n");
+		return 1;
+	}
+
+	char buf[512];
+	sprintf(buf,
+		"select vdisk file=\"%s\"\n"
+		"attach vdisk",
+		vhd_path);
+	fputs(buf, fp);
+	fclose(fp);
+
+	return 0;
+}
+
+static int _call_script(char **argv)
+{
+	pid_t   my_pid;
+	int     status = 0;
+	int		pipes[2];
+
+	if (pipe(pipes))
+		return -1;
+
+	if (0 == (my_pid = fork())) {
+		// child
+		close(pipes[0]); // close reading end
+		dup2(pipes[1], 1); // 1 = stdout
+		close(pipes[1]);
+
+		int ret = execvp(argv[0], argv);
+		if (-1 == ret) {
+			perror("child process execve failed [%m]\n");
+			return -2;
+		}
+	}
+	waitpid(my_pid, &status, 0);
+
+	return status;
+}
+
+static uint64_t _get_bdev_size_by_letter(const char letter)
+{
+	char dev_name_nt[32] = { 0, };
+	sprintf(dev_name_nt, "\\\\.\\%c:", letter);
+	return bdev_size(dev_name_nt);
+}
+#endif
 
 int v07_style_md_open(struct format *cfg)
 {
@@ -2588,6 +2682,36 @@ int v07_style_md_open(struct format *cfg)
 	int open_flags = O_RDWR | O_DIRECT;
 
 #ifdef _WIN32
+#ifdef FEATURE_VHD_META_SUPPORT
+vhd_use:
+	if (cfg->vhd_dev_path) {
+		uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
+		evsm = ((evsm >> 20) / 32768) * cfg->peer_count
+			+ 1		/* for drbd */
+			+ 1;	/* for vhd */
+		evsm = (evsm < 3) ? 3 : evsm;
+
+		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
+			struct stat st;
+			stat(cfg->vhd_dev_path, &st);
+			uint64_t vsm = st.st_size;
+			vsm >>= 20;
+			if (vsm < evsm) {	// Need to re-create?
+				remove(cfg->vhd_dev_path);
+				goto vhd_use;
+			}
+		} else if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
+			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
+			fprintf(stderr, "Creating vhd disk for meta data...\n");
+			if (_call_script(_argv)) {
+				remove("./"CREATE_VHD_SCRIPT);
+				fprintf(stderr, "diskpart failed.\n");
+				exit(20);
+			}
+			remove("./"CREATE_VHD_SCRIPT);
+		}
+	}
+#endif
 	char *buf;
 	buf = malloc(strlen(cfg->md_device_name) + 20); // additional space 20 bytes are enough	
 	if(!buf)
@@ -2600,13 +2724,11 @@ int v07_style_md_open(struct format *cfg)
 	{
 		// by volume name
 		sprintf(buf, "\\\\.\\Volume{%s}", cfg->md_device_name);
-		//sprintf(buf, "//./Volume{%s}", cfg->md_device_name);
 	}
 	else
 	{
 		// by letter
 		sprintf(buf, "\\\\.\\%1s:", cfg->md_device_name);
-		//sprintf(buf, "//./%1s:", cfg->md_device_name);
 	}
 
 	free(cfg->md_device_name);
@@ -2629,6 +2751,22 @@ int v07_style_md_open(struct format *cfg)
 	if (cfg->md_fd == -1) {
 		int save_errno = errno;
 		PERROR("open(%s) failed", cfg->md_device_name);
+#ifdef FEATURE_VHD_META_SUPPORT
+		// failed to access by drive letter
+		if (save_errno == ENOENT && cfg->vhd_dev_path) {
+			if (!_attach_vhd_script(cfg->vhd_dev_path)) {
+				char * _argv[] = { "diskpart", "/s", "./"ATTACH_VHD_SCRIPT, (char *)0 };
+				fprintf(stderr, "Attaching vhd meta\n");
+				if (_call_script(_argv)) {
+					remove("./"ATTACH_VHD_SCRIPT);
+					fprintf(stderr, "diskpart failed.\n");
+					exit(20);
+				}
+				remove("./"ATTACH_VHD_SCRIPT);
+				goto retry;
+			}
+		}
+#endif
 		if (save_errno == EBUSY && (open_flags & O_EXCL)) {
 			if ((!force && command->function == &meta_apply_al) ||
 			    !confirmed("Exclusive open failed. Do it anyways?"))
@@ -2650,14 +2788,12 @@ int v07_style_md_open(struct format *cfg)
 		}
 		exit(20);
 	}
-
+#ifndef _WIN32	// not Windows style
 	if (fstat(cfg->md_fd, &sb)) {
 		PERROR("fstat(%s) failed", cfg->md_device_name);
 		exit(20);
 	}
-#ifdef _WIN32
-	// not supported: No such file or directory
-#else
+
 	if (!S_ISBLK(sb.st_mode)) {
 		fprintf(stderr, "'%s' is not a block device!\n",
 			cfg->md_device_name);
@@ -2669,6 +2805,7 @@ int v07_style_md_open(struct format *cfg)
 	}
 #ifdef _WIN32_V9
 	cfg->md_hard_sect_size = bdev_sect_size_nt(cfg->md_device_name);
+	cfg->bd_size = bdev_size(cfg->md_device_name);
 #else
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
 	if (ioctl_err) {
@@ -2681,10 +2818,7 @@ int v07_style_md_open(struct format *cfg)
 			fprintf(stderr, "hard_sect_size is %d Byte\n",
 				cfg->md_hard_sect_size);
 	}
-#endif
-#ifdef _WIN32
-	cfg->bd_size = bdev_size(cfg->md_device_name);
-#else
+
 	cfg->bd_size = bdev_size(cfg->md_fd);
 #endif
 	/* check_for_existing_data() wants to read that much,
@@ -2706,7 +2840,6 @@ int v07_style_md_open(struct format *cfg)
 			(long long unsigned)cfg->bd_size);
 		exit(10);
 	}
-
 #ifndef _WIN32
 	if (!opened_odirect &&
 	    (MAJOR(sb.st_rdev) != RAMDISK_MAJOR)) {
@@ -2718,7 +2851,6 @@ int v07_style_md_open(struct format *cfg)
 					"we may read stale data\n", ioctl_err);
 	}
 #endif
-
 	if (cfg->ops->md_disk_to_cpu(cfg)) {
 		/* no valid meta data found.  but we want to initialize
 		 * al_offset and bm_offset anyways, so check_for_existing_data
@@ -2779,6 +2911,11 @@ int v07_parse(struct format *cfg, char **argv, int argc, int *ai)
 		index = DRBD_MD_INDEX_FLEX_EXT;
 	} else if (!strcmp(argv[1],"flex-internal")) {
 		index = DRBD_MD_INDEX_FLEX_INT;
+#ifdef FEATURE_VHD_META_SUPPORT
+	} else if (strstr(argv[1], ".vhd")) {
+		cfg->vhd_dev_path = strdup(argv[1]);
+		index = DRBD_MD_INDEX_FLEX_EXT;
+#endif
 	} else {
 		e = argv[1];
 		errno = 0;
@@ -4599,7 +4736,9 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 		fprintf(stderr, "MAX_PEERS argument not in allowed range 1 .. %d.\n", DRBD_PEERS_MAX);
 		exit(20);
 	}
-
+#ifdef FEATURE_VHD_META_SUPPORT
+	cfg->peer_count = max_peers;
+#endif
 	err = cfg->ops->open(cfg);
 
 	/* Suggest to move existing meta data after offline resize.  Though, if
@@ -4764,7 +4903,12 @@ int meta_read_dev_uuid(struct format *cfg, char **argv __attribute((unused)), in
 	if (argc > 0) {
 		fprintf(stderr, "Ignoring additional arguments\n");
 	}
-
+#ifdef FEATURE_VHD_META_SUPPORT
+	if (cfg->vhd_dev_path) {
+		free(cfg->vhd_dev_path);
+		cfg->vhd_dev_path = NULL;
+	}
+#endif
 	if (cfg->ops->open(cfg))
 		return -1;
 

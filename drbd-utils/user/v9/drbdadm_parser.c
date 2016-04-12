@@ -789,6 +789,13 @@ void parse_meta_disk(struct d_volume *vol)
 		EXP(';');
 	} else {
 		switch(yylex()) {
+#ifdef FEATURE_VHD_META_SUPPORT
+		case TK_STRING:
+			/* external, static size */
+			vol->meta_index = strdup(yylval.txt);
+			EXP(';');
+			break;
+#endif
 		case '[':
 			EXP(TK_INTEGER);
 			/* external, static size */

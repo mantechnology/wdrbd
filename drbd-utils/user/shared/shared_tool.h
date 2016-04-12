@@ -13,6 +13,12 @@
 #define IN_IS_ADDR_LOOPBACK(a) ((htonl((a)->s_addr) & 0xff000000) == 0x7f000000)
 #endif
 
+#ifdef _WIN32
+#define FEATURE_VHD_META_SUPPORT
+#define CREATE_VHD_SCRIPT	"__creation__vhd"
+#define ATTACH_VHD_SCRIPT	"__attach__vhd"
+#endif
+
 #define COMM_TIMEOUT 120
 
 /* MetaDataIndex for v06 / v07 style meta data blocks */
@@ -30,7 +36,7 @@ enum MetaDataIndex {
 do { fprintf(stderr,fmt ": " , ##args); perror(0); } while (0)
 */
 #define PERROR(fmt, args...) fprintf(stderr, fmt ": %m\n" , ##args);
-
+#define WPRINTF(fmt, args...)	fprintf(stderr, "[%s] "fmt, __FUNCTION__, ##args);
 enum new_strtoll_errs {
 	MSE_OK,
 	MSE_DEFAULT_UNIT,

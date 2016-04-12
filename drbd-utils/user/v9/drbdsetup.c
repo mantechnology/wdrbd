@@ -746,6 +746,9 @@ static int conv_md_idx(struct drbd_argument *ad, struct msg_buff *msg,
 
 	if(!strcmp(arg,"internal")) idx = DRBD_MD_INDEX_FLEX_INT;
 	else if(!strcmp(arg,"flexible")) idx = DRBD_MD_INDEX_FLEX_EXT;
+#ifdef FEATURE_VHD_META_SUPPORT
+	else if(strstr(arg,".vhd")) idx = DRBD_MD_INDEX_FLEX_EXT;
+#endif
 	else idx = m_strtoll(arg,1);
 
 	nla_put_u32(msg, ad->nla_type, idx);
