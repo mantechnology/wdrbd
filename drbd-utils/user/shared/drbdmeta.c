@@ -4708,43 +4708,44 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 		exit(20);
 	}
 #ifdef FEATURE_VHD_META_SUPPORT
-	char meta_volume[] = "\\\\.\\ :";
-	meta_volume[4] = 'C' + cfg->minor;
-
-	int fd = open(meta_volume, O_RDWR | O_DIRECT);
-	if (fd == -1) {
-		if (cfg->vhd_dev_path) {
-			uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
-			evsm = ((evsm >> 20) / 32768) * max_peers
-				/* http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
-				+ 1		/* for drbd */
-				+ 1;	/* for vhd */
-			evsm = (evsm < 3) ? 3 : evsm;
-
-			if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
-				struct stat st;
-				stat(cfg->vhd_dev_path, &st);
-				uint64_t vsm = st.st_size;
-				vsm >>= 20;
-				if (vsm < evsm) {	// Need to re-create?
-					remove(cfg->vhd_dev_path);
-				}
-			}
-
-			if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
-				char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
-				fprintf(stderr, "Creating vhd disk for meta data...\n");
-				if (_call_script(_argv)) {
-					remove("./"CREATE_VHD_SCRIPT);
-					fprintf(stderr, "diskpart failed.\n");
-					exit(20);
-				}
-				remove("./"CREATE_VHD_SCRIPT);
-			}
-		}
+	char meta_volume[64] = "\\\\.\\ :";
+	if (strstr(cfg->md_device_name, "-")) {
+		// by volume name
+		sprintf(meta_volume, "\\\\.\\Volume{%s}", cfg->md_device_name);
 	}
 	else {
-		close(fd);
+		// by letter
+		meta_volume[4] = *(cfg->md_device_name);
+	}
+
+	if (F_OK != access(meta_volume, R_OK) && cfg->vhd_dev_path) {
+		uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
+		evsm = ((evsm >> 20) / 32768) * max_peers
+			/* http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
+			+ 1		/* for drbd */
+			+ 1;	/* for vhd */
+		evsm = (evsm < 3) ? 3 : evsm;
+
+		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
+			struct stat st;
+			stat(cfg->vhd_dev_path, &st);
+			uint64_t vsm = st.st_size;
+			vsm >>= 20;
+			if (vsm < evsm) {	// Need to re-create?
+				remove(cfg->vhd_dev_path);
+			}
+		}
+
+		if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
+			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
+			fprintf(stderr, "Creating vhd disk for meta data...\n");
+			if (_call_script(_argv)) {
+				remove("./"CREATE_VHD_SCRIPT);
+				fprintf(stderr, "diskpart failed.\n");
+				exit(20);
+			}
+			remove("./"CREATE_VHD_SCRIPT);
+		}
 	}
 #endif
 	err = cfg->ops->open(cfg);
