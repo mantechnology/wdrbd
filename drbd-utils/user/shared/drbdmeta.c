@@ -2682,36 +2682,6 @@ int v07_style_md_open(struct format *cfg)
 	int open_flags = O_RDWR | O_DIRECT;
 
 #ifdef _WIN32
-#ifdef FEATURE_VHD_META_SUPPORT
-vhd_use:
-	if (cfg->vhd_dev_path) {
-		uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
-		evsm = ((evsm >> 20) / 32768) * cfg->peer_count
-			+ 1		/* for drbd */
-			+ 1;	/* for vhd */
-		evsm = (evsm < 3) ? 3 : evsm;
-
-		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
-			struct stat st;
-			stat(cfg->vhd_dev_path, &st);
-			uint64_t vsm = st.st_size;
-			vsm >>= 20;
-			if (vsm < evsm) {	// Need to re-create?
-				remove(cfg->vhd_dev_path);
-				goto vhd_use;
-			}
-		} else if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
-			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
-			fprintf(stderr, "Creating vhd disk for meta data...\n");
-			if (_call_script(_argv)) {
-				remove("./"CREATE_VHD_SCRIPT);
-				fprintf(stderr, "diskpart failed.\n");
-				exit(20);
-			}
-			remove("./"CREATE_VHD_SCRIPT);
-		}
-	}
-#endif
 	char *buf;
 	buf = malloc(strlen(cfg->md_device_name) + 20); // additional space 20 bytes are enough	
 	if(!buf)
@@ -2753,7 +2723,8 @@ vhd_use:
 		PERROR("open(%s) failed", cfg->md_device_name);
 #ifdef FEATURE_VHD_META_SUPPORT
 		// failed to access by drive letter
-		if (save_errno == ENOENT && cfg->vhd_dev_path) {
+		if (save_errno == ENOENT && cfg->vhd_dev_path &&
+			(F_OK == access(cfg->vhd_dev_path, R_OK))) {
 			if (!_attach_vhd_script(cfg->vhd_dev_path)) {
 				char * _argv[] = { "diskpart", "/s", "./"ATTACH_VHD_SCRIPT, (char *)0 };
 				fprintf(stderr, "Attaching vhd meta\n");
@@ -4737,7 +4708,45 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 		exit(20);
 	}
 #ifdef FEATURE_VHD_META_SUPPORT
-	cfg->peer_count = max_peers;
+	char meta_volume[64] = "\\\\.\\ :";
+	if (strstr(cfg->md_device_name, "-")) {
+		// by volume name
+		sprintf(meta_volume, "\\\\.\\Volume{%s}", cfg->md_device_name);
+	}
+	else {
+		// by letter
+		meta_volume[4] = *(cfg->md_device_name);
+	}
+
+	if (F_OK != access(meta_volume, R_OK) && cfg->vhd_dev_path) {
+		uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
+		evsm = ((evsm >> 20) / 32768) * max_peers
+			/* http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
+			+ 1		/* for drbd */
+			+ 1;	/* for vhd */
+		evsm = (evsm < 3) ? 3 : evsm;
+
+		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
+			struct stat st;
+			stat(cfg->vhd_dev_path, &st);
+			uint64_t vsm = st.st_size;
+			vsm >>= 20;
+			if (vsm < evsm) {	// Need to re-create?
+				remove(cfg->vhd_dev_path);
+			}
+		}
+
+		if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
+			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
+			fprintf(stderr, "Creating vhd disk for meta data...\n");
+			if (_call_script(_argv)) {
+				remove("./"CREATE_VHD_SCRIPT);
+				fprintf(stderr, "diskpart failed.\n");
+				exit(20);
+			}
+			remove("./"CREATE_VHD_SCRIPT);
+		}
+	}
 #endif
 	err = cfg->ops->open(cfg);
 
@@ -4903,12 +4912,7 @@ int meta_read_dev_uuid(struct format *cfg, char **argv __attribute((unused)), in
 	if (argc > 0) {
 		fprintf(stderr, "Ignoring additional arguments\n");
 	}
-#ifdef FEATURE_VHD_META_SUPPORT
-	if (cfg->vhd_dev_path) {
-		free(cfg->vhd_dev_path);
-		cfg->vhd_dev_path = NULL;
-	}
-#endif
+
 	if (cfg->ops->open(cfg))
 		return -1;
 
