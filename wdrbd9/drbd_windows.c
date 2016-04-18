@@ -2229,20 +2229,22 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
-    PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
+	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
 
-    if (pmuid)
-    {
-        pvext->Letter = _query_mounted_devices(pmuid);
+	if (pmuid) {
+		pvext->Letter = _query_mounted_devices(pmuid);
 
-        if (pvext->Letter)
-        {
-            pvext->VolIndex = pvext->Letter - 'C';
-            pvext->dev = create_drbd_block_device(pvext);
-        }
+		if (pvext->Letter) {
+			pvext->VolIndex = pvext->Letter - 'C';
+			pvext->dev = create_drbd_block_device(pvext);
+		}
+		else {
+			pvext->VolIndex = 0;
+			drbdFreeDev(pvext);
+		}
 
-        ExFreePool(pmuid);
-    }
+		ExFreePool(pmuid);
+	}
 }
 
 /**
@@ -2266,30 +2268,33 @@ void refresh_targetdev_list()
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 {
     PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
-    PVOLUME_EXTENSION   pvext = prext->Head;
+    PVOLUME_EXTENSION   pvext;
 
     MVOL_LOCK();
-    while (pvext)
-    {
-        if (!pvext->VolIndex && !pvext->Letter)
-        {
-            query_targetdev(pvext);
-        }
 
-        if (pvext->VolIndex == minor)
-        {
-            MVOL_UNLOCK();
-//            WDRBD_TRACE("minor(%d) letter(%c:) name(%ws)\n", minor, pvext->Letter, pvext->PhysicalDeviceName);
-            return pvext;
-        }
+	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
+	
+	if (pvext) {
+		UNICODE_STRING dos_name;
+		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
+		if (pvext->VolIndex == (*(dos_name.Buffer) - 'C')) {
+			MVOL_UNLOCK();
+			ExFreePool(dos_name.Buffer);
+			return pvext;
+		}
+	}
 
-        pvext = pvext->Next;
-    }
-    MVOL_UNLOCK();
+	refresh_targetdev_list();
 
-    WDRBD_ERROR("Failed to find volume for minor(%d)\n", minor);
+	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
 
-    return NULL;
+	MVOL_UNLOCK();
+
+	if (!pvext) {
+		WDRBD_ERROR("Failed to find volume for minor(%d)\n", minor);
+	}
+
+    return pvext;
 }
 
 /**
@@ -2467,13 +2472,18 @@ cleanup:
 
     return ret;
 }
+
 struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *dummy2)
 {
-#ifndef _WIN32
-	return open_bdev_exclusive(path, mode, holder);
+#ifdef _WIN32
+	UNREFERENCED_PARAMETER(dummy1);
+	UNREFERENCED_PARAMETER(dummy2);
+	
+	PVOLUME_EXTENSION pvext = get_targetdev_by_minor((*path & ~0x20) - 'C');
+
+	return (pvext) ? pvext->dev : NULL;
 #else
-	PVOLUME_EXTENSION VolumeExtension = get_targetdev_by_minor(toupper(*path) - 'C'); // only one byte used.
-	return (VolumeExtension == NULL) ? NULL : VolumeExtension->dev;
+	return open_bdev_exclusive(path, mode, holder);
 #endif
 }
 
