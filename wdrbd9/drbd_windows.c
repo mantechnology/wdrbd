@@ -2479,7 +2479,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *
 	UNREFERENCED_PARAMETER(dummy1);
 	UNREFERENCED_PARAMETER(dummy2);
 	
-	PVOLUME_EXTENSION pvext = get_targetdev_by_minor((*path & ~0x20) - 'C');
+	PVOLUME_EXTENSION pvext = get_targetdev_by_minor((*path & ~0x20) - 'C');	// toupper
 
 	return (pvext) ? pvext->dev : NULL;
 #else

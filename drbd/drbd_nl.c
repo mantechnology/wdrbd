@@ -2968,7 +2968,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
         pvolext = get_targetdev_by_minor(dh->minor);
-        if (!pvolext)
+        if (pvolext)
         {
             status = mvolInitializeThread(pvolext, &pvolext->WorkThreadInfo, mvolWorkThread);
             if (NT_SUCCESS(status))
