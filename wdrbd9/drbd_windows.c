@@ -1422,7 +1422,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
     if (current_milisec >= expires)
     {
 #ifdef _WIN32_V9
-		expires = TIMER_PERIOD_MIN;
+		nWaitTime.QuadPart = -1; // WIn32_CHECK: JHKIM: 양수일 경우 정상동작여부 재확인
 #else
         nWaitTime.LowPart = 1; // V8
 #endif
@@ -1430,19 +1430,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 	else
 	{
 		expires -= current_milisec;
-#ifdef _WIN32_V9
-		if (TIMER_PERIOD_MIN > expires)
-			expires = TIMER_PERIOD_MIN;
-		else if (TIMER_PERIOD_MAX < expires)
-			expires = TIMER_PERIOD_MAX;
-#else
 		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(expires)));
-#endif
-    }
-
-#ifdef _WIN32_V9
-	nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(expires)));
-#endif
+	}
 
 #ifdef DBG
     WDRBD_TRACE_TM("%s timer(0x%p) current(%d) expires(%d) gap(%d)\n",

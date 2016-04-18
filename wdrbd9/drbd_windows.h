@@ -110,9 +110,6 @@
 #define SECONDS(seconds) \
 (((signed __int64)(seconds)) * MILLISECONDS(1000L))
 
-#define TIMER_PERIOD_MIN			(10)
-#define TIMER_PERIOD_MAX			(5000)
-
 #define CMD_TIMEOUT_LONG_DEF		600		/* should be synchronized with defined value in shared_main.h */
 
 // from bio.h
