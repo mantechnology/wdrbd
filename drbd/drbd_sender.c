@@ -2906,8 +2906,8 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 		if (get_t_state(&connection->sender) != RUNNING)
 			break;
 
-#ifdef _WIN32 
-		schedule(&connection->sender_work.q_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#ifdef _WIN32_V9 // DW-745
+		schedule(&connection->sender_work.q_wait, SENDER_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__); 
 #else
 		schedule();
 #endif

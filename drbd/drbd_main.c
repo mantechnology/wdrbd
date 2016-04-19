@@ -3352,9 +3352,7 @@ static void do_retry(struct work_struct *ws)
 
 		/* We are not just doing generic_make_request(),
 		 * as we want to keep the start_time information. */
-		 
 		inc_ap_bio(device, bio_data_dir(bio));
-		WDRBD_INFO("do_retry pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
 		__drbd_make_request(device, bio, start_jif);
 	}
 }
@@ -3373,7 +3371,6 @@ void drbd_restart_request(struct drbd_request *req)
 	 * do_retry() needs to grab a new one. */
 	 
 	dec_ap_bio(req->device, bio_data_dir(req->master_bio));
-	WDRBD_INFO("drbd_restart_request pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",req->device->pending_bitmap_work.n, req->device->ap_bio_cnt[1]);
 	queue_work(retry.wq, &retry.worker);
 }
 
@@ -5668,9 +5665,6 @@ static int w_bitmap_io(struct drbd_work *w, int unused)
 
 	if (atomic_dec_and_test(&device->pending_bitmap_work.n))
 		wake_up(&device->misc_wait);
-
-	WDRBD_INFO("w_bitmap_io pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
-	
 	kfree(work);
 
 	return 0;
@@ -5760,7 +5754,6 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	list_add_tail(&bm_io_work->w.list, &device->pending_bitmap_work.q);
 	spin_unlock_irq(&device->pending_bitmap_work.q_lock);
 	dec_ap_bio(device, WRITE);  /* may move to actual work queue */
-	WDRBD_INFO("drbd_queue_bitmap_io pending_bitmap_work.n:%d, ap_bio_cnt:%d\n",device->pending_bitmap_work.n, device->ap_bio_cnt[1]);
 }
 
 /**
