@@ -2263,8 +2263,12 @@ void refresh_targetdev_list()
 }
 
 /**
-* @brief   minor값으로 조회하여 PVOLUME_EXTENSION 값을 돌려준다.
-*/
+ * @brief
+ *	minor값으로 조회하여 볼륨의 PVOLUME_EXTENSION 값을 돌려준다.
+ *	사용자에 의해 드라이브 레터가 변경될 가능성도 있기 때문에 extension 구조체값에서 구한 후
+ *	실제 IoVolumeDeviceToDosName() 으로 레터를 구하여 확인한다.
+ *	만약 없다면, 볼륨 정보 갱신 후 다시 구한다.
+ */
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 {
     PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
@@ -2284,6 +2288,7 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 		}
 	}
 
+	// 여기까지 일치하는 볼륨이 없다면 리스트 구조체 값 갱신
 	refresh_targetdev_list();
 
 	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
