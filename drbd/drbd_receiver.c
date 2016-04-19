@@ -7461,6 +7461,10 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 		put_ldev(device);
 	}
 
+#ifdef _WIN32_V9 // DW-808 Ahead / resync temporary patch (clear AHEAD_TO_SYNC_SOURCE flag)
+	clear_bit(AHEAD_TO_SYNC_SOURCE, &device->flags);
+#endif
+
 	/* tcp_close and release of sendpage pages can be deferred.  I don't
 	 * want to use SO_LINGER, because apparently it can be deferred for
 	 * more than 20 seconds (longest time I checked).
