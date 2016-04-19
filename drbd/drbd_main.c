@@ -3360,8 +3360,8 @@ void drbd_restart_request(struct drbd_request *req)
 	/* Drop the extra reference that would otherwise
 	 * have been dropped by complete_master_bio.
 	 * do_retry() needs to grab a new one. */
+	 
 	dec_ap_bio(req->device, bio_data_dir(req->master_bio));
-
 	queue_work(retry.wq, &retry.worker);
 }
 

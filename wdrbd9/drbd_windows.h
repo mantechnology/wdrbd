@@ -246,6 +246,7 @@ enum rq_flag_bits {
 #endif
 #define LONG_MAX				((long)(~0UL>>1)) 
 #define MAX_SCHEDULE_TIMEOUT	LONG_MAX	
+#define SENDER_SCHEDULE_TIMEOUT	5 * HZ
 #define _RET_IP_				(unsigned long)(0)
 #define HZ					    1000
 

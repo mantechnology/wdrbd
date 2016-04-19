@@ -3162,7 +3162,7 @@ static inline void dec_ap_bio(struct drbd_device *device, int rw)
 	if (ap_bio == 0 && rw == WRITE && !list_empty(&device->pending_bitmap_work.q))
 		drbd_queue_pending_bitmap_work(device);
 
-	if (ap_bio == 0)
+	if (ap_bio == 0) 
 		wake_up(&device->misc_wait);
 }
 

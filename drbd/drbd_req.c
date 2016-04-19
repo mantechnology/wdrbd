@@ -1644,7 +1644,15 @@ static int drbd_process_write_request(struct drbd_request *req)
 			}
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
 		} else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size))
+		{		
 			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+#ifdef _WIN32_V9 // DW-745
+			if(peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+			{				
+				wake_up(&peer_device->connection->sender_work.q_wait);
+			}
+#endif
+		}
 	}
 
 	return count;
@@ -2285,7 +2293,6 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 #endif
 
 	start_jif = jiffies;
-
 	inc_ap_bio(device, bio_data_dir(bio));
 
 #ifdef _WIN32_V9
