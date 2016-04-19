@@ -1460,8 +1460,10 @@ int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
 #ifdef _WIN32_V9
-    if (timer_pending(timer) && timer->expires == expires)
-    	return 1;
+
+	// DW-519 timer logic temporary patch. required fix DW-824. 
+    //if (timer_pending(timer) && timer->expires == expires)
+    //	return 1;
 
     return __mod_timer(timer, expires, false);
 #else
