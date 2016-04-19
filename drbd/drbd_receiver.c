@@ -7353,6 +7353,17 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
+
+		if( (resource->role[NOW] == R_PRIMARY) 
+			&& (peer_device->disk_state[NEW] == D_OUTDATED) 
+			&& (peer_device->last_repl_state == L_BEHIND) ) {
+			
+			test_and_clear_bit(NEW_CUR_UUID, &device->flags);
+			mutex_lock(&resource->conf_update);
+			drbd_uuid_new_current(device, false);
+			mutex_unlock(&resource->conf_update);
+		}
+		
 		drbd_disconnected(peer_device);
 		kref_put(&device->kref, drbd_destroy_device);
 		rcu_read_lock();
