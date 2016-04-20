@@ -1801,6 +1801,7 @@ static bool may_do_writes(struct drbd_device *device)
 	return false;
 }
 #ifndef blk_queue_plugged
+//#ifdef COMPAT_HAVE_BLK_CHECK_PLUGGED //skip 597b214 commit
 
 #ifdef _WIN32_V9_PLUG
 struct drbd_plug_cb {
