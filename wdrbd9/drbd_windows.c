@@ -2238,7 +2238,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 			pvext->VolIndex = pvext->Letter - 'C';
 			pvext->dev = create_drbd_block_device(pvext);
 		}
-		else {
+		else {	// clear and init
 			pvext->VolIndex = 0;
 			drbdFreeDev(pvext);
 		}
@@ -2276,6 +2276,7 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 
     MVOL_LOCK();
 
+	// to find the volume_extension pointer with minor
 	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
 	
 	if (pvext) {
@@ -2291,6 +2292,7 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 	// 여기까지 일치하는 볼륨이 없다면 리스트 구조체 값 갱신
 	refresh_targetdev_list();
 
+	// to find the volume_extension pointer with minor again
 	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
 
 	MVOL_UNLOCK();
@@ -2484,7 +2486,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *
 	UNREFERENCED_PARAMETER(dummy1);
 	UNREFERENCED_PARAMETER(dummy2);
 	
-	PVOLUME_EXTENSION pvext = get_targetdev_by_minor((*path & ~0x20) - 'C');	// toupper
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(toupper(*path) - 'C');
 
 	return (pvext) ? pvext->dev : NULL;
 #else
