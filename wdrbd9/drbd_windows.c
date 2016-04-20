@@ -2220,20 +2220,22 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
-    PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
+	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
 
-    if (pmuid)
-    {
-        pvext->Letter = _query_mounted_devices(pmuid);
+	if (pmuid) {
+		pvext->Letter = _query_mounted_devices(pmuid);
 
-        if (pvext->Letter)
-        {
-            pvext->VolIndex = pvext->Letter - 'C';
-            pvext->dev = create_drbd_block_device(pvext);
-        }
+		if (pvext->Letter) {
+			pvext->VolIndex = pvext->Letter - 'C';
+			pvext->dev = create_drbd_block_device(pvext);
+		}
+		else {	// clear and init
+			pvext->VolIndex = 0;
+			drbdFreeDev(pvext);
+		}
 
-        ExFreePool(pmuid);
-    }
+		ExFreePool(pmuid);
+	}
 }
 
 /**
@@ -2252,35 +2254,45 @@ void refresh_targetdev_list()
 }
 
 /**
-* @brief   minor값으로 조회하여 PVOLUME_EXTENSION 값을 돌려준다.
-*/
+ * @brief
+ *	minor값으로 조회하여 볼륨의 PVOLUME_EXTENSION 값을 돌려준다.
+ *	사용자에 의해 드라이브 레터가 변경될 가능성도 있기 때문에 extension 구조체값에서 구한 후
+ *	실제 IoVolumeDeviceToDosName() 으로 레터를 구하여 확인한다.
+ *	만약 없다면, 볼륨 정보 갱신 후 다시 구한다.
+ */
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 {
     PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
-    PVOLUME_EXTENSION   pvext = prext->Head;
+    PVOLUME_EXTENSION   pvext;
 
     MVOL_LOCK();
-    while (pvext)
-    {
-        if (!pvext->VolIndex && !pvext->Letter)
-        {
-            query_targetdev(pvext);
-        }
 
-        if (pvext->VolIndex == minor)
-        {
-            MVOL_UNLOCK();
-//            WDRBD_TRACE("minor(%d) letter(%c:) name(%ws)\n", minor, pvext->Letter, pvext->PhysicalDeviceName);
-            return pvext;
-        }
+	// to find the volume_extension pointer with minor
+	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
+	
+	if (pvext) {
+		UNICODE_STRING dos_name;
+		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
+		if (pvext->VolIndex == (*(dos_name.Buffer) - 'C')) {
+			MVOL_UNLOCK();
+			ExFreePool(dos_name.Buffer);
+			return pvext;
+		}
+	}
 
-        pvext = pvext->Next;
-    }
-    MVOL_UNLOCK();
+	// 여기까지 일치하는 볼륨이 없다면 리스트 구조체 값 갱신
+	refresh_targetdev_list();
 
-    WDRBD_ERROR("Failed to find volume for minor(%d)\n", minor);
+	// to find the volume_extension pointer with minor again
+	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
 
-    return NULL;
+	MVOL_UNLOCK();
+
+	if (!pvext) {
+		WDRBD_ERROR("Failed to find volume for minor(%d)\n", minor);
+	}
+
+    return pvext;
 }
 
 /**
@@ -2458,13 +2470,18 @@ cleanup:
 
     return ret;
 }
+
 struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *dummy2)
 {
-#ifndef _WIN32
-	return open_bdev_exclusive(path, mode, holder);
+#ifdef _WIN32
+	UNREFERENCED_PARAMETER(dummy1);
+	UNREFERENCED_PARAMETER(dummy2);
+	
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(toupper(*path) - 'C');
+
+	return (pvext) ? pvext->dev : NULL;
 #else
-	PVOLUME_EXTENSION VolumeExtension = get_targetdev_by_minor(toupper(*path) - 'C'); // only one byte used.
-	return (VolumeExtension == NULL) ? NULL : VolumeExtension->dev;
+	return open_bdev_exclusive(path, mode, holder);
 #endif
 }
 

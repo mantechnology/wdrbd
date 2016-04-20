@@ -987,19 +987,11 @@ VOID drbdCreateDev()
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {
-#ifdef _WIN32_V9
-    if (VolumeExtension == NULL || VolumeExtension->dev == NULL)
-#else
-    if (VolumeExtension->dev == NULL)
-#endif
-	{
-		WDRBD_WARN("(%c:)'s PVOLUME_EXTENSION->dev already freed\n",
-			VolumeExtension->Letter);
+    if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
 		return;
 	}
 
-    kfree(VolumeExtension->dev->bd_disk->queue);   // kmpak. memory leak
+    kfree(VolumeExtension->dev->bd_disk->queue);
 	kfree(VolumeExtension->dev->bd_disk);
-	kfree(VolumeExtension->dev);
-	VolumeExtension->dev = NULL;
+	kfree2(VolumeExtension->dev);
 }
