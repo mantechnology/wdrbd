@@ -1646,12 +1646,6 @@ static int drbd_process_write_request(struct drbd_request *req)
 		} else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size))
 		{		
 			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
-#ifdef _WIN32_V9 // DW-745
-			if(peer_device->repl_state[NOW] == L_WF_BITMAP_S)
-			{				
-				wake_up(&peer_device->connection->sender_work.q_wait);
-			}
-#endif
 		}
 	}
 
@@ -1953,8 +1947,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		}
 		if (!drbd_process_write_request(req))
 			no_remote = true;
-		else
-			wake_all_senders(resource);
+		wake_all_senders(resource);
 	} else {
 		if (peer_device) {
 			_req_mod(req, TO_BE_SENT, peer_device);
