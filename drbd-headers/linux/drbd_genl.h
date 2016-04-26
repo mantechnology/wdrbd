@@ -140,6 +140,7 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__u32_field_def(7,	DRBD_GENLA_F_MANDATORY, twopc_retry_timeout, DRBD_TWOPC_RETRY_TIMEOUT_DEF)
 	__u32_field_def(8,	0 /* OPTIONAL */,	peer_ack_delay, DRBD_PEER_ACK_DELAY_DEF)
 	__u32_field_def(9,	0 /* OPTIONAL */,	auto_promote_timeout, DRBD_AUTO_PROMOTE_TIMEOUT_DEF)
+	__u32_field_def(10,    0 /* OPTIONAL */,    nr_requests, DRBD_NR_REQUESTS_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,

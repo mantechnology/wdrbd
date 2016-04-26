@@ -1511,6 +1511,7 @@ struct drbd_peer_device {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_peer_dev;
 	struct dentry *debugfs_peer_dev_resync_extents;
+	struct dentry *debugfs_peer_dev_proc_drbd;
 #endif
 	struct {/* sender todo per peer_device */
 		bool was_ahead;
@@ -2544,7 +2545,7 @@ extern void drbd_al_begin_io_commit(struct drbd_device *device);
 extern bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_al_begin_io(struct drbd_device *device, struct drbd_interval *i);
 extern int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i);
-extern void drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i);
+extern bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_rs_complete_io(struct drbd_peer_device *, sector_t);
 extern int drbd_rs_begin_io(struct drbd_peer_device *, sector_t);
 extern int drbd_try_rs_begin_io(struct drbd_peer_device *, sector_t, bool);
@@ -3149,6 +3150,7 @@ extern void drbd_queue_pending_bitmap_work(struct drbd_device *);
 /* rw = READ or WRITE (0 or 1); nothing else. */
 static inline void dec_ap_bio(struct drbd_device *device, int rw)
 {
+	unsigned int nr_requests = device->resource->res_opts.nr_requests;
 	int ap_bio = atomic_dec_return(&device->ap_bio_cnt[rw]);
 
 	D_ASSERT(device, ap_bio >= 0);
@@ -3162,7 +3164,7 @@ static inline void dec_ap_bio(struct drbd_device *device, int rw)
 	if (ap_bio == 0 && rw == WRITE && !list_empty(&device->pending_bitmap_work.q))
 		drbd_queue_pending_bitmap_work(device);
 
-	if (ap_bio == 0) 
+	if (ap_bio == 0 || ap_bio == nr_requests-1)
 		wake_up(&device->misc_wait);
 }
 
@@ -3199,9 +3201,11 @@ static inline bool may_inc_ap_bio(struct drbd_device *device)
 static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 {
 	bool rv = false;
+	unsigned int nr_requests;
 
 	spin_lock_irq(&device->resource->req_lock);
-	rv = may_inc_ap_bio(device);
+	nr_requests = device->resource->res_opts.nr_requests;
+	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
 	if (rv)
 		atomic_inc(&device->ap_bio_cnt[rw]);
 	spin_unlock_irq(&device->resource->req_lock);

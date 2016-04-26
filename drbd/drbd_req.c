@@ -236,6 +236,7 @@ void drbd_req_destroy(struct kref *kref)
 #endif
 	struct drbd_peer_device *peer_device;
 	unsigned int s, device_refs = 0;
+	bool was_last_ref = false;
 
  tail_recursion:
 	if (device_refs > 0 && device != req->device) {
@@ -338,7 +339,7 @@ void drbd_req_destroy(struct kref *kref)
 		 */
 		if (s & RQ_IN_ACT_LOG) {
 			if (get_ldev_if_state(device, D_DETACHING)) {
-				drbd_al_complete_io(device, &req->i);
+				was_last_ref = drbd_al_complete_io(device, &req->i);
 				put_ldev(device);
 			} else if (drbd_ratelimit()) {
 				drbd_warn(device, "Should have called drbd_al_complete_io(, %llu, %u), "
@@ -356,6 +357,7 @@ void drbd_req_destroy(struct kref *kref)
 
 		if (peer_ack_req) {
 			if (peer_ack_differs(req, peer_ack_req) ||
+				(was_last_ref && atomic_read(&device->ap_actlog_cnt)) ||
 			    peer_ack_window_full(req)) {
 				drbd_queue_peer_ack(resource, peer_ack_req);
 				peer_ack_req = NULL;
@@ -1751,16 +1753,12 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 	if (rw == WRITE && req->i.size) {
 		/* Unconditionally defer to worker,
 		 * if we still need to bumpt our data generation id */
-		if (test_bit(NEW_CUR_UUID, &device->flags)) {
-			drbd_queue_write(device, req);
-			return NULL;
-		}
+		if (test_bit(NEW_CUR_UUID, &device->flags))
+			goto queue_for_submitter_thread;
 
 		if (req->private_bio && !test_bit(AL_SUSPENDED, &device->flags)) {
-			if (!drbd_al_begin_io_fastpath(device, &req->i)) {
-				drbd_queue_write(device, req);
-				return NULL;
-			}
+			if (!drbd_al_begin_io_fastpath(device, &req->i))
+				goto queue_for_submitter_thread;
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
 			req->in_actlog_jif = jiffies;
 		}
@@ -1768,7 +1766,6 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 	return req;
 
  queue_for_submitter_thread:
-	atomic_inc(&device->ap_actlog_cnt);
 	drbd_queue_write(device, req);
 	return NULL;
 }
@@ -1798,6 +1795,7 @@ static bool may_do_writes(struct drbd_device *device)
 	return false;
 }
 #ifndef blk_queue_plugged
+//#ifdef COMPAT_HAVE_BLK_CHECK_PLUGGED //skip 597b214 commit
 
 #ifdef _WIN32_V9_PLUG
 struct drbd_plug_cb {

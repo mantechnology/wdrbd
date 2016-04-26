@@ -3024,6 +3024,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		put_ldev(device);
 		return -EIO;
 	}
+	if (pi->cmd == P_TRIM)
+		peer_req->flags |= EE_IS_TRIM;
+	else if (pi->cmd == P_WSAME)
+		peer_req->flags |= EE_WRITE_SAME;
 
 	peer_req->dagtag_sector = connection->last_dagtag_sector + (peer_req->i.size >> 9);
 	connection->last_dagtag_sector = peer_req->dagtag_sector;
@@ -8448,10 +8452,10 @@ found:
 
 			drbd_set_sync(device, peer_req->i.sector,
 				      peer_req->i.size, ~in_sync_b, -1);
+			drbd_al_complete_io(device, &peer_req->i);
 			put_ldev(device);
 		}
 		list_del(&peer_req->recv_order);
-		drbd_al_complete_io(device, &peer_req->i);
 		drbd_free_peer_req(peer_req);
 	}
 	return 0;
