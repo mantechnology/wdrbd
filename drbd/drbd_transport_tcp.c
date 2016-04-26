@@ -1349,6 +1349,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
 	NTSTATUS status;
+	SOCKADDR_IN ListenV4Addr = {0,};
+	SOCKADDR_IN6 ListenV6Addr = {0,};
 #else
 	int err, sndbuf_size, rcvbuf_size, addr_len;
 	struct sockaddr_storage my_addr;
@@ -1441,7 +1443,19 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 	what = "bind before listen";
 #ifdef _WIN32
-	status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
+	if(my_addr.ss_family == AF_INET ) {
+		ListenV4Addr.sin_family = AF_INET;
+		ListenV4Addr.sin_port = *((USHORT*)my_addr.__data);
+		ListenV4Addr.sin_addr.s_addr = INADDR_ANY;
+	} else {
+		//AF_INET6
+		ListenV6Addr.sin6_family = AF_INET6;
+		ListenV6Addr.sin6_port = *((USHORT*)my_addr.__data); 
+		//ListenV6Addr.sin6_addr = IN6ADDR_ANY_INIT;
+	}
+
+	status = Bind(s_listen->sk, (my_addr.ss_family == AF_INET) ? (PSOCKADDR)&ListenV4Addr : (PSOCKADDR)&ListenV6Addr);
+	
 	if (!NT_SUCCESS(status)) {
     	if(my_addr.ss_family == AF_INET) {
 			WDRBD_ERROR("AF_INET Failed to socket Bind(). err(0x%x) %02X.%02X.%02X.%02X:0x%X%X\n", status, (UCHAR)my_addr.__data[2], (UCHAR)my_addr.__data[3], (UCHAR)my_addr.__data[4], (UCHAR)my_addr.__data[5],(UCHAR)my_addr.__data[0],(UCHAR)my_addr.__data[1]);
@@ -1452,10 +1466,11 @@ static int dtt_create_listener(struct drbd_transport *transport,
 																		(UCHAR)my_addr.__data[14],(UCHAR)my_addr.__data[15],(UCHAR)my_addr.__data[16],(UCHAR)my_addr.__data[17],
 																		(UCHAR)my_addr.__data[0], (UCHAR)my_addr.__data[1]);
     	}
-		LARGE_INTEGER	Interval;
-		Interval.QuadPart = (-1 * 100 * 10000);   // 0.1 sec
-		KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-		err = -EADDRINUSE;//DW-835 fix standalone issue after reboot. (retry to connect)
+		//LARGE_INTEGER	Interval;
+		//Interval.QuadPart = (-1 * 100 * 10000);   // 0.1 sec
+		//KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+		//err = -EADDRINUSE;//DW-835 fix standalone issue after reboot. (retry to connect)
+		err = -1;
         goto out;
     } else {
         status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
