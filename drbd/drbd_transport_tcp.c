@@ -1443,17 +1443,21 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	what = "bind before listen";
 #ifdef _WIN32
 	status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
-	if (!NT_SUCCESS(status))
-    {
-        WDRBD_ERROR("Failed to socket Bind(). err(0x%x)\n", status);
+	if (!NT_SUCCESS(status)) {
+    	if(my_addr.ss_family == AF_INET) {
+			WDRBD_ERROR("AF_INET Failed to socket Bind(). err(0x%x) %02X.%02X.%02X.%02X:0x%X%X\n", status, (UCHAR)my_addr.__data[2], (UCHAR)my_addr.__data[3], (UCHAR)my_addr.__data[4], (UCHAR)my_addr.__data[5],(UCHAR)my_addr.__data[0],(UCHAR)my_addr.__data[1]);
+    	} else {
+			WDRBD_ERROR("AF_INET6 Failed to socket Bind(). err(0x%x) [%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X]:0x%X%X\n", status, (UCHAR)my_addr.__data[2],(UCHAR)my_addr.__data[3], (UCHAR)my_addr.__data[4],(UCHAR)my_addr.__data[5],
+																		(UCHAR)my_addr.__data[6],(UCHAR)my_addr.__data[7], (UCHAR)my_addr.__data[8],(UCHAR)my_addr.__data[9],
+																		(UCHAR)my_addr.__data[10],(UCHAR)my_addr.__data[11], (UCHAR)my_addr.__data[12],(UCHAR)my_addr.__data[13],
+																		(UCHAR)my_addr.__data[14],(UCHAR)my_addr.__data[15],(UCHAR)my_addr.__data[16],(UCHAR)my_addr.__data[17],
+																		(UCHAR)my_addr.__data[0], (UCHAR)my_addr.__data[1]);
+    	}
         err = status;
         goto out;
-    }
-    else
-    {
+    } else {
         status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
-    	if (!NT_SUCCESS(status))
-        {
+    	if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
     		err = status;
             goto out;
