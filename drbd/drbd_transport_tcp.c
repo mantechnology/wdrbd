@@ -1427,6 +1427,14 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 #ifdef _WIN32
     s_listen->sk_linux_attr->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
+	//DW-835 fix standalone issue after reboot
+	LONG InputBuffer = 1;
+    status = ControlSocket(s_listen->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("ControlSocket: s_listen socket SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+        err = -1;
+        goto out;
+    }
 #else
 	s_listen->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 #endif
