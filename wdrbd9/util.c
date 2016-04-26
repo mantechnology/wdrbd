@@ -83,7 +83,6 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
     if (!pvext)
     {
-        WDRBD_WARN("get_targetdev_by_minor Failed.\n");
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -174,7 +173,6 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
     if (!pvext)
     {
-        WDRBD_WARN("get_targetdev_by_minor Failed\n");
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -254,7 +252,6 @@ NTSTATUS FsctlUnlockVolume(unsigned int minor)
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
     if (!pvext)
     {
-        WDRBD_WARN("get_targetdev_by_minor Failed\n");
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -296,7 +293,6 @@ NTSTATUS FsctlFlushVolume(unsigned int minor)
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
     if (!pvext)
     {
-        WDRBD_WARN("get_targetdev_by_minor Failed\n");
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -356,7 +352,6 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
     if (!pvext)
     {
-        WDRBD_WARN("get_targetdev_by_minor Failed\n");
         return STATUS_UNSUCCESSFUL;
     }
 
