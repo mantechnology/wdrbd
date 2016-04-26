@@ -1427,7 +1427,6 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 #ifdef _WIN32
     s_listen->sk_linux_attr->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
-	//DW-835 fix standalone issue after reboot
 	LONG InputBuffer = 1;
     status = ControlSocket(s_listen->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
@@ -1453,7 +1452,10 @@ static int dtt_create_listener(struct drbd_transport *transport,
 																		(UCHAR)my_addr.__data[14],(UCHAR)my_addr.__data[15],(UCHAR)my_addr.__data[16],(UCHAR)my_addr.__data[17],
 																		(UCHAR)my_addr.__data[0], (UCHAR)my_addr.__data[1]);
     	}
-        err = status;
+		LARGE_INTEGER	Interval;
+		Interval.QuadPart = (-1 * 100 * 10000);   // 0.1 sec
+		KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+		err = EADDRINUSE;//DW-835 fix standalone issue after reboot. (retry to connect)
         goto out;
     } else {
         status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
