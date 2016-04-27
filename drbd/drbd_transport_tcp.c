@@ -541,7 +541,8 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	struct socket *socket;
 #ifdef _WIN32_V9
 	struct sockaddr_storage_win my_addr, peer_addr;
-	SOCKADDR_IN	LocalAddress = { 0 };
+	SOCKADDR_IN		LocalAddressV4 = { 0, };
+	SOCKADDR_IN6	LocalAddressV6 = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
@@ -638,7 +639,17 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	what = "bind before connect";
 #ifdef _WIN32
 #ifdef _WIN32_V9_IPV6
-	status = Bind(socket->sk, (PSOCKADDR)&my_addr);
+	if(my_addr.ss_family == AF_INET ) {
+		LocalAddressV4.sin_family = AF_INET;
+		LocalAddressV4.sin_addr.s_addr = INADDR_ANY;
+		LocalAddressV4.sin_port = HTONS(0);
+	} else {
+		//AF_INET6
+		LocalAddressV6.sin6_family = AF_INET6;
+		//LocalAddressV6.sin6_addr.s_addr = IN6ADDR_ANY_INIT;
+		LocalAddressV6.sin6_port = HTONS(0); 
+	}
+	status = Bind(socket->sk, (my_addr.ss_family == AF_INET) ? (PSOCKADDR)&LocalAddressV4 : (PSOCKADDR)&LocalAddressV6 );
 #else
 	LocalAddress.sin_family = AF_INET;
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
