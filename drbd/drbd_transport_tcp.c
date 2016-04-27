@@ -639,6 +639,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	what = "bind before connect";
 #ifdef _WIN32
 #ifdef _WIN32_V9_IPV6
+	// DW-835 Bind fail issue(fix with INADDR_ANY address parameter) 
 	if(my_addr.ss_family == AF_INET ) {
 		LocalAddressV4.sin_family = AF_INET;
 		LocalAddressV4.sin_addr.s_addr = INADDR_ANY;
@@ -1454,6 +1455,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 	what = "bind before listen";
 #ifdef _WIN32
+
+	// DW-835 Bind fail issue(fix with INADDR_ANY address parameter) 
 	if(my_addr.ss_family == AF_INET ) {
 		ListenV4Addr.sin_family = AF_INET;
 		ListenV4Addr.sin_port = *((USHORT*)my_addr.__data);
@@ -1477,20 +1480,10 @@ static int dtt_create_listener(struct drbd_transport *transport,
 																		(UCHAR)my_addr.__data[14],(UCHAR)my_addr.__data[15],(UCHAR)my_addr.__data[16],(UCHAR)my_addr.__data[17],
 																		(UCHAR)my_addr.__data[0], (UCHAR)my_addr.__data[1]);
     	}
-		//LARGE_INTEGER	Interval;
-		//Interval.QuadPart = (-1 * 100 * 10000);   // 0.1 sec
-		//KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-		//err = -EADDRINUSE;//DW-835 fix standalone issue after reboot. (retry to connect)
 		err = -1;
         goto out;
-    } else {
-        status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
-    	if (!NT_SUCCESS(status)) {
-            WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
-    		err = status;
-            goto out;
-    	}
     }
+
 #else
 	addr_len = addr->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6)
 		: sizeof(struct sockaddr_in);
@@ -1535,6 +1528,16 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	listener->listener.destroy = dtt_destroy_listener;
 
 	*ret_listener = &listener->listener;
+
+#ifdef _WIN32_V9 
+	// DW-845 fix crash issue(EventCallback is called when listener is not initialized, then reference to invalid Socketcontext at dtt_inspect_incoming.)
+	status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
+    	err = -1;
+        goto out;
+    }
+#endif		
 	return 0;
 out:
 	if (s_listen)
