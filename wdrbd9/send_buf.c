@@ -99,7 +99,8 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 	if ((ringbuf_size + len) > highwater) {
 
 		LeaveCriticalSection(&ring->cs);
-		while (!drbd_stream_send_timed_out(transport, stream)) {
+		// DW-764 remove debug print "kocount" when congestion is not occurred.
+		do {
 			int loop = 0;
 			for (loop = 0; loop < retry; loop++) {
 				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
@@ -138,8 +139,8 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 				}
 				LeaveCriticalSection(&ring->cs);
 			}
-		}
-		
+		} while (!drbd_stream_send_timed_out(transport, stream));
+		 		
 		return -EAGAIN;
 	}
 
