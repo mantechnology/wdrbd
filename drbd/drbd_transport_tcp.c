@@ -541,7 +541,8 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	struct socket *socket;
 #ifdef _WIN32_V9
 	struct sockaddr_storage_win my_addr, peer_addr;
-	SOCKADDR_IN	LocalAddress = { 0 };
+	SOCKADDR_IN		LocalAddressV4 = { 0, };
+	SOCKADDR_IN6	LocalAddressV6 = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
@@ -638,7 +639,18 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	what = "bind before connect";
 #ifdef _WIN32
 #ifdef _WIN32_V9_IPV6
-	status = Bind(socket->sk, (PSOCKADDR)&my_addr);
+	// DW-835 Bind fail issue(fix with INADDR_ANY address parameter) 
+	if(my_addr.ss_family == AF_INET ) {
+		LocalAddressV4.sin_family = AF_INET;
+		LocalAddressV4.sin_addr.s_addr = INADDR_ANY;
+		LocalAddressV4.sin_port = HTONS(0);
+	} else {
+		//AF_INET6
+		LocalAddressV6.sin6_family = AF_INET6;
+		//LocalAddressV6.sin6_addr.s_addr = IN6ADDR_ANY_INIT;
+		LocalAddressV6.sin6_port = HTONS(0); 
+	}
+	status = Bind(socket->sk, (my_addr.ss_family == AF_INET) ? (PSOCKADDR)&LocalAddressV4 : (PSOCKADDR)&LocalAddressV6 );
 #else
 	LocalAddress.sin_family = AF_INET;
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
@@ -1349,6 +1361,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	int err = 0, sndbuf_size, rcvbuf_size; //err 0으로 임시 초기화.
 	struct sockaddr_storage_win my_addr;
 	NTSTATUS status;
+	SOCKADDR_IN ListenV4Addr = {0,};
+	SOCKADDR_IN6 ListenV6Addr = {0,};
 #else
 	int err, sndbuf_size, rcvbuf_size, addr_len;
 	struct sockaddr_storage my_addr;
@@ -1427,6 +1441,13 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 #ifdef _WIN32
     s_listen->sk_linux_attr->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
+	LONG InputBuffer = 1;
+    status = ControlSocket(s_listen->sk, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("ControlSocket: s_listen socket SO_REUSEADDR: failed=0x%x\n", status); // EVENTLOG
+        err = -1;
+        goto out;
+    }
 #else
 	s_listen->sk->sk_reuse = SK_CAN_REUSE; /* SO_REUSEADDR */
 #endif
@@ -1434,23 +1455,35 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 	what = "bind before listen";
 #ifdef _WIN32
-	status = Bind(s_listen->sk, (PSOCKADDR)&my_addr);
-	if (!NT_SUCCESS(status))
-    {
-        WDRBD_ERROR("Failed to socket Bind(). err(0x%x)\n", status);
-        err = status;
+
+	// DW-835 Bind fail issue(fix with INADDR_ANY address parameter) 
+	if(my_addr.ss_family == AF_INET ) {
+		ListenV4Addr.sin_family = AF_INET;
+		ListenV4Addr.sin_port = *((USHORT*)my_addr.__data);
+		ListenV4Addr.sin_addr.s_addr = INADDR_ANY;
+	} else {
+		//AF_INET6
+		ListenV6Addr.sin6_family = AF_INET6;
+		ListenV6Addr.sin6_port = *((USHORT*)my_addr.__data); 
+		//ListenV6Addr.sin6_addr = IN6ADDR_ANY_INIT;
+	}
+
+	status = Bind(s_listen->sk, (my_addr.ss_family == AF_INET) ? (PSOCKADDR)&ListenV4Addr : (PSOCKADDR)&ListenV6Addr);
+	
+	if (!NT_SUCCESS(status)) {
+    	if(my_addr.ss_family == AF_INET) {
+			WDRBD_ERROR("AF_INET Failed to socket Bind(). err(0x%x) %02X.%02X.%02X.%02X:0x%X%X\n", status, (UCHAR)my_addr.__data[2], (UCHAR)my_addr.__data[3], (UCHAR)my_addr.__data[4], (UCHAR)my_addr.__data[5],(UCHAR)my_addr.__data[0],(UCHAR)my_addr.__data[1]);
+    	} else {
+			WDRBD_ERROR("AF_INET6 Failed to socket Bind(). err(0x%x) [%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X]:0x%X%X\n", status, (UCHAR)my_addr.__data[2],(UCHAR)my_addr.__data[3], (UCHAR)my_addr.__data[4],(UCHAR)my_addr.__data[5],
+																		(UCHAR)my_addr.__data[6],(UCHAR)my_addr.__data[7], (UCHAR)my_addr.__data[8],(UCHAR)my_addr.__data[9],
+																		(UCHAR)my_addr.__data[10],(UCHAR)my_addr.__data[11], (UCHAR)my_addr.__data[12],(UCHAR)my_addr.__data[13],
+																		(UCHAR)my_addr.__data[14],(UCHAR)my_addr.__data[15],(UCHAR)my_addr.__data[16],(UCHAR)my_addr.__data[17],
+																		(UCHAR)my_addr.__data[0], (UCHAR)my_addr.__data[1]);
+    	}
+		err = -1;
         goto out;
     }
-    else
-    {
-        status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
-    	if (!NT_SUCCESS(status))
-        {
-            WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
-    		err = status;
-            goto out;
-    	}
-    }
+
 #else
 	addr_len = addr->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6)
 		: sizeof(struct sockaddr_in);
@@ -1495,6 +1528,16 @@ static int dtt_create_listener(struct drbd_transport *transport,
 	listener->listener.destroy = dtt_destroy_listener;
 
 	*ret_listener = &listener->listener;
+
+#ifdef _WIN32_V9 
+	// DW-845 fix crash issue(EventCallback is called when listener is not initialized, then reference to invalid Socketcontext at dtt_inspect_incoming.)
+	status = SetEventCallbacks(s_listen->sk, WSK_EVENT_ACCEPT);
+    if (!NT_SUCCESS(status)) {
+        WDRBD_ERROR("Failed to set WSK_EVENT_ACCEPT. err(0x%x)\n", status);
+    	err = -1;
+        goto out;
+    }
+#endif		
 	return 0;
 out:
 	if (s_listen)
