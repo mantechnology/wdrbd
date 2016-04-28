@@ -2602,6 +2602,10 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	sector_t sector = peer_req->i.sector;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
+#ifdef _WIN32_V9		
+	int protocol = 0;
+	struct net_conf *nc = NULL;
+#endif
 
 	if (peer_req->flags & EE_IS_BARRIER) {
 		epoch = previous_epoch(peer_device->connection, peer_req->epoch);
@@ -2611,8 +2615,19 @@ static int e_end_block(struct drbd_work *w, int cancel)
 
 	if (peer_req->flags & EE_SEND_WRITE_ACK) {
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+
+#ifdef _WIN32_V9
+			rcu_read_lock();
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			protocol = nc->wire_protocol;
+			rcu_read_unlock();
+
+			pcmd = (((peer_device->repl_state[NOW] >= L_SYNC_SOURCE &&
+				peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A ) &&	// DW-830 sending wrong ack type causes OOS remaining.
+#else
 			pcmd = (peer_device->repl_state[NOW] >= L_SYNC_SOURCE &&
 				peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T &&
+#endif
 				peer_req->flags & EE_MAY_SET_IN_SYNC) ?
 				P_RS_WRITE_ACK : P_WRITE_ACK;
 			err = drbd_send_ack(peer_device, pcmd, peer_req);
