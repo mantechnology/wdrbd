@@ -2534,6 +2534,8 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	int digest_size = 0;
 #ifdef _WIN32_V9
 	int err = 0;
+	int protocol = 0;
+	struct net_conf *nc = NULL;
 #else
 	int err;
 #endif
@@ -2572,8 +2574,21 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	p->block_id = (unsigned long)req;
 #endif
 	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
+
+#ifdef _WIN32_V9
+	rcu_read_lock();
+	nc = rcu_dereference(peer_device->connection->transport.net_conf);
+	protocol = nc->wire_protocol;
+	rcu_read_unlock();
+#endif
+	
 	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
+#ifdef _WIN32_V9
+	// DW-830 In protocol A, we need to deal with already increased OOS no matter what the replication state is.
+	if ((peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A)
+#else
 	if (peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T)
+#endif
 		dp_flags |= DP_MAY_SET_IN_SYNC;
 	if (peer_device->connection->agreed_pro_version >= 100) {
 		if (s & RQ_EXP_RECEIVE_ACK)
