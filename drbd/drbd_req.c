@@ -1945,7 +1945,13 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		}
 		if (!drbd_process_write_request(req))
 			no_remote = true;
+#ifdef _WIN32_V9  //PATCHED_BY_MANTECH from lars.ellenberg@linbit.com 2016.05.03
 		wake_all_senders(resource);
+#else
+		else 
+			wake_all_senders(resource);
+#endif
+		
 	} else {
 		if (peer_device) {
 			_req_mod(req, TO_BE_SENT, peer_device);

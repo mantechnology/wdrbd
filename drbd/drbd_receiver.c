@@ -918,7 +918,7 @@ int connect_work(struct drbd_work *work, int cancel)
 		connection->connect_timer.expires = jiffies + HZ/20;
 		add_timer(&connection->connect_timer);
 		return 0; /* Return early. Keep the reference on the connection! */
-#ifdef _WIN32_V9_DW_663_LINBIT_PATCH		
+#ifdef _WIN32_V9_DW_663_LINBIT_PATCH //PATCHED_BY_MANTECH from philipp.reisner@linbit.com 2016.05.03		
 	} else if (rv == SS_TWO_PRIMARIES) { 
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
 		drbd_alert(connection, "Split-Brain since more primaries than allowed; dropping connection!\n");

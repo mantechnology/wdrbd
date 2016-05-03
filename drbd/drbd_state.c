@@ -3900,7 +3900,7 @@ void __outdate_myself(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
-#ifdef _WIN32_V9_DW_663_LINBIT_PATCH
+#ifdef _WIN32_V9_DW_663_LINBIT_PATCH //PATCHED_BY_MANTECH from philipp.reisner@linbit.com 2016.05.03
 	if (resource->role[NOW] == R_PRIMARY)
 		return;
 #endif
