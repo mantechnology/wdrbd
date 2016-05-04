@@ -594,9 +594,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         if (device)
         {
             PMVOL_THREAD				pThreadInfo;
-
-            InterlockedIncrement64(&VolumeExtension->WriteCount.QuadPart);
-
 #ifdef DRBD_TRACE
             PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
             WDRBD_TRACE("\n(%s):Upper driver WRITE request start! vol:%c: sect:0x%llx sz:%d ................Queuing(%d)!\n",

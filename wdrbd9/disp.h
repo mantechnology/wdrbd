@@ -53,7 +53,7 @@ typedef struct _VOLUME_EXTENSION
 
 	IO_REMOVE_LOCK		RemoveLock; // RemoveLock for Block Device 
 	KMUTEX				CountMutex;
-	LARGE_INTEGER		WriteCount;
+
 	ULONG				IrpCount;
 
 	USHORT				PhysicalDeviceNameLength;

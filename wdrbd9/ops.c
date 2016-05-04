@@ -520,7 +520,6 @@ IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength )
 
 	pCountInfo = (PMVOL_COUNT_INFO) Irp->AssociatedIrp.SystemBuffer;
 	pCountInfo->IrpCount = VolumeExtension->IrpCount;
-	pCountInfo->WriteCount.QuadPart = VolumeExtension->WriteCount.QuadPart;
 
 	*ReturnLength = sizeof(MVOL_COUNT_INFO);
 	return STATUS_SUCCESS;

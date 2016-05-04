@@ -49,7 +49,6 @@ typedef struct _MVOL_VOLUME_INFO
 
 typedef struct _MVOL_COUNT_INFO
 {
-	LARGE_INTEGER			WriteCount;
 	ULONG				IrpCount;
 } MVOL_COUNT_INFO, *PMVOL_COUNT_INFO;
 
