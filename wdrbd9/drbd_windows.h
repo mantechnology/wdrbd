@@ -869,7 +869,7 @@ struct backing_dev_info {
 	unsigned long ra_pages; /* max readahead in PAGE_CACHE_SIZE units */ 
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;   /* Pointer to aux data for congested func */
-	PVOLUME_EXTENSION pDeviceExtension;
+	PVOLUME_EXTENSION pvext;
 };
 
 #ifdef _WIN32_V9
@@ -931,7 +931,7 @@ struct scatterlist {
 	unsigned int length;
 };
 
-#define MINORMASK				26
+#define MINORMASK	0xff
 
 #ifdef _WIN32_V9_PATCH_1 // JHKIM: BUG() 시 로직이 동작하면 원인분석이 어려워짐. panic으로 중단. 안정화 시점에 정리 또는 계속유지.
 #define BUG()   panic("PANIC!!!")

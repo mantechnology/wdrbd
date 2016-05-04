@@ -849,58 +849,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 */
 struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
-    struct block_device * dev;
+	struct block_device * dev;
 
-    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-    if (!dev)
-    {
-        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-        goto block_device_failed;
-    }
+	dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
+	if (!dev) {
+		WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
+		return NULL;
+	}
 
-    dev->bd_disk = alloc_disk(0);
-    if (!dev->bd_disk)
-    {
-        WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
-        goto gendisk_failed;
-    }
-#if 0
-    dev->d_size = get_targetdev_volsize(pvext);
-    if (0 == dev->d_size)
-    {
-        WDRBD_WARN("Failed to get (%c): volume size\n", pvext->Letter);
-        goto gendisk_failed;
-    }
-#endif
-    dev->bd_disk->disk_name[0] = pvext->Letter;
-    dev->bd_disk->disk_name[1] = ':';
-    dev->bd_disk->disk_name[2] = '\n';
-
-    dev->bd_disk->queue = blk_alloc_queue(0);
-    if (!dev->bd_disk->queue)
-    {
-        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
-        goto request_queue_failed;
-    }
-
-    dev->bd_disk->pDeviceExtension = pvext;
-
-    dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
-    dev->bd_disk->queue->logical_block_size = 512;
-    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
-
-    return dev;
-
-request_queue_failed:
-    kfree(dev->bd_disk->queue);
-
-gendisk_failed:
-    kfree(dev->bd_disk);
-
-block_device_failed:
-    kfree(dev);
-
-    return NULL;
+	return dev;
 }
 
 // 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_??? 정보로 사용.
@@ -973,7 +930,7 @@ VOID drbdCreateDev()
 		}
 		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
 
-		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pDeviceExtension;
+		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pvext = pDeviceExtension;
 		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
 		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
 		pDeviceExtension = pDeviceExtension->Next;

@@ -263,7 +263,6 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 #endif
 
 	adm_ctx->reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-
 	if (!adm_ctx->reply_skb) {
 		err = -ENOMEM;
 		goto fail;
@@ -273,7 +272,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 		info, &drbd_genl_family, 0, cmd);
 #else
 	adm_ctx->reply_dh = genlmsg_put_reply(adm_ctx->reply_skb,
-		info, &drbd_genl_family, 0, cmd);
+					info, &drbd_genl_family, 0, cmd);
 #endif
 	
 	/* put of a few bytes into a fresh skb of >= 4k will always succeed.
@@ -415,7 +414,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 		goto finish;
 	}
 	if (adm_ctx->device && adm_ctx->peer_device &&
-		adm_ctx->resource && adm_ctx->resource->name &&
+	    adm_ctx->resource && adm_ctx->resource->name &&
 	    adm_ctx->peer_device->device != adm_ctx->device) {
 		drbd_msg_put_info(adm_ctx->reply_skb, "peer_device->device != device");
 		pr_warning("request: minor=%u, resource=%s, volume=%u, peer_node=%u; device != peer_device->device\n",
@@ -2346,11 +2345,11 @@ success:
     //if (retcode != NO_ERROR)	
 	//	synchronize_rcu();
 #else
-	if (retcode != NO_ERROR)	
+	if (retcode != NO_ERROR)
 		synchronize_rcu();
 #endif
 	put_ldev(device);
-out:
+ out:
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
@@ -2419,7 +2418,11 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 
 	bdev = blkdev_get_by_path(bdev_path,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
+#ifdef _WIN32
+	if (IS_ERR_OR_NULL(bdev)) {
+#else
 	if (IS_ERR(bdev)) {
+#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
 		return bdev;
@@ -2452,7 +2455,9 @@ static int open_backing_devices(struct drbd_device *device,
 	if (IS_ERR(bdev))
 		return ERR_OPEN_DISK;
 	nbc->backing_bdev = bdev;
-
+#ifdef _WIN32
+	device->this_bdev = bdev;
+#endif
 	/*
 	 * meta_dev_idx >= 0: external fixed size, possibly multiple
 	 * drbd sharing one meta device.  TODO in that case, paranoia
@@ -2568,53 +2573,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32_V9_PATCH_1 // V9 same!
-	struct block_device *bdev;
-	bdev = blkdev_get_by_path(new_disk_conf->backing_dev,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, device);
-#ifdef _WIN32
-    if (IS_ERR_OR_NULL(bdev)) {
-#else
-	if (IS_ERR(bdev)) {
-#endif
-		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->backing_dev,
-			PTR_ERR(bdev));
-		retcode = ERR_OPEN_DISK;
-		goto fail;
-	}
-	nbc->backing_bdev = bdev;
-
-#ifdef _WIN32 // [choi]V8 적용. mdev 부분만 바꿔서 적용
-    device->this_bdev = nbc->backing_bdev;
-#endif
-	/*
-	 * meta_dev_idx >= 0: external fixed size, possibly multiple
-	 * drbd sharing one meta device.  TODO in that case, paranoia
-	 * check that [md_bdev, meta_dev_idx] is not yet used by some
-	 * other drbd minor!  (if you use drbd.conf + drbdadm, that
-	 * should check it for you already; but if you don't, or
-	 * someone fooled it, we need to double check here)
-	 */
-	bdev = blkdev_get_by_path(new_disk_conf->meta_dev,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL,
-				  (new_disk_conf->meta_dev_idx < 0) ?
-				  (void *)device : (void *)drbd_m_holder);
-#ifdef _WIN32
-    if (IS_ERR_OR_NULL(bdev)) {
-#else
-	if (IS_ERR(bdev)) {
-#endif
-		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->meta_dev,
-			PTR_ERR(bdev));
-		retcode = ERR_OPEN_MD_DISK;
-		goto fail;
-	}
-	nbc->md_bdev = bdev;
-#else
 	retcode = open_backing_devices(device, new_disk_conf, nbc);
 	if (retcode != NO_ERROR)
 		goto fail;
-#endif
+
 	if ((nbc->backing_bdev == nbc->md_bdev) !=
 	    (new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_INTERNAL ||
 	     new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_FLEX_INT)) {
