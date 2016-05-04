@@ -2223,7 +2223,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
 
 	if (pmuid) {
-		pvext->Letter = _query_mounted_devices(pmuid);
+		pvext->Letter = _query_mounted_devices(pmuid, &pvext->GUID);
 
 		if (pvext->Letter) {
 			pvext->VolIndex = pvext->Letter - 'C';
@@ -2471,13 +2471,24 @@ cleanup:
     return ret;
 }
 
-struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *dummy2)
+struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
 {
 #ifdef _WIN32
-	UNREFERENCED_PARAMETER(dummy1);
-	UNREFERENCED_PARAMETER(dummy2);
-	
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(toupper(*path) - 'C');
+	UNREFERENCED_PARAMETER(mode);
+	UNREFERENCED_PARAMETER(holder);
+
+	PVOLUME_EXTENSION pvext = NULL;
+	if (1 == strlen(path)) {
+    	pvext = get_targetdev_by_minor(toupper(*path) - 'C');
+	}
+	else {
+		PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
+		for (pvext = prext->Head; pvext; pvext = pvext->Next) {
+			UNICODE_STRING dos_name;
+			NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
+			ExFreePool(dos_name.Buffer);
+		}
+	}
 
 	return (pvext) ? pvext->dev : NULL;
 #else

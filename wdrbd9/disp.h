@@ -52,15 +52,15 @@ typedef struct _VOLUME_EXTENSION
 	BOOLEAN				Active;
 
 	IO_REMOVE_LOCK		RemoveLock; // RemoveLock for Block Device 
-
-	USHORT				PhysicalDeviceNameLength;
-	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
 	KMUTEX				CountMutex;
 	LARGE_INTEGER		WriteCount;
 	ULONG				IrpCount;
 
+	USHORT				PhysicalDeviceNameLength;
+	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
 	ULONG				VolIndex;
 	CHAR				Letter;
+	UNICODE_STRING		GUID;
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	ULONG				Rr; // MULTI_WRITE_HOOKER_THREADS
 	MVOL_THREAD			WorkThreadInfo[5]; 
@@ -95,6 +95,6 @@ extern KMUTEX				mvolMutex;
 extern KMUTEX				eventlogMutex;
 
 NTSTATUS GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING pDriveLetter);
-extern char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid);
+extern char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid, PUNICODE_STRING name);
 extern int drbd_init(void);
 #endif MVF_DISP_H

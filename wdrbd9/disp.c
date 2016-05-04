@@ -1,5 +1,6 @@
 ﻿#include <wdm.h>
 #include <ntstrsafe.h>
+#include <ntddk.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	/// SEO:
 #include "disp.h"
@@ -32,9 +33,16 @@ _Dispatch_type_(IRP_MJ_WRITE) DRIVER_DISPATCH mvolWrite;
 _Dispatch_type_(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH mvolDeviceControl;
 _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
+static
+NTSTATUS _query_device_id_in_registry(
+	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
+	_Out_ char * letter,
+	_Out_ PUNICODE_STRING pguid);
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
 #pragma alloc_text(PAGE, _query_mounted_devices)
+#pragma alloc_text(PAGE, _query_device_id_in_registry)
 #endif
 
 NTSTATUS
@@ -128,6 +136,131 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 #endif
 }
 
+static
+NTSTATUS _query_device_id_in_registry(
+	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
+	_Out_ char * letter,
+	_Out_ PUNICODE_STRING pguid)
+{
+	OBJECT_ATTRIBUTES           attributes;
+	PKEY_FULL_INFORMATION       keyInfo = NULL;
+	PKEY_VALUE_FULL_INFORMATION valueInfo = NULL;
+	size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
+
+	UNICODE_STRING mm_reg_path;
+	*letter = '\0';
+
+	NTSTATUS status;
+	HANDLE hKey = NULL;
+	ULONG size;
+	int Count;
+
+	PAGED_CODE();
+
+	RtlUnicodeStringInit(&mm_reg_path, L"\\Registry\\Machine\\System\\MountedDevices");
+
+	InitializeObjectAttributes(&attributes,
+		&mm_reg_path,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL,
+		NULL);
+
+	status = ZwOpenKey(&hKey, KEY_READ, &attributes);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
+	if (status != STATUS_BUFFER_TOO_SMALL) {
+		ASSERT(!NT_SUCCESS(status));
+		goto cleanup;
+	}
+
+	keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, '00DW');
+	if (!keyInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	Count = keyInfo->Values;
+
+	valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, '10DW');
+	if (!valueInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	for (int i = 0; i < Count; ++i) {
+		RtlZeroMemory(valueInfo, valueInfoSize);
+
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		if (!NT_SUCCESS(status)) {
+			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
+				goto cleanup;
+			}
+		}
+
+		if (REG_BINARY == valueInfo->Type && pmuid->UniqueIdLength == valueInfo->DataLength) {
+			PWCHAR key = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
+			if (!key) {
+				goto cleanup;
+			}
+			RtlZeroMemory(key, valueInfo->NameLength + sizeof(WCHAR));
+			RtlCopyMemory(key, valueInfo->Name, valueInfo->NameLength);
+
+			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
+				if (wcsstr(key, L"\\DosDevices\\")) {
+					*letter = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+				}
+				else if (wcsstr(key, L"\\??\\Volume")) {
+					RtlInitUnicodeString(pguid, key);
+					key = NULL;
+				}
+			}
+
+			kfree(key);
+		}
+	}
+
+cleanup:
+	kfree(keyInfo);
+	kfree(valueInfo);
+
+	if (hKey) {
+		ZwClose(hKey);
+	}
+
+	return status;
+}
+
+
+
+static
+void _init_drbd_block_device(VOLUME_EXTENSION * pvext)
+{
+	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
+
+	if (pmuid) {
+		_query_device_id_in_registry(pmuid, &pvext->Letter, &pvext->GUID);
+
+		if (pvext->Letter) {
+			pvext->VolIndex = pvext->Letter - 'C';
+			pvext->dev = create_drbd_block_device(pvext);
+		}
+		else {	// clear and init
+			pvext->VolIndex = 0;
+			drbdFreeDev(pvext);
+		}
+
+		ExFreePool(pmuid);
+	}
+}
+
 NTSTATUS
 mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
@@ -204,6 +337,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     }
 
 	IoInitializeRemoveLock(&VolumeExtension->RemoveLock, '00FS', 0, 0);
+	KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
     status = GetDeviceName(PhysicalDeviceObject,
         VolumeExtension->PhysicalDeviceName, MAXDEVICENAME * sizeof(WCHAR)); // -> \Device\HarddiskVolumeXX
@@ -212,11 +346,10 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         mvolLogError(mvolRootDeviceObject, 101, MSG_ADD_DEVICE_ERROR, status);
         return status;
     }
-
     VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
-    KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
-    query_targetdev(VolumeExtension);  // letter, VolIndex(minor), block_device assign
+    //query_targetdev(VolumeExtension);  // letter, VolIndex(minor), block_device assign
+    _init_drbd_block_device(VolumeExtension);
 
     MVOL_LOCK();
     mvolAddDeviceList(VolumeExtension);
@@ -675,7 +808,7 @@ mvolDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 *   그 letter값을 return한다.
 *   참고 http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx
 */
-char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid)
+char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid, PUNICODE_STRING name)
 {
     OBJECT_ATTRIBUTES           attributes;
     PKEY_FULL_INFORMATION       keyInfo = NULL;
