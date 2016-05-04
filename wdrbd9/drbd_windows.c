@@ -1826,6 +1826,11 @@ int generic_make_request(struct bio *bio)
 	}
 	
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+
+	//
+	//	disk-io error point . (return fail) - disk error simluation type 1
+	//
+	
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
 	return 0;
