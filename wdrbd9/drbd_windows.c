@@ -39,6 +39,7 @@ WCHAR g_ver[64];
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
 
+extern SIMULATION_DISK_IO_ERROR SimulDiskIoError = {0,};
 
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
@@ -1828,9 +1829,13 @@ int generic_make_request(struct bio *bio)
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 
 	//
-	//	disk-io error point . (return fail) - disk error simluation type 1
+	//	disk-io error point . (return fail) - disk error simluation type 0
 	//
-	
+	if(SimulDiskIoError.bDiskErrorOn && SimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
+		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
+		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		return -EIO;
+	}
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
 
 	return 0;
