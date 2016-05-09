@@ -890,6 +890,9 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 
 	r = drbd_khelper(NULL, connection, "fence-peer");
 
+#ifdef _WIN32
+	r = r << 8;
+#endif
 	begin_state_change(resource, &irq_flags, CS_VERBOSE);
 	switch ((r>>8) & 0xff) {
 	case P_INCONSISTENT: /* peer is inconsistent */

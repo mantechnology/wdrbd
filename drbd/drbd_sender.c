@@ -2206,6 +2206,9 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			   L_WF_SYNC_UUID we are still unmodified. Before going to L_SYNC_TARGET
 			   we check that we might make the data inconsistent. */
 			r = drbd_khelper(device, connection, "before-resync-target");
+#ifdef _WIN32
+			r = r << 8;
+#endif
 			r = (r >> 8) & 0xff;
 			if (r > 0) {
 				drbd_info(device, "before-resync-target handler returned %d, "
@@ -2215,6 +2218,9 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			}
 		} else /* L_SYNC_SOURCE */ {
 			r = drbd_khelper(device, connection, "before-resync-source");
+#ifdef _WIN32
+			r = r << 8;
+#endif
 			r = (r >> 8) & 0xff;
 			if (r > 0) {
 				if (r == 3) {
