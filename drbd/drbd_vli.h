@@ -164,7 +164,7 @@ static inline int vli_decode_bits(u64 *out, const u64 in)
 	/* NOT REACHED, if VLI_LEVELS code table is defined properly */
 	BUG();
 #undef LEVEL
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	return 0;
 #endif
 }

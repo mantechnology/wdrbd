@@ -13,33 +13,27 @@
 #include "disp.h"
 
 #pragma warning (disable : 4100 4146 4221)
-//#define DRBD_TRACE				    // 복제흐름보기(기본), 성능 개선후 제거
-//#define DRBD_TRACE1				    // 복제흐름보기(상세), 성능 개선후 제거
+//#define DRBD_TRACE				    // trace replication flow(basic)
+//#define DRBD_TRACE1				    // trace replication flow(detail)
 
-#define _WIN32_SEND_BUFFING				// V9 포팅을 위해 임시 제거. // 송신버퍼링 사용. 최종 안정화 후 제거
-#define _WSK_IRP_REUSE					// IRP reuse 방식. (WSK IRP 할당 해제 반복 연산 제거) => WSK socket send 를 순차적(한번에 하나씩 보내는)으로 수행하는 구현에 적합.
-#define _WIN32_EVENTLOG			        // Windows Eventlog 포팅지점
+#define _WIN32_SEND_BUFFING				// Use Send Buffering
+#define _WSK_IRP_REUSE					// WSK IRP reuse.
+#define _WIN32_EVENTLOG			        // Windows Eventlog porting point
 
-#define _WIN32_TMP_DEBUG_MUTEX        // mutex에 이름을 부여 디버깅시 활용. 안정화 시점에 제거 및 소스 원복
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
-#define _WIN32_V9	//_WIN32_V9 정의 
-#define _WIN32_V9_IPV6
 
 
-#ifdef _WIN32_V9
-// JHKIM:너무 많아서 매트로 처리 
+#ifdef _WIN32
 #define minor_to_mdev minor_to_device
 #define drbd_conf drbd_device
 #endif
 
-#define _WIN32_V9_PATCH_1				// wdrbd-9.0.0.after-patch 1차 버전
 #define _WIN32_V9_DW_663_LINBIT_PATCH 
-//#define _WIN32_V9_DRBD_PLUG
 
 
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
-#define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// SEO: NETLINK에서 사용
+#define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// used in NETLINK
 
 //#define _WIN32_WPP
 #define _WIN32_LOGLINK			// NEW: socket link for eventlog between engine and drbdService 
@@ -53,7 +47,7 @@
 	WPP_DEFINE_BIT(TRCINFO))
 #endif
 
-/// SEO: 리눅스 코드 유지용
+/// for linux code
 #define inline					__inline
 #define __func__				__FUNCTION__
 #define __bitwise__
@@ -94,7 +88,7 @@
 
 #define __init                  NTAPI
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #define __exit                  NTAPI
 #endif
 
@@ -221,10 +215,10 @@ enum rq_flag_bits {
 #define EHOSTDOWN				29
 #define EHOSTUNREACH			30
 #define EBADR					31
-#define EADDRINUSE              32 //_WIN32_V9
+#define EADDRINUSE              32 
 #define	EOVERFLOW				75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
 #define	ESTALE					116	/* Stale NFS file handle */
-#define ECONNABORTED			130 /* Software caused connection abort */ // _WIN32_V9_PATCH_1
+#define ECONNABORTED			130 /* Software caused connection abort */ 
 
 #define SIGXCPU					100
 #define SIGHUP					101
@@ -448,7 +442,7 @@ struct mutex {
 #endif
 };
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 struct semaphore{
     KSEMAPHORE sem;
 };
@@ -480,7 +474,7 @@ struct sockaddr_storage_win {
 }; 
 
 struct sock {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	LONG_PTR sk_state_change;
 #else
 	int sk_state_change;
@@ -515,7 +509,7 @@ struct socket {
 
 #define WQNAME_LEN	16	
 struct workqueue_struct {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     LIST_ENTRY list_head;
     KSPIN_LOCK list_lock;
 #endif
@@ -526,7 +520,7 @@ struct workqueue_struct {
 	void (*func)();
 	char name[WQNAME_LEN];
 };
-#ifdef _WIN32_V9
+#ifdef _WIN32
 struct timer_list {
     KTIMER ktimer;
     KDPC dpc;
@@ -543,7 +537,7 @@ extern void add_timer(struct timer_list *t);
 extern int del_timer_sync(struct timer_list *t);
 extern void del_timer(struct timer_list *t);
 extern int mod_timer(struct timer_list *t, ULONG_PTR expires);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires);
 
 struct lock_class_key { char __one_byte; };
@@ -589,24 +583,22 @@ struct gendisk
 {
 	char disk_name[DISK_NAME_LEN];  /* name of major driver */
 	struct request_queue *queue;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     const struct block_device_operations *fops;
     void *private_data;
 #endif
 	PVOLUME_EXTENSION pDeviceExtension;
-#ifdef _WIN32_V9_PATCH_1
+#ifdef _WIN32
 	void * part0; // _WIN32_V9_PATCH_1_CHECK
 #endif
 };
 
 struct block_device {
-#ifndef _WIN32 // drbd_create_device 에서 이미 V8 형식으로 구현이 되었다. 우선 V9에서 추가된 bd_contains 필드는 사용하지 않는다.
-#ifdef _WIN32_V9 
-	// 만약 block_device 가 디스크 파티션을 기술하는 장치이면, bd_contains 는 전체 disk 와 연관된 block_device descriptor 를 가리키고,
-	// 만약 block_device 가 전체 디스크를 기술하는 장치이면, 자기 자신을 가리킨다. from Understanding the Linux Kernel [sekim] 2015.08.24
-	// bd_contains 가 유효한 값을 가리키도록 연관된 초기화 작업 포팅 필요하며, 우선 헤더에 필드로 기술만 해 둔다.
+#ifndef _WIN32 
+	// if block_device is device for disk partition, bd_contains point to block_device descriptor about full disk,
+	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel [sekim] 2015.08.24
+	// just porting field.
 	struct block_device *	bd_contains;
-#endif
 #endif
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
@@ -620,7 +612,7 @@ typedef struct kmem_cache {
 typedef struct mempool_s {
 	struct kmem_cache *p_cache;
 	int page_alloc;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	NPAGED_LOOKASIDE_LIST pageLS;
 	NPAGED_LOOKASIDE_LIST page_addrLS;
 #endif
@@ -632,7 +624,7 @@ struct bio_vec {
 	unsigned int bv_offset;
 };
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 typedef void(BIO_END_IO_CALLBACK)(void*, void*, void*);
 //PIO_COMPLETION_ROUTINE bio_end_io_t;
 #else
@@ -728,10 +720,7 @@ extern void bio_endio(struct bio *bio, int error);
 #define bio_rw(bio)             ((bio)->bi_rw & (RW_MASK))
 
 #ifdef _WIN32
-// DRBD_DOC: 지원 불가
-// BIO_UPTODATE로 최신 갱신된 블럭인지 확인, windows는 항상 최신 블럭임. 
-//  - 수신된 블럭이 리눅스 스타일 같이 코아 메모리 페이지로 존재하는 것이 아니기 떄문에 최신인지 판단 방안이 없음
-
+// DRBD_DOC: not support, it is always newest updated block for windows.
 #define bio_flagged(bio, flag)  (1) 
 #else
 #define bio_flagged(bio, flag)  ((bio)->bi_flags & (1 << (flag))) 
@@ -742,7 +731,7 @@ extern void spin_lock_init(spinlock_t *lock);
 ///extern void spin_lock_irqsave(spinlock_t *lock, long flags);
 extern void spin_lock_irq(spinlock_t *lock);
 extern void spin_lock_bh(spinlock_t *lock);
-extern void spin_unlock_bh(spinlock_t *lock); // _WIN32_V9
+extern void spin_unlock_bh(spinlock_t *lock); 
 extern void spin_lock(spinlock_t *lock);
 extern void spin_unlock(spinlock_t *lock);
 extern void spin_unlock_irq(spinlock_t *lock);
@@ -764,12 +753,12 @@ extern void mutex_init(struct mutex *m, char *name);
 #else
 extern void mutex_init(struct mutex *m);
 #endif
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern void sema_init(struct semaphore *s, int limit);
 #endif
 
 extern NTSTATUS mutex_lock(struct mutex *m);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern NTSTATUS mutex_lock_interruptible(struct mutex *m);
 extern NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG msTimeout);
 #endif
@@ -777,7 +766,7 @@ extern int mutex_is_locked(struct mutex *m);
 extern void mutex_unlock(struct mutex *m);
 extern int mutex_trylock(struct mutex *m);
 
-#ifdef _WIN32_V9 
+#ifdef _WIN32
 extern int kref_put(struct kref *kref, void (*release)(struct kref *kref));
 #else
 extern void kref_put(struct kref *kref, void(*release)(struct kref *kref));
@@ -872,7 +861,7 @@ struct backing_dev_info {
 	PVOLUME_EXTENSION pDeviceExtension;
 };
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 struct queue_limits {
     unsigned int            max_discard_sectors;
     unsigned int            discard_granularity;    
@@ -885,7 +874,7 @@ struct request_queue {
 	spinlock_t *queue_lock; // _WIN32: unused.
 	unsigned short logical_block_size;
 	long max_hw_sectors;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     struct queue_limits limits; 
 #endif
 };
@@ -933,7 +922,7 @@ struct scatterlist {
 
 #define MINORMASK				26
 
-#ifdef _WIN32_V9_PATCH_1 // JHKIM: BUG() 시 로직이 동작하면 원인분석이 어려워짐. panic으로 중단. 안정화 시점에 정리 또는 계속유지.
+#ifdef _WIN32
 #define BUG()   panic("PANIC!!!")
 #else
 #define BUG()   WDRBD_FATAL("BUG: failure\n")
@@ -948,7 +937,7 @@ struct scatterlist {
 
 
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern int queue_work(struct workqueue_struct* queue, struct work_struct* work);
 #else
 extern void queue_work(struct workqueue_struct* queue, struct work_struct* work);
@@ -1062,7 +1051,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
         sig = __ret; \
     } while (0)
 
-#ifdef _WIN32_V9  // DW_552
+#ifdef _WIN32  // DW_552
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
@@ -1093,8 +1082,8 @@ extern void wake_up_process(struct drbd_thread *thi);
 extern void _wake_up(wait_queue_head_t *q, char *__func, int __line);
 
 extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
-#ifdef _WIN32_V9
-extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //linux 3.x 커널 구현 참고.+ 64비트 대응 추가 sekim
+#ifdef _WIN32
+extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //reference linux 3.x kernel. 64bit compatible sekim
 #endif
 extern ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
 extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
@@ -1217,7 +1206,7 @@ extern char *kstrdup(const char *s, int gfp);
 extern void panic(char *msg);
 ///
 
-/// SEO: 전역 변수
+/// SEO: global variables
 extern int proc_details;
 extern int g_bypass_level;
 extern int g_read_filter;
@@ -1242,12 +1231,12 @@ extern union drbd_state g_mask;
 extern union drbd_state g_val;
 ///
 
-extern void dumpHex(const void *b, const size_t s, size_t w);	/// SEO: 참조 없음
+extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
 
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
 extern NTSTATUS FsctlDismountVolume(unsigned int minor);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
@@ -1302,7 +1291,7 @@ extern int WriteEventLogEntryData(
 extern PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src);
 extern void ucsfree(IN PUNICODE_STRING str);
 
-/// SEO: RCU 관련 함수 묶음, 제거 대상
+/// SEO: relative to RCU function. remove later
 extern void list_add_rcu(struct list_head *new, struct list_head *head);
 extern void list_add_tail_rcu(struct list_head *new,   struct list_head *head);
 extern void list_del_rcu(struct list_head *entry);
@@ -1321,7 +1310,7 @@ extern EX_SPIN_LOCK g_rcuLock;
 
 #define rcu_read_lock() \
     unsigned char oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
-    /* [choi] lock/unlock 검토 완료 후 삭제할 예정 */ \
+    /* [choi] lock/unlock, remove later */ \
     WDRBD_TRACE_RCU("rcu_read_lock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 #define rcu_read_unlock() \
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
@@ -1410,7 +1399,7 @@ typedef struct _PTR_ENTRY
 } PTR_ENTRY, * PPTR_ENTRY;
 
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define 
 ////////////////////////////////////////////////////////////////////
@@ -1435,20 +1424,13 @@ typedef struct _PTR_ENTRY
 // Bitops.h
 #define BITS_PER_BYTE		8
 
-#ifndef _WIN32
-// Sched.h 
-// 스케줄 관련 선언 추가하였다가 Windows 에서 불필요하여 주석 처리.
-struct sched_param {
-	int sched_priority;
-};
-#endif
 /////////////////////////////////////////////////////////////////////
 // linux-2.6.24 define end
 ////////////////////////////////////////////////////////////////////
 
 #endif
 
-#ifdef _WIN32_V9 // CHECK!!
+#ifdef _WIN32
 #if 0
 60 /* Common initializer macros and functions */
 61
@@ -1479,10 +1461,10 @@ extern void down(struct semaphore *s);
 extern int down_trylock(struct semaphore *s);
 extern void up(struct semaphore *s);
 
-// down_up RW lock 을 spinlock 으로 포팅
+// down_up RW lock port with spinlock
 extern KSPIN_LOCK transport_classes_lock;
 
-extern void downup_rwlock_init(KSPIN_LOCK* lock); // 스핀락 초기화 함수 추가 => driverentry 에서 한번 초기화.
+extern void downup_rwlock_init(KSPIN_LOCK* lock); // init spinlock one time at driverentry 
 //extern void down_write(struct semaphore *sem);
 extern KIRQL down_write(KSPIN_LOCK* lock);
 //extern void down_read(struct semaphore *sem);
@@ -1492,9 +1474,6 @@ extern void up_write(KSPIN_LOCK* lock);
 //extern void up_read(struct semaphore *sem);
 extern void up_read(KSPIN_LOCK* lock);
 
-//uninitialized_va 매트로 처리!
-
-//extern struct mutex notification_mutex; // kmpak 불필요
 
 static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 	sector_t nr_sects, gfp_t gfp_mask, bool discard)
@@ -1509,12 +1488,12 @@ static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 
 int drbd_genl_multicast_events(void *mdev, const struct sib_info *sib);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern int scnprintf(char * buf, size_t size, const char *fmt, ...);
 
 void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry);
 
-// for_each_set_bit 구현 추가 find_first_bit + find_next_bit 조합 => linux 3.x 커널 구현 참고. sekim
+// for_each_set_bit = find_first_bit + find_next_bit => reference linux 3.x kernel. sekim
 #define for_each_set_bit(bit, addr, size) \
 	for ((bit) = find_first_bit((addr), (size));		\
 	     (bit) < (size);					\
@@ -1529,7 +1508,7 @@ static inline unsigned int queue_io_min(struct request_queue *q)
 
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 /*
  * blk_plug permits building a queue of related requests by holding the I/O
  * fragments for a short period. This allows merging of sequential requests

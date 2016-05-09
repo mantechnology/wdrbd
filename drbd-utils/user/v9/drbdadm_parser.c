@@ -1912,7 +1912,7 @@ static int pushd_to_current_config_file_unless_stdin(void)
 	char *last_slash, *tmp;
 
 	/* config_save was canonicalized before, unless it is STDIN */
-#ifdef _WIN32_V9
+#ifdef _WIN32
     tmp = strdupa(config_file);
     if (strncmp(tmp, "/", strlen("/")) == 0)
     {
@@ -2001,7 +2001,7 @@ void include_stmt(char *str)
 				include_file(f, strdup(glob_buf.gl_pathv[i]));
 				fclose(f);
 			} else {
-#ifdef _WIN32_V9
+#ifdef _WIN32
                 err("%s:%d: Failed to open include file 1 '%s'.\n",
                     config_file, line, yylval.txt);
 #else
@@ -2014,7 +2014,7 @@ void include_stmt(char *str)
 		globfree(&glob_buf);
 	} else if (r == GLOB_NOMATCH) {
 		if (!strchr(str, '?') && !strchr(str, '*') && !strchr(str, '[')) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
             err("%s:%d: Failed to open include file '%s'.\n",
                 config_file, line, yylval.txt);
 #else

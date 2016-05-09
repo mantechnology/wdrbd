@@ -50,7 +50,7 @@ int repl_state_colors[] = {
 	[L_SYNC_TARGET] = COLOR_BAD,
 	[L_VERIFY_S] = COLOR_NORMAL,
 	[L_VERIFY_T] = COLOR_NORMAL,
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	[L_PAUSED_SYNC_S] = COLOR_BAD,
 #else
 	[L_PAUSED_SYNC_S] = COLOR_NORMAL,

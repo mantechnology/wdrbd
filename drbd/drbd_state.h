@@ -65,7 +65,7 @@ extern union drbd_state drbd_get_device_state(struct drbd_device *, enum which_s
 extern union drbd_state drbd_get_peer_device_state(struct drbd_peer_device *, enum which_state);
 extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum which_state);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern __inline int stable_state_change(struct drbd_resource * resource, int change_state);
 #else
 #define stable_state_change(resource, change_state) ({				\
@@ -119,9 +119,5 @@ extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool);
 
 struct drbd_work;
 extern int abort_nested_twopc_work(struct drbd_work *, int);
-
-#ifdef _WIN32_V9
-int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (struct drbd_thread *), struct drbd_thread* thi);
-#endif
 
 #endif

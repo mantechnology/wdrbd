@@ -353,7 +353,7 @@ const struct version *drbd_utils_version(void)
 
 int version_code_kernel(void)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     const struct version *driver_version = drbd_driver_version(_STRICT);
 #else
 	const struct version *driver_version = drbd_driver_version(STRICT);

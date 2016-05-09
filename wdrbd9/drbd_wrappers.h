@@ -151,7 +151,7 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 }
 #endif // //_WIN32_V9_PATCH_1
 
-#ifdef _WIN32_V9_PATCH_1
+#ifdef _WIN32
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
 {
 	int retval = 512;
@@ -191,7 +191,7 @@ static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
 #ifndef COMPAT_HAVE_BDEV_DISCARD_ALIGNMENT
 static inline int bdev_discard_alignment(struct block_device *bdev)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	return 0;
 #else
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
@@ -384,7 +384,7 @@ static inline void drbd_plug_device(struct request_queue *q)
 }
 #endif
 
-#ifndef _WIN32_V9 // 헤더불일치로 일단 함수 바디를 windows.c로 이동.
+#ifndef _WIN32 
 static inline int drbd_backing_bdev_events(struct gendisk *disk)
 {
 #if defined(__disk_stat_inc)
@@ -462,7 +462,7 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 	/* "hmac(xxx)" is in alg_name we need that xxx. */
 	closing_bracket = strchr(alg_name, ')');
 	if (!closing_bracket) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
 #else
 		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
@@ -479,7 +479,7 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 	if (closing_bracket-alg_name < 6)
 		return ERR_PTR(-ENOENT);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
 #else
 	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
@@ -814,7 +814,7 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 }
 #endif
 
-#ifndef _WIN32_V9_PATCH_1
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_BOOL_TYPE 
 typedef _Bool                   bool;
 enum {
@@ -1394,7 +1394,7 @@ static inline void kref_sub(struct kref *kref, unsigned int count,
  * 254245d2 (v2.6.33-rc1).
  */
 #ifndef list_for_each_entry_continue_rcu
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #define list_for_each_entry_continue_rcu(type, pos, head, member)             \
 	for (pos = list_entry_rcu(pos->member.next, type, member); \
 	     &pos->member != (head);    \
@@ -1409,9 +1409,9 @@ static inline void kref_sub(struct kref *kref, unsigned int count,
 
 #ifndef COMPAT_HAVE_IS_ERR_OR_NULL
 #ifdef _WIN32
-#ifdef _WIN32_V9 // JHKIM: V8에서 windows.h 로 이동시킨 이유는 기억이 안남. 일단 V8 방식으로 처리!!!
+#ifdef _WIN32
 //#define	IS_ERR_OR_NULL(p) (!p)
-// windfows.h 로 이동
+// move to windfows.h 
 #else
 static __inline long IS_ERR_OR_NULL(const void *ptr)
 {
@@ -1434,7 +1434,7 @@ static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
 #endif
 
 #ifndef COMPAT_HAVE_KREF_GET_UNLESS_ZERO
-#ifdef _WIN32_V9_DEBUGFS // JHKIM: debugfs 에서만 사용. 일단 포팅보류
+#ifndef _WIN32
 static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
 	return atomic_add_unless(&kref->refcount, 1, 0);
@@ -1454,7 +1454,6 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr)
 #else
 
-// V8 의 기존 구현을 유지한다. 
 #ifndef _WIN32
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page, km)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr, km)
@@ -1468,7 +1467,7 @@ static __inline int kref_get_unless_zero(struct kref *kref)
 
 #endif
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 #if !defined(for_each_set_bit) && defined(for_each_bit)
 #define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
 #endif
@@ -1500,7 +1499,7 @@ static int random32_win()
 #endif
 static inline u32 prandom_u32(void)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     return random32_win();
 #else
 	return random32();
@@ -1575,7 +1574,7 @@ static inline void genl_unlock(void)  { }
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
-#ifdef _WIN32_V9
+#ifdef _WIN32
 # define queue_flag_set_unlocked(F, Q)				\
     do {							\
         if ((F) != -1)					\
@@ -1647,8 +1646,8 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 #define rcu_dereference_protected(p, c) (p)
 #endif
 
-#ifdef _WIN32_V9 
-// _WIN32_V9_DEBUGFS //JHKIM: debugfs용, 추후 보강
+#ifdef _WIN32 
+// _WIN32_V9_DEBUGFS 
 #else
 #ifndef COMPAT_HAVE_F_PATH_DENTRY
 #error "won't compile with this kernel version (f_path.dentry vs f_dentry)"
@@ -1662,7 +1661,7 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 #endif
 
 #ifndef list_first_or_null_rcu
-#ifndef _WIN32_V9
+#ifndef _WIN32
 #define list_first_or_null_rcu(ptr, type, member) \
 ({ \
 	struct list_head *__ptr = (ptr); \
@@ -1763,7 +1762,7 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 }
 #endif
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_IB_CQ_INIT_ATTR
 #include <rdma/ib_verbs.h>
 

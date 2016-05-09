@@ -57,7 +57,7 @@ static void count_objects(struct drbd_resource *resource,
 	*n_devices = 0;
 	*n_connections = 0;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 #else
 	idr_for_each_entry(&resource->devices, device, vnr)
@@ -131,7 +131,7 @@ struct drbd_state_change *remember_state_change(struct drbd_resource *resource, 
 
 	device_state_change = state_change->devices;
 	peer_device_state_change = state_change->peer_devices;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -293,7 +293,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 			return true;
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -337,7 +337,7 @@ static void ___begin_state_change(struct drbd_resource *resource)
 		connection->peer_role[NEW] = connection->peer_role[NOW];
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -363,8 +363,8 @@ static void ___begin_state_change(struct drbd_resource *resource)
 
 static void __begin_state_change(struct drbd_resource *resource)
 {
-#ifdef _WIN32_V9 
-	// _WIN32_V9_RCU //(4) [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+#ifdef _WIN32 
+	// _WIN32_V9_RCU //(4) [choi] required to refactoring because lock, unlock position is diffrent, maybe global scope lock is needed 
     WDRBD_TRACE_RCU("rcu_read_lock()\n");
 #else
 	rcu_read_lock();
@@ -398,7 +398,7 @@ static void __clear_remote_state_change(struct drbd_resource *resource) {
 	wake_up(&resource->twopc_wait);
 	queue_queued_twopc(resource);
 }
-#ifdef _WIN32_V9
+#ifdef _WIN32
 __inline
 int stable_state_change(struct drbd_resource * resource, int change_state)
 {
@@ -452,7 +452,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 		connection->peer_role[NOW] = connection->peer_role[NEW];
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -476,10 +476,10 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	}
 	smp_wmb();
 out:
-	// __begin_state_change 진입 시점에 락을 걸로 진입함.
-	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-#ifdef _WIN32_V9 
-	// _WIN32_V9_RCU //(5) [choi] 일단 더미처리.
+#ifdef _WIN32 
+	// __begin_state_change aquire lock at the beginning
+	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
+	// _WIN32_V9_RCU //(5) [choi] temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_unlock()\n");
 #else
 	rcu_read_unlock();
@@ -506,7 +506,7 @@ static void __state_change_unlock(struct drbd_resource *resource, unsigned long 
 	resource->state_change_flags = 0;
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
 	if (done && expect(resource, current != resource->worker.task))
-#ifdef _WIN32_V9 // V8 적용
+#ifdef _WIN32 
         while (wait_for_completion(done) == -DRBD_SIGKILL)
         {
             WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
@@ -559,7 +559,7 @@ static bool all_peer_devices_connected(struct drbd_connection *connection)
 	bool rv = true;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -609,10 +609,10 @@ void abort_state_change_locked(struct drbd_resource *resource)
 
 static void begin_remote_state_change(struct drbd_resource *resource, unsigned long *irq_flags)
 {
-	// __begin_state_change 진입 시점에 락을 걸로 진입함.
-	// unlock 이 다름 함수에서 진행됨으로  전역이 필요함. 포팅에 고민이 좀 될 듯.
-#ifdef _WIN32_V9 
-	// _WIN32_V9_RCU //(6) [choi] 일단 더미처리.
+#ifdef _WIN32
+	// __begin_state_change aquire lock at the beginning
+	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
+	// _WIN32_V9_RCU //(6) [choi] temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_unlock()");
 #else
 	rcu_read_unlock();
@@ -622,8 +622,10 @@ static void begin_remote_state_change(struct drbd_resource *resource, unsigned l
 
 static void __end_remote_state_change(struct drbd_resource *resource, enum chg_state_flags flags)
 {
-#ifdef _WIN32_V9 
-	// _WIN32_V9_RCU //(7) [choi] lock, unlock 하는 위치가 다르기 때문에 전역이 필요함. 일단 더미처리.
+#ifdef _WIN32 
+	// __begin_state_change aquire lock at the beginning
+	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
+	// _WIN32_V9_RCU //(7) [choi] temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_lock()");
 #else
 	rcu_read_lock();
@@ -710,7 +712,7 @@ enum drbd_disk_state conn_highest_disk(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -730,7 +732,7 @@ enum drbd_disk_state conn_lowest_disk(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -750,7 +752,7 @@ enum drbd_disk_state conn_highest_pdsk(struct drbd_connection *connection)
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
@@ -768,7 +770,7 @@ static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *conne
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -936,7 +938,7 @@ static void print_state_change(struct drbd_resource *resource, const char *prefi
 		}
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1066,7 +1068,7 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 			struct drbd_peer_device *peer_device;
 			int vnr;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
             idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 			idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -1080,7 +1082,7 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 		nc = rcu_dereference(connection->transport.net_conf);
 		two_primaries = nc ? nc->two_primaries : false;
 		if (peer_role[NEW] == R_PRIMARY && peer_role[OLD] == R_SECONDARY && !two_primaries) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
             idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 			idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1091,7 +1093,7 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 		}
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1300,7 +1302,7 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 		if (rv < SS_SUCCESS)
 			return rv;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -1310,9 +1312,9 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 			   resource */
 			if (connection->cstate[OLD] < C_CONNECTED &&
 			    peer_device->repl_state[NEW] >= L_ESTABLISHED)
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			{
-				// _WIN32_CHECK:// JHKIM: 3차 SS_NEED_CONNECTION 오류회피: 임시처리: SS_NEED_CONNECTION 무시! -> 효과있음! 추후 재확인!!!
+				// _WIN32_CHECK:// JHKIM: detour SS_NEED_CONNECTION error: temporary fix: ignore SS_NEED_CONNECTION -> worked! 
 				drbd_debug(connection, "Ignore SS_NEED_CONNECTION!!! cs=%d repl=%d - Check please!!!!\n",
 					connection->cstate[OLD], peer_device->repl_state[NEW]);
 			}
@@ -1322,7 +1324,7 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 		}
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1381,7 +1383,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			connected_primaries++;
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1389,7 +1391,7 @@ static void sanitize_state(struct drbd_resource *resource)
 		struct drbd_peer_device *peer_device;
 		enum drbd_disk_state *disk_state = device->disk_state;
 		bool lost_connection = false;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		int good_data_count[2] = { 0 };
 #else
 		int good_data_count[2] = { };
@@ -1690,7 +1692,7 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	struct after_state_change_work *work;
 	gfp_t gfp = GFP_ATOMIC;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     work = kmalloc(sizeof(*work), gfp, '83DW');
 #else
 	work = kmalloc(sizeof(*work), gfp);
@@ -1711,7 +1713,7 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 
 static void initialize_resync(struct drbd_peer_device *peer_device)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     ULONG_PTR tw = drbd_bm_total_weight(peer_device);
     ULONG_PTR now = jiffies;
 #else
@@ -1767,7 +1769,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 	print_state_change(resource, "");
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1797,7 +1799,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		resource->peer_ack_req = NULL;
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -1887,7 +1889,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (repl_state[OLD] == L_ESTABLISHED &&
 			    (repl_state[NEW] == L_VERIFY_S || repl_state[NEW] == L_VERIFY_T)) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
                 ULONG_PTR now = jiffies;
 #else
 				unsigned long now = jiffies;
@@ -2017,7 +2019,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 			struct drbd_peer_device *peer_device;
 			int vnr;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
             idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 			idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -2048,7 +2050,7 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 	}
 
 	if (lost_a_primary_peer) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
@@ -2085,7 +2087,7 @@ static void abw_start_sync(struct drbd_device *device,
 	case L_STARTING_SYNC_T:
 		/* Since the number of set bits changed and the other peer_devices are
 		   lready in L_PAUSED_SYNC_T state, we need to set rs_total here */
-#ifdef _WIN32_V9 // for rcu_read_lock
+#ifdef _WIN32 // for rcu_read_lock
 	{ 
 #endif
 		rcu_read_lock();
@@ -2098,7 +2100,7 @@ static void abw_start_sync(struct drbd_device *device,
 		else
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		break;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	}
 #endif
 	case L_STARTING_SYNC_S:
@@ -2243,13 +2245,13 @@ static void notify_state_change(struct drbd_state_change *state_change)
 	unsigned int n_device, n_connection, n_peer_device, n_peer_devices;
 	void (*last_func)(struct sk_buff *, unsigned int, void *,
 			  enum drbd_notification_type) = NULL;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     void * last_arg = NULL;
 #else
 	void *uninitialized_var(last_arg);
 #endif
 #define HAS_CHANGED(state) ((state)[OLD] != (state)[NEW])
-#ifdef _WIN32_V9 
+#ifdef _WIN32
 #define FINAL_STATE_CHANGE(type) \
 	{ if (last_func) \
 		last_func(NULL, 0, last_arg, type); \
@@ -2389,7 +2391,7 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 			struct drbd_peer_device *peer_device;
 			int vnr;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
             idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 			idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -2460,52 +2462,6 @@ static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_st
 	return false;
 }
 
-#if 0
-#ifdef 	_WIN32_V9
-static int w_cb_receiver_thread_work(struct drbd_work *w, int cancel)
-{
-	struct connect_work* pconnect_work = container_of(w, struct connect_work, w);
-	struct drbd_resource* resource = pconnect_work->resource;
-	LARGE_INTEGER		timeout;
-	NTSTATUS			status;
-
-	timeout.QuadPart = (-1 * 10000 * 5000);   // wait 5000 ms relative
-	
-	//WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject\n");
-	status = KeWaitForSingleObject(&resource->connect_work_done, Executive, KernelMode, FALSE, &timeout);
-	if (status == STATUS_TIMEOUT) {
-		WDRBD_INFO("w_cb_receiver_thread_work: KeWaitForSingleObject 5000ms timeout\n");
-		//KeSetEvent(&resource->connect_work_done, 0, FALSE);
-	}
-	else {
-		KeResetEvent(&resource->connect_work_done);
-	}
-	
-	pconnect_work->func(pconnect_work->receiver);
-	
-	kfree(pconnect_work);
-
-	return 0;
-}
-
-int drbd_queue_receiver_thread_work(struct drbd_resource* resource, int(*func) (struct drbd_thread *), struct drbd_thread* thi)
-{
-	struct connect_work* pconnect_work = kmalloc(sizeof(*pconnect_work), GFP_ATOMIC, 'F1DW');
-	if (pconnect_work) {
-		pconnect_work->w.cb = w_cb_receiver_thread_work;
-		pconnect_work->resource = resource;
-		pconnect_work->func = func;
-		pconnect_work->receiver = thi;
-		drbd_queue_work(&resource->work, &pconnect_work->w);
-		//WDRBD_INFO("drbd_queue_receiver_thread_work: drbd_queue_work\n");
-	}
-	else {
-		WDRBD_INFO("drbd_queue_receiver_thread_work: kmalloc fail. queing fail\n");
-	}
-	return 0;
-}
-#endif
-#endif
 /*
  * Perform after state change actions that may sleep.
  */
@@ -2522,7 +2478,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 	int n_device, n_connection;
 	bool still_connected = false;
 	bool try_become_up_to_date = false;
+#ifdef _WIN32
 	bool resync_finished = false;
+#else
+	bool resync_finished;
+#endif
+	
 
 	notify_state_change(state_change);
 
@@ -2531,7 +2492,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		struct drbd_device *device = device_state_change->device;
 		enum drbd_disk_state *disk_state = device_state_change->disk_state;
 		bool effective_disk_size_determined = false;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		bool one_peer_disk_up_to_date[2] = { 0 };
 #else
 		bool one_peer_disk_up_to_date[2] = { };
@@ -2967,14 +2928,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 		/* Upon network configuration, we need to start the receiver */
 		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED)
-#ifdef 	_WIN32_V9
-		{ // queueing drbd_thread_start sekim 2015.11.19
-			drbd_thread_start(&connection->receiver); 
-			//drbd_queue_receiver_thread_work(resource, drbd_thread_start, &connection->receiver); // DW-636 연결 순차실행 -> 원본으로 복구. sekim 2015.11.27
-		}
-#else
 			drbd_thread_start(&connection->receiver);
-#endif
 
 		if (susp_fen[NEW]) {
 			bool all_peer_disks_outdated = true;
@@ -3000,7 +2954,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				int vnr;
 
 				mutex_lock(&resource->conf_update);
-#ifdef _WIN32_V9
+#ifdef _WIN32
                 idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 				idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -3022,7 +2976,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				int vnr;
 
 				rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
                 idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 				idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -3126,7 +3080,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 		begin_remote_state_change(resource, irq_flags);
 		for(;;) {
 			long t = twopc_timeout(resource);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			wait_event_timeout(t, resource->twopc_wait,
 				   when_done_lock(resource, irq_flags), t);
 #else
@@ -3222,7 +3176,7 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 		if (!(test_bit(TWOPC_YES, &connection->flags) ||
 		      test_bit(TWOPC_NO, &connection->flags) ||
 		      test_bit(TWOPC_RETRY, &connection->flags))) {
-#ifdef _WIN32_V9_PATCH_1 
+#ifdef _WIN32 
 			//_WIN32_V9_PATCH_1_CHECK
 			static int x = 0; // globally!
 			if (!(x++ % 3000))
@@ -3416,7 +3370,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 	enum drbd_state_rv rv;
 	u64 reach_immediately;
 	int retries = 1;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     ULONG_PTR start_time;
 #else
 	unsigned long start_time;
@@ -3548,7 +3502,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 				    &request, reach_immediately);
 	have_peers = rv == SS_CW_SUCCESS;
 	if (have_peers) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
         long t;
         wait_event_timeout(t, resource->state_wait,
             cluster_wide_reply_ready(resource),
@@ -3687,7 +3641,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 
 	if (!twopc_reply.tid || !expect(resource, twopc_parent))
 		return;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     struct drbd_connection * connection = twopc_parent;
     drbd_debug(connection, "Nested state change %u result: %s\n",
         twopc_reply.tid, drbd_packet_name(cmd));
@@ -3779,7 +3733,7 @@ static void __change_role(struct change_role_context *role_context)
 		int vnr;
 
 		rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
@@ -3836,7 +3790,7 @@ enum drbd_state_rv change_role(struct drbd_resource *resource,
 			got_state_sem = true;
 			role_context.context.flags |= CS_ALREADY_SERIALIZED;
 		}
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 #else
 		idr_for_each_entry(&resource->devices, device, vnr)
@@ -3886,7 +3840,7 @@ void __change_disk_states(struct drbd_resource *resource, enum drbd_disk_state d
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 #else
 	idr_for_each_entry(&resource->devices, device, vnr)
@@ -3905,7 +3859,7 @@ void __outdate_myself(struct drbd_resource *resource)
 		return;
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -3958,7 +3912,7 @@ static bool do_change_from_consistent(struct change_context *context, bool prepa
 		struct drbd_device *device;
 		int vnr;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
@@ -3977,7 +3931,7 @@ enum drbd_state_rv change_from_consistent(struct drbd_resource *resource,
 	struct change_context context = {
 		.resource = resource,
 		.vnr = -1,
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		.mask = { 0 },
 		.val = { 0 },
 #else
@@ -4055,7 +4009,7 @@ void __change_cstate(struct drbd_connection *connection, enum drbd_conn_state cs
 		int vnr;
 
 		rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
         idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
@@ -4070,7 +4024,7 @@ static bool connection_has_connected_peer_devices(struct drbd_connection *connec
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -4278,7 +4232,7 @@ void __change_peer_disk_states(struct drbd_connection *connection,
 	int vnr;
 
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)

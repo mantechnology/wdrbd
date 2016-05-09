@@ -2774,7 +2774,7 @@ int v07_style_md_open(struct format *cfg)
 	if (format_version(cfg) >= DRBD_V08) {
 		ASSERT(cfg->md_index != DRBD_MD_INDEX_INTERNAL);
 	}
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	cfg->md_hard_sect_size = bdev_sect_size_nt(cfg->md_device_name);
 	cfg->bd_size = bdev_size(cfg->md_device_name);
 #else
@@ -5031,8 +5031,7 @@ static enum drbd_disk_state drbd_str_disk(const char *str)
 
 int is_attached(int minor)
 {
-    //_WIN32_V9_TODO [choi] V8.4.3는 /proc/drbd를 파싱해서 attach 상태를 파악했는데, V9는 dstate 명령으로 확인하고 있는 것으로 보임. 포팅이 필요 없을듯.
-	char minor_string[7], result[40];
+    char minor_string[7], result[40];
 	char *argv[] = { "drbdsetup", minor_string, "dstate", NULL };
 	int pipes[2];
 	pid_t pid;
@@ -5077,7 +5076,6 @@ int is_attached(int minor)
 	result[rr-1] = 0;
 
 	return drbd_str_disk(result) > D_DISKLESS ? 1 : 0;
-    //_WIN32_V9_TODO_END
 }
 
 int meta_chk_offline_resize(struct format *cfg, char **argv, int argc)

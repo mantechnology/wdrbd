@@ -13,7 +13,7 @@
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, RetrieveVolumeGuid)
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
 #pragma alloc_text(PAGE, FsctlDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
@@ -57,15 +57,16 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 	return STATUS_SUCCESS;
 }
 
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
 /**
-* @brief    커널단에서 FSCTL_DISMOUNT_VOLUME을 수행한다.
-*           이 명령은 볼륨의 사용유무에 상관없이 강제적으로 수행이 가능하므로 
-*           lock - dismount - unlock 과정으로 사용할 것을 권고한다.
-*           http://msdn.microsoft.com/en-us/library/windows/desktop/aa364562(v=vs.85).aspx 참조
-*           FsctlLockVolume() - FsctlDismountVolume() - FsctlUnlockVolume() 으로 사용하면 되는데
-*           Open시킨 볼륨의 HANDLE 값은 VOLUME_EXTENSION에 있다.
-*           하지만 필요시 이 명령만 단독으로 사용가능하다.
+* @brief    do FSCTL_DISMOUNT_VOLUME in kernel.
+*           advised to use this function in next sequence
+*			lock - dismount - unlock
+*			because this function can process regardless of using volume
+*           reference to http://msdn.microsoft.com/en-us/library/windows/desktop/aa364562(v=vs.85).aspx 
+*           using sequence is FsctlLockVolume() - FsctlDismountVolume() - FsctlUnlockVolume() 
+*           Opened volume's HANDLE value is in VOLUME_EXTENSION.
+*           if you need, can be used Independently. 
 */
 NTSTATUS FsctlDismountVolume(unsigned int minor)
 {
@@ -144,7 +145,7 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
     }
     __finally
     {
-        if (!pvext->LockHandle && hFile)    // dismount를 단독으로 수행했을 경우
+        if (!pvext->LockHandle && hFile)    // case of dismount Independently
         {
             ZwClose(hFile);
         }
@@ -160,11 +161,10 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
 }
 
 /**
-* @brief    커널단에서 FSCTL_LOCK_VOLUME을 수행한다.
-*           lock 성공시 볼륨의 HANDLE값은 VOLUME_EXTENSION 구조체내에 가지게 되며
-*           이 값은 FsctlUnlockVolume()을 해서 반드시 ZwClose 시켜 주어야 한다.
-*           lock 실패시 FsctlUnlockVolume()을 할 필요는 없다.
-*           볼륨을 어디선가 참조하고 있을 경우는 lock이 실패한다.
+* @brief    do FSCTL_LOCK_VOLUME in kernel.
+*           If acuiring lock is success, volume's HANDLE value is in VOLUME_EXTENSION.
+*           this handle must be closed by FsctlUnlockVolume()-ZwClose()
+*           If volume is referenced by somewhere, aquiring lock will be failed.
 */
 NTSTATUS FsctlLockVolume(unsigned int minor)
 {
@@ -240,10 +240,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 }
 
 /**
-* @brief    커널단에서 FSCTL_UNLOCK_VOLUME을 수행한다.
-*           FsctlLockVolume()에서 lock을 성공했을 시 볼륨의 HANDLE 값을
-*           Unlock후 ZwClose 시켜준다. 그리고 NULL로 다시 초기화 한다.
-*           볼륨의 HANDLE 값은 VOLUME_EXTENSION 구조체내에서 가지고 온다.
+* @brief    do FSCTL_UNLOCK_VOLUME in kernel.
 */
 NTSTATUS FsctlUnlockVolume(unsigned int minor)
 {
@@ -412,7 +409,7 @@ mvolSearchDevice( PWCHAR PhysicalDeviceName )
 	VolumeExtension = RootExtension->Head;
 	while( VolumeExtension != NULL )
 	{
-		/// SEO: 대소문자 구분 제거
+		/// SEO: string compare with Case insensitive  
 		if( !_wcsicmp(VolumeExtension->PhysicalDeviceName, PhysicalDeviceName) )
 		{
 			return VolumeExtension;
@@ -430,7 +427,6 @@ mvolAddDeviceList( PVOLUME_EXTENSION pEntry )
 	PROOT_EXTENSION		RootExtension = mvolRootDeviceObject->DeviceExtension;
 	PVOLUME_EXTENSION	pList = RootExtension->Head;
 
-	/// 리스트가 비었을 경우
 	if( pList == NULL )
 	{
 		RootExtension->Head = pEntry;
@@ -455,9 +451,8 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
 	PVOLUME_EXTENSION	pList = RootExtension->Head;
 	PVOLUME_EXTENSION	pTemp = NULL;
 
-	/// 리스트가 비었을 경우
 	if( pList == NULL )	return ;
-	/// 삭제할 Entry가 헤더일 경우
+	
     if (pList == pEntry)
 	{
 		RootExtension->Head = pList->Next;
@@ -470,7 +465,6 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
 		pList = pList->Next;
 	}
 
-	/// 찾지 못했을 경우
 	if( pList->Next == NULL )	return ;
 
 	pTemp = pList->Next;
@@ -565,7 +559,7 @@ ResolveDriveLetters(VOID)
 		{
 			WDRBD_WARN("%ws org_idx:%d. it's maybe not disk type. Ignored.\n",
                 VolumeExtension->PhysicalDeviceName,  VolumeExtension->VolIndex);
-			// IoVolumeDeviceToDosName에서 오류! 0xC0000034 STATUS_OBJECT_NAME_NOT_FOUND
+			// IoVolumeDeviceToDosName error! 0xC0000034 STATUS_OBJECT_NAME_NOT_FOUND
 		}
 
 		VolumeExtension = VolumeExtension->Next;
@@ -575,15 +569,13 @@ ResolveDriveLetters(VOID)
 
 /**
 * @brief
-*   볼륨의 unique id를 구해온다.
-*   이 id는 MOUNTDEV_UNIQUE_ID 구조체에 담겨져 있으며 ExAllocatePool() 으로
-*   동적 메모리 할당을 하여 return 한다. 따라서 이 함수를 사용하는 쪽에서 반드시
-*   ExFreePool() 을 하여 메모리 해제를 해주어야 한다.
-*   MOUNTDEV_UNIQUE_ID에 관해서는 <http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx> 참조
+*   get volume's unique id
+*   this id is in MOUNTDEV_UNIQUE_ID structure, you must free memory after using this
+*   reference to <http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx> 
 * @param
-*   volmgr - 드라이버의 인스턴스 오브젝트 포인터
+*   volmgr - driver's instance object pointer
 * @return
-*   PMOUNTDEV_UNIQUE_ID 타입의 볼륨 unique id
+*   volume's unique id type of PMOUNTDEV_UNIQUE_ID
 */
 PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj)
 {
@@ -714,7 +706,7 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 	{
 		//WDRBD_ERROR("ZwCreateFile: %d\n", Status);
 		//LOG_ERROR: GetDriverLetterByDeviceName: ZwCreateFile: -1073741810
-		// 부팅시 오류: 0xC000000E STATUS_NO_SUCH_DEVICE
+		// boot time error: 0xC000000E STATUS_NO_SUCH_DEVICE
 		return Status;
 	}
 	Status = ObReferenceObjectByHandle(FileHandle,
@@ -833,13 +825,13 @@ OUT PUNICODE_STRING DosName
 
 /**
 * @brief
-*   레지스트리에서 값을 삭제할 때 사용
+*   delete registry's value
 * @param
-*   preg_path - UNICODE_STRING 타입의 레지스트리 경로. ex)"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes"
-*   pvalue_name - UNICODE_STRING 타입의 value.
+*   preg_path - UNICODE_STRING type's path ex)"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes"
+*   pvalue_name - UNICODE_STRING type's value
 * @return
-*   STATUS_SUCCESS - 삭제 성공 시
-*   그 외 - 실패시 api의 return 값
+*   success : STATUS_SUCCESS 
+*   fail : api's return value
 */
 NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name)
 {
@@ -929,7 +921,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	UCHAR aucTemp[255] = { 0 };
 	NTSTATUS status;
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	// set proc_details
 	status = GetRegistryValue(L"proc_details", &ulLength, &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
@@ -1062,7 +1054,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 #endif
 
 	// set ver
-    // DRBD_DOC: 용도 미정
+    // DRBD_DOC: not used
 	status = GetRegistryValue(L"ver", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		RtlCopyMemory(g_ver, aucTemp, ulLength * 2);
@@ -1105,7 +1097,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		);
 #endif
 #else
-	// _WIN32_V9: proc_details 제거함.
+	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"
 		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
 		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
