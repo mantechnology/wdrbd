@@ -1780,7 +1780,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 		q_order_type = drbd_queue_order_type(device);
-#ifdef _WIN32 // WIN32_V9_PATCH2_CHECK: JHKIM: continue to patch 1 code. required to verify differences with patch 2
+#ifdef _WIN32 // JHKIM: continue to patch 1 code. required to verify differences with patch 2
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
 #else
 		max_bio_size = queue_max_hw_sectors(q) << 9;

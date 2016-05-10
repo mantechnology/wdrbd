@@ -23,7 +23,7 @@
 # define BITS_PER_LONG __WORDSIZE
 #endif
 #endif
-#ifdef _WIN32_V9_PATCH_1_CHECK
+#ifndef _WIN32
 #ifndef BITS_PER_LONG
 # if defined(__SIZEOF_LONG__)
 #  define BITS_PER_LONG (__SIZEOF_LONG__ * 8)

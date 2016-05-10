@@ -1686,7 +1686,7 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 static inline void generic_start_io_acct(int rw, unsigned long sectors,
 					 struct hd_struct *part)
 {
-#ifdef _WIN32_V9_PATCH_CHECK
+#ifndef _WIN32
 	int cpu;
 	BUILD_BUG_ON(sizeof(atomic_t) != sizeof(part->in_flight[0]));
 
@@ -1700,14 +1700,14 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 	atomic_inc((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-	// DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_start_io_acct\n");
+	// DbgPrint("generic_start_io_acct\n");
 #endif
 }
 
 static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 				  unsigned long start_time)
 {
-#ifdef _WIN32_V9_PATCH_CHECK
+#ifndef _WIN32
 	unsigned long duration = jiffies - start_time;
 	int cpu;
 
@@ -1718,7 +1718,7 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 	atomic_dec((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
 #else
-	// DbgPrint("_WIN32_V9_PATCH_CHECK: check generic_end_io_acct\n");
+	// DbgPrint("generic_end_io_acct\n");
 #endif
 }
 #endif /* __disk_stat_inc */
@@ -1734,7 +1734,7 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 #define WB_sync_congested BDI_sync_congested
 #endif
 
-#ifdef _WIN32_V9_PATCH_1_CHECK
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_SIMPLE_POSITIVE
 #include <linux/dcache.h>
 static inline int simple_positive(struct dentry *dentry)

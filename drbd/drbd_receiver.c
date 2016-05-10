@@ -499,32 +499,9 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
-#if 0 // CHOI: for just in case 
-	{
-		// _WIN32_V9_DW596: DW-596 issue
-		// JHKIM: DW-594, DW-596 first, modified to access to volume. it is temporary patch
-		// problem: 
-		//    on primary , other node's thread using drbd_alloc_pages wait infinitly when pp_in_use is negative value
-		//    at this time, local node 
-		//     1) primary command(drbd!drbd_adm_set_role) is not ended for drbd!FsctlCreateVolume's infinatley wating 
-		//     2) complete_conflicting_writes wait infinaltey when local data block is transfered.
-		// guess:
-		//   - when page buffer is freed for TX, duplicatley freed
-		//   - Exceptionally, negative value is occurred when other node's got_peer_ack is handled
-		// side-effect for temp patch:
-		//  - peer_req_databuf is freed normally, and overflow is not happened.
-		//  - original drbd also maybe warn for pp_in_use's malfunction
-
-		// format/fail-over test is completed in 32/64, and finally this code is disabled for many debug-logs 
-		//drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0:reset pp_in_use!\n",
-		//	is_net ? "pp_in_use_by_net" : "pp_in_use", i);
-
-		*a = 0;
-	}
-#else
 		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
 			is_net ? "pp_in_use_by_net" : "pp_in_use", i);
-#endif
+
 	wake_up(&drbd_pp_wait);
 }
 

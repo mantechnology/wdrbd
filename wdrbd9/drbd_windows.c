@@ -1410,8 +1410,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
     if (!timer_pending(timer) && pending_only)
     {
-		//_WIN32_CHECK // JHKIM: 0으로 리턴해도 되는가? Win 에서는 타이머 적재가 되야할 듯.
-        return 0;
+		return 0;
     }
 
     LARGE_INTEGER nWaitTime = { .QuadPart = 0 };

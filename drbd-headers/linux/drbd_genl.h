@@ -321,7 +321,7 @@ GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
  */
  // 
 #ifdef _WIN32 
-	// _WIN32_V9_PATCH_1_CHECK: JHKIM: skip compile error!!!
+	// JHKIM: skip compile error!!!
 #else
 GENL_mc_group(events)
 #endif

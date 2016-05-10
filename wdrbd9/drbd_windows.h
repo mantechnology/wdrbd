@@ -589,7 +589,7 @@ struct gendisk
 #endif
 	PVOLUME_EXTENSION pDeviceExtension;
 #ifdef _WIN32
-	void * part0; // _WIN32_V9_PATCH_1_CHECK
+	void * part0; 
 #endif
 };
 
@@ -1020,7 +1020,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ /* CHECK*/ \
+			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
 				}  \
 		} while (0)
 

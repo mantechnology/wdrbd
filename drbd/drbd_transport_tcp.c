@@ -1106,7 +1106,6 @@ static void dtt_incoming_connection(struct sock *sock)
         kfree(s_estab);
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
-#if 1 
     
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
 
@@ -1128,63 +1127,6 @@ static void dtt_incoming_connection(struct sock *sock)
     WDRBD_TRACE_SK("waiter(0x%p) s_estab(0x%p) wsk(0x%p) wake!!!!\n", waiter, s_estab, AcceptSocket);
 
 	return STATUS_SUCCESS;
-#else
-	
-#ifdef _WIN32
-	struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
-
-	if (AcceptSocket) {
-#else
-	struct dtt_listener *listener = sock->sk_user_data;
-	void (*state_change)(struct sock *sock);
-
-	state_change = listener->original_sk_state_change;
-	if (sock->sk_state == TCP_ESTABLISHED) {
-#endif
-		struct drbd_waiter *waiter;
-		struct dtt_path *path;
-
-		spin_lock(&listener->listener.waiters_lock);
-		listener->listener.pending_accepts++;
-#ifdef _WIN32
-		listener->paccept_socket = AcceptSocket;
-#endif
-		waiter = list_entry(listener->listener.waiters.next, struct drbd_waiter, list);
-#ifdef _WIN32
-		if (!waiter)
-		{
-			spin_unlock(&listener->listener.waiters_lock);
-			return STATUS_REQUEST_NOT_ACCEPTED; 
-		}
-#endif
-#ifdef _WIN32
-		path = container_of(waiter, struct dtt_path, waiter);
-		if (path->first)
-		{ // TEST
-			WDRBD_TRACE_CO("%p path->first incomming ok! wake_up!!\n", KeGetCurrentThread());
-			wake_up(&path->first->wait);
-		} // TEST
-		else // TEST
-		{
-			WDRBD_TRACE_CO("it not a first! Don't wake_up!\n");
-			panic("dtt_incoming_connection test!!!"); 
-		}
-#else
-		wake_up(&waiter->wait); // V9 old.
-#endif
-		spin_unlock(&listener->listener.waiters_lock);
-#ifdef _WIN32
-		return STATUS_SUCCESS;
-#endif
-	}
-	
-#ifdef _WIN32
-	//WskCloseSocket(AcceptSocket);
-	return STATUS_REQUEST_NOT_ACCEPTED;
-#else
-	state_change(sock);
-#endif
-#endif
 #else
 	struct dtt_listener *listener = sock->sk_user_data;
 	void (*state_change)(struct sock *sock);

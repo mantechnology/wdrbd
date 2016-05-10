@@ -3177,7 +3177,6 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 		      test_bit(TWOPC_NO, &connection->flags) ||
 		      test_bit(TWOPC_RETRY, &connection->flags))) {
 #ifdef _WIN32 
-			//_WIN32_V9_PATCH_1_CHECK
 			static int x = 0; // globally!
 			if (!(x++ % 3000))
 				drbd_debug(connection, "Reply not ready yet x=(%d)\n", x);
