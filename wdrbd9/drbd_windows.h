@@ -74,6 +74,22 @@
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
 
+enum
+{
+	KERN_EMERG_NUM = 0,
+	KERN_ALERT_NUM,
+	KERN_CRIT_NUM,
+	KERN_ERR_NUM,
+	KERN_WARNING_NUM,
+	KERN_NOTICE_NUM,
+	KERN_INFO_NUM,
+	KERN_DEBUG_NUM
+};
+
+#define WDRBD_SYSLOG_LV_MAX		KERN_CRIT_NUM
+#define WDRBD_SVCLOG_LV_MAX		KERN_DEBUG_NUM
+
+
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()
 #define smp_wmb()				KeMemoryBarrier()
@@ -293,13 +309,12 @@ typedef unsigned int                fmode_t;
 #define MAX_SPILT_BLOCK_SZ			(1 << 20)
 
 #define WDRBD_THREAD_POINTER
-#define WDRBD_FUNC_NAME
 
 #define FLTR_COMPONENT              DPFLTR_DEFAULT_ID
 //#define FLTR_COMPONENT              DPFLTR_IHVDRIVER_ID
 #define FEATURE_WDRBD_PRINT
 
-extern void _printk(const char * format, ...);
+extern void _printk(const char * func, const char * format, ...);
 extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
@@ -309,102 +324,34 @@ extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 #define printk(format, ...)
 #endif
 
-#if defined (WDRBD_THREAD_POINTER) && defined (WDRBD_FUNC_NAME)
-#define WDRBD_FATAL(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_FATA: [%s|0x%p] "##_m_, __FUNCTION__, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_CRIT "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_FUNC_NAME)
-#define WDRBD_FATAL(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_FATA: [%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-    printk(KERN_CRIT "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_THREAD_POINTER)
-#define WDRBD_FATAL(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_FATA: [0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_CRIT "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_FATAL(_m_, ...)   printk(KERN_CRIT "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_FATAL(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_FATA: "##_m_, __VA_ARGS__); \
-    printk(KERN_CRIT "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#define WDRBD_FATAL(_m_, ...)   printk(KERN_CRIT ##_m_, __VA_ARGS__)
 #endif
 
-#if defined (WDRBD_THREAD_POINTER) && defined (WDRBD_FUNC_NAME)
-#define WDRBD_ERROR(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_ERRO: [%s|0x%p] "##_m_, __FUNCTION__, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_ERR "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_FUNC_NAME)
-#define WDRBD_ERROR(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_ERRO: [%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-    printk(KERN_ERR "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_THREAD_POINTER)
-#define WDRBD_ERROR(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_ERRO: [0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_ERR "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_ERROR(_m_, ...)   printk(KERN_ERR "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_ERROR(_m_, ...)   \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "WDRBD_ERRO: "##_m_, __VA_ARGS__); \
-    printk(KERN_ERR "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#define WDRBD_ERROR(_m_, ...)   printk(KERN_ERR ##_m_, __VA_ARGS__)
 #endif
 
-#if defined (WDRBD_THREAD_POINTER) && defined (WDRBD_FUNC_NAME)
-#define WDRBD_WARN(_m_, ...)    \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_WARNING_LEVEL, "WDRBD_WARN: [%s|0x%p] "##_m_, __FUNCTION__, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_WARNING "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_FUNC_NAME)
-#define WDRBD_WARN(_m_, ...)    \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_WARNING_LEVEL, "WDRBD_WARN: [%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-    printk(KERN_WARNING "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
-#elif defined(WDRBD_THREAD_POINTER)
-#define WDRBD_WARN(_m_, ...)    \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_WARNING_LEVEL, "WDRBD_WARN: [0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__); \
-    printk(KERN_WARNING "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#if defined(WDRBD_THREAD_POINTER)
+#define WDRBD_WARN(_m_, ...)    printk(KERN_WARNING "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_WARN(_m_, ...)    \
-do { \
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_WARNING_LEVEL, "WDRBD_WARN: "##_m_, __VA_ARGS__); \
-    printk(KERN_WARNING "[%s] "##_m_, __FUNCTION__, __VA_ARGS__); \
-} while( 0 )
+#define WDRBD_WARN(_m_, ...)    printk(KERN_WARNING ##_m_, __VA_ARGS__)
 #endif
 
-#if defined (WDRBD_THREAD_POINTER) && defined (WDRBD_FUNC_NAME)
-#define WDRBD_TRACE(_m_, ...)   DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL, "WDRBD_TRAC: [%s|0x%p] "##_m_, __FUNCTION__, KeGetCurrentThread(), __VA_ARGS__)
-#elif defined(WDRBD_FUNC_NAME)
-#define WDRBD_TRACE(_m_, ...)   DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL, "WDRBD_TRAC: [%s] "##_m_, __FUNCTION__, __VA_ARGS__)
-#elif defined(WDRBD_THREAD_POINTER)
-#define WDRBD_TRACE(_m_, ...)   DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL, "WDRBD_TRAC: [0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_TRACE(_m_, ...)   printk(KERN_DEBUG "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_TRACE(_m_, ...)   DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL, "WDRBD_TRAC: "##_m_, __VA_ARGS__)
+#define WDRBD_TRACE(_m_, ...)   printk(KERN_DEBUG ##_m_, __VA_ARGS__)
 #endif
 
-#if defined (WDRBD_THREAD_POINTER) && defined (WDRBD_FUNC_NAME)
-#define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s|0x%p] "##_m_, __FUNCTION__, KeGetCurrentThread(), __VA_ARGS__)
-#elif defined(WDRBD_FUNC_NAME)
-#define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] "##_m_, __FUNCTION__, __VA_ARGS__)
-#elif defined(WDRBD_THREAD_POINTER)
-#define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_INFO(_m_, ...)    printk(KERN_INFO "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_INFO(_m_, ...)    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: "##_m_, __VA_ARGS__)
+#define WDRBD_INFO(_m_, ...)    printk(KERN_INFO ##_m_, __VA_ARGS__)
 #endif
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM					// about timer

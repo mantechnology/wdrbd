@@ -19,6 +19,8 @@
 #include "loglink.h"
 #endif
 
+#define WDRBD_PRINT_FORMAT_LEN		32
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -593,9 +595,49 @@ void _printk(const char * func, const char * format, ...)
 
 	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
+	int printLevel = 0;
+	CHAR szFormat[WDRBD_PRINT_FORMAT_LEN] = "WDRBD_";
+	BOOLEAN bSysEventLog = FALSE;
+	BOOLEAN bServiceLog = FALSE;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
+		
+	switch(level_index)
+	{
+		case KERN_EMERG_NUM:
+		case KERN_ALERT_NUM:
+		case KERN_CRIT_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "FATA");
+			break;
+		case KERN_ERR_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "ERRO");
+			break;
+		case KERN_WARNING_NUM:
+			printLevel = DPFLTR_WARNING_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "WARN");
+			break;
+		case KERN_NOTICE_NUM:
+		case KERN_INFO_NUM:
+			printLevel = DPFLTR_INFO_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "INFO");
+			break;
+		case KERN_DEBUG_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "TRAC");
+			break;
+		default:
+			printLevel = DPFLTR_TRACE_LEVEL;
+			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "UNKN");
+			break;
+	}
 
+	strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, ": [%s] %s");
+
+	// print for all logging levels
+	DbgPrintEx(FLTR_COMPONENT, printLevel, szFormat, func, buf + 3);
+	
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
 
@@ -605,16 +647,19 @@ void _printk(const char * func, const char * format, ...)
 
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #else
-#ifdef _WIN32_LOGLINK
+	// to write system event log.
+	if (level_index <= WDRBD_SYSLOG_LV_MAX)
+		bSysEventLog = TRUE;
+	// to send to drbd service.
+	if (level_index <= WDRBD_SVCLOG_LV_MAX)
+		bServiceLog = TRUE;
 
-	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to DbgWin
-
-	if (g_loglink_usage == LOGLINK_NOT_USED)
+	if (bSysEventLog)
 	{
 		save_to_system_event(buf, length, level_index);
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 	}
-	else
+#ifdef _WIN32_LOGLINK
+	if (bServiceLog)
 	{
 		struct loglink_msg_list  *loglink_msg;
 
@@ -631,24 +676,21 @@ void _printk(const char * func, const char * format, ...)
 			list_add(&loglink_msg->list, &loglink.loglist);
 			mutex_unlock(&loglink_mutex);
 			queue_work(loglink.wq, &loglink.worker);
-
-			if (g_loglink_usage == LOGLINK_DUAL) // TEST
-			{
-				save_to_system_event(buf, length, level_index);
-			}
 		}
 		else
 		{
 			DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n"); // TEST!
 
 		error:
-			save_to_system_event(buf, length, level_index);
 			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 		}
 	}
+	else
+	{
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+	}
 #else
     // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
-	save_to_system_event(buf, length, level_index);
     DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);

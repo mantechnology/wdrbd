@@ -8,6 +8,7 @@ int g_loglink_usage;
 struct loglink_worker loglink = { 0 };
 struct mutex loglink_mutex;
 NPAGED_LOOKASIDE_LIST linklog_printk_msg;
+PETHREAD g_LoglinkServerThread;
 
 static PWSK_SOCKET g_loglink_sock = NULL;
 static int send_err_count;
@@ -156,7 +157,6 @@ void LogLink_Sender(struct work_struct *ws)
 		}
 		else
 		{
-			int level_index;
 			step = 4;
 
 		error:
@@ -167,23 +167,17 @@ void LogLink_Sender(struct work_struct *ws)
 				char *tmp;
 				if ((tmp = kmalloc(512, GFP_KERNEL, 'ACDW')) == NULL)
 				{
-					WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", KERN_ERR "LogLink: malloc fail\n");
+					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: malloc fail\n");
 				}
 				else
 				{
-					sprintf(tmp, KERN_ERR "LogLink: send error: step=%d sock=0x%p ret=%d. Save it to system eventlog\n", step, sock, ret);
-					WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", tmp);
+					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: send error: step=%d sock=0x%p ret=%d.\n", step, sock, ret);
 					kfree(tmp);
 				}
 			}
 			
 			CloseSocket(sock); // just close, no retry/handshake!
 			sock = NULL;
-
-			// backup this log-msg to system eventlog!!!
-			// dup in dual mode?
-			level_index = msg->buf[1] - '0';
-			WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", msg->buf);
 		}
 
 		ExFreeToNPagedLookasideList(&drbd_printk_msg, msg->buf);

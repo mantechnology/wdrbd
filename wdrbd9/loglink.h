@@ -13,6 +13,7 @@ struct loglink_worker {
 
 extern int g_loglink_tcp_port;
 extern int g_loglink_usage;
+extern PETHREAD g_LoglinkServerThread;
 extern struct loglink_worker loglink;
 extern struct mutex loglink_mutex;
 extern NPAGED_LOOKASIDE_LIST linklog_printk_msg;
