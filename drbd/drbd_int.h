@@ -336,16 +336,12 @@ static inline int drbd_ratelimit(void)
 		} \
 	} while (0)
 #else
-#ifdef _WIN32
-#define D_ASSERT(x, exp)   ASSERT(exp)
-#else
 #define D_ASSERT(x, exp)							\
 	do {									\
 		if (!(exp))							\
 			drbd_err(x, "ASSERTION %s FAILED in %s\n",		\
 				 #exp, __func__);				\
 	} while (0)
-#endif
 #endif
 /**
  * expect  -  Make an assertion
