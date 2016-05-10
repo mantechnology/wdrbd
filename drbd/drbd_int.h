@@ -369,6 +369,7 @@ static inline int drbd_ratelimit(void)
 enum {
 #else
 enum _fault {
+#endif
 	DRBD_FAULT_MD_WR = 0,	/* meta data write */
 	DRBD_FAULT_MD_RD = 1,	/*           read  */
 	DRBD_FAULT_RS_WR = 2,	/* resync          */
@@ -382,8 +383,6 @@ enum _fault {
 
 	DRBD_FAULT_MAX,
 };
-
-#endif
 
 extern unsigned int
 _drbd_insert_fault(struct drbd_device *device, unsigned int type);
@@ -2174,7 +2173,9 @@ extern mempool_t *drbd_ee_mempool;
  * frequent calls to alloc_page(), and still will be able to make progress even
  * under memory pressure.
  */
-
+#ifndef _WIN32
+extern struct page *drbd_pp_pool;
+#endif
 extern spinlock_t   drbd_pp_lock;
 extern int	    drbd_pp_vacant;
 extern wait_queue_head_t drbd_pp_wait;
@@ -2230,7 +2231,9 @@ extern void __drbd_make_request(struct drbd_device *, struct bio *, unsigned lon
 #endif
 
 extern MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio);
+#ifdef COMPAT_HAVE_BLK_QUEUE_MERGE_BVEC
 extern int drbd_merge_bvec(struct request_queue *, struct bvec_merge_data *, struct bio_vec *);
+#endif
 extern int is_valid_ar_handle(struct drbd_request *, sector_t);
 
 

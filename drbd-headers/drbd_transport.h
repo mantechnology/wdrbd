@@ -290,7 +290,6 @@ extern void drbd_path_event(struct drbd_transport *transport, struct drbd_path *
 
 /* drbd_receiver.c*/
 #ifdef _WIN32
-//extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
 extern void* drbd_alloc_pages(struct drbd_transport *, unsigned int, bool);
 extern void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net);
 #else

@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <syslog.h>
 #include <fnmatch.h>
+#include <features.h>
 
 #include "config.h"
 #include "drbdadm.h"

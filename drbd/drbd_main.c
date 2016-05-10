@@ -2429,6 +2429,7 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
+	return 0;
 #else
 	if (!no_zc)
 		bio_for_each_segment(bvec, bio, iter) {
@@ -2457,7 +2458,6 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 		return err;
 	}
 #endif
-	return 0;
 }
 
 static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
@@ -5922,11 +5922,8 @@ void lock_all_resources(void)
 	local_irq_disable();    
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32
-	{
-		spin_lock_irq(&resource->req_lock);     
-	}
+		spin_lock_irq(&resource->req_lock);
 #else
-	for_each_resource(resource, &drbd_resources)
 		spin_lock_nested(&resource->req_lock, i++);
 #endif
 }
@@ -5937,15 +5934,15 @@ void unlock_all_resources(void)
 
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32
-	{
 		spin_unlock_irq(&resource->req_lock);
-	}
 #else
 		spin_unlock(&resource->req_lock);	
 #endif
 	// [DW-759] irq enable. return to PASSIVE_LEVEL
 	local_irq_enable();
+#ifdef _WIN32
 	WDRBD_TRACE_REQ_LOCK("local_irq_enable : CurrentIrql(%d)\n", KeGetCurrentIrql());
+#endif
 	mutex_unlock(&resources_mutex);
 }
 
