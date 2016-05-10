@@ -2246,7 +2246,7 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 {
 	struct p_block_req *p;
 
-#ifdef _WIN32
+#ifdef DRBD_TRACE
 	WDRBD_TRACE("sz=%d sector=%lld\n", size, sector);
 #endif
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
