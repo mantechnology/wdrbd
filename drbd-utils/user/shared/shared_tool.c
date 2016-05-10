@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <syslog.h>
 #include <fnmatch.h>
+#include <features.h>
 
 #include "config.h"
 #include "drbdadm.h"
@@ -237,7 +238,7 @@ int sget_token(char *s, int size, const char** text)
 
 /**
 * @brief
-* 디스크 혹은 볼륨의 size를 구해오는 함수
+* get a disk volume, or size
 *
 * @param
 * - device_name : "\\\\.\\d:", "\\\\.\\HarddiskVolume1", "\\\\.\\PhysicalDrive0" and so on

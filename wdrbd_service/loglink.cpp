@@ -92,7 +92,7 @@ int LogLink_Daemon(unsigned short *port)
 
 	if (g_loglink_usage == LOGLINK_NEW_NAME || g_loglink_usage == LOGLINK_2OUT)
 	{
-		// TEST: 새로운 이름으로 생성
+		// TEST: create with new name
 		AddEventSource(NULL, new_logname);
 		WriteLog(L"LogLink: create new log event\r\n");
 	}

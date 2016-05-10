@@ -1,8 +1,7 @@
 ﻿#include <drbd_kref_debug.h>
 
-#ifdef _WIN32_V9
-// _WIN32_DEBUGFS: JHKIM: CONFIG_KREF_DEBUG 포팅 보류
-// #ifdef CONFIG_KREF_DEBUG // && _WIN32
+#ifdef _WIN32
+// not support, windows drbd current version 1.0
 #else
 struct kref_debug_class kref_class_resource = {
 	"resource", {

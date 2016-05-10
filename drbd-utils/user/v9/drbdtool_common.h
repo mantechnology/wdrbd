@@ -86,8 +86,8 @@ struct version {
 };
 
 enum driver_version_policy {
-#ifdef _WIN32_V9
-    _STRICT,    // kmpak 의미상 fallback이란 표현이 맞지 않음.
+#ifdef _WIN32
+    _STRICT,
 #else
 	STRICT,
 #endif

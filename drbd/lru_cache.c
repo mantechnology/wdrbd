@@ -44,13 +44,13 @@
 	BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags)); \
 } while (0)
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #define RETURN_VOID()     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
 	return; } while (0)
 #endif
 
-#ifdef _WIN32_V9_PATCH_1
+#ifdef _WIN32
 #define RETURN(x)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
 	return x ; } while (0)
@@ -126,11 +126,11 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 	struct lc_element **element = NULL;
 	struct lru_cache *lc;
 	struct lc_element *e;
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	unsigned cache_obj_size = kmem_cache_size(cache);
 #endif
 	unsigned i;
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	WARN_ON(cache_obj_size < e_size);
 	if (cache_obj_size < e_size)
 		return NULL;
@@ -227,7 +227,7 @@ out_fail:
 
 static void lc_free_by_index(struct lru_cache *lc, unsigned i)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	UCHAR* p = (UCHAR*)lc->lc_element[i];
 #else
 	void *p = lc->lc_element[i];
@@ -407,7 +407,7 @@ void lc_del(struct lru_cache *lc, struct lc_element *e)
 	e->lc_number = e->lc_new_number = LC_FREE;
 	hlist_del_init(&e->colision);
 	list_move(&e->list, &lc->free);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	RETURN_VOID();
 #else
 	RETURN();
@@ -643,7 +643,7 @@ void lc_committed(struct lru_cache *lc)
 		list_move(&e->list, &lc->in_use);
 	}
 	lc->pending_changes = 0;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	RETURN_VOID();
 #else
 	RETURN();

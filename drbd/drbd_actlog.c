@@ -267,7 +267,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	}
 #endif
 #ifdef _WIN32
-	return err; // _WIN32_V9_PATCH_2: JHKIM: 아래 bio_put 을 거치지 않고 여기서 리턴하는 이유 재확인 요망.
+	return err; // _WIN32_V9_PATCH_2: JHKIM: required to analyze that do not call bio_put.
 #endif
  out:
 	bio_put(bio);
@@ -285,7 +285,7 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 			drbd_err(device, "bdev->md_bdev==NULL\n");
 		return -EIO;
 	}
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	drbd_dbg(device, "meta_data io: %s [0x%p]:%s(,%llus,%s) %pS\n",
 	     current->comm, current->pid, __func__,
 	     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ",
@@ -324,7 +324,7 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		if (peer_device == except_)
 #else
 		if (peer_device == except)
@@ -545,7 +545,7 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 		device->al_tr_cycle = 0;
 
 	sector = al_tr_number_to_on_disk_sector(device);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	crc = crc32c(0, (uint8_t*)buffer, 4096);
 #else
 	crc = crc32c(0, buffer, 4096);
@@ -802,7 +802,6 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	return 0;
 }
 
-//void drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 /* put activity log extent references corresponding to interval i, return true
  * if at least one extent is now unreferenced. */
 bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
@@ -1122,7 +1121,7 @@ void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, ULONG_PTR still
 void drbd_advance_rs_marks(struct drbd_peer_device *peer_device, unsigned long still_to_go)
 #endif
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     ULONG_PTR now = jiffies;
     ULONG_PTR last = peer_device->rs_mark_time[peer_device->rs_last_mark];
 #else
@@ -1306,7 +1305,7 @@ bool drbd_set_all_out_of_sync(struct drbd_device *device, sector_t sector, int s
  * @mask:	bitmap indexes to modify (mask set)
  */
 bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		   ULONG_PTR bits, ULONG_PTR mask)
 #else
 		   unsigned long bits, unsigned long mask)
@@ -1366,7 +1365,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	rcu_read_unlock();
 	if (mask) {
 		int bitmap_index;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		for_each_set_bit(bitmap_index, (ULONG_PTR*)&mask, BITS_PER_LONG) {
 #else 
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {

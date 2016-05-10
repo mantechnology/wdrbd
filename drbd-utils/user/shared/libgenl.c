@@ -256,7 +256,7 @@ retry:
 		goto retry;
 	} else if (flags != 0) {
 		/* Buffer is big enough, do the actual reading */
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		struct nlmsghdr *nlh = (struct nlmsghdr *)iov->iov_base;
 		iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
 #endif
@@ -267,7 +267,7 @@ retry:
 	if (msg.msg_namelen != sizeof(struct sockaddr_nl))
 		return -E_RCV_NO_SOURCE_ADDR;
 
-#ifndef _WIN32_V9 //_WIN32_V9_PATCH_2
+#ifndef _WIN32 //_WIN32_V9_PATCH_2
 	if (addr.nl_pid != 0) {
 		dbg(3, "ignoring message from sender pid %u != 0\n",
 				addr.nl_pid);
