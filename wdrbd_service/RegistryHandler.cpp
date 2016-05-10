@@ -44,7 +44,7 @@ bool CaseInsCompare(const wstring& s1, const wstring& s2)
 
 /**
 * @brief
-*   파일로 남길 로그를 위해 임시로 작성
+*   Logging with file
 */
 void LogPrint(WCHAR * msg, ...)
 {
@@ -89,8 +89,7 @@ void Tokenizer(__in const WCHAR * str, __inout list<wstring> & token_list)
 
 /**
 * @brief
-*   drbdadm sh-dev all 명령으로 볼륨 레터 목록을 구해온 후 
-*   letter_list 에 추가시킨다.
+*   after we get volume leter list by drbdadm sh-dev all, Add letter_list.
 */
 DWORD GetDiskLetterList(__inout list<WCHAR> & letter_list)
 {
@@ -144,13 +143,12 @@ DWORD GetDiskLetterList(__inout list<WCHAR> & letter_list)
 
 /**
 * @brief
-*   argument는 리소스파일들을 파싱하여 구해온 drive letter list가 온다.
-*   registry를 enum하면서 만약 letter_list에 있으면 파일로도 존재하므로 skip하고
-*   list에 없으면 registry에는 있지만 res 파일로는 없는 경우이므로 삭제한다.
-*
+*   argument : drive letter list that got by parsing resource files.
+*	if it exist in letter_list by registry enumeration, we skip this. 
+*   if not exist, we delete it.
 * @return
-*   ERROR_SUCCESS - registry를 정리하는 것이 성공하면
-*   그 외 - RegOpenKeyEx(), RegDeleteValue()에서 실패한 return 값
+*   ERROR_SUCCESS - if registry's clean up is success.
+*   else - RegOpenKeyEx(), RegDeleteValue()'s return value 
 */
 DWORD DeleteRegistryVolumes(__in list<WCHAR>& letter_list)
 {
@@ -218,9 +216,8 @@ void OutputSquare(WCHAR letter)
 
 /**
 * @brief
-*   res 파일의 경로 리스트를 먼저 구한뒤
-*   하나 하나 파싱하여 drive letter를 구한 리스트를 만든다.
-*   그 리스트를 참조하여 registry를 조회하여 리스트에 없는 letter를 삭제시킨다.
+*   after we get resource file's path list, we make driver letter list. 
+*   next, we delete a letter that doesn't exist in letter list
 */
 DWORD WINAPI CleanVolumeRegisty()
 {
@@ -243,7 +240,7 @@ DWORD WINAPI CleanVolumeRegisty()
 
 /**
 * @brief
-*   레지스트리 정리 기능을 수행시켜줄 signal을 기다리는 용도의 스레드
+*   thread waiting for signal that clean registry 
 */
 DWORD WINAPI RefreshDirectory(LPVOID lpDir)
 {
@@ -275,9 +272,7 @@ DWORD WINAPI RefreshDirectory(LPVOID lpDir)
 
 /**
 * @brief
-*   lpDir 인자로 주어진 경로를 감시한다.
-*   경로내 변화가 있을 시 noti를 날려주는 데 이때 registry cleaner 스레드가 동작하여 
-*   필요한 작업을 해주도록 스레드를 wake 시킨다.
+*   watch lpDir directory, if something changed in lpDir Directory, wake up the registry cleaner thread
 */
 DWORD WINAPI WatchDirectory(LPVOID lpDir)
 {
@@ -351,16 +346,10 @@ DWORD WINAPI WatchDirectory(LPVOID lpDir)
                 // A file was created, renamed, or deleted in the directory.
                 // Refresh this directory and restart the notification.
 
-                // 필요한 기능은 사실 여기서 바로 수행해도 된다.
-                // 이렇게 이벤트 시그널로 별도 스레드를 사용한 이유는
-                // 유저는 파일 변경을 한번했는데 noti가 여러번 날아오는 경우가 있다.
-                // 그건 write 가 한번인것처럼 보여도 ntfs meta에도 쓰고 하는 시스템 자체적인
-                // 부가적인 작업들도 있기 때문인데 FindFirstChangeNotification() 로는 걸러낼수 없다
-                // 따라서 이런 경우 여러번 기능수행 할 필요는 없는데
-                // manual event로 별도 스레드로 수행되게끔 하였고
-                // 여기서 오는 noti가 워낙 빨라서 그런지 noti가 2번이상 연달아 와도 기능수행은
-                // 한번 정도 동작한다. 
-                SetEvent(g_hCleanEvent);
+				// FindFirstChangeNotification have a problem that notify many event, although file change happen one time.
+				// maybe NTFS meta I/O operation is followed by a pure file I/O.
+                // and then, we make the watchdog thread temporarily. 
+				SetEvent(g_hCleanEvent);
 
                 if (FindNextChangeNotification(g_hChangeHandle) == FALSE)
                 {
@@ -388,7 +377,7 @@ DWORD WINAPI WatchDirectory(LPVOID lpDir)
 */
 DWORD StartRegistryCleaner()
 {
-    // 환경변수내 wdrbd 경로 구하기
+    // get wdrbd's path in environment variables
     size_t path_size;
     errno_t result = _wgetenv_s(&path_size, g_szEnvPath, MAX_PATH, L"WDRBD_PATH");
     if (result)
@@ -399,7 +388,7 @@ DWORD StartRegistryCleaner()
     g_strLogPath = g_szEnvPath;
     g_strLogPath.append(L"\\drbdService.log");
 
-    // host name 구하기
+    // get host name 
     GetHostName();
 
     WCHAR conf_path[MAX_PATH] = {0, };
@@ -428,7 +417,7 @@ DWORD StartRegistryCleaner()
 
 /**
 * @brief
-*   관련 스레드 해제 및 핸들 반환
+*   release a thread , handle
 */
 DWORD StopRegistryCleaner()
 {

@@ -102,7 +102,7 @@ int _tmain(int argc, _TCHAR* argv[])
         free(szServicePath);
         return ERROR_SUCCESS;
     }
-#if 1 // _WIN32_HANDLER_TIMEOUT: 데몬이 아닌 독자적인 응용으로 시험: 검증 후 추후 삭제.
+#if 1 // _WIN32_HANDLER_TIMEOUT: test by a separate application, not daemon. remove later
 	else if (_tcsicmp(L"/n", argv[1]) == 0) 
 	{
 		// internal test only: no-daemon test
@@ -283,7 +283,6 @@ DWORD RunService(const TCHAR * pName)
         {
             err= GetLastError();
             _stprintf_s(pTemp, _T("OpenService failed, error code = %d\n"), err);
-            // 1060 :  지정한 서비스가 설치되어 있지 않습니다
             WriteLog(pTemp);
         }
         else

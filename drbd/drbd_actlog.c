@@ -267,7 +267,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	}
 #endif
 #ifdef _WIN32
-	return err; // _WIN32_V9_PATCH_2: JHKIM: 아래 bio_put 을 거치지 않고 여기서 리턴하는 이유 재확인 요망.
+	return err; // _WIN32_V9_PATCH_2: JHKIM: required to analyze that do not call bio_put.
 #endif
  out:
 	bio_put(bio);
