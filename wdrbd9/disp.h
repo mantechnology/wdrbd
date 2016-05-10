@@ -6,7 +6,6 @@
 #include "windows/ioctl.h"
 #include "windows/drbd.h"
 
-
 #define	MVOL_IOCOMPLETE_REQ(Irp, status, size)		\
 {							\
 	Irp->IoStatus.Status = status;			\
@@ -59,8 +58,10 @@ typedef struct _VOLUME_EXTENSION
 	USHORT				PhysicalDeviceNameLength;
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
 	ULONG				VolIndex;
-	CHAR				Letter;
-	UNICODE_STRING		GUID;
+	//CHAR				Letter;
+	UNICODE_STRING		MountPoint;	// IoVolumeDeviceToDosName()
+	UNICODE_STRING		VolumeGuid;
+
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	ULONG				Rr; // MULTI_WRITE_HOOKER_THREADS
 	MVOL_THREAD			WorkThreadInfo[5]; 
@@ -80,6 +81,13 @@ typedef struct _ROOT_EXTENSION
     UNICODE_STRING      RegistryPath;
 } ROOT_EXTENSION, *PROOT_EXTENSION;
 
+__inline IsDriveLetterMountPoint(UNICODE_STRING * s)
+{
+	return ((s->Length == 4) &&
+		(s->Buffer[0] >= 'A' && s->Buffer[0] <= 'Z') &&
+		(s->Buffer[1] == ':'));
+}
+
 extern PDEVICE_OBJECT		mvolRootDeviceObject;
 extern PDRIVER_OBJECT		mvolDriverObject;
 
@@ -95,6 +103,5 @@ extern KMUTEX				mvolMutex;
 extern KMUTEX				eventlogMutex;
 
 NTSTATUS GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING pDriveLetter);
-extern char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid, PUNICODE_STRING name);
 extern int drbd_init(void);
 #endif MVF_DISP_H

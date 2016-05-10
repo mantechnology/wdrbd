@@ -1753,7 +1753,7 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
-	bio->pVolExt = q->backing_dev_info.pDeviceExtension;
+	bio->pVolExt = q->backing_dev_info.pvext;
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
@@ -1798,7 +1798,7 @@ int generic_make_request(struct bio *bio)
 
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
-				q->backing_dev_info.pDeviceExtension->TargetDeviceObject,
+				q->backing_dev_info.pvext->TargetDeviceObject,
 				buffer,
 				bio->bi_size,
 				&offset,
@@ -1826,7 +1826,7 @@ int generic_make_request(struct bio *bio)
 	}
 	
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
-	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
+	IoCallDriver(q->backing_dev_info.pvext->TargetDeviceObject, newIrp);
 
 	return 0;
 }
@@ -2215,12 +2215,37 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 }
 
 /**
-* @brief   VOLUME_EXTENSION의 PhysicalDeviceObject를 기준으로
-*   letter, VolIndex, block_device 값을 구한다.
-*/
+ * @brief
+ *	Recreate the VOLUME_EXTENSION's MountPoint, VolIndex, block_device
+ *	if it was changed
+ */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
-	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
+	if (!pvext) {
+		return;
+	}
+
+	UNICODE_STRING new_pt;
+	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_pt);
+	if (NT_SUCCESS(status) && RtlEqualUnicodeString(&new_pt, &pvext->MountPoint, FALSE)) {
+		// same
+		return;
+	}
+
+	// if not same, it need to re-query
+	if (pvext->MountPoint.Length && pvext->MountPoint.Buffer) {
+		RtlFreeUnicodeString(&pvext->MountPoint);
+	}
+
+	RtlUnicodeStringInit(&pvext->MountPoint, new_pt.Buffer);
+
+	if (IsDriveLetterMountPoint(&pvext->MountPoint)) {
+		pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+		drbdFreeDev(pvext);
+		pvext->dev = create_drbd_block_device(pvext);
+	}
+#if 0
+	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(pvext->PhysicalDeviceObject);
 
 	if (pmuid) {
 		pvext->Letter = _query_mounted_devices(pmuid, &pvext->GUID);
@@ -2236,11 +2261,13 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 
 		ExFreePool(pmuid);
 	}
+#endif
 }
 
 /**
-* @brief   모든 VOLUME_EXTENSION 값의 정보를 새로 구한다.
-*/
+ * @brief
+ *	refresh all VOLUME_EXTENSION's values
+ */
 void refresh_targetdev_list()
 {
     PROOT_EXTENSION prext = mvolRootDeviceObject->DeviceExtension;
@@ -2273,7 +2300,7 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 	if (pvext) {
 		UNICODE_STRING dos_name;
 		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
-		if (pvext->VolIndex == (*(dos_name.Buffer) - 'C')) {
+		if (NT_SUCCESS(status) && RtlEqualUnicodeString(&dos_name, &pvext->MountPoint, FALSE)) {
 			MVOL_UNLOCK();
 			ExFreePool(dos_name.Buffer);
 			return pvext;
@@ -2304,7 +2331,7 @@ struct drbd_conf *get_targetdev_by_md(char letter)
 {
     PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
     PVOLUME_EXTENSION   pvext = prext->Head;
-
+#if 0	// kmpak
     MVOL_LOCK();
     while (pvext)
     {
@@ -2330,10 +2357,14 @@ struct drbd_conf *get_targetdev_by_md(char letter)
         pvext = pvext->Next;
     }
     MVOL_UNLOCK();
-
+#endif 
     return NULL;
 }
 
+/**
+ * @return
+ *	volume size per byte
+ */
 LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 {
 	LARGE_INTEGER	volumeSize;

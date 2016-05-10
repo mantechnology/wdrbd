@@ -3428,8 +3428,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     } device_list;
     struct device_list *device_list_p, *p;
 
-    WDRBD_INFO("Shutdown: IRQL(%d) vol(%ws) letter(%c:)\n",
-        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter ? VolumeExtension->Letter : ' ');
+    WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
+        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->MountPoint);
 
     if (retry.wq)
         destroy_workqueue(retry.wq);
@@ -4292,6 +4292,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	q->backing_dev_info.pvext = pvext;
 	device->this_bdev = pvext->dev;
 	disk->pDeviceExtension = pvext;
+	WDRBD_TRACE("volume(%wZ) size(%llu) sectors(%lu)\n", pvext->MountPoint, pvext->dev->d_size, q->max_hw_sectors);
 #else
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */

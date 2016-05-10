@@ -129,7 +129,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
     else
     {
-        device = get_targetdev_by_md(VolumeExtension->Letter);
+		device = NULL;
+        //device = get_targetdev_by_md(VolumeExtension->Letter);	// kmpak
     }
 
     if (device)
@@ -858,84 +859,6 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	}
 
 	return dev;
-}
-
-// 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_??? 정보로 사용.
-// 구축된 disk 자료구조의 free 는 스레드 종료시 개별적으로 처리함. 
-// MVF dev 와 DRBD mdev 자료구조 통합, drbdadm 명령 통합 고려
-
-VOID drbdCreateDev()
-{
-	PROOT_EXTENSION		rootExtension = NULL;
-	PVOLUME_EXTENSION	pDeviceExtension = NULL;
-
-	MVOL_LOCK();
-	rootExtension = mvolRootDeviceObject->DeviceExtension;
-	pDeviceExtension = rootExtension->Head;
-
-	while (pDeviceExtension != NULL)
-	{
-        if (0 == pDeviceExtension->VolIndex)
-        {
-            pDeviceExtension = pDeviceExtension->Next;
-            continue;
-        }
-
-		if (pDeviceExtension->dev)
-		{
-			WDRBD_WARN("pDeviceExtension(%c)->dev Already exists\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev = kmalloc(sizeof(struct block_device), 0, 'F5DW');
-		if (!pDeviceExtension->dev)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev:kzalloc failed\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, '06DW');
-		if (!pDeviceExtension->dev->bd_disk)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev->bd_disk:kzalloc failed\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-        pDeviceExtension->dev->d_size = get_targetdev_volsize(pDeviceExtension);
-        if (!pDeviceExtension->dev->d_size)
-		{
-			WDRBD_ERROR("volume(%c) size is zero\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		sprintf(pDeviceExtension->dev->bd_disk->disk_name, "%c:", pDeviceExtension->Letter);
-		pDeviceExtension->dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, '16DW'); // CHECK FREE!!!!
-		if (!pDeviceExtension->dev->bd_disk->queue)
-		{
-			WDRBD_ERROR("pDeviceExtension->dev->bd_disk->queue:kzalloc failed\n");
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
-
-		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pvext = pDeviceExtension;
-		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
-		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
-		pDeviceExtension = pDeviceExtension->Next;
-	}
-	MVOL_UNLOCK();
 }
 
 /**

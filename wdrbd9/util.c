@@ -12,7 +12,7 @@
 #endif
 
 #ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, RetrieveVolumeGuid)
+#pragma alloc_text(PAGE, QueryMountDUID)
 #ifdef _WIN32_MVFL
 #pragma alloc_text(PAGE, FsctlDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
@@ -534,45 +534,6 @@ COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension )
 	KeReleaseMutex( &VolumeExtension->CountMutex, FALSE );
 }
 
-VOID
-ResolveDriveLetters(VOID)
-{
-	PROOT_EXTENSION		RootExtension = NULL;
-	PVOLUME_EXTENSION	VolumeExtension = NULL;
-	NTSTATUS		status;
-
-	MVOL_LOCK(); 
-	RootExtension = mvolRootDeviceObject->DeviceExtension;
-	VolumeExtension = RootExtension->Head;
-
-	while( VolumeExtension != NULL )
-	{
-		UNICODE_STRING DeviceName;
-		UNICODE_STRING DriveLetter;
-
-		RtlInitUnicodeString(&DeviceName, VolumeExtension->PhysicalDeviceName);
-		status = GetDriverLetterByDeviceName(&DeviceName, &DriveLetter);
-		if (NT_SUCCESS(status))
-		{
-			PCHAR p = (PCHAR) DriveLetter.Buffer;
-			VolumeExtension->Letter = toupper(*p);
-			VolumeExtension->VolIndex = VolumeExtension->Letter - 'C'; // VolIndex be changed!
-			
-			WDRBD_INFO("%ws idx=%d letter=%c\n",
-                VolumeExtension->PhysicalDeviceName, VolumeExtension->VolIndex, VolumeExtension->Letter);
-		}
-		else
-		{
-			WDRBD_WARN("%ws org_idx:%d. it's maybe not disk type. Ignored.\n",
-                VolumeExtension->PhysicalDeviceName,  VolumeExtension->VolIndex);
-			// IoVolumeDeviceToDosName에서 오류! 0xC0000034 STATUS_OBJECT_NAME_NOT_FOUND
-		}
-
-		VolumeExtension = VolumeExtension->Next;
-	}
-	MVOL_UNLOCK();
-}
-
 /**
 * @brief
 *   볼륨의 unique id를 구해온다.
@@ -585,7 +546,7 @@ ResolveDriveLetters(VOID)
 * @return
 *   PMOUNTDEV_UNIQUE_ID 타입의 볼륨 unique id
 */
-PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj)
+PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj)
 {
     PMOUNTDEV_UNIQUE_ID guid = NULL;
     NTSTATUS result = STATUS_SUCCESS;
@@ -659,9 +620,9 @@ Finally:
 /**
 * @brief
 */
-void PrintVolumeGuid(PDEVICE_OBJECT devObj)
+void PrintVolumeDuid(PDEVICE_OBJECT devObj)
 {
-    PMOUNTDEV_UNIQUE_ID guid = RetrieveVolumeGuid(devObj);
+	PMOUNTDEV_UNIQUE_ID guid = QueryMountDUID(devObj);
 
     if (NULL == guid)
     {
@@ -1122,6 +1083,28 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 }
 
 /**
+ * @brief
+ *	caller should release unicode's buffer
+ */
+ULONG wcs2ucsdup(_Out_ PUNICODE_STRING dst, _In_ WCHAR * src)
+{
+	if (!dst || !src) {
+		return 0;
+	}
+
+	ULONG size = wcslen(src) * sizeof(WCHAR);
+	dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
+	if (dst->Buffer) {
+		dst->Length = size;
+		dst->MaximumLength = size + sizeof(WCHAR);
+		RtlCopyMemory(dst->Buffer, src, size);
+		return size;
+	}
+
+	return 0;
+}
+
+/**
 * @brief
 */
 PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
@@ -1144,7 +1127,6 @@ PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
 		dst->MaximumLength = 0;
 		return NULL;
 	}
-    
 }
 
 /**
@@ -1152,10 +1134,9 @@ PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
 */
 void ucsfree(IN PUNICODE_STRING str)
 {
-    if (str)
-    {
-        kfree(str->Buffer);
-    }
+	if (str) {
+		kfree(str->Buffer);
+	}
 }
 
 
