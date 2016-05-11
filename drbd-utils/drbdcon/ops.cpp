@@ -1,7 +1,10 @@
 ﻿#include <windows.h>
 #include <winioctl.h>
 #include <stdio.h>
+#include <tchar.h>
+#include <strsafe.h>
 #include "mvol.h"
+#include "LogManager.h"
 
 HANDLE
 OpenDevice( PCHAR devicename )
@@ -708,4 +711,290 @@ DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force)
         }
     }
     return ERROR_SUCCESS;
+}
+
+DWORD CreateLogFromEventLog(LPCSTR pszProviderName)
+{
+	HANDLE hEventLog = NULL;
+	DWORD dwStatus = ERROR_SUCCESS;
+	DWORD dwBytesToRead = 0;
+	DWORD dwBytesRead = 0;
+	DWORD dwMinBytesToRead = 0;
+	PBYTE pBuffer = NULL;
+	PBYTE pTemp = NULL;
+	TCHAR tszProviderName[MAX_PATH];
+	TCHAR szLogFilePath[MAX_PATH] = _T("");
+	HANDLE hLogFile = INVALID_HANDLE_VALUE;
+		
+
+#ifdef _UNICODE
+	if (0 == MultiByteToWideChar(CP_ACP, 0, (LPSTR)pszProviderName, -1, tszProviderName, MAX_PATH))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwStatus);
+		goto cleanup;
+	}
+#else
+	strcpy(tszProviderName, pszProviderName);
+#endif
+
+	// Get log file full path( [current process path]\[provider name].log )
+	dwStatus = GetLogFilePath(tszProviderName, szLogFilePath);
+	if (ERROR_SUCCESS != dwStatus)
+	{
+		_tprintf(_T("could not get log file path, err : %d\n"), dwStatus);
+		return dwStatus;
+	}
+
+	// Create log file and overwrite if exists.
+	hLogFile = CreateFile(szLogFilePath, GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (INVALID_HANDLE_VALUE == hLogFile)
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("could not create file, err : %d\n"), dwStatus);
+		return dwStatus;
+	}
+	
+	// Provider name must exist as a subkey of Application.
+	hEventLog = OpenEventLog(NULL, tszProviderName);
+	if (NULL == hEventLog)
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("could not open event log, err : %d\n"), dwStatus);
+		goto cleanup;
+	}
+
+	// Buffer size will be increased if not enough.
+	dwBytesToRead = MAX_RECORD_BUFFER_SIZE;
+	pBuffer = (PBYTE)malloc(dwBytesToRead);
+	if (NULL == pBuffer)
+	{
+		_tprintf(_T("allocate memory for record buffer failed\n"));
+		dwStatus = ERROR_NOT_ENOUGH_MEMORY;
+		goto cleanup;
+	}
+
+	while (ERROR_SUCCESS == dwStatus)
+	{
+		// read event log in chronological(old -> new) order.
+		if (!ReadEventLog(hEventLog, EVENTLOG_SEQUENTIAL_READ | EVENTLOG_FORWARDS_READ, 0, pBuffer, dwBytesToRead, &dwBytesRead, &dwMinBytesToRead))
+		{
+			dwStatus = GetLastError();
+
+			if (ERROR_INSUFFICIENT_BUFFER == dwStatus)
+			{
+				dwStatus = ERROR_SUCCESS;
+
+				// Increase buffer size and re-try it.
+				pTemp = (PBYTE)realloc(pBuffer, dwMinBytesToRead);
+				if (NULL == pTemp)
+				{
+					_tprintf(_T("reallocate memory(%d bytes) for record buffer failed\n"), dwMinBytesToRead);
+					goto cleanup;
+				}
+
+				pBuffer = pTemp;
+				dwBytesToRead = dwMinBytesToRead;
+			}
+			else
+			{
+				if (ERROR_HANDLE_EOF != dwStatus)
+				{
+					_tprintf(_T("ReadEventLog failed, err : %d\n"), dwStatus);
+				}
+				else
+				{
+					// done.
+					dwStatus = ERROR_SUCCESS;					
+				}
+					goto cleanup;
+			}
+		}
+		else
+		{
+			dwStatus = WriteLogWithRecordBuf(hLogFile, tszProviderName, pBuffer, dwBytesRead);
+
+			if (ERROR_SUCCESS != dwStatus)
+			{
+				_tprintf(_T("Write Log Failed, err : %d\n"), dwStatus);
+			}
+		}
+	}
+	
+cleanup:
+
+	if (INVALID_HANDLE_VALUE != hLogFile)
+	{
+		CloseHandle(hLogFile);
+		hLogFile = INVALID_HANDLE_VALUE;
+	}
+
+	if (NULL != hEventLog)
+	{
+		CloseEventLog(hEventLog);
+		hEventLog = NULL;
+	}
+
+	if (NULL != pBuffer)
+	{
+		free(pBuffer);
+		pBuffer = NULL;
+	}
+
+	return dwStatus;
+}
+
+DWORD WriteLogWithRecordBuf(HANDLE hLogFile, LPCTSTR pszProviderName, PBYTE pBuffer, DWORD dwBytesRead)
+{
+	DWORD dwStatus = ERROR_SUCCESS;
+	PBYTE pRecord = pBuffer;
+	PBYTE pEndOfRecords = pBuffer + dwBytesRead;	
+	
+	while (pRecord < pEndOfRecords)
+	{
+		// Write event log data only when provider name matches.
+		if (0 == _tcsicmp(pszProviderName, (LPCTSTR)(pRecord + sizeof(EVENTLOGRECORD))))
+		{
+			// Some data doesn't have data length if writer didn't provide data size.
+			if (((PEVENTLOGRECORD)pRecord)->DataLength > 0)
+			{
+				PBYTE pData = NULL;
+				TCHAR szTimeStamp[MAX_TIMESTAMP_LEN] = _T("");
+
+				// Get time string (format : mm/dd/yyyy hh:mm:ss )
+				GetTimestamp(((PEVENTLOGRECORD)pRecord)->TimeGenerated, szTimeStamp);
+
+				pData = (PBYTE)malloc(((PEVENTLOGRECORD)pRecord)->DataLength);
+				if (NULL == pData)
+				{
+					_tprintf(_T("malloc failed\n"));
+					dwStatus = ERROR_NOT_ENOUGH_MEMORY;
+					break;
+				}
+
+				memcpy(pData, (PBYTE)(pRecord + ((PEVENTLOGRECORD)pRecord)->DataOffset), ((PEVENTLOGRECORD)pRecord)->DataLength);
+				
+				dwStatus = WriteLogToFile(hLogFile, szTimeStamp, pData);
+				if (ERROR_SUCCESS != dwStatus)
+				{
+					_tprintf(_T("WriteLogToFile failed, err : %d\n"), dwStatus);
+					// Do not finish. Write next data.
+				}
+
+				if (NULL != pData)
+				{
+					free(pData);
+					pData = NULL;
+				}
+			}			
+		}
+
+		pRecord += ((PEVENTLOGRECORD)pRecord)->Length;
+	}	
+
+	return dwStatus;
+}
+
+DWORD GetLogFilePath(LPCTSTR pszLogFileName, PTSTR pszLogFileFullPath)
+{
+	DWORD dwStatus = ERROR_SUCCESS;
+	TCHAR szLogFilePath[MAX_PATH] = _T("");
+	PTCHAR pTemp = NULL;
+
+	// Get current module path. (it includes [processname].[ext])
+	if (0 == GetModuleFileName(NULL, szLogFilePath, MAX_PATH))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("could not get module path, err : %d\n"), dwStatus);
+		return dwStatus;
+	}
+
+	// Find last back slash.
+	pTemp = _tcsrchr(szLogFilePath, _T('\\'));
+	if (NULL == pTemp)
+	{
+		dwStatus = ERROR_PATH_NOT_FOUND;
+		_tprintf(_T("invalid path format : %s\n"), szLogFilePath);
+		return dwStatus;
+	}
+
+	// Remove process name.
+	pTemp++;
+	*pTemp = _T('\0');
+
+	// Concatenate [logfilename].[ext]
+	StringCchCat(szLogFilePath, MAX_PATH, pszLogFileName);
+	StringCchCat(szLogFilePath, MAX_PATH, LOG_FILE_EXT);
+
+	StringCchCopy(pszLogFileFullPath, MAX_PATH, szLogFilePath);
+
+	return dwStatus;
+}
+
+void GetTimestamp(const DWORD Time, TCHAR DisplayString[])
+{
+	ULONGLONG ullTimeStamp = 0;
+	ULONGLONG SecsTo1970 = 116444736000000000;
+	SYSTEMTIME st;
+	FILETIME ft, ftLocal;
+
+	ullTimeStamp = Int32x32To64(Time, 10000000) + SecsTo1970;
+	ft.dwHighDateTime = (DWORD)((ullTimeStamp >> 32) & 0xFFFFFFFF);
+	ft.dwLowDateTime = (DWORD)(ullTimeStamp & 0xFFFFFFFF);
+
+	FileTimeToLocalFileTime(&ft, &ftLocal);
+	FileTimeToSystemTime(&ftLocal, &st);
+	StringCchPrintf(DisplayString, MAX_TIMESTAMP_LEN, L"%d/%d/%d %.2d:%.2d:%.2d",
+		st.wMonth, st.wDay, st.wYear, st.wHour, st.wMinute, st.wSecond);
+}
+
+DWORD WriteLogToFile(HANDLE hLogFile, LPCTSTR pszTimeStamp, PBYTE pszData)
+{
+	DWORD dwStatus = ERROR_SUCCESS;
+	TCHAR szLogData[MAX_LOGDATA_LEN] = _T("");
+	CHAR szAnsiLogData[MAX_LOGDATA_LEN] = "";
+	DWORD dwBytesToWrite = 0;
+	DWORD dwBytesWritten = 0;
+
+	// delete \r and \n if log contains them.
+	for (int i = 1; i <= 2; i++)
+	{
+		PTCHAR pTemp = (PTCHAR)pszData;
+		pTemp += (_tcslen(pTemp) - i);
+		if (*pTemp == _T('\n') ||
+			*pTemp == _T('\r'))
+		{
+			*pTemp = _T('\0');
+		}
+	}	
+	
+	// Log data format : mm/dd/yyyy hh:mm:ss [log data]
+	if (S_OK != StringCchPrintf(szLogData, MAX_LOGDATA_LEN, _T("%s %s\r\n"), pszTimeStamp, pszData))
+	{
+		_tprintf(_T("making log data failed\n"));
+		dwStatus = ERROR_INVALID_DATA;
+		goto exit;
+	}
+
+#ifdef _UNICODE
+	if (0 == WideCharToMultiByte(CP_ACP, 0, szLogData, -1, (LPSTR)szAnsiLogData, MAX_LOGDATA_LEN, NULL, NULL))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("WideChartoMultiByte failed, err : %d\n"), dwStatus);
+		goto exit;
+	}
+#else
+	strcpy(szAnsiLogData, szLogData);
+#endif
+
+	dwBytesToWrite = strlen(szAnsiLogData);
+	if (!WriteFile(hLogFile, szAnsiLogData, dwBytesToWrite, &dwBytesWritten, NULL))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("write log data failed, err : %d\n"), dwStatus);
+		goto exit;
+	}
+
+exit:
+	return dwStatus;
 }

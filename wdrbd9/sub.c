@@ -673,7 +673,7 @@ void _printk(const char * func, const char * format, ...)
 			}
 			loglink_msg->buf = buf;
 			mutex_lock(&loglink_mutex);
-			list_add(&loglink_msg->list, &loglink.loglist);
+			list_add_tail(&loglink_msg->list, &loglink.loglist);	// Add at tail to send log in chronological order.
 			mutex_unlock(&loglink_mutex);
 			queue_work(loglink.wq, &loglink.worker);
 		}

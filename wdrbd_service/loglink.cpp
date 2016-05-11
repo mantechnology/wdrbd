@@ -21,6 +21,10 @@ VOID WriteLog(wchar_t* pLogName, wchar_t* pMsg, WORD wType)
 
 	HANDLE hEventLog = RegisterEventSource(NULL, pLogName);
 	PCTSTR aInsertions [] = { pMsg };
+	DWORD dwDataSize = 0;
+
+	dwDataSize = (wcslen(pMsg) + 1) * sizeof(WCHAR);
+
 	ReportEvent(
 		hEventLog,                  // Handle to the eventlog
 		wType,						// Type of event
@@ -28,9 +32,9 @@ VOID WriteLog(wchar_t* pLogName, wchar_t* pMsg, WORD wType)
 		ONELINE_INFO,				// Event id
 		NULL,                       // User's sid (NULL for none)
 		1,                          // Number of insertion strings
-		0,                          // Number of additional bytes
+		dwDataSize,                 // Number of additional bytes, need to provide it to read event log data
 		aInsertions,                // Array of insertion strings
-		NULL                        // Pointer to additional bytes
+		pMsg                        // Pointer to additional bytes need to provide it to read event log data
 		);
 
 	DeregisterEventSource(hEventLog);

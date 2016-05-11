@@ -36,6 +36,10 @@ VOID WriteLog(wchar_t* pMsg)
 {
     HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
     PCTSTR aInsertions[] = {pMsg};
+	DWORD dwDataSize = 0;
+
+	dwDataSize = (wcslen(pMsg) + 1) * sizeof(WCHAR);
+
     ReportEvent(
         hEventLog,                  // Handle to the eventlog
         EVENTLOG_INFORMATION_TYPE,  // Type of event
@@ -43,9 +47,9 @@ VOID WriteLog(wchar_t* pMsg)
         ONELINE_INFO,				// Event id
         NULL,                       // User's sid (NULL for none)
         1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
+        dwDataSize,                 // Number of additional bytes, need to provide it to read event log data
         aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
+        pMsg                        // Pointer to additional bytes, need to provide it to read event log data
         );
 
     DeregisterEventSource(hEventLog);
@@ -575,29 +579,14 @@ DWORD RemoveEventSource(TCHAR *csPath, TCHAR *csApp)
 }
 
 DWORD RcDrbdStart()
-{
-    HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
-    BOOL bSuccess;
-    PCTSTR aInsertions[] = {L"rc_drbd_start"}; // EVENTLOG sample
-    bSuccess = ReportEvent(
-        hEventLog,                  // Handle to the eventlog
-        EVENTLOG_INFORMATION_TYPE,  // Type of event
-        0,							// Category (could also be 0)
-        ONELINE_INFO,				// Event id
-        NULL,                       // User's sid (NULL for none)
-        1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
-        aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
-        );
-
-    DeregisterEventSource(hEventLog);
-
+{    
     DWORD dwPID;
     TCHAR tmp[1024];
     TCHAR szFullPath[MAX_PATH] = {0};
     DWORD dwLength;
     DWORD ret;
+
+	WriteLog(L"rc_drbd_start");
 
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
     {
@@ -619,29 +608,14 @@ DWORD RcDrbdStart()
 
 DWORD RcDrbdStop()
 {
-    HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
-    BOOL bSuccess;
-    PCTSTR aInsertions[] = {L"rc_drbd_stop"}; // EVENTLOG sample
-    bSuccess = ReportEvent(
-        hEventLog,                  // Handle to the eventlog
-        EVENTLOG_INFORMATION_TYPE,  // Type of event
-        0,							// Category (could also be 0)
-        ONELINE_INFO,				// Event id
-        NULL,                       // User's sid (NULL for none)
-        1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
-        aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
-        );
-
-    DeregisterEventSource(hEventLog);
-
     DWORD dwPID;
     WCHAR szFullPath[MAX_PATH] = {0};
     WCHAR tmp[1024];
     DWORD dwLength;
     DWORD ret;
 	
+	WriteLog(L"rc_drbd_stop");
+
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
     {
         wsprintf(tmp, L"Error: cmd too long(%d)\n", dwLength);
