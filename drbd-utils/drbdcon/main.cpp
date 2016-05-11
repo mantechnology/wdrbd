@@ -52,6 +52,7 @@ main(int argc, char* argv [])
     char    NagleEnableFlag = 0;
     char    NagleDisableFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
+	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
 
     int     Force = 0;
@@ -59,6 +60,7 @@ main(int argc, char* argv [])
 	LARGE_INTEGER Offset = {0,};
 	ULONG	BlockSize = 0;
 	ULONG	Count = 0;
+	SIMULATION_DISK_IO_ERROR sdie = { 0, };
 
 	if (argc < 2)
 		usage();
@@ -153,6 +155,25 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		else if (!_stricmp(argv[argIndex], "/disk_error")) // Simulate Disk I/O Error
+		{
+			SimulDiskIoErrorFlag++;
+			argIndex++;
+			// get parameter 1 (DiskI/O error flag)
+			if (argIndex < argc) {
+				sdie.bDiskErrorOn = atoi(argv[argIndex]);
+			} else {
+				usage();
+			}
+			
+			argIndex++;
+			// get parameter 2 (DiskI/O error Type)
+			if (argIndex < argc) {
+				sdie.ErrorType = atoi(argv[argIndex]);
+			} else {
+				// if parameter 2 does not exist, parameter 2 is default value(0)
+			}
+		}
 		else
 		{
 			printf("Please check undefined arg[%d]=(%s)\n", argIndex, argv[argIndex]);
@@ -326,6 +347,10 @@ main(int argc, char* argv [])
     {
         res = MVOL_MountVolume(Letter);
     }
+
+	if (SimulDiskIoErrorFlag) {
+		res = MVOL_SimulDiskIoError(&sdie); 
+	}
 
 	return res;
 }

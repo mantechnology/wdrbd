@@ -67,4 +67,17 @@ DWORD MVOL_MountVolume(char drive_letter);
  */
 DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force);
 
+/**
+*      @brief  Simulate Disk I/O Error
+*      @param  SIMULATION_DISK_IO_ERROR structure's pointer
+*			bDiskErrorOn : Simulation flag
+*				true -  ON Simulation flag
+*				false - OFF Simulation flag
+*			ErrorType : Type of Disk I/O Error
+*				0 - fail to try Disk I/O
+*				1 - Disk I/O result is fail status
+*      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
+*/
+DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);
+
 #endif __MVOL_H__

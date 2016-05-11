@@ -3,6 +3,7 @@
 #include "disp.h"
 #include "proto.h"
 
+extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
 NTSTATUS
 IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
@@ -523,5 +524,32 @@ IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength )
 	pCountInfo->WriteCount.QuadPart = VolumeExtension->WriteCount.QuadPart;
 
 	*ReturnLength = sizeof(MVOL_COUNT_INFO);
+	return STATUS_SUCCESS;
+}
+
+// Simulate Disk I/O Error
+// this function just copy pSDError(SIMULATION_DISK_IO_ERROR) param to gSimulDiskIoError variables
+NTSTATUS
+IOCTL_SetSimulDiskIoError( PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	ULONG			inlen, outlen;
+	SIMULATION_DISK_IO_ERROR* pSDError = NULL;
+	
+	PIO_STACK_LOCATION	irpSp=IoGetCurrentIrpStackLocation(Irp);
+	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
+	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	
+	if( inlen < sizeof(SIMULATION_DISK_IO_ERROR) || outlen < sizeof(SIMULATION_DISK_IO_ERROR) ) {
+		mvolLogError( DeviceObject, 351, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
+		WDRBD_ERROR("buffer too small\n");
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	if(Irp->AssociatedIrp.SystemBuffer) {
+		pSDError = (SIMULATION_DISK_IO_ERROR*)Irp->AssociatedIrp.SystemBuffer;
+		RtlCopyMemory(&gSimulDiskIoError, pSDError, sizeof(SIMULATION_DISK_IO_ERROR));
+	} else {
+		return STATUS_INVALID_PARAMETER;
+	}
+	
 	return STATUS_SUCCESS;
 }

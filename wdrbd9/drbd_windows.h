@@ -1538,15 +1538,6 @@ struct blk_plug_cb {
 
 extern struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data, int size);
 
-#define SIMUL_DISK_IO_ERROR_TYPE0		0
-#define SIMUL_DISK_IO_ERROR_TYPE1		1
-
-typedef struct _SIMULATION_DISK_IO_ERROR {
-	BOOLEAN 	bDiskErrorOn;
-	UCHAR		ErrorType;
-}SIMULATION_DISK_IO_ERROR, *PSIMULATION_DISK_IO_ERROR;
-
-
 #endif
 
 #endif // DRBD_WINDOWS_H
