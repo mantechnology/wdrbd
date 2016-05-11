@@ -18,7 +18,7 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 
-	mutex_init(&loglink_mutex, "loglink_mutex");
+	mutex_init(&loglink_mutex);
 	ExInitializeNPagedLookasideList(&linklog_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
 
 	while (1)

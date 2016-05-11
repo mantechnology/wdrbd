@@ -163,7 +163,6 @@ int SockListener(unsigned short *servPort)
 	{
 		clntSock = AcceptTCPConnection(servSock);
 		{
-			// DRBD_DOC: EVENTLOG 보강/정리
 			extern TCHAR *ServiceName;
 			HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
 			BOOL bSuccess;

@@ -42,7 +42,7 @@
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#ifndef _WIN32 // _WIN32_V9
+#ifndef _WIN32 
 #include <linux/sockios.h>
 #include <linux/netdevice.h>
 #endif
@@ -63,7 +63,7 @@ struct d_globals global_options = {
 
 	.cmd_timeout_short = CMD_TIMEOUT_SHORT_DEF,
 	.cmd_timeout_medium = CMD_TIMEOUT_MEDIUM_DEF,
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	.cmd_timeout_long = CMD_TIMEOUT_LONG_DEF, // DW-817 wrong initialization.
 #else
 	.cmd_timeout_medium = CMD_TIMEOUT_LONG_DEF,

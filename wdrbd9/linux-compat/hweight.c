@@ -35,7 +35,7 @@ unsigned int hweight8(unsigned int w)
     return (res + (res >> 4)) & 0x0F;
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 ULONG_PTR hweight64(__u64 w)
 #else
 unsigned long hweight64(__u64 w)

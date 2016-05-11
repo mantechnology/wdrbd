@@ -2,7 +2,7 @@
 #include <ntstrsafe.h>
 #include <ntddk.h>
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"	
 #include "disp.h"
 #include "mvolmsg.h"
 #include "proto.h"
@@ -102,8 +102,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
-#ifdef _WIN32_V9
-	downup_rwlock_init(&transport_classes_lock); //transport 에서 사용할 spinlock 초기화.
+#ifdef _WIN32
+	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
 #endif
 	
 #ifdef _WIN32_WPP
@@ -123,7 +123,6 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
 #ifdef _WIN32_WPP
-	// JHKIM: 엔진 드라이버는 종료가 안됨으로 이 함수 진입이 안됨. 일단 WPP 종료 의미를 부여하기 위해 삽입함.
 	WPP_CLEANUP(DriverObject);
 #endif
 }
@@ -345,7 +344,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     mvolAddDeviceList(VolumeExtension);
     MVOL_UNLOCK();
     
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
     if (do_add_minor(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
@@ -468,7 +467,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         return STATUS_SUCCESS;
     }
 
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9

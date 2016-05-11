@@ -1,13 +1,13 @@
 ﻿#include <wdm.h>
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"	
 #include "proto.h"
 
 #include "linux-compat/idr.h"
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
-#ifdef _WIN32_V9 //헤더파일이 지정해야할 이유 파악
+#ifdef _WIN32
 #include <ntdddisk.h>
 #endif
 
@@ -129,14 +129,13 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
     else
     {
-		device = NULL;
-        //device = get_targetdev_by_md(VolumeExtension->Letter);	// kmpak
+        device = get_targetdev_by_md(VolumeExtension->Letter);
     }
 
     if (device)
     {
         // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
-#ifdef _WIN32_V9
+#ifdef _WIN32
         struct drbd_resource *resource = device->resource;
 		struct drbd_connection *connection, *tmp;
 		int ret; 
@@ -577,7 +576,7 @@ void _printk(const char * func, const char * format, ...)
 	RtlZeroMemory(buf, MAX_ELOG_BUF);
 
 	va_start(args, format);
-	ret = vsprintf(buf, format, args); // DRBD_DOC: vsnprintf 개선
+	ret = vsprintf(buf, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
 	int length = strlen(buf);
@@ -600,7 +599,7 @@ void _printk(const char * func, const char * format, ...)
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
 
-	// _WIN32_V9:JHKIM: 아래 2문장은 각각 이벤트로그에 제한된 길이로 저장, WinDbg 출력 정도의 보조기능이다. 최종 배포 시에는 이벤트로그 부분은 제거요망.
+	// _WIN32_V9:JHKIM: next two line will be removed later.
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
@@ -720,7 +719,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 #if 0
     if (KeGetCurrentIrql() > PASSIVE_LEVEL) // DRBD_DOC: DV: skip api RtlStringCchPrintfW(PASSIVE_LEVEL)
     {
-        // DRBD_DOC: EVENTLOG 처리시 고려
+        // DRBD_DOC: you should consider to process EVENTLOG
         WDRBD_WARN("IRQL(%d) too high. Log canceled.\n", KeGetCurrentIrql());
         return 1;
     }
@@ -845,25 +844,141 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 }
 
 /**
-* @brief   VOLUME_EXTENSION 객체의 값을 참조하여 block_device 객체값을 생성한다.
-*          여기서 생성된 block_device 값은 다른 곳에서 적절히 ExFreePool()해줘야 한다.
+* @brief   create block_device by referencing to VOLUME_EXTENSION object.
+*          a created block_device must be freed by ExFreePool() elsewhere.
 */
 struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
-	struct block_device * dev;
+    struct block_device * dev;
 
-	dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-	if (!dev) {
-		WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-		return NULL;
+    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
+    if (!dev)
+    {
+        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
+        goto block_device_failed;
+    }
+
+    dev->bd_disk = alloc_disk(0);
+    if (!dev->bd_disk)
+    {
+        WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
+        goto gendisk_failed;
+    }
+#if 0
+    dev->d_size = get_targetdev_volsize(pvext);
+    if (0 == dev->d_size)
+    {
+        WDRBD_WARN("Failed to get (%c): volume size\n", pvext->Letter);
+        goto gendisk_failed;
+    }
+#endif
+    dev->bd_disk->disk_name[0] = pvext->Letter;
+    dev->bd_disk->disk_name[1] = ':';
+    dev->bd_disk->disk_name[2] = '\n';
+
+    dev->bd_disk->queue = blk_alloc_queue(0);
+    if (!dev->bd_disk->queue)
+    {
+        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
+        goto request_queue_failed;
+    }
+
+    dev->bd_disk->pDeviceExtension = pvext;
+
+    dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
+    dev->bd_disk->queue->logical_block_size = 512;
+    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
+
+    return dev;
+
+request_queue_failed:
+    kfree(dev->bd_disk->queue);
+
+gendisk_failed:
+    kfree(dev->bd_disk);
+
+block_device_failed:
+    kfree(dev);
+
+    return NULL;
+}
+
+VOID drbdCreateDev()
+{
+	PROOT_EXTENSION		rootExtension = NULL;
+	PVOLUME_EXTENSION	pDeviceExtension = NULL;
+
+	MVOL_LOCK();
+	rootExtension = mvolRootDeviceObject->DeviceExtension;
+	pDeviceExtension = rootExtension->Head;
+
+	while (pDeviceExtension != NULL)
+	{
+        if (0 == pDeviceExtension->VolIndex)
+        {
+            pDeviceExtension = pDeviceExtension->Next;
+            continue;
+        }
+
+		if (pDeviceExtension->dev)
+		{
+			WDRBD_WARN("pDeviceExtension(%c)->dev Already exists\n", pDeviceExtension->Letter);
+			pDeviceExtension = pDeviceExtension->Next;
+			continue;
+		}
+
+		pDeviceExtension->dev = kmalloc(sizeof(struct block_device), 0, 'F5DW');
+		if (!pDeviceExtension->dev)
+		{
+			WDRBD_ERROR("pDeviceExtension(%c)->dev:kzalloc failed\n", pDeviceExtension->Letter);
+			pDeviceExtension = pDeviceExtension->Next;
+			continue;
+		}
+
+		pDeviceExtension->dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, '06DW');
+		if (!pDeviceExtension->dev->bd_disk)
+		{
+			WDRBD_ERROR("pDeviceExtension(%c)->dev->bd_disk:kzalloc failed\n", pDeviceExtension->Letter);
+			kfree(pDeviceExtension->dev);
+			pDeviceExtension->dev = 0;
+			pDeviceExtension = pDeviceExtension->Next;
+			continue;
+		}
+
+        pDeviceExtension->dev->d_size = get_targetdev_volsize(pDeviceExtension);
+        if (!pDeviceExtension->dev->d_size)
+		{
+			WDRBD_ERROR("volume(%c) size is zero\n", pDeviceExtension->Letter);
+			kfree(pDeviceExtension->dev->bd_disk);
+			kfree(pDeviceExtension->dev);
+			pDeviceExtension->dev = 0;
+			pDeviceExtension = pDeviceExtension->Next;
+			continue;
+		}
+
+		sprintf(pDeviceExtension->dev->bd_disk->disk_name, "%c:", pDeviceExtension->Letter);
+		pDeviceExtension->dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, '16DW'); // CHECK FREE!!!!
+		if (!pDeviceExtension->dev->bd_disk->queue)
+		{
+			WDRBD_ERROR("pDeviceExtension->dev->bd_disk->queue:kzalloc failed\n");
+			kfree(pDeviceExtension->dev->bd_disk);
+			kfree(pDeviceExtension->dev);
+			pDeviceExtension->dev = 0;
+			pDeviceExtension = pDeviceExtension->Next;
+			continue;
+		}
+		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
+
+		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pDeviceExtension;
+		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
+		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
+		pDeviceExtension = pDeviceExtension->Next;
 	}
-
-	return dev;
+	MVOL_UNLOCK();
 }
 
 /**
-* @brief   VOLUME_EXTENSION 내의 dev객체를 memory free 해준다.
-*          생성은 drbdCreateDev와 짝을 이룬다.
+* @brief   free VOLUME_EXTENSION's dev object
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {

@@ -43,7 +43,7 @@ typedef struct _VOLUME_EXTENSION
 	PDEVICE_OBJECT		DeviceObject;		// volume deviceobject
 	PDEVICE_OBJECT		PhysicalDeviceObject;
 	PDEVICE_OBJECT		TargetDeviceObject;
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
     HANDLE              LockHandle;
 #endif
 	ULONG				Flag;

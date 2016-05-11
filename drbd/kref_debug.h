@@ -1,7 +1,7 @@
 ﻿#ifndef KREF_DEBUG_H
 #define KREF_DEBUG_H
 
-#ifdef _WIN32 // _WIN32_V9
+#ifdef _WIN32 
 #include "linux-compat/seq_file.h"
 #else
 #include <linux/seq_file.h>
@@ -39,7 +39,7 @@ static inline void kref_debug_put(struct kref_debug_info *debug_info, int holder
 	kref_debug_sub(debug_info, 1, holder_nr);
 }
 #else
-#ifdef _WIN32_V9
+#ifdef _WIN32
 struct kref_debug_class { int dummy; };
 struct kref_debug_info { int dummy; };
 #else

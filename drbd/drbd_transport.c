@@ -10,9 +10,9 @@
 #include <drbd_int.h>
 
 static LIST_HEAD(transport_classes);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern int __init dtt_initialize(void);
-KSPIN_LOCK	transport_classes_lock;	//spinlock 으로 포팅.
+KSPIN_LOCK	transport_classes_lock;	//ported spinlock
 #else
 static DECLARE_RWSEM(transport_classes_lock);
 #endif
@@ -74,7 +74,7 @@ static struct drbd_transport_class *get_transport_class(const char *name)
 
 	down_read(&transport_classes_lock);
 	tc = __find_transport_class(name);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     // try_module_get() not support!
 #else
 	if (tc && !try_module_get(tc->module))
@@ -89,11 +89,8 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 	struct drbd_transport_class *tc = get_transport_class(name);
 
 	if (!tc) {
-#ifdef _WIN32_V9
-		// not support
-		// 드라이버 사용안함!
-		// 드라이버 로드 요청은 무시하고 직접 초기화, 이 작업으로 drbd_transport_ops 사용가능.
-		// 최종 버전에서는 class 부분을 통째로 무시해도 될 듯
+#ifdef _WIN32
+		// request_module is not support
 		dtt_initialize();
 #else
 		request_module("drbd_transport_%s", name);
@@ -104,7 +101,7 @@ struct drbd_transport_class *drbd_get_transport_class(const char *name)
 	return tc;
 }
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 void drbd_put_transport_class(struct drbd_transport_class *tc)
 {
 	/* convenient in the error cleanup path */
@@ -128,8 +125,8 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 #else
 	list_for_each_entry(tc, &transport_classes, list) {
 #endif
-#ifdef _WIN32_V9
-		// tc->name 만 출력.
+#ifdef _WIN32
+		// print only tc->name
 		seq_printf(seq, " %s ", tc->name);
 #else
 		seq_printf(seq, " %s (%s)", tc->name,
@@ -141,7 +138,7 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 	up_read(&transport_classes_lock);
 }
 
-#ifdef _WIN32_V9 //addr_equal 함수 V9 버전으로 새롭게 변경.
+#ifdef _WIN32
 static bool addr_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
 #else
 static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
@@ -153,15 +150,13 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 	if (addr1->ss_family == AF_INET6) {
 		const struct sockaddr_in6 *v6a1 = (const struct sockaddr_in6 *)addr1;
 		const struct sockaddr_in6 *v6a2 = (const struct sockaddr_in6 *)addr2;
-
-	//ipv6 addr 비교 함수 V9 포팅 필요... V9에서 ipv6 지원하는가?...??? => ipv6 도 고려하여 포팅한다.
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		if (!IN6_ADDR_EQUAL(&v6a1->sin6_addr, &v6a2->sin6_addr))
 #else
 		if (!ipv6_addr_equal(&v6a1->sin6_addr, &v6a2->sin6_addr))
 #endif
 			return false;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		else if (IN6_IS_ADDR_LINKLOCAL(&v6a1->sin6_addr))
 #else
 		else if (ipv6_addr_type(&v6a1->sin6_addr) & IPV6_ADDR_LINKLOCAL)
@@ -176,7 +171,7 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 	}
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 static bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
 #else
 static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
@@ -205,11 +200,10 @@ static struct drbd_listener *find_listener(struct drbd_connection *connection,
 {
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_listener *listener;
-#ifdef _WIN32_V9_PATCH_1
-	//JHKIM: 변경되었음. 재확인 필요 
+#ifdef _WIN32
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
 		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)addr)) {
-#if 0 // V8 org 참고
+#if 0 // reference V8.x org 
 	struct drbd_path *path;
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
@@ -300,7 +294,7 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 {
 	struct drbd_resource *resource;
 	struct drbd_listener *listener;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	listener = (struct drbd_listener*)xchg((LONG_PTR*)&waiter->listener, (LONG_PTR)NULL);
 #else
 	listener = xchg(&waiter->listener, NULL);
@@ -323,12 +317,12 @@ void drbd_put_listener(struct drbd_waiter *waiter)
 	kref_put(&listener->kref, drbd_listener_destroy);
 }
 
-#ifdef _WIN32_V9_IPV6
+#ifdef _WIN32
 extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
 extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, struct sockaddr_storage_win *addr)
 #else
 struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, struct sockaddr_storage *addr)
@@ -346,7 +340,7 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 		list_for_each_entry(path, &waiter->transport->paths, list) {
 #endif
 
-#ifdef _WIN32_V9_IPV6
+#ifdef _WIN32
 			// WDRBD_TRACE_CO
 			char sbuf[128], dbuf[128];
 			if (path->peer_addr.ss_family == AF_INET6) {
@@ -354,12 +348,6 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 			} else {
 				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&path->peer_addr), get_ip4(dbuf, (struct sockaddr_in*)addr));
 			}
-			// WDRBD_TRACE_CO
-#else
-			// WDRBD_TRACE_CO
-			extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-			char sbuf[64], dbuf[64];
-			WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, &path->peer_addr), get_ip4(dbuf, addr));
 			// WDRBD_TRACE_CO
 #endif
 			if (addr_equal(&path->peer_addr, addr))
@@ -431,7 +419,7 @@ void drbd_path_event(struct drbd_transport *transport, struct drbd_path *path)
 	notify_path(connection, path, NOTIFY_CHANGE);
 }
 
-#ifndef _WIN32_V9 // 
+#ifndef _WIN32 // 
 /* Network transport abstractions */
 EXPORT_SYMBOL_GPL(drbd_register_transport_class);
 EXPORT_SYMBOL_GPL(drbd_unregister_transport_class);
