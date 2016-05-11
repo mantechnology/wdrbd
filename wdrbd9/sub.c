@@ -1,13 +1,13 @@
 ﻿#include <wdm.h>
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"	
 #include "proto.h"
 
 #include "linux-compat/idr.h"
 #include "drbd_int.h"
 #include "drbd_wrappers.h"
 
-#ifdef _WIN32_V9 //헤더파일이 지정해야할 이유 파악
+#ifdef _WIN32
 #include <ntdddisk.h>
 #endif
 
@@ -147,7 +147,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (device)
     {
         // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
-#ifdef _WIN32_V9
+#ifdef _WIN32
         struct drbd_resource *resource = device->resource;
 		struct drbd_connection *connection, *tmp;
 		int ret; 
@@ -588,7 +588,7 @@ void _printk(const char * func, const char * format, ...)
 	RtlZeroMemory(buf, MAX_ELOG_BUF);
 
 	va_start(args, format);
-	ret = vsprintf(buf, format, args); // DRBD_DOC: vsnprintf 개선
+	ret = vsprintf(buf, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
 	int length = strlen(buf);
@@ -611,7 +611,7 @@ void _printk(const char * func, const char * format, ...)
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
 
-	// _WIN32_V9:JHKIM: 아래 2문장은 각각 이벤트로그에 제한된 길이로 저장, WinDbg 출력 정도의 보조기능이다. 최종 배포 시에는 이벤트로그 부분은 제거요망.
+	// _WIN32_V9:JHKIM: next two line will be removed later.
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
@@ -731,7 +731,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 #if 0
     if (KeGetCurrentIrql() > PASSIVE_LEVEL) // DRBD_DOC: DV: skip api RtlStringCchPrintfW(PASSIVE_LEVEL)
     {
-        // DRBD_DOC: EVENTLOG 처리시 고려
+        // DRBD_DOC: you should consider to process EVENTLOG
         WDRBD_WARN("IRQL(%d) too high. Log canceled.\n", KeGetCurrentIrql());
         return 1;
     }
@@ -856,8 +856,8 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 }
 
 /**
-* @brief   VOLUME_EXTENSION 객체의 값을 참조하여 block_device 객체값을 생성한다.
-*          여기서 생성된 block_device 값은 다른 곳에서 적절히 ExFreePool()해줘야 한다.
+* @brief   create block_device by referencing to VOLUME_EXTENSION object.
+*          a created block_device must be freed by ExFreePool() elsewhere.
 */
 struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
@@ -914,10 +914,6 @@ block_device_failed:
 
     return NULL;
 }
-
-// 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_??? 정보로 사용.
-// 구축된 disk 자료구조의 free 는 스레드 종료시 개별적으로 처리함. 
-// MVF dev 와 DRBD mdev 자료구조 통합, drbdadm 명령 통합 고려
 
 VOID drbdCreateDev()
 {
@@ -994,8 +990,7 @@ VOID drbdCreateDev()
 }
 
 /**
-* @brief   VOLUME_EXTENSION 내의 dev객체를 memory free 해준다.
-*          생성은 drbdCreateDev와 짝을 이룬다.
+* @brief   free VOLUME_EXTENSION's dev object
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {

@@ -5,7 +5,7 @@
 #define DRBD_CONFIG_DIR "/etc"
 
 /* Include support for drbd-8.3 kernel code */
-#ifndef _WIN32_V9
+#ifndef _WIN32
 #define DRBD_LEGACY_83 1
 
 /* Include support for drbd-8.4 kernel code */

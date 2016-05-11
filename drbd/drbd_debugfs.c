@@ -139,7 +139,7 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 	seq_print_age_or_dash(m, s & RQ_LOCAL_PENDING, now - req->pre_submit_jif);
 
 #define RQ_HDR_3 "\tsent\tacked\tdone"
-#ifdef _WIN32_V9_DEBUGFS // JHKIM:debugfs 용
+#ifndef _WIN32
 	print_one_age_or_dash(m, req, RQ_NET_SENT, 0, now, offsetof(typeof(*req), pre_send_jif));
 	print_one_age_or_dash(m, req, RQ_NET_SENT, RQ_NET_PENDING, now, offsetof(typeof(*req), acked_jif));
 	print_one_age_or_dash(m, req, RQ_NET_DONE, 0, now, offsetof(typeof(*req), net_done_jif));
@@ -159,7 +159,7 @@ static void seq_print_minor_vnr_req(struct seq_file *m, struct drbd_request *req
 static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int i;
 #else
 	unsigned int i;
@@ -167,7 +167,7 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 
 	seq_puts(m, "minor\tvnr\tstart\tsubmit\tintent\n");
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
@@ -195,7 +195,7 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int i;
 #else
 	unsigned int i;
@@ -203,7 +203,7 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 	
 	seq_puts(m, "minor\tvnr\tage\t#waiting\n");
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
@@ -263,7 +263,7 @@ static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *d
 static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int i;
 #else
 	unsigned int i;
@@ -271,7 +271,7 @@ static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd
 
 	seq_puts(m, "minor\tvnr\trw\tage\t#in-flight\n");
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
@@ -349,14 +349,14 @@ static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 	struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int i;
 #else
 	unsigned int i;
 #endif
 	
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
@@ -570,7 +570,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 	return 0;
 }
 
-#ifdef _WIN32_V9_DEBUGFS
+#ifndef _WIN32
 
 /* make sure at *open* time that the respective object won't go away. */
 static int drbd_single_open(struct file *file, int (*show)(struct seq_file *, void *),
@@ -814,7 +814,7 @@ static int connection_debug_show(struct seq_file *m, void *ignored)
 	unsigned long long ull1, ull2;
 	char sep = ' ';
 
-	seq_printf(m, "content and format of this will change without notice\n");
+	seq_puts(m, "content and format of this will change without notice\n");
 
 	seq_printf(m, "flags: 0x%04lx :", flags);
 #define pretty_print_bit(n) \
@@ -992,7 +992,7 @@ static int device_data_gen_id_show(struct seq_file *m, void *ignored)
 		seq_printf(m, "%s[%d]0x%016llX", i++ ? " " : "", node_id,
 			   md->peers[node_id].bitmap_uuid);
 	}
-	seq_printf(m, "\n");
+	seq_putc(m, '\n');
 
 	for (i = 0; i < HISTORY_UUIDS; i++)
 		seq_printf(m, "0x%016llX\n", drbd_history_uuid(device, i));
@@ -1449,7 +1449,6 @@ static int peer_device_proc_drbd_show(struct seq_file *m, void *ignored)
 
 	return 0;
 }
-
 
 #define drbd_debugfs_peer_device_attr(name)					\
 static int peer_device_ ## name ## _open(struct inode *inode, struct file *file)\

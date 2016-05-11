@@ -699,7 +699,7 @@ void schedule_peer_device_options(const struct cfg_ctx *ctx)
 				continue;
 			if (STAILQ_EMPTY(&peer_device->pd_options))
 				continue;
-#ifdef _WIN32_V9
+#ifdef _WIN32
             if (peer_device->connection->peer == NULL)
                 continue;
 #endif

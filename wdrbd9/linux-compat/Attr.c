@@ -68,7 +68,7 @@ static int validate_nla(struct nlattr *nla, int maxtype,
                 break;
             if (attrlen < NLA_ALIGN(pt->len) + NLA_HDRLEN)
                 return -ERANGE;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			nla = (struct nlattr*)((int)nla_data(nla) + NLA_ALIGN(pt->len));
 #else
 			nla = (int)nla_data(nla) + NLA_ALIGN(pt->len);

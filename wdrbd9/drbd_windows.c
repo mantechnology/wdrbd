@@ -106,7 +106,7 @@ int fls(int x)
 
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 {
 	const ULONG_PTR* p = addr;
@@ -573,7 +573,7 @@ void mempool_free(void *p, mempool_t *pool)
 }
 
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 mempool_t *mempool_create_slab_pool(int min_nr, int order)
 {
 	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
@@ -628,7 +628,7 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 // 하지만 wdrbd에서는 그럴 필요없이 kref_put 에서 처리해준다.
 int kref_put(struct kref *kref, void (*release)(struct kref *kref))
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     WARN_ON(release == NULL);
     WARN_ON(release == (void (*)(struct kref *))kfree);
 
@@ -754,7 +754,7 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 
 #include "drbd_int.h"
 
-#ifndef _WIN32_V9 // JHKIM: 미사용, 추후 제거
+#ifndef _WIN32 // JHKIM: 미사용, 추후 제거
 union drbd_state g_mask_null; 
 union drbd_state g_val_null;
 
@@ -933,7 +933,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 	timeout = expire - jiffies;
 	return timeout < 0 ? 0 : timeout;
 }
-#ifdef _WIN32_V9
+#ifdef _WIN32
 int queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #else
 void queue_work(struct workqueue_struct* queue, struct work_struct* work)
@@ -943,11 +943,11 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
     wr->w = work;
     ExInterlockedInsertTailList(&queue->list_head, &wr->element, &queue->list_lock);
     KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
-#ifdef _WIN32_V9
+#ifdef _WIN32
     return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
 #endif
 }
-#ifdef _WIN32_V9    // kmpak DW-561
+#ifdef _WIN32    // kmpak DW-561
 void run_singlethread_workqueue(struct workqueue_struct * wq)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -1056,7 +1056,7 @@ NTSTATUS mutex_lock(struct mutex *m)
     return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, FALSE, NULL);
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 __inline
 NTSTATUS mutex_lock_interruptible(struct mutex *m)
 {
@@ -1092,7 +1092,7 @@ void mutex_unlock(struct mutex *m)
 	KeReleaseMutex(&m->mtx, FALSE);
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 
 void sema_init(struct semaphore *s, int limit)
 {
@@ -1241,7 +1241,7 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 	releaseSpinLock(&lock->spinLock, (KIRQL) flags);
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 void spin_lock_bh(spinlock_t *lock)
 {
 	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
@@ -1274,7 +1274,7 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,  sector_t *err
 	return 0;
 }
 
-#ifdef _WIN32_V9 
+#ifdef _WIN32
 ULONG get_random_ulong(PULONG seed)
 {
 	LARGE_INTEGER Tick;
@@ -1296,7 +1296,7 @@ void get_random_bytes(void *buf, int nbytes)
 
     do
     {
-#ifdef _WIN32_V9 
+#ifdef _WIN32
 		rn = get_random_ulong(&rn);
 #else // DW-667
 		rn = RtlRandomEx(&rn);
@@ -1343,7 +1343,7 @@ void init_timer(struct timer_list *t)
 #endif
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 // kmpak 20150824
 // lock dependency에 따른 작업을 위해 key 값이 존재하나 아직 이것을
 // 활용하진 못하겠다. key 외에 나머지는 timer init 시켜준다.
@@ -1366,17 +1366,17 @@ void add_timer(struct timer_list *t)
 void del_timer(struct timer_list *t)
 {
 	KeCancelTimer(&t->ktimer);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     t->expires = 0;
 #endif
 }
 
 int del_timer_sync(struct timer_list *t)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     del_timer(t);
     return 0;
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	// from linux kernel 2.6.24
   	for (;;) {
 		int ret = try_to_del_timer_sync(timer);
@@ -1390,7 +1390,7 @@ int del_timer_sync(struct timer_list *t)
 #endif
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 /**
  * timer_pending - is a timer pending?
  * @timer: the timer in question
@@ -1411,8 +1411,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 {
     if (!timer_pending(timer) && pending_only)
     {
-		//_WIN32_CHECK // JHKIM: 0으로 리턴해도 되는가? Win 에서는 타이머 적재가 되야할 듯.
-        return 0;
+		return 0;
     }
 
     LARGE_INTEGER nWaitTime = { .QuadPart = 0 };
@@ -1422,7 +1421,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     if (current_milisec >= expires)
     {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		nWaitTime.QuadPart = -1; // WIn32_CHECK: JHKIM: 양수일 경우 정상동작여부 재확인
 #else
         nWaitTime.LowPart = 1; // V8
@@ -1460,7 +1459,7 @@ int mod_timer_pending(struct timer_list *timer, ULONG_PTR expires)
 
 int mod_timer(struct timer_list *timer, ULONG_PTR expires)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 
 	// DW-519 timer logic temporary patch. required fix DW-824. 
     //if (timer_pending(timer) && timer->expires == expires)
@@ -2002,7 +2001,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 */
 void blk_cleanup_queue(struct request_queue *q)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
 	// caller에서 미리 정리하고 이 함수는 제거 필요. 
 #else
@@ -2094,7 +2093,7 @@ void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 
 }
 
-#ifdef _WIN32 // _WIN32_V9
+#ifdef _WIN32 
 int _DRBD_ratelimit(char * __FILE, int __LINE)
 { 
 	int __ret;						
@@ -2155,7 +2154,7 @@ int _DRBD_ratelimit(size_t ratelimit_jiffies, size_t ratelimit_burst, struct drb
 }
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
  // disable.
 #else
 bool _expect(long exp, struct drbd_conf *mdev, char *file, int line)
@@ -2670,7 +2669,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			goto error;
 		}
 
-#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+#ifdef _WIN32 // _WIN32_SEND_BUFFING
 		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line))
 #endif
 		{
@@ -2704,7 +2703,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			goto error;
 		}
 
-#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+#ifdef _WIN32 // _WIN32_SEND_BUFFING
 		// WDRBD_INFO("send BYE!\n");
 		if ((Status = SendLocal(Socket, "BYE", 3, 0, g_handler_timeout)) != 3)
 #endif
@@ -2754,7 +2753,7 @@ int kobject_init_and_add(struct kobject *kobj, struct kobj_type *ktype, struct k
 
 
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 int scnprintf(char * buf, size_t size, const char *fmt, ...)
 {
 	va_list args;
@@ -2836,7 +2835,7 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 		);
 	return buf;
 }
-#ifdef _WIN32_V9_IPV6
+#ifdef _WIN32
 char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
 {
 	//RtlIpv6AddressToString 과 같은 형식으로 출력 필요.
@@ -2866,7 +2865,7 @@ char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
 struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 				      int size)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct blk_plug *plug = current->plug;
 	struct blk_plug_cb *cb;
 

@@ -662,7 +662,7 @@ const char *read_balancing_map[] = {
 };
 
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #define CHANGEABLE_DISK_OPTIONS								\
 	{ "on-io-error", ENUM(on_io_error, ON_IO_ERROR) },				\
 	/*{ "fencing", ENUM(fencing_policy, FENCING) },*/				\

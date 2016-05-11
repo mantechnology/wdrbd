@@ -68,7 +68,7 @@
 #endif
 #include "drbd_debugfs.h"
 #include "drbd_meta_data.h"
-#ifndef _WIN32 // _WIN32_V9: not used
+#ifndef _WIN32 
 #ifdef COMPAT_HAVE_LINUX_BYTEORDER_SWABB_H
 #include <linux/byteorder/swabb.h>
 #else
@@ -84,7 +84,7 @@
 
 static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
-#ifdef _WIN32  // _WIN32_V9 : STATIC -> static
+#ifdef _WIN32
 static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
 extern void nl_policy_init_by_manual(void);
 #else
@@ -120,9 +120,8 @@ module_param(allow_oos, bool, 0);
 //		echo 5 > /sys/module/drbd/parameters/fault_rate
 
 int enable_faults = 0;  // 0xFFFF;
-int fault_rate = 0;     // 5% 이하로 시험
-int fault_devs = 0;     // 시험 대상 minor 번호
-
+int fault_rate = 0;     // test on lower than 5%
+int fault_devs = 0;     // minor number for test target
 static int fault_count = 0;
 #else
 int enable_faults;
@@ -147,7 +146,8 @@ module_param(two_phase_commit_fail, int, 0644);
 
 /* module parameter, defined */
 unsigned int minor_count = DRBD_MINOR_COUNT_DEF;
-#ifdef _WIN32 // WDRBD_V8 에서 튜닝된 값이고 초기화 안되면 오류로 기억
+#ifdef _WIN32 
+// if not initialized, it means error.
 bool disable_sendpage = 1;      // DRBD_DOC: not support page I/O
 bool allow_oos = 0;
 #else
@@ -202,12 +202,12 @@ wait_queue_head_t drbd_pp_wait;
 
 DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
 
-#ifdef _WIN32 // WIN32_CHECK: WDRBD_V8 에서 사용되는 전역 추가
-EX_SPIN_LOCK g_rcuLock;
+#ifdef _WIN32
+EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
 struct mutex g_genl_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
-#ifndef _WIN32 //_WIN32_V9
+#ifndef _WIN32
 	.owner =   THIS_MODULE,
 #endif
 	.open =    drbd_open,
@@ -227,7 +227,7 @@ struct bio *bio_alloc_drbd(gfp_t gfp_mask, ULONG Tag)
 struct bio *bio_alloc_drbd(gfp_t gfp_mask)
 #endif
 {
-#ifdef _WIN32 // _WIN32_V9
+#ifdef _WIN32
 	return bio_alloc(gfp_mask, 1, Tag);
 #else
 	struct bio *bio;
@@ -272,10 +272,8 @@ struct drbd_connection *__drbd_next_connection_ref(u64 *visited,
 
 	rcu_read_lock();
 	if (!connection) {
-#ifdef _WIN32_V9
-        list_first_or_null_rcu(connection, &resource->connections,
-        struct drbd_connection,
-            connections);
+#ifdef _WIN32
+        list_first_or_null_rcu(connection, &resource->connections, struct drbd_connection, connections);
 #else
 		connection = list_first_or_null_rcu(&resource->connections,
 						    struct drbd_connection,
@@ -329,10 +327,8 @@ struct drbd_peer_device *__drbd_next_peer_device_ref(u64 *visited,
 {
 	rcu_read_lock();
 	if (!peer_device) {
-#ifdef _WIN32_V9
-        list_first_or_null_rcu(peer_device, &device->peer_devices,
-        struct drbd_peer_device,
-            peer_devices);
+#ifdef _WIN32
+        list_first_or_null_rcu(peer_device, &device->peer_devices, struct drbd_peer_device, peer_devices);
 #else
 		peer_device = list_first_or_null_rcu(&device->peer_devices,
 						    struct drbd_peer_device,
@@ -443,8 +439,6 @@ static void tl_abort_for_each_req_ref(struct drbd_request *next, struct list_hea
 		kref_put(&next->kref, drbd_req_destroy);
 }
 
-
-
 /**
  * tl_release() - mark as BARRIER_ACKED all requests in the corresponding transfer log epoch
  * @device:	DRBD device.
@@ -528,7 +522,6 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 #endif
 		if (req->epoch == expect_epoch)
 			break;
-
 	tl_for_each_req_ref_from(req, r, &resource->transfer_log) {	
 		struct drbd_peer_device *peer_device;
 		if (req->epoch != expect_epoch) {
@@ -569,12 +562,12 @@ void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 	struct drbd_request *req, *r;
 
 	tl_for_each_req_ref(req, r, &resource->transfer_log) {
-#ifdef _WIN32_V9 // DW-689 임시보강
+#ifdef _WIN32 // DW-689 temporary patch
 		if (NULL == req->device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: req->device is null! ignore!"); break; }
 #endif
 		peer_device = conn_peer_device(connection, req->device->vnr);
 
-#ifdef _WIN32_V9 // DW-689 임시보강
+#ifdef _WIN32 // DW-689 temporary patch
 		if (NULL == peer_device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: peer_device is null! ignore!"); break; }
 #endif
 		_req_mod(req, what, peer_device);
@@ -723,7 +716,7 @@ int drbd_thread_start(struct drbd_thread *thi)
 
 	switch (thi->t_state) {
 	case NONE:
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		if (connection)
 			drbd_info(connection, "Starting %s thread (from %s [0x%p])\n",
 				 thi->name, current->comm, current->pid);
@@ -1083,7 +1076,7 @@ static void new_or_recycle_send_buffer_page(struct drbd_send_buffer *sbuf)
 
 		page = alloc_page(GFP_KERNEL);
 		if (page) {
-#ifndef _WIN32 //V8 구현 적용. // JHKIM: free_page 필요 할 듯. 확인요망!
+#ifndef _WIN32 // JHKIM: we should verify to need to free_page later.
 			put_page(sbuf->page);
 #endif
 			sbuf->page = page;
@@ -1102,9 +1095,11 @@ static void *alloc_send_buffer(struct drbd_connection *connection, int size,
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
 	char *page_start = page_address(sbuf->page);
-	//DbgPrint("DRBD_TEST: alloc_send_buffer stream(%d) sz=%d\n", drbd_stream, size); // DRBD_V9_TEST
+	
 	if (sbuf->pos - page_start + size > PAGE_SIZE) {
+#ifdef _WIN32
 		WDRBD_TRACE_RS("(%s) stream(%d)! unsent(%d) pos(%d) size(%d)\n", current->comm, drbd_stream, sbuf->unsent, sbuf->pos, size);
+#endif
 		flush_send_buffer(connection, drbd_stream);
 		new_or_recycle_send_buffer_page(sbuf);
 	}
@@ -1201,8 +1196,8 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
-	//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
-#ifdef _WIN32_V9
+#ifdef _WIN32
+//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
@@ -1244,7 +1239,6 @@ static int __send_command(struct drbd_connection *connection, int vnr,
 		sbuf->allocated_size = 0;
 		err = 0;
 	} else {
-		//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! __send_command!!!!\n", current->comm, drbd_stream);
 		err = flush_send_buffer(connection, drbd_stream);
 
 		/* DRBD protocol "pings" are latency critical.
@@ -1579,7 +1573,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 			bitmap_uuids_mask |= NODE_MASK(i);
 	}
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, sizeof(ULONG_PTR))
 #else
 	for_each_set_bit(i, (unsigned long *)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
@@ -1693,7 +1687,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 
 	pdc = rcu_dereference_protected(peer_device->conf,
 		lockdep_is_held(&peer_device->device->resource->conf_update));
-#ifdef _WIN32_V9
+#ifdef _WIN32
     if (peer_device->rs_plan_s)
         resync_plan = peer_device->rs_plan_s;   // kmpak. fixed memory leak
     else
@@ -1703,7 +1697,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 #endif
 	if (!resync_plan)
 		goto out;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	resync_lru = lc_create("resync", &drbd_bm_ext_cache,
 			       1, 61, sizeof(struct bm_extent),
 			       offsetof(struct bm_extent, lce));
@@ -1726,7 +1720,7 @@ out:
 	return err;
 }
 
-#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+#ifndef _WIN32
 /* communicated if (agreed_features & DRBD_FF_WSAME) */
 void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct request_queue *q)
 {
@@ -1779,20 +1773,20 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
 #ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;   // to recalculate size // _WIN32_V9_PATCH_2:JHKKIM: P2에서 크기 구하는 부분이 assign_p_sizes_qlim 변경됨. 유지하는 이유에 대해 관련 이슈 재확인 필요. 
+        device->ldev->backing_bdev->d_size = 0;   // to recalculate size // _WIN32_V9_PATCH_2:JHKKIM: changed at patch 2, we should verify this issue about assign_p_sizes_qlim later
 #endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 		q_order_type = drbd_queue_order_type(device);
-#ifdef _WIN32_V9 // WIN32_V9_PATCH2_CHECK: JHKIM: 일단 P1을 유지함. P2와 차이 재확인
+#ifdef _WIN32 // JHKIM: continue to patch 1 code. required to verify differences with patch 2
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
 #else
 		max_bio_size = queue_max_hw_sectors(q) << 9;
 		max_bio_size = min(max_bio_size, DRBD_MAX_BIO_SIZE);
 #endif
-#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+#ifndef _WIN32 // _WIN32_V9_PATCH_2
 		assign_p_sizes_qlim(device, p, q);
 #endif
 		put_ldev(device);
@@ -1801,7 +1795,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		u_size = 0;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
-#ifndef _WIN32_V9 // _WIN32_V9_PATCH_2
+#ifndef _WIN32 // _WIN32_V9_PATCH_2
 		assign_p_sizes_qlim(device, p, NULL);
 #endif
 	}
@@ -2103,7 +2097,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	pc = (struct p_compressed_bm *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
 #else
 	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
@@ -2127,7 +2121,7 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 		/* was not compressible.
 		 * send a buffer full of plain text bits instead. */
 		unsigned int data_size;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		ULONG_PTR num_words;
         ULONG_PTR *pu = (ULONG_PTR *)pc;
 #else
@@ -2230,9 +2224,6 @@ void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set
 		return;
 	p->barrier = barrier_nr;
 	p->set_size = cpu_to_be32(set_size);
-#ifdef DRBD_TRACE // _WIN32: 최종 시점에 제거
-	WDRBD_TRACE("P_BARRIER_ACK: set sz:%d\n", set_size);
-#endif
 	send_command(connection, -1, P_BARRIER_ACK, CONTROL_STREAM);
 }
 
@@ -2265,7 +2256,9 @@ int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 	p->block_id = block_id;
 	p->pad = 0;
 	p->blksize = cpu_to_be32(size);
+#ifdef _WIN32
     WDRBD_TRACE_RS("size(%d) cmd(%d) sector(0x%llx) block_id(%d)\n", size, cmd, sector, block_id);
+#endif
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
 }
 
@@ -2328,7 +2321,7 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int err;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	err = tr_ops->send_page(transport, DATA_STREAM, page->addr, offset, size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
@@ -2338,8 +2331,8 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 
 	return err;
 }
-#ifdef _WIN32_V9
-// kmpak no_send_page 에서는 page에 관해 고려치 않고 buffer만 고려하면 된다.
+#ifdef _WIN32 
+//we don't need to consider page, care to only buffer in no_send_page , kmpak
 int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 			      int offset, size_t size, unsigned msg_flags)
 {
@@ -2354,7 +2347,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	//dumpHex((void*) page, 100, 16);
 	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
 	if (!err)
-		peer_device->send_cnt += size >> 9; // _WIN32_V9_1_PATCH:JHKKIM: 여기서 가산을 하는지 원본과 비교필요.
+		peer_device->send_cnt += size >> 9; // _WIN32_V9_1_PATCH:JHKKIM: required to verify to calculate size at this point.
 
 	return err;
 }
@@ -2396,7 +2389,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	alloc_send_buffer(connection, PAGE_SIZE, DATA_STREAM);
 	connection->send_buffer[DATA_STREAM].allocated_size = 0;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int err;
 	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
@@ -2436,6 +2429,7 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
+	return 0;
 #else
 	if (!no_zc)
 		bio_for_each_segment(bvec, bio, iter) {
@@ -2464,7 +2458,6 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 		return err;
 	}
 #endif
-	return 0;
 }
 
 static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
@@ -2476,14 +2469,13 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 
-#ifdef _WIN32_V9
-	// DRBD_DOC: drbd_peer_request 구조에 bio 연결 포인터 추가
-	// page 자료구조를 bio에서 지정한 win32_page 버퍼를 사용
+#ifdef _WIN32
+	// DRBD_DOC: add bio-linked pointer to drbd_peer_request structure
+	// bio-linked pointer(peer_req_databuf) is used to replace with page structure buffers
 	err = _drbd_no_send_page(peer_device, peer_req->peer_req_databuf, 0, len, 0);
 	if (err)
 		return err;
 #else
-	// _WIN32_V9_PATCH_1 :JHKIM 많이 바뀜
 	/* hint all but last page with MSG_MORE */
 	page_chain_for_each(page) {
 		unsigned l = min_t(unsigned, len, PAGE_SIZE);
@@ -2532,7 +2524,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	void *digest_out = NULL;
 	unsigned int dp_flags = 0;
 	int digest_size = 0;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	int err = 0;
 	int protocol = 0;
 	struct net_conf *nc = NULL;
@@ -2575,7 +2567,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #endif
 	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	rcu_read_lock();
 	nc = rcu_dereference(peer_device->connection->transport.net_conf);
 	protocol = nc->wire_protocol;
@@ -2583,7 +2575,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #endif
 	
 	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	// DW-830 In protocol A, we need to deal with already increased OOS no matter what the replication state is.
 	if ((peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A)
 #else
@@ -2603,14 +2595,21 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		goto out;
 	}
 
-	if (digest_size && digest_out) // _WIN32_V9_PATCH_2:JHKIM: csum관련 로직이 변경됨. 확인필수!!
+	if (digest_size && digest_out) 
+#ifdef _WIN32
+		// _WIN32_V9_PATCH_2:JHKIM: changed about csum logic, required to verify again
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest_out);
+#else
+		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
+#endif
 
 	if (wsame) {
-#ifndef _WIN32_V9
+#ifndef _WIN32
 		additional_size_command(peer_device->connection, DATA_STREAM,
 					bio_iovec(req->master_bio) BVD bv_len);
 		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
+#else 
+		//not support, we will consider this part logic later
 #endif
 	} else {
 		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
@@ -2629,24 +2628,14 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		 * receiving side, we sure have detected corruption elsewhere.
 		 */
 		if (!(s & (RQ_EXP_RECEIVE_ACK | RQ_EXP_WRITE_ACK)) || digest_size)
-#ifdef _WIN32_V9
-		{
-#ifdef DRBD_TRACE
-            WDRBD_TRACE("_drbd_send_bio! ASYNC protocol!"); 
-#endif
+#ifdef _WIN32
 			err = _drbd_no_send_page(peer_device, req->req_databuf, 0, req->i.size, 0);
-		}
 #else
 			err = _drbd_send_bio(peer_device, req->master_bio);
 #endif
 		else
-#ifdef _WIN32_V9
-		{
-#ifdef DRBD_TRACE
-            WDRBD_TRACE("_drbd_send_zc_bio! SYNC/Semi-SYNC protocol!\n");
-#endif
+#ifdef _WIN32
 			err = _drbd_no_send_page(peer_device, req->req_databuf, 0, req->i.size, 0);
-		}
 #else
 			err = _drbd_send_zc_bio(peer_device, req->master_bio);
 #endif
@@ -2656,8 +2645,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 			/* 64 byte, 512 bit, is the largest digest size
 			 * currently supported in kernel crypto. */
 			unsigned char digest[64];
-#ifdef _WIN32_V9
-			// if (req->req_databuf)
+#ifdef _WIN32
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest);
 #else
 			drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest);
@@ -2700,13 +2688,15 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	p->seq_num = 0;  /* unused */
 	p->dp_flags = 0;
 	if (digest_size)
-#ifdef _WIN32_V9
+#ifdef _WIN32
         drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req, p + 1);
 #else
 		drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req->page_chain.head, p + 1);
 #endif
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
+#ifdef _WIN32
     //DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
+#endif
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
@@ -2802,7 +2792,7 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 			timeout -= HZ / 5;
 		} else if (rv == SS_TWO_PRIMARIES) {
 			/* Wait till the peer demoted itself */
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			wait_event_interruptible_timeout(timeout, resource->state_wait,
 				resource->role[NOW] == R_PRIMARY ||
 				(!primary_peer_present(resource) && any_disk_is_uptodate(device)),
@@ -2883,7 +2873,7 @@ static int open_rw_count(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr, count = 0;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 #else
 	idr_for_each_entry(&resource->devices, device, vnr)
@@ -2931,7 +2921,7 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 /* need to hold resource->req_lock */
 void drbd_queue_unplug(struct drbd_device *device)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct drbd_resource *resource = device->resource;
 	struct drbd_connection *connection;
 	u64 dagtag_sector;
@@ -2960,7 +2950,6 @@ static void drbd_unplug_fn(struct request_queue *q)
 
 	/* only if connected */
 	drbd_queue_unplug(device);
-
 	spin_unlock_irq(&resource->req_lock);
 
 	drbd_kick_lo(device);
@@ -3212,10 +3201,10 @@ void drbd_destroy_device(struct kref *kref)
 		device->bitmap = NULL;
 	}
 	__free_page(device->md_io.page);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
-	// vdisk와 rq_queue 는 mvol 에서 전역으로 관리되는 볼륨용 자료구조임으로 free 되면 안됨.
-	// WDRBD에서 vdisk 는 별용도가 없고,백킹디바이스 연결부분만 복잡, mvol 의 PVOLUME_EXTENSION 와 통합하는 리팩토링 필요.
+	// vdisk,rq_queue are structures for volume at global space, don't free this pointer
+	// we have to consider to refactoring this structres with VOLUME_EXTENSION
 #else
 	put_disk(device->vdisk);
 	blk_cleanup_queue(device->rq_queue);
@@ -3233,7 +3222,7 @@ void drbd_destroy_resource(struct kref *kref)
 	struct drbd_resource *resource = container_of(kref, struct drbd_resource, kref);
 
 	idr_destroy(&resource->devices);
-#ifndef _WIN32_V9 // [choi] V8에서 disable됨
+#ifndef _WIN32 // disabled current wdrbd v1.0 
 	free_cpumask_var(resource->cpu_mask);
 #endif
 	kfree(resource->name);
@@ -3268,11 +3257,9 @@ void drbd_free_resource(struct drbd_resource *resource)
 		kref_put(&resource->twopc_parent->kref,
 			 drbd_destroy_connection);
 	}
-#ifdef _WIN32_V9
+#ifdef _WIN32
     if (resource->peer_ack_req)
-    {
         ExFreeToNPagedLookasideList(&drbd_request_mempool, resource->peer_ack_req);
-    }
 #else
 	mempool_free(resource->peer_ack_req, drbd_request_mempool);
 #endif
@@ -3375,8 +3362,8 @@ void drbd_restart_request(struct drbd_request *req)
 	/* Drop the extra reference that would otherwise
 	 * have been dropped by complete_master_bio.
 	 * do_retry() needs to grab a new one. */
-	 
 	dec_ap_bio(req->device, bio_data_dir(req->master_bio));
+
 	queue_work(retry.wq, &retry.worker);
 }
 
@@ -3404,7 +3391,7 @@ static void drbd_cleanup(void)
 #ifndef _WIN32
 	drbd_genl_unregister();
 #endif
-//  _WIN32_V9_DEBUGFS: minord 가 여기서 정리됨, 9.0의 방식 비교 분석 필요!!
+//  _WIN32_V9_DEBUGFS: minord is cleanup at this point, required to analyze it.
 	drbd_debugfs_cleanup();
 
 	drbd_destroy_mempools();
@@ -3416,7 +3403,7 @@ static void drbd_cleanup(void)
 	pr_info("module cleanup done.\n");
 }
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
@@ -3452,13 +3439,13 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     }
 
     rcu_read_unlock();
-#if 0   // kmpak. to escape shutdown mutex hang
+#if 0   // to escape shutdown mutex hang.kmpak
     list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
     {
         PVOLUME_EXTENSION VolExt;
         struct drbd_connection *connection, *tmp;
         VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-		// kmpak 20150806 drbd_conf -> drbd_connection 으로 적절히 변환 필요 [choi] 동작확인 필요.
+		// required to convert drbd_conf with drbd_connection. kmpak 20150806 
         extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
 
         for_each_connection_safe(connection, tmp, device_list_p->device->resource) {
@@ -3469,7 +3456,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
                 // error ignored.
             }
         }
-        //drbdFreeDev(VolExt);  // kmpak  temporary disable => 임시 disable 이후 어떻게 할지?... free 해야 할지 디버깅 필요.
+        //drbdFreeDev(VolExt);  // required to debug for free VolExt
     }
 #endif
     list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
@@ -3494,13 +3481,10 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 #endif
 	int r = 0;
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	
 	// WDRBD: not support data socket congestion
-	// V8에서는 drbd_seq_show 에서 이 함수가 강제로 불려지도록하여 혼잡상태를 파악하여 표현하였으나
-	// V9에서는 DEBUGFS가 사용되면서 이 함수가 불려지지 않는다(또는 방식이 바뀐 듯)
-	// DEBUGFS 포팅 시점에 재 확인하고 의미없으면 not_suppported 로 처리한다.
-
+	// In V8.x, drbd_congested is called at drbd_seq_show, but In V9.x, not called , maybe replace with DEBUGFS
 #else
 	if (!may_inc_ap_bio(device)) {
 		/* DRBD has frozen IO */
@@ -3525,12 +3509,12 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 
 	if (get_ldev(device)) {
 #ifdef _WIN32
-        // Linux 확인결과 아래 bdi_congested 에 의해 이 drbd_congested 콜백 함수는 다시 불려지지 않는다.
-        // 아래 bdi_congested 는 단지 커널이 관리하는 해당 디바이스의 bdi->state 값을 리턴할 뿐이다.
-        // 따라서 Windows 에서는 아래 bdi->state 값과 유사한 결과를 제공해야 한다.
+        // In Linux, this drbd_congested callback is not recalled by bdi_congested.
+        // bdi_congested just return bdi->state managed by kernel 
+        // and so, we should support a similar result compared to bdi->state on Windows 
         //   - BDI_write_congested,	/* The write queue is getting full */
         //   - BDI_read_congested,	/* The read queue is getting full */
-        // WDRBD는 지원 안함.(혼잡 상황 없음 처리)
+        // WDRBD don't support (no congestion)
         r = 0;  
 #else
 		q = bdev_get_queue(device->ldev->backing_bdev);
@@ -3539,8 +3523,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
-#ifdef 0	// JHKIM: NET_CONGESTED 지원이 어려울 듯...
-    // 디스크 혼잡은 처리 못하더라도 네트웍 혼잡은 지원
+#if 0	// JHKIM: NET_CONGESTED test
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
     }
@@ -3603,7 +3586,7 @@ void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
-#ifdef _WIN32 // V8 적용
+#ifdef _WIN32 
     while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL)
     {
         WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
@@ -3639,7 +3622,7 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		if (connection->send_buffer[i].page) {
-#ifndef _WIN32 //V8 구현 적용. // WIN32_CHECK:JHKIM: void __free_page()로 할당된 영역을 반납해야 할 듯. 확인 요망!
+#ifndef _WIN32 // JHKIM: we should verify to call __free_page()
 			put_page(connection->send_buffer[i].page);
 #endif
 			connection->send_buffer[i].page = NULL;
@@ -3677,7 +3660,7 @@ void drbd_flush_peer_acks(struct drbd_resource *resource)
 	}
 	spin_unlock_irq(&resource->req_lock);
 }
-#ifdef _WIN32_V9
+#ifdef _WIN32
 static void peer_ack_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
 #else
 static void peer_ack_timer_fn(unsigned long data)
@@ -3712,7 +3695,7 @@ void wake_all_device_misc(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 	rcu_read_lock();
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 #else
 	idr_for_each_entry(&resource->devices, device, vnr)
@@ -3812,7 +3795,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	INIT_LIST_HEAD(&resource->connections);
 	INIT_LIST_HEAD(&resource->transfer_log);
 	INIT_LIST_HEAD(&resource->peer_ack_list);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, resource);
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
@@ -3823,20 +3806,15 @@ struct drbd_resource *drbd_create_resource(const char *name,
 		goto fail_free_name;
 	resource->max_node_id = res_opts->node_id;
 	resource->twopc_reply.initiator_node_id = -1;
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-    mutex_init(&resource->conf_update, "res_conf_update");
-    mutex_init(&resource->adm_mutex, "res_adm_mutex");
-#else
 	mutex_init(&resource->conf_update);
 	mutex_init(&resource->adm_mutex);
-#endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
 	spin_lock_init(&resource->listeners_lock);
 	init_waitqueue_head(&resource->state_wait);
 	init_waitqueue_head(&resource->twopc_wait);
 	init_waitqueue_head(&resource->barrier_wait);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     setup_timer(&resource->twopc_timer, twopc_timer_fn, resource);
 #else
 	setup_timer(&resource->twopc_timer, twopc_timer_fn, (unsigned long) resource);
@@ -3844,15 +3822,12 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	INIT_LIST_HEAD(&resource->twopc_work.list);
 	INIT_LIST_HEAD(&resource->queued_twopc);
 	spin_lock_init(&resource->queued_twopc_lock);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     setup_timer(&resource->queued_twopc_timer, queued_twopc_timer_fn, resource);
 #else
 	setup_timer(&resource->queued_twopc_timer, queued_twopc_timer_fn, (unsigned long) resource);
 #endif
 	drbd_init_workqueue(&resource->work);
-//#ifdef _WIN32_V9	
-//	KeInitializeEvent(&resource->connect_work_done, NotificationEvent, TRUE);
-//#endif	
 	drbd_thread_init(resource, &resource->worker, drbd_worker, "worker");
 	drbd_thread_start(&resource->worker);
 	drbd_debugfs_resource_add(resource);
@@ -3915,19 +3890,12 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	idr_init(&connection->peer_devices);
 
 	drbd_init_workqueue(&connection->sender_work);
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-    mutex_init(&connection->mutex[DATA_STREAM], "conn_data_stream");
-    mutex_init(&connection->mutex[CONTROL_STREAM], "conn_control_stream");
-#else
 	mutex_init(&connection->mutex[DATA_STREAM]);
 	mutex_init(&connection->mutex[CONTROL_STREAM]);
-#endif
 
 	INIT_LIST_HEAD(&connection->connect_timer_work.list);
-#ifdef _WIN32_V9
-	setup_timer(&connection->connect_timer,
-		    connect_timer_fn,
-		    connection);
+#ifdef _WIN32
+	setup_timer(&connection->connect_timer, connect_timer_fn, connection);
 #else
 	setup_timer(&connection->connect_timer,
 		    connect_timer_fn,
@@ -3970,8 +3938,8 @@ fail:
 /* free the transport specific members (e.g., sockets) of a connection */
 void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_free_op op)
 {
-#ifdef _WIN32_V9
-	// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 추후 멤버함수로 drbd_tcp_transport 에 접근하도록 처리하고 다음 2개 자료구조는 제거
+#ifdef _WIN32
+	// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. required to refactoring about base, pos field 
 	struct buffer {
 		void *base;
 		void *pos;
@@ -3996,20 +3964,19 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 		if (tcp_transport->stream[CONTROL_STREAM])
 			tcp_transport->stream[CONTROL_STREAM]->buffering_attr.quit = TRUE;
 	}
-	// 이 조치는 아래의 락 설정 이전에 처리되야 한다.
+	// this logic must be done before mutex lock(next line) is acuquired
 #endif
 
 	mutex_lock(&connection->mutex[DATA_STREAM]);
 	mutex_lock(&connection->mutex[CONTROL_STREAM]);
 
 #ifdef	_WIN32_SEND_BUFFING
-	// JHKIM: 주의! ops->free 에서 sock_release 하는데 이때 bab 가 반납된다. 
-	// 따리서 ops->free 보다 먼저 송신버퍼퍼링 스레드 2개를 종료시켜야 한다.
-    // kmpak. 이 시점에서 하면 CONNECTION_RESET로 상대방 소켓을 무효화 시킨다.
+	// JHKIM: caution! bab is freed at ops->free (sock_release). and so, send-buffering threads must be terminated prior to ops->free.  
+	// kmpak. CONNECTION_RESET is occured at this point by stop_send_buffring 
 	//connection->transport.ops->stop_send_buffring(&connection->transport);
 #endif
 	connection->transport.ops->free(&connection->transport, op);
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	if (op == DESTROY_TRANSPORT)
 		drbd_put_transport_class(connection->transport.class);
 #endif
@@ -4039,7 +4006,7 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -4084,11 +4051,11 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 		return NULL;
 	}
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	init_timer(&peer_device->start_resync_timer);
 #endif
 	peer_device->start_resync_timer.function = start_resync_timer_fn;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     peer_device->start_resync_timer.data = peer_device;
 #else
 	peer_device->start_resync_timer.data = (unsigned long) peer_device;
@@ -4096,7 +4063,7 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 
 	INIT_LIST_HEAD(&peer_device->resync_work.list);
 	peer_device->resync_work.cb  = w_resync_timer;
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	init_timer(&peer_device->resync_timer);
 #endif
 	peer_device->resync_timer.function = resync_timer_fn;
@@ -4105,7 +4072,7 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 #else
 	peer_device->resync_timer.data = (unsigned long) peer_device;
 #endif
-#ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
+#ifdef _WIN32
     init_timer(&peer_device->start_resync_timer);
     init_timer(&peer_device->resync_timer);
 #ifdef DBG
@@ -4139,7 +4106,7 @@ static int init_submitter(struct drbd_device *device)
 	 * to be able to use format string arguments */
 	device->submit.wq =
 //#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0)
-#ifndef _WIN32_V9
+#ifndef _WIN32
 		alloc_ordered_workqueue("drbd%u_submit", WQ_MEM_RECLAIM, device->minor);
 #else
 		create_singlethread_workqueue("drbd_submit");
@@ -4159,7 +4126,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	struct drbd_device *device;
 	struct drbd_peer_device *peer_device, *tmp_peer_device;
 	struct gendisk *disk;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     struct request_queue *q = NULL;
 #else
 	struct request_queue *q;
@@ -4172,9 +4139,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	bool locked = false;
 #ifdef _WIN32
     if ((minor < 1) || (minor > MINORMASK))
-    {
         return ERR_INVALID_REQUEST;
-    }
 #endif
 	device = minor_to_device(minor);
 	if (device)
@@ -4212,11 +4177,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	atomic_set(&device->md_io.in_use, 0);
 
 	spin_lock_init(&device->al_lock);
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-    mutex_init(&device->bm_resync_fo_mutex, "dev_bm_resync_fo_mutex");
-#else
 	mutex_init(&device->bm_resync_fo_mutex);
-#endif
 
 	INIT_LIST_HEAD(&device->active_ee);
 	INIT_LIST_HEAD(&device->sync_ee);
@@ -4231,7 +4192,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	spin_lock_init(&device->pending_bitmap_work.q_lock);
 	INIT_LIST_HEAD(&device->pending_bitmap_work.q);
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	init_timer(&device->md_sync_timer);
 	init_timer(&device->request_timer);
 #endif
@@ -4248,7 +4209,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->request_timer.data = (unsigned long) device;
 #endif
 
-#ifdef _WIN32_V9 // [choi] BSOD DRIVER_IRQL_NOT_LESS_OR_EQUAL 수정.
+#ifdef _WIN32
     init_timer(&device->md_sync_timer);
     init_timer(&device->request_timer);
 #ifdef DBG
@@ -4262,7 +4223,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
 	if (!pvext)
 	{
@@ -4280,7 +4241,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 		goto out_no_q;
 	device->rq_queue = q;
 	q->queuedata   = device;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     disk = pvext->dev->bd_disk;
 #else
 	disk = alloc_disk(1);
@@ -4299,7 +4260,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->fops = &drbd_ops;
 	sprintf(disk->disk_name, "drbd%d", minor);
 	disk->private_data = device;
-#ifndef _WIN32 // V8 적용
+#ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
@@ -4330,7 +4291,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->bitmap = drbd_bm_alloc();
 	if (!device->bitmap)
 		goto out_no_bitmap;
-
 	device->read_requests = RB_ROOT;
 	device->write_requests = RB_ROOT;
 
@@ -4410,7 +4370,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	return NO_ERROR;
 
 out_remove_peer_device:
-#ifdef _WIN32_V9
+#ifdef _WIN32
     {
         synchronize_rcu_w32_wlock();
 #endif
@@ -4430,7 +4390,7 @@ out_remove_peer_device:
 		list_del(&peer_device->peer_devices);
 		kfree(peer_device);
 	}
-#ifdef _WIN32_V9
+#ifdef _WIN32
     }
 #endif
 out_idr_remove_minor:
@@ -4439,7 +4399,7 @@ out_idr_remove_minor:
 out_no_minor_idr:
 	if (locked)
 		spin_unlock_irq(&resource->req_lock);
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	synchronize_rcu();
 #endif
 
@@ -4457,7 +4417,7 @@ out_no_peer_device:
 out_no_bitmap:
 	__free_page(device->md_io.page);
 out_no_io_page:
-#ifndef _WIN32 // [choi] V8에서 disable 
+#ifndef _WIN32 
 	put_disk(disk);
 #endif
 out_no_disk:
@@ -4527,7 +4487,7 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 	spin_lock_irq(&resource->req_lock);
 	set_bit(C_UNREGISTERED, &connection->flags);
 	smp_wmb();
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
@@ -4560,7 +4520,7 @@ void drbd_put_connection(struct drbd_connection *connection)
 	int vnr, refs = 1;
 
 	del_connect_timer(connection);
-#ifdef _WIN32_V9
+#ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
@@ -4579,24 +4539,11 @@ static int __init drbd_init(void)
 {
 	int err;
 #ifdef _WIN32
-
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
-
-	//extern void init_drbd_bdev_kobj_type();
-	//init_drbd_bdev_kobj_type(); // _WIN32_V9: V8에서 사용된 sysfs 는 제거ㄷ괴어 일단 코멘트. 대체된 것이 있는가?
-
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-	mutex_init(&g_genl_mutex, "genl_mutex");
-    mutex_init(&notification_mutex, "notification_mutex");  // _WIN32_V9
-#else
+	
 	mutex_init(&g_genl_mutex);
-    mutex_init(&notification_mutex);    //_WIN32_V9
-#endif
-	//extern union drbd_state g_mask_null;// _WIN32_V9: V9에서는 설정 방식이 달라짐. 확인 후 코멘트 삭제
-	//extern union drbd_state g_val_null;
-	//g_mask_null.i = 0;
-	//g_val_null.i = 0;
+	mutex_init(&notification_mutex);
 #endif
 
 #ifdef _WIN32
@@ -4637,11 +4584,7 @@ static int __init drbd_init(void)
 #endif
 	idr_init(&drbd_devices);
 
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-    mutex_init(&resources_mutex, "resources_mutex");
-#else
 	mutex_init(&resources_mutex);
-#endif
 	INIT_LIST_HEAD(&drbd_resources);
 #ifdef _WIN32
 	// not supported
@@ -5166,7 +5109,7 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		if (node_id == device->ldev->md.node_id)
 			continue;
-#ifdef _WIN32_V9 // DW-837
+#ifdef _WIN32 // DW-837
 		if (peer_md[node_id].bitmap_index == -1) 
 		{
 			/* Skip bitmap indexes which are not assigned to a peer. */
@@ -5213,7 +5156,7 @@ static u64 initial_resync_nodes(struct drbd_device *device)
 	return nodes;
 }
 
-u64 drbd_weak_nodes_device(struct drbd_device *device) // _WIN32_V9_PATCH_2:JHKIM: 참고: 이 함수가 많이 변함. 혹시 2PC 핑퐁 문제 해결(?)과 연관은 없는가?.
+u64 drbd_weak_nodes_device(struct drbd_device *device) 
 {
 	struct drbd_peer_device *peer_device;
 	u64 not_weak = NODE_MASK(device->resource->res_opts.node_id);
@@ -5957,8 +5900,8 @@ void lock_all_resources(void)
 	int __maybe_unused i = 0;
 
 	mutex_lock(&resources_mutex);
-	// kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested 모두 신규    
-	// [choi] spin_lock_nested() -> spin_lock_irq()로 포팅
+	// kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested are newer    
+	// [choi] spin_lock_nested() -> spin_lock_irq() ported
 	/*
 	126 static inline void __raw_spin_lock_irq(raw_spinlock_t *lock)
 	127 {
@@ -5975,15 +5918,12 @@ void lock_all_resources(void)
 	363 }
 	*/
 
-	// [DW-759] 인터럽트 금지 설정. 전역 lock을 사용해 DISPATCH_LEVEL을 유지하도록 함  
+	// [DW-759] irq disable is ported to continue DISPATCH_LEVEL by global lock
 	local_irq_disable();    
 	for_each_resource(resource, &drbd_resources)
-#ifdef _WIN32_V9
-	{
-		spin_lock_irq(&resource->req_lock);     
-	}
+#ifdef _WIN32
+		spin_lock_irq(&resource->req_lock);
 #else
-	for_each_resource(resource, &drbd_resources)
 		spin_lock_nested(&resource->req_lock, i++);
 #endif
 }
@@ -5993,16 +5933,16 @@ void unlock_all_resources(void)
 	struct drbd_resource *resource;
 
 	for_each_resource(resource, &drbd_resources)
-#ifdef _WIN32_V9
-	{
+#ifdef _WIN32
 		spin_unlock_irq(&resource->req_lock);
-	}
 #else
 		spin_unlock(&resource->req_lock);	
 #endif
-	// [DW-759] 인터럽트 금지 해제. 전역 lock을 release하여 PASSIVE_LEVEL로 내림
+	// [DW-759] irq enable. return to PASSIVE_LEVEL
 	local_irq_enable();
+#ifdef _WIN32
 	WDRBD_TRACE_REQ_LOCK("local_irq_enable : CurrentIrql(%d)\n", KeGetCurrentIrql());
+#endif
 	mutex_unlock(&resources_mutex);
 }
 

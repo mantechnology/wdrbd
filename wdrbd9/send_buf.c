@@ -37,11 +37,8 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		ring->seq = 0;
 		ring->name = name;
 
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-		mutex_init(&ring->cs, "sendbuf");
-#else
 		mutex_init(&ring->cs);
-#endif
+
 		//WDRBD_INFO("bab(%s) size(%d)\n", name, length);
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
@@ -109,7 +106,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 				//KeSetTimerEx(&ktimer, Interval, 0, NULL);
 				//KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
 
-				// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 추후 멤버함수로 drbd_tcp_transport 에 접근하도록 처리하고 다음 2개 자료구조는 제거
+				// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 
 				struct buffer {
 					void *base;
 					void *pos;
@@ -226,7 +223,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
-	// 기존에 비해 buffer write time 대기시간을 줄이고 재시도 횟수를 늘려 송신버퍼링 타임아웃 설정에 맞춤.(성능 관련 튜닝 포인트)
+	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
 	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
@@ -307,7 +304,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
 #ifdef _WSK_IRP_REUSE
-	// 패킷을 한번에 하나씩만 보내는 구조이므로, Irp 재사용 하여 중복되는 Irp 할당/해제 코드를 개선.
+	// Irp reuse can be improvement, for reducing irp memory allocation.(because we send a one packet at a time, irp reusing is valid)
 	PIRP		pReuseIrp = IoAllocateIrp(1, FALSE);
 	if (pReuseIrp == NULL) {
 		WDRBD_ERROR("WSK alloc. reuse Irp is NULL.\n");
