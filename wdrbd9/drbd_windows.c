@@ -2507,18 +2507,23 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	UNREFERENCED_PARAMETER(mode);
 	UNREFERENCED_PARAMETER(holder);
 
-	PVOLUME_EXTENSION pvext = NULL;
-	if (1 == strlen(path)) {
-    	pvext = get_targetdev_by_minor(toupper(*path) - 'C');
-	}
-	else {
-		PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
-		for (pvext = prext->Head; pvext; pvext = pvext->Next) {
-			UNICODE_STRING dos_name;
-			NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
-			ExFreePool(dos_name.Buffer);
+	PROOT_EXTENSION proot = mvolRootDeviceObject->DeviceExtension;
+	PVOLUME_EXTENSION pvext;
+	PUNICODE_STRING	pstr;
+
+	MVOL_LOCK();
+	for (pvext = proot->Head; pvext; pvext = pvext->Next) {
+		//pvext->
+
+		
+		ANSI_STRING mpt;
+		status = RtlUnicodeStringToAnsiString(&mpt, &pvext->MountPoint, TRUE);
+		if (NT_SUCCESS(status)) {
+			WDRBD_TRACE("DeviceObject(0x%p) MountPoint(%s) same(%d)\n", pvext->DeviceObject, mpt.Buffer, is_equal_mount_point(path, mpt.Buffer, false));
+			RtlFreeAnsiString(&mpt);
 		}
 	}
+	MVOL_UNLOCK();
 
 	return (pvext) ? pvext->dev : NULL;
 #else

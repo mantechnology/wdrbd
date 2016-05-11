@@ -129,7 +129,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
     else
     {
-        device = get_targetdev_by_md(VolumeExtension->Letter);
+		device = NULL;
+        //device = get_targetdev_by_md(VolumeExtension->Letter);	// kmpak
     }
 
     if (device)
@@ -849,132 +850,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 */
 struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
-    struct block_device * dev;
+	struct block_device * dev;
 
-    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-    if (!dev)
-    {
-        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-        goto block_device_failed;
-    }
-
-    dev->bd_disk = alloc_disk(0);
-    if (!dev->bd_disk)
-    {
-        WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
-        goto gendisk_failed;
-    }
-#if 0
-    dev->d_size = get_targetdev_volsize(pvext);
-    if (0 == dev->d_size)
-    {
-        WDRBD_WARN("Failed to get (%c): volume size\n", pvext->Letter);
-        goto gendisk_failed;
-    }
-#endif
-    dev->bd_disk->disk_name[0] = pvext->Letter;
-    dev->bd_disk->disk_name[1] = ':';
-    dev->bd_disk->disk_name[2] = '\n';
-
-    dev->bd_disk->queue = blk_alloc_queue(0);
-    if (!dev->bd_disk->queue)
-    {
-        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
-        goto request_queue_failed;
-    }
-
-    dev->bd_disk->pDeviceExtension = pvext;
-
-    dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
-    dev->bd_disk->queue->logical_block_size = 512;
-    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
-
-    return dev;
-
-request_queue_failed:
-    kfree(dev->bd_disk->queue);
-
-gendisk_failed:
-    kfree(dev->bd_disk);
-
-block_device_failed:
-    kfree(dev);
-
-    return NULL;
-}
-
-VOID drbdCreateDev()
-{
-	PROOT_EXTENSION		rootExtension = NULL;
-	PVOLUME_EXTENSION	pDeviceExtension = NULL;
-
-	MVOL_LOCK();
-	rootExtension = mvolRootDeviceObject->DeviceExtension;
-	pDeviceExtension = rootExtension->Head;
-
-	while (pDeviceExtension != NULL)
-	{
-        if (0 == pDeviceExtension->VolIndex)
-        {
-            pDeviceExtension = pDeviceExtension->Next;
-            continue;
-        }
-
-		if (pDeviceExtension->dev)
-		{
-			WDRBD_WARN("pDeviceExtension(%c)->dev Already exists\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev = kmalloc(sizeof(struct block_device), 0, 'F5DW');
-		if (!pDeviceExtension->dev)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev:kzalloc failed\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, '06DW');
-		if (!pDeviceExtension->dev->bd_disk)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev->bd_disk:kzalloc failed\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-        pDeviceExtension->dev->d_size = get_targetdev_volsize(pDeviceExtension);
-        if (!pDeviceExtension->dev->d_size)
-		{
-			WDRBD_ERROR("volume(%c) size is zero\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		sprintf(pDeviceExtension->dev->bd_disk->disk_name, "%c:", pDeviceExtension->Letter);
-		pDeviceExtension->dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, '16DW'); // CHECK FREE!!!!
-		if (!pDeviceExtension->dev->bd_disk->queue)
-		{
-			WDRBD_ERROR("pDeviceExtension->dev->bd_disk->queue:kzalloc failed\n");
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
-
-		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pDeviceExtension;
-		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
-		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
-		pDeviceExtension = pDeviceExtension->Next;
+	dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
+	if (!dev) {
+		WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
+		return NULL;
 	}
-	MVOL_UNLOCK();
+
+	return dev;
 }
 
 /**

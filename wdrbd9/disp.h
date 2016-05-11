@@ -81,13 +81,6 @@ typedef struct _ROOT_EXTENSION
     UNICODE_STRING      RegistryPath;
 } ROOT_EXTENSION, *PROOT_EXTENSION;
 
-__inline IsDriveLetterMountPoint(UNICODE_STRING * s)
-{
-	return ((s->Length == 4) &&
-		(s->Buffer[0] >= 'A' && s->Buffer[0] <= 'Z') &&
-		(s->Buffer[1] == ':'));
-}
-
 extern PDEVICE_OBJECT		mvolRootDeviceObject;
 extern PDRIVER_OBJECT		mvolDriverObject;
 

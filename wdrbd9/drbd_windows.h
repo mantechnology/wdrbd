@@ -858,7 +858,7 @@ struct backing_dev_info {
 	unsigned long ra_pages; /* max readahead in PAGE_CACHE_SIZE units */ 
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;   /* Pointer to aux data for congested func */
-	PVOLUME_EXTENSION pDeviceExtension;
+	PVOLUME_EXTENSION pvext;
 };
 
 #ifdef _WIN32
@@ -920,7 +920,7 @@ struct scatterlist {
 	unsigned int length;
 };
 
-#define MINORMASK				26
+#define MINORMASK	0xff
 
 #ifdef _WIN32
 #define BUG()   panic("PANIC!!!")
@@ -1231,6 +1231,15 @@ extern union drbd_state g_mask;
 extern union drbd_state g_val;
 ///
 
+
+__inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
+{
+	return ((s->Length == 4) &&
+		(s->Buffer[0] >= 'A' && s->Buffer[0] <= 'Z') &&
+		(s->Buffer[1] == ':'));
+}
+
+extern bool is_equal_mount_point(_In_ const char *, _In_ const char *, _In_ bool);
 extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
 
@@ -1263,7 +1272,8 @@ _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
 
-extern PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj);
+extern PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj);
+
 extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);
 extern NTSTATUS mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize);
 extern int initRegistry(__in PUNICODE_STRING RegistryPath);
@@ -1272,7 +1282,6 @@ extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
 extern BOOLEAN do_add_minor(unsigned int minor);
-extern void drbdCreateDev();
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void query_targetdev(PVOLUME_EXTENSION pvext);
 extern void refresh_targetdev_list();
@@ -1288,6 +1297,7 @@ extern int WriteEventLogEntryData(
 	...
 );
 
+extern ULONG wcs2ucsdup(_Out_ PUNICODE_STRING dst, _In_ WCHAR * src);
 extern PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src);
 extern void ucsfree(IN PUNICODE_STRING str);
 

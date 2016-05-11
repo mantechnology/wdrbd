@@ -3415,8 +3415,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     } device_list;
     struct device_list *device_list_p, *p;
 
-    WDRBD_INFO("Shutdown: IRQL(%d) vol(%ws) letter(%c:)\n",
-        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter ? VolumeExtension->Letter : ' ');
+    WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
+        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->MountPoint);
 
     if (retry.wq)
         destroy_workqueue(retry.wq);
@@ -4223,44 +4223,38 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
-#ifdef _WIN32
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-	if (!pvext)
-	{
-		err = ERR_NO_DISK;
-		goto out_no_disk;
-	}
 
-	device->this_bdev = pvext->dev;
-    q = pvext->dev->bd_disk->queue;
-    q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
-#else
 	q = blk_alloc_queue(GFP_KERNEL);
-#endif
 	if (!q)
 		goto out_no_q;
 	device->rq_queue = q;
 	q->queuedata   = device;
-#ifdef _WIN32
-    disk = pvext->dev->bd_disk;
-#else
+
 	disk = alloc_disk(1);
-#endif
 	if (!disk)
 		goto out_no_disk;
-
 	device->vdisk = disk;
-#ifndef _WIN32
+
 	set_disk_ro(disk, true);
 
 	disk->queue = q;
+#ifndef _WIN32
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
 	sprintf(disk->disk_name, "drbd%d", minor);
 	disk->private_data = device;
-#ifndef _WIN32
+#ifdef _WIN32
+	PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+	pvext->dev->bd_disk = disk;
+	pvext->dev->d_size = get_targetdev_volsize(pvext);
+    q->max_hw_sectors = pvext->dev->d_size >> 9;
+	q->backing_dev_info.pvext = pvext;
+	device->this_bdev = pvext->dev;
+	disk->pDeviceExtension = pvext;
+	WDRBD_TRACE("volume(%wZ) size(%llu) sectors(%lu)\n", pvext->MountPoint, pvext->dev->d_size, q->max_hw_sectors);
+#else
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
