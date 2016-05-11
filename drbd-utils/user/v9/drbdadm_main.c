@@ -57,7 +57,7 @@
 #include "drbdadm_dump.h"
 #include "shared_main.h"
 #include "drbdadm_parser.h"
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #include "windows/drbd.h"
 #include <windows.h>
 #endif
@@ -335,7 +335,7 @@ static struct adm_cmd primary_cmd = {"primary", adm_drbdsetup, &primary_cmd_ctx,
 static struct adm_cmd secondary_cmd = {"secondary", adm_drbdsetup, ACF1_RESNAME .takes_long = 1};
 static struct adm_cmd invalidate_cmd = {"invalidate", adm_invalidate, ACF1_MINOR_ONLY };
 static struct adm_cmd invalidate_remote_cmd = {"invalidate-remote", adm_drbdsetup, ACF1_PEER_DEVICE .takes_long = 1};
-#ifdef _WIN32_V9 // DW-774
+#ifdef _WIN32 // DW-774
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT .backend_res_name = 0};
 #else
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT};
@@ -1030,7 +1030,7 @@ static void find_drbdcmd(char **cmd, char **pathes)
 	err("Can not find command (drbdsetup/drbdmeta)\n");
 	exit(E_EXEC_ERROR);
 }
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
 const PCHAR gRegistryPath = "System\\CurrentControlSet\\Services\\drbd\\volumes";
 
 DWORD add_registry_volume(char * letter)
@@ -1194,7 +1194,7 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->device_minor);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
 	argv[NA(argc)] = NULL;
-#ifdef _WIN32_MVFL
+#ifdef _WIN32
     add_registry_volume(ctx->vol->disk);
 #endif
 	ex = m_system_ex(argv, SLEEPS_SHORT, ctx->res->name);
@@ -1301,7 +1301,7 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 	argv[NA(argc)] = (char *)ctx->cmd->name;
 	if (argument)
 		argv[NA(argc)] = argument;
-#ifdef _WIN32_V9 // DW-774
+#ifdef _WIN32 // DW-774
 	if (ctx->cmd->drbdsetup_ctx)
 		add_setup_options(argv, &argc);
 #else

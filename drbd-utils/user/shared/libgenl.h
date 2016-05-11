@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #include "windows/wingenl.h"
 #else
 #include <linux/socket.h>
