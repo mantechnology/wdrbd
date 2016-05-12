@@ -1,6 +1,8 @@
 ﻿#include <windows.h>
 #include <stdio.h>
+#include <tchar.h>
 #include "mvol.h"
+#include "LogManager.h"
 
 
 void
@@ -18,6 +20,7 @@ usage()
         "   /nagle_enable \n"
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
+		"   /get_log [ProviderName] \n"
 		"\n\n"
 
 		"options:\n"
@@ -33,6 +36,7 @@ usage()
         "drbdcon /nagle_disable r0 \n"
         "drbdcon /d F \n"
         "drbdcon /m F \n"
+		"drbdcon /get_log drbdService"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -53,6 +57,8 @@ main(int argc, char* argv [])
     char    NagleDisableFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
     char    *ResourceName = NULL;
+	char	GetLog = 0;
+	char	*ProviderName = NULL;
 
     int     Force = 0;
 
@@ -105,6 +111,16 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		else if (strcmp(argv[argIndex], "/get_log") == 0)
+		{
+			argIndex++;
+			GetLog++;
+
+			if (argIndex < argc)
+				ProviderName = argv[argIndex];
+			else
+				usage();
+		}
 		else if (!_stricmp(argv[argIndex], "/letter") || !_stricmp(argv[argIndex], "/l"))
 		{
 			argIndex++;
@@ -326,6 +342,11 @@ main(int argc, char* argv [])
     {
         res = MVOL_MountVolume(Letter);
     }
+
+	if (GetLog)
+	{
+		res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+	}
 
 	return res;
 }
