@@ -617,7 +617,6 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
 		case IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR: // Simulate Disk I/O Error
 		{
-			WDRBD_TRACE("IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR.\n");
 			status = IOCTL_SetSimulDiskIoError(DeviceObject, Irp);
             MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
