@@ -38,8 +38,6 @@ VOID WriteLog(wchar_t* pLogName, wchar_t* pMsg, WORD wType)
 		);
 
 	DeregisterEventSource(hEventLog);
-
-	Log(pMsg);
 }
 
 void get_linklog_reg()

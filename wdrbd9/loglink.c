@@ -184,9 +184,4 @@ void LogLink_Sender(struct work_struct *ws)
 		list_del(&msg->list);
 		ExFreeToNPagedLookasideList(&linklog_printk_msg, msg);
 	}
-
-	if (count > 5)
-	{
-		DbgPrint("DRBD_TEST:LogLink: sender big loop(#%d)?\n", count); // TEST!
-	}
 }

@@ -19,8 +19,6 @@
 #include "loglink.h"
 #endif
 
-#define WDRBD_PRINT_FORMAT_LEN		32
-
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -596,47 +594,11 @@ void _printk(const char * func, const char * format, ...)
 	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
-	CHAR szFormat[WDRBD_PRINT_FORMAT_LEN] = "WDRBD_";
+	CHAR szTempBuf[MAX_ELOG_BUF] = "";
 	BOOLEAN bSysEventLog = FALSE;
-	BOOLEAN bServiceLog = FALSE;
+	BOOLEAN bServiceLog = FALSE;	
 
 	ASSERT((level_index >= 0) && (level_index < 8));
-		
-	switch(level_index)
-	{
-		case KERN_EMERG_NUM:
-		case KERN_ALERT_NUM:
-		case KERN_CRIT_NUM:
-			printLevel = DPFLTR_ERROR_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "FATA");
-			break;
-		case KERN_ERR_NUM:
-			printLevel = DPFLTR_ERROR_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "ERRO");
-			break;
-		case KERN_WARNING_NUM:
-			printLevel = DPFLTR_WARNING_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "WARN");
-			break;
-		case KERN_NOTICE_NUM:
-		case KERN_INFO_NUM:
-			printLevel = DPFLTR_INFO_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "INFO");
-			break;
-		case KERN_DEBUG_NUM:
-			printLevel = DPFLTR_TRACE_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "TRAC");
-			break;
-		default:
-			printLevel = DPFLTR_TRACE_LEVEL;
-			strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, "UNKN");
-			break;
-	}
-
-	strcat_s(szFormat, WDRBD_PRINT_FORMAT_LEN, ": [%s] %s");
-
-	// print for all logging levels
-	DbgPrintEx(FLTR_COMPONENT, printLevel, szFormat, func, buf + 3);
 	
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
@@ -658,6 +620,43 @@ void _printk(const char * func, const char * format, ...)
 	{
 		save_to_system_event(buf, length, level_index);
 	}
+
+	switch (level_index)
+	{
+	case KERN_EMERG_NUM:
+	case KERN_ALERT_NUM:
+	case KERN_CRIT_NUM:
+		printLevel = DPFLTR_ERROR_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_FATA", func, buf + 3);
+		break;
+	case KERN_ERR_NUM:
+		printLevel = DPFLTR_ERROR_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_ERRO", func, buf + 3);
+		break;
+	case KERN_WARNING_NUM:
+		printLevel = DPFLTR_WARNING_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_WARN", func, buf + 3);
+		break;
+	case KERN_NOTICE_NUM:
+	case KERN_INFO_NUM:
+		printLevel = DPFLTR_INFO_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_INFO", func, buf + 3);
+		break;
+	case KERN_DEBUG_NUM:
+		printLevel = DPFLTR_TRACE_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_TRAC", func, buf + 3);
+		break;
+	default:
+		printLevel = DPFLTR_TRACE_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_UNKN", func, buf + 3);
+		break;
+	}
+
+	strcpy_s(buf, MAX_ELOG_BUF, szTempBuf);
+
+	// print for all logging levels
+	DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
+
 #ifdef _WIN32_LOGLINK
 	if (bServiceLog)
 	{
@@ -679,8 +678,6 @@ void _printk(const char * func, const char * format, ...)
 		}
 		else
 		{
-			DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n"); // TEST!
-
 		error:
 			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 		}

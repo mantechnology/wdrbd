@@ -32,6 +32,22 @@ SERVICE_STATUS          g_tServiceStatus;
 WCHAR					*g_pwdrbdRcBat = L"rc.bat";
 TCHAR                   gServicePath[MAX_PATH];
 
+VOID WriteLogFormat(WCHAR* msg, ...)
+{
+	size_t size = 4096;
+	wchar_t * buffer = new wchar_t[size];
+	ZeroMemory(buffer, size * sizeof(wchar_t));
+	va_list params;
+
+	va_start(params, msg);
+	_vstprintf(buffer, size, msg, params);
+	va_end(params);
+
+	WriteLog(buffer);
+
+	delete[] buffer;
+}
+
 VOID WriteLog(wchar_t* pMsg)
 {
     HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
@@ -53,8 +69,6 @@ VOID WriteLog(wchar_t* pMsg)
         );
 
     DeregisterEventSource(hEventLog);
-	Log(pMsg);
-
 }
 
 int _tmain(int argc, _TCHAR* argv[])
