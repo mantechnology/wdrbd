@@ -96,4 +96,5 @@ extern DWORD StartRegistryCleaner();
 extern DWORD StopRegistryCleaner();
 
 extern void LogPrint(WCHAR * msg, ...);
-#define Log(m, ...) LogPrint(m, __VA_ARGS__)
+extern void WriteLogFormat(WCHAR* msg, ...);
+#define Log(m, ...) WriteLogFormat(m, __VA_ARGS__)
