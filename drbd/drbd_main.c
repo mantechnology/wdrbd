@@ -200,7 +200,23 @@ spinlock_t   drbd_pp_lock;
 int          drbd_pp_vacant;
 wait_queue_head_t drbd_pp_wait;
 
+#ifdef _WIN32
+
+struct ratelimit_state drbd_ratelimit_state;	// need to initialize before use.
+
+static inline void ratelimit_state_init(struct ratelimit_state *state, int interval_init, int burst_init)
+{
+	if (NULL != state)
+	{
+		state->interval = interval_init;
+		state->burst = burst_init;
+		spin_lock_init(&state->lock);
+	}
+}
+
+#else
 DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
+#endif
 
 #ifdef _WIN32
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
@@ -4542,6 +4558,10 @@ static int __init drbd_init(void)
 	
 	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
+#endif
+
+#ifdef _WIN32
+	ratelimit_state_init(&drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
 #endif
 
 #ifdef _WIN32

@@ -46,6 +46,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     UNICODE_STRING      		nameUnicode, linkUnicode;
     ULONG				i;
 
+	// init lookaside first, it will be used as logging buffer.
+	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
+
     WDRBD_TRACE("MVF Driver Loading...\n");
 
     initRegistry(RegistryPath);
@@ -66,10 +69,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 
     DriverObject->DriverExtension->AddDevice = mvolAddDevice;
     DriverObject->DriverUnload = mvolUnload;
-
-    // init lookaside
-    ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
-    
+	    
     RtlInitUnicodeString(&nameUnicode, L"\\Device\\mvolCntl");
     status = IoCreateDevice(DriverObject, sizeof(ROOT_EXTENSION),
         &nameUnicode, FILE_DEVICE_UNKNOWN, 0, FALSE, &deviceObject);
@@ -240,35 +240,45 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
-        HANDLE		hThread = NULL;
+        HANDLE		hNetLinkThread = NULL;
+		HANDLE		hLogLinkThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
-        Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
+		Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
             return Status;
         }
-#ifdef _WIN32_LOGLINK
-		if (g_loglink_usage > LOGLINK_NOT_USED)
-		{
-			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
-			if (!NT_SUCCESS(Status))
-			{
-				WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
-				return Status;
-			}
-		}
-#endif
-        Status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_NetlinkServerThread, NULL);
-        ZwClose(hThread);
+
+		Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_NetlinkServerThread, NULL);
+		ZwClose(hNetLinkThread);
 
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
             return Status;
         }
+
+#ifdef _WIN32_LOGLINK
+		// TODO: LogLink_ListenThread does not finish ever. We need to make sure cleaning it up when no need anymore.
+		Status = PsCreateSystemThread(&hLogLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
+			return Status;
+		}
+
+		Status = ObReferenceObjectByHandle(hLogLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_LoglinkServerThread, NULL);
+		ZwClose(hLogLinkThread);
+
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("ObReferenceObjectByHandle() for loglink thread failed with status 0x%08X\n", Status);
+			return Status;
+		}		
+#endif
     }
 
     ReferenceDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);

@@ -155,6 +155,9 @@
     <ClInclude Include="user\linux\drbd_config.h">
       <Filter>user\linux</Filter>
     </ClInclude>
+    <ClInclude Include="drbdcon\LogManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="user\shared_prereqs.mk">
