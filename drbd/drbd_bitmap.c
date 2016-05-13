@@ -1232,6 +1232,13 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		}
+		//
+		//	Simulation Local Disk I/O Error Point. disk error simluation type 4
+		//
+		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE4) {
+			WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....\n");
+			error = STATUS_UNSUCCESSFUL;
+		}
     }
     else
     {

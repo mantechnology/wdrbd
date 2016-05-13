@@ -88,6 +88,13 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		}
+		//
+		//	Simulation Local Disk I/O Error Point. disk error simluation type 3
+		//
+		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE3) {
+			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
+			error = STATUS_UNSUCCESSFUL;
+		}
     }
     else
     {
@@ -276,6 +283,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		}
+		//
+		//	Simulation Local Disk I/O Error Point. disk error simluation type 2
+		//
+		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE2) {
+			WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....\n");
+			error = STATUS_UNSUCCESSFUL;
+		}
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
@@ -361,6 +375,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_request_endio: IRQL(%d) ................\n", current->comm, KeGetCurrentIrql());
 #endif
+
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
 		Irp = p2;
 		bio = (struct bio *)p3;
@@ -368,6 +383,14 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		if (bio->pVolExt != NULL) {
 			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		}
+		//
+		//	Simulation Local Disk I/O Error Point. disk error simluation type 1
+		//
+		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
+			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
+			error = STATUS_UNSUCCESSFUL;
+		}
+	
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
