@@ -1262,6 +1262,15 @@ void local_irq_enable()
 {
 	spin_unlock_irq(&g_irqLock);
 }
+
+BOOLEAN spin_trylock(spinlock_t *lock)
+{
+	if (FALSE == KeTestSpinLock(&lock->spinLock))
+		return FALSE;
+	
+	spin_lock(lock);
+	return TRUE;
+}
 #endif
 
 
@@ -2094,36 +2103,44 @@ void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 }
 
 #ifdef _WIN32 
-int _DRBD_ratelimit(char * __FILE, int __LINE)
-{ 
-	int __ret;						
-	static size_t toks = 0x80000000UL;
-	static size_t last_msg; 
-	static int missed;			
-	size_t now = jiffies;
-	toks += now - last_msg;					
-	last_msg = now;
+int _DRBD_ratelimit(struct ratelimit_state *rs, const char * func, const char * __FILE, const int __LINE)
+{
+	int ret;
+	
+	if (!rs ||
+		!rs->interval)
+		return 1;
 
-	__ret = 0; 
-#ifdef _WIN32_MESSAGE_SUPPRESS // : 입력인자 대체 필요, 디버깅용 FILE, LINE 매크로 인자는 유지요망
-
-	if (toks > (ratelimit_burst * ratelimit_jiffies))	
-		toks = ratelimit_burst * ratelimit_jiffies;	
-	if (toks >= ratelimit_jiffies) {
-
-		int lost = missed;				
-		missed = 0;					
-		toks -= ratelimit_jiffies;			
-		if (lost)					
-			dev_warn(mdev, "%d messages suppressed in %s:%d.\n", lost, __FILE, __LINE);	
-		__ret = 1;					
+	if (KeGetCurrentIrql() > DISPATCH_LEVEL)
+	{
+		return 1;
 	}
-	else {
-		missed++;					
-		__ret = 0;					
-	}	
-#endif
-	return __ret;							
+
+	//If we contend on this state's lock then almost by definition we are too busy to print a message, in addition to the one that will be printed by the entity that is holding the lock already
+	if (!spin_trylock(&rs->lock))
+		return 0;
+
+	if (!rs->begin)
+		rs->begin = jiffies;
+
+	if (time_is_before_jiffies(rs->begin + rs->interval)){
+		if (rs->missed)
+			WDRBD_WARN("%s(%s@%d): %d callbacks suppressed\n", func, __FILE, __LINE, rs->missed);
+		rs->begin = jiffies;
+		rs->printed = 0;
+		rs->missed = 0;
+	}
+
+	if (rs->burst && rs->burst > rs->printed){
+		rs->printed++;
+		ret = 1;
+	} else {
+		rs->missed++;
+		ret = 0;
+	}
+	spin_unlock(&rs->lock);
+
+	return ret;
 }
 #else
 int _DRBD_ratelimit(size_t ratelimit_jiffies, size_t ratelimit_burst, struct drbd_conf *mdev, char * __FILE, int __LINE)
