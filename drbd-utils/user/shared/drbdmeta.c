@@ -2587,7 +2587,7 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 #ifdef FEATURE_VHD_META_SUPPORT
 /**
 * @brief
-*	diskpart에서 사용할 VHD-생성 스크립트를 작성
+*	To create the diskpart's script for VHD-Meta creation
 */
 static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_point)
 {
@@ -2619,7 +2619,7 @@ static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_po
 
 /**
 * @brief
-*	diskpart에서 사용할 VHD-attach 스크립트를 작성
+*	To create the diskpart's script for VHD-Meta attach
 */
 static int _attach_vhd_script(char * vhd_path)
 {
@@ -2724,7 +2724,6 @@ static char * _get_win32_device_ns(const char * device_name)
 		memcpy(t3, t1, (int)(t2 - t1));
 	}
 
-	// win32 device namespace
 	return wdn;
 }
 #endif
@@ -4749,7 +4748,7 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 
 	// whether to need vhd type
 	if (cfg->vhd_dev_path && (F_OK != access(meta_volume, R_OK))) {
-WPRINTF("md_device_name(%s) meta_volume(%s) minor(%d)\n", cfg->md_device_name, meta_volume, cfg->minor);
+
 		uint64_t evsm;		// Estimated Vhd Size per MiB
 		evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
 		evsm = ((evsm >> 20) / 32768) * max_peers
@@ -4763,9 +4762,9 @@ WPRINTF("md_device_name(%s) meta_volume(%s) minor(%d)\n", cfg->md_device_name, m
 		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
 			struct stat st;
 			stat(cfg->vhd_dev_path, &st);
-			uint64_t vsm = st.st_size;
-			vsm >>= 20;
-			if (vsm <= evsm) {	// Need to re-create?
+			uint64_t rvsm = st.st_size;	// Real VHD Size(per MB)
+			rvsm >>= 20;
+			if (rvsm <= evsm) {	// Need to re-create?
 				remove(cfg->vhd_dev_path);
 			}
 		}
@@ -4775,11 +4774,11 @@ WPRINTF("md_device_name(%s) meta_volume(%s) minor(%d)\n", cfg->md_device_name, m
 			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
 			fprintf(stderr, "Creating vhd disk for meta data...\n");
 			if (_call_script(_argv)) {
-				//remove("./"CREATE_VHD_SCRIPT);
+				remove("./"CREATE_VHD_SCRIPT);
 				fprintf(stderr, "diskpart failed.\n");
 				exit(20);
 			}
-			//remove("./"CREATE_VHD_SCRIPT);
+			remove("./"CREATE_VHD_SCRIPT);
 		}
 	}
 

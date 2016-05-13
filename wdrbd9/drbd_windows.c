@@ -2519,6 +2519,14 @@ bool is_equal_volume_link(
 	return false;
 }
 
+/**
+ * @brief
+ *	link is below 
+ *	- "\\\\?\\Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}\\"
+ *	- "d" or "d:"
+ *	- "c/vdrive" or "c\\vdrive"
+ *	f no block_device allocated, then query
+ */
 struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
 {
 	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
@@ -2541,6 +2549,29 @@ struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
 	return (pvext) ? pvext->dev : NULL;
 }
 
+/**
+ * @brief
+ *	exceptional case
+ *	"////?//Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}//" by cli
+ *	to
+ *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
+ *	f no block_device allocated, then query
+ */
+static void _convert_1sep(char * dst, const char * src)
+{
+	const char token[] = "Volume{";
+	char * start = strstr(src, token);
+	if (start) {
+		strcpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		char * end = strstr(src, "}");
+		char * t3 = strstr(dst, token);
+		memcpy(t3, start, (int)(end - start));
+	}
+ 	else {
+		strcpy(dst, src);
+	}
+}
+
 struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
 {
 #ifdef _WIN32
@@ -2549,8 +2580,11 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 
 	ANSI_STRING apath;
 	UNICODE_STRING upath;
-	
-	RtlInitAnsiString(&apath, path);
+	char cpath[64] = { 0, };
+
+	_convert_1sep(cpath, path);
+
+	RtlInitAnsiString(&apath, cpath);
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
 	if (!NT_SUCCESS(status)) {
 		WDRBD_WARN("Wrong path = %s\n", path);
