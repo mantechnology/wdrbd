@@ -617,7 +617,9 @@ void _printk(const char * func, const char * format, ...)
 	int printLevel = 0;
 	CHAR szTempBuf[MAX_ELOG_BUF] = "";
 	BOOLEAN bSysEventLog = FALSE;
-	BOOLEAN bServiceLog = FALSE;	
+	BOOLEAN bServiceLog = FALSE;
+	extern atomic_t g_syslog_lv_min;
+	extern atomic_t g_svclog_lv_min;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
 	
@@ -631,10 +633,10 @@ void _printk(const char * func, const char * format, ...)
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #else
 	// to write system event log.
-	if (level_index <= WDRBD_SYSLOG_LV_MAX)
+	if (level_index <= atomic_read(&g_syslog_lv_min))
 		bSysEventLog = TRUE;
-	// to send to drbd service.
-	if (level_index <= WDRBD_SVCLOG_LV_MAX)
+	// to send to drbd service.	
+	if (level_index <= atomic_read(&g_svclog_lv_min))
 		bServiceLog = TRUE;
 
 	if (bSysEventLog)

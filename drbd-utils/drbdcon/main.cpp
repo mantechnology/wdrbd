@@ -21,6 +21,9 @@ usage()
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
 		"   /get_log [ProviderName] \n"
+		"   /syslog_lv 0~7 \n"
+		"   /svclog_lv 0~7 \n"
+
 		"\n\n"
 
 		"options:\n"
@@ -37,6 +40,8 @@ usage()
         "drbdcon /d F \n"
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService"
+		"drbdcon /syslog_lv 3"
+		"drbdcon /svclog_lv 7"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -59,6 +64,7 @@ main(int argc, char* argv [])
 	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
 	char	GetLog = 0;
+	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
 
     int     Force = 0;
@@ -67,6 +73,7 @@ main(int argc, char* argv [])
 	ULONG	BlockSize = 0;
 	ULONG	Count = 0;
 	SIMULATION_DISK_IO_ERROR sdie = { 0, };
+	LOGGING_MIN_LV lml = { 0, };
 
 	if (argc < 2)
 		usage();
@@ -189,6 +196,32 @@ main(int argc, char* argv [])
 			} else {
 				// if parameter 2 does not exist, parameter 2 is default value(0)
 			}
+		}
+		else if (strcmp(argv[argIndex], "/syslog_lv") == 0)
+		{
+			argIndex++;
+			SetMinLogLv++;
+
+			if (argIndex < argc)
+			{
+				lml.nType = LOGGING_TYPE_SYSLOG;
+				lml.nErrLvMin = atoi(argv[argIndex]);
+			}
+			else
+				usage();
+		}
+		else if (strcmp(argv[argIndex], "/svclog_lv") == 0)
+		{
+			argIndex++;
+			SetMinLogLv++;
+
+			if (argIndex < argc)
+			{
+				lml.nType = LOGGING_TYPE_SVCLOG;
+				lml.nErrLvMin = atoi(argv[argIndex]);
+			}
+			else
+				usage();
 		}
 		else
 		{
@@ -366,6 +399,10 @@ main(int argc, char* argv [])
 
 	if (SimulDiskIoErrorFlag) {
 		res = MVOL_SimulDiskIoError(&sdie);
+	}
+
+	if (SetMinLogLv) {
+		res = MVOL_SetMinimumLogLevel(&lml);
 	}
 
 	if (GetLog)

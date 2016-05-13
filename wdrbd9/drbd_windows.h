@@ -80,9 +80,6 @@ enum
 	KERN_DEBUG_NUM
 };
 
-#define WDRBD_SYSLOG_LV_MAX		KERN_CRIT_NUM
-#define WDRBD_SVCLOG_LV_MAX		KERN_DEBUG_NUM
-
 
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()

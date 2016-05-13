@@ -630,6 +630,12 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			status = IOCTL_SetSimulDiskIoError(DeviceObject, Irp); // Simulate Disk I/O Error IOCTL Handler
             MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
+
+		case IOCTL_MVOL_SET_LOGLV_MIN:
+		{
+			status = IOCTL_SetMinimumLogLevel(DeviceObject, Irp); // Set minimum level of logging (system event log, service log)
+			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||
