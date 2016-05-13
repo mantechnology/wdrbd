@@ -314,11 +314,26 @@ void drbd_printk_with_wrong_object_type(void);
 #define drbd_debug(obj, fmt, args...)
 #endif
 #endif
+
+#ifdef _WIN32
+#define DEFAULT_RATELIMIT_INTERVAL      (5 * HZ)
+#define DEFAULT_RATELIMIT_BURST         10
+
+struct ratelimit_state {
+	spinlock_t		lock;           /* protect the state */
+	int             interval;
+	int             burst;
+	int             printed;
+	int             missed;
+	unsigned long   begin;
+};
+#endif
+
 extern struct ratelimit_state drbd_ratelimit_state;
 
 #ifdef _WIN32
-extern int _DRBD_ratelimit(char * __FILE, int __LINE);
-#define drbd_ratelimit() _DRBD_ratelimit(__FILE__, __LINE__)
+extern int _DRBD_ratelimit(struct ratelimit_state *rs, const char * func, const char * __FILE, const int __LINE);
+#define drbd_ratelimit() _DRBD_ratelimit(&drbd_ratelimit_state, __FUNCTION__, __FILE__, __LINE__)
 #else
 static inline int drbd_ratelimit(void)
 {
