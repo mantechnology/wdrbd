@@ -575,6 +575,15 @@ void save_to_system_event(char * buf, int length, int level_index)
 	}
 }
 
+void printk_init(void)
+{
+	// initialization for logging. the function '_prink' shouldn't be called before this initialization.
+	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
+#ifdef _WIN32_LOGLINK
+	LogLink_MakeUsable();
+#endif
+}
+
 void _printk(const char * func, const char * format, ...)
 {
 	int ret = 0;
@@ -670,32 +679,11 @@ void _printk(const char * func, const char * format, ...)
 	DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
 
 #ifdef _WIN32_LOGLINK
-	if (bServiceLog)
+	if (FALSE == bServiceLog ||
+		FALSE == LogLink_IsUsable() ||
+		STATUS_SUCCESS != LogLink_QueueBuffer(buf))
 	{
-		struct loglink_msg_list  *loglink_msg;
-
-		if (loglink.wq)
-		{
-			loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&linklog_printk_msg);
-			if (loglink_msg == NULL)
-			{
-				DbgPrint("DRBD_ERROR:loglink: no memory\n");
-				goto error;
-			}
-			loglink_msg->buf = buf;
-			mutex_lock(&loglink_mutex);
-			list_add_tail(&loglink_msg->list, &loglink.loglist);	// Add at tail to send log in chronological order.
-			mutex_unlock(&loglink_mutex);
-			queue_work(loglink.wq, &loglink.worker);
-		}
-		else
-		{
-		error:
-			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-		}
-	}
-	else
-	{
+		// buf will be freed by loglink sender thread if it's queued, otherwise free it here.
 		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 	}
 #else

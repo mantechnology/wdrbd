@@ -46,8 +46,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     UNICODE_STRING      		nameUnicode, linkUnicode;
     ULONG				i;
 
-	// init lookaside first, it will be used as logging buffer.
-	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
+	// init logging system first
+	wdrbd_logger_init();
 
     WDRBD_TRACE("MVF Driver Loading...\n");
 

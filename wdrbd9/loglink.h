@@ -11,15 +11,27 @@ struct loglink_worker {
 	struct list_head loglist;
 };
 
+enum loglink_state {
+	LOGLINK_UNINITIALIZED,	// you can't do anything with loglink.
+	LOGLINK_USABLE,			// minimum state of using loglink, the only thing you can do is queueing buffer. sender thread isn't created yet.
+	LOGLINK_INITIALIZED,	// init completed. loglink is about to wait for client.
+	LOGLINK_TRANSFERABLE	// init completed and has client. data will be transfered to client immediately.
+};
+
 extern int g_loglink_tcp_port;
 extern int g_loglink_usage;
 extern PETHREAD g_LoglinkServerThread;
 extern struct loglink_worker loglink;
 extern struct mutex loglink_mutex;
-extern NPAGED_LOOKASIDE_LIST linklog_printk_msg;
+extern NPAGED_LOOKASIDE_LIST loglink_printk_msg;
 extern void LogLink_Sender(struct work_struct *ws);
 extern DWORD msgids[];
 extern VOID NTAPI LogLink_ListenThread(PVOID p);
+VOID LogLink_MakeUsable();
+VOID LogLink_MakeUnusable();
+BOOLEAN LogLink_IsUsable();
+BOOLEAN LogLink_HasClient();
+NTSTATUS LogLink_QueueBuffer(char* buf);
 
 #define LOGLINK_TIMEOUT		3000
 
