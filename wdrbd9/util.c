@@ -13,7 +13,7 @@
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 #pragma alloc_text(PAGE, FsctlDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
@@ -57,7 +57,7 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 	return STATUS_SUCCESS;
 }
 
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 /**
 * @brief    do FSCTL_DISMOUNT_VOLUME in kernel.
 *           advised to use this function in next sequence
@@ -1076,16 +1076,15 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 
 /**
  * @brief
- *	caller should release unicode's buffer
+ *	caller should release unicode's buffer(in bytes)
  */
-ULONG wcs2ucsdup(_Out_ PUNICODE_STRING dst, _In_ WCHAR * src)
+ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 {
 	if (!dst || !src) {
 		return 0;
 	}
 
-	ULONG size = wcslen(src) * sizeof(WCHAR);
-	dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
+    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
 	if (dst->Buffer) {
 		dst->Length = size;
 		dst->MaximumLength = size + sizeof(WCHAR);
@@ -1095,42 +1094,6 @@ ULONG wcs2ucsdup(_Out_ PUNICODE_STRING dst, _In_ WCHAR * src)
 
 	return 0;
 }
-
-/**
-* @brief
-*/
-PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
-{
-    if (!dst)
-    {
-        return NULL;
-    }
-
-    USHORT size = src->Length + sizeof(WCHAR);
-
-    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
-	if (dst->Buffer) {
-		dst->MaximumLength = size;
-		RtlCopyUnicodeString(dst, src);
-		return dst;
-	}
-	else {
-		dst->Buffer = NULL;
-		dst->MaximumLength = 0;
-		return NULL;
-	}
-}
-
-/**
-* @brief
-*/
-void ucsfree(IN PUNICODE_STRING str)
-{
-	if (str) {
-		kfree(str->Buffer);
-	}
-}
-
 
 // GetIrpName
 // from:https://github.com/iocellnetworks/ndas4windows/blob/master/fremont/3.20-stable/src/drivers/ndasfat/ndasfat.c

@@ -1322,7 +1322,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
 #endif
-#ifdef _WIN32 
+#ifdef _WIN32_MVFL
         int vnr;
         struct drbd_device * device;
         idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
@@ -1332,7 +1332,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
         }
 #endif
 	} else {
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
         int vnr;
         struct drbd_device * device;
         idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
@@ -2903,7 +2903,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     struct drbd_genlmsghdr *dh = info->userhdr;
     if (do_add_minor(dh->minor))
     {
@@ -6027,7 +6027,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	resource = adm_ctx.resource;
 	mutex_lock(&resource->adm_mutex);
 	/* demote */
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     // continue to dismount volume after drbdadm down is done.
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i)
     {

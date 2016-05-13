@@ -95,16 +95,14 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Magic = MVOL_MAGIC;
     RootExtension->Head = NULL;
     RootExtension->Count = 0;
-    ucsdup(&RootExtension->RegistryPath, RegistryPath);
+	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
     RootExtension->PhysicalDeviceNameLength = nameUnicode.Length;
     RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
-#ifdef _WIN32
 	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
-#endif
 	
 #ifdef _WIN32_WPP
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
@@ -128,10 +126,9 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 }
 
 static
-NTSTATUS _QueryDevNameRegistry(
+NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
-	_Out_ UNICODE_STRING * pmpt,
-	_Out_ UNICODE_STRING * pvolguid)
+	_Out_ PVOLUME_EXTENSION pvext)
 {
 	OBJECT_ATTRIBUTES           attributes;
 	PKEY_FULL_INFORMATION       keyInfo = NULL;
@@ -204,13 +201,14 @@ NTSTATUS _QueryDevNameRegistry(
 
 			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
 				if (wcsstr(key, L"\\DosDevices\\")) {
-					wcs2ucsdup(pmpt, L" :");
-					pmpt->Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					ucsdup(&pvext->MountPoint, L" :", 4);
+					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
-					RtlUnicodeStringInit(pvolguid, key);
+					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
 					// To compare easily the string between name in registry and IoVolumeDeviceToDosName()
-					*(pvolguid->Buffer + 1) = (WCHAR)'\\';		// IoVolumeDeviceToDosName()'s style
+					*(pvext->VolumeGuid.Buffer + 1) = (WCHAR)'\\';		// IoVolumeDeviceToDosName()'s style
 					key = NULL;
 				}
 			}
@@ -228,27 +226,6 @@ cleanup:
 	}
 
 	return status;
-}
-
-static
-void _PrepareDrbdBlockDevice(VOLUME_EXTENSION * pvext)
-{
-	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(pvext->PhysicalDeviceObject);
-
-	if (pmuid) {
-		_QueryDevNameRegistry(pmuid, &pvext->MountPoint, &pvext->VolumeGuid);
-
-		if (IsDriveLetterMountPoint(&pvext->MountPoint)) {
-			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
-			pvext->dev = create_drbd_block_device(pvext);
-		}
-		else {	// clear and init
-			pvext->VolIndex = 0;
-			drbdFreeDev(pvext);
-		}
-
-		ExFreePool(pmuid);
-	}
 }
 
 NTSTATUS
@@ -334,17 +311,22 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     if (!NT_SUCCESS(status))
     {
         mvolLogError(mvolRootDeviceObject, 101, MSG_ADD_DEVICE_ERROR, status);
+		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
     VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
 
-    _PrepareDrbdBlockDevice(VolumeExtension);
+	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
+	if (pmuid) {
+		_QueryVolumeNameRegistry(pmuid, VolumeExtension);
+		ExFreePool(pmuid);
+	}
 
     MVOL_LOCK();
     mvolAddDeviceList(VolumeExtension);
     MVOL_UNLOCK();
     
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     if (do_add_minor(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
@@ -357,7 +339,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         VolumeExtension->Active = TRUE;
     }
 #endif
-    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) Name(%wZ)\n",
+    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
         VolumeExtension->PhysicalDeviceName,
         VolumeExtension->VolIndex,
@@ -467,7 +449,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         return STATUS_SUCCESS;
     }
 
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9

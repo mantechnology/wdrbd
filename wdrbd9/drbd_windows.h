@@ -24,6 +24,7 @@
 
 
 #ifdef _WIN32
+#define minor_to_letter(m)	('C'+(m))
 #define minor_to_mdev minor_to_device
 #define drbd_conf drbd_device
 #endif
@@ -1190,6 +1191,7 @@ extern long IS_ERR_OR_NULL(const void *ptr);
 extern int IS_ERR(void *err);
 
 extern int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask, sector_t *error_sector);
+extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name);
 extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder);
 
 extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
@@ -1239,13 +1241,13 @@ __inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
 		(s->Buffer[1] == ':'));
 }
 
-extern bool is_equal_mount_point(_In_ const char *, _In_ const char *, _In_ bool);
+extern bool is_equal_volume_link(UNICODE_STRING *, UNICODE_STRING *, bool);
 extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
 
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 extern NTSTATUS FsctlDismountVolume(unsigned int minor);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
@@ -1286,7 +1288,6 @@ extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void query_targetdev(PVOLUME_EXTENSION pvext);
 extern void refresh_targetdev_list();
 extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor);
-extern struct drbd_conf *get_targetdev_by_md(char letter);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
 extern int WriteEventLogEntryData(
@@ -1297,9 +1298,7 @@ extern int WriteEventLogEntryData(
 	...
 );
 
-extern ULONG wcs2ucsdup(_Out_ PUNICODE_STRING dst, _In_ WCHAR * src);
-extern PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src);
-extern void ucsfree(IN PUNICODE_STRING str);
+extern ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size);
 
 /// SEO: relative to RCU function. remove later
 extern void list_add_rcu(struct list_head *new, struct list_head *head);

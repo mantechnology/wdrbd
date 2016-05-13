@@ -129,8 +129,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
     else
     {
-		device = NULL;
-        //device = get_targetdev_by_md(VolumeExtension->Letter);	// kmpak
+        device = blkdev_get_by_link(&VolumeExtension->VolumeGuid)->bd_disk->private_data;
     }
 
     if (device)
@@ -845,32 +844,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 }
 
 /**
-* @brief   create block_device by referencing to VOLUME_EXTENSION object.
-*          a created block_device must be freed by ExFreePool() elsewhere.
-*/
-struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
-{
-	struct block_device * dev;
-
-	dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-	if (!dev) {
-		WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-		return NULL;
-	}
-
-	return dev;
-}
-
-/**
 * @brief   free VOLUME_EXTENSION's dev object
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {
-    if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
+	if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
 		return;
 	}
 
-    kfree(VolumeExtension->dev->bd_disk->queue);
+	kfree(VolumeExtension->dev->bd_disk->queue);
 	kfree(VolumeExtension->dev->bd_disk);
 	kfree2(VolumeExtension->dev);
 }
