@@ -62,8 +62,11 @@ typedef struct _MVOL_SYNC_REQ
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
 
-#define SIMUL_DISK_IO_ERROR_TYPE0		0 // IoCallDriver Fail
-#define SIMUL_DISK_IO_ERROR_TYPE1		1 // IoCompleteRequest with fail status
+#define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail
+#define SIMUL_DISK_IO_ERROR_TYPE1		1 // Local I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE2		2 // Peer Request I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE3		3 // Meta I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE4		4 // Bitmap I/O Completed with Error
 
 typedef struct _SIMULATION_DISK_IO_ERROR {
 	BOOLEAN 	bDiskErrorOn;

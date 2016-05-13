@@ -26,7 +26,6 @@
 #include "windows/drbd.h"
 #include "drbd_int.h"
 #include "drbd_req.h"
-extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 #else
 #include <linux/module.h>
 
@@ -486,14 +485,7 @@ void complete_master_bio(struct drbd_device *device,
 	            }
 	        }
 #endif
-			//
-			//	simulation disk-io error point . (IoCompleteRequest with fail status) disk error simluation type 1
-			//
-			if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
-				WDRBD_ERROR("SimulDiskIoError: type1.....\n");
-				master_bio->pMasterIrp->IoStatus.Status = STATUS_UNSUCCESSFUL;
-			}
-	        IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+			IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
 	    } else {
 
@@ -528,13 +520,6 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}
 
-				//
-				//	simulation disk-io error point . (IoCompleteRequest with fail status) disk error simluation type 1
-				//
-				if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
-					WDRBD_ERROR("SimulDiskIoError: type1.....\n");
-					master_bio->pMasterIrp->IoStatus.Status = STATUS_UNSUCCESSFUL;
-				}
 				IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
 				kfree(master_bio->splitInfo);

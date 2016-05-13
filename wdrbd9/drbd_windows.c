@@ -1828,7 +1828,7 @@ int generic_make_request(struct bio *bio)
 	IoSetCompletionRoutine(newIrp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
 
 	//
-	//	simulation disk-io error point . (try to fail IoCallDriver) - disk error simluation type 0
+	//	simulation disk-io error point . (generic_make_request fail) - disk error simluation type 0
 	//
 	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
 		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
