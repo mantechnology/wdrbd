@@ -74,8 +74,11 @@ DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force);
 *				true -  ON Simulation flag
 *				false - OFF Simulation flag
 *			ErrorType : Type of Disk I/O Error
-*				0 - fail to try Disk I/O
-*				1 - Disk I/O result is fail status
+*				0 - generic_make_request fail
+*				1 - Local Disk I/O complete with error
+*				2 - Peer Request I/O complete with error
+*				3 - Meta Data I/O complete with error
+*				4 - Bitmap I/O complete with error
 *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
 */
 DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);
