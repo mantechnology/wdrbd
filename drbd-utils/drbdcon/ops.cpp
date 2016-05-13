@@ -998,3 +998,41 @@ DWORD WriteLogToFile(HANDLE hLogFile, LPCTSTR pszTimeStamp, PBYTE pszData)
 exit:
 	return dwStatus;
 }
+
+// Simulate Disk I/O Error 
+DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie)
+{
+	HANDLE      hDevice = INVALID_HANDLE_VALUE;
+	DWORD       retVal = ERROR_SUCCESS;
+	DWORD       dwReturned = 0;
+	BOOL        ret = FALSE;
+
+	if (pSdie == NULL) {
+		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	// 1. Open MVOL_DEVICE
+	hDevice = OpenDevice(MVOL_DEVICE);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed open drbd. Err=%u\n",
+			__FUNCTION__, retVal);
+		return retVal;
+	}
+
+	// 2. DeviceIoControl with SIMULATION_DISK_IO_ERROR parameter (DW-841, mvol.h)
+	ret = DeviceIoControl(hDevice, IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR,
+		pSdie, sizeof(SIMULATION_DISK_IO_ERROR), pSdie, sizeof(SIMULATION_DISK_IO_ERROR), &dwReturned, NULL);
+	if (ret == FALSE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_GET_PROC_DRBD. Err=%u\n",
+			__FUNCTION__, retVal);
+	}
+
+	// 3. CloseHandle MVOL_DEVICE
+	if (hDevice != INVALID_HANDLE_VALUE) {
+		CloseHandle(hDevice);
+	}
+	return retVal;
+}

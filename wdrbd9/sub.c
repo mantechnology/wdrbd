@@ -91,14 +91,26 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 
+	// we should call acuire removelock before pass down irp.
+	// if acuire-removelock fail, we should return fail(STATUS_DELETE_PENDING).
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
+		if(!NT_SUCCESS(status)) {
+			Irp->IoStatus.Status = status;
+			Irp->IoStatus.Information = 0;
+
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+	}
+	
 	status = mvolRunIrpSynchronous(DeviceObject, Irp);
 	if (!NT_SUCCESS(status))
 	{
 		WDRBD_ERROR("cannot remove device, status=0x%x\n", status);
 	}
 
-	if (NT_SUCCESS(IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL)))
-		IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
+	IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	{
