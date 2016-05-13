@@ -325,7 +325,7 @@ struct ratelimit_state {
 	int             burst;
 	int             printed;
 	int             missed;
-	unsigned long   begin;
+	ULONG_PTR	    begin;
 };
 #endif
 
