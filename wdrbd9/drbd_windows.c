@@ -2252,7 +2252,8 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 
 	// if not same, it need to re-query
 	if (NT_SUCCESS(status) && !MOUNTMGR_IS_VOLUME_NAME(&new_name)) {	// ex) "D:" or "C:/vdrive"
-		
+
+		WDRBD_INFO("IoVolumeDeviceToDosName() get name(%wZ)\n", &new_name);
 		if (pvext->MountPoint.Length && pvext->MountPoint.Buffer) {
 			RtlFreeUnicodeString(&pvext->MountPoint);
 		}
@@ -2263,8 +2264,9 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		}
 	}
 
-	drbdFreeDev(pvext);
-	pvext->dev = create_drbd_block_device(pvext);
+	if (!pvext->dev) { //drbdFreeDev(pvext);
+		pvext->dev = create_drbd_block_device(pvext);
+	}
 }
 
 /**
