@@ -2605,7 +2605,7 @@ static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_po
 	// assign type refer
 	// https://technet.microsoft.com/en-us/library/cc766465(WS.10).aspx
 	sprintf(buf,
-		"create vdisk file=\"%s\" maximum=%d\n"
+		"create vdisk file=\"%s\" maximum=%lu\n"
 		"attach vdisk\n"
 		"create partition primary\n"
 		"assign %s=%s",
