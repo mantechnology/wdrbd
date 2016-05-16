@@ -3432,7 +3432,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     struct device_list *device_list_p, *p;
 
     WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
-        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->MountPoint);
+        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, &VolumeExtension->MountPoint);
 
     if (retry.wq)
         destroy_workqueue(retry.wq);

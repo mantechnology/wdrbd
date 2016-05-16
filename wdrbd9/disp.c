@@ -354,7 +354,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         VolumeExtension->PhysicalDeviceName,
         VolumeExtension->VolIndex,
         VolumeExtension->Active,
-        VolumeExtension->MountPoint);
+        &VolumeExtension->MountPoint);
 
     return STATUS_SUCCESS;
 }
