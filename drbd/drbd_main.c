@@ -1566,7 +1566,11 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	struct p_uuids110 *p;
 	int i, pos = 0;
 	u64 bitmap_uuids_mask = 0;
+#ifdef _WIN32
+	u64 authoritative_mask = 0;
+#else
 	u64 authoritative_mask;
+#endif
 	int p_size = sizeof(*p);
 
 	if (!get_ldev_if_state(device, D_NEGOTIATING))
@@ -1590,7 +1594,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	}
 
 #ifdef _WIN32
-	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, sizeof(ULONG_PTR))
+	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
 #else
 	for_each_set_bit(i, (unsigned long *)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
 #endif
