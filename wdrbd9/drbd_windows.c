@@ -1840,7 +1840,7 @@ int generic_make_request(struct bio *bio)
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		return -EIO;
 	}
-	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
+	IoCallDriver(q->backing_dev_info.pvext->TargetDeviceObject, newIrp);
 
 	return 0;
 }
