@@ -1567,7 +1567,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	int i, pos = 0;
 	u64 bitmap_uuids_mask = 0;
 #ifdef _WIN32
-	u64 authoritative_mask 0;
+	u64 authoritative_mask = 0;
 #else
 	u64 authoritative_mask;
 #endif
