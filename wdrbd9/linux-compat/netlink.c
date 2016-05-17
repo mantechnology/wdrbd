@@ -543,7 +543,7 @@ NetlinkWorkThread(PVOID context)
 
     PWSK_SOCKET socket = ((PNETLINK_WORK_ITEM)context)->Socket;
     LONG readcount, minor = 0;
-    int err = 0;
+    int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
@@ -647,6 +647,11 @@ NetlinkWorkThread(PVOID context)
             {	
 				err = _genl_ops(pops, pinfo);
                 mutex_unlock(&g_genl_mutex);
+				if (err)
+				{
+					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
+					errcnt++;
+				}
             }
             else
             {
@@ -670,9 +675,9 @@ cleanup:
     if (psock_buf)
         ExFreeToNPagedLookasideList(&genl_msg_mempool, psock_buf);
 
-    if (err)
+    if (errcnt)
     {
-        WDRBD_INFO("done. error(%d)\n", err);
+        WDRBD_ERROR("done. error occured %d times\n", errcnt);
     }
     else
     {
