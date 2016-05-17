@@ -142,8 +142,8 @@ struct drbd_connection;
     do {								\
         const struct drbd_device *__d = (device);		\
         const struct drbd_resource *__r = __d->resource;	\
-        printk(level "drbd %s/%u drbd%u: " fmt,			\
-            __r->name, __d->vnr, __d->minor, __VA_ARGS__);	\
+        printk(level "drbd %s/%u drbd%u, ds(%s), f(0x%x): " fmt,			\
+            __r->name, __d->vnr, __d->minor, drbd_disk_str(__d->disk_state[NOW]), __d->flags, __VA_ARGS__);	\
     } while (0)
 
 #define __drbd_printk_peer_device(level, peer_device, fmt, ...)	\
@@ -157,19 +157,19 @@ struct drbd_connection;
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = rcu_dereference(__c->transport.net_conf)->name;	\
-        printk(level "drbd %s/%u drbd%u %s: " fmt,		\
-            __r->name, __d->vnr, __d->minor, __cn, __VA_ARGS__);\
+        printk(level "drbd %s/%u drbd%u %s, ds(%s), rs(%s), f(0x%x): " fmt,		\
+            __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32_V9	*/		\
     } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
-	printk(level "drbd %s: " fmt, (resource)->name, __VA_ARGS__)
+	printk(level "drbd %s, r(%s), f(0x%x) : " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags, __VA_ARGS__)
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32_V9*/ \
-        printk(level "drbd %s %s: " fmt, (connection)->resource->name,  \
-        rcu_dereference((connection)->transport.net_conf)->name, __VA_ARGS__); \
+        printk(level "drbd %s %s, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
+        rcu_dereference((connection)->transport.net_conf)->name, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
         /*rcu_read_unlock();	_WIN32_V9*/ \
     } while(0)
 
