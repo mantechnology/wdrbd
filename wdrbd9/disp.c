@@ -46,8 +46,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     UNICODE_STRING      		nameUnicode, linkUnicode;
     ULONG				i;
 
-	// init lookaside first, it will be used as logging buffer.
-	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
+	// init logging system first
+	wdrbd_logger_init();
 
     WDRBD_TRACE("MVF Driver Loading...\n");
 
@@ -629,6 +629,12 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		{
 			status = IOCTL_SetSimulDiskIoError(DeviceObject, Irp); // Simulate Disk I/O Error IOCTL Handler
             MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
+
+		case IOCTL_MVOL_SET_LOGLV_MIN:
+		{
+			status = IOCTL_SetMinimumLogLevel(DeviceObject, Irp); // Set minimum level of logging (system event log, service log)
+			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
     }
 

@@ -1036,3 +1036,44 @@ DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie)
 	}
 	return retVal;
 }
+
+DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
+{	
+	HANDLE      hDevice = INVALID_HANDLE_VALUE;
+	DWORD       retVal = ERROR_SUCCESS;
+	DWORD       dwReturned = 0;
+	DWORD		dwControlCode = 0;
+	BOOL        ret = FALSE;
+
+	if (pLml == NULL ||
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_SVCLOG) ||
+		(pLml->nErrLvMin < 0 || pLml->nErrLvMin > 7))
+	{
+		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	// 1. Open MVOL_DEVICE
+	hDevice = OpenDevice(MVOL_DEVICE);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed open drbd. Err=%u\n",
+			__FUNCTION__, retVal);
+		return retVal;
+	}
+	
+
+	// 2. DeviceIoControl with LOGGING_MIN_LV parameter (DW-858)
+	ret = DeviceIoControl(hDevice, IOCTL_MVOL_SET_LOGLV_MIN, pLml, sizeof(LOGGING_MIN_LV), NULL, 0, &dwReturned, NULL);
+	if (ret == FALSE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_SET_LOGLV_MIN. Err=%u\n",
+			__FUNCTION__, retVal);
+	}
+
+	// 3. CloseHandle MVOL_DEVICE
+	if (hDevice != INVALID_HANDLE_VALUE) {
+		CloseHandle(hDevice);
+	}
+	return retVal;
+}
