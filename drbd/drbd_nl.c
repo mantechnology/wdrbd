@@ -1241,7 +1241,7 @@ retry:
         idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
-#endif
+#endif			
 			if (forced)
 				drbd_uuid_new_current(device, true);
 			else
@@ -1330,7 +1330,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
 #endif
-#ifdef _WIN32 
+#if 0 // _WIN32 // DW-778
         int vnr;
         struct drbd_device * device;
         idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
