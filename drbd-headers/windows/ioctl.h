@@ -77,6 +77,7 @@ typedef struct _SIMULATION_DISK_IO_ERROR {
 
 #define LOGGING_TYPE_SYSLOG		0
 #define LOGGING_TYPE_SVCLOG		1
+#define LOGGING_TYPE_DBGLOG		2
 
 typedef struct _LOGGING_MIN_LV {
 	int			nType;
