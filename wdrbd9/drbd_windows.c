@@ -23,6 +23,7 @@ int g_daemon_tcp_port;
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
 atomic_t g_syslog_lv_min = KERN_CRIT_NUM;
 atomic_t g_svclog_lv_min = KERN_ERR_NUM;
+atomic_t g_dbglog_lv_min = KERN_INFO_NUM;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;

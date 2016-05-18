@@ -7186,7 +7186,7 @@ static void drbdd(struct drbd_connection *connection)
 		update_receiver_timing_details(connection, cmd->fn);
 		err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-		drbd_info(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+		drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
 #endif
 		if (err) {
 #ifndef _WIN32
@@ -8599,7 +8599,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 			pi.data = buffer;
 			err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-			drbd_info(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+			drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
 #endif
 			if (err) {
 #ifdef _WIN32
