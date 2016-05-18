@@ -528,6 +528,137 @@ COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension )
 	KeReleaseMutex( &VolumeExtension->CountMutex, FALSE );
 }
 
+// Inputs:
+//   MountPoint - this is the buffer containing the mountpoint structure used for the query
+//   MountPointLength - this is the total size of the MountPoint buffer
+//   MountPointInfoLength - the size of the mount point Info structure
+//
+// Outputs:
+//   MountPointInfo - this is the returned mount point information
+//   MountPointInfoLength - the # of bytes actually needed
+//
+// Returns:
+//   Results of the underlying operation
+//
+// Notes:
+//   Re-opening the mount manager could be optimized if that were an important goal;
+//   We avoid it to minimize handle context problems.
+//   http://www.osronline.com/article.cfm?name=mountmgr.zip&id=107
+//
+NTSTATUS QueryMountPoint(
+	_In_ PVOID MountPoint,
+	_In_ ULONG MountPointLength,
+	_Inout_ PVOID MountPointInfo,
+	_Out_ PULONG MountPointInfoLength)
+{
+	OBJECT_ATTRIBUTES mmgrObjectAttributes;
+	UNICODE_STRING mmgrObjectName;
+	NTSTATUS status;
+	HANDLE mmgrHandle;
+	IO_STATUS_BLOCK iosb;
+	HANDLE testEvent;
+
+	//
+	// First, we need to obtain a handle to the mount manager, so we must:
+	//
+	//  - Initialize the unicode string with the mount manager name
+	//  - Build an object attributes structure
+	//  - Open the mount manager
+	//
+	// This should yield a valid handle for calling the mount manager
+	//
+
+	//
+	// Initialize the unicode string with the mount manager's name
+	//
+	RtlInitUnicodeString(&mmgrObjectName, MOUNTMGR_DEVICE_NAME);
+
+	//
+	// Initialize object attributes.
+	//
+	mmgrObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+	mmgrObjectAttributes.RootDirectory = NULL;
+	mmgrObjectAttributes.ObjectName = &mmgrObjectName;
+
+	//
+	// Note: in a kernel driver, we'd add OBJ_KERNEL_HANDLE
+	// as another attribute.
+	//
+	mmgrObjectAttributes.Attributes = OBJ_CASE_INSENSITIVE;
+	mmgrObjectAttributes.SecurityDescriptor = NULL;
+	mmgrObjectAttributes.SecurityQualityOfService = NULL;
+
+	//
+	// Open the mount manager
+	//
+	status = ZwCreateFile(&mmgrHandle,
+		FILE_READ_DATA | FILE_WRITE_DATA,
+		&mmgrObjectAttributes,
+		&iosb,
+		0, // allocation is meaningless
+		0, // no attributes specified
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, // we're willing to share
+		FILE_OPEN, // must already exist
+		FILE_NON_DIRECTORY_FILE, // must NOT be a directory
+		NULL, // no EA buffer
+		0); // no EA buffer size...
+	if (!NT_SUCCESS(status) ||
+		!NT_SUCCESS(iosb.Status)) {
+		WDRBD_WARN("Unable to open %wZ, error = 0x%x\n", &mmgrObjectName, status);
+		return status;
+	}
+
+	//
+	// If we get to here, we assume it was successful.  We need an event object
+	// for monitoring the completion of I/O operations.
+	//
+	status = ZwCreateEvent(&testEvent,
+		GENERIC_ALL,
+		0, // no object attributes
+		NotificationEvent,
+		FALSE);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_WARN("Cannot create event (0x%x)\n", status);
+		return status;
+	}
+
+	status = ZwDeviceIoControlFile(
+		mmgrHandle,
+		testEvent,
+		0, // no apc
+		0, // no apc context
+		&iosb,
+		IOCTL_MOUNTMGR_QUERY_POINTS,
+		MountPoint, // input buffer
+		MountPointLength, // size of input buffer
+		MountPointInfo, // output buffer
+		*MountPointInfoLength); // size of output buffer
+	if (STATUS_PENDING == status) {
+		//
+		// Must wait for the I/O operation to complete
+		//
+		status = ZwWaitForSingleObject(testEvent, TRUE, 0);
+		if (NT_SUCCESS(status)) {
+			status = iosb.Status;
+		}
+	}
+
+	//
+	// Regardless of the results, we are done with the mount manager and event
+	// handles so discard them.
+	//
+	(void)ZwClose(testEvent);
+	(void)ZwClose(mmgrHandle);
+
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	*MountPointInfoLength = iosb.Information;
+
+	return STATUS_SUCCESS;
+}
+
 /**
 * @brief
 *   get volume's unique id

@@ -1188,6 +1188,11 @@ __inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
 		(s->Buffer[1] == ':'));
 }
 
+__inline bool IsEmptyUnicodeString(UNICODE_STRING * s)
+{
+	return (s && (s->Length == 0) || !(s->Buffer));
+}
+
 extern bool is_equal_volume_link(UNICODE_STRING *, UNICODE_STRING *, bool);
 extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
@@ -1220,11 +1225,14 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
-
+extern NTSTATUS QueryMountPoint(
+	_In_ PVOID MountPoint,
+	_In_ ULONG MountPointLength,
+	_Inout_ PVOID MountPointInfo,
+	_Out_ PULONG MountPointInfoLength);
 extern PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj);
 
 extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);
-extern NTSTATUS mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize);
 extern int initRegistry(__in PUNICODE_STRING RegistryPath);
 extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name);
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);

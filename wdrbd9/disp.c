@@ -208,7 +208,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
 					// To compare easily the string between name in registry and IoVolumeDeviceToDosName()
-					*(pvext->VolumeGuid.Buffer + 1) = (WCHAR)'\\';		// IoVolumeDeviceToDosName()'s style
+					//*(pvext->VolumeGuid.Buffer + 1) = (WCHAR)'\\';	// IoVolumeDeviceToDosName()'s style
 					key = NULL;
 				}
 			}

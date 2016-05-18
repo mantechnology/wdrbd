@@ -440,6 +440,63 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
     return status;
 }
 
+NTSTATUS
+mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
+{
+	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
+	ULONG mpslen = 4096 * 2;
+
+	PCHAR inbuf = kmalloc(mplen, 0, '56DW');
+	PCHAR otbuf = kmalloc(mpslen, 0, '56DW');
+	if (!inbuf || !otbuf) {
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	PMOUNTMGR_MOUNT_POINT	pmp = (PMOUNTMGR_MOUNT_POINT)inbuf;
+	PMOUNTMGR_MOUNT_POINTS	pmps = (PMOUNTMGR_MOUNT_POINTS)otbuf;
+	
+	pmp->DeviceNameLength = pvext->PhysicalDeviceNameLength;
+	pmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
+	RtlCopyMemory(inbuf + pmp->DeviceNameOffset,
+		pvext->PhysicalDeviceName,
+		pvext->PhysicalDeviceNameLength);
+	
+	NTSTATUS status = QueryMountPoint(pmp, mplen, pmps, &mpslen);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
+
+		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
+		PUNICODE_STRING link = NULL;
+		UNICODE_STRING name = {
+			.Length = p->SymbolicLinkNameLength,
+			.MaximumLength = p->SymbolicLinkNameLength,
+			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
+		
+		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
+			name.Length = strlen(" :") * sizeof(WCHAR);
+			name.Buffer += strlen("\\DosDevices\\");
+			link = &pvext->MountPoint;
+			if (!IsEmptyUnicodeString(link)) {
+				RtlFreeUnicodeString(link);
+			}
+		}
+		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
+			link = &pvext->VolumeGuid;
+		}
+
+		link && ucsdup(link, name.Buffer, name.Length);
+	}
+
+cleanup:
+	kfree(inbuf);
+	kfree(otbuf);
+	
+	return status;
+}
+
 #ifdef _WIN32_GetDiskPerf
 NTSTATUS
 mvolGetDiskPerf(PDEVICE_OBJECT TargetDeviceObject, PDISK_PERFORMANCE pDiskPerf)

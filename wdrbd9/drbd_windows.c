@@ -8,6 +8,7 @@
 #include "linux-compat/idr.h"
 #include "drbd_wrappers.h"
 #include "disp.h"
+#include "proto.h"
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
@@ -2247,19 +2248,26 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		return;
 	}
 
-	UNICODE_STRING new_name;
-	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
+	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
+		// Should be existed guid's name
+		mvolQueryMountPoint(pvext);
+	}
+	else {
 
-	// if not same, it need to re-query
-	if (NT_SUCCESS(status) && !MOUNTMGR_IS_VOLUME_NAME(&new_name)) {	// ex) "D:" or "C:/vdrive"
-
-		WDRBD_INFO("IoVolumeDeviceToDosName() get name(%wZ)\n", &new_name);
-		if (pvext->MountPoint.Length && pvext->MountPoint.Buffer) {
-			RtlFreeUnicodeString(&pvext->MountPoint);
+		UNICODE_STRING new_name;
+		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
+		// if not same, it need to re-query
+		if (!NT_SUCCESS(status)) {	// ex: CD-ROM
+			return;
 		}
-		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
 
-		if (IsDriveLetterMountPoint(&pvext->MountPoint)) {
+		if (IsDriveLetterMountPoint(&new_name) &&
+			!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
+
+			if (!IsEmptyUnicodeString(&pvext->MountPoint)) {
+				RtlFreeUnicodeString(&pvext->MountPoint);
+			}
+			RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
 			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
 		}
 	}
@@ -2533,43 +2541,13 @@ bool is_equal_volume_link(
 
 /**
  * @brief
- *	link is below 
- *	- "\\\\?\\Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}\\"
- *	- "d" or "d:"
- *	- "c/vdrive" or "c\\vdrive"
- *	f no block_device allocated, then query
- */
-struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
-{
-	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
-	VOLUME_EXTENSION * pvext = proot->Head;
-
-	MVOL_LOCK();
-	for (; pvext; pvext = pvext->Next) {
-		// if no block_device instance yet,
-		if (!pvext->dev) {
-			query_targetdev(pvext);
-		}
-
-		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ? &pvext->VolumeGuid : &pvext->MountPoint;
-		if (is_equal_volume_link(name, plink, false)) {
-			break;
-		}
-	}
-	MVOL_UNLOCK();
-
-	return (pvext) ? pvext->dev : NULL;
-}
-
-/**
- * @brief
  *	exceptional case
  *	"////?//Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}//" by cli
  *	to
  *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
  *	f no block_device allocated, then query
  */
-static void _convert_1sep(char * dst, const char * src)
+static void _adjust_guid_name(char * dst, const char * src)
 {
 	const char token[] = "Volume{";
 	char * start = strstr(src, token);
@@ -2584,6 +2562,37 @@ static void _convert_1sep(char * dst, const char * src)
 	}
 }
 
+/**
+ * @brief
+ *	link is below 
+ *	- "\\\\?\\Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}\\"
+ *	- "d" or "d:"
+ *	- "c/vdrive" or "c\\vdrive"
+ *	f no block_device allocated, then query
+ */
+struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
+{
+	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
+	VOLUME_EXTENSION * pvext = proot->Head;
+
+	MVOL_LOCK();
+	for (; pvext; pvext = pvext->Next) {
+
+		// if no block_device instance yet,
+		query_targetdev(pvext);
+
+		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
+			&pvext->VolumeGuid : &pvext->MountPoint;
+
+		if (plink && is_equal_volume_link(name, plink, false)) {
+			break;
+		}
+	}
+	MVOL_UNLOCK();
+
+	return (pvext) ? pvext->dev : NULL;
+}
+
 struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
 {
 #ifdef _WIN32
@@ -2594,7 +2603,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
 
-	_convert_1sep(cpath, path);
+	_adjust_guid_name(cpath, path);
 
 	RtlInitAnsiString(&apath, cpath);
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
