@@ -339,8 +339,18 @@ static struct lc_element *__lc_find(struct lru_cache *lc, unsigned int enr,
 {
 	struct lc_element *e;
 
+#ifdef _WIN32
+	if (!lc ||
+		!lc->nr_elements)
+	{
+		WDRBD_ERROR("al is inaccessible, it could be not initialized or destroyed.\n");
+		return NULL;
+	}
+#else
 	BUG_ON(!lc);
 	BUG_ON(!lc->nr_elements);
+#endif
+
 #ifndef _WIN32
 	hlist_for_each_entry(e, lc_hash_slot(lc, enr), colision) {
 #else

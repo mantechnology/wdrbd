@@ -6341,13 +6341,16 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		consider_resync = (old_peer_state.conn < L_ESTABLISHED);
 		/* if we have both been inconsistent, and the peer has been
 		 * forced to be UpToDate with --force */
-		consider_resync |= test_bit(CONSIDER_RESYNC, &peer_device->flags);
+#ifdef _WIN32 // DW-778 
+		if (device->disk_state[NOW] == D_INCONSISTENT || peer_state.disk == D_INCONSISTENT)
+#endif
+			consider_resync |= test_bit(CONSIDER_RESYNC, &peer_device->flags);
 		/* if we had been plain connected, and the admin requested to
-		 * start a sync by "invalidate" or "invalidate-remote" */
+		 * start a sync by "invalidate" or "invalidate-remote" */		
 		consider_resync |= (old_peer_state.conn == L_ESTABLISHED &&
 				    (peer_state.conn == L_STARTING_SYNC_S ||
-				     peer_state.conn == L_STARTING_SYNC_T));
-
+				     peer_state.conn == L_STARTING_SYNC_T));	
+		
 		if (consider_resync) {
 			new_repl_state = drbd_sync_handshake(peer_device, peer_state.role, peer_disk_state);
 		} else if (old_peer_state.conn == L_ESTABLISHED &&
@@ -6814,11 +6817,6 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		 * other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
 		    drbd_repl_str(peer_device->repl_state[NOW]));
-#ifdef _WIN32 //DW-778
-		err = -EIO;
-		goto out;
-#endif
-
 	}
 	err = 0;
 
@@ -7187,9 +7185,14 @@ static void drbdd(struct drbd_connection *connection)
 
 		update_receiver_timing_details(connection, cmd->fn);
 		err = cmd->fn(connection, &pi);
+#ifdef _WIN32
+		drbd_info(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+#endif
 		if (err) {
+#ifndef _WIN32
 			drbd_err(connection, "error receiving %s, e: %d l: %d!\n",
 				 drbd_packet_name(pi.cmd), err, pi.size);
+#endif
 			goto err_out;
 		}
 	}
@@ -8595,6 +8598,9 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 			pi.data = buffer;
 			err = cmd->fn(connection, &pi);
+#ifdef _WIN32
+			drbd_info(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+#endif
 			if (err) {
 #ifdef _WIN32
 				if (err == -EINTR && current->sig == SIGXCPU)
@@ -8604,7 +8610,9 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 					goto ignore_sig;
 				}
 #endif
+#ifndef _WIN32
 				drbd_err(connection, "%pf failed\n", cmd->fn);
+#endif
 				goto reconnect;
 			}
 #ifdef _WIN32

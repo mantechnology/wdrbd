@@ -3,29 +3,72 @@
 #include "loglink.h"
 #include "drbd_wrappers.h"
 
+atomic_t g_loglink_state = LOGLINK_UNINITIALIZED;
 int g_loglink_tcp_port;
 int g_loglink_usage;
 struct loglink_worker loglink = { 0 };
 struct mutex loglink_mutex;
-NPAGED_LOOKASIDE_LIST linklog_printk_msg;
+NPAGED_LOOKASIDE_LIST loglink_printk_msg;
 PETHREAD g_LoglinkServerThread;
 
 static PWSK_SOCKET g_loglink_sock = NULL;
 static int send_err_count;
+
+VOID LogLink_MakeUsable()
+{
+	mutex_init(&loglink_mutex);
+	ExInitializeNPagedLookasideList(&loglink_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
+	INIT_LIST_HEAD(&loglink.loglist);
+	atomic_cmpxchg(&g_loglink_state, LOGLINK_UNINITIALIZED, LOGLINK_USABLE);
+}
+
+VOID LogLink_MakeUnusable()
+{
+	ExDeleteNPagedLookasideList(&loglink_printk_msg);
+}
+
+BOOLEAN LogLink_IsUsable()
+{
+	return LOGLINK_USABLE <= atomic_read(&g_loglink_state);
+}
+
+BOOLEAN LogLink_IsTransferable()
+{
+	return LOGLINK_TRANSFERABLE <= atomic_read(&g_loglink_state);
+}
+
+NTSTATUS LogLink_QueueBuffer(char* buf)
+{
+	struct loglink_msg_list  *loglink_msg;
+		
+	loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&loglink_printk_msg);
+	if (loglink_msg == NULL)
+	{
+		DbgPrint("DRBD_ERROR:loglink: no memory\n");
+		return STATUS_NO_MEMORY;
+	}
+	loglink_msg->buf = buf;
+	mutex_lock(&loglink_mutex);
+	list_add_tail(&loglink_msg->list, &loglink.loglist);	// Add at tail to send log in chronological order.
+	mutex_unlock(&loglink_mutex);
+
+	if (LogLink_IsTransferable())	// If it's not currently transferable, sending data is deferred.
+		queue_work(loglink.wq, &loglink.worker);
+
+	return STATUS_SUCCESS;
+}
 
 VOID NTAPI LogLink_ListenThread(PVOID p)
 {
 	PWSK_SOCKET		ListenSock = NULL;
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
-
-	mutex_init(&loglink_mutex);
-	ExInitializeNPagedLookasideList(&linklog_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
-
+		
 	while (1)
 	{
 		extern LONG	g_SocketsState;
-		if (g_SocketsState == INITIALIZED)
+		if (g_SocketsState == INITIALIZED &&
+			LOGLINK_USABLE <= atomic_read(&g_loglink_state))
 		{
 			break;
 		}
@@ -45,7 +88,6 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 	}
 
 	INIT_WORK(&loglink.worker, LogLink_Sender);
-	INIT_LIST_HEAD(&loglink.loglist);
 
 	ListenSock = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
 	if (ListenSock == NULL) 
@@ -74,6 +116,8 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		PsTerminateSystemThread(Status);
 		// retry?
 	}
+
+	atomic_cmpxchg(&g_loglink_state, LOGLINK_USABLE, LOGLINK_INITIALIZED);
 
 	while (TRUE) 
 	{
@@ -105,6 +149,7 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		send_err_count = 0;
 		g_loglink_sock = AcceptSock;
 		accept_error_retry = 0;
+		atomic_cmpxchg(&g_loglink_state, LOGLINK_INITIALIZED, LOGLINK_TRANSFERABLE);
 	}
 
 	// not reached here.
@@ -182,6 +227,6 @@ void LogLink_Sender(struct work_struct *ws)
 
 		ExFreeToNPagedLookasideList(&drbd_printk_msg, msg->buf);
 		list_del(&msg->list);
-		ExFreeToNPagedLookasideList(&linklog_printk_msg, msg);
+		ExFreeToNPagedLookasideList(&loglink_printk_msg, msg);
 	}
 }

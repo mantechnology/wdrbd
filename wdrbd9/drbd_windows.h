@@ -81,9 +81,6 @@ enum
 	KERN_DEBUG_NUM
 };
 
-#define WDRBD_SYSLOG_LV_MAX		KERN_CRIT_NUM
-#define WDRBD_SVCLOG_LV_MAX		KERN_DEBUG_NUM
-
 
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()
@@ -309,10 +306,12 @@ typedef unsigned int                fmode_t;
 //#define FLTR_COMPONENT              DPFLTR_IHVDRIVER_ID
 #define FEATURE_WDRBD_PRINT
 
+extern void printk_init(void);
 extern void _printk(const char * func, const char * format, ...);
 extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
+#define wdrbd_logger_init()		printk_init();
 #define printk(format, ...)   \
     _printk(__FUNCTION__, format, __VA_ARGS__)
 #else
