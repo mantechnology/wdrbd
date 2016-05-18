@@ -675,8 +675,10 @@ void _printk(const char * func, const char * format, ...)
 	CHAR szTempBuf[MAX_ELOG_BUF] = "";
 	BOOLEAN bSysEventLog = FALSE;
 	BOOLEAN bServiceLog = FALSE;
+	BOOLEAN bDbgLog = FALSE;
 	extern atomic_t g_syslog_lv_min;
 	extern atomic_t g_svclog_lv_min;
+	extern atomic_t g_dbglog_lv_min;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
 	
@@ -695,6 +697,18 @@ void _printk(const char * func, const char * format, ...)
 	// to send to drbd service.	
 	if (level_index <= atomic_read(&g_svclog_lv_min))
 		bServiceLog = TRUE;
+	// to print through debugger.
+	if (level_index <= atomic_read(&g_dbglog_lv_min))
+		bDbgLog = TRUE;
+
+	// nothing to log.
+	if (!bSysEventLog &&
+		!bServiceLog &&
+		!bDbgLog)
+	{
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+		return;
+	}
 
 	if (bSysEventLog)
 	{
@@ -734,8 +748,8 @@ void _printk(const char * func, const char * format, ...)
 
 	strcpy_s(buf, MAX_ELOG_BUF, szTempBuf);
 
-	// print for all logging levels
-	DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
+	if (bDbgLog)
+		DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
 
 #ifdef _WIN32_LOGLINK
 	if (FALSE == bServiceLog ||

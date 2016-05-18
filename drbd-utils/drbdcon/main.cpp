@@ -21,8 +21,7 @@ usage()
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
 		"   /get_log [ProviderName] \n"
-		"   /syslog_lv 0~7 \n"
-		"   /svclog_lv 0~7 \n"
+		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
 
 		"\n\n"
 
@@ -39,9 +38,8 @@ usage()
         "drbdcon /nagle_disable r0 \n"
         "drbdcon /d F \n"
         "drbdcon /m F \n"
-		"drbdcon /get_log drbdService"
-		"drbdcon /syslog_lv 3"
-		"drbdcon /svclog_lv 7"
+		"drbdcon /get_log drbdService \n"
+		"drbdcon /minlog_lv svc 6 \n"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -197,27 +195,34 @@ main(int argc, char* argv [])
 				// if parameter 2 does not exist, parameter 2 is default value(0)
 			}
 		}
-		else if (strcmp(argv[argIndex], "/syslog_lv") == 0)
+		else if (strcmp(argv[argIndex], "/minlog_lv") == 0)
 		{
 			argIndex++;
 			SetMinLogLv++;
 
+			// first argument indicates logging type.
 			if (argIndex < argc)
 			{
-				lml.nType = LOGGING_TYPE_SYSLOG;
-				lml.nErrLvMin = atoi(argv[argIndex]);
+				if (strcmp(argv[argIndex], "sys") == 0)
+				{
+					lml.nType = LOGGING_TYPE_SYSLOG;
+				}
+				else if (strcmp(argv[argIndex], "svc") == 0)
+				{
+					lml.nType = LOGGING_TYPE_SVCLOG;
+				}
+				else if (strcmp(argv[argIndex], "dbg") == 0)
+				{
+					lml.nType = LOGGING_TYPE_DBGLOG;
+				}
+				else
+					usage();				
 			}
-			else
-				usage();
-		}
-		else if (strcmp(argv[argIndex], "/svclog_lv") == 0)
-		{
-			argIndex++;
-			SetMinLogLv++;
 
+			// second argument indicates minimum logging level.
+			argIndex++;
 			if (argIndex < argc)
 			{
-				lml.nType = LOGGING_TYPE_SVCLOG;
 				lml.nErrLvMin = atoi(argv[argIndex]);
 			}
 			else
