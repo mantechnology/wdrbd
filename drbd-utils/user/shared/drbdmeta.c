@@ -2585,6 +2585,8 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 	cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 }
 #ifdef FEATURE_VHD_META_SUPPORT
+#include <libgen.h>
+
 /**
 * @brief
 *	To create the diskpart's script for VHD-Meta creation
@@ -2599,6 +2601,15 @@ static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_po
 		perror("fopen failed [%m]\n");
 		return 1;
 	}
+
+	// first, to create the directory, because diskpart cmd wouldn't make
+	char * dir_name = strdup(vhd_path);
+	struct stat st = {0};
+	dirname(dir_name);
+	if (stat(dir_name, &st) == -1) {
+		mkdir(dir_name, 0777);
+	}
+	free(dir_name);
 
 	char buf[512];
 	char * assign_type = (1 == strlen(mount_point)) ? "letter" : "mount";
@@ -2763,7 +2774,7 @@ int v07_style_md_open(struct format *cfg)
 			(F_OK == access(cfg->vhd_dev_path, R_OK))) {
 			if (!_attach_vhd_script(cfg->vhd_dev_path)) {
 				char * _argv[] = { "diskpart", "/s", "./"ATTACH_VHD_SCRIPT, (char *)0 };
-				fprintf(stderr, "Attaching vhd meta\n");
+				fprintf(stderr, "Attaching %s for meta data\n", cfg->vhd_dev_path);
 				if (_call_script(_argv)) {
 					remove("./"ATTACH_VHD_SCRIPT);
 					fprintf(stderr, "diskpart failed.\n");
@@ -4772,7 +4783,7 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 		// Make temporarily creation_vhd_script and call diskpart command with script
 		if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
 			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
-			fprintf(stderr, "Creating vhd disk for meta data...\n");
+			fprintf(stderr, "Creating %s for meta data...\n", cfg->vhd_dev_path);
 			if (_call_script(_argv)) {
 				remove("./"CREATE_VHD_SCRIPT);
 				fprintf(stderr, "diskpart failed.\n");
