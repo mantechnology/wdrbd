@@ -2269,9 +2269,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		if (IsDriveLetterMountPoint(&new_name) &&
 			!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
-			if (!IsEmptyUnicodeString(&pvext->MountPoint)) {
-				RtlFreeUnicodeString(&pvext->MountPoint);
-			}
+			FreeUnicodeString(&pvext->MountPoint);
 			RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
 			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
 		}

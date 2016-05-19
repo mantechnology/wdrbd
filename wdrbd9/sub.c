@@ -133,45 +133,30 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
+	if (VolumeExtension->dev) {
 
-    struct drbd_device *device;
-    if (VolumeExtension->Active)
-    {
-        device = minor_to_device(VolumeExtension->VolIndex);
-    }
-    else
-    {
-        device = blkdev_get_by_link(&VolumeExtension->VolumeGuid)->bd_disk->private_data;
-    }
+		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
+		if (device) {
 
-    if (device)
-    {
-        // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
-#ifdef _WIN32
-        struct drbd_resource *resource = device->resource;
-		struct drbd_connection *connection, *tmp;
-		int ret; 
+			// DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
+			struct drbd_resource *resource = device->resource;
+			struct drbd_connection *connection, *tmp;
+			int ret; 
 
-		for_each_connection_safe(connection, tmp, resource)
-		{
-			ret = drbd_adm_down_from_engine(connection);
-			if (ret != NO_ERROR)
-			{
-				WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
-				// error ignored.
+			for_each_connection_safe(connection, tmp, resource) {
+				ret = drbd_adm_down_from_engine(connection);
+				if (ret != NO_ERROR) {
+					WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
+					// error ignored.
+				}
 			}
 		}
-#else
-        int ret = drbd_adm_down_from_engine(mdev->tconn);
 
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
-            // error ignored.
-        }
-#endif
-        drbdFreeDev(VolumeExtension);
-    }
+		drbdFreeDev(VolumeExtension);
+	}
+
+	FreeUnicodeString(&VolumeExtension->MountPoint);
+	FreeUnicodeString(&VolumeExtension->VolumeGuid);
 
 	MVOL_LOCK();
 	mvolDeleteDeviceList(VolumeExtension);
@@ -479,9 +464,7 @@ mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
 			link = &pvext->MountPoint;
-			if (!IsEmptyUnicodeString(link)) {
-				RtlFreeUnicodeString(link);
-			}
+			FreeUnicodeString(link);
 		}
 		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
 			link = &pvext->VolumeGuid;
