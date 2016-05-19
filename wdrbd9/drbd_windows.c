@@ -1847,6 +1847,20 @@ int generic_make_request(struct bio *bio)
 	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
 		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
 		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+
+		// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
+		// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
+		// If no error simulation, calling 'IoCallDriver' verifies our completion routine called so that irp will be freed there.
+		if (newIrp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = newIrp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			newIrp->MdlAddress = NULL;
+		}
+		IoFreeIrp(newIrp);
 		return -EIO;
 	}
 	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
