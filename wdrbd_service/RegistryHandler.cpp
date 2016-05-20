@@ -379,7 +379,7 @@ DWORD StartRegistryCleaner()
 {
     // get wdrbd's path in environment variables
     size_t path_size;
-    errno_t result = _wgetenv_s(&path_size, g_szEnvPath, MAX_PATH, L"WDRBD_PATH");
+    errno_t result = _wgetenv_s(&path_size, g_szEnvPath, MAX_PATH, L"DRBD_PATH");
     if (result)
     {
         wcscpy_s(g_szEnvPath, L"c:\\Program Files\\drbd\\bin");
