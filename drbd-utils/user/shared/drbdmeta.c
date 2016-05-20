@@ -2718,10 +2718,17 @@ static char * _get_win32_device_ns(const char * device_name)
 
 	// in case mounted folder
 	if (!t1) {
+
 		BOOL ret = GetVolumeNameForVolumeMountPoint(temp, temp, sizeof(temp));
 		if (!ret) {
-			//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", GetLastError());
-			return NULL;
+			DWORD err = GetLastError();
+			if (ERROR_FILE_NOT_FOUND == err) {
+				mkdir(temp, 0777);
+			}
+			else {
+				//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", err);
+				return NULL;
+			}
 		}
 	}
 
