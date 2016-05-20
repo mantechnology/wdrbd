@@ -2266,12 +2266,15 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 			return;
 		}
 
-		if (IsDriveLetterMountPoint(&new_name) &&
+		if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
 			!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
 			FreeUnicodeString(&pvext->MountPoint);
 			RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+
+			if (IsDriveLetterMountPoint(&new_name)) {
+				pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+			}
 		}
 	}
 
