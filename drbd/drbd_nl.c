@@ -6194,16 +6194,20 @@ out:
 }
 #ifdef _WIN32
 // DRBD_DOC: down from engine directly
-int drbd_adm_down_from_engine(struct drbd_connection *connection)
+int drbd_adm_down_from_engine(struct drbd_resource *resource)
 {
-    struct drbd_resource *resource;
-    struct drbd_connection *tmp;
+	struct drbd_connection *connection, *tmp;    
     struct drbd_device *device;
     int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
     int i;
-
+	
+	// DW-876: It possibly creates hang issue if worker isn't working, perhaps it's been called with resource which is already down.
+	if (get_t_state(&resource->worker) != RUNNING)
+	{		
+		retcode = SS_NOTHING_TO_DO;
+		goto out;
+	}
     
-    resource = connection->resource;
     mutex_lock(&resource->adm_mutex);
     /* demote */
     retcode = drbd_set_role(resource, R_SECONDARY, false);
