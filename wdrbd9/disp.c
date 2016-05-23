@@ -1,5 +1,6 @@
 ﻿#include <wdm.h>
 #include <ntstrsafe.h>
+#include <ntddk.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	
 #include "disp.h"
@@ -34,7 +35,6 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-#pragma alloc_text(PAGE, _query_mounted_devices)
 #endif
 
 NTSTATUS
@@ -95,16 +95,14 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Magic = MVOL_MAGIC;
     RootExtension->Head = NULL;
     RootExtension->Count = 0;
-    ucsdup(&RootExtension->RegistryPath, RegistryPath);
+	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
     RootExtension->PhysicalDeviceNameLength = nameUnicode.Length;
     RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
-#ifdef _WIN32
 	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
-#endif
 	
 #ifdef _WIN32_WPP
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
@@ -125,6 +123,109 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 #ifdef _WIN32_WPP
 	WPP_CLEANUP(DriverObject);
 #endif
+}
+
+static
+NTSTATUS _QueryVolumeNameRegistry(
+	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
+	_Out_ PVOLUME_EXTENSION pvext)
+{
+	OBJECT_ATTRIBUTES           attributes;
+	PKEY_FULL_INFORMATION       keyInfo = NULL;
+	PKEY_VALUE_FULL_INFORMATION valueInfo = NULL;
+	size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
+
+	UNICODE_STRING mm_reg_path;
+	NTSTATUS status;
+	HANDLE hKey = NULL;
+	ULONG size;
+	int Count;
+
+	PAGED_CODE();
+
+	RtlUnicodeStringInit(&mm_reg_path, L"\\Registry\\Machine\\System\\MountedDevices");
+
+	InitializeObjectAttributes(&attributes,
+		&mm_reg_path,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL,
+		NULL);
+
+	status = ZwOpenKey(&hKey, KEY_READ, &attributes);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
+	if (status != STATUS_BUFFER_TOO_SMALL) {
+		ASSERT(!NT_SUCCESS(status));
+		goto cleanup;
+	}
+
+	keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, '00DW');
+	if (!keyInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	Count = keyInfo->Values;
+
+	valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, '10DW');
+	if (!valueInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	for (int i = 0; i < Count; ++i) {
+		RtlZeroMemory(valueInfo, valueInfoSize);
+
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		if (!NT_SUCCESS(status)) {
+			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
+				goto cleanup;
+			}
+		}
+
+		if (REG_BINARY == valueInfo->Type && pmuid->UniqueIdLength == valueInfo->DataLength) {
+			PWCHAR key = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
+			if (!key) {
+				goto cleanup;
+			}
+			RtlZeroMemory(key, valueInfo->NameLength + sizeof(WCHAR));
+			RtlCopyMemory(key, valueInfo->Name, valueInfo->NameLength);
+
+			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
+				if (wcsstr(key, L"\\DosDevices\\")) {
+					ucsdup(&pvext->MountPoint, L" :", 4);
+					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+				}
+				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
+					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
+					// To compare easily the string between name in registry and IoVolumeDeviceToDosName()
+					//*(pvext->VolumeGuid.Buffer + 1) = (WCHAR)'\\';	// IoVolumeDeviceToDosName()'s style
+					key = NULL;
+				}
+			}
+
+			kfree(key);
+		}
+	}
+
+cleanup:
+	kfree(keyInfo);
+	kfree(valueInfo);
+
+	if (hKey) {
+		ZwClose(hKey);
+	}
+
+	return status;
 }
 
 NTSTATUS
@@ -213,25 +314,29 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     }
 
 	IoInitializeRemoveLock(&VolumeExtension->RemoveLock, '00FS', 0, 0);
+	KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
     status = GetDeviceName(PhysicalDeviceObject,
         VolumeExtension->PhysicalDeviceName, MAXDEVICENAME * sizeof(WCHAR)); // -> \Device\HarddiskVolumeXX
     if (!NT_SUCCESS(status))
     {
         mvolLogError(mvolRootDeviceObject, 101, MSG_ADD_DEVICE_ERROR, status);
+		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
-
     VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
-    KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
-    query_targetdev(VolumeExtension);  // letter, VolIndex(minor), block_device assign
+	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
+	if (pmuid) {
+		_QueryVolumeNameRegistry(pmuid, VolumeExtension);
+		ExFreePool(pmuid);
+	}
 
     MVOL_LOCK();
     mvolAddDeviceList(VolumeExtension);
     MVOL_UNLOCK();
     
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     if (do_add_minor(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
@@ -244,12 +349,12 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         VolumeExtension->Active = TRUE;
     }
 #endif
-    WDRBD_INFO("VolumeExtension(0x%p) minor(%d) Letter(%c) PhysicalDeviceName(%ws) Active(%d)\n",
+    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
-        VolumeExtension->VolIndex,
-        (VolumeExtension->Letter) ? (VolumeExtension->Letter) : '?',
         VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->Active);
+        VolumeExtension->VolIndex,
+        VolumeExtension->Active,
+        &VolumeExtension->MountPoint);
 
     return STATUS_SUCCESS;
 }
@@ -354,7 +459,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         return STATUS_SUCCESS;
     }
 
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9
@@ -470,9 +575,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         if (device)
         {
             PMVOL_THREAD				pThreadInfo;
-
-            InterlockedIncrement64(&VolumeExtension->WriteCount.QuadPart);
-
 #ifdef DRBD_TRACE
             PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
             WDRBD_TRACE("\n(%s):Upper driver WRITE request start! vol:%c: sect:0x%llx sz:%d ................Queuing(%d)!\n",
@@ -686,119 +788,4 @@ mvolDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
 
     return status;
-}
-
-/**
-* @brief
-*   MOUNTDEV_UNIQUE_ID 값이 레지스트리에 있는지를 query 한다.
-*   있다면 "\DosDevices\" 로 시작되는 drive letter 가 존재하는지를 확인 한 후
-*   그 letter값을 return한다.
-*   참고 http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx
-*/
-char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid)
-{
-    OBJECT_ATTRIBUTES           attributes;
-    PKEY_FULL_INFORMATION       keyInfo = NULL;
-    PKEY_VALUE_FULL_INFORMATION valueInfo = NULL;
-    size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
-
-    UNICODE_STRING mm_reg_path;
-    char letter_token = '\0';
-
-    NTSTATUS status;
-    HANDLE hKey = NULL;
-    ULONG size;
-    int Count;
-
-    PAGED_CODE();
-
-    RtlUnicodeStringInit(&mm_reg_path, L"\\Registry\\Machine\\System\\MountedDevices");
-
-    InitializeObjectAttributes(&attributes,
-        &mm_reg_path,
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-        NULL,
-        NULL);
-
-    status = ZwOpenKey(&hKey, KEY_READ, &attributes);
-    if (!NT_SUCCESS(status))
-    {
-        goto cleanup;
-    }
-
-    status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
-    if (status != STATUS_BUFFER_TOO_SMALL)
-    {
-        ASSERT(!NT_SUCCESS(status));
-        goto cleanup;
-    }
-
-    keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, '00DW');
-    if (!keyInfo)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto cleanup;
-    }
-
-    status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
-    if (!NT_SUCCESS(status))
-    {
-        goto cleanup;
-    }
-
-    Count = keyInfo->Values;
-
-    valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, '10DW');
-    if (!valueInfo)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto cleanup;
-    }
-
-    for (int i = 0; i < Count; ++i)
-    {
-        RtlZeroMemory(valueInfo, valueInfoSize);
-
-        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
-
-        if (!NT_SUCCESS(status))
-        {
-            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL)
-            {
-                goto cleanup;
-            }
-        }
-
-        if (REG_BINARY == valueInfo->Type)
-        {
-            PWCHAR dos_name = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
-			if (!dos_name) {
-				goto cleanup;
-			}
-            RtlZeroMemory(dos_name, valueInfo->NameLength + sizeof(WCHAR));
-            RtlCopyMemory(dos_name, valueInfo->Name, valueInfo->NameLength);
-
-            if (wcsstr(dos_name, L"\\DosDevices\\"))
-            {
-                if (pmuid->UniqueIdLength == valueInfo->DataLength &&
-                    ((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (unsigned char *)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength)))
-                {
-                    letter_token = (char)(*(dos_name + wcslen(L"\\DosDevices\\")));
-                }
-            }
-
-            ExFreePool(dos_name);
-        }
-    }
-
-cleanup:
-    kfree(keyInfo);
-    kfree(valueInfo);
-
-    if (hKey)
-    {
-        ZwClose(hKey);
-    }
-
-    return letter_token & ~0x20;
 }

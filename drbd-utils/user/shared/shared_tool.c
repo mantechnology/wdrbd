@@ -95,6 +95,24 @@ void unescape(char *txt)
 	*e = '\0';
 }
 
+#ifdef _WIN32
+/**
+* @brief
+*	convert Unix to Windows path separator ('/' -> '\')
+*/
+int convert_win32_separator(char * name)
+{
+	int count = 0;
+	char * c;
+	for (c = name; *c != '\0'; ++c) {
+		switch (*c) {
+			case '/': *c = '\\'; ++count; break;
+		}
+	}
+
+	return count;
+}
+#endif
 
 /* input size is expected to be in KB */
 char *ppsize(char *buf, unsigned long long size)

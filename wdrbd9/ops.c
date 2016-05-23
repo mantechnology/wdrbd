@@ -164,7 +164,7 @@ IOCTL_InitVolumeThread(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		return STATUS_INVALID_DEVICE_REQUEST;
 	}
 
-	drbdCreateDev();
+	//drbdCreateDev();
 
 	status = mvolInitializeThread( VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread );
 	if( !NT_SUCCESS(status) )
@@ -393,7 +393,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     if (!pvext->Active)
     {
-        WDRBD_ERROR("%c: volume is not dismounted\n", pvext->Letter);
+        WDRBD_ERROR("%wZ: volume is not dismounted\n", &pvext->MountPoint);
         status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
     }
@@ -403,7 +403,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     {
         status = STATUS_DEVICE_BUSY;
         mvolLogError(pvext->DeviceObject, 235, MSG_DEVICE_BUSY, status);
-        WDRBD_ERROR("%c: volume is busy. irp_count(%d)\n", pvext->Letter, irp_count);
+		WDRBD_ERROR("%wZ: volume is busy. irp_count(%d)\n", &pvext->MountPoint, irp_count);
         goto out;
     }
 
@@ -411,7 +411,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     {
         // 볼륨 io 스레드가 active = TRUE 상태에서는 access 허용하지 않는다.
         // 그래서 리소스가 up 되어 있는 경우에는 이 명령을 내리더라도 실패하게끔 한다.
-        WDRBD_ERROR("%c: volume is attached by wdrbd, so it's impossible to access\n", pvext->Letter);
+		WDRBD_ERROR("%wZ: volume is attached by wdrbd, so it's impossible to access\n", &pvext->MountPoint);
         status = STATUS_VOLUME_DISMOUNTED;
         goto out;
     }
@@ -521,7 +521,6 @@ IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength )
 
 	pCountInfo = (PMVOL_COUNT_INFO) Irp->AssociatedIrp.SystemBuffer;
 	pCountInfo->IrpCount = VolumeExtension->IrpCount;
-	pCountInfo->WriteCount.QuadPart = VolumeExtension->WriteCount.QuadPart;
 
 	*ReturnLength = sizeof(MVOL_COUNT_INFO);
 	return STATUS_SUCCESS;

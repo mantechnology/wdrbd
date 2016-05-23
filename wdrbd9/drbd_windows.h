@@ -24,6 +24,7 @@
 
 
 #ifdef _WIN32
+#define minor_to_letter(m)	('C'+(m))
 #define minor_to_mdev minor_to_device
 #define drbd_conf drbd_device
 #endif
@@ -804,7 +805,7 @@ struct backing_dev_info {
 	unsigned long ra_pages; /* max readahead in PAGE_CACHE_SIZE units */ 
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;   /* Pointer to aux data for congested func */
-	PVOLUME_EXTENSION pDeviceExtension;
+	PVOLUME_EXTENSION pvext;
 };
 
 #ifdef _WIN32
@@ -866,7 +867,7 @@ struct scatterlist {
 	unsigned int length;
 };
 
-#define MINORMASK				26
+#define MINORMASK	0xff
 
 #ifdef _WIN32
 #define BUG()   panic("PANIC!!!")
@@ -1136,6 +1137,7 @@ extern long IS_ERR_OR_NULL(const void *ptr);
 extern int IS_ERR(void *err);
 
 extern int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask, sector_t *error_sector);
+extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name);
 extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder);
 
 extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
@@ -1177,12 +1179,33 @@ extern union drbd_state g_mask;
 extern union drbd_state g_val;
 ///
 
+
+__inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
+{
+	return ((s->Length == 4) &&
+		(s->Buffer[0] >= 'A' && s->Buffer[0] <= 'Z') &&
+		(s->Buffer[1] == ':'));
+}
+
+__inline bool IsEmptyUnicodeString(UNICODE_STRING * s)
+{
+	return (s && (s->Length == 0) || !(s->Buffer));
+}
+
+__inline void FreeUnicodeString(UNICODE_STRING * s)
+{
+	if (!IsEmptyUnicodeString(s)) {
+		RtlFreeUnicodeString(s);
+	}
+}
+
+extern bool is_equal_volume_link(UNICODE_STRING *, UNICODE_STRING *, bool);
 extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
 
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 extern NTSTATUS FsctlDismountVolume(unsigned int minor);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
@@ -1208,22 +1231,24 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
+extern NTSTATUS QueryMountPoint(
+	_In_ PVOID MountPoint,
+	_In_ ULONG MountPointLength,
+	_Inout_ PVOID MountPointInfo,
+	_Out_ PULONG MountPointInfoLength);
+extern PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj);
 
-extern PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj);
 extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);
-extern NTSTATUS mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize);
 extern int initRegistry(__in PUNICODE_STRING RegistryPath);
 extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name);
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
 extern BOOLEAN do_add_minor(unsigned int minor);
-extern void drbdCreateDev();
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void query_targetdev(PVOLUME_EXTENSION pvext);
 extern void refresh_targetdev_list();
 extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor);
-extern struct drbd_conf *get_targetdev_by_md(char letter);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
 extern int WriteEventLogEntryData(
@@ -1234,8 +1259,7 @@ extern int WriteEventLogEntryData(
 	...
 );
 
-extern PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src);
-extern void ucsfree(IN PUNICODE_STRING str);
+extern ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size);
 
 /// SEO: relative to RCU function. remove later
 extern void list_add_rcu(struct list_head *new, struct list_head *head);

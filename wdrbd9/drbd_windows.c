@@ -8,6 +8,7 @@
 #include "linux-compat/idr.h"
 #include "drbd_wrappers.h"
 #include "disp.h"
+#include "proto.h"
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
@@ -111,7 +112,6 @@ int fls(int x)
 
 #define BITOP_WORD(nr)          ((nr) / BITS_PER_LONG)
 
-#ifdef _WIN32
 ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 {
 	const ULONG_PTR* p = addr;
@@ -138,7 +138,6 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 found:
 	return result + __ffs(tmp);
 }
-#endif
 
 ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 {
@@ -660,8 +659,8 @@ void kref_init(struct kref *kref)
 
 struct request_queue *bdev_get_queue(struct block_device *bdev)
 {
-      return bdev->bd_disk->queue;
- }
+	return bdev->bd_disk->queue;
+}
 
 // bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
 struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
@@ -1061,13 +1060,11 @@ NTSTATUS mutex_lock(struct mutex *m)
     return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, FALSE, NULL);
 }
 
-#ifdef _WIN32
 __inline
 NTSTATUS mutex_lock_interruptible(struct mutex *m)
 {
 	return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, TRUE, NULL); //Alertable 인자가 TRUE
 }
-#endif
 
 // Returns 1 if the mutex is locked, 0 if unlocked.
 int mutex_is_locked(struct mutex *m)
@@ -1767,7 +1764,7 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
-	bio->pVolExt = q->backing_dev_info.pDeviceExtension;
+	bio->pVolExt = q->backing_dev_info.pvext;
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
@@ -1812,7 +1809,7 @@ int generic_make_request(struct bio *bio)
 
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
-				q->backing_dev_info.pDeviceExtension->TargetDeviceObject,
+				q->backing_dev_info.pvext->TargetDeviceObject,
 				buffer,
 				bio->bi_size,
 				&offset,
@@ -1863,7 +1860,7 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(q->backing_dev_info.pDeviceExtension->TargetDeviceObject, newIrp);
+	IoCallDriver(q->backing_dev_info.pvext->TargetDeviceObject, newIrp);
 
 	return 0;
 }
@@ -2260,39 +2257,56 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 }
 
 /**
-* @brief   VOLUME_EXTENSION의 PhysicalDeviceObject를 기준으로
-*   letter, VolIndex, block_device 값을 구한다.
-*/
+ * @brief
+ *	Recreate the VOLUME_EXTENSION's MountPoint, VolIndex, block_device
+ *	if it was changed
+ */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
-	PMOUNTDEV_UNIQUE_ID pmuid = RetrieveVolumeGuid(pvext->PhysicalDeviceObject);
+	if (!pvext) {
+		return;
+	}
 
-	if (pmuid) {
-		pvext->Letter = _query_mounted_devices(pmuid);
+	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
+		// Should be existed guid's name
+		mvolQueryMountPoint(pvext);
+	}
+	else {
 
-		if (pvext->Letter) {
-			pvext->VolIndex = pvext->Letter - 'C';
-			pvext->dev = create_drbd_block_device(pvext);
+		UNICODE_STRING new_name;
+		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
+		// if not same, it need to re-query
+		if (!NT_SUCCESS(status)) {	// ex: CD-ROM
+			return;
 		}
-		else {	// clear and init
-			pvext->VolIndex = 0;
-			drbdFreeDev(pvext);
-		}
 
-		ExFreePool(pmuid);
+		if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
+			!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
+
+			FreeUnicodeString(&pvext->MountPoint);
+			RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
+
+			if (IsDriveLetterMountPoint(&new_name)) {
+				pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+			}
+		}
+	}
+
+	if (!pvext->dev) { //drbdFreeDev(pvext);
+		pvext->dev = create_drbd_block_device(pvext);
 	}
 }
 
 /**
-* @brief   모든 VOLUME_EXTENSION 값의 정보를 새로 구한다.
-*/
+ * @brief
+ *	refresh all VOLUME_EXTENSION's values
+ */
 void refresh_targetdev_list()
 {
-    PROOT_EXTENSION prext = mvolRootDeviceObject->DeviceExtension;
+    PROOT_EXTENSION proot = mvolRootDeviceObject->DeviceExtension;
 
     MVOL_LOCK();
-    for (PVOLUME_EXTENSION pvext = prext->Head; pvext; pvext = pvext->Next)
-    {
+    for (PVOLUME_EXTENSION pvext = proot->Head; pvext; pvext = pvext->Next) {
         query_targetdev(pvext);
     }
     MVOL_UNLOCK();
@@ -2300,85 +2314,19 @@ void refresh_targetdev_list()
 
 /**
  * @brief
- *	minor값으로 조회하여 볼륨의 PVOLUME_EXTENSION 값을 돌려준다.
- *	사용자에 의해 드라이브 레터가 변경될 가능성도 있기 때문에 extension 구조체값에서 구한 후
- *	실제 IoVolumeDeviceToDosName() 으로 레터를 구하여 확인한다.
- *	만약 없다면, 볼륨 정보 갱신 후 다시 구한다.
  */
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 {
-    PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
-    PVOLUME_EXTENSION   pvext;
+	char path[3] = { minor_to_letter(minor), ':', '\0' };
+	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL);
 
-    MVOL_LOCK();
-
-	// to find the volume_extension pointer with minor
-	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
-	
-	if (pvext) {
-		UNICODE_STRING dos_name;
-		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &dos_name);
-		if (pvext->VolIndex == (*(dos_name.Buffer) - 'C')) {
-			MVOL_UNLOCK();
-			ExFreePool(dos_name.Buffer);
-			return pvext;
-		}
-	}
-
-	// 여기까지 일치하는 볼륨이 없다면 리스트 구조체 값 갱신
-	refresh_targetdev_list();
-
-	// to find the volume_extension pointer with minor again
-	for (pvext = prext->Head; pvext && (pvext->VolIndex != minor); pvext = pvext->Next);
-
-	MVOL_UNLOCK();
-
-	if (!pvext) {
-		WDRBD_ERROR("Failed to find volume for minor(%d)\n", minor);
-	}
-
-    return pvext;
+	return dev ? dev->bd_disk->pDeviceExtension : NULL;
 }
 
 /**
-* @brief    PVOLUME_EXTENSION의 meta data block device letter가 인자로 전달받은 letter와 같다면 PVOLUME_EXTENSION 값을 돌려준다.
-*           pvext->Active인 볼륨만 meta data block device를 조회한다.
-* @letter:  Meta data block device letter.
-*/
-struct drbd_conf *get_targetdev_by_md(char letter)
-{
-    PROOT_EXTENSION     prext = mvolRootDeviceObject->DeviceExtension;
-    PVOLUME_EXTENSION   pvext = prext->Head;
-
-    MVOL_LOCK();
-    while (pvext)
-    {
-        if (pvext->Active)
-        {
-            if (!pvext->VolIndex && !pvext->Letter)
-            {
-                query_targetdev(pvext);
-            }
-
-            struct drbd_conf *mdev = minor_to_device(pvext->VolIndex);
-            if (mdev && mdev->ldev)
-            {
-                if (mdev->ldev->md_bdev->bd_disk->pDeviceExtension->Letter == letter)
-                {
-                    MVOL_UNLOCK();
-                    WDRBD_TRACE("letter(%c:) name(%ws)\n", pvext->Letter, pvext->PhysicalDeviceName);
-                    return mdev;
-                }
-            }
-        }
-
-        pvext = pvext->Next;
-    }
-    MVOL_UNLOCK();
-
-    return NULL;
-}
-
+ * @return
+ *	volume size per byte
+ */
 LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 {
 	LARGE_INTEGER	volumeSize;
@@ -2399,6 +2347,55 @@ LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 }
 
 #define DRBD_REGISTRY_VOLUMES       L"\\volumes"
+
+/**
+* @brief   create block_device by referencing to VOLUME_EXTENSION object.
+*          a created block_device must be freed by ExFreePool() elsewhere.
+*/
+struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
+{
+    struct block_device * dev;
+
+    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
+    if (!dev) {
+        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory\n");
+        return NULL;
+    }
+
+	dev->bd_disk = alloc_disk(0);
+	if (!dev->bd_disk)
+	{
+		WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory\n");
+		goto gendisk_failed;
+	}
+
+	dev->bd_disk->queue = blk_alloc_queue(0);
+	if (!dev->bd_disk->queue)
+	{
+		WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
+		goto request_queue_failed;
+	}
+
+	dev->d_size = get_targetdev_volsize(pvext);
+
+	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
+	dev->bd_disk->pDeviceExtension = pvext;
+
+	dev->bd_disk->queue->backing_dev_info.pvext = pvext;
+	dev->bd_disk->queue->logical_block_size = 512;
+	dev->bd_disk->queue->max_hw_sectors =
+		dev->d_size ? dev->d_size >> 9 : DRBD_MAX_BIO_SIZE;
+
+    return dev;
+
+request_queue_failed:
+    kfree(dev->bd_disk);
+
+gendisk_failed:
+    kfree(dev);
+
+	return NULL;
+}
 
 /**
 * @brief    argument로 들어온 minor 값으로 letter를 구한 후 
@@ -2516,26 +2513,134 @@ cleanup:
     return ret;
 }
 
-struct block_device *blkdev_get_by_path(const char *path, fmode_t dummy1, void *dummy2)
+/**
+ * @brief
+ *	Compare link string between unix and windows styles
+ *	consider
+ *	- '/' equal '\'
+ *	- ignore if last character is '/', '\', ':'
+ *	- '?' equal '\' in case windows  
+ */
+bool is_equal_volume_link(
+	_In_ UNICODE_STRING * lhs,
+	_In_ UNICODE_STRING * rhs,
+	_In_ bool case_sensitive)
 {
-#ifdef _WIN32
-	UNREFERENCED_PARAMETER(dummy1);
-	UNREFERENCED_PARAMETER(dummy2);
-	
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(toupper(*path) - 'C');
+	WCHAR * l = lhs->Buffer;
+	WCHAR * r = rhs->Buffer;
+	USHORT index = 0;
+	int gap = lhs->Length - rhs->Length;
+
+	if (abs(gap) > sizeof(WCHAR)) {
+		return false;
+	}
+
+	for (; index < min(lhs->Length, rhs->Length); ++l, ++r, index += sizeof(WCHAR)) {
+
+		if ((*l == *r) ||
+			(('/' == *l || '\\' == *l || '?' == *l) && ('/' == *r || '\\' == *r || '?' == *r)) ||
+			(case_sensitive ? false : toupper(*l) == toupper(*r))) {
+			continue;
+		}
+
+		return false;
+	}
+
+	if (0 == gap) {
+		return true;
+	}
+
+	// if last character is '/', '\\', ':', then consider equal
+	WCHAR t = (gap > 0) ? *l : *r;
+	if (('/' == t || '\\' == t || ':' == t)) {
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * @brief
+ *	exceptional case
+ *	"////?//Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}//" by cli
+ *	to
+ *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
+ *	f no block_device allocated, then query
+ */
+static void _adjust_guid_name(char * dst, const char * src)
+{
+	const char token[] = "Volume{";
+	char * start = strstr(src, token);
+	if (start) {
+		strcpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		char * end = strstr(src, "}");
+		char * t3 = strstr(dst, token);
+		memcpy(t3, start, (int)(end - start));
+	}
+ 	else {
+		strcpy(dst, src);
+	}
+}
+
+/**
+ * @brief
+ *	link is below 
+ *	- "\\\\?\\Volume{d41d41d1-17fb-11e6-bb93-000c29ac57ee}\\"
+ *	- "d" or "d:"
+ *	- "c/vdrive" or "c\\vdrive"
+ *	f no block_device allocated, then query
+ */
+struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
+{
+	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
+	VOLUME_EXTENSION * pvext = proot->Head;
+
+	MVOL_LOCK();
+	for (; pvext; pvext = pvext->Next) {
+
+		// if no block_device instance yet,
+		query_targetdev(pvext);
+
+		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
+			&pvext->VolumeGuid : &pvext->MountPoint;
+
+		if (plink && is_equal_volume_link(name, plink, false)) {
+			break;
+		}
+	}
+	MVOL_UNLOCK();
 
 	return (pvext) ? pvext->dev : NULL;
+}
+
+struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
+{
+#ifdef _WIN32
+	UNREFERENCED_PARAMETER(mode);
+	UNREFERENCED_PARAMETER(holder);
+
+	ANSI_STRING apath;
+	UNICODE_STRING upath;
+	char cpath[64] = { 0, };
+
+	_adjust_guid_name(cpath, path);
+
+	RtlInitAnsiString(&apath, cpath);
+	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_WARN("Wrong path = %s\n", path);
+		return NULL;
+	}
+
+	struct block_device * dev = blkdev_get_by_link(&upath);
+
+	RtlFreeUnicodeString(&upath);
+
+	return dev;
 #else
 	return open_bdev_exclusive(path, mode, holder);
 #endif
 }
-
-#ifndef _WIN32
-struct block_device *blkdev_get_by_minor(int minor)
-{
-
-}
-#endif
 
 void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 {

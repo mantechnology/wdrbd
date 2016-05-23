@@ -133,34 +133,29 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
+	if (VolumeExtension->dev) {
 
-    struct drbd_device *device;
-    if (VolumeExtension->Active)
-    {
-        device = minor_to_device(VolumeExtension->VolIndex);
-    }
-    else
-    {
-        device = get_targetdev_by_md(VolumeExtension->Letter);
-    }
+		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
+		if (device) {
 
-    if (device)
-    {
-        // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
-        struct drbd_resource *resource = device->resource;
-		int ret; 
-				
-		// DW-876: The function 'drbd_adm_down_from_engine' performs down operation with specified resource, it does clean up all it needs(including disconnecting connections..)
-		// It should be called per resource. Do not call with the resource which is already down.
-		ret = drbd_adm_down_from_engine(resource);		
-		if (ret != NO_ERROR)
-		{
-			WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret);
-			// error ignored.
+			// DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
+			struct drbd_resource *resource = device->resource;
+			int ret;
+
+			// DW-876: The function 'drbd_adm_down_from_engine' performs down operation with specified resource, it does clean up all it needs(including disconnecting connections..)
+			// It should be called per resource. Do not call with the resource which is already down.
+			ret = drbd_adm_down_from_engine(resource);
+			if (ret != NO_ERROR) {
+				WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
+				// error ignored.
+			}
 		}
 
-        drbdFreeDev(VolumeExtension);
-    }
+		drbdFreeDev(VolumeExtension);
+	}
+
+	FreeUnicodeString(&VolumeExtension->MountPoint);
+	FreeUnicodeString(&VolumeExtension->VolumeGuid);
 
 	MVOL_LOCK();
 	mvolDeleteDeviceList(VolumeExtension);
@@ -427,6 +422,61 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
     pVolumeSize->QuadPart = li.Length.QuadPart;
 
     return status;
+}
+
+NTSTATUS
+mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
+{
+	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
+	ULONG mpslen = 4096 * 2;
+
+	PCHAR inbuf = kmalloc(mplen, 0, '56DW');
+	PCHAR otbuf = kmalloc(mpslen, 0, '56DW');
+	if (!inbuf || !otbuf) {
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	PMOUNTMGR_MOUNT_POINT	pmp = (PMOUNTMGR_MOUNT_POINT)inbuf;
+	PMOUNTMGR_MOUNT_POINTS	pmps = (PMOUNTMGR_MOUNT_POINTS)otbuf;
+	
+	pmp->DeviceNameLength = pvext->PhysicalDeviceNameLength;
+	pmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
+	RtlCopyMemory(inbuf + pmp->DeviceNameOffset,
+		pvext->PhysicalDeviceName,
+		pvext->PhysicalDeviceNameLength);
+	
+	NTSTATUS status = QueryMountPoint(pmp, mplen, pmps, &mpslen);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
+
+		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
+		PUNICODE_STRING link = NULL;
+		UNICODE_STRING name = {
+			.Length = p->SymbolicLinkNameLength,
+			.MaximumLength = p->SymbolicLinkNameLength,
+			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
+		
+		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
+			name.Length = strlen(" :") * sizeof(WCHAR);
+			name.Buffer += strlen("\\DosDevices\\");
+			link = &pvext->MountPoint;
+			FreeUnicodeString(link);
+		}
+		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
+			link = &pvext->VolumeGuid;
+		}
+
+		link && ucsdup(link, name.Buffer, name.Length);
+	}
+
+cleanup:
+	kfree(inbuf);
+	kfree(otbuf);
+	
+	return status;
 }
 
 #ifdef _WIN32_GetDiskPerf
@@ -888,149 +938,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 }
 
 /**
-* @brief   create block_device by referencing to VOLUME_EXTENSION object.
-*          a created block_device must be freed by ExFreePool() elsewhere.
-*/
-struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
-{
-    struct block_device * dev;
-
-    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-    if (!dev)
-    {
-        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-        goto block_device_failed;
-    }
-
-    dev->bd_disk = alloc_disk(0);
-    if (!dev->bd_disk)
-    {
-        WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
-        goto gendisk_failed;
-    }
-#if 0
-    dev->d_size = get_targetdev_volsize(pvext);
-    if (0 == dev->d_size)
-    {
-        WDRBD_WARN("Failed to get (%c): volume size\n", pvext->Letter);
-        goto gendisk_failed;
-    }
-#endif
-    dev->bd_disk->disk_name[0] = pvext->Letter;
-    dev->bd_disk->disk_name[1] = ':';
-    dev->bd_disk->disk_name[2] = '\n';
-
-    dev->bd_disk->queue = blk_alloc_queue(0);
-    if (!dev->bd_disk->queue)
-    {
-        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
-        goto request_queue_failed;
-    }
-
-    dev->bd_disk->pDeviceExtension = pvext;
-
-    dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
-    dev->bd_disk->queue->logical_block_size = 512;
-    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
-
-    return dev;
-
-request_queue_failed:
-    kfree(dev->bd_disk->queue);
-
-gendisk_failed:
-    kfree(dev->bd_disk);
-
-block_device_failed:
-    kfree(dev);
-
-    return NULL;
-}
-
-VOID drbdCreateDev()
-{
-	PROOT_EXTENSION		rootExtension = NULL;
-	PVOLUME_EXTENSION	pDeviceExtension = NULL;
-
-	MVOL_LOCK();
-	rootExtension = mvolRootDeviceObject->DeviceExtension;
-	pDeviceExtension = rootExtension->Head;
-
-	while (pDeviceExtension != NULL)
-	{
-        if (0 == pDeviceExtension->VolIndex)
-        {
-            pDeviceExtension = pDeviceExtension->Next;
-            continue;
-        }
-
-		if (pDeviceExtension->dev)
-		{
-			WDRBD_WARN("pDeviceExtension(%c)->dev Already exists\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev = kmalloc(sizeof(struct block_device), 0, 'F5DW');
-		if (!pDeviceExtension->dev)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev:kzalloc failed\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, '06DW');
-		if (!pDeviceExtension->dev->bd_disk)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev->bd_disk:kzalloc failed\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-        pDeviceExtension->dev->d_size = get_targetdev_volsize(pDeviceExtension);
-        if (!pDeviceExtension->dev->d_size)
-		{
-			WDRBD_ERROR("volume(%c) size is zero\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		sprintf(pDeviceExtension->dev->bd_disk->disk_name, "%c:", pDeviceExtension->Letter);
-		pDeviceExtension->dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, '16DW'); // CHECK FREE!!!!
-		if (!pDeviceExtension->dev->bd_disk->queue)
-		{
-			WDRBD_ERROR("pDeviceExtension->dev->bd_disk->queue:kzalloc failed\n");
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
-
-		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pDeviceExtension;
-		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
-		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
-		pDeviceExtension = pDeviceExtension->Next;
-	}
-	MVOL_UNLOCK();
-}
-
-/**
 * @brief   free VOLUME_EXTENSION's dev object
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {
-    if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
+	if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
 		return;
 	}
 
-    kfree(VolumeExtension->dev->bd_disk->queue);
+	kfree(VolumeExtension->dev->bd_disk->queue);
 	kfree(VolumeExtension->dev->bd_disk);
 	kfree2(VolumeExtension->dev);
 }

@@ -52,7 +52,9 @@ struct option;
 struct d_address;
 
 extern const char* shell_escape(const char* s);
-
+#ifdef _WIN32
+extern int convert_win32_separator(char * name);
+#endif
 extern char* ppsize(char* buf, unsigned long long size);
 extern const char* make_optstring(struct option *options);
 #ifdef _WIN32

@@ -1353,7 +1353,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
         }
 #endif
 	} else {
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
         int vnr;
         struct drbd_device * device;
         idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
@@ -2422,7 +2422,11 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 
 	bdev = blkdev_get_by_path(bdev_path,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
+#ifdef _WIN32
+	if (IS_ERR_OR_NULL(bdev)) {
+#else
 	if (IS_ERR(bdev)) {
+#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
 		return bdev;
@@ -2571,53 +2575,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32
-	struct block_device *bdev;
-	bdev = blkdev_get_by_path(new_disk_conf->backing_dev,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, device);
-#ifdef _WIN32
-    if (IS_ERR_OR_NULL(bdev)) {
-#else
-	if (IS_ERR(bdev)) {
-#endif
-		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->backing_dev,
-			PTR_ERR(bdev));
-		retcode = ERR_OPEN_DISK;
-		goto fail;
-	}
-	nbc->backing_bdev = bdev;
-
-#ifdef _WIN32
-    device->this_bdev = nbc->backing_bdev;
-#endif
-	/*
-	 * meta_dev_idx >= 0: external fixed size, possibly multiple
-	 * drbd sharing one meta device.  TODO in that case, paranoia
-	 * check that [md_bdev, meta_dev_idx] is not yet used by some
-	 * other drbd minor!  (if you use drbd.conf + drbdadm, that
-	 * should check it for you already; but if you don't, or
-	 * someone fooled it, we need to double check here)
-	 */
-	bdev = blkdev_get_by_path(new_disk_conf->meta_dev,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL,
-				  (new_disk_conf->meta_dev_idx < 0) ?
-				  (void *)device : (void *)drbd_m_holder);
-#ifdef _WIN32
-    if (IS_ERR_OR_NULL(bdev)) {
-#else
-	if (IS_ERR(bdev)) {
-#endif
-		drbd_err(device, "open(\"%s\") failed with %ld\n", new_disk_conf->meta_dev,
-			PTR_ERR(bdev));
-		retcode = ERR_OPEN_MD_DISK;
-		goto fail;
-	}
-	nbc->md_bdev = bdev;
-#else
 	retcode = open_backing_devices(device, new_disk_conf, nbc);
 	if (retcode != NO_ERROR)
 		goto fail;
-#endif
+
 	if ((nbc->backing_bdev == nbc->md_bdev) !=
 	    (new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_INTERNAL ||
 	     new_disk_conf->meta_dev_idx == DRBD_MD_INDEX_FLEX_INT)) {
@@ -2963,7 +2924,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     struct drbd_genlmsghdr *dh = info->userhdr;
     if (do_add_minor(dh->minor))
     {
@@ -6099,7 +6060,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	resource = adm_ctx.resource;
 	mutex_lock(&resource->adm_mutex);
 	/* demote */
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     // continue to dismount volume after drbdadm down is done.
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i)
     {

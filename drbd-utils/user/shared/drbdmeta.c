@@ -49,6 +49,7 @@
 #include <time.h>
 #ifdef _WIN32
 #include "windows/drbd.h"		/* only use DRBD_MAGIC from here! */
+#include <windows.h>
 #else
 #include <linux/major.h>
 #include <linux/kdev_t.h>
@@ -2584,15 +2585,16 @@ static void clip_effective_size_and_bm_bytes(struct format *cfg)
 	cfg->bm_bytes = bm_bytes(&cfg->md, cfg->md.effective_size);
 }
 #ifdef FEATURE_VHD_META_SUPPORT
-static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * letter)
+#include <libgen.h>
+
+/**
+* @brief
+*	To create the diskpart's script for VHD-Meta creation
+*/
+static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_point)
 {
-	// to adjust Windows diskpart script ('/' -> '\')
-	char * c;
-	for (c = vhd_path; *c != '\0'; ++c) {
-		switch (*c) {
-			case '/': *c = '\\'; break;
-		}
-	}
+	convert_win32_separator(vhd_path);
+	convert_win32_separator(mount_point);
 
 	FILE * fp = fopen("./"CREATE_VHD_SCRIPT, "w");
 	if (!fp) {
@@ -2600,28 +2602,39 @@ static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * letter)
 		return 1;
 	}
 
+	// first, to create the directory, because diskpart cmd wouldn't make
+	char * dir_name = strdup(vhd_path);
+	struct stat st = {0};
+	dirname(dir_name);
+	if (stat(dir_name, &st) == -1) {
+		mkdir(dir_name, 0777);
+	}
+	free(dir_name);
+
 	char buf[512];
+	char * assign_type = (1 == strlen(mount_point)) ? "letter" : "mount";
+	// assign type refer
+	// https://technet.microsoft.com/en-us/library/cc766465(WS.10).aspx
 	sprintf(buf,
-		"create vdisk file=\"%s\" maximum=%d\n"
+		"create vdisk file=\"%s\" maximum=%llu\n"
 		"attach vdisk\n"
 		"create partition primary\n"
-		"assign letter=%s",
-		vhd_path, size_mb, letter);
+		"assign %s=%s",
+		vhd_path, size_mb, assign_type, mount_point);
+
 	fputs(buf, fp);
 	fclose(fp);
 
 	return 0;
 }
 
+/**
+* @brief
+*	To create the diskpart's script for VHD-Meta attach
+*/
 static int _attach_vhd_script(char * vhd_path)
 {
-	// to adjust Windows diskpart script ('/' -> '\')
-	char * c;
-	for (c = vhd_path; *c != '\0'; ++c) {
-		switch (*c) {
-			case '/': *c = '\\'; break;
-		}
-	}
+	convert_win32_separator(vhd_path);
 
 	FILE * fp = fopen("./"ATTACH_VHD_SCRIPT, "w");
 	if (!fp) {
@@ -2672,6 +2685,65 @@ static uint64_t _get_bdev_size_by_letter(const char letter)
 	sprintf(dev_name_nt, "\\\\.\\%c:", letter);
 	return bdev_size(dev_name_nt);
 }
+
+/**
+* @brief
+*	win32 device namespace 타입의 이름을 구해서 return 한다.
+*	ex) \\.\ 형태
+*	여기서는 문자열 버퍼를 strdup으로 할당하기 때문에 
+*	사용하는 곳에서 반드시 free로 해제해 주어야 한다.
+*/
+static char * _get_win32_device_ns(const char * device_name)
+{
+	if (!device_name) {
+		return NULL;
+	}
+
+	char temp[256] = { 0, };
+	strcpy(temp, device_name);
+	
+	convert_win32_separator(temp);
+	
+	char * wdn = NULL;	// win32 device namespace
+
+	// in case drive letter
+	if (1 == strlen(temp)) {
+		wdn = strdup("\\\\.\\ :");
+		*(wdn + 4) = *temp;
+		return wdn;
+	}
+
+	const char token[] = "Volume{";
+	char * t1 = strstr(temp, token);
+
+	// in case mounted folder
+	if (!t1) {
+
+		BOOL ret = GetVolumeNameForVolumeMountPoint(temp, temp, sizeof(temp));
+		if (!ret) {
+			DWORD err = GetLastError();
+			if (ERROR_FILE_NOT_FOUND == err) {
+				mkdir(temp, 0777);
+			}
+			else {
+				//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", err);
+				return NULL;
+			}
+		}
+	}
+
+	// in case win32 file namespace
+	t1 = strstr(temp, token);
+	size_t token_len = strlen(token);
+	char * t2 = strstr(temp, "}");
+	if (t2) {
+		wdn = strdup("\\\\.\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}");
+		char * t3 = strstr(wdn, token);
+		memcpy(t3, t1, (int)(t2 - t1));
+	}
+
+	return wdn;
+}
 #endif
 
 int v07_style_md_open(struct format *cfg)
@@ -2680,26 +2752,8 @@ int v07_style_md_open(struct format *cfg)
 	unsigned int hard_sect_size = 0;
 	int ioctl_err;
 	int open_flags = O_RDWR | O_DIRECT;
-
 #ifdef _WIN32
-	char *buf;
-	buf = malloc(strlen(cfg->md_device_name) + 20); // additional space 20 bytes are enough	
-	if(!buf)
-	{
-		fprintf(stderr, "malloc failed.\n");
-		exit(20);
-	}
-
-	if(strstr(cfg->md_device_name, "-"))
-	{
-		// by volume name
-		sprintf(buf, "\\\\.\\Volume{%s}", cfg->md_device_name);
-	}
-	else
-	{
-		// by letter
-		sprintf(buf, "\\\\.\\%1s:", cfg->md_device_name);
-	}
+	char * buf = _get_win32_device_ns(cfg->md_device_name);
 
 	free(cfg->md_device_name);
 	cfg->md_device_name = buf;
@@ -2727,7 +2781,7 @@ int v07_style_md_open(struct format *cfg)
 			(F_OK == access(cfg->vhd_dev_path, R_OK))) {
 			if (!_attach_vhd_script(cfg->vhd_dev_path)) {
 				char * _argv[] = { "diskpart", "/s", "./"ATTACH_VHD_SCRIPT, (char *)0 };
-				fprintf(stderr, "Attaching vhd meta\n");
+				fprintf(stderr, "Attaching %s for meta data\n", cfg->vhd_dev_path);
 				if (_call_script(_argv)) {
 					remove("./"ATTACH_VHD_SCRIPT);
 					fprintf(stderr, "diskpart failed.\n");
@@ -4708,37 +4762,35 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 		exit(20);
 	}
 #ifdef FEATURE_VHD_META_SUPPORT
-	char meta_volume[64] = "\\\\.\\ :";
-	if (strstr(cfg->md_device_name, "-")) {
-		// by volume name
-		sprintf(meta_volume, "\\\\.\\Volume{%s}", cfg->md_device_name);
-	}
-	else {
-		// by letter
-		meta_volume[4] = *(cfg->md_device_name);
-	}
+	char * meta_volume = _get_win32_device_ns(cfg->md_device_name);
 
-	if (F_OK != access(meta_volume, R_OK) && cfg->vhd_dev_path) {
-		uint64_t evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
+	// whether to need vhd type
+	if (cfg->vhd_dev_path && (F_OK != access(meta_volume, R_OK))) {
+
+		uint64_t evsm;		// Estimated Vhd Size per MiB
+		evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
 		evsm = ((evsm >> 20) / 32768) * max_peers
-			/* http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
-			+ 1		/* for drbd */
-			+ 1;	/* for vhd */
+			/* refer to 
+			http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
+			+ 1		/* for drbd reservation */
+			+ 1;	/* for vhd reservation */
 		evsm = (evsm < 3) ? 3 : evsm;
 
+		// check the pre-created vhd
 		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {
 			struct stat st;
 			stat(cfg->vhd_dev_path, &st);
-			uint64_t vsm = st.st_size;
-			vsm >>= 20;
-			if (vsm < evsm) {	// Need to re-create?
+			uint64_t rvsm = st.st_size;	// Real VHD Size(per MB)
+			rvsm >>= 20;
+			if (rvsm <= evsm) {	// Need to re-create?
 				remove(cfg->vhd_dev_path);
 			}
 		}
 
+		// Make temporarily creation_vhd_script and call diskpart command with script
 		if (!_create_vhd_script(cfg->vhd_dev_path, evsm, cfg->md_device_name)) {
 			char * _argv[] = { "diskpart", "/s", "./"CREATE_VHD_SCRIPT, (char *)0 };
-			fprintf(stderr, "Creating vhd disk for meta data...\n");
+			fprintf(stderr, "Creating %s for meta data...\n", cfg->vhd_dev_path);
 			if (_call_script(_argv)) {
 				remove("./"CREATE_VHD_SCRIPT);
 				fprintf(stderr, "diskpart failed.\n");
@@ -4746,6 +4798,10 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 			}
 			remove("./"CREATE_VHD_SCRIPT);
 		}
+	}
+
+	if (meta_volume) {
+		free(meta_volume);
 	}
 #endif
 	err = cfg->ops->open(cfg);

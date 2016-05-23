@@ -1030,7 +1030,7 @@ static void find_drbdcmd(char **cmd, char **pathes)
 	err("Can not find command (drbdsetup/drbdmeta)\n");
 	exit(E_EXEC_ERROR);
 }
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 const PCHAR gRegistryPath = "System\\CurrentControlSet\\Services\\drbd\\volumes";
 
 DWORD add_registry_volume(char * letter)
@@ -1194,7 +1194,7 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->device_minor);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
 	argv[NA(argc)] = NULL;
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     add_registry_volume(ctx->vol->disk);
 #endif
 	ex = m_system_ex(argv, SLEEPS_SHORT, ctx->res->name);

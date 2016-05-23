@@ -3435,8 +3435,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     } device_list;
     struct device_list *device_list_p, *p;
 
-    WDRBD_INFO("Shutdown: IRQL(%d) vol(%ws) letter(%c:)\n",
-        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter ? VolumeExtension->Letter : ' ');
+    WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
+        KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, &VolumeExtension->MountPoint);
 
     if (retry.wq)
         destroy_workqueue(retry.wq);
@@ -4243,15 +4243,13 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->seq_wait);
 #ifdef _WIN32
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-	if (!pvext)
-	{
+	if (!pvext) {
 		err = ERR_NO_DISK;
 		goto out_no_disk;
 	}
 
 	device->this_bdev = pvext->dev;
     q = pvext->dev->bd_disk->queue;
-    q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
 #else
 	q = blk_alloc_queue(GFP_KERNEL);
 #endif

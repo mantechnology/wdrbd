@@ -170,8 +170,8 @@ mvolWorkThread(PVOID arg)
 			if (high < loop)
 			{
 				high = loop;
-				WDRBD_INFO("hooker[%ws:%c] thread id %d: irp processing peek(%d)\n",
-					VolumeExtension->PhysicalDeviceName, VolumeExtension->Letter, id, high);
+				WDRBD_INFO("hooker[%ws] thread id %d: irp processing peek(%d)\n",
+					VolumeExtension->PhysicalDeviceName, id, high);
 			}
 		}		
 		loop = 0;

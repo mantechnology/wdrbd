@@ -12,8 +12,8 @@
 #endif
 
 #ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, RetrieveVolumeGuid)
-#ifdef _WIN32
+#pragma alloc_text(PAGE, QueryMountDUID)
+#ifdef _WIN32_MVFL
 #pragma alloc_text(PAGE, FsctlDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
@@ -57,7 +57,7 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 	return STATUS_SUCCESS;
 }
 
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
 /**
 * @brief    do FSCTL_DISMOUNT_VOLUME in kernel.
 *           advised to use this function in next sequence
@@ -528,43 +528,135 @@ COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension )
 	KeReleaseMutex( &VolumeExtension->CountMutex, FALSE );
 }
 
-VOID
-ResolveDriveLetters(VOID)
+// Inputs:
+//   MountPoint - this is the buffer containing the mountpoint structure used for the query
+//   MountPointLength - this is the total size of the MountPoint buffer
+//   MountPointInfoLength - the size of the mount point Info structure
+//
+// Outputs:
+//   MountPointInfo - this is the returned mount point information
+//   MountPointInfoLength - the # of bytes actually needed
+//
+// Returns:
+//   Results of the underlying operation
+//
+// Notes:
+//   Re-opening the mount manager could be optimized if that were an important goal;
+//   We avoid it to minimize handle context problems.
+//   http://www.osronline.com/article.cfm?name=mountmgr.zip&id=107
+//
+NTSTATUS QueryMountPoint(
+	_In_ PVOID MountPoint,
+	_In_ ULONG MountPointLength,
+	_Inout_ PVOID MountPointInfo,
+	_Out_ PULONG MountPointInfoLength)
 {
-	PROOT_EXTENSION		RootExtension = NULL;
-	PVOLUME_EXTENSION	VolumeExtension = NULL;
-	NTSTATUS		status;
+	OBJECT_ATTRIBUTES mmgrObjectAttributes;
+	UNICODE_STRING mmgrObjectName;
+	NTSTATUS status;
+	HANDLE mmgrHandle;
+	IO_STATUS_BLOCK iosb;
+	HANDLE testEvent;
 
-	MVOL_LOCK(); 
-	RootExtension = mvolRootDeviceObject->DeviceExtension;
-	VolumeExtension = RootExtension->Head;
+	//
+	// First, we need to obtain a handle to the mount manager, so we must:
+	//
+	//  - Initialize the unicode string with the mount manager name
+	//  - Build an object attributes structure
+	//  - Open the mount manager
+	//
+	// This should yield a valid handle for calling the mount manager
+	//
 
-	while( VolumeExtension != NULL )
-	{
-		UNICODE_STRING DeviceName;
-		UNICODE_STRING DriveLetter;
+	//
+	// Initialize the unicode string with the mount manager's name
+	//
+	RtlInitUnicodeString(&mmgrObjectName, MOUNTMGR_DEVICE_NAME);
 
-		RtlInitUnicodeString(&DeviceName, VolumeExtension->PhysicalDeviceName);
-		status = GetDriverLetterByDeviceName(&DeviceName, &DriveLetter);
-		if (NT_SUCCESS(status))
-		{
-			PCHAR p = (PCHAR) DriveLetter.Buffer;
-			VolumeExtension->Letter = toupper(*p);
-			VolumeExtension->VolIndex = VolumeExtension->Letter - 'C'; // VolIndex be changed!
-			
-			WDRBD_INFO("%ws idx=%d letter=%c\n",
-                VolumeExtension->PhysicalDeviceName, VolumeExtension->VolIndex, VolumeExtension->Letter);
-		}
-		else
-		{
-			WDRBD_WARN("%ws org_idx:%d. it's maybe not disk type. Ignored.\n",
-                VolumeExtension->PhysicalDeviceName,  VolumeExtension->VolIndex);
-			// IoVolumeDeviceToDosName error! 0xC0000034 STATUS_OBJECT_NAME_NOT_FOUND
-		}
+	//
+	// Initialize object attributes.
+	//
+	mmgrObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+	mmgrObjectAttributes.RootDirectory = NULL;
+	mmgrObjectAttributes.ObjectName = &mmgrObjectName;
 
-		VolumeExtension = VolumeExtension->Next;
+	//
+	// Note: in a kernel driver, we'd add OBJ_KERNEL_HANDLE
+	// as another attribute.
+	//
+	mmgrObjectAttributes.Attributes = OBJ_CASE_INSENSITIVE;
+	mmgrObjectAttributes.SecurityDescriptor = NULL;
+	mmgrObjectAttributes.SecurityQualityOfService = NULL;
+
+	//
+	// Open the mount manager
+	//
+	status = ZwCreateFile(&mmgrHandle,
+		FILE_READ_DATA | FILE_WRITE_DATA,
+		&mmgrObjectAttributes,
+		&iosb,
+		0, // allocation is meaningless
+		0, // no attributes specified
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, // we're willing to share
+		FILE_OPEN, // must already exist
+		FILE_NON_DIRECTORY_FILE, // must NOT be a directory
+		NULL, // no EA buffer
+		0); // no EA buffer size...
+	if (!NT_SUCCESS(status) ||
+		!NT_SUCCESS(iosb.Status)) {
+		WDRBD_WARN("Unable to open %wZ, error = 0x%x\n", &mmgrObjectName, status);
+		return status;
 	}
-	MVOL_UNLOCK();
+
+	//
+	// If we get to here, we assume it was successful.  We need an event object
+	// for monitoring the completion of I/O operations.
+	//
+	status = ZwCreateEvent(&testEvent,
+		GENERIC_ALL,
+		0, // no object attributes
+		NotificationEvent,
+		FALSE);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_WARN("Cannot create event (0x%x)\n", status);
+		return status;
+	}
+
+	status = ZwDeviceIoControlFile(
+		mmgrHandle,
+		testEvent,
+		0, // no apc
+		0, // no apc context
+		&iosb,
+		IOCTL_MOUNTMGR_QUERY_POINTS,
+		MountPoint, // input buffer
+		MountPointLength, // size of input buffer
+		MountPointInfo, // output buffer
+		*MountPointInfoLength); // size of output buffer
+	if (STATUS_PENDING == status) {
+		//
+		// Must wait for the I/O operation to complete
+		//
+		status = ZwWaitForSingleObject(testEvent, TRUE, 0);
+		if (NT_SUCCESS(status)) {
+			status = iosb.Status;
+		}
+	}
+
+	//
+	// Regardless of the results, we are done with the mount manager and event
+	// handles so discard them.
+	//
+	(void)ZwClose(testEvent);
+	(void)ZwClose(mmgrHandle);
+
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	*MountPointInfoLength = iosb.Information;
+
+	return STATUS_SUCCESS;
 }
 
 /**
@@ -577,7 +669,7 @@ ResolveDriveLetters(VOID)
 * @return
 *   volume's unique id type of PMOUNTDEV_UNIQUE_ID
 */
-PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj)
+PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj)
 {
     PMOUNTDEV_UNIQUE_ID guid = NULL;
     NTSTATUS result = STATUS_SUCCESS;
@@ -651,9 +743,9 @@ Finally:
 /**
 * @brief
 */
-void PrintVolumeGuid(PDEVICE_OBJECT devObj)
+void PrintVolumeDuid(PDEVICE_OBJECT devObj)
 {
-    PMOUNTDEV_UNIQUE_ID guid = RetrieveVolumeGuid(devObj);
+	PMOUNTDEV_UNIQUE_ID guid = QueryMountDUID(devObj);
 
     if (NULL == guid)
     {
@@ -1114,42 +1206,25 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 }
 
 /**
-* @brief
-*/
-PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
+ * @brief
+ *	caller should release unicode's buffer(in bytes)
+ */
+ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 {
-    if (!dst)
-    {
-        return NULL;
-    }
-
-    USHORT size = src->Length + sizeof(WCHAR);
+	if (!dst || !src) {
+		return 0;
+	}
 
     dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
 	if (dst->Buffer) {
-		dst->MaximumLength = size;
-		RtlCopyUnicodeString(dst, src);
-		return dst;
+		dst->Length = size;
+		dst->MaximumLength = size + sizeof(WCHAR);
+		RtlCopyMemory(dst->Buffer, src, size);
+		return size;
 	}
-	else {
-		dst->Buffer = NULL;
-		dst->MaximumLength = 0;
-		return NULL;
-	}
-    
-}
 
-/**
-* @brief
-*/
-void ucsfree(IN PUNICODE_STRING str)
-{
-    if (str)
-    {
-        kfree(str->Buffer);
-    }
+	return 0;
 }
-
 
 // GetIrpName
 // from:https://github.com/iocellnetworks/ndas4windows/blob/master/fremont/3.20-stable/src/drivers/ndasfat/ndasfat.c

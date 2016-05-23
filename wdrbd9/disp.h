@@ -6,7 +6,6 @@
 #include "windows/ioctl.h"
 #include "windows/drbd.h"
 
-
 #define	MVOL_IOCOMPLETE_REQ(Irp, status, size)		\
 {							\
 	Irp->IoStatus.Status = status;			\
@@ -44,7 +43,7 @@ typedef struct _VOLUME_EXTENSION
 	PDEVICE_OBJECT		DeviceObject;		// volume deviceobject
 	PDEVICE_OBJECT		PhysicalDeviceObject;
 	PDEVICE_OBJECT		TargetDeviceObject;
-#ifdef _WIN32
+#ifdef _WIN32_MVFL
     HANDLE              LockHandle;
 #endif
 	ULONG				Flag;
@@ -52,15 +51,17 @@ typedef struct _VOLUME_EXTENSION
 	BOOLEAN				Active;
 
 	IO_REMOVE_LOCK		RemoveLock; // RemoveLock for Block Device 
+	KMUTEX				CountMutex;
+
+	ULONG				IrpCount;
 
 	USHORT				PhysicalDeviceNameLength;
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
-	KMUTEX				CountMutex;
-	LARGE_INTEGER		WriteCount;
-	ULONG				IrpCount;
-
 	ULONG				VolIndex;
-	CHAR				Letter;
+	//CHAR				Letter;
+	UNICODE_STRING		MountPoint;	// IoVolumeDeviceToDosName()
+	UNICODE_STRING		VolumeGuid;
+
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	ULONG				Rr; // MULTI_WRITE_HOOKER_THREADS
 	MVOL_THREAD			WorkThreadInfo[5]; 
@@ -95,6 +96,5 @@ extern KMUTEX				mvolMutex;
 extern KMUTEX				eventlogMutex;
 
 NTSTATUS GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING pDriveLetter);
-extern char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid);
 extern int drbd_init(void);
 #endif MVF_DISP_H
