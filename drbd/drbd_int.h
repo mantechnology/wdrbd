@@ -837,7 +837,11 @@ enum {
 	FORCE_DETACH,		/* Force-detach from local disk, aborting any pending local IO */
 	NEW_CUR_UUID,		/* Create new current UUID when thawing IO or issuing local IO */
 	AL_SUSPENDED,		/* Activity logging is currently suspended. */
+#ifndef	_WIN32
+	// DW-874: Since resync works per peer device and device flag is shared for all peers, it may get racy with more than one peer.
+	// To support resync for more than one peer, this flag must be set as a peer device flag.
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
+#endif
 	UNREGISTERED,
 	FLUSH_PENDING,		/* if set, device->flush_jif is when we submitted that flush
 				 * from drbd_flush_after_epoch() */
@@ -872,6 +876,10 @@ enum {
 	RECONCILIATION_RESYNC,
 	UNSTABLE_RESYNC,	/* Sync source went unstable during resync. */
 	SEND_STATE_AFTER_AHEAD,
+#ifdef _WIN32
+	// DW-874: Moved from device flag. See device flag comment for detail.
+	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
+#endif
 };
 
 /* We could make these currently hardcoded constants configurable

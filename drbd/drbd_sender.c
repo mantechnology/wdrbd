@@ -2181,7 +2181,11 @@ static void do_start_resync(struct drbd_peer_device *peer_device)
 	}
 
 	drbd_start_resync(peer_device, peer_device->start_resync_side);
+#ifdef _WIN32
+	clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
+#else
 	clear_bit(AHEAD_TO_SYNC_SOURCE, &device->flags);
+#endif
 }
 
 static bool use_checksum_based_resync(struct drbd_connection *connection, struct drbd_device *device)
