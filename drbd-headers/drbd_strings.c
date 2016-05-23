@@ -126,6 +126,7 @@ static const char * const __error_messages[] = {
 	[-SS_WEAKLY_CONNECTED] = "Primary nodes must be strongly connected among each other",
 #ifdef _WIN32
     [-SS_TARGET_DISK_TOO_SMALL] = "Target disk is smaller than source.",
+	[-SS_CONNECTED_DISKLESS] = "Refusing to be Diskless while Connected",
 #endif
 };
 

@@ -841,7 +841,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="WDRBD_PATH" id="346" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.ModifyEnvironmentVariableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+              <action name="DRBD_PATH" id="346" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.ModifyEnvironmentVariableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.misc.ModifyEnvironmentVariableAction">
@@ -852,7 +852,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                         <string>${installer:sys.installationDir}\bin</string>
                       </void>
                       <void property="variableName">
-                        <string>WDRBD_PATH</string>
+                        <string>DRBD_PATH</string>
                       </void>
                     </object>
                   </java>
@@ -870,7 +870,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                         <boolean>false</boolean>
                       </void>
                       <void property="value">
-                        <string>%WDRBD_PATH%</string>
+                        <string>%DRBD_PATH%</string>
                       </void>
                       <void property="variableName">
                         <string>Path</string>

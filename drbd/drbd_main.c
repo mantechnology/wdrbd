@@ -3463,19 +3463,17 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
     {
         PVOLUME_EXTENSION VolExt;
-        struct drbd_connection *connection, *tmp;
         VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
 		// required to convert drbd_conf with drbd_connection. kmpak 20150806 
-        extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
-
-        for_each_connection_safe(connection, tmp, device_list_p->device->resource) {
-            int ret = drbd_adm_down_from_engine(connection);
-            if (ret != NO_ERROR)
-            {
-                WDRBD_ERROR("failed. ret=%d\n", ret);
-                // error ignored.
-            }
+		extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
+        
+		int ret = drbd_adm_down_from_engine(device_list_p->device->resource);
+        if (ret != NO_ERROR)
+        {
+            WDRBD_ERROR("failed. ret=%d\n", ret);
+            // error ignored.
         }
+        
         //drbdFreeDev(VolExt);  // required to debug for free VolExt
     }
 #endif

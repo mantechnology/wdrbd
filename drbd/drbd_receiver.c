@@ -7355,7 +7355,7 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	}
 
 #ifdef _WIN32 // DW-808 Ahead / resync temporary patch (clear AHEAD_TO_SYNC_SOURCE flag)
-	clear_bit(AHEAD_TO_SYNC_SOURCE, &device->flags);
+	clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
 #endif
 
 	/* tcp_close and release of sendpage pages can be deferred.  I don't
@@ -8160,7 +8160,11 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 		struct drbd_device *device = peer_device->device;
 		if (peer_device->repl_state[NOW] == L_AHEAD &&
 		    atomic_read(&connection->ap_in_flight) == 0 &&
-		    !test_and_set_bit(AHEAD_TO_SYNC_SOURCE, &device->flags)) {
+#ifdef _WIN32
+			!test_and_set_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags)) {
+#else
+			!test_and_set_bit(AHEAD_TO_SYNC_SOURCE, &device->flags)) {
+#endif
 			peer_device->start_resync_side = L_SYNC_SOURCE;
 			peer_device->start_resync_timer.expires = jiffies + HZ;
 			add_timer(&peer_device->start_resync_timer);

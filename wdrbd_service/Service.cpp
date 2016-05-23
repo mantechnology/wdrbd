@@ -100,7 +100,7 @@ int _tmain(int argc, _TCHAR* argv[])
         WCHAR fullName[MAX_PATH] = {0};
 
         size_t len;
-        errno_t err = _wdupenv_s(&szServicePath, &len, L"WDRBD_PATH");
+        errno_t err = _wdupenv_s(&szServicePath, &len, L"DRBD_PATH");
         if (err)
         {
             // default

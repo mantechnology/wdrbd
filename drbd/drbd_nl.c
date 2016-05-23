@@ -1323,6 +1323,19 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
+#ifdef _WIN32
+		int vnr;
+		struct drbd_device * device;
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			if (D_DISKLESS == device->disk_state[NOW])
+			{
+				// DW-839 not support diskless Primary
+				retcode = SS_IS_DISKLESS;
+				goto fail;
+			}
+		}
+#endif
 		retcode = drbd_set_role(adm_ctx.resource, R_PRIMARY, parms.assume_uptodate);
 		if (retcode >= SS_SUCCESS)
 			set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
@@ -3064,6 +3077,18 @@ int drbd_adm_detach(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
+
+#ifdef _WIN32	
+	struct drbd_peer_device *peer_device = NULL;
+	for_each_peer_device(peer_device, adm_ctx.device) {
+		if (peer_device->repl_state[NOW] > L_OFF && adm_ctx.device->resource->role[NOW] == R_PRIMARY) {
+			// DW-839 not support diskless Primary
+			retcode = SS_CONNECTED_DISKLESS;
+			goto out;
+		}
+	}
+#endif
+
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	retcode = adm_detach(adm_ctx.device, parms.force_detach);
@@ -6130,16 +6155,20 @@ out:
 }
 #ifdef _WIN32
 // DRBD_DOC: down from engine directly
-int drbd_adm_down_from_engine(struct drbd_connection *connection)
+int drbd_adm_down_from_engine(struct drbd_resource *resource)
 {
-    struct drbd_resource *resource;
-    struct drbd_connection *tmp;
+	struct drbd_connection *connection, *tmp;    
     struct drbd_device *device;
     int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
     int i;
-
+	
+	// DW-876: It possibly creates hang issue if worker isn't working, perhaps it's been called with resource which is already down.
+	if (get_t_state(&resource->worker) != RUNNING)
+	{		
+		retcode = SS_NOTHING_TO_DO;
+		goto out;
+	}
     
-    resource = connection->resource;
     mutex_lock(&resource->adm_mutex);
     /* demote */
     retcode = drbd_set_role(resource, R_SECONDARY, false);

@@ -83,7 +83,7 @@ mvolStartDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return status;
 }
 
-extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
+extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
 
 NTSTATUS
 mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -140,15 +140,14 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 			// DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
 			struct drbd_resource *resource = device->resource;
-			struct drbd_connection *connection, *tmp;
-			int ret; 
+			int ret;
 
-			for_each_connection_safe(connection, tmp, resource) {
-				ret = drbd_adm_down_from_engine(connection);
-				if (ret != NO_ERROR) {
-					WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
-					// error ignored.
-				}
+			// DW-876: The function 'drbd_adm_down_from_engine' performs down operation with specified resource, it does clean up all it needs(including disconnecting connections..)
+			// It should be called per resource. Do not call with the resource which is already down.
+			ret = drbd_adm_down_from_engine(resource);
+			if (ret != NO_ERROR) {
+				WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
+				// error ignored.
 			}
 		}
 
