@@ -462,6 +462,7 @@ mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
+			pvext->VolIndex = name.Buffer[0] - 'C';
 			link = &pvext->MountPoint;
 			FreeUnicodeString(link);
 		}
