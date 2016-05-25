@@ -2688,10 +2688,10 @@ static uint64_t _get_bdev_size_by_letter(const char letter)
 
 /**
 * @brief
-*	win32 device namespace 타입의 이름을 구해서 return 한다.
-*	ex) \\.\ 형태
-*	여기서는 문자열 버퍼를 strdup으로 할당하기 때문에 
-*	사용하는 곳에서 반드시 free로 해제해 주어야 한다.
+*	To return a proper win32 device namespace
+*	ex) "\\.\x:" or
+*		"\\.\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" without a trailing backslash
+*	This function returns the allocated buffer, in which the caller should free
 */
 static char * _get_win32_device_ns(const char * device_name)
 {
@@ -2699,14 +2699,14 @@ static char * _get_win32_device_ns(const char * device_name)
 		return NULL;
 	}
 
-	char temp[256] = { 0, };
+	char temp[256] = { 0, };	// after converting win-style's separator
 	strcpy(temp, device_name);
 	
 	convert_win32_separator(temp);
 	
 	char * wdn = NULL;	// win32 device namespace
 
-	// in case drive letter
+	// in case drive letter. ex) "d"
 	if (1 == strlen(temp)) {
 		wdn = strdup("\\\\.\\ :");
 		*(wdn + 4) = *temp;
@@ -2719,15 +2719,21 @@ static char * _get_win32_device_ns(const char * device_name)
 	// in case mounted folder
 	if (!t1) {
 
+		if ('\\' != temp[strlen(temp) - 1]) {
+			strcpy(temp + strlen(temp), "\\");	// added trailing backslash
+		}
+
 		BOOL ret = GetVolumeNameForVolumeMountPoint(temp, temp, sizeof(temp));
 		if (!ret) {
 			DWORD err = GetLastError();
-			if (ERROR_FILE_NOT_FOUND == err) {
-				mkdir(temp, 0777);
-			}
-			else {
-				//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", err);
-				return NULL;
+			switch (err) {
+				case ERROR_FILE_NOT_FOUND:
+					mkdir(temp, 0777);
+				case ERROR_NOT_A_REPARSE_POINT:	// pass through intentionally
+					break;
+				default:
+					//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", err);
+					return NULL;
 			}
 		}
 	}
