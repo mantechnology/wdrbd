@@ -2271,24 +2271,22 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		// Should be existed guid's name
 		mvolQueryMountPoint(pvext);
 	}
-	else {
 
-		UNICODE_STRING new_name;
-		NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
-		// if not same, it need to re-query
-		if (!NT_SUCCESS(status)) {	// ex: CD-ROM
-			return;
-		}
+	UNICODE_STRING new_name;
+	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
+	// if not same, it need to re-query
+	if (!NT_SUCCESS(status)) {	// ex: CD-ROM
+		return;
+	}
 
-		if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
-			!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
+	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
+		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
-			FreeUnicodeString(&pvext->MountPoint);
-			RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
+		FreeUnicodeString(&pvext->MountPoint);
+		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
 
-			if (IsDriveLetterMountPoint(&new_name)) {
-				pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
-			}
+		if (IsDriveLetterMountPoint(&new_name)) {
+			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
 		}
 	}
 
