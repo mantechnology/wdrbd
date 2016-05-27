@@ -1198,6 +1198,8 @@ void up_read(KSPIN_LOCK* lock)
 void spin_lock_init(spinlock_t *lock)
 {
 	KeInitializeSpinLock(&lock->spinLock);
+	lock->Refcnt = 0;
+	lock->OwnerThread = 0;
 }
 
 void acquireSpinLock(KSPIN_LOCK *lock, KIRQL *flags)
@@ -1210,10 +1212,19 @@ void releaseSpinLock(KSPIN_LOCK *lock, KIRQL flags)
 	KeReleaseSpinLock(lock, flags);
 }
 
+// DW-903 protect lock recursion
+// if current thread equal lock owner thread, just increase refcnt
 long _spin_lock_irqsave(spinlock_t *lock)
 {
-	KIRQL	oldIrql;
-	acquireSpinLock(&lock->spinLock, &oldIrql);
+	KIRQL	oldIrql = 0;
+	PKTHREAD curthread = KeGetCurrentThread();
+	if( curthread == lock->OwnerThread) { 
+		WDRBD_WARN("thread:%p spinlock recursion is happened! function:%s line:%d\n", curthread, __FUNCTION__, __LINE__);
+	} else {
+		acquireSpinLock(&lock->spinLock, &oldIrql);
+		lock->OwnerThread = curthread;
+	}
+	InterlockedIncrement(&lock->Refcnt);
 	return (long)oldIrql;
 }
 
@@ -1227,31 +1238,64 @@ void spin_unlock(spinlock_t *lock)
 	spin_unlock_irq(lock);
 }
 
+// DW-903 protect lock recursion
+// if current thread equal lock owner thread, just increase refcnt
 void spin_lock_irq(spinlock_t *lock)
 {
-	acquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
+	PKTHREAD curthread = KeGetCurrentThread();
+	if( curthread == lock->OwnerThread) {//DW-903 protect lock recursion
+		WDRBD_WARN("thread:%p spinlock recursion is happened! function:%s line:%d\n", curthread, __FUNCTION__, __LINE__);
+	} else {
+		acquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
+		lock->OwnerThread = curthread;
+	}
+	InterlockedIncrement(&lock->Refcnt);
 }
 
-
+// fisrt, decrease refcnt
+// If refcnt is 0, clear OwnerThread and release lock
 void spin_unlock_irq(spinlock_t *lock)
 {
-	releaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
+	InterlockedDecrement(&lock->Refcnt);
+	if(lock->Refcnt == 0) {
+		lock->OwnerThread = 0;
+		releaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
+	}
 }
-
+// fisrt, decrease refcnt
+// If refcnt is 0, clear OwnerThread and release lock
 void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 {
-	releaseSpinLock(&lock->spinLock, (KIRQL) flags);
+	InterlockedDecrement(&lock->Refcnt);
+	if(lock->Refcnt == 0) {
+		lock->OwnerThread = 0;
+		releaseSpinLock(&lock->spinLock, (KIRQL) flags);
+	}
 }
 
 #ifdef _WIN32
+// DW-903 protect lock recursion
+// if current thread equal lock owner thread, just increase refcnt
 void spin_lock_bh(spinlock_t *lock)
 {
-	KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
+	PKTHREAD curthread = KeGetCurrentThread();
+	if( curthread == lock->OwnerThread) {
+		WDRBD_WARN("thread:%p spinlock recursion is happened! function:%s line:%d\n", curthread, __FUNCTION__, __LINE__);
+	} else {
+		KeAcquireSpinLock(&lock->spinLock, &lock->saved_oldIrql);
+		lock->OwnerThread = curthread;
+	}
+	InterlockedIncrement(&lock->Refcnt);
 }
-
+// fisrt, decrease refcnt
+// If refcnt is 0, clear OwnerThread and release lock
 void spin_unlock_bh(spinlock_t *lock)
 {
-	KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
+	InterlockedDecrement(&lock->Refcnt);
+	if(lock->Refcnt == 0) {
+		lock->OwnerThread = 0;
+		KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
+	}
 }
 
 spinlock_t g_irqLock;

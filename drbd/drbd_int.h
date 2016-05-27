@@ -2665,7 +2665,9 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 					const char *where)
 {
 	enum drbd_io_error_p ep;
-
+#ifdef _WIN32
+	struct drbd_connection* connection;
+#endif
 	rcu_read_lock();
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
@@ -2714,6 +2716,14 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 			end_state_change_locked(device->resource);
 			drbd_err(device,
 				"Local IO failed in %s. Detaching...\n", where);
+#ifdef _WIN32
+			//if Disk I/O error occurr, force to disconnect all connection and finally replication is stopped.
+			for_each_connection(connection, device->resource) {
+				begin_state_change_locked(device->resource, CS_VERBOSE | CS_HARD);
+				__change_cstate(connection, C_DISCONNECTING);
+				end_state_change_locked(device->resource);
+			}
+#endif
 		}
 		break;
 	}
