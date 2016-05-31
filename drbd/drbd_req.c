@@ -2004,11 +2004,11 @@ out:
 	 * That's why we cannot check on req->private_bio. */
 	if (submit_private_bio)
 		drbd_submit_req_private_bio(req);
-
+#ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */
 	drbd_plug_device(bdev_get_queue(device->this_bdev));
-
+#endif
 	if (m.bio)
 #ifdef _WIN32
         complete_master_bio(device, &m, __FUNCTION__, __LINE__);

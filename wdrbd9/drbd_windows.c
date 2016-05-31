@@ -659,7 +659,11 @@ void kref_init(struct kref *kref)
 
 struct request_queue *bdev_get_queue(struct block_device *bdev)
 {
-	return bdev->bd_disk->queue;
+	if (bdev && bdev->bd_disk) {
+		return bdev->bd_disk->queue;
+	}
+
+	return NULL;
 }
 
 // bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
