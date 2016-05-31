@@ -347,7 +347,6 @@ static inline int drbd_ratelimit(void)
 		if (!(exp))	{ \
 			DbgPrint("\n\nASSERTION %s FAILED in %s #########\n\n",	\
 				 #exp, __func__); \
-			 panic("PANIC: check!!!!\n");\
 		} \
 	} while (0)
 #else
