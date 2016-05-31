@@ -3,7 +3,7 @@
 setlocal
 
 set PWD=%cd%
-set DIR=%WDRBD_PATH%
+set DIR=%DRBD_PATH%
 set PROVIDERNAME=drbdService
 set EXT=log
 cd "%DIR%"
