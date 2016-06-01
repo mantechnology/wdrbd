@@ -1565,10 +1565,6 @@ static void sanitize_state(struct drbd_resource *resource)
 				disk_state[NEW] = max_disk_state;
 
 			if (disk_state[NEW] < min_disk_state)
-#ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_XXXXXX', depending on disk state.
-				if (repl_state[NEW] != L_STARTING_SYNC_S)
-#endif
 				disk_state[NEW] = min_disk_state;
 
 			if (peer_disk_state[NEW] > max_peer_disk_state)
@@ -1576,7 +1572,8 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			if (peer_disk_state[NEW] < min_peer_disk_state)
 #ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907
+				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: 
+				// Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_TARGET', depending on disk state.
 				if (repl_state[NEW] != L_STARTING_SYNC_T)
 #endif
 				peer_disk_state[NEW] = min_peer_disk_state;
