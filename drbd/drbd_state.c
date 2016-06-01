@@ -1487,8 +1487,8 @@ static void sanitize_state(struct drbd_resource *resource)
 			    (disk_state[NEW] <= D_FAILED ||
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
-			// DW-885, DW-907: Abort resync if disk state goes unsyncable.			
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Abort resync if disk state goes unsyncable.			
 			if (((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_PAUSED_SYNC_T ) && peer_disk_state[NEW] <= D_INCONSISTENT) ||
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
@@ -1565,8 +1565,8 @@ static void sanitize_state(struct drbd_resource *resource)
 				disk_state[NEW] = max_disk_state;
 
 			if (disk_state[NEW] < min_disk_state)
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
-				// DW-885, DW-907: Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_XXXXXX', depending on disk state.
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_XXXXXX', depending on disk state.
 				if (repl_state[NEW] != L_STARTING_SYNC_S)
 #endif
 				disk_state[NEW] = min_disk_state;
@@ -1575,7 +1575,8 @@ static void sanitize_state(struct drbd_resource *resource)
 				peer_disk_state[NEW] = max_peer_disk_state;
 
 			if (peer_disk_state[NEW] < min_peer_disk_state)
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907
 				if (repl_state[NEW] != L_STARTING_SYNC_T)
 #endif
 				peer_disk_state[NEW] = min_peer_disk_state;
@@ -1621,16 +1622,16 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			/* Implication of the repl state on other peer's repl state */
 			if (repl_state[OLD] != L_STARTING_SYNC_T && repl_state[NEW] == L_STARTING_SYNC_T)
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
-				// DW-885, DW-907: Do not discretionally change other peer's replication state. 
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Do not discretionally change other peer's replication state. 
 				// We should always notify state change, or possibly brought unpaired sync target up.
 				set_resync_susp_other_c(peer_device, true, false);
 #else
 				set_resync_susp_other_c(peer_device, true, true);
 #endif
 
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
-			// DW-885, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
 			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_ESTABLISHED)
 				set_resync_susp_other_c(peer_device, false, false);
 #endif
@@ -2767,8 +2768,8 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if (disk_state[OLD] < D_UP_TO_DATE && repl_state[OLD] >= L_SYNC_SOURCE && repl_state[NEW] == L_ESTABLISHED)
 				send_new_state_to_all_peer_devices(state_change, n_device);
 
-#ifdef _WIN32	// MODIFIED_BY_MANTECH
-			/* DW-885, DW-907: We should notify our disk state when it goes unsyncable so that peer doesn't request to sync anymore.
+#ifdef _WIN32 
+			/* MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: We should notify our disk state when it goes unsyncable so that peer doesn't request to sync anymore.
 			 * Outdated myself, become D_INCONSISTENT, or became D_UP_TO_DATE tell peers 
 			 */
 			if (disk_state[OLD] >= D_OUTDATED && disk_state[NEW] >= D_INCONSISTENT &&
