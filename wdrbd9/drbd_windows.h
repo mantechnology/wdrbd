@@ -967,7 +967,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
+			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
 				}  \
 		} while (0)
 
@@ -986,7 +986,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
                 sig = 0;    \
                 break;      \
             } \
-            sig = schedule(&wq, 100, __FUNCTION__, __LINE__);   \
+            sig = schedule(&wq, 1, __FUNCTION__, __LINE__);   \
             if (-DRBD_SIGKILL == sig) { break; }    \
         } \
     } while (0)
@@ -1014,7 +1014,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		        break;\
             }\
 	        /*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
-	        ret = schedule(&wq, 200, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
+	        ret = schedule(&wq, 1, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
 	        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
