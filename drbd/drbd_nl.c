@@ -501,7 +501,7 @@ static void conn_md_sync(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_md_sync(device);
 		kref_put(&device->kref, drbd_destroy_device);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
         rcu_read_lock_w32_inner();
 #else
 		rcu_read_lock();
@@ -2900,7 +2900,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	drbd_try_suspend_al(device); /* IO is still suspended here... */
 
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
     unsigned char oldIrql_rLock1; // RCU_SPECIAL_CASE
     oldIrql_rLock1 = ExAcquireSpinLockShared(&g_rcuLock);
 #else
@@ -2910,7 +2910,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		device->ldev->md.flags &= ~MDF_AL_DISABLED;
 	else
 		device->ldev->md.flags |= MDF_AL_DISABLED;
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
     // RCU_SPECIAL_CASE
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1);
 #else
@@ -5343,7 +5343,7 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
     next_resource:
 	rcu_read_unlock();
 	mutex_lock(&resource->conf_update);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
     rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();

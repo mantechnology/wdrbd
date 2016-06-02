@@ -219,7 +219,11 @@ DEFINE_RATELIMIT_STATE(drbd_ratelimit_state, DEFAULT_RATELIMIT_INTERVAL, DEFAULT
 #endif
 
 #ifdef _WIN32
+#ifdef _WIN32_AVOID_RECURSION
+spinlock_t g_rcuLock; //rcu lock is ported with spinlock
+#else
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
+#endif
 struct mutex g_genl_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
@@ -1396,7 +1400,7 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 
 	/* initialize verify_alg and csums_alg */
 	memset(p->verify_alg, 0, 2 * SHARED_SECRET_MAX);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
     rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();
@@ -1450,7 +1454,7 @@ int __drbd_send_protocol(struct drbd_connection *connection, enum drbd_packet cm
 	p = __conn_prepare_command(connection, size, DATA_STREAM);
 	if (!p)
 		return -EIO;
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
     rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();
@@ -4556,7 +4560,11 @@ static int __init drbd_init(void)
 	int err;
 #ifdef _WIN32
 	nl_policy_init_by_manual();
+#ifdef _WIN32_AVOID_RECURSION
+	spin_lock_init(&g_rcuLock);
+#else
 	g_rcuLock = 0; // init RCU lock
+#endif
 	
 	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);

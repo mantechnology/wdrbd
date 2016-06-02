@@ -2916,7 +2916,7 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 #endif
 
 	/* someone may have changed the config while we have been waiting above. */
-#ifdef _WIN32 
+#ifndef _WIN32_AVOID_RECURSION
 	rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();

@@ -1136,7 +1136,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED|RQ_EXP_BARR_ACK);
 
 		/* close the epoch, in case it outgrew the limit */
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
         rcu_read_lock_w32_inner();
 #else
 		rcu_read_lock();

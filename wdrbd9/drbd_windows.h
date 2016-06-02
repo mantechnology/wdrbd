@@ -1276,6 +1276,17 @@ extern void list_del_rcu(struct list_head *entry);
 #define rcu_assign_pointer(p, v) 	__rcu_assign_pointer((p), (v))
 #define list_next_rcu(list)		(*((struct list_head **)(&(list)->next)))
 
+
+
+#define _WIN32_AVOID_RECURSION // DW-900
+#ifdef _WIN32_AVOID_RECURSION
+extern spinlock_t g_rcuLock;
+
+#define rcu_read_lock()					spin_lock_irq(&g_rcuLock)
+#define rcu_read_unlock()				spin_unlock_irq(&g_rcuLock)
+#define synchronize_rcu_w32_wlock()		spin_lock_irq(&g_rcuLock)
+#define synchronize_rcu()				spin_unlock_irq(&g_rcuLock)
+#else
 extern EX_SPIN_LOCK g_rcuLock;
 
 #define rcu_read_lock() \
@@ -1297,7 +1308,7 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define synchronize_rcu() \
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
-
+#endif
 
 extern void local_irq_disable();
 extern void local_irq_enable();

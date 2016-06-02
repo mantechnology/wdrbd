@@ -927,7 +927,7 @@ start:
 	if (drbd_send_protocol(connection) == -EOPNOTSUPP)
 		goto abort;
 
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 	rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();
@@ -1295,7 +1295,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 			submit_one_flush(device, &ctx);
 
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 			rcu_read_lock_w32_inner();
 #else
 			rcu_read_lock();
@@ -1923,7 +1923,7 @@ void conn_wait_active_ee_empty(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_wait_ee_list_empty(device, &device->active_ee);
 		kref_put(&device->kref, drbd_destroy_device);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 		rcu_read_lock_w32_inner();
 #else
 		rcu_read_lock();
@@ -1949,7 +1949,7 @@ static void conn_wait_done_ee_empty(struct drbd_connection *connection)
 		rcu_read_unlock();
 		drbd_wait_ee_list_empty(device, &device->done_ee);
 		kref_put(&device->kref, drbd_destroy_device);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 		rcu_read_lock_w32_inner();
 #else
 		rcu_read_lock();
@@ -2716,7 +2716,7 @@ static int wait_for_and_update_peer_seq(struct drbd_peer_device *peer_device, co
 		prepare_to_wait(&peer_device->device->seq_wait, &wait, TASK_INTERRUPTIBLE);
 #endif
 		spin_unlock(&peer_device->peer_seq_lock);
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 		rcu_read_lock_w32_inner();
 #else
 		rcu_read_lock();
@@ -4284,7 +4284,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	struct crypto_hash *peer_integrity_tfm = NULL;
 	void *int_dig_in = NULL, *int_dig_vv = NULL;
 
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 	KIRQL oldIrql_rLock1; // RCU_SPECIAL_CASE
 #endif
 	p_proto		= be32_to_cpu(p->protocol);
@@ -4310,7 +4310,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 		if (cf & CF_DRY_RUN)
 			set_bit(CONN_DRY_RUN, &connection->flags);
 
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 		// RCU_SPECIAL_CASE
 		oldIrql_rLock1 = ExAcquireSpinLockShared(&g_rcuLock);
 #else
@@ -4352,7 +4352,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 			drbd_err(connection, "incompatible %s settings\n", "data-integrity-alg");
 			goto disconnect_rcu_unlock;
 		}
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 		// RCU_SPECIAL_CASE
 		ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1); 
 #else
@@ -4450,7 +4450,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	return 0;
 
 disconnect_rcu_unlock:
-#ifdef _WIN32
+#ifndef _WIN32_AVOID_RECURSION
 	// RCU_SPECIAL_CASE
 	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock1); 
 #else
