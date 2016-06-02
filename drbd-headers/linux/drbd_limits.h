@@ -54,7 +54,12 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
+#ifdef _WIN32
+// DW-915 
+#define DRBD_TIMEOUT_DEF 30       /* 3 seconds */
+#else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
+#endif
 #define DRBD_TIMEOUT_SCALE '1'
 
  /* If backing disk takes longer than disk_timeout, mark the disk as failed */
@@ -66,20 +71,30 @@
   /* active connection retries when C_CONNECTING */
 #define DRBD_CONNECT_INT_MIN 1
 #define DRBD_CONNECT_INT_MAX 120
+#ifdef _WIN32
+//DW-915
+#define DRBD_CONNECT_INT_DEF 3   /* seconds */
+#else
 #define DRBD_CONNECT_INT_DEF 10   /* seconds */
+#endif
 #define DRBD_CONNECT_INT_SCALE '1'
 
   /* keep-alive probes when idle */
 #define DRBD_PING_INT_MIN 1
 #define DRBD_PING_INT_MAX 120
+#ifdef _WIN32
+#define DRBD_PING_INT_DEF 3
+#else
 #define DRBD_PING_INT_DEF 10
+#endif
 #define DRBD_PING_INT_SCALE '1'
 
  /* timeout for the ping packets.*/
 #define DRBD_PING_TIMEO_MIN  1
 #define DRBD_PING_TIMEO_MAX  300
 #if _WIN32
-#define DRBD_PING_TIMEO_DEF  30
+//DW-763
+#define DRBD_PING_TIMEO_DEF  30 /* 1/10 seconds */
 #else
 #define DRBD_PING_TIMEO_DEF  5
 #endif
