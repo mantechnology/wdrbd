@@ -1195,7 +1195,10 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
 	argv[NA(argc)] = NULL;
 #ifdef _WIN32_MVFL
-    add_registry_volume(ctx->vol->disk);
+	ex = add_registry_volume(ctx->vol->disk);
+	if (ERROR_SUCCESS != ex) {
+		return ex;
+	}
 #endif
 	ex = m_system_ex(argv, SLEEPS_SHORT, ctx->res->name);
 	if (!ex && do_register)
