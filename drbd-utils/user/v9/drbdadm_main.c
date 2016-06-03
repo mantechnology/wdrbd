@@ -2967,6 +2967,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			}
 			break;
 		case 'V':
+			printf("WDRBD_VERSION=%u.%u.%u(%s)\n", WDRBD_MAJOR_VERSION, WDRBD_MINOR_VERSION, WDRBD_MICRO_VERSION, DRBD_MATCH_VERSION);
 			printf("DRBDADM_BUILDTAG=%s\n", shell_escape(drbd_buildtag()));
 			printf("DRBDADM_API_VERSION=%u\n", API_VERSION);
 			printf("DRBD_KERNEL_VERSION_CODE=0x%06x\n", version_code_kernel());
