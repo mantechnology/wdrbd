@@ -954,7 +954,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	do {\
 		int i = 0;\
 		int t = 0;\
-		int real_timeout = ret / 100; /*divide*/\
+		int real_timeout = ret; \
 		for (;;) {\
 			i++; \
 			if (condition)   \
@@ -1002,7 +1002,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
-        int real_timeout = to / 200; /*divide*/\
+        int real_timeout = to; /*divide*/\
         for (;;) { \
             if (condition) {   \
 		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);*/\
