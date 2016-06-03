@@ -3198,6 +3198,7 @@ void drbd_destroy_device(struct kref *kref)
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
 	kfree2(device->this_bdev);
+	device->vdisk->pDeviceExtension->dev = NULL;
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
