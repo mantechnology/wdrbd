@@ -3222,6 +3222,10 @@ void drbd_destroy_device(struct kref *kref)
 	__free_page(device->md_io.page);
 	put_disk(device->vdisk);
 	blk_cleanup_queue(device->rq_queue);
+#ifdef _WIN32
+	device->vdisk = NULL;
+	device->rq_queue = NULL;
+#endif
 	kref_debug_destroy(&device->kref_debug);
 
 	kfree(device);
