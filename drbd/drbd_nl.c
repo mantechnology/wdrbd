@@ -6107,10 +6107,12 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
                 goto out;
             }
 
-            PVOLUME_EXTENSION pvolext = get_targetdev_by_minor(device->minor);
-            if (pvolext && pvolext->WorkThreadInfo.Active)
+            PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+            if (pvext && pvext->WorkThreadInfo.Active)
             {
-                mvolTerminateThread(&pvolext->WorkThreadInfo);
+                mvolTerminateThread(&pvext->WorkThreadInfo);
+				pvext->dev = NULL;
+				/* intentional dangling. drbd_destroy_device() will free */
             }
         }
         else
