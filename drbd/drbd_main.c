@@ -3196,11 +3196,10 @@ void drbd_destroy_device(struct kref *kref)
 
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
-
-	if (device->this_bdev)
 #ifdef _WIN32
-        device->this_bdev = NULL;
+	kfree2(device->this_bdev);
 #else
+	if (device->this_bdev)
 		bdput(device->this_bdev);
 #endif
 
@@ -3221,14 +3220,8 @@ void drbd_destroy_device(struct kref *kref)
 		device->bitmap = NULL;
 	}
 	__free_page(device->md_io.page);
-#ifdef _WIN32
-	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
-	// vdisk,rq_queue are structures for volume at global space, don't free this pointer
-	// we have to consider to refactoring this structres with VOLUME_EXTENSION
-#else
 	put_disk(device->vdisk);
 	blk_cleanup_queue(device->rq_queue);
-#endif
 	kref_debug_destroy(&device->kref_debug);
 
 	kfree(device);
