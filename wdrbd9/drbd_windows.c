@@ -659,7 +659,11 @@ void kref_init(struct kref *kref)
 
 struct request_queue *bdev_get_queue(struct block_device *bdev)
 {
-	return bdev->bd_disk->queue;
+	if (bdev && bdev->bd_disk) {
+		return bdev->bd_disk->queue;
+	}
+
+	return NULL;
 }
 
 // bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
@@ -1812,14 +1816,14 @@ int generic_make_request(struct bio *bio)
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
+			WDRBD_ERROR("IoAcquireRemoveLock bio->pVolExt:%p fail. status(0x%x)\n", bio->pVolExt, status);
 			bio->pVolExt = NULL;
-			WDRBD_INFO("IoAcquireRemoveLock bio->pVolExt:%p fail\n", bio->pVolExt);
 			return -EIO;
 		}
 	}
 	else {
+		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
 		bio->pVolExt = NULL;
-		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high , bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
 		return -EIO;
 	}
 
@@ -1904,7 +1908,7 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(q->backing_dev_info.pvext->TargetDeviceObject, newIrp);
+	IoCallDriver(bio->pVolExt->TargetDeviceObject, newIrp);
 
 	return 0;
 }
@@ -2070,13 +2074,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 */
 void blk_cleanup_queue(struct request_queue *q)
 {
-#ifdef _WIN32
-	// _WIN32_V9_REFACTORING_VDISK: JHKIM: 
-	// caller에서 미리 정리하고 이 함수는 제거 필요. 
-#else
-    if( q != NULL )
-        ExFreePool( q );
-#endif
+	kfree(q);
 }
 
 struct gendisk *alloc_disk(int minors)
@@ -2334,7 +2332,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		}
 	}
 
-	if (!pvext->dev) { //drbdFreeDev(pvext);
+	if (!pvext->dev) {
 		pvext->dev = create_drbd_block_device(pvext);
 	}
 }
