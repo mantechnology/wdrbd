@@ -1,4 +1,4 @@
-## Windows DRBD(Distributed Replicated Block Device)
+## Windows DRBD (WDRBD)
                            
 ## Synopsis
 WDRBD is a software-based, shared-nothing, replicated storage solution mirroring the content of block devices (hard disks, partitions, logical volumes etc.) between hosts by network transport(TCP/IP). 
@@ -8,7 +8,7 @@ DRBD has been developed and maintained by Linbit(http://www.drbd.org/), currentl
 
 ## Build
 - Environment : Windows 7 or higher
-- tools : Visual Studio 2013 with update 5, Windows Driver Kit 6.3, Sygwin version 1.7.30, 
+- tools : Visual Studio 2013 with update 5, Windows Driver Kit 6.3, Cygwin version 1.7.30, 
 goto wdrbd9 directory and open wdrbd9.sln, config 32 or 64 properly, finally build drbd.sys
 
 ## Packaging
