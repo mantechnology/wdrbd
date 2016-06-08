@@ -1910,8 +1910,9 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *other_device = peer_device->device;
 	int ret = true;
-
+#ifndef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_lock();
+#endif
 	while (1) {
 		struct drbd_peer_device *other_peer_device;
 		int resync_after;
@@ -1934,7 +1935,9 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 			break;
 		}
 	}
+#ifndef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_unlock();
+#endif
 
 	return ret;
 }
@@ -2281,7 +2284,13 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	}
 
 	begin_state_change_locked(device->resource, CS_VERBOSE);
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+	rcu_read_lock();
+#endif
 	__change_resync_susp_dependency(peer_device, !__drbd_may_sync_now(peer_device));
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+	rcu_read_unlock();
+#endif
 	__change_repl_state(peer_device, side);
 	if (side == L_SYNC_TARGET) {
 		__change_disk_state(device, D_INCONSISTENT);
@@ -2916,7 +2925,7 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 #endif
 
 	/* someone may have changed the config while we have been waiting above. */
-#ifndef _WIN32_AVOID_RECURSION
+#ifdef _WIN32
 	rcu_read_lock_w32_inner();
 #else
 	rcu_read_lock();
