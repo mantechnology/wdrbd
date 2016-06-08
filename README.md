@@ -4,7 +4,7 @@
 WDRBD is a software-based, shared-nothing, replicated storage solution mirroring the content of block devices (hard disks, partitions, logical volumes etc.) between hosts by network transport(TCP/IP). 
 
 ## Motivation
-DRBD has been developed and maintained by Linbit(http://www.drbd.org/), currently can be only used in linux platform, included in Linux kernel and then we have ported DRBD to Windows DRBD. Most of DRBD's functionality is implemented to WDRBD, except for OS dependent things
+DRBD has been developed and maintained by Linbit(http://www.drbd.org/), currently can be only used in linux platform, included in Linux kernel and then we have ported DRBD to Windows DRBD. Most of DRBD's functionalities are implemented to WDRBD, except for OS dependent things
 
 ## Build
 - Environment : Windows 7 or higher
