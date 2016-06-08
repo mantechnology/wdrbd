@@ -996,7 +996,12 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		goto out;
 	}
 	bits  = BM_SECT_TO_BIT(ALIGN(capacity, BM_SECT_PER_BIT));
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-917: The calculation of counting words should be divided by the bit count of 'int' since the accessing unit of data word for bitmap is 'int'.
+	words = (ALIGN(bits, 64) * b->bm_max_peers) / 32;
+#else
 	words = (ALIGN(bits, 64) * b->bm_max_peers) / BITS_PER_LONG;
+#endif
 
 	if (get_ldev(device)) {
 		u64 bits_on_disk = drbd_md_on_disk_bits(device);
@@ -1877,9 +1882,9 @@ void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsi
 {
 	struct drbd_bitmap *bitmap = device->bitmap;
 #ifdef _WIN32
-	unsigned long word_nr, from_word_nr, to_word_nr;
+	ULONG_PTR word_nr, from_word_nr, to_word_nr;
 #else
-    ULONG_PTR word_nr, from_word_nr, to_word_nr;
+	unsigned long word_nr, from_word_nr, to_word_nr;
 #endif
 	unsigned int from_page_nr, to_page_nr, current_page_nr;
 	u32 data_word, *addr;
