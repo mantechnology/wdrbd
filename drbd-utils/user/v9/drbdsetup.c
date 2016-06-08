@@ -680,7 +680,7 @@ int lock_fd;
 struct genl_sock *drbd_sock = NULL;
 
 struct genl_family drbd_genl_family = {
-#ifdef _WIN32    // kmpak require a value over NLMSG_MIN_TYPE, and then a continuous nl command processing can be possiable.
+#ifdef _WIN32    //  require a value over NLMSG_MIN_TYPE, and then a continuous nl command processing can be possiable.
     .id = NLMSG_MIN_TYPE + 1,
 #endif
 	.name = "drbd",

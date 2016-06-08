@@ -61,7 +61,7 @@
 #ifdef _WIN32
 bool capable(int cap)
 {
-    // [choi] wdrbd is not supported
+    // not supported
     return false;
 }
 #endif
@@ -120,7 +120,7 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 atomic_t drbd_genl_seq = ATOMIC_INIT(2); /* two. */
 
 #ifdef _WIN32 
-// [choi] replaced with noti mutex 
+// noti mutex 
 struct mutex notification_mutex;
 #else
 DEFINE_MUTEX(notification_mutex);
@@ -455,7 +455,7 @@ static int drbd_adm_finish(struct drbd_config_context *adm_ctx, struct genl_info
 
 	adm_ctx->reply_dh->ret_code = retcode;
 	drbd_adm_send_reply(adm_ctx->reply_skb, info);
-#ifdef _WIN32 // DW-211 fix memory leak  
+#ifdef _WIN32 // DW-211 fix memory leak
 	nlmsg_free(adm_ctx->reply_skb);
 #endif
 	adm_ctx->reply_skb = NULL;
@@ -789,9 +789,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	if (connection && device)
 		peer_device = conn_peer_device(connection, device->vnr);
 
-#ifdef _WIN32
-	// _WIN32_V9_DOC:JHKIM: BSOD, required to fix later
-#else
+#ifndef _WIN32
 	magic_printk(KERN_INFO, "helper command: %s %s\n", usermode_helper, cmd);
 #endif
 	notify_helper(NOTIFY_CALL, device, connection, cmd, 0);
@@ -804,9 +802,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 #else
 	ret = call_usermodehelper(usermode_helper, argv, envp, UMH_WAIT_PROC);
 #endif
-#ifdef _WIN32
-	// _WIN32_V9_DOC:JHKIM: BSOD, required to fix later
-#else
+#ifndef _WIN32
 	magic_printk(ret ? KERN_WARNING : KERN_INFO,
 		     "helper command: %s %s exit code %u (0x%x)\n",
 		     usermode_helper, cmd,
@@ -1104,7 +1100,7 @@ retry:
 		}
 
 		if (rv == SS_NO_UP_TO_DATE_DISK && force && !with_force) {
-#ifdef _WIN32
+#ifdef _WIN32 // DW-
             u64 im;
             idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
             {
@@ -1319,18 +1315,17 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock(); 
+	genl_unlock();
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
-#ifdef _WIN32
+#ifdef _WIN32 // DW-839 not support diskless Primary
 		int vnr;
 		struct drbd_device * device;
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
 			if (D_DISKLESS == device->disk_state[NOW])
 			{
-				// DW-839 not support diskless Primary
 				retcode = SS_IS_DISKLESS;
 				goto fail;
 			}
@@ -1939,7 +1934,7 @@ static unsigned int drbd_max_discard_sectors(struct drbd_resource *resource)
 	return s;
 }
 
-#ifndef _WIN32 // _WIN32_V9_PATCH_2:JHKIM: required to re-verification
+#ifndef _WIN32
 static void decide_on_discard_support(struct drbd_device *device,
 			struct request_queue *q,
 			struct request_queue *b,
@@ -2068,12 +2063,12 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 		discard_zeroes_if_aligned = dc->discard_zeroes_if_aligned;
 		rcu_read_unlock();
 
-		blk_set_stacking_limits(&q->limits); 
+		blk_set_stacking_limits(&q->limits);
 	}
 
 	blk_queue_max_hw_sectors(q, max_hw_sectors);
 	/* This is the workaround for "bio would need to, but cannot, be split" */
-#ifndef _WIN32 // _WIN32_V9_PATCH_2:JHKIM: required to re-verification
+#ifndef _WIN32
 	blk_queue_segment_boundary(q, PAGE_CACHE_SIZE-1);
 	decide_on_discard_support(device, q, b, discard_zeroes_if_aligned);
 	decide_on_write_same_support(device, q, b, o);
@@ -2331,8 +2326,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	}
 
 #ifdef _WIN32
-	// moved 
-    // [choi] skip synchronize_rcu 
+	// skip synchronize_rcu 
 #else
 	synchronize_rcu();
 #endif
@@ -2349,7 +2343,7 @@ success:
     //if (retcode != NO_ERROR)	
 	//	synchronize_rcu();
 #else
-	if (retcode != NO_ERROR)	
+	if (retcode != NO_ERROR)
 		synchronize_rcu();
 #endif
 	put_ldev(device);
@@ -2955,12 +2949,12 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
                     goto force_diskless_dec;
                 }
             }
-            else if (STATUS_DEVICE_ALREADY_ATTACHED == status)  // _WIN32_V9
+            else if (STATUS_DEVICE_ALREADY_ATTACHED == status)
             {
                 struct block_device * bd = pvolext->dev;
                 if (bd)
                 {
-                    // kmpak, required to analyze that this job is done at this point
+                    // required to analyze that this job is done at this point
                     //bd->bd_disk->fops->open(bd, FMODE_WRITE);
                     //bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
                 }
@@ -3078,11 +3072,10 @@ int drbd_adm_detach(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
-#ifdef _WIN32	
+#ifdef _WIN32 // DW-839 not support diskless Primary
 	struct drbd_peer_device *peer_device = NULL;
 	for_each_peer_device(peer_device, adm_ctx.device) {
 		if (peer_device->repl_state[NOW] > L_OFF && adm_ctx.device->resource->role[NOW] == R_PRIMARY) {
-			// DW-839 not support diskless Primary
 			retcode = SS_CONNECTED_DISKLESS;
 			goto out;
 		}
@@ -3337,8 +3330,8 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32
-	// if all peer_device's replication state is L_OFF, net options can be changed. DW-730 2016.2.29 sekim
+#ifdef _WIN32 // DW-730
+	// if all peer_device's replication state is L_OFF, net options can be changed.  
 
 	if (new_net_conf->wire_protocol != old_net_conf->wire_protocol)
 	{
@@ -3850,12 +3843,12 @@ fail_free_connection:
 #ifdef _WIN32
         synchronize_rcu_w32_wlock();
 #endif
-		drbd_unregister_connection(connection); // list_del_rcu(); 
+		drbd_unregister_connection(connection);
 		synchronize_rcu();
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
-#ifndef _WIN32 // [choi] drbd_put_transport_class not support.
+#ifndef _WIN32 // not support.
 	drbd_put_transport_class(tr_class);
 #endif
 fail:
@@ -4250,7 +4243,7 @@ void del_connection(struct drbd_connection *connection)
 	notify_connection_state(NULL, 0, connection, NULL, NOTIFY_DESTROY);
 	mutex_unlock(&notification_mutex);
 #ifdef _WIN32
-	//_WIN32_V9_RCU //(1) [choi] synchronize_rcu_w32_wlock() is disabled, because Assertion: *** DPC watchdog timeout
+	//_WIN32_V9_RCU //(1) synchronize_rcu_w32_wlock() is disabled, because Assertion: *** DPC watchdog timeout
 #else
 	synchronize_rcu();
 #endif
@@ -4619,55 +4612,6 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 
-#if 0 // _WIN32_HANDLER_TIMEOUT: required to loadtest 
-	static int c = 0;
-	int i = 0;
-
-	c++;
-	DbgPrint("DRBD_TEST: _WIN32_HANDLER_TIMEOUT test c = %d\n", c);
-
-	if (c == 1)
-	{
-		DbgPrint("DRBD_TEST: call_usermodehelper once!\n"); // only 1 time
-		call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
-		goto out_no_ldev;
-	}
-
-	if (c == 2)
-	{
-		DbgPrint("DRBD_TEST: loop 2\n");
-		for (i = 0; i < 2; i++)
-		{
-			DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
-			call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
-		}
-		DbgPrint("DRBD_TEST: done\n");
-		goto out_no_ldev;
-	}
-
-	if (c == 3)
-	{
-		DbgPrint("DRBD_TEST: loop 10\n");
-		for (i = 0; i < 10; i++)
-		{
-			DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
-			call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
-		}
-		DbgPrint("DRBD_TEST: done\n");
-		goto out_no_ldev;
-	}
-
-	DbgPrint("DRBD_TEST: load test loop 50\n");
-	for (i = 0; i < 50; i++)
-	{
-		DbgPrint("DRBD_TEST: call_usermodehelper %d\n", i);
-		call_usermodehelper(usermode_helper, "test", "xxx", UMH_WAIT_PROC);
-	}
-	DbgPrint("DRBD_TEST: done\n");
-	
-	goto out_no_ldev;
-#endif
-
 	device = adm_ctx.device;
 
 	if (!get_ldev(device)) {
@@ -4714,8 +4658,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		int retry = 3;
 		do {
 			struct drbd_connection *connection;
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-907
+#ifdef _WIN32 // DW-907
 			int success = 0;
 #endif
 
@@ -4726,7 +4669,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 				retcode = invalidate_resync(peer_device);
 				if (retcode >= SS_SUCCESS)
 #ifdef _WIN32	
-				// MODIFIED_BY_MANTECH DW-907: implicitly request to get synced to all peers, as a way of hedging first source node put out.
+				// _WIN32 // DW-907: implicitly request to get synced to all peers, as a way of hedging first source node put out.
 				{
 					success = retcode;
 				}
@@ -4735,7 +4678,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 #endif
 			}
 #ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-907: retcode will be success at least one succeeded peer.
+			// _WIN32 // DW-907: retcode will be success at least one succeeded peer.
 			if (success)
 			{
 				retcode = success;
@@ -5113,7 +5056,7 @@ static void device_to_statistics(struct device_statistics *s,
 
 		s->dev_disk_flags = md->flags;
 		q = bdev_get_queue(device->ldev->backing_bdev);
-#ifndef _WIN32  // WDRBD: not support data socket congestion
+#ifndef _WIN32  // not support
 		s->dev_lower_blocked =
 			bdi_congested(&q->backing_dev_info,
 				      (1 << WB_async_congested) |
@@ -5821,7 +5764,7 @@ drbd_check_resource_name(struct drbd_config_context *adm_ctx)
 		return ERR_MANDATORY_TAG;
 	}
 	/* As we want to use these in sysfs/configfs/debugfs,
-	* we must not allow slashes. */
+	 * we must not allow slashes. */
 	if (strchr(name, '/')) {
 		drbd_msg_put_info(adm_ctx->reply_skb, "invalid resource name");
 		return ERR_INVALID_REQUEST;
@@ -6203,7 +6146,6 @@ out:
 	return 0;
 }
 #ifdef _WIN32
-// DRBD_DOC: down from engine directly
 int drbd_adm_down_from_engine(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection, *tmp;    

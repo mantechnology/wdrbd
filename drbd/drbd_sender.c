@@ -126,7 +126,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	wake_up(&device->misc_wait);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
 	{
 		if (Irp->MdlAddress != NULL)
 		{
@@ -144,7 +144,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
 	{
 		bio_put(bio);
 	}
@@ -276,7 +276,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_peer_request_endio: IRQL(%d) ..............\n",  current->comm, KeGetCurrentIrql());
 #endif
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		Irp = p2;
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)p3;
@@ -311,7 +311,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
 	{
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
@@ -376,7 +376,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_request_endio: IRQL(%d) ................\n", current->comm, KeGetCurrentIrql());
 #endif
 
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		Irp = p2;
 		bio = (struct bio *)p3;
 		error = Irp->IoStatus.Status;
@@ -460,7 +460,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		what = COMPLETED_OK;
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) { // DRBD_DOC: FAULT_TEST
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -547,7 +547,7 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 
 #ifdef _WIN32 
 	if (req->req_databuf)
-		crypto_hash_update(&desc, (struct scatterlist *)req->req_databuf, req->i.size); // ignore compile warning
+		crypto_hash_update(&desc, (struct scatterlist *)req->req_databuf, req->i.size);
 	crypto_hash_final(&desc, digest);
 #else
 	desc.tfm = tfm;
@@ -678,7 +678,7 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 		container_of(w, struct drbd_peer_device, resync_work);
 	struct drbd_device *device = peer_device->device;
 
-	mutex_lock(&device->bm_resync_fo_mutex); 
+	mutex_lock(&device->bm_resync_fo_mutex);
 	switch (peer_device->repl_state[NOW]) {
 	case L_VERIFY_S:
 		make_ov_request(peer_device, cancel);
@@ -810,7 +810,7 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 	curr_corr = fifo_push(plan, 0);
 	plan->total -= curr_corr;
 #ifdef _WIN32
-	curr_corr = max_t(int, 8, min_t(int, curr_corr, 8));	// kmpak. minimum 8
+	curr_corr = max_t(int, 8, min_t(int, curr_corr, 8));	// minimum 8
 #endif
 	req_sect = sect_in + curr_corr;
 	if (req_sect < 0)
@@ -1090,7 +1090,7 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 			break;
 
 #if 0 	
-		// V8 style code. DRBD_DOC: performace: decrease P_OV_REQUEST count, increase network thoughput per 1 time
+		// V8 style code. performace: decrease P_OV_REQUEST count, increase network thoughput per 1 time
 		size = 1024*1024; 
 		//size =  1024*256;  // for flowcontrol
 #endif
@@ -2911,7 +2911,7 @@ static void wait_for_sender_todo(struct drbd_connection *connection)
 		if (get_t_state(&connection->sender) != RUNNING)
 			break;
 
-#ifdef _WIN32 // DW-745
+#ifdef _WIN32
 		schedule(&connection->sender_work.q_wait, SENDER_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__); 
 #else
 		schedule();
@@ -3246,7 +3246,7 @@ int drbd_worker(struct drbd_thread *thi)
 			w = list_first_entry(&work_list, struct drbd_work, list);
 			list_del_init(&w->list);
 			update_worker_timing_details(resource, w->cb);
-#ifdef _WIN32 // PATCHED_BY_MANTECH fix callback pointer's NULL case
+#ifdef _WIN32 // DW- fix callback pointer's NULL case
 			if (w->cb != NULL) {
 				w->cb(w, 0);
 			} else {

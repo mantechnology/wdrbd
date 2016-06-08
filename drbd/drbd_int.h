@@ -152,14 +152,14 @@ struct drbd_connection;
         const struct drbd_connection *__c;			\
         const struct drbd_resource *__r;			\
         const char *__cn;					\
-        /*rcu_read_lock();		_WIN32_V9	*/		\
+        /*rcu_read_lock();		_WIN32 // DW-	*/		\
         __d = (peer_device)->device;				\
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = rcu_dereference(__c->transport.net_conf)->name;	\
         printk(level "drbd %s/%u drbd%u %s, ds(%s), rs(%s), f(0x%x): " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
-        /*rcu_read_unlock();	_WIN32_V9	*/		\
+        /*rcu_read_unlock();	_WIN32 // DW-	*/		\
     } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
@@ -167,10 +167,10 @@ struct drbd_connection;
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
-        /*rcu_read_lock();	_WIN32_V9*/ \
+        /*rcu_read_lock();	_WIN32 // DW- */ \
         printk(level "drbd %s %s, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
         rcu_dereference((connection)->transport.net_conf)->name, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
-        /*rcu_read_unlock();	_WIN32_V9*/ \
+        /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)
 
 void drbd_printk_with_wrong_object_type(void);
@@ -1129,15 +1129,11 @@ struct connect_work {
 	struct drbd_resource* resource;
 	int(*func)(struct drbd_thread *thi);
 	struct drbd_thread* receiver;
-	//struct genl_ops ops;
-	//struct genl_info info;
 };
 
 struct disconnect_work {
 	struct drbd_work w;
 	struct drbd_resource* resource;
-	//struct genl_ops ops;
-	//struct genl_info info;
 };
 #endif
 
@@ -2357,7 +2353,7 @@ extern void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req);
 void __update_timing_details(
 		struct drbd_thread_timing_details *tdp,
 		unsigned int *cb_nr,
-		void* cb,
+		void *cb,
 		const char *fn, const unsigned int line);
 
 #define update_sender_timing_details(c, cb) \
@@ -2478,7 +2474,6 @@ static inline void drbd_set_my_capacity(struct drbd_device *device,
 					sector_t size)
 {
 #ifdef _WIN32
-	//disk->part0.nr_sects = size;
 	if (!device->this_bdev)
 	{
 		return;
@@ -2526,7 +2521,6 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 #else
 	else {
 		if (generic_make_request(bio)) {
-			// error
 			bio_endio(bio, -EIO);
 		}
 	}
@@ -2625,7 +2619,7 @@ extern void notify_path(struct drbd_connection *, struct drbd_path *,
 static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_req)
 {
 #ifdef _WIN32
-	// page mechanism is not support.
+	// not support.
 #else	
 	struct page *page = peer_req->page_chain.head;
 	page_chain_for_each(page) {

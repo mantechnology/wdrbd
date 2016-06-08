@@ -10,7 +10,6 @@
 #include "linux-compat/Backing-dev.h"
 #include "wsk2.h"
 #else
-// _WIN32_V9_PATCH_1
 #include <linux/version.h>
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
 # error "At least kernel version 2.6.18 (with patches) required"
@@ -111,7 +110,6 @@
 #ifndef BLKDEV_DISCARD_SECURE
 /* before fbd9b09a177 */
 #ifndef _WIN32
-// V8 구현 유지.
 #define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, s)
 #endif
 #endif
@@ -121,11 +119,11 @@
 #define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, gfpf, s, BLKDEV_IFL_WAIT)
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31) //_WIN32_V9_PATCH_1
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31) 
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
 {
 	int retval = 512;
-	if (q && q->hardsect_size) //_WIN32_V9_PATCH_1
+	if (q && q->hardsect_size)
 		retval = q->hardsect_size;
 	return retval;
 }
@@ -142,14 +140,14 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
 
 static inline unsigned int queue_max_sectors(struct request_queue *q)
 {
-	return q->max_sectors;//_WIN32_V9_PATCH_1
+	return q->max_sectors;
 }
 
 static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
 {
-	q->hardsect_size = size;//_WIN32_V9_PATCH_1
+	q->hardsect_size = size;
 }
-#endif // //_WIN32_V9_PATCH_1
+#endif
 
 #ifdef _WIN32
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
@@ -557,10 +555,6 @@ static inline int crypto_hash_update(struct hash_desc *desc,
 				     unsigned int nbytes)
 {
 #ifdef _WIN32
-	// sha1, md5, and crc32c.
-	// support crc only!!!
-
-	//*(int*)desc = crc32c(0, (char*)sg, nbytes);
 	*(int*)desc = crc32c(0, (uint8_t *)sg, nbytes);
 #else
 	crypto_digest_update(desc->tfm->base,sg,1 /* ! */ );
@@ -572,9 +566,8 @@ static inline int crypto_hash_update(struct hash_desc *desc,
 static inline int crypto_hash_final(struct hash_desc *desc, u8 *out)
 {
 #ifdef _WIN32
-	// use crc only!!!
 	int i;
-	u8 *p = (u8*)desc; // typecasting
+	u8 *p = (u8*)desc; 
 	for(i = 0; i < 4; i++)
 	{
 		*out++ = *p++; // long
@@ -815,7 +808,7 @@ static inline void blk_queue_max_segments(struct request_queue *q, unsigned shor
 #endif
 
 #ifndef _WIN32
-#ifndef COMPAT_HAVE_BOOL_TYPE 
+#ifndef COMPAT_HAVE_BOOL_TYPE
 typedef _Bool                   bool;
 enum {
 	false = 0,
@@ -1148,7 +1141,7 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 /* see c26d34a rcu: Add lockdep-enabled variants of rcu_dereference() */
 #define rcu_dereference_raw(p) rcu_dereference(p)
 #endif
-#ifndef _WIN32 // [choi]V8 적용
+#ifndef _WIN32
 #define list_entry_rcu(ptr, type, member) \
 	({typeof (*ptr) *__ptr = (typeof (*ptr) __force *)ptr; \
 	 container_of((typeof(ptr))rcu_dereference_raw(__ptr), type, member); \

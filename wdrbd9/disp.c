@@ -207,8 +207,6 @@ NTSTATUS _QueryVolumeNameRegistry(
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
-					// To compare easily the string between name in registry and IoVolumeDeviceToDosName()
-					//*(pvext->VolumeGuid.Buffer + 1) = (WCHAR)'\\';	// IoVolumeDeviceToDosName()'s style
 					key = NULL;
 				}
 			}
@@ -495,7 +493,6 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (DeviceObject == mvolRootDeviceObject)
     {
-        /// SEO: DRBD DriverObject로 READ/WRITE가 들어올 수 없음
         goto invalid_device;
     }
 
@@ -650,7 +647,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             MVOL_LOCK();
             seq_file_idx = 0;
-            drbd_seq_show((struct seq_file *)&p->Seq, 0); // DRBD_DOC:DW130: struct seq_file 는 바로 char buffer 임으로 강제 캐스팅 가능
+            drbd_seq_show((struct seq_file *)&p->Seq, 0);
             MVOL_UNLOCK();
 
             irpSp->Parameters.DeviceIoControl.OutputBufferLength = sizeof(MVOL_VOLUME_INFO);

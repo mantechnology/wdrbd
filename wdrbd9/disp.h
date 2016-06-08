@@ -75,7 +75,7 @@ typedef struct _ROOT_EXTENSION
 {
     PVOLUME_EXTENSION   Head;
     ULONG				Magic;
-    USHORT				Count;	/// SEO: 볼륨 갯수
+    USHORT				Count;
     USHORT				PhysicalDeviceNameLength;
     WCHAR				PhysicalDeviceName[MAXDEVICENAME];
     UNICODE_STRING      RegistryPath;

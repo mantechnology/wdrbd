@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <Mountmgr.h> 
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"
 #include "proto.h"
 #include "drbd_int.h"
 
@@ -20,7 +20,6 @@
 #pragma alloc_text(PAGE, FsctlCreateVolume)
 #endif
 #endif
-
 
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
@@ -396,7 +395,6 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 
     return status;
 }
-
 #endif
 
 PVOLUME_EXTENSION
@@ -409,7 +407,6 @@ mvolSearchDevice( PWCHAR PhysicalDeviceName )
 	VolumeExtension = RootExtension->Head;
 	while( VolumeExtension != NULL )
 	{
-		/// SEO: string compare with Case insensitive  
 		if( !_wcsicmp(VolumeExtension->PhysicalDeviceName, PhysicalDeviceName) )
 		{
 			return VolumeExtension;
@@ -796,9 +793,6 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 		0);
 	if (Status != STATUS_SUCCESS)
 	{
-		//WDRBD_ERROR("ZwCreateFile: %d\n", Status);
-		//LOG_ERROR: GetDriverLetterByDeviceName: ZwCreateFile: -1073741810
-		// boot time error: 0xC000000E STATUS_NO_SUCH_DEVICE
 		return Status;
 	}
 	Status = ObReferenceObjectByHandle(FileHandle,
@@ -813,7 +807,7 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 		WDRBD_ERROR("ObReferenceObjectByHandle: %d\n", Status);
 		return Status;
 	}
-	// RtlVolumeDeviceToDosName(pVolumeFileObject->DeviceObject, pDriveLetter);
+
 	Status = IoVolumeDeviceToDosName(pVolumeFileObject->DeviceObject, pDriveLetter);
 	if (Status != STATUS_SUCCESS)
 	{
@@ -824,96 +818,6 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 	ZwClose(FileHandle);
 	return Status;
 }
-
-#ifdef DRDB_CHECK_DW128
-NTSTATUS
-RtlVolumeDeviceToDosName(
-IN PVOID           VolumeDeviceObject,
-OUT PUNICODE_STRING DosName
-)
-{
-	PDEVICE_OBJECT volumeDeviceObject = VolumeDeviceObject;
-	PMOUNTDEV_NAME name;
-	CHAR            output[512];
-	KEVENT          event;
-	PIRP            irp;
-	IO_STATUS_BLOCK ioStatus;
-	NTSTATUS        status;
-	UNICODE_STRING deviceName;
-	WCHAR           buffer[30];
-	UNICODE_STRING driveLetterName;
-	WCHAR           c;
-	UNICODE_STRING linkTarget;
-	LIST_ENTRY      devicesInPath;
-
-	name = (PMOUNTDEV_NAME) output;
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
-	irp = IoBuildDeviceIoControlRequest(IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
-		volumeDeviceObject, NULL, 0, name, 512,
-		FALSE, &event, &ioStatus);
-	if (!irp) {
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	status = IoCallDriver(volumeDeviceObject, irp);
-	if (status == STATUS_PENDING) {
-		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-		status = ioStatus.Status;
-	}
-	if (!NT_SUCCESS(status)) {
-		return status;
-	}
-	deviceName.MaximumLength = deviceName.Length = name->NameLength;
-	deviceName.Buffer = name->Name;
-	swprintf(buffer, L":");
-	RtlInitUnicodeString(&driveLetterName, buffer);
-
-	for (c = 'A'; c <= 'Z'; c++) {
-		driveLetterName.Buffer[4] = c;
-		status = QuerySymbolicLink(&driveLetterName, &linkTarget);
-		if (!NT_SUCCESS(status)) {
-			continue;
-		}
-		if (RtlEqualUnicodeString(&linkTarget, &deviceName, TRUE)) {
-			ExFreePool(linkTarget.Buffer);
-			break;
-		}
-		ExFreePool(linkTarget.Buffer);
-	}
-
-	if (c <= 'Z') {
-		DosName->Buffer = ExAllocatePoolWithTag(PagedPool, 3 * sizeof(WCHAR), '18DW');
-		if (!DosName->Buffer) {
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		DosName->MaximumLength = 6;
-		DosName->Length = 4;
-		DosName->Buffer[0] = c;
-		DosName->Buffer[1] = ':';
-		DosName->Buffer[2] = 0;
-		return STATUS_SUCCESS;
-	}
-	/*ZwOpenSymbolicLinkObject
-	* ZwOpenFile
-	* IoGetDeviceObjectPointer
-	* ZwQueryDirectoryFile
-	* ZwQueryInformationFile
-	*/
-	for (c = 'A'; c <= 'Z'; c++) {
-		driveLetterName.Buffer[4] = c;
-		InitializeListHead(&devicesInPath);
-		status = FindPathForDevice(&driveLetterName, &deviceName,
-			&devicesInPath, DosName);
-		if (NT_SUCCESS(status)) {
-			DosName->Length -= 4 * sizeof(WCHAR);
-			RtlMoveMemory(DosName->Buffer, &DosName->Buffer[4],
-				DosName->Length);
-			DosName->Buffer[DosName->Length / sizeof(WCHAR)] = 0;
-			return status;
-		}
-	}
-	return status;
-}
-#endif
 
 /**
 * @brief
@@ -1153,7 +1057,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 	else
 	{
-		RtlCopyMemory(g_ver, "test", 4 * 2); 
+		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
 	}
 #ifdef _WIN32_LOGLINK
 #ifdef _WIN32_HANDLER_TIMEOUT

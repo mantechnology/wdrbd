@@ -1,6 +1,6 @@
 ﻿#include "drbd_windows.h"
-#include "wsk2.h"		/// SEO:
-#include "drbd_wingenl.h"	/// SEO:
+#include "wsk2.h"
+#include "drbd_wingenl.h"
 #include "linux-compat/idr.h"
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"

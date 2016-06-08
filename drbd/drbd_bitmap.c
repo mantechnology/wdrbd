@@ -1228,7 +1228,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     int error = 0;
     PIRP Irp = NULL;
 
-    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) // DRBD_DOC: FAULT_TEST
+    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
     {
         Irp = p2;
         error = Irp->IoStatus.Status;
@@ -1279,7 +1279,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	bm_page_unlock_io(device, idx);
 
 #ifdef _WIN32
-    if (Irp) { // DRBD_DOC: FAULT_TEST
+    if (Irp) {
         if (Irp->MdlAddress != NULL) {
             PMDL mdl, nextMdl;
             for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -1294,7 +1294,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     }
 #endif
 
-	if (ctx->flags & BM_AIO_COPY_PAGES) 
+	if (ctx->flags & BM_AIO_COPY_PAGES)
 		mempool_free(bio->bi_io_vec[0].bv_page, drbd_md_io_page_pool);
 	
 	bio_put(bio);
@@ -1317,7 +1317,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 {
 #ifdef _WIN32
     struct bio *bio = bio_alloc_drbd(GFP_NOIO, '50DW');
-    if (!bio)   // DV
+    if (!bio) 
     {
         goto no_memory;
     }
@@ -1379,7 +1379,6 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 		atomic_add(len >> 9, &device->rs_sect_ev);
 #else
 		if (submit_bio(rw, bio)) {
-			// error
 			bio_endio(bio, -EIO);
 		}
 		else {
@@ -1389,13 +1388,12 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 		}
 #endif
 	}
-#ifdef _WIN32 // DV
+#ifdef _WIN32
     return;
 
 no_memory :
     WDRBD_ERROR("Unexpected logic: No memory!\n");
-    //EVENTLOG!!!
-    BUG(); // DRBD_DV1: bio 자체가 없어 bio_endio(bio, -EIO);로 정리할 수 없는 상황. 
+    BUG();
 #endif
 }
 

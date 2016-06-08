@@ -19,19 +19,11 @@
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
 #define _WSK_IRP_REUSE					// WSK IRP reuse.
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
-
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
-
-
-#ifdef _WIN32
 #define minor_to_letter(m)	('C'+(m))
 #define minor_to_mdev minor_to_device
 #define drbd_conf drbd_device
-#endif
-
 #define _WIN32_V9_DW_663_LINBIT_PATCH 
-
-
 #define DRBD_GENERIC_POOL_TAG       ((ULONG)'dbrd')
 
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// used in NETLINK
@@ -204,11 +196,11 @@ enum rq_flag_bits {
 #define ENOENT					4
 #define EMEDIUMTYPE				5
 #define EROFS					6
-#define	E2BIG		 7	/* Argument list too long */    // kmpak linux 2.6.32.61
+#define	E2BIG					7	/* Argument list too long */    // from linux 2.6.32.61
 #define MSG_NOSIGNAL			8
 #define ETIMEDOUT				9
 #define EBUSY					10
-#define	EAGAIN		11	/* Try again */ // kmpak linux 2.6.32.61
+#define	EAGAIN					11	/* Try again */ // from linux 2.6.32.61
 #define ENOBUFS					12
 #define ENODEV					13
 #define EWOULDBLOCK				14
@@ -230,7 +222,7 @@ enum rq_flag_bits {
 #define EHOSTUNREACH			30
 #define EBADR					31
 #define EADDRINUSE              32 
-#define	EOVERFLOW				75	/* Value too large for defined data type */ // kmpak linux 2.6.32.61
+#define	EOVERFLOW				75	/* Value too large for defined data type */ // from linux 2.6.32.61
 #define	ESTALE					116	/* Stale NFS file handle */
 #define ECONNABORTED			130 /* Software caused connection abort */ 
 
@@ -543,7 +535,7 @@ struct gendisk
 struct block_device {
 #ifndef _WIN32 
 	// if block_device is device for disk partition, bd_contains point to block_device descriptor about full disk,
-	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel [sekim] 2015.08.24
+	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel  2015.08.24
 	// just porting field.
 	struct block_device *	bd_contains;
 #endif
@@ -763,7 +755,6 @@ struct task_struct {
     char comm[TASK_COMM_LEN];
 };
 
-/// SEO: mempool
 extern mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_data);
 extern mempool_t *mempool_create_page_pool(int min_nr, int order);
 extern mempool_t *mempool_create_slab_pool(int min_nr, int order);
@@ -1005,17 +996,13 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
         int real_timeout = to; /*divide*/\
         for (;;) { \
             if (condition) {   \
-		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) cond ok!!!!\n", t, to);*/\
                 break;      \
             } \
 	        if (++t > real_timeout) {\
-		        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout t(%d) to(%d) timeout!!!!\n", t, to);*/\
 		        ret = -ETIMEDOUT;\
 		        break;\
             }\
-	        /*(DbgPrint("DRBD_TEST: wait_event_interruptible_timeout(%d)\n", to);*/ \
 	        ret = schedule(&wq, 1, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
-	        /*DbgPrint("DRBD_TEST: wait_event_interruptible_timeout ret(%d) done!\n", ret);*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
     } while (0)
@@ -1030,7 +1017,7 @@ extern void _wake_up(wait_queue_head_t *q, char *__func, int __line);
 
 extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
 #ifdef _WIN32
-extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //reference linux 3.x kernel. 64bit compatible sekim
+extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //reference linux 3.x kernel. 64bit compatible
 #endif
 extern ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
 extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
@@ -1127,7 +1114,7 @@ struct retry_worker {
 
 extern void *crypto_alloc_tfm(char *name, u32 mask);
 extern unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm);
-extern int generic_make_request(struct bio *bio); // return value is changed for error handling 2015.12.08 by sekim (DW-649)
+extern int generic_make_request(struct bio *bio); // return value is changed for error handling 2015.12.08(DW-649)
 
 extern int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait);
 
@@ -1136,7 +1123,6 @@ extern long PTR_ERR(const void *ptr);
 extern long IS_ERR_OR_NULL(const void *ptr);
 extern int IS_ERR(void *err);
 
-extern int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask, sector_t *error_sector);
 extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name);
 extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder);
 
@@ -1152,9 +1138,7 @@ extern int fls(int x);
 extern unsigned char *skb_put(struct sk_buff *skb, unsigned int len);
 extern char *kstrdup(const char *s, int gfp);
 extern void panic(char *msg);
-///
 
-/// SEO: global variables
 extern int proc_details;
 extern int g_bypass_level;
 extern int g_read_filter;
@@ -1260,8 +1244,6 @@ extern int WriteEventLogEntryData(
 );
 
 extern ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size);
-
-/// SEO: relative to RCU function. remove later
 extern void list_add_rcu(struct list_head *new, struct list_head *head);
 extern void list_add_tail_rcu(struct list_head *new,   struct list_head *head);
 extern void list_del_rcu(struct list_head *entry);
@@ -1283,8 +1265,8 @@ extern EX_SPIN_LOCK g_rcuLock;
 
 #define rcu_read_lock() \
     unsigned char oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
-    /* [choi] lock/unlock, remove later */ \
     WDRBD_TRACE_RCU("rcu_read_lock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+
 #define rcu_read_unlock() \
     ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
     WDRBD_TRACE_RCU("rcu_read_unlock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
@@ -1292,6 +1274,7 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define rcu_read_lock_w32_inner() \
 	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
     WDRBD_TRACE_RCU("rcu_read_lock_w32_inner : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+
 #define synchronize_rcu_w32_wlock() \
 	unsigned char  oldIrql_wLock; \
 	oldIrql_wLock = ExAcquireSpinLockExclusive(&g_rcuLock);\
@@ -1303,14 +1286,13 @@ extern EX_SPIN_LOCK g_rcuLock;
 
 extern void local_irq_disable();
 extern void local_irq_enable();
-
 extern void ct_init_thread_list();
 extern struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event, ULONG Tag);
 extern void ct_delete_thread(PKTHREAD id);
 extern struct task_struct* ct_find_thread(PKTHREAD id);
 
-#define bdevname(dev, buf)  \
-    dev->bd_disk->disk_name
+#define bdevname(dev, buf)   dev->bd_disk->disk_name
+
 //
 //  Lock primitives
 //
@@ -1372,10 +1354,8 @@ typedef struct _PTR_ENTRY
 
 
 #ifdef _WIN32
-/////////////////////////////////////////////////////////////////////
-// linux-2.6.24 define 
-////////////////////////////////////////////////////////////////////
 
+// linux-2.6.24 define 
 // kernel.h 
 #define UINT_MAX	(~0U)
 
@@ -1465,7 +1445,7 @@ extern int scnprintf(char * buf, size_t size, const char *fmt, ...);
 
 void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry);
 
-// for_each_set_bit = find_first_bit + find_next_bit => reference linux 3.x kernel. sekim
+// for_each_set_bit = find_first_bit + find_next_bit => reference linux 3.x kernel. 
 #define for_each_set_bit(bit, addr, size) \
 	for ((bit) = find_first_bit((addr), (size));		\
 	     (bit) < (size);					\

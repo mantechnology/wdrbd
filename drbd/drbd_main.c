@@ -148,7 +148,7 @@ module_param(two_phase_commit_fail, int, 0644);
 unsigned int minor_count = DRBD_MINOR_COUNT_DEF;
 #ifdef _WIN32 
 // if not initialized, it means error.
-bool disable_sendpage = 1;      // DRBD_DOC: not support page I/O
+bool disable_sendpage = 1;      // not support page I/O
 bool allow_oos = 0;
 #else
 bool disable_sendpage;
@@ -538,7 +538,7 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 #endif
 		if (req->epoch == expect_epoch)
 			break;
-	tl_for_each_req_ref_from(req, r, &resource->transfer_log) {	
+	tl_for_each_req_ref_from(req, r, &resource->transfer_log) {
 		struct drbd_peer_device *peer_device;
 		if (req->epoch != expect_epoch) {
 			tl_abort_for_each_req_ref(r, &resource->transfer_log);
@@ -579,12 +579,12 @@ void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what)
 
 	tl_for_each_req_ref(req, r, &resource->transfer_log) {
 #ifdef _WIN32 // DW-689 temporary patch
-		if (NULL == req->device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: req->device is null! ignore!"); break; }
+		if (NULL == req->device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"req->device is null! ignore!"); break; }
 #endif
 		peer_device = conn_peer_device(connection, req->device->vnr);
 
 #ifdef _WIN32 // DW-689 temporary patch
-		if (NULL == peer_device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"DRBD_TEST: peer_device is null! ignore!"); break; }
+		if (NULL == peer_device) { DbgPrintEx(FLTR_COMPONENT, DPFLTR_TRACE_LEVEL,"peer_device is null! ignore!"); break; }
 #endif
 		_req_mod(req, what, peer_device);
 	}
@@ -651,7 +651,6 @@ static int drbd_thread_setup(void *arg)
     {
         WDRBD_ERROR("DRBD_PANIC: ct_add_thread faild.\n");
         PsTerminateSystemThread(STATUS_SUCCESS);
-        // BUG();
     }
 
     KeSetEvent(&thi->start_event, 0, FALSE);
@@ -759,8 +758,6 @@ int drbd_thread_start(struct drbd_thread *thi)
             HANDLE		hThread = NULL;
             NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-            //nt->has_sig_event = TRUE;
-
             KeInitializeEvent(&thi->start_event, SynchronizationEvent, FALSE);
             KeInitializeEvent(&thi->wait_event, SynchronizationEvent, FALSE);
             Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, drbd_thread_setup, (void *) thi);
@@ -865,7 +862,7 @@ void _drbd_thread_stop(struct drbd_thread *thi, int restart, int wait)
 		}
 		else
 		{
-		//	WDRBD_INFO("cur=(%s) thi=(%s) stop myself\n", current->comm, thi->name ); //_WIN32
+		//	WDRBD_INFO("cur=(%s) thi=(%s) stop myself\n", current->comm, thi->name ); 
 		}
 #else
 			force_sig(DRBD_SIGKILL, thi->task);
@@ -1092,7 +1089,7 @@ static void new_or_recycle_send_buffer_page(struct drbd_send_buffer *sbuf)
 
 		page = alloc_page(GFP_KERNEL);
 		if (page) {
-#ifndef _WIN32 // JHKIM: we should verify to need to free_page later.
+#ifndef _WIN32
 			put_page(sbuf->page);
 #endif
 			sbuf->page = page;
@@ -1213,7 +1210,6 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 #ifdef _WIN32
-//DbgPrint("DRBD_TEST: (%s)flush_send_buffer stream(%d)! off=%d sz=%d!\n", current->comm, drbd_stream, offset, size); // DRBD_V9_TEST
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, offset, size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
@@ -1542,14 +1538,14 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 	   And that second resync gets canceled by the resync target due to the first
 	   resync finished successfully.
 
-       Exceptions to the above are when the peer's UUID is not known yet
+	   Exceptions to the above are when the peer's UUID is not known yet
 	 */
 
 	rcu_read_lock();
 	peer_device = peer_device_by_node_id(device, node_id);
 
 	if (bitmap_uuid == 0 && peer_device &&
-		peer_device->current_uuid != 0 &&
+	    peer_device->current_uuid != 0 &&
 	    (peer_device->current_uuid & ~UUID_PRIMARY) !=
 	    (drbd_current_uuid(device) & ~UUID_PRIMARY))
 		bitmap_uuid = -1;
@@ -1709,7 +1705,7 @@ int drbd_attach_peer_device(struct drbd_peer_device *peer_device) __must_hold(lo
 		lockdep_is_held(&peer_device->device->resource->conf_update));
 #ifdef _WIN32
     if (peer_device->rs_plan_s)
-        resync_plan = peer_device->rs_plan_s;   // kmpak. fixed memory leak
+        resync_plan = peer_device->rs_plan_s;
     else
     	resync_plan = fifo_alloc((pdc->c_plan_ahead * 10 * SLEEP_TIME) / HZ, '88DW');
 #else
@@ -1793,20 +1789,20 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
 #ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;   // to recalculate size // _WIN32_V9_PATCH_2:JHKKIM: changed at patch 2, we should verify this issue about assign_p_sizes_qlim later
+        device->ldev->backing_bdev->d_size = 0;
 #endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 		q_order_type = drbd_queue_order_type(device);
-#ifdef _WIN32 // JHKIM: continue to patch 1 code. required to verify differences with patch 2
+#ifdef _WIN32
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
 #else
 		max_bio_size = queue_max_hw_sectors(q) << 9;
 		max_bio_size = min(max_bio_size, DRBD_MAX_BIO_SIZE);
 #endif
-#ifndef _WIN32 // _WIN32_V9_PATCH_2
+#ifndef _WIN32
 		assign_p_sizes_qlim(device, p, q);
 #endif
 		put_ldev(device);
@@ -1815,7 +1811,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		u_size = 0;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
-#ifndef _WIN32 // _WIN32_V9_PATCH_2
+#ifndef _WIN32
 		assign_p_sizes_qlim(device, p, NULL);
 #endif
 	}
@@ -2352,7 +2348,7 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 	return err;
 }
 #ifdef _WIN32 
-//we don't need to consider page, care to only buffer in no_send_page , kmpak
+//we don't need to consider page, care to only buffer in no_send_page
 int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 			      int offset, size_t size, unsigned msg_flags)
 {
@@ -2363,11 +2359,9 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 
 	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
-
-	//dumpHex((void*) page, 100, 16);
 	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
 	if (!err)
-		peer_device->send_cnt += size >> 9; // _WIN32_V9_1_PATCH:JHKKIM: required to verify to calculate size at this point.
+		peer_device->send_cnt += size >> 9;
 
 	return err;
 }
@@ -2490,7 +2484,7 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 	flush_send_buffer(peer_device->connection, DATA_STREAM);
 
 #ifdef _WIN32
-	// DRBD_DOC: add bio-linked pointer to drbd_peer_request structure
+	// add bio-linked pointer to drbd_peer_request structure
 	// bio-linked pointer(peer_req_databuf) is used to replace with page structure buffers
 	err = _drbd_no_send_page(peer_device, peer_req->peer_req_databuf, 0, len, 0);
 	if (err)
@@ -2595,8 +2589,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #endif
 	
 	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
-#ifdef _WIN32
-	// DW-830 In protocol A, we need to deal with already increased OOS no matter what the replication state is.
+#ifdef _WIN32 // DW-830 In protocol A, we need to deal with already increased OOS no matter what the replication state is.
 	if ((peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A)
 #else
 	if (peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T)
@@ -2615,9 +2608,8 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 		goto out;
 	}
 
-	if (digest_size && digest_out) 
+	if (digest_size && digest_out)
 #ifdef _WIN32
-		// _WIN32_V9_PATCH_2:JHKIM: changed about csum logic, required to verify again
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req, digest_out);
 #else
 		drbd_csum_bio(peer_device->connection->integrity_tfm, req->master_bio, digest_out);
@@ -2629,7 +2621,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 					bio_iovec(req->master_bio) BVD bv_len);
 		err = __send_command(peer_device->connection, device->vnr, P_WSAME, DATA_STREAM);
 #else 
-		//not support, we will consider this part logic later
+		//not support
 #endif
 	} else {
 		additional_size_command(peer_device->connection, DATA_STREAM, req->i.size);
@@ -2714,9 +2706,7 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 		drbd_csum_pages(peer_device->connection->integrity_tfm, peer_req->page_chain.head, p + 1);
 #endif
 	additional_size_command(peer_device->connection, DATA_STREAM, peer_req->i.size);
-#ifdef _WIN32
-    //DbgPrint("DRBD_TEST:drbd_send_block! drbd_send_block! cmd %d", cmd);
-#endif
+
 	err = __send_command(peer_device->connection,
 			     peer_device->device->vnr, cmd, DATA_STREAM);
 	if (!err)
@@ -3240,13 +3230,13 @@ void drbd_destroy_resource(struct kref *kref)
 	struct drbd_resource *resource = container_of(kref, struct drbd_resource, kref);
 
 	idr_destroy(&resource->devices);
-#ifndef _WIN32 // disabled current wdrbd v1.0 
+#ifndef _WIN32
 	free_cpumask_var(resource->cpu_mask);
 #endif
 	kfree(resource->name);
 	kref_debug_destroy(&resource->kref_debug);
 	kfree(resource);
-#ifndef _WIN32 // module_put disable
+#ifndef _WIN32
 	module_put(THIS_MODULE);
 #endif
 }
@@ -3450,19 +3440,19 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         {
             WDRBD_ERROR("DRBD_PANIC: No memory\n");
             rcu_read_unlock();
-            return; // ignore DV error
+            return;
         }
         device_list_p->device = device;
         list_add(&device_list_p->list, &device_list.list);
     }
 
     rcu_read_unlock();
-#if 0   // to escape shutdown mutex hang.kmpak
+#if 0   // to escape shutdown mutex hang.
     list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
     {
         PVOLUME_EXTENSION VolExt;
         VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-		// required to convert drbd_conf with drbd_connection. kmpak 20150806 
+		// required to convert drbd_conf with drbd_connection. 
 		extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
         
 		int ret = drbd_adm_down_from_engine(device_list_p->device->resource);
@@ -3539,7 +3529,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
 		put_ldev(device);
 	}
 #ifdef _WIN32_SEND_BUFFING 
-#if 0	// JHKIM: NET_CONGESTED test
+#if 0
     if (test_bit(NET_CONGESTED, &mdev->tconn->flags)) {
         reason = 'n';
     }
@@ -3638,7 +3628,7 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
 		if (connection->send_buffer[i].page) {
-#ifndef _WIN32 // JHKIM: we should verify to call __free_page()
+#ifndef _WIN32
 			put_page(connection->send_buffer[i].page);
 #endif
 			connection->send_buffer[i].page = NULL;
@@ -3955,7 +3945,7 @@ fail:
 void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_free_op op)
 {
 #ifdef _WIN32
-	// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. required to refactoring about base, pos field 
+	// redefine struct drbd_tcp_transport, buffer. required to refactoring about base, pos field 
 	struct buffer {
 		void *base;
 		void *pos;
@@ -3987,9 +3977,9 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 	mutex_lock(&connection->mutex[CONTROL_STREAM]);
 
 #ifdef	_WIN32_SEND_BUFFING
-	// JHKIM: caution! bab is freed at ops->free (sock_release). and so, send-buffering threads must be terminated prior to ops->free.  
-	// kmpak. CONNECTION_RESET is occured at this point by stop_send_buffring 
-	//connection->transport.ops->stop_send_buffring(&connection->transport);
+	// bab is freed at ops->free (sock_release). and so, send-buffering threads must be terminated prior to ops->free.  
+	// CONNECTION_RESET is occured at this point by stop_send_buffring 
+	// connection->transport.ops->stop_send_buffring(&connection->transport);
 #endif
 	connection->transport.ops->free(&connection->transport, op);
 #ifndef _WIN32
@@ -5174,7 +5164,7 @@ static u64 initial_resync_nodes(struct drbd_device *device)
 	return nodes;
 }
 
-u64 drbd_weak_nodes_device(struct drbd_device *device) 
+u64 drbd_weak_nodes_device(struct drbd_device *device)
 {
 	struct drbd_peer_device *peer_device;
 	u64 not_weak = NODE_MASK(device->resource->res_opts.node_id);
@@ -5918,26 +5908,10 @@ void lock_all_resources(void)
 	int __maybe_unused i = 0;
 
 	mutex_lock(&resources_mutex);
-	// kmpak 20150729 local_irq_disable, for_each_resource, spin_lock_nested are newer    
-	// [choi] spin_lock_nested() -> spin_lock_irq() ported
-	/*
-	126 static inline void __raw_spin_lock_irq(raw_spinlock_t *lock)
-	127 {
-	128         local_irq_disable();
-	129         preempt_disable();
-	130         spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
-	131         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
-	132 }
-	358 void __lockfunc _raw_spin_lock_nested(raw_spinlock_t *lock, int subclass)
-	359 {
-	360         preempt_disable();
-	361         spin_acquire(&lock->dep_map, subclass, 0, _RET_IP_);
-	362         LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
-	363 }
-	*/
+
 
 	// [DW-759] irq disable is ported to continue DISPATCH_LEVEL by global lock
-	local_irq_disable();    
+	local_irq_disable();
 	for_each_resource(resource, &drbd_resources)
 #ifdef _WIN32
 		spin_lock_irq(&resource->req_lock);
@@ -5954,7 +5928,7 @@ void unlock_all_resources(void)
 #ifdef _WIN32
 		spin_unlock_irq(&resource->req_lock);
 #else
-		spin_unlock(&resource->req_lock);	
+		spin_unlock(&resource->req_lock);
 #endif
 	// [DW-759] irq enable. return to PASSIVE_LEVEL
 	local_irq_enable();

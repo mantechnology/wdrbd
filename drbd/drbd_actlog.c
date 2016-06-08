@@ -135,7 +135,7 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 			device->disk_state[NOW] <= D_FAILED,
 			HZ * 10);
 #endif
-	if (t == 0) 
+	if (t == 0)
 		drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?\n");
 
 	if (r)
@@ -237,7 +237,6 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #else
 	else {
 		if (submit_bio(rw, bio)) {
-			// error
 			bio_endio(bio, -EIO);
 		}
 	}
@@ -267,7 +266,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	}
 #endif
 #ifdef _WIN32
-	return err; // _WIN32_V9_PATCH_2: JHKIM: required to analyze that do not call bio_put.
+	return err;
 #endif
  out:
 	bio_put(bio);

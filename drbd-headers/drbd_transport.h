@@ -151,7 +151,7 @@ struct drbd_transport_stats {
 
 /* argument to ->recv_pages() */
 struct drbd_page_chain_head {
-	struct page *head; // WIN32_V9:JHKIM: caution: used by void pointer to memory which alloccated by malloc()
+	struct page *head; // WIN32:used by void pointer to memory which alloccated by malloc()
 	unsigned int nr_pages;
 };
 
