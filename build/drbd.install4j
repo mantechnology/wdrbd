@@ -910,26 +910,47 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="Install drbdService" id="1931" customizedId="" beanClass="com.install4j.runtime.beans.actions.services.InstallServiceAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
+              <action name="Install drbdService" id="2016" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.services.InstallServiceAction">
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="1">
+                          <void index="0">
+                            <string>/i</string>
+                          </void>
+                        </array>
+                      </void>
                       <void property="executable">
                         <object class="java.io.File">
                           <string>bin/drbdService.exe</string>
                         </object>
                       </void>
-                      <void property="interactive">
-                        <boolean>true</boolean>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
                       </void>
-                      <void property="launcherId">
-                        <null />
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="" id="2017" customizedId="" beanClass="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction">
+                      <void property="keyName">
+                        <string>SYSTEM\CurrentControlSet\Services\drbdService</string>
                       </void>
-                      <void property="serviceName">
-                        <string>drbdService</string>
+                      <void property="registryRoot">
+                        <object class="com.install4j.api.windows.RegistryRoot" field="HKEY_LOCAL_MACHINE" />
                       </void>
-                      <void property="windowsDependencies">
+                      <void property="value">
                         <string>nsi</string>
+                      </void>
+                      <void property="valueName">
+                        <string>DependOnService</string>
                       </void>
                     </object>
                   </java>
