@@ -1155,6 +1155,29 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
+              <action name="Delete a key in the Windows registry" id="2018" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>final String keyName = "SYSTEM\\CurrentControlSet\\services\\eventlog\\Application\\drbdService";
+
+if (WinRegistry.keyExists(RegistryRoot.HKEY_LOCAL_MACHINE, keyName, RegistryView.BIT32))
+{
+    WinRegistry.deleteKey(RegistryRoot.HKEY_LOCAL_MACHINE, keyName, false, RegistryView.BIT32);
+}
+
+return true;</string>
+                          </void>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
               <action name="uninstall drbd engine" id="131" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
