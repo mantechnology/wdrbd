@@ -1276,6 +1276,9 @@ extern void list_del_rcu(struct list_head *entry);
 #define rcu_assign_pointer(p, v) 	__rcu_assign_pointer((p), (v))
 #define list_next_rcu(list)		(*((struct list_head **)(&(list)->next)))
 
+
+
+
 extern EX_SPIN_LOCK g_rcuLock;
 
 #define rcu_read_lock() \
@@ -1297,7 +1300,6 @@ extern EX_SPIN_LOCK g_rcuLock;
 #define synchronize_rcu() \
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
-
 
 extern void local_irq_disable();
 extern void local_irq_enable();

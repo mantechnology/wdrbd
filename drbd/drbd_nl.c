@@ -5175,7 +5175,13 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		resource_filter = find_cfg_context_attr(cb->nlh, T_ctx_resource_name);
 		if (resource_filter) {
 			retcode = ERR_RES_NOT_KNOWN;
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_unlock();
+#endif
 			resource = drbd_find_resource(nla_data(resource_filter));
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_lock();
+#endif
 			if (!resource)
 				goto put_result;
 			kref_debug_get(&resource->kref_debug, 7);
@@ -5242,8 +5248,13 @@ put_result:
 		err = device_info_to_skb(skb, &device_info, !capable(CAP_SYS_ADMIN));
 		if (err)
 			goto out;
-
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+		rcu_read_unlock();
+#endif
 		device_to_statistics(&device_statistics, device);
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+		rcu_read_lock();
+#endif
 		err = device_statistics_to_skb(skb, &device_statistics, !capable(CAP_SYS_ADMIN));
 		if (err)
 			goto out;
@@ -5314,7 +5325,13 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 		resource_filter = find_cfg_context_attr(cb->nlh, T_ctx_resource_name);
 		if (resource_filter) {
 			retcode = ERR_RES_NOT_KNOWN;
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_unlock();
+#endif
 			resource = drbd_find_resource(nla_data(resource_filter));
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_lock();
+#endif
 			if (!resource)
 				goto put_result;
 			kref_debug_get(&resource->kref_debug, 6);
@@ -5513,7 +5530,13 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		resource_filter = find_cfg_context_attr(cb->nlh, T_ctx_resource_name);
 		if (resource_filter) {
 			retcode = ERR_RES_NOT_KNOWN;
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_unlock();
+#endif
 			resource = drbd_find_resource(nla_data(resource_filter));
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+			rcu_read_lock();
+#endif
 			if (!resource)
 				goto put_result;
 
@@ -5585,7 +5608,13 @@ put_result:
 		struct peer_device_conf *peer_device_conf;
 
 		dh->minor = minor;
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+		rcu_read_unlock();
+#endif
 		err = nla_put_drbd_cfg_context(skb, device->resource, peer_device->connection, device, NULL);
+#ifdef _WIN32 // DW-900 to avoid the recursive lock
+		rcu_read_lock();
+#endif
 		if (err)
 			goto out;
 		peer_device_to_info(&peer_device_info, peer_device);
