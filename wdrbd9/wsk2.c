@@ -2,10 +2,12 @@
 #include "drbd_windows.h"
 #include "wsk2.h"
 
+extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+
 WSK_REGISTRATION			g_WskRegistration;
 static WSK_PROVIDER_NPI		g_WskProvider;
 static WSK_CLIENT_DISPATCH	g_WskDispatch = { MAKE_WSK_VERSION(1, 0), 0, NULL };
-LONG						g_SocketsState = DEINITIALIZED; // for  _WIN32_LOGLINK	
+LONG						g_SocketsState = DEINITIALIZED;
 
 NTSTATUS
 NTAPI CompletionRoutine(
@@ -55,6 +57,7 @@ __out PKEVENT	CompletionEvent
 
 	return;
 }
+
 NTSTATUS
 InitWskBuffer(
 	__in  PVOID		Buffer,
@@ -408,10 +411,9 @@ __in enum			drbd_stream stream
 {
 	KEVENT		CompletionEvent = { 0 };
 	WSK_BUF		WskBuffer = { 0 };
-	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !pIrp || ((int)BufferSize <= 0))
 		return SOCKET_ERROR;
 		
@@ -462,7 +464,6 @@ __in enum			drbd_stream stream
 }
 #endif
 
-extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 
 LONG
 NTAPI
@@ -482,8 +483,6 @@ Send(
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
-	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); 
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -532,17 +531,9 @@ Send(
 #ifndef _WIN32_SEND_BUFFING 
 			// in send-buffering, Netlink , call_usermodehelper are distinguished to SendLocal
 			// KILL event is only used in send-buffering thread while send block. 
-			// WIN32_V9_REFACTO_: JHKIM: required to refactoring that input param, log message are simplized.
+			// WIN32_V9_REFACTO_:required to refactoring that input param, log message are simplized.
 #else
-			if (send_buf_kill_event)
-			{
-				//waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: kill request method. required to refactoring by thread->has_sig_event
-				//wObjCount = 2;
-			}
-			else
-			{
-				// sndbuf_size = 0 case!
-			}
+
 #endif
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
@@ -625,7 +616,6 @@ Send(
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
 
-	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); 
 	return BytesSent;
 }
 
@@ -644,8 +634,6 @@ SendLocal(
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
-	//DbgPrint("DRBD_TEST: SendLocal!! (%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // 
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -753,7 +741,7 @@ SendLocal(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); 
+
 	return BytesSent;
 }
 
@@ -823,8 +811,6 @@ LONG NTAPI Receive(
     struct      task_struct *thread = current;
     PVOID       waitObjects[2];
     int         wObjCount = 1;
-
-	//DbgPrint("DRBD_TEST:(%s)Rx: sz=%d to=%d\n", current->comm, BufferSize, Timeout);
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
@@ -943,7 +929,7 @@ LONG NTAPI Receive(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	//DbgPrint("DRBD_TEST:(%s)Rx: done. ret=%d\n", current->comm, BytesReceived); 
+
 	return BytesReceived;
 }
 
@@ -1113,7 +1099,7 @@ Accept(
 				break;
 
 			default:
-				WDRBD_ERROR("Unexpected Error Status=0x%x\n", Status); // EVENT_LOG!
+				WDRBD_ERROR("Unexpected Error Status=0x%x\n", Status);
 				break;
 		}
 	}

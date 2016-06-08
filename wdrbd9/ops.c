@@ -303,7 +303,7 @@ IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	{
 		int i = 0;
-		for (i = 0; i < 5; i++) // TEST!!!
+		for (i = 0; i < 5; i++) 
 		{
 			if (deviceExtension->WorkThreadInfo[i].Active == FALSE)
 			{
@@ -409,16 +409,11 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     if (pvext->WorkThreadInfo.Active)
     {
-        // 볼륨 io 스레드가 active = TRUE 상태에서는 access 허용하지 않는다.
-        // 그래서 리소스가 up 되어 있는 경우에는 이 명령을 내리더라도 실패하게끔 한다.
 		WDRBD_ERROR("%wZ: volume is attached by wdrbd, so it's impossible to access\n", &pvext->MountPoint);
         status = STATUS_VOLUME_DISMOUNTED;
         goto out;
     }
 
-    // drbdadm down 명령을 하면 볼륨 io 스레드도 종료시키도록 수정할 필요가 있고
-    // 이후에 mount volume을 시도하면
-    // access 접근이 가능하도록 VOLUME_EXTENSION의 Active를 FALSE 시키도록 한다.
     pvext->Active = FALSE;
 
 out:

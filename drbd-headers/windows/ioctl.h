@@ -35,7 +35,7 @@
 
 #define IOCTL_MVOL_SET_LOGLV_MIN			CTL_CODE(MVOL_TYPE, 46, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-#define	MAXDEVICENAME			256     // kmpak 1024 -> 256
+#define	MAXDEVICENAME			256     //  1024 -> 256
 #define MAX_PROC_BUF			2048		
 
 //
@@ -47,7 +47,7 @@ typedef struct _MVOL_VOLUME_INFO
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];		// src device
 	ULONG				PeerIp;
 	USHORT				PeerPort;
-	CHAR				Seq[MAX_PROC_BUF]; // DRBD_CHECK_DW130: check enough? and chaneg to dynamically
+	CHAR				Seq[MAX_PROC_BUF]; // DRBD_DW130: check enough? and chaneg to dynamically
 } MVOL_VOLUME_INFO, *PMVOL_VOLUME_INFO;
 
 typedef struct _MVOL_COUNT_INFO

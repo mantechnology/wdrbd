@@ -32,7 +32,6 @@ mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-
 NTSTATUS
 mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
@@ -113,7 +112,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	{
 		int i = 0;
-		for (i = 0; i < 5; i++) // TEST!!!
+		for (i = 0; i < 5; i++) 
 		{
 			if (deviceExtension->WorkThreadInfo[i].Active)
 			{
@@ -132,7 +131,6 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 	if (VolumeExtension->dev) {
-
 		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
 		if (device) {
 
@@ -317,7 +315,6 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 					WDRBD_ERROR("HOOKER malloc fail!!!\n");
 					goto fail;
 				}
-				//memcpy(newbuf, buffer, slice); // for write
 			}
 			else
 			{
@@ -348,7 +345,6 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 					WDRBD_ERROR("HOOKER rest malloc fail!!\n");
 					goto fail;
 				}
-				//memcpy(newbuf, buffer, rest); // for write
 			}
 			else
 			{
@@ -391,7 +387,7 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
 
     if (KeGetCurrentIrql() > APC_LEVEL)
     {
-        WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d) #########\n", KeGetCurrentIrql());
+        WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d)\n", KeGetCurrentIrql());
     }
 
     newIrp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_LENGTH_INFO,
@@ -641,7 +637,6 @@ void _printk(const char * func, const char * format, ...)
 	int length = strlen(buf);
 	if (length > MAX_ELOG_BUF)
 	{
-		// DbgPrint("DRBD_TEST: unexpected err length=%d", length); // may be crashed already!!! but 512 is big enough
 		length = MAX_ELOG_BUF - 1;
 		buf[MAX_ELOG_BUF - 1] = 0;
 	}
@@ -665,11 +660,8 @@ void _printk(const char * func, const char * format, ...)
 	
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
-
-	// _WIN32_V9:JHKIM: next two line will be removed later.
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #else
 	// to write system event log.
@@ -916,7 +908,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 
 		/* Write the packet */
 		IoWriteErrorLogEntry(l_pErrorLogEntry);
-		// DbgPrint("DRBD_TEST: one line l_Size=%d", l_Size); // _WIN32_MULTILINE_LOG test!
+
 		return l_Size;	// _WIN32_MULTILINE_LOG test!
 
 	} /* OK */

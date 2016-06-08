@@ -8,7 +8,6 @@
 NTSTATUS
 mvolSendToNextDriver( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp );
 
-
 //
 // sub.c
 //
@@ -30,7 +29,6 @@ mvolLogError( PDEVICE_OBJECT DeviceObject, ULONG UniqID,
 
 NTSTATUS
 IOCTL_SetIOFlag(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG Val, BOOLEAN On);
-
 
 //
 // util.c
@@ -56,7 +54,6 @@ VOID
 COUNT_LOCK( PVOLUME_EXTENSION VolumeExtension );
 VOID
 COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension );
-
 
 //
 // ops.c

@@ -106,7 +106,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
-#ifdef _WIN32 // DV
+#ifdef _WIN32
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree(req->req_databuf);
@@ -118,7 +118,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 #endif
 
 #ifdef _WIN32
-	req->private_bio->bio_databuf = req->req_databuf; // fix bugcheck DW-776 (private bio's buffer is invalid when memory-overflow occured)
+	req->private_bio->bio_databuf = req->req_databuf; // DW-776 (private bio's buffer is invalid when memory-overflow occured)
 #endif
 
 	kref_get(&device->kref);
@@ -179,7 +179,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
     {
         if (req->req_databuf)
         {
-            // _WIN32_V9_DW596: required to verify to free req_databuf at this point
+            // DW-596: required to verify to free req_databuf at this point
             kfree(req->req_databuf);
         }
 
@@ -399,7 +399,7 @@ void drbd_req_destroy(struct kref *kref)
 	 *   kref_put(&req->kref, drbd_req_destroy)
 	 * without recursing into the destructor.
 	 */
-	if(destroy_next) {
+	if (destroy_next) {
 		req = destroy_next;
 		if (atomic_dec_and_test(&req->kref.refcount))
 			goto tail_recursion;
@@ -1349,7 +1349,7 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 
 	if (device->disk_state[NOW] == D_UP_TO_DATE)
 		return true;
-#ifdef _WIN32	// FIXED : kmpak. WDRBD FsctlLockVolume fail problem. DW-643
+#ifdef _WIN32 // DW-643 FsctlLockVolume fail problem.
 	else if (device->disk_state[NOW] == D_OUTDATED)
 		return true;
 #endif
@@ -1390,7 +1390,7 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 	switch (rbm) {
 	case RB_CONGESTED_REMOTE:
 #ifdef _WIN32
-	// WDRBD: not support data socket congestion
+	// not support
         return false;
 #else
 		bdi = &device->ldev->backing_bdev->bd_disk->queue->backing_dev_info;
@@ -1447,7 +1447,7 @@ static void complete_conflicting_writes(struct drbd_request *req)
 			break;
 
 		/* Indicate to wake up device->misc_wait on progress.  */
-		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE); 
+		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE);
 		i->waiting = true;
 		spin_unlock_irq(&device->resource->req_lock);
 #ifdef _WIN32
@@ -1811,7 +1811,7 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 
 	spin_lock_irq(&resource->req_lock);
 	/* In case the sender did not process it yet, raise the flag to
-	* have it followed with P_UNPLUG_REMOTE just after. */
+	 * have it followed with P_UNPLUG_REMOTE just after. */
 	req->rq_state[0] |= RQ_UNPLUG;
 	/* but also queue a generic unplug */
 	drbd_queue_unplug(req->device);
@@ -1824,7 +1824,7 @@ static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 {
 #ifndef _WIN32
 	/* A lot of text to say
-	* return (struct drbd_plug_cb*)blk_check_plugged(); */
+	 * return (struct drbd_plug_cb*)blk_check_plugged(); */
 	struct drbd_plug_cb *plug;
 	struct blk_plug_cb *cb = blk_check_plugged(drbd_unplug, resource, sizeof(*plug));
 
@@ -1841,7 +1841,7 @@ static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req
 #ifndef _WIN32
 	struct drbd_request *tmp = plug->most_recent_req;
 	/* Will be sent to some peer.
-	* Remember to tag it with UNPLUG_REMOTE on unplug */
+	 * Remember to tag it with UNPLUG_REMOTE on unplug */
 	kref_get(&req->kref);
 	plug->most_recent_req = req;
 	if (tmp)
@@ -1937,7 +1937,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		}
 		if (!drbd_process_write_request(req))
 			no_remote = true;
-#ifdef _WIN32  //PATCHED_BY_MANTECH from lars.ellenberg@linbit.com 2016.05.03
+#ifdef _WIN32 // DW- from lars.ellenberg@linbit.com 2016.05.03
 		wake_all_senders(resource);
 #else
 		else 

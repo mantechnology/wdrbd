@@ -12,7 +12,7 @@
 static LIST_HEAD(transport_classes);
 #ifdef _WIN32
 extern int __init dtt_initialize(void);
-KSPIN_LOCK	transport_classes_lock;	//ported spinlock
+KSPIN_LOCK	transport_classes_lock;
 #else
 static DECLARE_RWSEM(transport_classes_lock);
 #endif
@@ -126,7 +126,6 @@ void drbd_print_transports_loaded(struct seq_file *seq)
 	list_for_each_entry(tc, &transport_classes, list) {
 #endif
 #ifdef _WIN32
-		// print only tc->name
 		seq_printf(seq, " %s ", tc->name);
 #else
 		seq_printf(seq, " %s (%s)", tc->name,
@@ -341,14 +340,12 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 #endif
 
 #ifdef _WIN32
-			// WDRBD_TRACE_CO
 			char sbuf[128], dbuf[128];
 			if (path->peer_addr.ss_family == AF_INET6) {
 				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip6(sbuf, (struct sockaddr_in6*)&path->peer_addr), get_ip6(dbuf, (struct sockaddr_in6*)addr));
 			} else {
 				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&path->peer_addr), get_ip4(dbuf, (struct sockaddr_in*)addr));
 			}
-			// WDRBD_TRACE_CO
 #endif
 			if (addr_equal(&path->peer_addr, addr))
 				return waiter;
@@ -419,7 +416,7 @@ void drbd_path_event(struct drbd_transport *transport, struct drbd_path *path)
 	notify_path(connection, path, NOTIFY_CHANGE);
 }
 
-#ifndef _WIN32 // 
+#ifndef _WIN32
 /* Network transport abstractions */
 EXPORT_SYMBOL_GPL(drbd_register_transport_class);
 EXPORT_SYMBOL_GPL(drbd_unregister_transport_class);

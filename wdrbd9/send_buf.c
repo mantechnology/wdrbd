@@ -12,7 +12,7 @@
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
 
-#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB //(64*1024) // 64K // (1024*1024*10) // 10MB
+#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
@@ -87,7 +87,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 	unsigned int remain;
 	int ringbuf_size = 0;
 	LARGE_INTEGER	Interval;
-	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative // wait 20ms relative
+	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative
 
 	EnterCriticalSection(&ring->cs);
 
@@ -101,12 +101,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 			int loop = 0;
 			for (loop = 0; loop < retry; loop++) {
 				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-				//KTIMER ktimer;
-				//KeInitializeTimer(&ktimer);
-				//KeSetTimerEx(&ktimer, Interval, 0, NULL);
-				//KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
 
-				// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 
 				struct buffer {
 					void *base;
 					void *pos;
@@ -142,7 +137,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 	}
 
 $GO_BUFFERING:
-	////////////////////////////////////////////////////////////////////////////////
+
 	remain = (ring->read_pos - ring->write_pos - 1 + ring->length) % ring->length;
 	if (remain < len) {
 		len = remain;
@@ -202,18 +197,14 @@ unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigne
 	ring->read_pos += tx_sz;
 	ring->read_pos %= ring->length;
 	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
-
 	*pLen = tx_sz;
-
 	LeaveCriticalSection(&ring->cs);
 	
 	return 1;
-
 }
 
 int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
 {
-	// struct drbd_connection *connection = container_of(transport, struct drbd_connection, transport);
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
 
@@ -230,7 +221,6 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
 	return size;
-
 }
 
 #ifdef _WSK_IRP_REUSE
@@ -295,6 +285,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 
 	//KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 	//WDRBD_INFO("start send_buf_thread\n");
+
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
 	pTime = &nWaitTime;

@@ -27,7 +27,7 @@
 
 #ifdef _WIN32
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"
 #include "idr.h"
 #else
 #ifndef TEST  // to test in user space...

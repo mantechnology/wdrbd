@@ -34,7 +34,6 @@ int g_handler_retry;
 
 WCHAR g_ver[64];
 
-/// SEO: from idr.c of LINUX 3.15
 #define MAX_IDR_SHIFT		(sizeof(int) * 8 - 1)
 #define MAX_IDR_BIT		(1U << MAX_IDR_SHIFT)
 
@@ -185,8 +184,6 @@ found_first:
 found_middle:
 	return result + __ffs(tmp);
 }
-
-
 
 const char _zb_findmap [] = {
     0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4,
@@ -381,32 +378,12 @@ void * kcalloc(int size, int count, int flag, ULONG Tag)
 void * kzalloc(int size, int flag, ULONG Tag)
 {
 	void *mem;
-    static int fail_count = 0; // DV
+    static int fail_count = 0;
 
-retry: // DV
 	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
 	if (!mem)
 	{
 		return NULL;
-        WDRBD_WARN("kzalloc: no memory! fail_count=%d\n", fail_count); 
-        // DV TEST시 빈도가 높으면 제거! 
-        // 현재 Win7 64에서 시험중 간헐적으로 출력되며 
-        // 출력이 되는 경우에는 3회 정도 연속 출력이 됨(한 번에 3회 실패를 연속적으로 발생시키는 듯) 
-        // 따라서 출력이 문제가 안됨으로 본격 DV 시험 전까지 유지
-
-        if (!(fail_count++ % 100)) // For DV TEST
-        {
-            WDRBD_ERROR("kzalloc: no memory! Retry! fail_count=%d\n", fail_count);
-            //EVENTLOG!!!
-            // DV: 09.24 현재 DV로 검출된 메모리 부족시 부적절한 대응로직은 
-            // DRBD_DV1으로 마킹된 2곳 이며 이 곳에서 반드시 메모리의 성공적인 할당을 원한다.
-            // 해당 2곳에서 실패를 대비한 로직을 보강하면 되지만 로직 구조상 오류 처리가 어려워 이 곳에서 단순 처리함.
-            // 이 방식이 부적절해 보이나 일단 이 방법으로 DV 시험을 회피하고 
-            // DV 를 통해 더 많은 메모리 부족 오류를 검출한 후에
-            // 문제되는 소스들을 변경하여 이 무한 룹 로직을 제거하는 것이 적절함.
-        }
-        // 고려사항: sleep 필요? 단일 cpu 인 경우 정상 동작확인
-        goto retry;
 	}
 
 	RtlZeroMemory(mem, size);
@@ -502,8 +479,8 @@ mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_
 	{
 		return 0;
 	}
-	p_pool->p_cache = pool_data; // 사용 측에서 캐시 크기를 참고하기 위함
-	p_pool->page_alloc = 0; // 페이지 단위로 할당여부 플래그
+	p_pool->p_cache = pool_data;
+	p_pool->page_alloc = 0;
 	return p_pool;
 }
 
@@ -514,9 +491,7 @@ mempool_t *mempool_create_page_pool(int min_nr, int order)
 		return 0;
 	}
 	p_pool->page_alloc = 1; 
-
 	ExInitializeNPagedLookasideList(&p_pool->pageLS, NULL, NULL, 0, sizeof(struct page), 'B8DW', 0);
-
 	ExInitializeNPagedLookasideList(&p_pool->page_addrLS, NULL, NULL, 0, PAGE_SIZE, 'C8DW', 0);
 	
 	return p_pool; 
@@ -565,7 +540,6 @@ void mempool_free(void *p, mempool_t *pool)
 {
 	if (pool->page_alloc) {
 		struct page* _page = (struct page*)p;	
-		//__free_page(p);
 		ExFreeToNPagedLookasideList (&pool->page_addrLS, _page->addr);
 		ExFreeToNPagedLookasideList (&pool->pageLS, _page);
 			
@@ -576,33 +550,9 @@ void mempool_free(void *p, mempool_t *pool)
 	return;
 }
 
-
-#ifndef _WIN32
-mempool_t *mempool_create_slab_pool(int min_nr, int order)
-{
-	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
-	if (!p_pool)
-	{
-		return 0;
-	}
-	p_pool->page_alloc = 1; 
-	return p_pool; 
-}
-
-void *mempool_alloc_slab(gfp_t gfp_mask, void *pool_data)
-{
-	return 1; // skip error!
-}
-
-void *mempool_free_slab(gfp_t gfp_mask, void *pool_data)
-{
-	return 1; // skip error!
-}
-#endif
-
 void mempool_destroy(void *p)
 {
-	
+
 }
 
 void kmem_cache_destroy(struct kmem_cache *s)
@@ -625,11 +575,7 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 	return p;
 }
 
-// _WIN32_V9
-// kmpak 이 부분은 linux 2.6.32 에서 가져왔다.
-// linux 3.x 이후에는 이부분 내용이 kref_sub로 옮겨가서 kref_sub에서 처리해주는데
-// drbd 9 오리지널에서는 linux 커널 버전별 차이를 맞춰주기 위해 kref_sub를 새로 정의해준다.
-// 하지만 wdrbd에서는 그럴 필요없이 kref_put 에서 처리해준다.
+// from  linux 2.6.32
 int kref_put(struct kref *kref, void (*release)(struct kref *kref))
 {
 #ifdef _WIN32
@@ -641,7 +587,7 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
         release(kref);
         return 1;
     }
-    return 0;// V9에서는 리턴을 사용함. 적절한 리턴값 확보 필요!
+    return 0;
 #else
 	kref_sub(kref, 1, release);
 #endif
@@ -666,7 +612,6 @@ struct request_queue *bdev_get_queue(struct block_device *bdev)
 	return NULL;
 }
 
-// bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
 struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
 	return NULL;
@@ -741,10 +686,9 @@ struct bio *bio_clone(struct bio * bio_src, int flag)
 	return bio;
 }
 
-
 int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned int offset)
 {
-	struct bio_vec *bvec = &bio->bi_io_vec[bio->bi_vcnt++]; //DRBD_DOC: 순차적 증가
+	struct bio_vec *bvec = &bio->bi_io_vec[bio->bi_vcnt++];
 		
 	if (bio->bi_vcnt > 1)
 	{
@@ -761,43 +705,6 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 }
 
 #include "drbd_int.h"
-
-#ifndef _WIN32 // JHKIM: 미사용, 추후 제거
-union drbd_state g_mask_null; 
-union drbd_state g_val_null;
-
-union drbd_state ns_mask(union drbd_state prev, int bitpos, int mask, int val)
-{
-	prev.i |= (mask << bitpos);
-	return prev;
-}
-
-union drbd_state ns_val(union drbd_state prev, int bitpos, int mask, int val)
-{
-	prev.i |= (val << bitpos);
-	return prev;
-}
-
-union drbd_state ns2_val1(struct drbd_conf *mdev, int bitpos, int mask, int s)
-{
-	union drbd_state __ns;
-	//__ns = drbd_read_state(mdev); // drbd_read_state 메소드 없어짐
-	__ns.i &= ~(mask << bitpos);
-	__ns.i |= (s << bitpos);
-	return __ns;
-}
-
-union drbd_state ns2_val2(struct drbd_conf *mdev, int bitpos1, int mask1, int s1, int bitpos2, int mask2, int s2)
-{
-	union drbd_state __ns;
-	//__ns = drbd_read_state(mdev); // drbd_read_state 메소드 없어짐
-	__ns.i &= ~(mask1 << bitpos1);
-	__ns.i |= (s1 << bitpos1);
-	__ns.i &= ~(mask2 << bitpos2);
-	__ns.i |= (s2 << bitpos2);
-	return __ns;
-}
-#endif
 
 long IS_ERR_OR_NULL(const void *ptr)
 {
@@ -876,14 +783,9 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 	}
 	else
 	{
-		// DRBD_DOC: wait cycle
 		nWaitTime = RtlConvertLongToLargeInteger((60) * (-1 * 10000000));
 	}
 	pTime = &nWaitTime;
-
-	//WDRBD_INFO("thread(%s) from(%s:%d): start. req timeout=%d(0x%x) nWaitTime=0x%llx(0x%x %d : 0x%x %d) with q=%s -------!!!!!!!\n",
-	//	current->comm, func, line, timeout, timeout, nWaitTime.QuadPart,  nWaitTime.HighPart, nWaitTime.HighPart, nWaitTime.LowPart, nWaitTime.LowPart, q ? q->eventName : "no-queue");
-
 	if ((q == NULL) || (q == (wait_queue_head_t *)SCHED_Q_INTERRUPTIBLE))
 	{
 		KTIMER ktimer;
@@ -912,7 +814,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 
             switch (status) {
             case STATUS_WAIT_0:
-                KeResetEvent(&q->wqh_event); // DW-105: 이벤트/폴링 혼용. 리셋으로 시그널 분실시 1ms 타임아웃으로 보상
+                KeResetEvent(&q->wqh_event); // DW-105: use event and polling both.
                 break;
 
             case STATUS_WAIT_1:
@@ -952,10 +854,10 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
     ExInterlockedInsertTailList(&queue->list_head, &wr->element, &queue->list_lock);
     KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
 #ifdef _WIN32
-    return TRUE; // queue work 방식이 Event 방식으로 구현되었기 때문에... 단순히 return TRUE 한다.
+    return TRUE;
 #endif
 }
-#ifdef _WIN32    // kmpak DW-561
+#ifdef _WIN32
 void run_singlethread_workqueue(struct workqueue_struct * wq)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -989,8 +891,6 @@ void run_singlethread_workqueue(struct workqueue_struct * wq)
     }
 }
 
-// kmpak 차후에는 이렇게 별도 wq 스레드 생성하는 것 보단
-// system wq 를 활용하는 것도 고려해볼 필요가 있음
 struct workqueue_struct *create_singlethread_workqueue(void * name)
 {
     struct workqueue_struct * wq = kzalloc(sizeof(struct workqueue_struct), 0, '31DW');
@@ -1052,7 +952,6 @@ NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG msTimeout)
 
 	nWaitTime.QuadPart = (-1 * 10000);
 	nWaitTime.QuadPart *= msTimeout;		// multiply timeout value separately to avoid overflow.
-	
 	status = KeWaitForMutexObject(&m->mtx, Executive, KernelMode, FALSE, &nWaitTime);
 
 	return status;
@@ -1067,7 +966,7 @@ NTSTATUS mutex_lock(struct mutex *m)
 __inline
 NTSTATUS mutex_lock_interruptible(struct mutex *m)
 {
-	return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, TRUE, NULL); //Alertable 인자가 TRUE
+	return KeWaitForMutexObject(&m->mtx, Executive, KernelMode, TRUE, NULL);
 }
 
 // Returns 1 if the mutex is locked, 0 if unlocked.
@@ -1098,8 +997,6 @@ void mutex_unlock(struct mutex *m)
 	KeReleaseMutex(&m->mtx, FALSE);
 }
 
-#ifdef _WIN32
-
 void sema_init(struct semaphore *s, int limit)
 {
     KeInitializeSemaphore(&s->sem, limit, limit);    
@@ -1108,7 +1005,6 @@ void sema_init(struct semaphore *s, int limit)
 
 void down(struct semaphore *s)
 {
-	// mutex/spin lock 으로 대체 가능할 듯. -> CHOI : KSEMAPHORE 사용
     WDRBD_TRACE_SEM("KeWaitForSingleObject before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
     KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, NULL);
     WDRBD_TRACE_SEM("KeWaitForSingleObject after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
@@ -1121,6 +1017,7 @@ void down(struct semaphore *s)
   * Try to acquire the semaphore atomically.  Returns 0 if the semaphore has
   * been acquired successfully or 1 if it it cannot be acquired.
   */
+
 int down_trylock(struct semaphore *s)
 {
     LARGE_INTEGER Timeout;
@@ -1140,7 +1037,6 @@ int down_trylock(struct semaphore *s)
 
 void up(struct semaphore *s)
 {
-    // mutex/spin lock 으로 대체 가능할 듯. -> CHOI : KSEMAPHORE 사용
     if (KeReadStateSemaphore(&s->sem) < s->sem.Limit)
     {
         WDRBD_TRACE_SEM("KeReleaseSemaphore before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
@@ -1149,16 +1045,6 @@ void up(struct semaphore *s)
     }
 }
 
-/*
-46 void __sched down_write(struct rw_semaphore *sem)
-47 {
-48         might_sleep();
-49         rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
-50
-51         LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
-52         rwsem_set_owner(sem);
-53 }
-*/
 KIRQL du_OldIrql;
 
 void downup_rwlock_init(KSPIN_LOCK* lock)
@@ -1166,38 +1052,27 @@ void downup_rwlock_init(KSPIN_LOCK* lock)
 	KeInitializeSpinLock(lock);
 }
 
-//void down_write(struct semaphore *sem) // rw_semaphore *sem)
 KIRQL down_write(KSPIN_LOCK* lock)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
 	return KeAcquireSpinLock(lock, &du_OldIrql);
 }
 
-//void up_write(struct semaphore *sem) // rw_semaphore *sem)
 void up_write(KSPIN_LOCK* lock)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
 	KeReleaseSpinLock(lock, du_OldIrql);
 	return;
 }
 
-//void down_read(struct semaphore *sem) // rw_semaphore *sem)
 KIRQL down_read(KSPIN_LOCK* lock)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
 	return KeAcquireSpinLock(lock, &du_OldIrql);
 }
 
-//void up_read(struct semaphore *sem) // rw_semaphore *sem)
 void up_read(KSPIN_LOCK* lock)
 {
-	// mutex/spin lock 으로 대체 가능할 듯.
 	KeReleaseSpinLock(lock, du_OldIrql);
 	return;
 }
-
-#endif
-
 
 void spin_lock_init(spinlock_t *lock)
 {
@@ -1218,6 +1093,7 @@ void releaseSpinLock(KSPIN_LOCK *lock, KIRQL flags)
 
 // DW-903 protect lock recursion
 // if current thread equal lock owner thread, just increase refcnt
+
 long _spin_lock_irqsave(spinlock_t *lock)
 {
 	KIRQL	oldIrql = 0;
@@ -1244,6 +1120,7 @@ void spin_unlock(spinlock_t *lock)
 
 // DW-903 protect lock recursion
 // if current thread equal lock owner thread, just increase refcnt
+
 void spin_lock_irq(spinlock_t *lock)
 {
 	PKTHREAD curthread = KeGetCurrentThread();
@@ -1258,6 +1135,7 @@ void spin_lock_irq(spinlock_t *lock)
 
 // fisrt, decrease refcnt
 // If refcnt is 0, clear OwnerThread and release lock
+
 void spin_unlock_irq(spinlock_t *lock)
 {
 	InterlockedDecrement(&lock->Refcnt);
@@ -1268,6 +1146,7 @@ void spin_unlock_irq(spinlock_t *lock)
 }
 // fisrt, decrease refcnt
 // If refcnt is 0, clear OwnerThread and release lock
+
 void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 {
 	InterlockedDecrement(&lock->Refcnt);
@@ -1277,7 +1156,6 @@ void spin_unlock_irqrestore(spinlock_t *lock, long flags)
 	}
 }
 
-#ifdef _WIN32
 // DW-903 protect lock recursion
 // if current thread equal lock owner thread, just increase refcnt
 void spin_lock_bh(spinlock_t *lock)
@@ -1321,19 +1199,7 @@ BOOLEAN spin_trylock(spinlock_t *lock)
 	spin_lock(lock);
 	return TRUE;
 }
-#endif
 
-
-int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,  sector_t *error_sector)
-{
-	// DRBD_UPGRADE: IRP_MJ_FLUSH_BUFFERS
-    // IOCTL_VOLSNAP_FLUSH_AND_HOLD_WRITES?
-	// bdev q에 있는 bio 를 플러시 함! submit_bio(WRITE_FLUSH, bio);
-    // Windows 적용 가능성 확인
-	return 0;
-}
-
-#ifdef _WIN32
 ULONG get_random_ulong(PULONG seed)
 {
 	LARGE_INTEGER Tick;
@@ -1344,8 +1210,6 @@ ULONG get_random_ulong(PULONG seed)
 
 	return (Tick.LowPart + *seed);
 }
-#endif
-
 
 void get_random_bytes(void *buf, int nbytes)
 {
@@ -1355,37 +1219,18 @@ void get_random_bytes(void *buf, int nbytes)
 
     do
     {
-#ifdef _WIN32
 		rn = get_random_ulong(&rn);
-#else // DW-667
-		rn = RtlRandomEx(&rn);
-#endif
         length = (4 > nbytes) ? nbytes : 4;
         memcpy(target, (UCHAR *)&rn, length);
         nbytes -= length;
         target += length;
         
     } while (nbytes);
-
-#if 0
-    LARGE_INTEGER p = KeQueryPerformanceCounter(NULL);
-	LARGE_INTEGER random;
-
-	random.LowPart = p.LowPart ^ (ULONG) p.HighPart;
-	p = KeQueryPerformanceCounter(NULL);
-	random.HighPart = p.LowPart ^ (ULONG) p.HighPart;
-	if (nbytes > 8)
-		nbytes = 8; 
-
-	memcpy(buf, (char*) &random.HighPart, nbytes);
-
-	//DRBD_DOC: http://www.osronline.com/showThread.cfm?link=51429
-#endif
 }
 
 unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm)
 {
-	return 4; // DRBD_DOC: 4byte fixed
+	return 4; // 4byte in constant
 }
 
 int page_count(struct page *page)
@@ -1402,10 +1247,6 @@ void init_timer(struct timer_list *t)
 #endif
 }
 
-#ifdef _WIN32
-// kmpak 20150824
-// lock dependency에 따른 작업을 위해 key 값이 존재하나 아직 이것을
-// 활용하진 못하겠다. key 외에 나머지는 timer init 시켜준다.
 void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
@@ -1415,7 +1256,6 @@ void init_timer_key(struct timer_list *timer, const char *name,
     strcpy(timer->name, name);
 #endif
 }
-#endif
 
 void add_timer(struct timer_list *t)
 {
@@ -1425,9 +1265,7 @@ void add_timer(struct timer_list *t)
 void del_timer(struct timer_list *t)
 {
 	KeCancelTimer(&t->ktimer);
-#ifdef _WIN32
     t->expires = 0;
-#endif
 }
 
 int del_timer_sync(struct timer_list *t)
@@ -1480,11 +1318,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     if (current_milisec >= expires)
     {
-#ifdef _WIN32
-		nWaitTime.QuadPart = -1; // WIn32_CHECK: JHKIM: 양수일 경우 정상동작여부 재확인
-#else
-        nWaitTime.LowPart = 1; // V8
-#endif
+		nWaitTime.QuadPart = -1;
     }
 	else
 	{
@@ -1645,7 +1479,6 @@ void del_gendisk(struct gendisk *disk)
 
 	if (bab)
 	{
-		//WDRBD_WARN("Socket(%s) bab free\n", sock->name);
 		if (bab->static_big_buf)
 		{
 			kfree(bab->static_big_buf);
@@ -1791,7 +1624,6 @@ void flush_signals(struct task_struct *task)
 
 void *crypto_alloc_tfm(char *name, u32 mask)
 {
-    // DRBD_DOC: CRYPTO 개선. sha1, md5
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
 	return (void *)1;
 }
@@ -1873,7 +1705,7 @@ int generic_make_request(struct bio *bio)
 	if( IRP_MJ_WRITE == io) {
 		pIoNextStackLocation = IoGetNextIrpStackLocation (newIrp);
 		if(bio->MasterIrpStackFlags) { 
-			//copy original Local I/O's Flags for private_bio instead of drbd's write_ordering, because of performance issue. (2016.03.23 sekim)
+			//copy original Local I/O's Flags for private_bio instead of drbd's write_ordering, because of performance issue. (2016.03.23)
 			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
 		} else { 
 			//apply meta I/O's write_ordering
@@ -2066,12 +1898,6 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
  }
 
-/**
-    blk_alloc_queue와 blk_cleanup_queue는 리눅스 커널 코드로
-    DRBD에 body가 있지 않음.
-    blk_alloc_queue가 ExAllocatePool로 대체했기 때문에
-    blk_cleanup_queue도 ExFreePool로 대체함.
-*/
 void blk_cleanup_queue(struct request_queue *q)
 {
 	kfree(q);
@@ -2090,17 +1916,16 @@ void put_disk(struct gendisk *disk)
 
 void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn)
 {
-	// 방식이 다름
+	// not support
 }
 
 void blk_queue_flush(struct request_queue *q, unsigned int flush)
 {
 }
 
-// bio_alloc_bioset 는 리눅스 커널 API. 이 구조체는 코드 유지를 위해서 존재함
 struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 {
-	// 방식이 다름
+	// not support
 	return NULL;
 }
 
@@ -2438,8 +2263,7 @@ gendisk_failed:
 }
 
 /**
-* @brief    argument로 들어온 minor 값으로 letter를 구한 후 
-*   registry 등록이 되어 있는지 유무를 return 한다.
+* @brief  get letter from  minor and than return registry status 
 */
 BOOLEAN do_add_minor(unsigned int minor)
 {
@@ -2556,7 +2380,7 @@ cleanup:
 /**
  * @brief
  *	Compare link string between unix and windows styles
- *	consider
+ *	consider:
  *	- '/' equal '\'
  *	- ignore if last character is '/', '\', ':'
  *	- '?' equal '\' in case windows  
@@ -2673,7 +2497,6 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	}
 
 	struct block_device * dev = blkdev_get_by_link(&upath);
-
 	RtlFreeUnicodeString(&upath);
 
 	return dev;
@@ -2759,12 +2582,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
-#if 0 // _WIN32_HANDLER-TIMEOUT: invalidate 에서 직접 불리는시허에서는 이 부분을 풀 것.
-	leng = 1024; 
-#else
 	leng = strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1;
-#endif
-
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line)
 	{
@@ -2772,13 +2590,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
-#if 0 // _WIN32_HANDLER-TIMEOUT: invalidate 에서 직접 불리는시허에서는 이 부분을 풀 것.
-	sprintf(cmd_line, "%s %s\0", "aaa", "bbb"); //  argv[1], argv[2]); // except "drbdadm.exe" string
-	WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
-#endif
-
     Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
-
 	if (Socket == NULL) {
 		WDRBD_ERROR("CreateSocket() returned NULL\n");
 		kfree(cmd_line);
@@ -2838,19 +2650,15 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			}
 			else
 			{
-
 				WDRBD_INFO("error recv status=0x%x\n", readcount);
 			}
 			ret = -1;
 
 			// _WIN32_HANDLER_TIMEOUT
-			// retry?? -> 추후 재 검증 시 보완
-			// if (g_handler_retry)
-
 			goto error;
 		}
 
-#ifdef _WIN32 // _WIN32_SEND_BUFFING
+#ifdef _WIN32
 		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line))
 #endif
 		{
@@ -2873,7 +2681,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		{
 			if (readcount == -EAGAIN)
 			{
-				WDRBD_INFO("recv retval timeout(%d)! ###########\n", g_handler_timeout);
+				WDRBD_INFO("recv retval timeout(%d)!\n", g_handler_timeout);
 			}
 			else
 			{
@@ -2884,8 +2692,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			goto error;
 		}
 
-#ifdef _WIN32 // _WIN32_SEND_BUFFING
-		// WDRBD_INFO("send BYE!\n");
+#ifdef _WIN32
 		if ((Status = SendLocal(Socket, "BYE", 3, 0, g_handler_timeout)) != 3)
 #endif
 		{
@@ -2922,19 +2729,6 @@ void panic(char *msg)
 	KeBugCheckEx(0xddbd, (ULONG_PTR)__FILE__, (ULONG_PTR)__func__, 0x12345678, 0xd8bdd8bd);
 }
 
-// [choi] 사용되는 곳 없음.
-int kobject_init_and_add(struct kobject *kobj, struct kobj_type *ktype, struct kobject *parent, const char *name)
-{
-    kobj->name = name;
-    kobj->ktype = ktype;
-    kobj->parent = 0;
-    kref_init(&kobj->kref);
-    return 0;
-}
-
-
-
-#ifdef _WIN32
 int scnprintf(char * buf, size_t size, const char *fmt, ...)
 {
 	va_list args;
@@ -2961,7 +2755,7 @@ void __list_cut_position(struct list_head *list, struct list_head *head, struct 
 	head->next = new_first;
 	new_first->prev = head;
 }
-// linux kernel 3.14 의 구현을 가져옴. (부가 함수:__list_cut_position, list_is_singular )
+// from linux kernel 3.14 
 void list_cut_position(struct list_head *list, struct list_head *head, struct list_head *entry)
 {
 	if (list_empty(head))
@@ -2975,10 +2769,9 @@ void list_cut_position(struct list_head *list, struct list_head *head, struct li
 		__list_cut_position(list, head, entry);
 }
 
-// 헤더불일치로 일단 함수 바디를 windows.h로 이동.
 int drbd_backing_bdev_events(struct drbd_device *device)
 {
-#ifdef _WIN32_GetDiskPerf // JHKIM:V8참고, 추후 업글 시 참고
+#ifdef _WIN32_GetDiskPerf
 	extern NTSTATUS mvolGetDiskPerf(PDEVICE_OBJECT TargetDeviceObject, PDISK_PERFORMANCE pDiskPerf);
 	NTSTATUS status;
 	DISK_PERFORMANCE diskPerf;
@@ -2998,7 +2791,7 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 #else
 	if ((device->writ_cnt + device->read_cnt) == 0)
 	{
-		// DRBD_DOC: 최초인 경우 적당한 누적치를 반환하여 sync에 속도를 부여
+		// initial value
 		return 100;
 	}
 	return device->writ_cnt + device->read_cnt;
@@ -3019,7 +2812,6 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 #ifdef _WIN32
 char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
 {
-	//RtlIpv6AddressToString 과 같은 형식으로 출력 필요.
 	sprintf(buf, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0", 
 			sockaddr->sin6_addr.u.Byte[0],
 			sockaddr->sin6_addr.u.Byte[1],
@@ -3070,6 +2862,3 @@ struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 	return NULL;
 #endif
 }
-
-
-#endif

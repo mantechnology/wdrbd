@@ -60,7 +60,7 @@ static int drbd_seq_show(struct seq_file *seq, void *v)
 {
 	seq_printf(seq, "version: " REL_VERSION " (api:%d/proto:%d-%d)\n%s\n",
 		   GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX, drbd_buildtag());
-#ifndef _WIN32 // not supported current WDRBD v1.0
+#ifndef _WIN32 // not support
 	print_kref_debug_info(seq);
 #endif
 	drbd_print_transports_loaded(seq);

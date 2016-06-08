@@ -364,7 +364,7 @@ static void ___begin_state_change(struct drbd_resource *resource)
 static void __begin_state_change(struct drbd_resource *resource)
 {
 #ifdef _WIN32 
-	// _WIN32_V9_RCU //(4) [choi] required to refactoring because lock, unlock position is diffrent, maybe global scope lock is needed 
+	// _WIN32_V9_RCU //(4) required to refactoring because lock, unlock position is diffrent, maybe global scope lock is needed 
     WDRBD_TRACE_RCU("rcu_read_lock()\n");
 #else
 	rcu_read_lock();
@@ -479,7 +479,7 @@ out:
 #ifdef _WIN32 
 	// __begin_state_change aquire lock at the beginning
 	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
-	// _WIN32_V9_RCU //(5) [choi] temporary dummy.
+	// _WIN32_V9_RCU //(5) temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_unlock()\n");
 #else
 	rcu_read_unlock();
@@ -612,7 +612,7 @@ static void begin_remote_state_change(struct drbd_resource *resource, unsigned l
 #ifdef _WIN32
 	// __begin_state_change aquire lock at the beginning
 	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
-	// _WIN32_V9_RCU //(6) [choi] temporary dummy.
+	// _WIN32_V9_RCU //(6) temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_unlock()");
 #else
 	rcu_read_unlock();
@@ -625,7 +625,7 @@ static void __end_remote_state_change(struct drbd_resource *resource, enum chg_s
 #ifdef _WIN32 
 	// __begin_state_change aquire lock at the beginning
 	// unlock is processed other function scope. required to refactoring (maybe required global scope lock)
-	// _WIN32_V9_RCU //(7) [choi] temporary dummy.
+	// _WIN32_V9_RCU //(7) temporary dummy.
     WDRBD_TRACE_RCU("rcu_read_lock()");
 #else
 	rcu_read_lock();
@@ -1314,7 +1314,7 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 			    peer_device->repl_state[NEW] >= L_ESTABLISHED)
 #ifdef _WIN32
 			{
-				// _WIN32_CHECK:// JHKIM: detour SS_NEED_CONNECTION error: temporary fix: ignore SS_NEED_CONNECTION -> worked! 
+				// _WIN32 // DW- : detour SS_NEED_CONNECTION error: temporary fix: ignore SS_NEED_CONNECTION -> worked! 
 				drbd_debug(connection, "Ignore SS_NEED_CONNECTION!!! cs=%d repl=%d - Check please!!!!\n",
 					connection->cstate[OLD], peer_device->repl_state[NEW]);
 			}
@@ -1487,8 +1487,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			    (disk_state[NEW] <= D_FAILED ||
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Abort resync if disk state goes unsyncable.			
+#ifdef _WIN32 // DW-885, DW-897, DW-907: Abort resync if disk state goes unsyncable.			
 			if (((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_PAUSED_SYNC_T ) && peer_disk_state[NEW] <= D_INCONSISTENT) ||
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
@@ -1571,8 +1570,7 @@ static void sanitize_state(struct drbd_resource *resource)
 				peer_disk_state[NEW] = max_peer_disk_state;
 
 			if (peer_disk_state[NEW] < min_peer_disk_state)
-#ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: 
+#ifdef _WIN32 // DW-885, DW-897, DW-907: 
 				// Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_TARGET', depending on disk state.
 				if (repl_state[NEW] != L_STARTING_SYNC_T)
 #endif
@@ -1619,16 +1617,14 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			/* Implication of the repl state on other peer's repl state */
 			if (repl_state[OLD] != L_STARTING_SYNC_T && repl_state[NEW] == L_STARTING_SYNC_T)
-#ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Do not discretionally change other peer's replication state. 
+#ifdef _WIN32 // DW-885, DW-897, DW-907: Do not discretionally change other peer's replication state. 
 				// We should always notify state change, or possibly brought unpaired sync target up.
 				set_resync_susp_other_c(peer_device, true, false);
 #else
 				set_resync_susp_other_c(peer_device, true, true);
 #endif
 
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
+#ifdef _WIN32 // DW-885, DW-897, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
 			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_ESTABLISHED)
 				set_resync_susp_other_c(peer_device, false, false);
 #endif
@@ -2112,7 +2108,7 @@ static void abw_start_sync(struct drbd_device *device,
 	case L_STARTING_SYNC_T:
 		/* Since the number of set bits changed and the other peer_devices are
 		   lready in L_PAUSED_SYNC_T state, we need to set rs_total here */
-#ifdef _WIN32 // for rcu_read_lock
+#ifdef _WIN32
 	{ 
 #endif
 		rcu_read_lock();
@@ -2765,7 +2761,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if (disk_state[OLD] < D_UP_TO_DATE && repl_state[OLD] >= L_SYNC_SOURCE && repl_state[NEW] == L_ESTABLISHED)
 				send_new_state_to_all_peer_devices(state_change, n_device);
 
-#ifdef _WIN32 
+#ifdef _WIN32 // DW-885, DW-897, DW-907
 			/* MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: We should notify our disk state when it goes unsyncable so that peer doesn't request to sync anymore.
 			 * Outdated myself, become D_INCONSISTENT, or became D_UP_TO_DATE tell peers 
 			 */
@@ -3209,7 +3205,7 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 		      test_bit(TWOPC_NO, &connection->flags) ||
 		      test_bit(TWOPC_RETRY, &connection->flags))) {
 #ifdef _WIN32 
-			static int x = 0; // globally!
+			static int x = 0; // globally! TODO: delete
 			if (!(x++ % 3000))
 				drbd_debug(connection, "Reply not ready yet x=(%d)\n", x);
 #else
@@ -3885,7 +3881,7 @@ void __outdate_myself(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
-#ifdef _WIN32_V9_DW_663_LINBIT_PATCH //PATCHED_BY_MANTECH from philipp.reisner@linbit.com 2016.05.03
+#ifdef _WIN32_V9_DW_663_LINBIT_PATCH // _WIN32 // DW-663 PATCHED_BY_MANTECH from philipp.reisner@linbit.com 2016.05.03
 	if (resource->role[NOW] == R_PRIMARY)
 		return;
 #endif

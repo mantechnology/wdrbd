@@ -109,7 +109,6 @@ NTAPI
 	__in enum			drbd_stream stream
 	);
 
-//_WIN32_V9: _WIN32_SEND_BUFFING: normal local send: netlink, helper
 LONG
 NTAPI
 SendLocal(

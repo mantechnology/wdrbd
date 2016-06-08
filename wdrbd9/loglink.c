@@ -175,9 +175,6 @@ void LogLink_Sender(struct work_struct *ws)
 		int ret = 0;
 
 		count++;
-
-		// DbgPrint("DRBD_TEST: LogLink_Sender: loop(%d) buf=(%s)", count, p->buf);
-
 		if (sock)
 		{
 			int sz = strlen(msg->buf);

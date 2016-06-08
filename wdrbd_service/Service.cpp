@@ -361,17 +361,10 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 		SERVICE_ACCEPT_STOP |
 		SERVICE_ACCEPT_PAUSE_CONTINUE |
 #ifdef SERVICE_HANDLER_EX
-		SERVICE_ACCEPT_PRESHUTDOWN; // don't use SERVICE_ACCEPT_PRESHUTDOWN flag with SERVICE_ACCEPT_SHUTDOWN 2016.2.25 sekim
+		SERVICE_ACCEPT_PRESHUTDOWN; // don't use SERVICE_ACCEPT_PRESHUTDOWN flag with SERVICE_ACCEPT_SHUTDOWN 2016.2.25
 #else
 		SERVICE_ACCEPT_SHUTDOWN;
 #endif
-
-    //SERVICE_ACCEPT_NETBINDCHANGE 
-    //SERVICE_ACCEPT_SESSIONCHANGE 
-    //SERVICE_ACCEPT_PARAMCHANGE 
-    //SERVICE_ACCEPT_HARDWAREPROFILECHANGE 
-    //SERVICE_ACCEPT_POWEREVENT 
-
     g_tServiceStatus.dwWin32ExitCode = 0;
     g_tServiceStatus.dwServiceSpecificExitCode = 0;
     g_tServiceStatus.dwCheckPoint = 0;
@@ -437,12 +430,6 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
     while (g_bProcessStarted)
     {
         Sleep(3000);
-
-        //if (WaitForSingleObject(g_hStopSvcEvent, dwMonitorInterval) == WAIT_OBJECT_0)
-        //{
-        //	_terminateService();
-        //	break;
-        //}
     }
 
     WriteLog(L"Service is stopped.\n");
