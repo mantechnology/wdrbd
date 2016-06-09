@@ -52,21 +52,27 @@ const struct file_operations drbd_proc_fops = {
 	.release	= drbd_proc_release,
 };
 #endif
-#ifdef _WIN32
+
+#ifdef _WIN32 // DW-826
 int drbd_seq_show(struct seq_file *seq, void *v)
-#else
-static int drbd_seq_show(struct seq_file *seq, void *v)
-#endif
 {
-	seq_printf(seq, "version: " REL_VERSION " (api:%d/proto:%d-%d)\n%s\n",
-		   GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX, drbd_buildtag());
-#ifndef _WIN32 // not support
-	print_kref_debug_info(seq);
-#endif
+	seq_printf(seq, "WDRBD:%s\nLDRBD: " REL_VERSION " (api:%d/proto:%d-%d)\n",
+		drbd_buildtag(),GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX);
 	drbd_print_transports_loaded(seq);
 
 	return 0;
 }
+#else
+static int drbd_seq_show(struct seq_file *seq, void *v)
+{
+	seq_printf(seq, "version: " REL_VERSION " (api:%d/proto:%d-%d)\n%s\n",
+		GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX, drbd_buildtag());
+	print_kref_debug_info(seq);
+	drbd_print_transports_loaded(seq);
+
+	return 0;
+}
+#endif
 
 #ifdef _WIN32
 	// not support
