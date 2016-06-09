@@ -52,6 +52,11 @@
 # endif
 #endif
 
+#ifdef _WIN32
+#define BYTES_PER_BM_WORD	(sizeof(u32))
+#define BITS_PER_BM_WORD	(BYTES_PER_BM_WORD << 3)
+#endif
+
 /* OPAQUE outside this file!
  * interface defined in drbd_int.h
 
@@ -998,7 +1003,7 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 	bits  = BM_SECT_TO_BIT(ALIGN(capacity, BM_SECT_PER_BIT));
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-917: The calculation of counting words should be divided by the bit count of 'int' since the accessing unit of data word for bitmap is 'int'.
-	words = (ALIGN(bits, 64) * b->bm_max_peers) / 32;
+	words = (ALIGN(bits, 64) * b->bm_max_peers) / BITS_PER_BM_WORD;
 #else
 	words = (ALIGN(bits, 64) * b->bm_max_peers) / BITS_PER_LONG;
 #endif
@@ -1019,7 +1024,8 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		}
 	}
 #ifdef _WIN32
-    want = ALIGN(words*sizeof(LONG_PTR), PAGE_SIZE) >> PAGE_SHIFT;
+	// MODIFIED_BY_MANTECH DW-917: Need to multiply the bytes of each word.
+    want = ALIGN(words*BYTES_PER_BM_WORD, PAGE_SIZE) >> PAGE_SHIFT;
 #else
 	want = ALIGN(words*sizeof(long), PAGE_SIZE) >> PAGE_SHIFT;
 #endif
