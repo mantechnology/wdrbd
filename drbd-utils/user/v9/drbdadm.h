@@ -23,12 +23,6 @@
 /* FIXME keep in sync with GENL_MAGIC_VERSION,
  * without including all the genl magic...
  */
-#ifdef _WIN32
-#define WDRBD_MAJOR_VERSION 			1
-#define WDRBD_MINOR_VERSION 			1
-#define WDRBD_MICRO_VERSION 			1
-#define DRBD_MATCH_VERSION				"9.0.2-1"
-#endif
 
 #define API_VERSION 2
 
