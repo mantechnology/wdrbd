@@ -1901,6 +1901,10 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 			enum drbd_disk_state *peer_disk_state = peer_device->disk_state;
 			struct drbd_connection *connection = peer_device->connection;
 			enum drbd_role *peer_role = connection->peer_role;
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-892
+			enum drbd_conn_state *cstate = connection->cstate;
+#endif
 
 			if (repl_state[OLD] <= L_ESTABLISHED && repl_state[NEW] == L_WF_BITMAP_S)
 				starting_resync = true;
@@ -2012,6 +2016,10 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
 				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
+#ifdef _WIN32
+					// MODIFIED_BY_MANTECH DW-892: Bumping uuid during starting resync seems to be inadequate, this is a stopgap work as long as the purpose of 'lost_contact_to_peer_data' is unclear.
+					(repl_state[NEW] != L_AHEAD && cstate[NEW] < C_CONNECTED) &&
+#endif
 				    (disk_state[NEW] == D_UP_TO_DATE || one_peer_disk_up_to_date[NEW]))
 					create_new_uuid = true;
 
