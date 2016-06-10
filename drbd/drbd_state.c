@@ -478,7 +478,11 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	}
 	smp_wmb(); /* Make the NEW_CUR_UUID bit visible after the state change! */
 
+#ifdef _WIN32
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
 	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
 		if (test_bit(__NEW_CUR_UUID, &device->flags)) {
 			clear_bit(__NEW_CUR_UUID, &device->flags);
 			set_bit(NEW_CUR_UUID, &device->flags);
@@ -1843,7 +1847,11 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 #endif
 		enum drbd_disk_state *disk_state = device->disk_state;
 		struct drbd_peer_device *peer_device;
+#ifdef _WIN32
+		bool one_peer_disk_up_to_date[2] = {0, };
+#else
 		bool one_peer_disk_up_to_date[2] = { };
+#endif
 		bool create_new_uuid = false;
 
 		if (disk_state[OLD] != D_NEGOTIATING && disk_state[NEW] == D_NEGOTIATING) {
