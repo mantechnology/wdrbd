@@ -948,9 +948,9 @@ start:
 		struct drbd_device *device = peer_device->device;
 
 		if (discard_my_data)
-			set_bit(DISCARD_MY_DATA, &device->flags);
+			set_bit(DISCARD_MY_DATA, &peer_device->flags);
 		else
-			clear_bit(DISCARD_MY_DATA, &device->flags);
+			clear_bit(DISCARD_MY_DATA, &peer_device->flags);
 	}
 	rcu_read_unlock();
 
@@ -4203,10 +4203,10 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	}
 
 	if (hg == -100) {
-		if (test_bit(DISCARD_MY_DATA, &device->flags) &&
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
 		    !(peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA))
 			hg = -2;
-		if (!test_bit(DISCARD_MY_DATA, &device->flags) &&
+		if (!test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
 		    (peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA))
 			hg = 2;
 
@@ -6449,7 +6449,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		}
 	}
 
-	clear_bit(DISCARD_MY_DATA, &device->flags);
+	clear_bit(DISCARD_MY_DATA, &peer_device->flags);
 
 	if (try_to_get_resync)
 		try_to_get_resynced(device);
