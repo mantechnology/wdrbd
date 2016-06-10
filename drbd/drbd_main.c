@@ -2790,8 +2790,9 @@ static bool any_disk_is_uptodate(struct drbd_device *device)
 	return ret;
 }
 
-static int try_to_promote(struct drbd_resource *resource, struct drbd_device *device)
+static int try_to_promote(struct drbd_device *device)
 {
+	struct drbd_resource *resource = device->resource;
 	long timeout = resource->res_opts.auto_promote_timeout * HZ / 10;
 	int rv, retry = timeout / (HZ / 5); /* One try every 200ms */
 	do {
@@ -2819,6 +2820,17 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 #endif
 			if (timeout <= 0)
 				break;
+		} else if (rv == SS_NO_UP_TO_DATE_DISK) {
+			/* Wait until we get a connection established */
+#ifdef _WIN32
+			wait_event_interruptible_timeout(timeout, resource->state_wait,
+				any_disk_is_uptodate(device), timeout);
+#else
+			timeout = wait_event_interruptible_timeout(resource->state_wait,
+				any_disk_is_uptodate(device), timeout);
+#endif
+			if (timeout <= 0)
+				break;	
 		} else {
 			return rv;
 		}
@@ -2840,7 +2852,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 		   temporarily by udev while it scans for PV signatures. */
 
 		if (mode & FMODE_WRITE && resource->role[NOW] == R_SECONDARY) {
-			rv = try_to_promote(resource, device);
+			rv = try_to_promote(device);
 			if (rv < SS_SUCCESS)
 				drbd_info(resource, "Auto-promote failed: %s\n", drbd_set_st_err_str(rv));
 		}
