@@ -493,8 +493,15 @@ out:
 
 void state_change_lock(struct drbd_resource *resource, unsigned long *irq_flags, enum chg_state_flags flags)
 {
-	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARED)))
+	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARED))) {
+#ifdef _WIN32
+		WDRBD_WARN("worker should not initiate state changes with CS_SERIALIZE current:%p resource->worker.task:%p\n", current , resource->worker.task);
+#else
+		WARN_ONCE(current == resource->worker.task,
+			"worker should not initiate state changes with CS_SERIALIZE\n");
+#endif
 		down(&resource->state_sem);
+	}
 	spin_lock_irqsave(&resource->req_lock, *irq_flags);
 	resource->state_change_flags = flags;
 }
