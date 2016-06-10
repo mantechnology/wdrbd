@@ -225,6 +225,14 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	sector = peer_req->i.sector;
 	block_id = peer_req->block_id;
 
+	if (peer_req->flags & EE_WAS_ERROR) {
+        /* In protocol != C, we usually do not send write acks.
+		* In case of a write error, send the neg ack anyways. */
+		if (!__test_and_set_bit(__EE_SEND_WRITE_ACK, &peer_req->flags))
+			inc_unacked(peer_device);
+		drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+    }
+
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	device->writ_cnt += peer_req->i.size >> 9;
 	list_move_tail(&peer_req->w.list, &device->done_ee);
@@ -2483,9 +2491,17 @@ static int try_become_up_to_date(struct drbd_resource *resource)
 	enum drbd_state_rv rv;
 
 	/* Doing a two_phase_commit from worker context is only possible
-	   if twopc_work is not queued! Let it get executed first! */
+	 * if twopc_work is not queued. Let it get executed first.
+	 *
+	 * Avoid deadlock on state_sem, in case someone holds it while
+	 * waiting for the completion of some after-state-change work.
+	 */
 	if (list_empty(&resource->twopc_work.list)) {
-		rv = change_from_consistent(resource, CS_VERBOSE | CS_SERIALIZE | CS_DONT_RETRY);
+		if (down_trylock(&resource->state_sem))
+			goto repost;
+		rv = change_from_consistent(resource, CS_ALREADY_SERIALIZED |
+			CS_VERBOSE | CS_SERIALIZE | CS_DONT_RETRY);
+		up(&resource->state_sem);
 		if (rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG)
 			goto repost;
 	} else {

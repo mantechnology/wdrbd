@@ -1508,7 +1508,7 @@ static int _drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags
 	peer_device->comm_bm_set = drbd_bm_total_weight(peer_device);
 	p->dirty_bits = cpu_to_be64(peer_device->comm_bm_set);
 
-	if (test_bit(DISCARD_MY_DATA, &device->flags))
+	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
@@ -1604,7 +1604,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 
 	peer_device->comm_bm_set = drbd_bm_total_weight(peer_device);
 	p->dirty_bits = cpu_to_be64(peer_device->comm_bm_set);
-	if (test_bit(DISCARD_MY_DATA, &device->flags))
+	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
@@ -2408,6 +2408,8 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
+
+	peer_device->send_cnt += (bio->bi_size) >> 9;
 #else
 	/* hint all but last page with MSG_MORE */
 	bio_for_each_segment(bvec, bio, iter) {
@@ -2421,6 +2423,8 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 		/* REQ_WRITE_SAME has only one segment */
 		if (bio->bi_rw & DRBD_REQ_WSAME)
 			break;
+
+		peer_device->send_cnt += (bvec BVD bv_len) >> 9;
 	}
 #endif
 	return 0;
@@ -2786,8 +2790,9 @@ static bool any_disk_is_uptodate(struct drbd_device *device)
 	return ret;
 }
 
-static int try_to_promote(struct drbd_resource *resource, struct drbd_device *device)
+static int try_to_promote(struct drbd_device *device)
 {
+	struct drbd_resource *resource = device->resource;
 	long timeout = resource->res_opts.auto_promote_timeout * HZ / 10;
 	int rv, retry = timeout / (HZ / 5); /* One try every 200ms */
 	do {
@@ -2815,6 +2820,17 @@ static int try_to_promote(struct drbd_resource *resource, struct drbd_device *de
 #endif
 			if (timeout <= 0)
 				break;
+		} else if (rv == SS_NO_UP_TO_DATE_DISK) {
+			/* Wait until we get a connection established */
+#ifdef _WIN32
+			wait_event_interruptible_timeout(timeout, resource->state_wait,
+				any_disk_is_uptodate(device), timeout);
+#else
+			timeout = wait_event_interruptible_timeout(resource->state_wait,
+				any_disk_is_uptodate(device), timeout);
+#endif
+			if (timeout <= 0)
+				break;	
 		} else {
 			return rv;
 		}
@@ -2836,7 +2852,7 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 		   temporarily by udev while it scans for PV signatures. */
 
 		if (mode & FMODE_WRITE && resource->role[NOW] == R_SECONDARY) {
-			rv = try_to_promote(resource, device);
+			rv = try_to_promote(device);
 			if (rv < SS_SUCCESS)
 				drbd_info(resource, "Auto-promote failed: %s\n", drbd_set_st_err_str(rv));
 		}

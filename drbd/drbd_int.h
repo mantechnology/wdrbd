@@ -835,6 +835,7 @@ enum {
 	WAS_READ_ERROR,		/* Local disk READ failed, returned IO error */
 	FORCE_DETACH,		/* Force-detach from local disk, aborting any pending local IO */
 	NEW_CUR_UUID,		/* Create new current UUID when thawing IO or issuing local IO */
+	__NEW_CUR_UUID,        /* Set NEW_CUR_UUID as soon as state change visible */
 	AL_SUSPENDED,		/* Activity logging is currently suspended. */
 #ifndef	_WIN32
 	// DW-874: Since resync works per peer device and device flag is shared for all peers, it may get racy with more than one peer.
@@ -855,6 +856,7 @@ enum {
 
 	HAVE_LDEV,
 	STABLE_RESYNC,		/* One peer_device finished the resync stable! */
+	READ_BALANCE_RR,
 };
 
 /* flag bits per peer device */
@@ -869,12 +871,13 @@ enum {
 	B_RS_H_DONE,		/* Before resync handler done (already executed) */
 	DISCARD_MY_DATA,	/* discard_my_data flag per volume */
 	USE_DEGR_WFC_T,		/* degr-wfc-timeout instead of wfc-timeout. */
-	READ_BALANCE_RR,
 	INITIAL_STATE_SENT,
 	INITIAL_STATE_RECEIVED,
 	RECONCILIATION_RESYNC,
 	UNSTABLE_RESYNC,	/* Sync source went unstable during resync. */
 	SEND_STATE_AFTER_AHEAD,
+	GOT_NEG_ACK,        /* got a neg_ack while primary, wait until peer_disk is lower than
+                    D_UP_TO_DATE before becoming secondary! */
 #ifdef _WIN32
 	// DW-874: Moved from device flag. See device flag comment for detail.
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */

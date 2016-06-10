@@ -39,6 +39,8 @@
 /* in drbd_main.c */
 extern void tl_abort_disk_io(struct drbd_device *device);
 
+static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns);
+
 struct after_state_change_work {
 	struct drbd_work w;
 	struct drbd_state_change *state_change;
@@ -474,7 +476,18 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 				peer_device->resync_susp_other_c[NEW];
 		}
 	}
-	smp_wmb();
+	smp_wmb(); /* Make the NEW_CUR_UUID bit visible after the state change! */
+
+#ifdef _WIN32
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
+	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
+		if (test_bit(__NEW_CUR_UUID, &device->flags)) {
+			clear_bit(__NEW_CUR_UUID, &device->flags);
+			set_bit(NEW_CUR_UUID, &device->flags);
+		}
+	}
 out:
 #ifdef _WIN32 
 	// __begin_state_change aquire lock at the beginning
@@ -493,8 +506,15 @@ out:
 
 void state_change_lock(struct drbd_resource *resource, unsigned long *irq_flags, enum chg_state_flags flags)
 {
-	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARED)))
+	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARED))) {
+#ifdef _WIN32
+		WDRBD_WARN("worker should not initiate state changes with CS_SERIALIZE current:%p resource->worker.task:%p\n", current , resource->worker.task);
+#else
+		WARN_ONCE(current == resource->worker.task,
+			"worker should not initiate state changes with CS_SERIALIZE\n");
+#endif
 		down(&resource->state_sem);
+	}
 	spin_lock_irqsave(&resource->req_lock, *irq_flags);
 	resource->state_change_flags = flags;
 }
@@ -1827,6 +1847,12 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 #endif
 		enum drbd_disk_state *disk_state = device->disk_state;
 		struct drbd_peer_device *peer_device;
+#ifdef _WIN32
+		bool one_peer_disk_up_to_date[2] = {0, };
+#else
+		bool one_peer_disk_up_to_date[2] = { };
+#endif
+		bool create_new_uuid = false;
 
 		if (disk_state[OLD] != D_NEGOTIATING && disk_state[NEW] == D_NEGOTIATING) {
 			for_each_peer_device(peer_device, device)
@@ -1850,11 +1876,20 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		for_each_peer_device(peer_device, device) {
 			enum drbd_repl_state *repl_state = peer_device->repl_state;
 			struct drbd_connection *connection = peer_device->connection;
+			enum drbd_disk_state *peer_disk_state = peer_device->disk_state;
+			enum which_state which;
+
 
 			/* Wake up role changes, that were delayed because of connection establishing */
 			if (repl_state[OLD] == L_OFF && repl_state[NEW] != L_OFF &&
 			    all_peer_devices_connected(connection))
 				clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
+
+			for (which = OLD; which <= NEW; which++) {
+				if (peer_disk_state[which] == D_UP_TO_DATE)
+					one_peer_disk_up_to_date[which] = true;
+			}
+
 		}
 
 		wake_up(&device->al_wait);
@@ -1974,7 +2009,25 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 				set_bit(SEND_STATE_AFTER_AHEAD_C, &connection->flags);
 				wake_up(&connection->sender_work.q_wait);
 			}
+
+			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
+				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
+				    (disk_state[NEW] == D_UP_TO_DATE || one_peer_disk_up_to_date[NEW]))
+					create_new_uuid = true;
+
+				if (connection->agreed_pro_version < 110 &&
+				    peer_role[NEW] == R_PRIMARY &&
+				    disk_state[NEW] >= D_UP_TO_DATE)
+					create_new_uuid = true;
+			}
 		}
+
+		if (disk_state[OLD] >= D_INCONSISTENT && disk_state[NEW] < D_INCONSISTENT &&
+		    role[NEW] == R_PRIMARY && one_peer_disk_up_to_date[NEW])
+			create_new_uuid = true;
+
+		if (create_new_uuid)
+			set_bit(__NEW_CUR_UUID, &device->flags);
 
 		if (disk_state[NEW] != D_NEGOTIATING && get_ldev(device)) {
 			u32 mdf = device->ldev->md.flags & ~(MDF_PRIMARY_IND | MDF_CRASHED_PRIMARY);
@@ -2518,7 +2571,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #else
 		bool one_peer_disk_up_to_date[2] = { };
 #endif
-		bool create_new_uuid = false;
 		bool device_stable[2];
 		enum which_state which;
 
@@ -2651,18 +2703,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 						"send_bitmap (WFBitMapS)",
 						BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT,
 						peer_device);
-
-			/* Lost contact to peer's copy of the data */
-			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
-				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
-				    (disk_state[NEW] == D_UP_TO_DATE || one_peer_disk_up_to_date[NEW]))
-					create_new_uuid = true;
-
-				if (connection->agreed_pro_version < 110 &&
-				    peer_role[NEW] == R_PRIMARY &&
-				    disk_state[NEW] >= D_UP_TO_DATE)
-					create_new_uuid = true;
-			}
 
 			if (peer_disk_state[NEW] < D_INCONSISTENT && get_ldev(device)) {
 				/* D_DISKLESS Peer becomes secondary */
@@ -2832,6 +2872,15 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, UUID_FLAG_GOT_STABLE, 0);
 				put_ldev(device);
 			}
+
+			if (peer_disk_state[OLD] == D_UP_TO_DATE &&
+			    (peer_disk_state[NEW] == D_FAILED || peer_disk_state[NEW] == D_INCONSISTENT) &&
+			    test_and_clear_bit(NEW_CUR_UUID, &device->flags)) {
+				/* When a peer disk goes from D_UP_TO_DATE to D_FAILED or D_INCONSISTENT
+				   we know that a write failed on that node. Therefore we need to create
+				   the new UUID right now (not wait for the next write to come in) */
+				drbd_uuid_new_current(device, false);
+			}
 		}
 
 
@@ -2929,15 +2978,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		/* Notify peers that I had a local IO error and did not detach. */
 		if (disk_state[OLD] == D_UP_TO_DATE && disk_state[NEW] == D_INCONSISTENT)
 			send_new_state_to_all_peer_devices(state_change, n_device);
-
-		/* Sending new current UUID out to others must happen AFTER sending out
-		   the failed disk state! */
-		if (disk_state[OLD] >= D_INCONSISTENT && disk_state[NEW] < D_INCONSISTENT &&
-		    role[NEW] == R_PRIMARY && one_peer_disk_up_to_date[NEW])
-			create_new_uuid = true;
-
-		if (create_new_uuid)
-			set_bit(NEW_CUR_UUID, &device->flags);
 
 		if (disk_state[OLD] != D_CONSISTENT && disk_state[NEW] == D_CONSISTENT)
 			try_become_up_to_date = true;
