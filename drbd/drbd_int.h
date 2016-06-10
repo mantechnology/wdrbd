@@ -876,6 +876,8 @@ enum {
 	RECONCILIATION_RESYNC,
 	UNSTABLE_RESYNC,	/* Sync source went unstable during resync. */
 	SEND_STATE_AFTER_AHEAD,
+	GOT_NEG_ACK,        /* got a neg_ack while primary, wait until peer_disk is lower than
+                    D_UP_TO_DATE before becoming secondary! */
 #ifdef _WIN32
 	// DW-874: Moved from device flag. See device flag comment for detail.
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */

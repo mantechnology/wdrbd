@@ -1026,6 +1026,48 @@ static bool barrier_pending(struct drbd_resource *resource)
 	return rv;
 }
 
+static void wait_for_peer_disk_updates(struct drbd_resource *resource)
+{
+	struct drbd_peer_device *peer_device;
+	struct drbd_device *device;
+	int vnr;
+#ifdef _WIN32
+	unsigned char oldIrql_rLock;
+#endif
+
+restart:
+#ifdef _WIN32
+	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);
+#else
+	rcu_read_lock();
+#endif
+	
+	
+#ifdef _WIN32
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else	
+	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif	
+		for_each_peer_device_rcu(peer_device, device) {
+			if (test_bit(GOT_NEG_ACK, &peer_device->flags)) {
+				clear_bit(GOT_NEG_ACK, &peer_device->flags);
+#ifdef _WIN32
+				ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);
+#else
+				rcu_read_unlock();
+#endif
+				wait_event(resource->state_wait, peer_device->disk_state[NOW] < D_UP_TO_DATE);
+				goto restart;
+			}
+		}
+	}
+#ifdef _WIN32
+	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);
+#else
+	rcu_read_unlock();
+#endif
+}
+
 #ifdef _WIN32
 #define try try_val
 #endif
@@ -1062,6 +1104,10 @@ retry:
 				drbd_flush_workqueue(&connection->sender_work);
 		}
 		wait_event(resource->barrier_wait, !barrier_pending(resource));
+		/* After waiting for pending barriers, we got any possible NEG_ACKs,
+		   and see them in wait_for_peer_disk_updates() */
+		wait_for_peer_disk_updates(resource);
+		
 		/* In case switching from R_PRIMARY to R_SECONDARY works
 		   out, there is no rw opener at this point. Thus, no new
 		   writes can come in. -> Flushing queued peer acks is
