@@ -2408,6 +2408,8 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 	err = _drbd_no_send_page(peer_device, bio->bio_databuf, 0, bio->bi_size, 0);
 	if (err)
 		return err;
+
+	peer_device->send_cnt += (bio->bi_size) >> 9;
 #else
 	/* hint all but last page with MSG_MORE */
 	bio_for_each_segment(bvec, bio, iter) {
@@ -2421,6 +2423,8 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 		/* REQ_WRITE_SAME has only one segment */
 		if (bio->bi_rw & DRBD_REQ_WSAME)
 			break;
+
+		peer_device->send_cnt += (bvec BVD bv_len) >> 9;
 	}
 #endif
 	return 0;
