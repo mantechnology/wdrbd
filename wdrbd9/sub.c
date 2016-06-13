@@ -5,7 +5,7 @@
 
 #include "linux-compat/idr.h"
 #include "drbd_int.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 
 #ifdef _WIN32
 #include <ntdddisk.h>

@@ -34,7 +34,7 @@
 #include <linux/seq_file.h> /* for seq_printf */
 #include <linux/lru_cache.h>
 #endif
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 
 /* this is developers aid only.
  * it catches concurrent access (lack of locking on the users part) */

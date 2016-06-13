@@ -24,7 +24,7 @@
 #include <linux/drbd_genl_api.h>
 #include <drbd_protocol.h>
 #include <drbd_transport.h>
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 #include <wsk2.h>
 #include <linux-compat\drbd_endian.h>
 #include <drbd_int.h>
@@ -494,8 +494,8 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
     if (snd) { 
         socket->sk_linux_attr->sk_sndbuf = snd;
     }
-    else {  // temp.
-        socket->sk_linux_attr->sk_sndbuf = 16384;
+    else { 
+        socket->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
     }
 
     if (rcv) {
@@ -946,7 +946,7 @@ retry:
 			}
 			dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
 #endif
-            s_estab->sk_linux_attr->sk_sndbuf = 16384;  // temp.
+            s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
 		}
 		else {
 			if (status == STATUS_TIMEOUT) {
@@ -1097,7 +1097,7 @@ static void dtt_incoming_connection(struct sock *sock)
 
     if (s_estab->sk_linux_attr)
     {
-        s_estab->sk_linux_attr->sk_sndbuf = 16384;  // temp.
+        s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
     }
     else
     {

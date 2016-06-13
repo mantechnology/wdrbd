@@ -8,7 +8,7 @@
 #include <linux/seq_file.h>
 #include <linux/kref.h>
 #endif
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 #include "kref_debug.h"
 
 #ifdef _WIN32

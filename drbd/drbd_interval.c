@@ -1,5 +1,5 @@
 ﻿#include "drbd_interval.h"
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 
 /**
  * interval_end  -  return end of @node

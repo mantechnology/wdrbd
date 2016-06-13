@@ -1324,7 +1324,11 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	BIO_ENDIO_FN_RETURN;
 }
 
+#ifdef _WIN32
+static int bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_hold(local)
+#else
 static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_hold(local)
+#endif
 {
 #ifdef _WIN32
     struct bio *bio = bio_alloc_drbd(GFP_NOIO, '50DW');
@@ -1400,11 +1404,11 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 #endif
 	}
 #ifdef _WIN32
-    return;
+    return 0;
 
 no_memory :
     WDRBD_ERROR("Unexpected logic: No memory!\n");
-    BUG();
+    return -ENOMEM;
 #endif
 }
 
@@ -1495,7 +1499,15 @@ static int bm_rw_range(struct drbd_device *device,
 	if (flags & BM_AIO_READ) {
 		for (i = start_page; i <= end_page; i++) {
 			atomic_inc(&ctx->in_flight);
+#ifdef _WIN32
+			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+				ctx->error = -ENOMEM;
+				break;
+			}
+#else
 			bm_page_io_async(ctx, i);
+#endif
+			
 			++count;
 			cond_resched();
 		}
@@ -1514,7 +1526,14 @@ static int bm_rw_range(struct drbd_device *device,
 			if (bm_test_page_unchanged(b->bm_pages[i]))
 				continue;
 			atomic_inc(&ctx->in_flight);
+#ifdef _WIN32
+			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+				ctx->error = -ENOMEM;
+				break;
+			}
+#else
 			bm_page_io_async(ctx, i);
+#endif
 			++count;
 		}
 	} else {
@@ -1534,7 +1553,14 @@ static int bm_rw_range(struct drbd_device *device,
 				continue;
 			}
 			atomic_inc(&ctx->in_flight);
+#ifdef _WIN32
+			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+				ctx->error = -ENOMEM;
+				break;
+			}
+#else
 			bm_page_io_async(ctx, i);
+#endif
 			++count;
 			cond_resched();
 		}

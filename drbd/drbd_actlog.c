@@ -37,7 +37,7 @@
 #include <linux/dynamic_debug.h>
 #endif
 #include "drbd_int.h"
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 
 enum al_transaction_types {
 	AL_TR_UPDATE = 0,

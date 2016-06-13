@@ -144,9 +144,6 @@
     <ClInclude Include="drbd_windows.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="drbd_windrv.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="drbd_wingenl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
