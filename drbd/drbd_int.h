@@ -59,7 +59,7 @@
 #include <linux/drbd.h>
 #include <linux/drbd_config.h>
 #endif
-#include "drbd_wrappers.h"
+#include "./drbd-kernel-compat/drbd_wrappers.h"
 #include "drbd_strings.h"
 #ifdef _WIN32_SEND_BUFFING
 #include "send_buf.h"

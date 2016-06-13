@@ -1,8 +1,15 @@
-﻿
-_WIN32_V9_PATCH_1_CHECK ://JHKIM 사용? 일단 파일을 깨짐으로 처리
-#ifndef _DRBD_WRAPPERS_H
+﻿#ifndef _DRBD_WRAPPERS_H
 #define _DRBD_WRAPPERS_H
 
+#ifdef _WIN32
+#include "linux-compat/rbtree.h"
+#include "linux-compat/idr.h"
+#include "drbd_wingenl.h"
+#include "drbd_windows.h"
+
+#include "linux-compat/Backing-dev.h"
+#include "wsk2.h"
+#else
 #include <linux/version.h>
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
 # error "At least kernel version 2.6.18 (with patches) required"
@@ -10,7 +17,6 @@ _WIN32_V9_PATCH_1_CHECK ://JHKIM 사용? 일단 파일을 깨짐으로 처리
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 # warning "Kernels <2.6.32 likely have compat issues we did not cover here"
 #endif
-
 #include "compat.h"
 #include <linux/ctype.h>
 #include <linux/net.h>
@@ -24,6 +30,8 @@ _WIN32_V9_PATCH_1_CHECK ://JHKIM 사용? 일단 파일을 깨짐으로 처리
 #include <linux/completion.h>
 #include <linux/proc_fs.h>
 #include <linux/blkdev.h>
+#endif
+
 
 #ifndef pr_fmt
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
@@ -33,38 +41,38 @@ _WIN32_V9_PATCH_1_CHECK ://JHKIM 사용? 일단 파일을 깨짐으로 처리
 /* some very old kernels don't have them, or at least not all of them */
 #ifndef pr_emerg
 #define pr_emerg(fmt, ...) \
-		printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_EMERG pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_alert
 #define pr_alert(fmt, ...) \
-		printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_ALERT pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_crit
 #define pr_crit(fmt, ...) \
-		printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_CRIT pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_err
 #define pr_err(fmt, ...) \
-		printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_ERR pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_warning
 #define pr_warning(fmt, ...) \
-		printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_WARNING pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_warn
 #define pr_warn pr_warning
 #endif
 #ifndef pr_notice
 #define pr_notice(fmt, ...) \
-		printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_NOTICE pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_info
 #define pr_info(fmt, ...) \
-		printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_INFO pr_fmt(fmt), __VA_ARGS__)
 #endif
 #ifndef pr_cont
 #define pr_cont(fmt, ...) \
-		printk(KERN_CONT fmt, ##__VA_ARGS__)
+		printk(KERN_CONT fmt, __VA_ARGS__)
 #endif
 
 /* pr_devel() should produce zero code unless DEBUG is defined */
@@ -79,12 +87,74 @@ _WIN32_V9_PATCH_1_CHECK ://JHKIM 사용? 일단 파일을 깨짐으로 처리
 #endif
 /* }}} pr_* macros */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
+#ifdef _WIN32
+#define REQ_SYNC		(1ULL << __REQ_SYNC)
+#define REQ_DISCARD		(1ULL << __REQ_DISCARD)
+#define REQ_FUA			(1ULL << __REQ_FUA)
+#define REQ_FLUSH		(1ULL << __REQ_FLUSH)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+# error "At least kernel version 2.6.18 (with patches) required"
+#endif
+
+/* The history of blkdev_issue_flush()
+
+   It had 2 arguments before fbd9b09a177a481eda256447c881f014f29034fe,
+   after it had 4 arguments. (With that commit came BLKDEV_IFL_WAIT)
+
+   It had 4 arguments before dd3932eddf428571762596e17b65f5dc92ca361b,
+   after it got 3 arguments. (With that commit came BLKDEV_DISCARD_SECURE
+   and BLKDEV_IFL_WAIT disappeared again.) */
+#ifndef BLKDEV_IFL_WAIT
+#ifndef BLKDEV_DISCARD_SECURE
+/* before fbd9b09a177 */
+#ifndef _WIN32
+#define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, s)
+#endif
+#endif
+/* after dd3932eddf4 no define at all */
+#else
+/* between fbd9b09a177 and dd3932eddf4 */
+#define blkdev_issue_flush(b, gfpf, s)	blkdev_issue_flush(b, gfpf, s, BLKDEV_IFL_WAIT)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31) 
 static inline unsigned short queue_logical_block_size(struct request_queue *q)
 {
 	int retval = 512;
 	if (q && q->hardsect_size)
 		retval = q->hardsect_size;
+	return retval;
+}
+
+static inline sector_t bdev_logical_block_size(struct block_device *bdev)
+{
+    return queue_logical_block_size(bdev_get_queue(bdev));
+}
+
+static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
+{
+    return q->max_hw_sectors;
+}
+
+static inline unsigned int queue_max_sectors(struct request_queue *q)
+{
+	return q->max_sectors;
+}
+
+static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
+{
+	q->hardsect_size = size;
+}
+#endif
+
+#ifdef _WIN32
+static inline unsigned short queue_logical_block_size(struct request_queue *q)
+{
+	int retval = 512;
+	if (q && q->logical_block_size)
+		retval = q->logical_block_size;
 	return retval;
 }
 
@@ -100,12 +170,39 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
 
 static inline unsigned int queue_max_sectors(struct request_queue *q)
 {
-	return q->max_sectors;
+	return q->max_hw_sectors;
 }
 
 static inline void blk_queue_logical_block_size(struct request_queue *q, unsigned short size)
 {
-	q->hardsect_size = size;
+	q->logical_block_size = size;
+}
+#endif
+
+#ifndef COMPAT_QUEUE_LIMITS_HAS_DISCARD_ZEROES_DATA
+static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
+{
+	return 0;
+}
+#endif
+
+#ifndef COMPAT_HAVE_BDEV_DISCARD_ALIGNMENT
+static inline int bdev_discard_alignment(struct block_device *bdev)
+{
+#ifdef _WIN32
+	return 0;
+#else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
+	return 0;
+#else
+	struct request_queue *q = bdev_get_queue(bdev);
+
+	if (bdev != bdev->bd_contains)
+		return bdev->bd_part->discard_alignment;
+
+	return q->limits.discard_alignment;
+#endif
+#endif
 }
 #endif
 
@@ -118,6 +215,8 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 #define MAKE_REQUEST_TYPE int
 #define MAKE_REQUEST_RETURN return 0
 #endif
+
+#define __bitwise__
 
 #ifndef COMPAT_HAVE_FMODE_T
 typedef unsigned __bitwise__ fmode_t;
@@ -139,30 +238,52 @@ typedef unsigned __bitwise__ fmode_t;
 static inline
 struct block_device *open_bdev_exclusive(const char *path, fmode_t mode, void *holder)
 {
+#ifndef _WIN32
 	/* drbd does not open readonly, but try to be correct, anyways */
 	return open_bdev_excl(path, (mode & FMODE_WRITE) ? 0 : MS_RDONLY, holder);
+#endif
 }
 static inline
 void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 {
+#ifndef _WIN32
 	/* mode ignored. */
 	close_bdev_excl(bdev);
+#endif
 }
 #endif
+#ifndef _WIN32
 static inline struct block_device *blkdev_get_by_path(const char *path,
 		fmode_t mode, void *holder)
 {
 	return open_bdev_exclusive(path, mode, holder);
 }
-
+#endif
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 {
+#ifdef _WIN32
+	/* move to mvol level
+	if (bdev->bd_disk->queue)
+	{
+		kfree(bdev->bd_disk->queue);
+	}
+	if (bdev->bd_disk)
+	{
+		kfree(bdev->bd_disk);
+	}
+	if (bdev)
+	{
+		kfree(bdev);
+	}
+	*/
+#else
 	/* blkdev_put != close_bdev_exclusive, in general, so this is obviously
 	 * not correct, and there should be some if (mode & FMODE_EXCL) ...
 	 * But this is the only way it is used in DRBD,
 	 * and for <= 2.6.27, there is no FMODE_EXCL anyways. */
 	close_bdev_exclusive(bdev, mode);
 
+#endif
 	/* blkdev_put seems to not have useful return values,
 	 * close_bdev_exclusive is void. */
 	return 0;
@@ -172,11 +293,18 @@ static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 
 #define drbd_bio_uptodate(bio) bio_flagged(bio, BIO_UPTODATE)
 
-#ifdef COMPAT_HAVE_BIO_BI_ERROR
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 #define BIO_ENDIO_TYPE void
 #define BIO_ENDIO_ARGS(b,e) (b)
 #define BIO_ENDIO_FN_START int error = bio->bi_error
 #define BIO_ENDIO_FN_RETURN return
+
+#elif defined(_WIN32)
+typedef NTSTATUS BIO_ENDIO_TYPE;
+#define FAULT_TEST_FLAG     (ULONG_PTR)0x11223344
+#define BIO_ENDIO_ARGS(b,e) (void *p1, void *p2, void *p3)
+#define BIO_ENDIO_FN_START 
+#define BIO_ENDIO_FN_RETURN     return STATUS_MORE_PROCESSING_REQUIRED	
 #else
 #define BIO_ENDIO_TYPE void
 #define BIO_ENDIO_ARGS(b,e) (b,e)
@@ -254,6 +382,7 @@ static inline void drbd_plug_device(struct request_queue *q)
 }
 #endif
 
+#ifndef _WIN32 
 static inline int drbd_backing_bdev_events(struct gendisk *disk)
 {
 #if defined(__disk_stat_inc)
@@ -266,6 +395,7 @@ static inline int drbd_backing_bdev_events(struct gendisk *disk)
 	     + (int)part_stat_read(&disk->part0, sectors[1]);
 #endif
 }
+#endif
 
 #ifndef COMPAT_HAVE_SOCK_SHUTDOWN
 #define COMPAT_HAVE_SOCK_SHUTDOWN 1
@@ -276,7 +406,13 @@ enum sock_shutdown_cmd {
 };
 static inline int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_cmd how)
 {
+#ifdef _WIN32
+    //UNREFERENCED_PARAMETER(sock);
+    UNREFERENCED_PARAMETER(how);
+	return Disconnect(sock->sk);
+#else
 	return sock->ops->shutdown(sock, how);
+#endif
 }
 #endif
 
@@ -310,8 +446,13 @@ struct hash_desc {
 	u32 flags;
 };
 
+#ifdef _WIN32
+static inline struct crypto_hash *
+crypto_alloc_hash(char *alg_name, u32 type, u32 mask, ULONG Tag)
+#else
 static inline struct crypto_hash *
 crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
+#endif
 {
 	struct crypto_hash *ch;
 	char *closing_bracket;
@@ -319,7 +460,11 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 	/* "hmac(xxx)" is in alg_name we need that xxx. */
 	closing_bracket = strchr(alg_name, ')');
 	if (!closing_bracket) {
+#ifdef _WIN32
+		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
+#else
 		ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#endif
 		if (!ch)
 			return ERR_PTR(-ENOMEM);
 		ch->base = crypto_alloc_tfm(alg_name, 0);
@@ -332,7 +477,11 @@ crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 	if (closing_bracket-alg_name < 6)
 		return ERR_PTR(-ENOENT);
 
+#ifdef _WIN32
+	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL, Tag);
+#else
 	ch = kmalloc(sizeof(struct crypto_hash), GFP_KERNEL);
+#endif
 	if (!ch)
 		return ERR_PTR(-ENOMEM);
 
@@ -361,11 +510,13 @@ static inline int
 crypto_hash_digest(struct hash_desc *desc, struct scatterlist *sg,
 		   unsigned int nbytes, u8 *out)
 {
+#ifdef _WIN32
+#else
 
 	crypto_hmac(desc->tfm->base, (u8 *)desc->tfm->key,
 		    &desc->tfm->keylen, sg, 1 /* ! */ , out);
 	/* ! this is not generic. Would need to convert nbytes -> nsg */
-
+#endif
 	return 0;
 }
 
@@ -373,7 +524,11 @@ static inline void crypto_free_hash(struct crypto_hash *tfm)
 {
 	if (!tfm)
 		return;
+#ifdef _WIN32
+
+#else
 	crypto_free_tfm(tfm->base);
+#endif
 	kfree(tfm);
 }
 
@@ -389,7 +544,9 @@ static inline struct crypto_tfm *crypto_hash_tfm(struct crypto_hash *tfm)
 
 static inline int crypto_hash_init(struct hash_desc *desc)
 {
+#ifndef _WIN32
 	crypto_digest_init(desc->tfm->base);
+#endif
 	return 0;
 }
 
@@ -397,20 +554,33 @@ static inline int crypto_hash_update(struct hash_desc *desc,
 				     struct scatterlist *sg,
 				     unsigned int nbytes)
 {
+#ifdef _WIN32
+	*(int*)desc = crc32c(0, (uint8_t *)sg, nbytes);
+#else
 	crypto_digest_update(desc->tfm->base,sg,1 /* ! */ );
 	/* ! this is not generic. Would need to convert nbytes -> nsg */
-
+#endif
 	return 0;
 }
 
 static inline int crypto_hash_final(struct hash_desc *desc, u8 *out)
 {
+#ifdef _WIN32
+	int i;
+	u8 *p = (u8*)desc; 
+	for(i = 0; i < 4; i++)
+	{
+		*out++ = *p++; // long
+	}
+#else
 	crypto_digest_final(desc->tfm->base, out);
+#endif
 	return 0;
 }
 
 #endif
 
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_VZALLOC
 static inline void *vzalloc(unsigned long size)
 {
@@ -420,6 +590,7 @@ static inline void *vzalloc(unsigned long size)
 
 	return rv;
 }
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_UMH_WAIT_PROC
@@ -439,6 +610,7 @@ typedef cpumask_t cpumask_var_t[1];
 #define cpumask_bits(maskp) ((unsigned long*)(maskp))
 #define cpu_online_mask &(cpu_online_map)
 
+#ifndef _WIN32
 static inline void cpumask_clear(cpumask_t *dstp)
 {
 	bitmap_zero(cpumask_bits(dstp), NR_CPUS);
@@ -475,6 +647,7 @@ static inline void cpumask_setall(cpumask_t *dstp)
 static inline void free_cpumask_var(cpumask_var_t mask)
 {
 }
+#endif
 #endif
 /* see upstream commit 0281b5dc0350cbf6dd21ed558a33cccce77abc02 */
 #ifdef CONFIG_CPUMASK_OFFSTACK
@@ -588,6 +761,7 @@ static inline int backport_bitmap_parse(const char *buf, unsigned int buflen,
  * but only provides an equivalent function call.
  */
 #ifndef COMPAT_HAVE_PROC_CREATE_DATA
+#ifndef _WIN32
 static inline struct proc_dir_entry *proc_create_data(const char *name,
 	mode_t mode, struct proc_dir_entry *parent,
 	struct file_operations *proc_fops, void *data)
@@ -599,13 +773,18 @@ static inline struct proc_dir_entry *proc_create_data(const char *name,
 	}
 	return pde;
 }
+#endif
 
 #endif
 
 #ifndef COMPAT_HAVE_BLK_QUEUE_MAX_HW_SECTORS
 static inline void blk_queue_max_hw_sectors(struct request_queue *q, unsigned int max)
 {
+#ifdef _WIN32
+	q->max_hw_sectors = max;
+#else
 	blk_queue_max_sectors(q, max);
+#endif
 }
 #elif defined(COMPAT_USE_BLK_QUEUE_MAX_SECTORS_ANYWAYS)
 	/* For kernel versions 2.6.31 to 2.6.33 inclusive, even though
@@ -620,18 +799,22 @@ static inline void blk_queue_max_hw_sectors(struct request_queue *q, unsigned in
 #ifndef COMPAT_HAVE_BLK_QUEUE_MAX_SEGMENTS
 static inline void blk_queue_max_segments(struct request_queue *q, unsigned short max_segments)
 {
+#ifndef _WIN32
 	blk_queue_max_phys_segments(q, max_segments);
 	blk_queue_max_hw_segments(q, max_segments);
 #define BLK_MAX_SEGMENTS MAX_HW_SEGMENTS /* or max MAX_PHYS_SEGMENTS. Probably does not matter */
+#endif
 }
 #endif
 
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_BOOL_TYPE
 typedef _Bool                   bool;
 enum {
 	false = 0,
 	true = 1
 };
+#endif
 #endif
 
 /* REQ_* and BIO_RW_* flags have been moved around in the tree,
@@ -713,7 +896,6 @@ enum {
  * cannot test on defined(BIO_RW_DISCARD), it may be an enum */
 #define DRBD_REQ_DISCARD	0
 #endif
-
 #ifndef DRBD_REQ_WSAME
 #define DRBD_REQ_WSAME          0
 #endif
@@ -791,13 +973,20 @@ enum {
 #define dynamic_dev_dbg(dev, fmt, ...)                               \
         do { if (0) dev_printk(KERN_DEBUG, dev, fmt, ##__VA_ARGS__); } while (0)
 #endif
+#ifdef _WIN32
+#define dynamic_dev_dbg(dev, fmt, ...)   
+#endif
 #endif
 
 #ifndef min_not_zero
+#ifdef _WIN32
+#define min_not_zero(x, y) (x == 0 ? y : ((y == 0) ? x : min(x, y)))
+#else
 #define min_not_zero(x, y) ({			\
 	typeof(x) __x = (x);			\
 	typeof(y) __y = (y);			\
 	__x == 0 ? __y : ((__y == 0) ? __x : min(__x, __y)); })
+#endif
 #endif
 
 /* Introduced with 2.6.26. See include/linux/jiffies.h */
@@ -823,7 +1012,9 @@ enum {
 #ifdef COMPAT_BIOSET_CREATE_HAS_THREE_PARAMETERS
 #define bioset_create(pool_size, front_pad)	bioset_create(pool_size, pool_size, 1)
 #else
+#ifndef _WIN32
 #define bioset_create(pool_size, front_pad)	bioset_create(pool_size, 1)
+#endif
 #endif
 #endif
 
@@ -941,7 +1132,7 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 #define RCU_INIT_POINTER(p, v) \
 	do { \
 		p = RCU_INITIALIZER(v); \
-	} while (0)
+    	} while (0)
 #endif
 
 /* #ifndef COMPAT_HAVE_LIST_ENTRY_RCU */
@@ -950,16 +1141,26 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 /* see c26d34a rcu: Add lockdep-enabled variants of rcu_dereference() */
 #define rcu_dereference_raw(p) rcu_dereference(p)
 #endif
+#ifndef _WIN32
 #define list_entry_rcu(ptr, type, member) \
 	({typeof (*ptr) *__ptr = (typeof (*ptr) __force *)ptr; \
 	 container_of((typeof(ptr))rcu_dereference_raw(__ptr), type, member); \
 	})
+#else
+#define list_entry_rcu(ptr, type, member)   \
+	 container_of((type *)rcu_dereference_raw(ptr), type, member)
+#endif
 #endif
 
 #ifndef list_next_entry
 /* introduced in 008208c (v3.13-rc1) */
+#ifdef _WIN32
+#define list_next_entry(type, pos, member) \
+        list_entry((pos)->member.next, type, member)
+#else
 #define list_next_entry(pos, member) \
         list_entry((pos)->member.next, typeof(*(pos)), member)
+#endif
 #endif
 
 /*
@@ -974,7 +1175,11 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
  * improved in f10db627); 2.6.24-rc1.
  */
 #ifndef IS_ALIGNED
+#ifndef _WIN32
 #define IS_ALIGNED(x, a) (((x) & ((typeof(x))(a) - 1)) == 0)
+#else
+#define IS_ALIGNED(x, a) (((x) & ((a) - 1)) == 0)
+#endif
 #endif
 
 /*
@@ -988,7 +1193,9 @@ extern void *idr_get_next(struct idr *idp, int *nextidp);
 
 static inline int nla_type(const struct nlattr *nla)
 {
+#ifndef _WIN32
 	return nla->nla_type & NLA_TYPE_MASK;
+#endif
 }
 
 #endif
@@ -1011,11 +1218,17 @@ static inline struct nlmsghdr *nlmsg_hdr(const struct sk_buff *skb)
  */
 
 #ifndef COMPAT_HAVE_GENLMSG_REPLY
+#ifndef _WIN32
 #include <net/genetlink.h>
+#endif
 
 static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
 {
+#ifndef _WIN32
 	return genlmsg_unicast(skb, info->snd_pid);
+#else
+	return genlmsg_unicast(skb, info);
+#endif
 }
 #endif
 
@@ -1025,6 +1238,7 @@ static inline int genlmsg_reply(struct sk_buff *skb, struct genl_info *info)
  */
 
 #ifndef COMPAT_HAVE_GENLMSG_MSG_SIZE
+#ifndef _WIN32
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
 
@@ -1038,6 +1252,7 @@ static inline int genlmsg_total_size(int payload)
 	return NLMSG_ALIGN(genlmsg_msg_size(payload));
 }
 #endif
+#endif
 
 /*
  * genlmsg_new() was added to <net/genetlink.h> in mainline commit 3dabc715
@@ -1045,6 +1260,8 @@ static inline int genlmsg_total_size(int payload)
  */
 
 #ifndef COMPAT_HAVE_GENLMSG_NEW
+extern struct sk_buff *genlmsg_new(size_t payload, gfp_t flags);
+#else
 #include <net/genetlink.h>
 
 static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
@@ -1058,7 +1275,17 @@ static inline struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
  * changed in 17c157c8 (v2.6.20-rc2).  genlmsg_put_reply() was introduced in
  * 17c157c8.  We replace the compat_genlmsg_put() from 482a8524.
  */
+#ifdef _WIN32
 
+extern void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
+		           struct genl_family *family, int flags, u8 cmd);
+#define genlmsg_put compat_genlmsg_put
+
+extern void *genlmsg_put_reply(struct msg_buff *skb,
+                         struct genl_info *info,
+                         struct genl_family *family,
+                         int flags, u8 cmd);
+#else
 #ifndef COMPAT_HAVE_GENLMSG_PUT_REPLY
 #include <net/genetlink.h>
 
@@ -1093,6 +1320,7 @@ static inline void *genlmsg_put_reply(struct sk_buff *skb,
 			   flags, cmd);
 }
 #endif
+#endif
 
 /*
  * compat_genlmsg_multicast() got a gfp_t parameter in mainline commit d387f6ad
@@ -1100,8 +1328,9 @@ static inline void *genlmsg_put_reply(struct sk_buff *skb,
  */
 
 #ifdef COMPAT_NEED_GENLMSG_MULTICAST_WRAPPER
+#ifndef _WIN32
 #include <net/genetlink.h>
-
+#endif
 static inline int compat_genlmsg_multicast(struct sk_buff *skb, u32 pid,
 					   unsigned int group, gfp_t flags)
 {
@@ -1158,18 +1387,36 @@ static inline void kref_sub(struct kref *kref, unsigned int count,
  * 254245d2 (v2.6.33-rc1).
  */
 #ifndef list_for_each_entry_continue_rcu
+#ifdef _WIN32
+#define list_for_each_entry_continue_rcu(type, pos, head, member)             \
+	for (pos = list_entry_rcu(pos->member.next, type, member); \
+	     &pos->member != (head);    \
+	     pos = list_entry_rcu(pos->member.next, type, member))
+#else
 #define list_for_each_entry_continue_rcu(pos, head, member)             \
 	for (pos = list_entry_rcu(pos->member.next, typeof(*pos), member); \
 	     &pos->member != (head);    \
 	     pos = list_entry_rcu(pos->member.next, typeof(*pos), member))
-
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_IS_ERR_OR_NULL
+#ifdef _WIN32
+#ifdef _WIN32
+//#define	IS_ERR_OR_NULL(p) (!p)
+// move to windfows.h 
+#else
+static __inline long IS_ERR_OR_NULL(const void *ptr)
+{
+    return !ptr || IS_ERR_VALUE((unsigned long) ptr); 
+}
+#endif
+#else
 static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
 {
 	return !ptr || IS_ERR_VALUE((unsigned long)ptr);
 }
+#endif
 #endif
 
 #ifndef SK_CAN_REUSE
@@ -1180,10 +1427,17 @@ static inline long __must_check IS_ERR_OR_NULL(const void *ptr)
 #endif
 
 #ifndef COMPAT_HAVE_KREF_GET_UNLESS_ZERO
+#ifndef _WIN32
 static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
 	return atomic_add_unless(&kref->refcount, 1, 0);
 }
+#else
+static __inline int kref_get_unless_zero(struct kref *kref)
+{
+    return 0;
+}
+#endif
 #endif
 
 #ifdef COMPAT_KMAP_ATOMIC_PAGE_ONLY
@@ -1192,33 +1446,68 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr)
 #else
+
+#ifndef _WIN32
 #define drbd_kmap_atomic(page, km)	kmap_atomic(page, km)
 #define drbd_kunmap_atomic(addr, km)	kunmap_atomic(addr, km)
+#else
+#define drbd_kmap_atomic(page, km)	(page->addr)
+#define drbd_kunmap_atomic(addr, km)	(addr)
+#define kunmap_atomic(page)	(page->addr)	
+#define kmap(page)	(page->addr)	
+#define kunmap(page)	(page->addr)	
 #endif
 
+#endif
+
+#ifndef _WIN32
 #if !defined(for_each_set_bit) && defined(for_each_bit)
 #define for_each_set_bit(bit, addr, size) for_each_bit(bit, addr, size)
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_THREE_PARAMATER_HLIST_FOR_EACH_ENTRY
 #undef hlist_for_each_entry
+#ifdef _WIN32
+#define hlist_for_each_entry(type, pos, head, member)				\
+	for (pos = hlist_entry((head)->first, type, member);	\
+	     pos;							\
+	     pos = hlist_entry((pos)->member.next, type, member))
+#else
 #define hlist_for_each_entry(pos, head, member)				\
 	for (pos = hlist_entry((head)->first, typeof(*(pos)), member);	\
 	     pos;							\
 	     pos = hlist_entry((pos)->member.next, typeof(*(pos)), member))
 #endif
+#endif
 
 #ifndef COMPAT_HAVE_PRANDOM_U32
+#ifdef _WIN32
+static int random32_win()
+{
+    int buf;
+    get_random_bytes(&buf, 4);
+    return buf;
+}
+#endif
 static inline u32 prandom_u32(void)
 {
+#ifdef _WIN32
+    return random32_win();
+#else
 	return random32();
+#endif
 }
 #endif
 
 #ifdef COMPAT_HAVE_NETLINK_CB_PORTID
 #define NETLINK_CB_PORTID(skb) NETLINK_CB(skb).portid
 #else
+#ifdef _WIN32
+#define NETLINK_CB_PORTID(skb) ((struct netlink_callback *)((void *)&skb))->nlh->nlmsg_pid
+#else
 #define NETLINK_CB_PORTID(skb) NETLINK_CB(skb).pid
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_PROC_PDE_DATA
@@ -1278,6 +1567,19 @@ static inline void genl_unlock(void)  { }
 
 
 #if !defined(QUEUE_FLAG_DISCARD) || !defined(QUEUE_FLAG_SECDISCARD)
+#ifdef _WIN32
+# define queue_flag_set_unlocked(F, Q)				\
+    do {							\
+        if ((F) != -1)					\
+            __set_bit(F, Q);		\
+    } while(0)
+
+# define queue_flag_clear_unlocked(F, Q)			\
+    do {							\
+        if ((F) != -1)					\
+            clear_bit(F, Q);	\
+    } while (0)
+#else
 # define queue_flag_set_unlocked(F, Q)				\
 	({							\
 		if ((F) != -1)					\
@@ -1289,7 +1591,7 @@ static inline void genl_unlock(void)  { }
 		if ((F) != -1)					\
 			queue_flag_clear_unlocked(F, Q);	\
 	})
-
+#endif
 # ifndef blk_queue_discard
 #  define blk_queue_discard(q)   (0)
 #  define QUEUE_FLAG_DISCARD    (-1)
@@ -1337,10 +1639,14 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 #define rcu_dereference_protected(p, c) (p)
 #endif
 
+#ifdef _WIN32 
+// _WIN32_V9_DEBUGFS 
+#else
 #ifndef COMPAT_HAVE_F_PATH_DENTRY
 #error "won't compile with this kernel version (f_path.dentry vs f_dentry)"
 /* change all occurences of f_path.dentry to f_dentry, and conditionally
  * #define f_dentry to f_path.dentry */
+#endif
 #endif
 
 #ifndef list_next_rcu
@@ -1348,12 +1654,24 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 #endif
 
 #ifndef list_first_or_null_rcu
+#ifndef _WIN32
 #define list_first_or_null_rcu(ptr, type, member) \
 ({ \
 	struct list_head *__ptr = (ptr); \
 	struct list_head *__next = ACCESS_ONCE(__ptr->next); \
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
+#else
+#define list_first_or_null_rcu(conn, ptr, type, member) \
+    do {    \
+        struct list_head *__ptr = (ptr);    \
+        struct list_head *__next = (__ptr->next);    \
+        if (likely(__ptr != __next))    \
+            conn = list_entry_rcu(__next, type, member);   \
+        else   \
+           conn = NULL;    \
+    }while (0)
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_GENERIC_START_IO_ACCT
@@ -1361,6 +1679,7 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
 static inline void generic_start_io_acct(int rw, unsigned long sectors,
 					 struct hd_struct *part)
 {
+#ifndef _WIN32
 	int cpu;
 	BUILD_BUG_ON(sizeof(atomic_t) != sizeof(part->in_flight[0]));
 
@@ -1373,11 +1692,15 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 	/* part_inc_in_flight(part, rw); */
 	atomic_inc((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
+#else
+	// DbgPrint("generic_start_io_acct\n");
+#endif
 }
 
 static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 				  unsigned long start_time)
 {
+#ifndef _WIN32
 	unsigned long duration = jiffies - start_time;
 	int cpu;
 
@@ -1387,6 +1710,9 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 	/* part_dec_in_flight(part, rw); */
 	atomic_dec((atomic_t*)&part->in_flight[rw]);
 	part_stat_unlock();
+#else
+	// DbgPrint("generic_end_io_acct\n");
+#endif
 }
 #endif /* __disk_stat_inc */
 #endif /* COMPAT_HAVE_GENERIC_START_IO_ACCT */
@@ -1401,12 +1727,14 @@ static inline void generic_end_io_acct(int rw, struct hd_struct *part,
 #define WB_sync_congested BDI_sync_congested
 #endif
 
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_SIMPLE_POSITIVE
 #include <linux/dcache.h>
 static inline int simple_positive(struct dentry *dentry)
 {
         return dentry->d_inode && !d_unhashed(dentry);
 }
+#endif
 #endif
 
 #ifndef COMPAT_HAVE_ATOMIC_DEC_IF_POSITIVE
@@ -1427,6 +1755,7 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 }
 #endif
 
+#ifndef _WIN32
 #ifndef COMPAT_HAVE_IB_CQ_INIT_ATTR
 #include <rdma/ib_verbs.h>
 
@@ -1450,5 +1779,5 @@ drbd_ib_create_cq(struct ib_device *device,
 #define ib_create_cq(DEV, COMP_H, EVENT_H, CTX, ATTR) \
 	drbd_ib_create_cq(DEV, COMP_H, EVENT_H, CTX, ATTR)
 #endif
-
+#endif
 #endif

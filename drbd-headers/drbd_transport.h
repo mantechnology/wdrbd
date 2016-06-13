@@ -23,6 +23,9 @@
 #define CALLER_BUFFER  MSG_DONTROUTE
 #define GROW_BUFFER    MSG_PROBE
 
+#ifdef _WIN32
+#define SOCKET_SND_DEF_BUFFER 		(16384)
+#endif
 /*
  * gfp_mask for allocating memory with no write-out.
  *

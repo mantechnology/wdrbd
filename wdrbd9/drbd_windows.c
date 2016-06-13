@@ -6,7 +6,7 @@
 #include "wsk2.h"
 #include "drbd_wingenl.h"
 #include "linux-compat/idr.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 #include "disp.h"
 #include "proto.h"
 
@@ -552,7 +552,7 @@ void mempool_free(void *p, mempool_t *pool)
 
 void mempool_destroy(void *p)
 {
-
+	// we don't need to free mempool. wdrbd is static loading driver.
 }
 
 void kmem_cache_destroy(struct kmem_cache *s)

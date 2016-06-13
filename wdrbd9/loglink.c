@@ -1,7 +1,7 @@
 ﻿#include <wdm.h>
 #include "drbd_windows.h"
 #include "loglink.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 
 atomic_t g_loglink_state = LOGLINK_UNINITIALIZED;
 int g_loglink_tcp_port;

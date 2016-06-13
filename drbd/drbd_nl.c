@@ -4704,7 +4704,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		int retry = 3;
 		do {
 			struct drbd_connection *connection;
-#ifdef _WIN32 // DW-907
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-907
 			int success = 0;
 #endif
 
@@ -4715,7 +4715,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 				retcode = invalidate_resync(peer_device);
 				if (retcode >= SS_SUCCESS)
 #ifdef _WIN32	
-				// _WIN32 // DW-907: implicitly request to get synced to all peers, as a way of hedging first source node put out.
+				// MODIFIED_BY_MANTECH DW-907: implicitly request to get synced to all peers, as a way of hedging first source node put out.
 				{
 					success = retcode;
 				}
@@ -4724,7 +4724,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 #endif
 			}
 #ifdef _WIN32
-			// _WIN32 // DW-907: retcode will be success at least one succeeded peer.
+			// MODIFIED_BY_MANTECH DW-907: retcode will be success at least one succeeded peer.
 			if (success)
 			{
 				retcode = success;
