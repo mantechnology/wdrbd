@@ -216,9 +216,6 @@
     <ClInclude Include="wsk2.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="drbd_wrappers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="linux-compat\Kernel.h">
       <Filter>Header Files\linux-compat</Filter>
     </ClInclude>
