@@ -1365,6 +1365,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_RECLAIM);
 #ifdef _WIN32
         if (!page) {
+			bio_put(bio);
             goto no_memory;
         }
         page->private = b->bm_pages[page_nr]->private;
