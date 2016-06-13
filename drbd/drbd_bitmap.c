@@ -1363,7 +1363,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 
 	if (ctx->flags & BM_AIO_COPY_PAGES) {
 		page = mempool_alloc(drbd_md_io_page_pool, __GFP_HIGHMEM|__GFP_RECLAIM);
-#ifdef _WIN32
+#ifdef _WIN32 
         if (!page) {
 			bio_put(bio);
             goto no_memory;
@@ -1404,7 +1404,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 		}
 #endif
 	}
-#ifdef _WIN32
+#ifdef _WIN32 // DW-938 
     return 0;
 
 no_memory :
@@ -1500,7 +1500,7 @@ static int bm_rw_range(struct drbd_device *device,
 	if (flags & BM_AIO_READ) {
 		for (i = start_page; i <= end_page; i++) {
 			atomic_inc(&ctx->in_flight);
-#ifdef _WIN32
+#ifdef _WIN32 // DW-938 
 			if(-ENOMEM == bm_page_io_async(ctx, i)) {
 				ctx->error = -ENOMEM;
 				break;
@@ -1527,7 +1527,7 @@ static int bm_rw_range(struct drbd_device *device,
 			if (bm_test_page_unchanged(b->bm_pages[i]))
 				continue;
 			atomic_inc(&ctx->in_flight);
-#ifdef _WIN32
+#ifdef _WIN32 // DW-938 
 			if(-ENOMEM == bm_page_io_async(ctx, i)) {
 				ctx->error = -ENOMEM;
 				break;
@@ -1554,7 +1554,7 @@ static int bm_rw_range(struct drbd_device *device,
 				continue;
 			}
 			atomic_inc(&ctx->in_flight);
-#ifdef _WIN32
+#ifdef _WIN32 // DW-938
 			if(-ENOMEM == bm_page_io_async(ctx, i)) {
 				ctx->error = -ENOMEM;
 				break;
