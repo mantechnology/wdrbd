@@ -835,7 +835,7 @@ int connect_work(struct drbd_work *work, int cancel)
 	struct drbd_connection *connection =
 		container_of(work, struct drbd_connection, connect_timer_work);
 	enum drbd_state_rv rv;
-
+	
 	rv = change_cstate(connection, C_CONNECTED, CS_SERIALIZE | CS_VERBOSE | CS_DONT_RETRY);
 
 	if (rv >= SS_SUCCESS) {
@@ -5259,9 +5259,14 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	err = __receive_uuids(peer_device, be64_to_cpu(p->node_mask));
 
-	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE) {
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
+	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE &&
+		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
+#else
+	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE) { 
+#endif
 		struct drbd_device *device = peer_device->device;
-
+		
 		if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
 		    drbd_device_stable(device, NULL) && get_ldev(device)) {
 			drbd_send_uuids(peer_device, UUID_FLAG_RESYNC, 0);
@@ -5269,8 +5274,13 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 			put_ldev(device);
 		}
 	}
-
-	if (peer_device->uuid_flags & UUID_FLAG_RESYNC) {
+	
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
+	if (peer_device->uuid_flags & UUID_FLAG_RESYNC &&
+		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
+#else
+	if (peer_device->uuid_flags & UUID_FLAG_RESYNC) { 
+#endif
 		if (get_ldev(device)) {
 			bool dp = peer_device->uuid_flags & UUID_FLAG_DISKLESS_PRIMARY;
 			drbd_resync(peer_device, dp ? DISKLESS_PRIMARY : AFTER_UNSTABLE);
@@ -6935,7 +6945,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			goto out;
 		if (peer_device->current_uuid != drbd_current_uuid(peer_device->device))
 			goto out;
-	}
+		}
 
 	/* Need to wait until the other receiver thread has called the
 	   cleanup_unacked_peer_requests() function */

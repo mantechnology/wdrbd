@@ -1667,7 +1667,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			     peer_device->uuid_flags & UUID_FLAG_GOT_STABLE ||
 			     peer_disk_state[OLD] == D_OUTDATED))
 				disk_state[NEW] = D_UP_TO_DATE;
-
+			
 			peer_device->uuid_flags &= ~UUID_FLAG_GOT_STABLE;
 		}
 		if (disk_state[OLD] == D_UP_TO_DATE)
@@ -2565,7 +2565,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #else
 	bool resync_finished;
 #endif
-	
+
 
 	notify_state_change(state_change);
 
@@ -3069,7 +3069,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		}
 
 		if (peer_role[OLD] == R_PRIMARY &&
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
+			cstate[OLD] == C_CONNECTED && cstate[NEW] >= C_TIMEOUT && cstate[NEW] <= C_PROTOCOL_ERROR) {
+#else
 		    cstate[OLD] == C_CONNECTED && cstate[NEW] < C_CONNECTED) {
+#endif
 			/* A connection to a primary went down, notify other peers about that */
 			notify_peers_lost_primary(connection);
 		}
