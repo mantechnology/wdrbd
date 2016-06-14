@@ -592,9 +592,12 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         {
             PMVOL_THREAD				pThreadInfo;
 #ifdef DRBD_TRACE
-            PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
-            WDRBD_TRACE("\n(%s):Upper driver WRITE request start! vol:%c: sect:0x%llx sz:%d ................Queuing(%d)!\n",
-                current->comm, VolumeExtension->Letter, (writeIrpSp->Parameters.Write.ByteOffset.QuadPart / 512), writeIrpSp->Parameters.Write.Length, VolumeExtension->IrpCount);
+			PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
+			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
+				&VolumeExtension->MountPoint,
+				(writeIrpSp->Parameters.Write.ByteOffset.QuadPart >> 9),
+				(writeIrpSp->Parameters.Write.Length >> 9),
+				VolumeExtension->IrpCount);
 #endif
 
 #ifdef MULTI_WRITE_HOOKER_THREADS

@@ -447,19 +447,23 @@ void complete_master_bio(struct drbd_device *device,
 #endif
 
 	int rw = bio_data_dir(m->bio);
-
 #ifdef _WIN32
 	ASSERT(m->bio->bi_end_io == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
-#endif
+#else
 	bio_endio(m->bio, m->error);
-
+#endif
 #ifdef _WIN32
-    
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
 		master_bio =  m->bio; // if pMasterIrp is exist, bio is master bio.
-		 
+
+		// In diskless mode, io access should be completed non-arbitrary thread.
+		// Error status is not assigned properly yet, so should do.
+		if (D_DISKLESS == device->disk_state[NOW]) {
+			m->error = STATUS_UNSUCCESSFUL;			
+		}
+
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
 	            WDRBD_ERROR("szie 0x%x ERROR!\n", master_bio->bi_size);
@@ -1068,6 +1072,9 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		drbd_report_io_error(device, req);
 		__drbd_chk_io_error(device, DRBD_WRITE_ERROR);
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
+#ifdef _WIN32
+		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
+#endif
 		break;
 
 	case READ_COMPLETED_WITH_ERROR:
@@ -1078,6 +1085,9 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 	case READ_AHEAD_COMPLETED_WITH_ERROR:
 		/* it is legal to fail READA, no __drbd_chk_io_error in that case. */
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
+#ifdef _WIN32
+		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
+#endif
 		break;
 
 	case DISCARD_COMPLETED_NOTSUPP:
