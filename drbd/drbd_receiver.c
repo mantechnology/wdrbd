@@ -6945,7 +6945,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			goto out;
 		if (peer_device->current_uuid != drbd_current_uuid(peer_device->device))
 			goto out;
-		}
+	}
 
 	/* Need to wait until the other receiver thread has called the
 	   cleanup_unacked_peer_requests() function */
