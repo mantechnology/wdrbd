@@ -983,9 +983,10 @@ NTSTATUS mutex_lock(struct mutex *m)
 }
 
 __inline
-NTSTATUS mutex_lock_interruptible(struct mutex *m)
+int mutex_lock_interruptible(struct mutex *m)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	int err = -EIO;
 	struct task_struct *thread = current;
 	PVOID waitObjects[2];
 	int wObjCount = 1;
@@ -1002,16 +1003,18 @@ NTSTATUS mutex_lock_interruptible(struct mutex *m)
 	switch (status)
 	{
 	case STATUS_WAIT_0:		// mutex acquired.
-		status = STATUS_SUCCESS;
+		err = 0;
 		break;
 	case STATUS_WAIT_1:		// thread got signal by the func 'force_sig'
-		status = STATUS_ALERTED;
+		err = thread->sig != 0 ? -thread->sig : -EIO;
 		break;
 	default:
-		status = STATUS_UNSUCCESSFUL;
+		err = -EIO;
+		WDRBD_ERROR("KeWaitForMultipleObjects returned unexpected status(0x%x)", status);
+		break;
 	}
 
-	return status;
+	return err;
 }
 
 // Returns 1 if the mutex is locked, 0 if unlocked.
