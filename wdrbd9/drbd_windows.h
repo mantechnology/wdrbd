@@ -718,7 +718,7 @@ extern void sema_init(struct semaphore *s, int limit);
 
 extern NTSTATUS mutex_lock(struct mutex *m);
 #ifdef _WIN32
-extern NTSTATUS mutex_lock_interruptible(struct mutex *m);
+extern int mutex_lock_interruptible(struct mutex *m);
 extern NTSTATUS mutex_lock_timeout(struct mutex *m, ULONG msTimeout);
 #endif
 extern int mutex_is_locked(struct mutex *m);
