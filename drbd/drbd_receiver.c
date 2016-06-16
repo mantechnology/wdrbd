@@ -6965,7 +6965,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 
 
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
-        idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 			if ((new_repl_state == L_WF_BITMAP_T) && (peer_device->disk_state[NOW] <= D_INCONSISTENT))
 			{
 				goto out;
