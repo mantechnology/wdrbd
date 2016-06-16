@@ -1141,6 +1141,9 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 				if (repl_state[OLD] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED)
 					goto allow;
 			}
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891	
+			test_and_clear_bit(RECONCILIATION_RESYNC, &peer_device->flags);
+#endif
 			return SS_LOWER_THAN_OUTDATED;
 		}
 		allow:
