@@ -1140,6 +1140,14 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 				enum drbd_repl_state *repl_state = peer_device->repl_state;
 				if (repl_state[OLD] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED)
 					goto allow;
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
+				if (test_bit(RECONCILIATION_RESYNC, &peer_device->flags) && repl_state[NEW] == L_WF_BITMAP_S)
+				{
+					/* If it fails to change the repl_state, reconciliation resync does not do. 
+					So clear the RECONCILIATION_RESYNC bit. */
+					clear_bit(RECONCILIATION_RESYNC, &peer_device->flags);
+				}
+#endif
 			}
 			return SS_LOWER_THAN_OUTDATED;
 		}

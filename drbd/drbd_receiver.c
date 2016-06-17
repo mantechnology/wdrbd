@@ -6963,6 +6963,17 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 	if (new_repl_state != L_ESTABLISHED) {
 		unsigned long irq_flags;
 
+
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
+		/* If cannot change the state of peer node to L_WF_BITMAP_S, do not change the local node's repl_state to L_WF_BITMAP_T. */
+		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+			if ((new_repl_state == L_WF_BITMAP_T) && (peer_device->disk_state[NOW] <= D_INCONSISTENT))
+			{
+				goto out;
+			}
+		}
+#endif		
+
 		drbd_info(connection, "Reconciliation resync because \'%s\' disappeared. (o=%d)\n",
 			  lost_peer->transport.net_conf->name, (int)dagtag_offset);
 
