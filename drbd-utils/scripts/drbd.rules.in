@@ -1,0 +1,19 @@
+# This file contains the rules to create named DRBD devices.
+
+SUBSYSTEM!="block", GOTO="drbd_end"
+KERNEL!="drbd*", GOTO="drbd_end"
+
+IMPORT{program}="@sbindir@/drbdadm sh-udev minor-%m"
+
+# Use symlink from the environment if available
+ENV{SYMLINK}!="", SYMLINK="$env{SYMLINK}", GOTO="have_symlink"
+
+# Legacy rules for older DRBD 8.3 & 8.4 when drbdadm sh-udev did not yet export SYMLINK
+ENV{DISK}!="", SYMLINK+="drbd/by-disk/$env{DISK}"
+ENV{RESOURCE}!="", SYMLINK+="drbd/by-res/$env{RESOURCE}"
+
+LABEL="have_symlink"
+
+ENV{DEVICE}=="drbd_?*", SYMLINK+="$env{DEVICE}"
+
+LABEL="drbd_end"

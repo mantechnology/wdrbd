@@ -1,0 +1,4 @@
+# %DRBD_PATH%/etc/drbd.d/drbd.conf
+
+include "drbd.d/global_common.conf";
+include "drbd.d/*.res";

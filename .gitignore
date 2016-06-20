@@ -1,0 +1,13 @@
+build/drbd/drbd.v12.suo
+*.rej
+*.obj
+*.o
+*.tlog
+*.log
+*.tmh
+*.sdf
+*.suo
+*.pfx
+*.opensdf
+*Release/
+*Debug/

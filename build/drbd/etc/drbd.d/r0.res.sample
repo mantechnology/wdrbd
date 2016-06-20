@@ -1,0 +1,16 @@
+resource r0 {
+  on WIN8_64_node1 {
+     device    e  minor 2;
+     disk      e;
+     meta-disk f;
+     address   192.168.75.137:7789;
+  }
+
+  on WIN8_64_node2  {
+     device    e minor 2;
+     disk      e;
+     meta-disk f;
+     address   192.168.75.199:7789;
+  }
+}
+
