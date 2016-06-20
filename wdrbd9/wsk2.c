@@ -2,10 +2,12 @@
 #include "drbd_windows.h"
 #include "wsk2.h"
 
+extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+
 WSK_REGISTRATION			g_WskRegistration;
 static WSK_PROVIDER_NPI		g_WskProvider;
 static WSK_CLIENT_DISPATCH	g_WskDispatch = { MAKE_WSK_VERSION(1, 0), 0, NULL };
-LONG						g_SocketsState = DEINITIALIZED; // for  _WIN32_LOGLINK	
+LONG						g_SocketsState = DEINITIALIZED;
 
 NTSTATUS
 NTAPI CompletionRoutine(
@@ -55,6 +57,7 @@ __out PKEVENT	CompletionEvent
 
 	return;
 }
+
 NTSTATUS
 InitWskBuffer(
 	__in  PVOID		Buffer,
@@ -301,7 +304,7 @@ Disconnect(
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskDisconnect(
 		WskSocket,
 		NULL,
-		0,//WSK_FLAG_ABORTIVE,=> ABORTIVE 적용할 경우 disconnect 시... standalone 으로 빠지는 현상으로 인해 제거.
+		0,//WSK_FLAG_ABORTIVE,=> when disconnecting, ABORTIVE was going to standalone, and then we removed ABORTIVE
 		Irp);
 
 	if (Status == STATUS_PENDING) {
@@ -368,7 +371,6 @@ SocketConnect(
 char *GetSockErrorString(NTSTATUS status)
 {
 	char *ErrorString;
-	//DRBC_CHECK_WSK; 정리!
 	switch (status)
 	{
 		case STATUS_CONNECTION_RESET:
@@ -394,7 +396,7 @@ char *GetSockErrorString(NTSTATUS status)
 }
 
 #ifdef _WSK_IRP_REUSE
-// Reuse IRP 를 사용할 경우 IRP 를 외부에서 생성하여 SendEx의 파라미터로 입력한다. Irp 의 해제는 finalize 시점에 해제
+// for Reusing IRP, first, create IRP outside, and input SendEx's parameter. Irp can be freed in finalize point.
 LONG
 NTAPI
 SendEx(
@@ -409,10 +411,9 @@ __in enum			drbd_stream stream
 {
 	KEVENT		CompletionEvent = { 0 };
 	WSK_BUF		WskBuffer = { 0 };
-	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !pIrp || ((int)BufferSize <= 0))
 		return SOCKET_ERROR;
 		
@@ -463,7 +464,6 @@ __in enum			drbd_stream stream
 }
 #endif
 
-extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 
 LONG
 NTAPI
@@ -483,8 +483,6 @@ Send(
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
-	//DbgPrint("DRBD_TEST:(%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -531,19 +529,11 @@ Send(
 
 			waitObjects[0] = (PVOID) &CompletionEvent;
 #ifndef _WIN32_SEND_BUFFING 
-			// 송신버퍼링에서 Netlink 와 call_usermodehelper 는 SendLocal로 분리됨.
-			// 송신중에 KILL 이벤트는 송신버퍼링용 스레드에서만 사용한다.
-			// WIN32_V9_REFACTO_: JHKIM: 입력인자 축소와 로그메세지 축소관련하여 추가 리팩토링 필요.
+			// in send-buffering, Netlink , call_usermodehelper are distinguished to SendLocal
+			// KILL event is only used in send-buffering thread while send block. 
+			// WIN32_V9_REFACTO_:required to refactoring that input param, log message are simplized.
 #else
-			if (send_buf_kill_event)
-			{
-				//waitObjects[1] = (PVOID) send_buf_kill_event; // DRBD_DOC_V9:JHKIM: 송신버퍼링에서 송출 도중에 kill 요청을 인지하는 방법임. thread->has_sig_event를 이용한 일관성있는 중지신호 수신방안이 필요(리팩토링 필요)
-				//wObjCount = 2;
-			}
-			else
-			{
-				// sndbuf_size = 0 인 경우!
-			}
+
 #endif
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
@@ -556,14 +546,11 @@ Send(
 					WDRBD_WARN("(%s) sent timeout=%d sz=%d retry_count=%d WskSocket=%p IRP=%p\n",
 						current->comm, Timeout, BufferSize, retry_count,WskSocket, Irp);
 
-					// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
-					// 무한대기. 중단 여부는 상위레벨 BAB overflow 에서 처리. 
-					// _WIN32_V9 포팅 후 안정화뒤 제거
+					// required to refactroing about retrying method.
 
 					goto retry;
 				}
 #endif
-				// WIN32_DOC: IRP free 관계로 함수를 벗어나지 못하고 이곳에서 재시도.
 				if (transport != NULL)
 				{
 					if (!drbd_stream_send_timed_out(transport, stream))
@@ -629,11 +616,9 @@ Send(
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
 
-	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
 	return BytesSent;
 }
 
-// _WIN32_V9:
 LONG
 NTAPI
 SendLocal(
@@ -649,8 +634,6 @@ SendLocal(
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
-
-	//DbgPrint("DRBD_TEST: SendLocal!! (%s)Tx: sz=%d to=%d\n", current->comm, BufferSize, Timeout); // _WIN32_V9_TEST
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
@@ -758,7 +741,7 @@ SendLocal(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	//DbgPrint("DRBD_TEST:(%s)Tx: done. ret=%d\n", current->comm, BytesSent); // _WIN32_V9_TEST
+
 	return BytesSent;
 }
 
@@ -829,8 +812,6 @@ LONG NTAPI Receive(
     PVOID       waitObjects[2];
     int         wObjCount = 1;
 
-	//DbgPrint("DRBD_TEST:(%s)Rx: sz=%d to=%d\n", current->comm, BufferSize, Timeout);
-
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
@@ -888,7 +869,7 @@ LONG NTAPI Receive(
             }
             else
             {
-#ifdef _WIN32_LOGLINK // TODO: wsk2.c 의 로그는 상위에서 적절한 오류처리에서 기록/확인이 가능함으로 최종적으로는 삭제요망.
+#ifdef _WIN32_LOGLINK 
                 DbgPrint("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
 #else
 				WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
@@ -948,7 +929,7 @@ LONG NTAPI Receive(
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-	//DbgPrint("DRBD_TEST:(%s)Rx: done. ret=%d\n", current->comm, BytesReceived); // _WIN32_V9_TEST
+
 	return BytesReceived;
 }
 
@@ -1118,7 +1099,7 @@ Accept(
 				break;
 
 			default:
-				WDRBD_ERROR("Unexpected Error Status=0x%x\n", Status); // EVENT_LOG!
+				WDRBD_ERROR("Unexpected Error Status=0x%x\n", Status);
 				break;
 		}
 	}

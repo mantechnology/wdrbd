@@ -27,7 +27,7 @@
 
 #ifdef _WIN32
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"
 #include "idr.h"
 #else
 #ifndef TEST  // to test in user space...
@@ -475,7 +475,7 @@ void *idr_find(struct idr *idp, int id)
  *
  * The caller must serialize idr_for_each() vs idr_get_new() and idr_remove().
  */
-#ifdef _WIN32_V9
+#ifdef _WIN32
 // DRBD_DOC: from http://ftp.openswan.org/openswan/openswan-ocf/klips-fsm/lib/idr.c
 int idr_for_each(struct idr *idp,
 		 int (*fn)(int id, void *p, void *data), void *data)

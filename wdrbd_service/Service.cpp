@@ -1,4 +1,24 @@
-﻿#include "stdafx.h"
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+
+#include "stdafx.h"
 #include <Shlwapi.h>
 
 #define BATCH_TIMEOUT 60000
@@ -32,10 +52,30 @@ SERVICE_STATUS          g_tServiceStatus;
 WCHAR					*g_pwdrbdRcBat = L"rc.bat";
 TCHAR                   gServicePath[MAX_PATH];
 
+VOID WriteLogFormat(WCHAR* msg, ...)
+{
+	size_t size = 4096;
+	wchar_t * buffer = new wchar_t[size];
+	ZeroMemory(buffer, size * sizeof(wchar_t));
+	va_list params;
+
+	va_start(params, msg);
+	_vstprintf(buffer, size, msg, params);
+	va_end(params);
+
+	WriteLog(buffer);
+
+	delete[] buffer;
+}
+
 VOID WriteLog(wchar_t* pMsg)
 {
     HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
     PCTSTR aInsertions[] = {pMsg};
+	DWORD dwDataSize = 0;
+
+	dwDataSize = (wcslen(pMsg) + 1) * sizeof(WCHAR);
+
     ReportEvent(
         hEventLog,                  // Handle to the eventlog
         EVENTLOG_INFORMATION_TYPE,  // Type of event
@@ -43,14 +83,12 @@ VOID WriteLog(wchar_t* pMsg)
         ONELINE_INFO,				// Event id
         NULL,                       // User's sid (NULL for none)
         1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
+        dwDataSize,                 // Number of additional bytes, need to provide it to read event log data
         aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
+        pMsg                        // Pointer to additional bytes, need to provide it to read event log data
         );
 
     DeregisterEventSource(hEventLog);
-	Log(pMsg);
-
 }
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -82,7 +120,7 @@ int _tmain(int argc, _TCHAR* argv[])
         WCHAR fullName[MAX_PATH] = {0};
 
         size_t len;
-        errno_t err = _wdupenv_s(&szServicePath, &len, L"WDRBD_PATH");
+        errno_t err = _wdupenv_s(&szServicePath, &len, L"DRBD_PATH");
         if (err)
         {
             // default
@@ -102,7 +140,7 @@ int _tmain(int argc, _TCHAR* argv[])
         free(szServicePath);
         return ERROR_SUCCESS;
     }
-#if 1 // _WIN32_HANDLER_TIMEOUT: 데몬이 아닌 독자적인 응용으로 시험: 검증 후 추후 삭제.
+#if 1 // _WIN32_HANDLER_TIMEOUT: test by a separate application, not daemon. remove later
 	else if (_tcsicmp(L"/n", argv[1]) == 0) 
 	{
 		// internal test only: no-daemon test
@@ -283,7 +321,6 @@ DWORD RunService(const TCHAR * pName)
         {
             err= GetLastError();
             _stprintf_s(pTemp, _T("OpenService failed, error code = %d\n"), err);
-            // 1060 :  지정한 서비스가 설치되어 있지 않습니다
             WriteLog(pTemp);
         }
         else
@@ -344,17 +381,10 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 		SERVICE_ACCEPT_STOP |
 		SERVICE_ACCEPT_PAUSE_CONTINUE |
 #ifdef SERVICE_HANDLER_EX
-		SERVICE_ACCEPT_PRESHUTDOWN; // don't use SERVICE_ACCEPT_PRESHUTDOWN flag with SERVICE_ACCEPT_SHUTDOWN 2016.2.25 sekim
+		SERVICE_ACCEPT_PRESHUTDOWN; // don't use SERVICE_ACCEPT_PRESHUTDOWN flag with SERVICE_ACCEPT_SHUTDOWN 2016.2.25
 #else
 		SERVICE_ACCEPT_SHUTDOWN;
 #endif
-
-    //SERVICE_ACCEPT_NETBINDCHANGE 
-    //SERVICE_ACCEPT_SESSIONCHANGE 
-    //SERVICE_ACCEPT_PARAMCHANGE 
-    //SERVICE_ACCEPT_HARDWAREPROFILECHANGE 
-    //SERVICE_ACCEPT_POWEREVENT 
-
     g_tServiceStatus.dwWin32ExitCode = 0;
     g_tServiceStatus.dwServiceSpecificExitCode = 0;
     g_tServiceStatus.dwCheckPoint = 0;
@@ -420,12 +450,6 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
     while (g_bProcessStarted)
     {
         Sleep(3000);
-
-        //if (WaitForSingleObject(g_hStopSvcEvent, dwMonitorInterval) == WAIT_OBJECT_0)
-        //{
-        //	_terminateService();
-        //	break;
-        //}
     }
 
     WriteLog(L"Service is stopped.\n");
@@ -576,29 +600,14 @@ DWORD RemoveEventSource(TCHAR *csPath, TCHAR *csApp)
 }
 
 DWORD RcDrbdStart()
-{
-    HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
-    BOOL bSuccess;
-    PCTSTR aInsertions[] = {L"rc_drbd_start"}; // EVENTLOG sample
-    bSuccess = ReportEvent(
-        hEventLog,                  // Handle to the eventlog
-        EVENTLOG_INFORMATION_TYPE,  // Type of event
-        0,							// Category (could also be 0)
-        ONELINE_INFO,				// Event id
-        NULL,                       // User's sid (NULL for none)
-        1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
-        aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
-        );
-
-    DeregisterEventSource(hEventLog);
-
+{    
     DWORD dwPID;
     TCHAR tmp[1024];
     TCHAR szFullPath[MAX_PATH] = {0};
     DWORD dwLength;
     DWORD ret;
+
+	WriteLog(L"rc_drbd_start");
 
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
     {
@@ -620,29 +629,14 @@ DWORD RcDrbdStart()
 
 DWORD RcDrbdStop()
 {
-    HANDLE hEventLog = RegisterEventSource(NULL, ServiceName);
-    BOOL bSuccess;
-    PCTSTR aInsertions[] = {L"rc_drbd_stop"}; // EVENTLOG sample
-    bSuccess = ReportEvent(
-        hEventLog,                  // Handle to the eventlog
-        EVENTLOG_INFORMATION_TYPE,  // Type of event
-        0,							// Category (could also be 0)
-        ONELINE_INFO,				// Event id
-        NULL,                       // User's sid (NULL for none)
-        1,                          // Number of insertion strings
-        0,                          // Number of additional bytes
-        aInsertions,                // Array of insertion strings
-        NULL                        // Pointer to additional bytes
-        );
-
-    DeregisterEventSource(hEventLog);
-
     DWORD dwPID;
     WCHAR szFullPath[MAX_PATH] = {0};
     WCHAR tmp[1024];
     DWORD dwLength;
     DWORD ret;
 	
+	WriteLog(L"rc_drbd_stop");
+
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
     {
         wsprintf(tmp, L"Error: cmd too long(%d)\n", dwLength);

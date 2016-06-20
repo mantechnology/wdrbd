@@ -54,7 +54,12 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
+#ifdef _WIN32
+// DW-915 
+#define DRBD_TIMEOUT_DEF 30       /* 3 seconds */
+#else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
+#endif
 #define DRBD_TIMEOUT_SCALE '1'
 
  /* If backing disk takes longer than disk_timeout, mark the disk as failed */
@@ -66,20 +71,30 @@
   /* active connection retries when C_CONNECTING */
 #define DRBD_CONNECT_INT_MIN 1
 #define DRBD_CONNECT_INT_MAX 120
+#ifdef _WIN32
+//DW-915
+#define DRBD_CONNECT_INT_DEF 3   /* seconds */
+#else
 #define DRBD_CONNECT_INT_DEF 10   /* seconds */
+#endif
 #define DRBD_CONNECT_INT_SCALE '1'
 
   /* keep-alive probes when idle */
 #define DRBD_PING_INT_MIN 1
 #define DRBD_PING_INT_MAX 120
+#ifdef _WIN32
+#define DRBD_PING_INT_DEF 3
+#else
 #define DRBD_PING_INT_DEF 10
+#endif
 #define DRBD_PING_INT_SCALE '1'
 
  /* timeout for the ping packets.*/
 #define DRBD_PING_TIMEO_MIN  1
 #define DRBD_PING_TIMEO_MAX  300
 #if _WIN32
-#define DRBD_PING_TIMEO_DEF  30
+//DW-763
+#define DRBD_PING_TIMEO_DEF  30 /* 1/10 seconds */
 #else
 #define DRBD_PING_TIMEO_DEF  5
 #endif
@@ -161,10 +176,9 @@
 #define DRBD_DISK_SIZE_DEF  0 /* = disabled = no user size... */
 #define DRBD_DISK_SIZE_SCALE 's'  /* sectors */
 #ifdef _WIN32
-#define DRBD_ON_IO_ERROR_DEF EP_PASS_ON
-#else
-#define DRBD_ON_IO_ERROR_DEF EP_DETACH
+// WDRBD_DOC: when Disk I/O fail on Windows, A continous retry I/O occured in EP_PASS_ON config.(DW-463) so, EP_DETACH is suitable for WDRBD
 #endif
+#define DRBD_ON_IO_ERROR_DEF EP_DETACH 
 #define DRBD_FENCING_DEF FP_DONT_CARE
 #define DRBD_AFTER_SB_0P_DEF ASB_DISCONNECT
 #define DRBD_AFTER_SB_1P_DEF ASB_DISCONNECT
@@ -265,7 +279,11 @@
 /* Two-phase commit timeout (1/10 seconds). */
 #define DRBD_TWOPC_TIMEOUT_MIN	50
 #define DRBD_TWOPC_TIMEOUT_MAX	600
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-957 adjust 2pc timout default value(300 is so long).
+#define DRBD_TWOPC_TIMEOUT_DEF	100
+#else
 #define DRBD_TWOPC_TIMEOUT_DEF	300
+#endif
 #define DRBD_TWOPC_TIMEOUT_SCALE '1'
 
 #define DRBD_TWOPC_RETRY_TIMEOUT_MIN 1

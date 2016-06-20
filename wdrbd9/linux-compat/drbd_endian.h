@@ -128,7 +128,7 @@ static inline unsigned int generic_hweight32(unsigned int w)
     res = (res & 0x00FF00FF) + ((res >> 8) & 0x00FF00FF);
     return (res & 0x0000FFFF) + ((res >> 16) & 0x0000FFFF);
 }
-#ifdef _WIN32_V9
+#ifdef _WIN32
 static inline ULONG_PTR generic_hweight64(uint64_t w)
 #else
 static inline unsigned long generic_hweight64(uint64_t w)
@@ -147,7 +147,7 @@ static inline unsigned long generic_hweight64(uint64_t w)
     return (res & 0x00000000FFFFFFFF) + ((res >> 32) & 0x00000000FFFFFFFF);
 #endif
 }
-#ifdef _WIN32_V9
+#ifdef _WIN32
 static inline ULONG_PTR hweight_long(unsigned long w)
 #else
 static inline unsigned long hweight_long(unsigned long w)

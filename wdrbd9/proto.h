@@ -1,4 +1,23 @@
-﻿#ifndef __PROTO_H__
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#ifndef __PROTO_H__
 #define __PROTO_H__
 #include <mountdev.h>
 
@@ -7,7 +26,6 @@
 //
 NTSTATUS
 mvolSendToNextDriver( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp );
-
 
 //
 // sub.c
@@ -22,13 +40,14 @@ NTSTATUS
 mvolReadWriteDevice( IN PVOLUME_EXTENSION VolumeExtension, IN PIRP Irp, IN ULONG Io );
 NTSTATUS
 mvolGetVolumeSize( PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize );
+extern NTSTATUS
+mvolQueryMountPoint(PVOLUME_EXTENSION pvext);
 VOID
 mvolLogError( PDEVICE_OBJECT DeviceObject, ULONG UniqID,
 	NTSTATUS ErrorCode, NTSTATUS Status );
 
 NTSTATUS
 IOCTL_SetIOFlag(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG Val, BOOLEAN On);
-
 
 //
 // util.c
@@ -55,7 +74,6 @@ COUNT_LOCK( PVOLUME_EXTENSION VolumeExtension );
 VOID
 COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension );
 
-
 //
 // ops.c
 //
@@ -81,6 +99,10 @@ NTSTATUS
 IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength );
 NTSTATUS
 IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS
+IOCTL_SetSimulDiskIoError( PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS
+IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 //
 // thread.c

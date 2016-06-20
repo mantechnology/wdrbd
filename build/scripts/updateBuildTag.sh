@@ -7,7 +7,7 @@ git init
 cd drbd
 
 if test -e ../.git && GITHEAD=$(git rev-parse HEAD); then
-	ENGVER=v$3
+	ENGVER=$3
 	sed -i "s/\(^#define BUILD_VERSION\).*/\1 \"$ENGVER\"/g" drbd_buildtag.c 
 	sed -i "s/\(^#define COMMIT\).*/\1 \"${GITHEAD:0:7}\"/g" drbd_buildtag.c
 	sed -i "s/\(^#define BUILD_USER\).*/\1 \"$(id -un)\"/g" drbd_buildtag.c

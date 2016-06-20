@@ -1,4 +1,24 @@
-﻿#include "stdafx.h" 
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+
+#include "stdafx.h" 
 
 #define TMPBUF			256  
 #define MAX_LOG_STRING	512
@@ -21,6 +41,10 @@ VOID WriteLog(wchar_t* pLogName, wchar_t* pMsg, WORD wType)
 
 	HANDLE hEventLog = RegisterEventSource(NULL, pLogName);
 	PCTSTR aInsertions [] = { pMsg };
+	DWORD dwDataSize = 0;
+
+	dwDataSize = (wcslen(pMsg) + 1) * sizeof(WCHAR);
+
 	ReportEvent(
 		hEventLog,                  // Handle to the eventlog
 		wType,						// Type of event
@@ -28,14 +52,12 @@ VOID WriteLog(wchar_t* pLogName, wchar_t* pMsg, WORD wType)
 		ONELINE_INFO,				// Event id
 		NULL,                       // User's sid (NULL for none)
 		1,                          // Number of insertion strings
-		0,                          // Number of additional bytes
+		dwDataSize,                 // Number of additional bytes, need to provide it to read event log data
 		aInsertions,                // Array of insertion strings
-		NULL                        // Pointer to additional bytes
+		pMsg                        // Pointer to additional bytes need to provide it to read event log data
 		);
 
 	DeregisterEventSource(hEventLog);
-
-	Log(pMsg);
 }
 
 void get_linklog_reg()
@@ -92,7 +114,7 @@ int LogLink_Daemon(unsigned short *port)
 
 	if (g_loglink_usage == LOGLINK_NEW_NAME || g_loglink_usage == LOGLINK_2OUT)
 	{
-		// TEST: 새로운 이름으로 생성
+		// TEST: create with new name
 		AddEventSource(NULL, new_logname);
 		WriteLog(L"LogLink: create new log event\r\n");
 	}

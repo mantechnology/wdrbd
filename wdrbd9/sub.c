@@ -1,13 +1,32 @@
-﻿#include <wdm.h>
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#include <wdm.h>
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"	
 #include "proto.h"
 
 #include "linux-compat/idr.h"
 #include "drbd_int.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 
-#ifdef _WIN32_V9 //헤더파일이 지정해야할 이유 파악
+#ifdef _WIN32
 #include <ntdddisk.h>
 #endif
 
@@ -31,7 +50,6 @@ mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
-
 
 NTSTATUS
 mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -83,7 +101,7 @@ mvolStartDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return status;
 }
 
-extern int drbd_adm_down_from_engine(struct drbd_connection *connection);
+extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
 
 NTSTATUS
 mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -91,19 +109,33 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 
+	// we should call acuire removelock before pass down irp.
+	// if acuire-removelock fail, we should return fail(STATUS_DELETE_PENDING).
+	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
+		if(!NT_SUCCESS(status)) {
+			Irp->IoStatus.Status = status;
+			Irp->IoStatus.Information = 0;
+
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+	}
+	
 	status = mvolRunIrpSynchronous(DeviceObject, Irp);
 	if (!NT_SUCCESS(status))
 	{
 		WDRBD_ERROR("cannot remove device, status=0x%x\n", status);
 	}
 
-	if (NT_SUCCESS(IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL)))
-		IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
+	IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
+	IoDetachDevice(VolumeExtension->TargetDeviceObject);
+	IoDeleteDevice(DeviceObject);
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
 	{
 		int i = 0;
-		for (i = 0; i < 5; i++) // TEST!!!
+		for (i = 0; i < 5; i++) 
 		{
 			if (deviceExtension->WorkThreadInfo[i].Active)
 			{
@@ -121,52 +153,31 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
+	if (VolumeExtension->dev) {
+		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
+		if (device) {
 
-    struct drbd_device *device;
-    if (VolumeExtension->Active)
-    {
-        device = minor_to_device(VolumeExtension->VolIndex);
-    }
-    else
-    {
-        device = get_targetdev_by_md(VolumeExtension->Letter);
-    }
+			// DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
+			struct drbd_resource *resource = device->resource;
+			int ret;
 
-    if (device)
-    {
-        // DRBD-UPGRADE: if primary, check umount first? maybe umounted already?
-#ifdef _WIN32_V9
-        struct drbd_resource *resource = device->resource;
-		struct drbd_connection *connection, *tmp;
-		int ret; 
-
-		for_each_connection_safe(connection, tmp, resource)
-		{
-			ret = drbd_adm_down_from_engine(connection);
-			if (ret != NO_ERROR)
-			{
+			// DW-876: The function 'drbd_adm_down_from_engine' performs down operation with specified resource, it does clean up all it needs(including disconnecting connections..)
+			// It should be called per resource. Do not call with the resource which is already down.
+			ret = drbd_adm_down_from_engine(resource);
+			if (ret != NO_ERROR) {
 				WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
 				// error ignored.
 			}
 		}
-#else
-        int ret = drbd_adm_down_from_engine(mdev->tconn);
+	}
 
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("drbd_adm_down_from_engine failed. ret=%d\n", ret); // EVENTLOG!
-            // error ignored.
-        }
-#endif
-        drbdFreeDev(VolumeExtension);
-    }
+	FreeUnicodeString(&VolumeExtension->MountPoint);
+	FreeUnicodeString(&VolumeExtension->VolumeGuid);
 
 	MVOL_LOCK();
 	mvolDeleteDeviceList(VolumeExtension);
 	MVOL_UNLOCK();
-
-	IoDetachDevice(VolumeExtension->TargetDeviceObject);
-	IoDeleteDevice(DeviceObject);
+	
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;
@@ -323,7 +334,6 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 					WDRBD_ERROR("HOOKER malloc fail!!!\n");
 					goto fail;
 				}
-				//memcpy(newbuf, buffer, slice); // for write
 			}
 			else
 			{
@@ -354,7 +364,6 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 					WDRBD_ERROR("HOOKER rest malloc fail!!\n");
 					goto fail;
 				}
-				//memcpy(newbuf, buffer, rest); // for write
 			}
 			else
 			{
@@ -397,7 +406,7 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
 
     if (KeGetCurrentIrql() > APC_LEVEL)
     {
-        WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d) #########\n", KeGetCurrentIrql());
+        WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d)\n", KeGetCurrentIrql());
     }
 
     newIrp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_LENGTH_INFO,
@@ -426,6 +435,62 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
     pVolumeSize->QuadPart = li.Length.QuadPart;
 
     return status;
+}
+
+NTSTATUS
+mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
+{
+	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
+	ULONG mpslen = 4096 * 2;
+
+	PCHAR inbuf = kmalloc(mplen, 0, '56DW');
+	PCHAR otbuf = kmalloc(mpslen, 0, '56DW');
+	if (!inbuf || !otbuf) {
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	PMOUNTMGR_MOUNT_POINT	pmp = (PMOUNTMGR_MOUNT_POINT)inbuf;
+	PMOUNTMGR_MOUNT_POINTS	pmps = (PMOUNTMGR_MOUNT_POINTS)otbuf;
+	
+	pmp->DeviceNameLength = pvext->PhysicalDeviceNameLength;
+	pmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
+	RtlCopyMemory(inbuf + pmp->DeviceNameOffset,
+		pvext->PhysicalDeviceName,
+		pvext->PhysicalDeviceNameLength);
+	
+	NTSTATUS status = QueryMountPoint(pmp, mplen, pmps, &mpslen);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
+
+		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
+		PUNICODE_STRING link = NULL;
+		UNICODE_STRING name = {
+			.Length = p->SymbolicLinkNameLength,
+			.MaximumLength = p->SymbolicLinkNameLength,
+			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
+		
+		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
+			name.Length = strlen(" :") * sizeof(WCHAR);
+			name.Buffer += strlen("\\DosDevices\\");
+			pvext->VolIndex = name.Buffer[0] - 'C';
+			link = &pvext->MountPoint;
+			FreeUnicodeString(link);
+		}
+		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
+			link = &pvext->VolumeGuid;
+		}
+
+		link && ucsdup(link, name.Buffer, name.Length);
+	}
+
+cleanup:
+	kfree(inbuf);
+	kfree(otbuf);
+	
+	return status;
 }
 
 #ifdef _WIN32_GetDiskPerf
@@ -563,6 +628,15 @@ void save_to_system_event(char * buf, int length, int level_index)
 	}
 }
 
+void printk_init(void)
+{
+	// initialization for logging. the function '_prink' shouldn't be called before this initialization.
+	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
+#ifdef _WIN32_LOGLINK
+	LogLink_MakeUsable();
+#endif
+}
+
 void _printk(const char * func, const char * format, ...)
 {
 	int ret = 0;
@@ -576,13 +650,12 @@ void _printk(const char * func, const char * format, ...)
 	RtlZeroMemory(buf, MAX_ELOG_BUF);
 
 	va_start(args, format);
-	ret = vsprintf(buf, format, args); // DRBD_DOC: vsnprintf 개선
+	ret = vsprintf(buf, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
 	int length = strlen(buf);
 	if (length > MAX_ELOG_BUF)
 	{
-		// DbgPrint("DRBD_TEST: unexpected err length=%d", length); // may be crashed already!!! but 512 is big enough
 		length = MAX_ELOG_BUF - 1;
 		buf[MAX_ELOG_BUF - 1] = 0;
 	}
@@ -593,62 +666,93 @@ void _printk(const char * func, const char * format, ...)
 
 	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
+	int printLevel = 0;
+	CHAR szTempBuf[MAX_ELOG_BUF] = "";
+	BOOLEAN bSysEventLog = FALSE;
+	BOOLEAN bServiceLog = FALSE;
+	BOOLEAN bDbgLog = FALSE;
+	extern atomic_t g_syslog_lv_min;
+	extern atomic_t g_svclog_lv_min;
+	extern atomic_t g_dbglog_lv_min;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
-
+	
 #ifdef _WIN32_WPP
 	DoTraceMessage(TRCINFO, "%s", buf);
-
-	// _WIN32_V9:JHKIM: 아래 2문장은 각각 이벤트로그에 제한된 길이로 저장, WinDbg 출력 정도의 보조기능이다. 최종 배포 시에는 이벤트로그 부분은 제거요망.
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 #else
-#ifdef _WIN32_LOGLINK
+	// to write system event log.
+	if (level_index <= atomic_read(&g_syslog_lv_min))
+		bSysEventLog = TRUE;
+	// to send to drbd service.	
+	if (level_index <= atomic_read(&g_svclog_lv_min))
+		bServiceLog = TRUE;
+	// to print through debugger.
+	if (level_index <= atomic_read(&g_dbglog_lv_min))
+		bDbgLog = TRUE;
 
-	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3); // to DbgWin
+	// nothing to log.
+	if (!bSysEventLog &&
+		!bServiceLog &&
+		!bDbgLog)
+	{
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+		return;
+	}
 
-	if (g_loglink_usage == LOGLINK_NOT_USED)
+	if (bSysEventLog)
 	{
 		save_to_system_event(buf, length, level_index);
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 	}
-	else
+
+	switch (level_index)
 	{
-		struct loglink_msg_list  *loglink_msg;
+	case KERN_EMERG_NUM:
+	case KERN_ALERT_NUM:
+	case KERN_CRIT_NUM:
+		printLevel = DPFLTR_ERROR_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_FATA", func, buf + 3);
+		break;
+	case KERN_ERR_NUM:
+		printLevel = DPFLTR_ERROR_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_ERRO", func, buf + 3);
+		break;
+	case KERN_WARNING_NUM:
+		printLevel = DPFLTR_WARNING_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_WARN", func, buf + 3);
+		break;
+	case KERN_NOTICE_NUM:
+	case KERN_INFO_NUM:
+		printLevel = DPFLTR_INFO_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_INFO", func, buf + 3);
+		break;
+	case KERN_DEBUG_NUM:
+		printLevel = DPFLTR_TRACE_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_TRAC", func, buf + 3);
+		break;
+	default:
+		printLevel = DPFLTR_TRACE_LEVEL;
+		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_UNKN", func, buf + 3);
+		break;
+	}
 
-		if (loglink.wq)
-		{
-			loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&linklog_printk_msg);
-			if (loglink_msg == NULL)
-			{
-				DbgPrint("DRBD_ERROR:loglink: no memory\n");
-				goto error;
-			}
-			loglink_msg->buf = buf;
-			mutex_lock(&loglink_mutex);
-			list_add(&loglink_msg->list, &loglink.loglist);
-			mutex_unlock(&loglink_mutex);
-			queue_work(loglink.wq, &loglink.worker);
+	strcpy_s(buf, MAX_ELOG_BUF, szTempBuf);
 
-			if (g_loglink_usage == LOGLINK_DUAL) // TEST
-			{
-				save_to_system_event(buf, length, level_index);
-			}
-		}
-		else
-		{
-			DbgPrint("DRBD_TEST: loglink daemon not ready yet.\n"); // TEST!
+	if (bDbgLog)
+		DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
 
-		error:
-			save_to_system_event(buf, length, level_index);
-			ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-		}
+#ifdef _WIN32_LOGLINK
+	if (FALSE == bServiceLog ||
+		FALSE == LogLink_IsUsable() ||
+		STATUS_SUCCESS != LogLink_QueueBuffer(buf))
+	{
+		// buf will be freed by loglink sender thread if it's queued, otherwise free it here.
+		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
 	}
 #else
     // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
-	save_to_system_event(buf, length, level_index);
     DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
@@ -719,7 +823,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 #if 0
     if (KeGetCurrentIrql() > PASSIVE_LEVEL) // DRBD_DOC: DV: skip api RtlStringCchPrintfW(PASSIVE_LEVEL)
     {
-        // DRBD_DOC: EVENTLOG 처리시 고려
+        // DRBD_DOC: you should consider to process EVENTLOG
         WDRBD_WARN("IRQL(%d) too high. Log canceled.\n", KeGetCurrentIrql());
         return 1;
     }
@@ -823,7 +927,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 
 		/* Write the packet */
 		IoWriteErrorLogEntry(l_pErrorLogEntry);
-		// DbgPrint("DRBD_TEST: one line l_Size=%d", l_Size); // _WIN32_MULTILINE_LOG test!
+
 		return l_Size;	// _WIN32_MULTILINE_LOG test!
 
 	} /* OK */
@@ -844,154 +948,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 }
 
 /**
-* @brief   VOLUME_EXTENSION 객체의 값을 참조하여 block_device 객체값을 생성한다.
-*          여기서 생성된 block_device 값은 다른 곳에서 적절히 ExFreePool()해줘야 한다.
-*/
-struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
-{
-    struct block_device * dev;
-
-    dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-    if (!dev)
-    {
-        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory");
-        goto block_device_failed;
-    }
-
-    dev->bd_disk = alloc_disk(0);
-    if (!dev->bd_disk)
-    {
-        WDRBD_ERROR("Failed to allocate gendisk NonPagedMemory");
-        goto gendisk_failed;
-    }
-#if 0
-    dev->d_size = get_targetdev_volsize(pvext);
-    if (0 == dev->d_size)
-    {
-        WDRBD_WARN("Failed to get (%c): volume size\n", pvext->Letter);
-        goto gendisk_failed;
-    }
-#endif
-    dev->bd_disk->disk_name[0] = pvext->Letter;
-    dev->bd_disk->disk_name[1] = ':';
-    dev->bd_disk->disk_name[2] = '\n';
-
-    dev->bd_disk->queue = blk_alloc_queue(0);
-    if (!dev->bd_disk->queue)
-    {
-        WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
-        goto request_queue_failed;
-    }
-
-    dev->bd_disk->pDeviceExtension = pvext;
-
-    dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pvext;
-    dev->bd_disk->queue->logical_block_size = 512;
-    dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE;
-
-    return dev;
-
-request_queue_failed:
-    kfree(dev->bd_disk->queue);
-
-gendisk_failed:
-    kfree(dev->bd_disk);
-
-block_device_failed:
-    kfree(dev);
-
-    return NULL;
-}
-
-// 장착된 disk 정보 일괄 구축. 추후 drbd 엔진에서 사용되는 mdev의 blkdev_??? 정보로 사용.
-// 구축된 disk 자료구조의 free 는 스레드 종료시 개별적으로 처리함. 
-// MVF dev 와 DRBD mdev 자료구조 통합, drbdadm 명령 통합 고려
-
-VOID drbdCreateDev()
-{
-	PROOT_EXTENSION		rootExtension = NULL;
-	PVOLUME_EXTENSION	pDeviceExtension = NULL;
-
-	MVOL_LOCK();
-	rootExtension = mvolRootDeviceObject->DeviceExtension;
-	pDeviceExtension = rootExtension->Head;
-
-	while (pDeviceExtension != NULL)
-	{
-        if (0 == pDeviceExtension->VolIndex)
-        {
-            pDeviceExtension = pDeviceExtension->Next;
-            continue;
-        }
-
-		if (pDeviceExtension->dev)
-		{
-			WDRBD_WARN("pDeviceExtension(%c)->dev Already exists\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev = kmalloc(sizeof(struct block_device), 0, 'F5DW');
-		if (!pDeviceExtension->dev)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev:kzalloc failed\n", pDeviceExtension->Letter);
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		pDeviceExtension->dev->bd_disk = kmalloc(sizeof(struct gendisk), 0, '06DW');
-		if (!pDeviceExtension->dev->bd_disk)
-		{
-			WDRBD_ERROR("pDeviceExtension(%c)->dev->bd_disk:kzalloc failed\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-        pDeviceExtension->dev->d_size = get_targetdev_volsize(pDeviceExtension);
-        if (!pDeviceExtension->dev->d_size)
-		{
-			WDRBD_ERROR("volume(%c) size is zero\n", pDeviceExtension->Letter);
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-
-		sprintf(pDeviceExtension->dev->bd_disk->disk_name, "%c:", pDeviceExtension->Letter);
-		pDeviceExtension->dev->bd_disk->queue = kmalloc(sizeof(struct request_queue), 0, '16DW'); // CHECK FREE!!!!
-		if (!pDeviceExtension->dev->bd_disk->queue)
-		{
-			WDRBD_ERROR("pDeviceExtension->dev->bd_disk->queue:kzalloc failed\n");
-			kfree(pDeviceExtension->dev->bd_disk);
-			kfree(pDeviceExtension->dev);
-			pDeviceExtension->dev = 0;
-			pDeviceExtension = pDeviceExtension->Next;
-			continue;
-		}
-		pDeviceExtension->dev->bd_disk->pDeviceExtension = pDeviceExtension;
-
-		pDeviceExtension->dev->bd_disk->queue->backing_dev_info.pDeviceExtension = pDeviceExtension;
-		pDeviceExtension->dev->bd_disk->queue->logical_block_size = 512;
-		pDeviceExtension->dev->bd_disk->queue->max_hw_sectors = DRBD_MAX_BIO_SIZE >> 9;
-		pDeviceExtension = pDeviceExtension->Next;
-	}
-	MVOL_UNLOCK();
-}
-
-/**
-* @brief   VOLUME_EXTENSION 내의 dev객체를 memory free 해준다.
-*          생성은 drbdCreateDev와 짝을 이룬다.
+* @brief   free VOLUME_EXTENSION's dev object
 */
 VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 {
-    if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
+	if (VolumeExtension == NULL || VolumeExtension->dev == NULL) {
 		return;
 	}
 
-    kfree(VolumeExtension->dev->bd_disk->queue);
+	kfree(VolumeExtension->dev->bd_disk->queue);
 	kfree(VolumeExtension->dev->bd_disk);
 	kfree2(VolumeExtension->dev);
 }

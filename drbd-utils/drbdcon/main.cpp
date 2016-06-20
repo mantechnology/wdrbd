@@ -1,6 +1,8 @@
 ﻿#include <windows.h>
 #include <stdio.h>
+#include <tchar.h>
 #include "mvol.h"
+#include "LogManager.h"
 
 
 void
@@ -18,6 +20,9 @@ usage()
         "   /nagle_enable \n"
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
+		"   /get_log [ProviderName] \n"
+		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
+
 		"\n\n"
 
 		"options:\n"
@@ -33,6 +38,8 @@ usage()
         "drbdcon /nagle_disable r0 \n"
         "drbdcon /d F \n"
         "drbdcon /m F \n"
+		"drbdcon /get_log drbdService \n"
+		"drbdcon /minlog_lv svc 6 \n"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -52,13 +59,19 @@ main(int argc, char* argv [])
     char    NagleEnableFlag = 0;
     char    NagleDisableFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
+	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
+	char	GetLog = 0;
+	char	SetMinLogLv = 0;
+	char	*ProviderName = NULL;
 
     int     Force = 0;
 
 	LARGE_INTEGER Offset = {0,};
 	ULONG	BlockSize = 0;
 	ULONG	Count = 0;
+	SIMULATION_DISK_IO_ERROR sdie = { 0, };
+	LOGGING_MIN_LV lml = { 0, };
 
 	if (argc < 2)
 		usage();
@@ -105,6 +118,16 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		else if (strcmp(argv[argIndex], "/get_log") == 0)
+		{
+			argIndex++;
+			GetLog++;
+
+			if (argIndex < argc)
+				ProviderName = argv[argIndex];
+			else
+				usage();
+		}
 		else if (!_stricmp(argv[argIndex], "/letter") || !_stricmp(argv[argIndex], "/l"))
 		{
 			argIndex++;
@@ -153,6 +176,58 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		else if (!_stricmp(argv[argIndex], "/disk_error")) // Simulate Disk I/O Error
+		{
+			SimulDiskIoErrorFlag++;
+			argIndex++;
+			// get parameter 1 (DiskI/O error flag)
+			if (argIndex < argc) {
+				sdie.bDiskErrorOn = atoi(argv[argIndex]);
+			} else {
+				usage();
+			}
+			
+			argIndex++;
+			// get parameter 2 (DiskI/O error Type)
+			if (argIndex < argc) {
+				sdie.ErrorType = atoi(argv[argIndex]);
+			} else {
+				// if parameter 2 does not exist, parameter 2 is default value(0)
+			}
+		}
+		else if (strcmp(argv[argIndex], "/minlog_lv") == 0)
+		{
+			argIndex++;
+			SetMinLogLv++;
+
+			// first argument indicates logging type.
+			if (argIndex < argc)
+			{
+				if (strcmp(argv[argIndex], "sys") == 0)
+				{
+					lml.nType = LOGGING_TYPE_SYSLOG;
+				}
+				else if (strcmp(argv[argIndex], "svc") == 0)
+				{
+					lml.nType = LOGGING_TYPE_SVCLOG;
+				}
+				else if (strcmp(argv[argIndex], "dbg") == 0)
+				{
+					lml.nType = LOGGING_TYPE_DBGLOG;
+				}
+				else
+					usage();				
+			}
+
+			// second argument indicates minimum logging level.
+			argIndex++;
+			if (argIndex < argc)
+			{
+				lml.nErrLvMin = atoi(argv[argIndex]);
+			}
+			else
+				usage();
+		}
 		else
 		{
 			printf("Please check undefined arg[%d]=(%s)\n", argIndex, argv[argIndex]);
@@ -326,6 +401,19 @@ main(int argc, char* argv [])
     {
         res = MVOL_MountVolume(Letter);
     }
+
+	if (SimulDiskIoErrorFlag) {
+		res = MVOL_SimulDiskIoError(&sdie);
+	}
+
+	if (SetMinLogLv) {
+		res = MVOL_SetMinimumLogLevel(&lml);
+	}
+
+	if (GetLog)
+	{
+		res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+	}
 
 	return res;
 }

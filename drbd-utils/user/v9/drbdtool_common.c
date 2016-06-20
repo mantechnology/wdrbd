@@ -139,7 +139,7 @@ typedef struct _MVOL_VOLUME_INFO
 	WCHAR				PhysicalDeviceName[256];		// src device
 	ULONG				PeerIp;
 	USHORT				PeerPort;
-	CHAR				Seq[2048]; // DRBD_CHECK_DW130: check enough? and chaneg to dynamically
+	CHAR				Seq[2048]; // DRBD_DW130: check enough? and chaneg to dynamically
 } MVOL_VOLUME_INFO, *PMVOL_VOLUME_INFO;
 
 #define	MVOL_TYPE		0x9800
@@ -353,7 +353,7 @@ const struct version *drbd_utils_version(void)
 
 int version_code_kernel(void)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
     const struct version *driver_version = drbd_driver_version(_STRICT);
 #else
 	const struct version *driver_version = drbd_driver_version(STRICT);

@@ -278,7 +278,7 @@ enum drbd_req_state_bits {
 	 RQ_WRITE	|\
 	 RQ_IN_ACT_LOG	|\
 	 RQ_POSTPONED	|\
-	 RQ_UNPLUG    |\
+	 RQ_UNPLUG	|\
 	 RQ_COMPLETION_SUSP)
 
 /* For waking up the frozen transfer log mod_req() has to return if the request
@@ -286,7 +286,7 @@ enum drbd_req_state_bits {
 #define MR_WRITE       1
 #define MR_READ        2
 
-#ifdef _WIN32 //DV
+#ifdef _WIN32 
 static inline bool drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
 #else
 static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bio *bio_src)
@@ -296,7 +296,7 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 	bio = bio_clone(bio_src, GFP_NOIO); /* XXX cannot fail?? */
 
 #ifdef _WIN32
-    if (!bio) // DV
+    if (!bio) 
     {
         return FALSE;
     }
@@ -309,7 +309,7 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 	bio->bi_end_io   = drbd_request_endio;
 	bio->bi_next     = NULL;
 
-#ifdef _WIN32 // DV
+#ifdef _WIN32
     return TRUE;
 #endif
 }

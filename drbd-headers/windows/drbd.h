@@ -374,7 +374,8 @@ enum drbd_state_rv {
 	SS_WEAKLY_CONNECTED = -24,
 #ifdef _WIN32
     SS_TARGET_DISK_TOO_SMALL = -25,
-    SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */
+	SS_CONNECTED_DISKLESS = -26, 
+    SS_AFTER_LAST_ERROR = -27,    /* Keep this at bottom */
 #else
 	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
 #endif

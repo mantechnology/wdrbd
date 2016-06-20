@@ -7,73 +7,82 @@
 DWORD MVOL_GetVolumeInfo( CHAR DriveLetter, PMVOL_VOLUME_INFO pVolumeInfo );
 DWORD MVOL_InitThread( PWCHAR PhysicalVolume );
 /**
- *      @brief  볼륨 I/O를 처리하는 쓰레드를 생성한다.
+ *      @brief  Create a thread processing a volume I/O
  *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_InitThread( CHAR DriveLetter );
 DWORD MVOL_CloseThread( PWCHAR PhysicalVolume );
 /**
- *      @brief  볼륨 I/O를 처리하는 쓰레드를 종료한다.
+ *      @brief  close a thread processing a volume I/O
  *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_CloseThread( CHAR DriveLetter );
 DWORD MVOL_StartVolume( PWCHAR PhysicalVolume );
 /**
- *      @brief  볼륨을 활성화한다.
+ *      @brief  enable a volume
  *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_StartVolume( CHAR DriveLetter );
 DWORD MVOL_StopVolume( PWCHAR PhysicalVolume );
 /**
- *      @brief  볼륨을 비활성화한다.
+ *      @brief  disable a volume
  *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_StopVolume( CHAR DriveLetter );
 DWORD MVOL_GetVolumeSize( PWCHAR PhysicalVolume, PLARGE_INTEGER pVolumeSize );
 /**
- *      @brief  DRBD의 상태 정보를 가져온다. 리눅스의 cat /proc/drbd와 동일한 내용을
- *              표시한다.
- *      @param  VolumeInfo [out]    DRBD의 상태 정보를 받는 버퍼
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @brief  get drbd's status inforamtion 
+ *      @param  VolumeInfo [out]    status Info buffer 
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_GetStatus( PMVOL_VOLUME_INFO VolumeInfo );
 DWORD MVOL_set_ioctl(PWCHAR PhysicalVolume, DWORD code, MVOL_VOLUME_INFO *volumeInfo);
 /**
- *      @brief  nagle 설정을 위해 레지스트리 값을 변경한다.
- *      @param  ResourceName [in]   nagle 속성을 설정할 리소스 이름
- *      @param  arg [in]            nagle 설정 값 (disable or enable)
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
-*/
+ *      @brief  change regisrty settings about nagle 
+ *      @param  ResourceName [in]   resource name 
+ *      @param  arg [in]            disable or enable
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
+ */
 DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg);
 
 
 /**
-*      @brief  볼륨을 mount 한다.
+*      @brief  mount a volume
 *      @param  driveletter [in] Local drive letter(ex C, D, E, ...)
-*      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
-*              값을 반환한다.
+*      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
 */
 DWORD MVOL_MountVolume(char drive_letter);
 
 /**
- *      @brief  볼륨을 dismount 한다.
+ *      @brief  dismount a volume
  *      @param  driveletter [in] Local drive letter(ex C, D, E, ...)
  *      @param  Force [in] true or false
  *              true -  FSCTL_DISMOUNT_VOLUME
  *              false - FSCTL_LOCK_VOLUME -> FSCTL_DISMOUNT_VOLUME -> FSCTL_UNLOCK_VOLUME
- *      @return 함수가 성공하면 ERROR_SUCCESS를 반환하고 실패하면 GetLastError()의
- *              값을 반환한다.
+ *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
 DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force);
+
+/**
+*      @brief  Simulate Disk I/O Error
+*      @param  SIMULATION_DISK_IO_ERROR structure's pointer
+*			bDiskErrorOn : Simulation flag
+*				true -  ON Simulation flag
+*				false - OFF Simulation flag
+*			ErrorType : Type of Disk I/O Error
+*				0 - generic_make_request fail
+*				1 - Local Disk I/O complete with error
+*				2 - Peer Request I/O complete with error
+*				3 - Meta Data I/O complete with error
+*				4 - Bitmap I/O complete with error
+*      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
+*/
+DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);
+
+DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml);
 
 #endif __MVOL_H__

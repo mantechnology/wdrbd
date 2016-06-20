@@ -1,9 +1,28 @@
-﻿#include <Ntifs.h>
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#include <Ntifs.h>
 #include <ntddk.h>
 #include <stdlib.h>
 #include <Mountmgr.h> 
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"
 #include "proto.h"
 #include "drbd_int.h"
 
@@ -12,7 +31,7 @@
 #endif
 
 #ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, RetrieveVolumeGuid)
+#pragma alloc_text(PAGE, QueryMountDUID)
 #ifdef _WIN32_MVFL
 #pragma alloc_text(PAGE, FsctlDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
@@ -20,7 +39,6 @@
 #pragma alloc_text(PAGE, FsctlCreateVolume)
 #endif
 #endif
-
 
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
@@ -59,13 +77,14 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 
 #ifdef _WIN32_MVFL
 /**
-* @brief    커널단에서 FSCTL_DISMOUNT_VOLUME을 수행한다.
-*           이 명령은 볼륨의 사용유무에 상관없이 강제적으로 수행이 가능하므로 
-*           lock - dismount - unlock 과정으로 사용할 것을 권고한다.
-*           http://msdn.microsoft.com/en-us/library/windows/desktop/aa364562(v=vs.85).aspx 참조
-*           FsctlLockVolume() - FsctlDismountVolume() - FsctlUnlockVolume() 으로 사용하면 되는데
-*           Open시킨 볼륨의 HANDLE 값은 VOLUME_EXTENSION에 있다.
-*           하지만 필요시 이 명령만 단독으로 사용가능하다.
+* @brief    do FSCTL_DISMOUNT_VOLUME in kernel.
+*           advised to use this function in next sequence
+*			lock - dismount - unlock
+*			because this function can process regardless of using volume
+*           reference to http://msdn.microsoft.com/en-us/library/windows/desktop/aa364562(v=vs.85).aspx 
+*           using sequence is FsctlLockVolume() - FsctlDismountVolume() - FsctlUnlockVolume() 
+*           Opened volume's HANDLE value is in VOLUME_EXTENSION.
+*           if you need, can be used Independently. 
 */
 NTSTATUS FsctlDismountVolume(unsigned int minor)
 {
@@ -144,7 +163,7 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
     }
     __finally
     {
-        if (!pvext->LockHandle && hFile)    // dismount를 단독으로 수행했을 경우
+        if (!pvext->LockHandle && hFile)    // case of dismount Independently
         {
             ZwClose(hFile);
         }
@@ -160,11 +179,10 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
 }
 
 /**
-* @brief    커널단에서 FSCTL_LOCK_VOLUME을 수행한다.
-*           lock 성공시 볼륨의 HANDLE값은 VOLUME_EXTENSION 구조체내에 가지게 되며
-*           이 값은 FsctlUnlockVolume()을 해서 반드시 ZwClose 시켜 주어야 한다.
-*           lock 실패시 FsctlUnlockVolume()을 할 필요는 없다.
-*           볼륨을 어디선가 참조하고 있을 경우는 lock이 실패한다.
+* @brief    do FSCTL_LOCK_VOLUME in kernel.
+*           If acuiring lock is success, volume's HANDLE value is in VOLUME_EXTENSION.
+*           this handle must be closed by FsctlUnlockVolume()-ZwClose()
+*           If volume is referenced by somewhere, aquiring lock will be failed.
 */
 NTSTATUS FsctlLockVolume(unsigned int minor)
 {
@@ -240,10 +258,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 }
 
 /**
-* @brief    커널단에서 FSCTL_UNLOCK_VOLUME을 수행한다.
-*           FsctlLockVolume()에서 lock을 성공했을 시 볼륨의 HANDLE 값을
-*           Unlock후 ZwClose 시켜준다. 그리고 NULL로 다시 초기화 한다.
-*           볼륨의 HANDLE 값은 VOLUME_EXTENSION 구조체내에서 가지고 온다.
+* @brief    do FSCTL_UNLOCK_VOLUME in kernel.
 */
 NTSTATUS FsctlUnlockVolume(unsigned int minor)
 {
@@ -399,7 +414,6 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 
     return status;
 }
-
 #endif
 
 PVOLUME_EXTENSION
@@ -412,7 +426,6 @@ mvolSearchDevice( PWCHAR PhysicalDeviceName )
 	VolumeExtension = RootExtension->Head;
 	while( VolumeExtension != NULL )
 	{
-		/// SEO: 대소문자 구분 제거
 		if( !_wcsicmp(VolumeExtension->PhysicalDeviceName, PhysicalDeviceName) )
 		{
 			return VolumeExtension;
@@ -430,7 +443,6 @@ mvolAddDeviceList( PVOLUME_EXTENSION pEntry )
 	PROOT_EXTENSION		RootExtension = mvolRootDeviceObject->DeviceExtension;
 	PVOLUME_EXTENSION	pList = RootExtension->Head;
 
-	/// 리스트가 비었을 경우
 	if( pList == NULL )
 	{
 		RootExtension->Head = pEntry;
@@ -455,9 +467,8 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
 	PVOLUME_EXTENSION	pList = RootExtension->Head;
 	PVOLUME_EXTENSION	pTemp = NULL;
 
-	/// 리스트가 비었을 경우
 	if( pList == NULL )	return ;
-	/// 삭제할 Entry가 헤더일 경우
+	
     if (pList == pEntry)
 	{
 		RootExtension->Head = pList->Next;
@@ -470,7 +481,6 @@ mvolDeleteDeviceList( PVOLUME_EXTENSION pEntry )
 		pList = pList->Next;
 	}
 
-	/// 찾지 못했을 경우
 	if( pList->Next == NULL )	return ;
 
 	pTemp = pList->Next;
@@ -534,58 +544,148 @@ COUNT_UNLOCK( PVOLUME_EXTENSION VolumeExtension )
 	KeReleaseMutex( &VolumeExtension->CountMutex, FALSE );
 }
 
-VOID
-ResolveDriveLetters(VOID)
+// Inputs:
+//   MountPoint - this is the buffer containing the mountpoint structure used for the query
+//   MountPointLength - this is the total size of the MountPoint buffer
+//   MountPointInfoLength - the size of the mount point Info structure
+//
+// Outputs:
+//   MountPointInfo - this is the returned mount point information
+//   MountPointInfoLength - the # of bytes actually needed
+//
+// Returns:
+//   Results of the underlying operation
+//
+// Notes:
+//   Re-opening the mount manager could be optimized if that were an important goal;
+//   We avoid it to minimize handle context problems.
+//   http://www.osronline.com/article.cfm?name=mountmgr.zip&id=107
+//
+NTSTATUS QueryMountPoint(
+	_In_ PVOID MountPoint,
+	_In_ ULONG MountPointLength,
+	_Inout_ PVOID MountPointInfo,
+	_Out_ PULONG MountPointInfoLength)
 {
-	PROOT_EXTENSION		RootExtension = NULL;
-	PVOLUME_EXTENSION	VolumeExtension = NULL;
-	NTSTATUS		status;
+	OBJECT_ATTRIBUTES mmgrObjectAttributes;
+	UNICODE_STRING mmgrObjectName;
+	NTSTATUS status;
+	HANDLE mmgrHandle;
+	IO_STATUS_BLOCK iosb;
+	HANDLE testEvent;
 
-	MVOL_LOCK(); 
-	RootExtension = mvolRootDeviceObject->DeviceExtension;
-	VolumeExtension = RootExtension->Head;
+	//
+	// First, we need to obtain a handle to the mount manager, so we must:
+	//
+	//  - Initialize the unicode string with the mount manager name
+	//  - Build an object attributes structure
+	//  - Open the mount manager
+	//
+	// This should yield a valid handle for calling the mount manager
+	//
 
-	while( VolumeExtension != NULL )
-	{
-		UNICODE_STRING DeviceName;
-		UNICODE_STRING DriveLetter;
+	//
+	// Initialize the unicode string with the mount manager's name
+	//
+	RtlInitUnicodeString(&mmgrObjectName, MOUNTMGR_DEVICE_NAME);
 
-		RtlInitUnicodeString(&DeviceName, VolumeExtension->PhysicalDeviceName);
-		status = GetDriverLetterByDeviceName(&DeviceName, &DriveLetter);
-		if (NT_SUCCESS(status))
-		{
-			PCHAR p = (PCHAR) DriveLetter.Buffer;
-			VolumeExtension->Letter = toupper(*p);
-			VolumeExtension->VolIndex = VolumeExtension->Letter - 'C'; // VolIndex be changed!
-			
-			WDRBD_INFO("%ws idx=%d letter=%c\n",
-                VolumeExtension->PhysicalDeviceName, VolumeExtension->VolIndex, VolumeExtension->Letter);
-		}
-		else
-		{
-			WDRBD_WARN("%ws org_idx:%d. it's maybe not disk type. Ignored.\n",
-                VolumeExtension->PhysicalDeviceName,  VolumeExtension->VolIndex);
-			// IoVolumeDeviceToDosName에서 오류! 0xC0000034 STATUS_OBJECT_NAME_NOT_FOUND
-		}
+	//
+	// Initialize object attributes.
+	//
+	mmgrObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+	mmgrObjectAttributes.RootDirectory = NULL;
+	mmgrObjectAttributes.ObjectName = &mmgrObjectName;
 
-		VolumeExtension = VolumeExtension->Next;
+	//
+	// Note: in a kernel driver, we'd add OBJ_KERNEL_HANDLE
+	// as another attribute.
+	//
+	mmgrObjectAttributes.Attributes = OBJ_CASE_INSENSITIVE;
+	mmgrObjectAttributes.SecurityDescriptor = NULL;
+	mmgrObjectAttributes.SecurityQualityOfService = NULL;
+
+	//
+	// Open the mount manager
+	//
+	status = ZwCreateFile(&mmgrHandle,
+		FILE_READ_DATA | FILE_WRITE_DATA,
+		&mmgrObjectAttributes,
+		&iosb,
+		0, // allocation is meaningless
+		0, // no attributes specified
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, // we're willing to share
+		FILE_OPEN, // must already exist
+		FILE_NON_DIRECTORY_FILE, // must NOT be a directory
+		NULL, // no EA buffer
+		0); // no EA buffer size...
+	if (!NT_SUCCESS(status) ||
+		!NT_SUCCESS(iosb.Status)) {
+		WDRBD_WARN("Unable to open %wZ, error = 0x%x\n", &mmgrObjectName, status);
+		return status;
 	}
-	MVOL_UNLOCK();
+
+	//
+	// If we get to here, we assume it was successful.  We need an event object
+	// for monitoring the completion of I/O operations.
+	//
+	status = ZwCreateEvent(&testEvent,
+		GENERIC_ALL,
+		0, // no object attributes
+		NotificationEvent,
+		FALSE);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_WARN("Cannot create event (0x%x)\n", status);
+		return status;
+	}
+
+	status = ZwDeviceIoControlFile(
+		mmgrHandle,
+		testEvent,
+		0, // no apc
+		0, // no apc context
+		&iosb,
+		IOCTL_MOUNTMGR_QUERY_POINTS,
+		MountPoint, // input buffer
+		MountPointLength, // size of input buffer
+		MountPointInfo, // output buffer
+		*MountPointInfoLength); // size of output buffer
+	if (STATUS_PENDING == status) {
+		//
+		// Must wait for the I/O operation to complete
+		//
+		status = ZwWaitForSingleObject(testEvent, TRUE, 0);
+		if (NT_SUCCESS(status)) {
+			status = iosb.Status;
+		}
+	}
+
+	//
+	// Regardless of the results, we are done with the mount manager and event
+	// handles so discard them.
+	//
+	(void)ZwClose(testEvent);
+	(void)ZwClose(mmgrHandle);
+
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	*MountPointInfoLength = iosb.Information;
+
+	return STATUS_SUCCESS;
 }
 
 /**
 * @brief
-*   볼륨의 unique id를 구해온다.
-*   이 id는 MOUNTDEV_UNIQUE_ID 구조체에 담겨져 있으며 ExAllocatePool() 으로
-*   동적 메모리 할당을 하여 return 한다. 따라서 이 함수를 사용하는 쪽에서 반드시
-*   ExFreePool() 을 하여 메모리 해제를 해주어야 한다.
-*   MOUNTDEV_UNIQUE_ID에 관해서는 <http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx> 참조
+*   get volume's unique id
+*   this id is in MOUNTDEV_UNIQUE_ID structure, you must free memory after using this
+*   reference to <http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx> 
 * @param
-*   volmgr - 드라이버의 인스턴스 오브젝트 포인터
+*   volmgr - driver's instance object pointer
 * @return
-*   PMOUNTDEV_UNIQUE_ID 타입의 볼륨 unique id
+*   volume's unique id type of PMOUNTDEV_UNIQUE_ID
 */
-PMOUNTDEV_UNIQUE_ID RetrieveVolumeGuid(PDEVICE_OBJECT devObj)
+PMOUNTDEV_UNIQUE_ID QueryMountDUID(PDEVICE_OBJECT devObj)
 {
     PMOUNTDEV_UNIQUE_ID guid = NULL;
     NTSTATUS result = STATUS_SUCCESS;
@@ -659,9 +759,9 @@ Finally:
 /**
 * @brief
 */
-void PrintVolumeGuid(PDEVICE_OBJECT devObj)
+void PrintVolumeDuid(PDEVICE_OBJECT devObj)
 {
-    PMOUNTDEV_UNIQUE_ID guid = RetrieveVolumeGuid(devObj);
+	PMOUNTDEV_UNIQUE_ID guid = QueryMountDUID(devObj);
 
     if (NULL == guid)
     {
@@ -712,9 +812,6 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 		0);
 	if (Status != STATUS_SUCCESS)
 	{
-		//WDRBD_ERROR("ZwCreateFile: %d\n", Status);
-		//LOG_ERROR: GetDriverLetterByDeviceName: ZwCreateFile: -1073741810
-		// 부팅시 오류: 0xC000000E STATUS_NO_SUCH_DEVICE
 		return Status;
 	}
 	Status = ObReferenceObjectByHandle(FileHandle,
@@ -729,7 +826,7 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 		WDRBD_ERROR("ObReferenceObjectByHandle: %d\n", Status);
 		return Status;
 	}
-	// RtlVolumeDeviceToDosName(pVolumeFileObject->DeviceObject, pDriveLetter);
+
 	Status = IoVolumeDeviceToDosName(pVolumeFileObject->DeviceObject, pDriveLetter);
 	if (Status != STATUS_SUCCESS)
 	{
@@ -741,105 +838,15 @@ GetDriverLetterByDeviceName(IN PUNICODE_STRING pDeviceName, OUT PUNICODE_STRING 
 	return Status;
 }
 
-#ifdef DRDB_CHECK_DW128
-NTSTATUS
-RtlVolumeDeviceToDosName(
-IN PVOID           VolumeDeviceObject,
-OUT PUNICODE_STRING DosName
-)
-{
-	PDEVICE_OBJECT volumeDeviceObject = VolumeDeviceObject;
-	PMOUNTDEV_NAME name;
-	CHAR            output[512];
-	KEVENT          event;
-	PIRP            irp;
-	IO_STATUS_BLOCK ioStatus;
-	NTSTATUS        status;
-	UNICODE_STRING deviceName;
-	WCHAR           buffer[30];
-	UNICODE_STRING driveLetterName;
-	WCHAR           c;
-	UNICODE_STRING linkTarget;
-	LIST_ENTRY      devicesInPath;
-
-	name = (PMOUNTDEV_NAME) output;
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
-	irp = IoBuildDeviceIoControlRequest(IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
-		volumeDeviceObject, NULL, 0, name, 512,
-		FALSE, &event, &ioStatus);
-	if (!irp) {
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	status = IoCallDriver(volumeDeviceObject, irp);
-	if (status == STATUS_PENDING) {
-		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-		status = ioStatus.Status;
-	}
-	if (!NT_SUCCESS(status)) {
-		return status;
-	}
-	deviceName.MaximumLength = deviceName.Length = name->NameLength;
-	deviceName.Buffer = name->Name;
-	swprintf(buffer, L":");
-	RtlInitUnicodeString(&driveLetterName, buffer);
-
-	for (c = 'A'; c <= 'Z'; c++) {
-		driveLetterName.Buffer[4] = c;
-		status = QuerySymbolicLink(&driveLetterName, &linkTarget);
-		if (!NT_SUCCESS(status)) {
-			continue;
-		}
-		if (RtlEqualUnicodeString(&linkTarget, &deviceName, TRUE)) {
-			ExFreePool(linkTarget.Buffer);
-			break;
-		}
-		ExFreePool(linkTarget.Buffer);
-	}
-
-	if (c <= 'Z') {
-		DosName->Buffer = ExAllocatePoolWithTag(PagedPool, 3 * sizeof(WCHAR), '18DW');
-		if (!DosName->Buffer) {
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		DosName->MaximumLength = 6;
-		DosName->Length = 4;
-		DosName->Buffer[0] = c;
-		DosName->Buffer[1] = ':';
-		DosName->Buffer[2] = 0;
-		return STATUS_SUCCESS;
-	}
-	/*ZwOpenSymbolicLinkObject
-	* ZwOpenFile
-	* IoGetDeviceObjectPointer
-	* ZwQueryDirectoryFile
-	* ZwQueryInformationFile
-	*/
-	for (c = 'A'; c <= 'Z'; c++) {
-		driveLetterName.Buffer[4] = c;
-		InitializeListHead(&devicesInPath);
-		status = FindPathForDevice(&driveLetterName, &deviceName,
-			&devicesInPath, DosName);
-		if (NT_SUCCESS(status)) {
-			DosName->Length -= 4 * sizeof(WCHAR);
-			RtlMoveMemory(DosName->Buffer, &DosName->Buffer[4],
-				DosName->Length);
-			DosName->Buffer[DosName->Length / sizeof(WCHAR)] = 0;
-			return status;
-		}
-	}
-	return status;
-}
-#endif
-
 /**
 * @brief
-*   레지스트리에서 값을 삭제할 때 사용
+*   delete registry's value
 * @param
-*   preg_path - UNICODE_STRING 타입의 레지스트리 경로. ex)"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes"
-*   pvalue_name - UNICODE_STRING 타입의 value.
+*   preg_path - UNICODE_STRING type's path ex)"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes"
+*   pvalue_name - UNICODE_STRING type's value
 * @return
-*   STATUS_SUCCESS - 삭제 성공 시
-*   그 외 - 실패시 api의 return 값
+*   success : STATUS_SUCCESS 
+*   fail : api's return value
 */
 NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name)
 {
@@ -929,7 +936,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	UCHAR aucTemp[255] = { 0 };
 	NTSTATUS status;
 
-#ifndef _WIN32_V9
+#ifndef _WIN32
 	// set proc_details
 	status = GetRegistryValue(L"proc_details", &ulLength, &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
@@ -1062,14 +1069,14 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 #endif
 
 	// set ver
-    // DRBD_DOC: 용도 미정
+    // DRBD_DOC: not used
 	status = GetRegistryValue(L"ver", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		RtlCopyMemory(g_ver, aucTemp, ulLength * 2);
 	}
 	else
 	{
-		RtlCopyMemory(g_ver, "test", 4 * 2); 
+		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
 	}
 #ifdef _WIN32_LOGLINK
 #ifdef _WIN32_HANDLER_TIMEOUT
@@ -1105,7 +1112,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		);
 #endif
 #else
-	// _WIN32_V9: proc_details 제거함.
+	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"
 		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
 		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
@@ -1122,42 +1129,25 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 }
 
 /**
-* @brief
-*/
-PUNICODE_STRING ucsdup(IN OUT PUNICODE_STRING dst, IN PUNICODE_STRING src)
+ * @brief
+ *	caller should release unicode's buffer(in bytes)
+ */
+ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 {
-    if (!dst)
-    {
-        return NULL;
-    }
-
-    USHORT size = src->Length + sizeof(WCHAR);
+	if (!dst || !src) {
+		return 0;
+	}
 
     dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
 	if (dst->Buffer) {
-		dst->MaximumLength = size;
-		RtlCopyUnicodeString(dst, src);
-		return dst;
+		dst->Length = size;
+		dst->MaximumLength = size + sizeof(WCHAR);
+		RtlCopyMemory(dst->Buffer, src, size);
+		return size;
 	}
-	else {
-		dst->Buffer = NULL;
-		dst->MaximumLength = 0;
-		return NULL;
-	}
-    
-}
 
-/**
-* @brief
-*/
-void ucsfree(IN PUNICODE_STRING str)
-{
-    if (str)
-    {
-        kfree(str->Buffer);
-    }
+	return 0;
 }
-
 
 // GetIrpName
 // from:https://github.com/iocellnetworks/ndas4windows/blob/master/fremont/3.20-stable/src/drivers/ndasfat/ndasfat.c

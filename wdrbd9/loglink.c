@@ -1,30 +1,93 @@
-﻿#include <wdm.h>
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#include <wdm.h>
 #include "drbd_windows.h"
 #include "loglink.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 
+atomic_t g_loglink_state = LOGLINK_UNINITIALIZED;
 int g_loglink_tcp_port;
 int g_loglink_usage;
 struct loglink_worker loglink = { 0 };
 struct mutex loglink_mutex;
-NPAGED_LOOKASIDE_LIST linklog_printk_msg;
+NPAGED_LOOKASIDE_LIST loglink_printk_msg;
+PETHREAD g_LoglinkServerThread;
 
 static PWSK_SOCKET g_loglink_sock = NULL;
 static int send_err_count;
+
+VOID LogLink_MakeUsable()
+{
+	mutex_init(&loglink_mutex);
+	ExInitializeNPagedLookasideList(&loglink_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
+	INIT_LIST_HEAD(&loglink.loglist);
+	atomic_cmpxchg(&g_loglink_state, LOGLINK_UNINITIALIZED, LOGLINK_USABLE);
+}
+
+VOID LogLink_MakeUnusable()
+{
+	ExDeleteNPagedLookasideList(&loglink_printk_msg);
+}
+
+BOOLEAN LogLink_IsUsable()
+{
+	return LOGLINK_USABLE <= atomic_read(&g_loglink_state);
+}
+
+BOOLEAN LogLink_IsTransferable()
+{
+	return LOGLINK_TRANSFERABLE <= atomic_read(&g_loglink_state);
+}
+
+NTSTATUS LogLink_QueueBuffer(char* buf)
+{
+	struct loglink_msg_list  *loglink_msg;
+		
+	loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&loglink_printk_msg);
+	if (loglink_msg == NULL)
+	{
+		DbgPrint("DRBD_ERROR:loglink: no memory\n");
+		return STATUS_NO_MEMORY;
+	}
+	loglink_msg->buf = buf;
+	mutex_lock(&loglink_mutex);
+	list_add_tail(&loglink_msg->list, &loglink.loglist);	// Add at tail to send log in chronological order.
+	mutex_unlock(&loglink_mutex);
+
+	if (LogLink_IsTransferable())	// If it's not currently transferable, sending data is deferred.
+		queue_work(loglink.wq, &loglink.worker);
+
+	return STATUS_SUCCESS;
+}
 
 VOID NTAPI LogLink_ListenThread(PVOID p)
 {
 	PWSK_SOCKET		ListenSock = NULL;
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
-
-	mutex_init(&loglink_mutex, "loglink_mutex");
-	ExInitializeNPagedLookasideList(&linklog_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
-
+		
 	while (1)
 	{
 		extern LONG	g_SocketsState;
-		if (g_SocketsState == INITIALIZED)
+		if (g_SocketsState == INITIALIZED &&
+			LOGLINK_USABLE <= atomic_read(&g_loglink_state))
 		{
 			break;
 		}
@@ -44,7 +107,6 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 	}
 
 	INIT_WORK(&loglink.worker, LogLink_Sender);
-	INIT_LIST_HEAD(&loglink.loglist);
 
 	ListenSock = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
 	if (ListenSock == NULL) 
@@ -73,6 +135,8 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		PsTerminateSystemThread(Status);
 		// retry?
 	}
+
+	atomic_cmpxchg(&g_loglink_state, LOGLINK_USABLE, LOGLINK_INITIALIZED);
 
 	while (TRUE) 
 	{
@@ -104,6 +168,7 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		send_err_count = 0;
 		g_loglink_sock = AcceptSock;
 		accept_error_retry = 0;
+		atomic_cmpxchg(&g_loglink_state, LOGLINK_INITIALIZED, LOGLINK_TRANSFERABLE);
 	}
 
 	// not reached here.
@@ -129,9 +194,6 @@ void LogLink_Sender(struct work_struct *ws)
 		int ret = 0;
 
 		count++;
-
-		// DbgPrint("DRBD_TEST: LogLink_Sender: loop(%d) buf=(%s)", count, p->buf);
-
 		if (sock)
 		{
 			int sz = strlen(msg->buf);
@@ -156,7 +218,6 @@ void LogLink_Sender(struct work_struct *ws)
 		}
 		else
 		{
-			int level_index;
 			step = 4;
 
 		error:
@@ -167,32 +228,21 @@ void LogLink_Sender(struct work_struct *ws)
 				char *tmp;
 				if ((tmp = kmalloc(512, GFP_KERNEL, 'ACDW')) == NULL)
 				{
-					WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", KERN_ERR "LogLink: malloc fail\n");
+					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: malloc fail\n");
 				}
 				else
 				{
-					sprintf(tmp, KERN_ERR "LogLink: send error: step=%d sock=0x%p ret=%d. Save it to system eventlog\n", step, sock, ret);
-					WriteEventLogEntryData(PRINTK_ERR, 0, 0, 1, L"%S", tmp);
+					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: send error: step=%d sock=0x%p ret=%d.\n", step, sock, ret);
 					kfree(tmp);
 				}
 			}
 			
 			CloseSocket(sock); // just close, no retry/handshake!
 			sock = NULL;
-
-			// backup this log-msg to system eventlog!!!
-			// dup in dual mode?
-			level_index = msg->buf[1] - '0';
-			WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", msg->buf);
 		}
 
 		ExFreeToNPagedLookasideList(&drbd_printk_msg, msg->buf);
 		list_del(&msg->list);
-		ExFreeToNPagedLookasideList(&linklog_printk_msg, msg);
-	}
-
-	if (count > 5)
-	{
-		DbgPrint("DRBD_TEST:LogLink: sender big loop(#%d)?\n", count); // TEST!
+		ExFreeToNPagedLookasideList(&loglink_printk_msg, msg);
 	}
 }

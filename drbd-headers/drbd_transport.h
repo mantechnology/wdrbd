@@ -23,6 +23,9 @@
 #define CALLER_BUFFER  MSG_DONTROUTE
 #define GROW_BUFFER    MSG_PROBE
 
+#ifdef _WIN32
+#define SOCKET_SND_DEF_BUFFER 		(16384)
+#endif
 /*
  * gfp_mask for allocating memory with no write-out.
  *
@@ -31,7 +34,7 @@
  * pressure on the peer, eventually leading to deadlock.
  */
 #define GFP_TRY	(__GFP_HIGHMEM | __GFP_NOWARN | __GFP_RECLAIM)
-#ifdef _WIN32_V9
+#ifdef _WIN32
 #define tr_printk(level, transport, fmt, ...)  do {		\
 	rcu_read_lock();					\
 	printk(level "drbd %s: " fmt,			\
@@ -102,7 +105,7 @@ enum drbd_tr_free_op {
 /* A transport might wrap its own data structure around this. Having
    this base class as its first member. */
 struct drbd_path {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	struct sockaddr_storage_win my_addr;
 	struct sockaddr_storage_win peer_addr;
 #else
@@ -131,13 +134,13 @@ struct drbd_transport {
 
 	/* These members are intended to be updated by the transport: */
 	unsigned int ko_count;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	ULONG_PTR flags;
 #else
 	unsigned long flags;
 #endif
 	
-#ifdef _WIN32_V9
+#ifdef _WIN32
     atomic_t listening;
 #endif
 };
@@ -151,7 +154,7 @@ struct drbd_transport_stats {
 
 /* argument to ->recv_pages() */
 struct drbd_page_chain_head {
-	struct page *head; // WIN32_V9:JHKIM: 주의: used by void pointer to memory which alloccated by malloc()
+	struct page *head; // WIN32:used by void pointer to memory which alloccated by malloc()
 	unsigned int nr_pages;
 };
 
@@ -217,7 +220,7 @@ struct drbd_transport_ops {
 	void (*debugfs_show)(struct drbd_transport *, struct seq_file *m);
 	int (*add_path)(struct drbd_transport *, struct drbd_path *path);
 	int (*remove_path)(struct drbd_transport *, struct drbd_path *path);
-#ifdef _WIN32_SEND_BUFFING // _WIN32_V9
+#ifdef _WIN32_SEND_BUFFING 
 	bool (*start_send_buffring)(struct drbd_transport *, int size);
 	void (*stop_send_buffring)(struct drbd_transport *);
 #endif
@@ -227,7 +230,7 @@ struct drbd_transport_class {
 	const char *name;
 	const int instance_size;
 	const int path_instance_size;
-#ifndef _WIN32_V9 // module 필드 필요 없으므로 제거.
+#ifndef _WIN32 
 	struct module *module;
 #endif
 	int (*init)(struct drbd_transport *);
@@ -245,7 +248,7 @@ struct drbd_listener {
 	struct list_head waiters; /* list head for waiter structs*/
 	spinlock_t waiters_lock;
 	int pending_accepts;
-#ifdef _WIN32_V9
+#ifdef _WIN32
     struct sockaddr_storage_win listen_addr;
 #else
 	struct sockaddr_storage listen_addr;
@@ -279,7 +282,7 @@ extern int drbd_get_listener(struct drbd_waiter *waiter,
 			     const struct sockaddr *addr,
 			     int (*create_fn)(struct drbd_transport *, const struct sockaddr *, struct drbd_listener **));
 extern void drbd_put_listener(struct drbd_waiter *waiter);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage_win *);
 #else
 extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage *);
@@ -289,8 +292,7 @@ extern bool drbd_should_abort_listening(struct drbd_transport *transport);
 extern void drbd_path_event(struct drbd_transport *transport, struct drbd_path *path);
 
 /* drbd_receiver.c*/
-#ifdef _WIN32_V9
-//extern struct page *drbd_alloc_pages(struct drbd_transport *, unsigned int, gfp_t);
+#ifdef _WIN32
 extern void* drbd_alloc_pages(struct drbd_transport *, unsigned int, bool);
 extern void drbd_free_pages(struct drbd_transport *transport, int page_count, int is_net);
 #else
@@ -306,7 +308,7 @@ static inline void drbd_alloc_page_chain(struct drbd_transport *t,
 
 static inline void drbd_free_page_chain(struct drbd_transport *transport, struct drbd_page_chain_head *chain, int is_net)
 {
-#ifdef _WIN32_V9 
+#ifdef _WIN32 
 	drbd_free_pages(transport, chain->nr_pages, is_net);
 #else
 	drbd_free_pages(transport, chain->head, is_net);
@@ -361,7 +363,7 @@ struct drbd_page_chain {
 #endif
 };
 
-#ifndef _WIN32_V9_PATCH_1
+#ifndef _WIN32
 static inline void dummy_for_buildbug(void)
 {
 	struct page *dummy;
@@ -398,7 +400,7 @@ static inline void dummy_for_buildbug(void)
 #define page_chain_for_each(page) \
 	for (; page ; page = page_chain_next(page))
 #define page_chain_for_each_safe(page, n) \
-	for (; page && ( n = page_chain_next(page)); page = n) // DRBD_CHECK!!!!
+	for (; page && ( n = page_chain_next(page)); page = n) 
 #endif
 
 #ifndef SK_CAN_REUSE

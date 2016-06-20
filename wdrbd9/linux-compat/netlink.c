@@ -1,6 +1,6 @@
 ﻿#include "drbd_windows.h"
-#include "wsk2.h"		/// SEO:
-#include "drbd_wingenl.h"	/// SEO:
+#include "wsk2.h"
+#include "drbd_wingenl.h"
 #include "linux-compat/idr.h"
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
@@ -184,7 +184,7 @@ int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
         if (socket_entry)
         {
             //WDRBD_TRACE("send socket(0x%p), data(0x%p), len(%d)\n", socket_entry->ptr, skb->data, skb->len);
-#ifdef _WIN32_V9  // _WIN32_SEND_BUFFING
+#ifdef _WIN32  // _WIN32_SEND_BUFFING
 			int sent = SendLocal(socket_entry->ptr, skb->data, skb->len, 0, 0);
 #endif
             if (sent != skb->len)
@@ -209,7 +209,7 @@ NTSTATUS reply_error(int type, int flags, int error, struct genl_info * pinfo)
 
     if (reply_skb)
     {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		struct nlmsghdr * nlh = nlmsg_put((struct msg_buff*)reply_skb, pinfo->nlhdr->nlmsg_pid,
 			pinfo->nlhdr->nlmsg_seq, type, GENL_HDRLEN, flags);
 #else
@@ -241,7 +241,7 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
 
     if (0 == err)
     {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		nlh = nlmsg_put((struct msg_buff*)skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
 #else
 		nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_MULTI);
@@ -249,7 +249,7 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
     }
     else if (err < 0)
     {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		nlh = nlmsg_put((struct msg_buff*)skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
 #else
 		nlh = nlmsg_put(skb, cb->nlh->nlmsg_pid, cb->nlh->nlmsg_seq, NLMSG_DONE, GENL_HDRLEN, NLM_F_ACK);
@@ -282,7 +282,7 @@ int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
     {
         return -1; // return non-zero!
     }
-#ifdef _WIN32_V9 // _WIN32_SEND_BUFFING
+#ifdef _WIN32 // _WIN32_SEND_BUFFING
 	if ((sent = SendLocal(info->NetlinkSock, skb->data, skb->len, 0, 0)) == (skb->len))
 #endif
     {
@@ -543,7 +543,7 @@ NetlinkWorkThread(PVOID context)
 
     PWSK_SOCKET socket = ((PNETLINK_WORK_ITEM)context)->Socket;
     LONG readcount, minor = 0;
-    int err = 0;
+    int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
@@ -618,7 +618,7 @@ NetlinkWorkThread(PVOID context)
         {
             minor = gmh->minor;
             struct drbd_conf * mdev = minor_to_device(minor);
-#ifdef _WIN32_V9
+#ifdef _WIN32
             if (mdev && drbd_suspended(mdev))
 #else
             if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
@@ -647,6 +647,11 @@ NetlinkWorkThread(PVOID context)
             {	
 				err = _genl_ops(pops, pinfo);
                 mutex_unlock(&g_genl_mutex);
+				if (err)
+				{
+					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
+					errcnt++;
+				}
             }
             else
             {
@@ -670,9 +675,9 @@ cleanup:
     if (psock_buf)
         ExFreeToNPagedLookasideList(&genl_msg_mempool, psock_buf);
 
-    if (err)
+    if (errcnt)
     {
-        WDRBD_INFO("done. error(%d)\n", err);
+        WDRBD_ERROR("done. error occured %d times\n", errcnt);
     }
     else
     {

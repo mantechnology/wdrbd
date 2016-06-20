@@ -573,9 +573,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     <ClInclude Include="comm.h" />
     <ClInclude Include="disp.h" />
     <ClInclude Include="drbd_windows.h" />
-    <ClInclude Include="drbd_windrv.h" />
     <ClInclude Include="drbd_wingenl.h" />
-    <ClInclude Include="drbd_wrappers.h" />
     <ClInclude Include="linux-compat\Backing-dev.h" />
     <ClInclude Include="linux-compat\Bitops.h" />
     <ClInclude Include="linux-compat\drbd_endian.h" />

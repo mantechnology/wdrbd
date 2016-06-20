@@ -1,4 +1,23 @@
-﻿#include "drbd_windows.h"
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#include "drbd_windows.h"
 #include "wsk2.h"
 #include "drbd_wingenl.h"
 #include "linux-compat/drbd_endian.h"
@@ -12,7 +31,7 @@
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
 
-#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB //(64*1024) // 64K // (1024*1024*10) // 10MB
+#define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
 
 ring_buffer *create_ring_buffer(char *name, unsigned int length)
 {
@@ -37,11 +56,8 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		ring->seq = 0;
 		ring->name = name;
 
-#ifdef _WIN32_TMP_DEBUG_MUTEX
-		mutex_init(&ring->cs, "sendbuf");
-#else
 		mutex_init(&ring->cs);
-#endif
+
 		//WDRBD_INFO("bab(%s) size(%d)\n", name, length);
 #ifdef SENDBUF_TRACE
 		INIT_LIST_HEAD(&ring->send_req_list);
@@ -90,7 +106,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 	unsigned int remain;
 	int ringbuf_size = 0;
 	LARGE_INTEGER	Interval;
-	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative // wait 20ms relative
+	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative
 
 	EnterCriticalSection(&ring->cs);
 
@@ -104,12 +120,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 			int loop = 0;
 			for (loop = 0; loop < retry; loop++) {
 				KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-				//KTIMER ktimer;
-				//KeInitializeTimer(&ktimer);
-				//KeSetTimerEx(&ktimer, Interval, 0, NULL);
-				//KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
 
-				// _WIN32_V9: redefine struct drbd_tcp_transport, buffer. 추후 멤버함수로 drbd_tcp_transport 에 접근하도록 처리하고 다음 2개 자료구조는 제거
 				struct buffer {
 					void *base;
 					void *pos;
@@ -145,7 +156,7 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 	}
 
 $GO_BUFFERING:
-	////////////////////////////////////////////////////////////////////////////////
+
 	remain = (ring->read_pos - ring->write_pos - 1 + ring->length) % ring->length;
 	if (remain < len) {
 		len = remain;
@@ -205,18 +216,14 @@ unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigne
 	ring->read_pos += tx_sz;
 	ring->read_pos %= ring->length;
 	ring->sk_wmem_queued = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
-
 	*pLen = tx_sz;
-
 	LeaveCriticalSection(&ring->cs);
 	
 	return 1;
-
 }
 
 int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
 {
-	// struct drbd_connection *connection = container_of(transport, struct drbd_connection, transport);
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
 
@@ -226,14 +233,13 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
 	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
-	// 기존에 비해 buffer write time 대기시간을 줄이고 재시도 횟수를 늘려 송신버퍼링 타임아웃 설정에 맞춤.(성능 관련 튜닝 포인트)
+	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
 	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
 
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
 	return size;
-
 }
 
 #ifdef _WSK_IRP_REUSE
@@ -298,6 +304,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 
 	//KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 	//WDRBD_INFO("start send_buf_thread\n");
+
 	KeSetEvent(&buffering_attr->send_buf_thr_start_event, 0, FALSE);
 	nWaitTime = RtlConvertLongToLargeInteger(-10 * 1000 * 1000 * 10);
 	pTime = &nWaitTime;
@@ -307,7 +314,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
 #ifdef _WSK_IRP_REUSE
-	// 패킷을 한번에 하나씩만 보내는 구조이므로, Irp 재사용 하여 중복되는 Irp 할당/해제 코드를 개선.
+	// Irp reuse can be improvement, for reducing irp memory allocation.(because we send a one packet at a time, irp reusing is valid)
 	PIRP		pReuseIrp = IoAllocateIrp(1, FALSE);
 	if (pReuseIrp == NULL) {
 		WDRBD_ERROR("WSK alloc. reuse Irp is NULL.\n");

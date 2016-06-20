@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <syslog.h>
 #include <fnmatch.h>
+#include <features.h>
 
 #include "config.h"
 #include "drbdadm.h"
@@ -94,6 +95,24 @@ void unescape(char *txt)
 	*e = '\0';
 }
 
+#ifdef _WIN32
+/**
+* @brief
+*	convert Unix to Windows path separator ('/' -> '\')
+*/
+int convert_win32_separator(char * name)
+{
+	int count = 0;
+	char * c;
+	for (c = name; *c != '\0'; ++c) {
+		switch (*c) {
+			case '/': *c = '\\'; ++count; break;
+		}
+	}
+
+	return count;
+}
+#endif
 
 /* input size is expected to be in KB */
 char *ppsize(char *buf, unsigned long long size)
@@ -237,7 +256,7 @@ int sget_token(char *s, int size, const char** text)
 
 /**
 * @brief
-* 디스크 혹은 볼륨의 size를 구해오는 함수
+* get a disk volume, or size
 *
 * @param
 * - device_name : "\\\\.\\d:", "\\\\.\\HarddiskVolume1", "\\\\.\\PhysicalDrive0" and so on

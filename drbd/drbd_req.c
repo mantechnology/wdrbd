@@ -42,7 +42,7 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 /* Update disk stats at start of I/O request */
 static void _drbd_start_io_acct(struct drbd_device *device, struct drbd_request *req)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	generic_start_io_acct(bio_data_dir(req->master_bio), req->i.size >> 9,
 		(struct hd_struct*)&device->vdisk->part0);
 #else
@@ -54,7 +54,7 @@ static void _drbd_start_io_acct(struct drbd_device *device, struct drbd_request 
 /* Update disk stats when completing request upwards */
 static void _drbd_end_io_acct(struct drbd_device *device, struct drbd_request *req)
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	generic_end_io_acct(bio_data_dir(req->master_bio),
 		(struct hd_struct*)&device->vdisk->part0, req->start_jif);
 #else
@@ -106,7 +106,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
-#ifdef _WIN32 // DV
+#ifdef _WIN32
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree(req->req_databuf);
@@ -117,8 +117,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	drbd_req_make_private_bio(req, bio_src);
 #endif
 
-#ifdef _WIN32_V9
-	req->private_bio->bio_databuf = req->req_databuf; // fix bugcheck DW-776 (private bio's buffer is invalid when memory-overflow occured)
+#ifdef _WIN32
+	req->private_bio->bio_databuf = req->req_databuf; // DW-776 (private bio's buffer is invalid when memory-overflow occured)
 #endif
 
 	kref_get(&device->kref);
@@ -175,11 +175,11 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 	rcu_read_unlock();
 
 	if (!queued)
-#ifdef _WIN32_V9
+#ifdef _WIN32
     {
         if (req->req_databuf)
         {
-            // _WIN32_V9_DW596: req_databuf를 여기에서 반납해도 되는지 확인 필요.
+            // DW-596: required to verify to free req_databuf at this point
             kfree(req->req_databuf);
         }
 
@@ -229,7 +229,7 @@ void drbd_req_destroy(struct kref *kref)
 {
 	struct drbd_request *req = container_of(kref, struct drbd_request, kref);
 	struct drbd_request *destroy_next;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	struct drbd_device *device = NULL;
 #else
 	struct drbd_device *device;
@@ -303,7 +303,7 @@ void drbd_req_destroy(struct kref *kref)
 		if ((s & (RQ_POSTPONED|RQ_LOCAL_MASK|RQ_NET_MASK)) != RQ_POSTPONED &&
 		    req->i.size && get_ldev_if_state(device, D_DETACHING)) {
 			struct drbd_peer_md *peer_md = device->ldev->md.peers;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			ULONG_PTR bits = -1, mask = -1;
 #else
 			unsigned long bits = -1, mask = -1;
@@ -362,7 +362,7 @@ void drbd_req_destroy(struct kref *kref)
 				drbd_queue_peer_ack(resource, peer_ack_req);
 				peer_ack_req = NULL;
 			} else
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			{
 				if (peer_ack_req->req_databuf)
 				{
@@ -399,7 +399,7 @@ void drbd_req_destroy(struct kref *kref)
 	 *   kref_put(&req->kref, drbd_req_destroy)
 	 * without recursing into the destructor.
 	 */
-	if(destroy_next) {
+	if (destroy_next) {
 		req = destroy_next;
 		if (atomic_dec_and_test(&req->kref.refcount))
 			goto tail_recursion;
@@ -442,24 +442,28 @@ void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
 #endif
 {
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	struct bio* master_bio = NULL;
 #endif
 
 	int rw = bio_data_dir(m->bio);
-
-#ifdef _WIN32_V9
-	ASSERT(m->bio->bi_end_io == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
-#endif
-	bio_endio(m->bio, m->error);
-
 #ifdef _WIN32
-    
+	ASSERT(m->bio->bi_end_io == NULL); //at this point, if bi_end_io_cb is not NULL, occurred to recusively call.(bio_endio -> drbd_request_endio -> complete_master_bio -> bio_endio)
+#else
+	bio_endio(m->bio, m->error);
+#endif
+#ifdef _WIN32
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
 		master_bio =  m->bio; // if pMasterIrp is exist, bio is master bio.
-		 
+
+		// In diskless mode, io access should be completed non-arbitrary thread.
+		// Error status is not assigned properly yet, so should do.
+		if (D_DISKLESS == device->disk_state[NOW]) {
+			m->error = STATUS_UNSUCCESSFUL;			
+		}
+
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
 	            WDRBD_ERROR("szie 0x%x ERROR!\n", master_bio->bi_size);
@@ -485,7 +489,7 @@ void complete_master_bio(struct drbd_device *device,
 	            }
 	        }
 #endif
-	        IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+			IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
 	    } else {
 
@@ -1068,6 +1072,9 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		drbd_report_io_error(device, req);
 		__drbd_chk_io_error(device, DRBD_WRITE_ERROR);
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
+#ifdef _WIN32
+		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
+#endif
 		break;
 
 	case READ_COMPLETED_WITH_ERROR:
@@ -1078,6 +1085,9 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 	case READ_AHEAD_COMPLETED_WITH_ERROR:
 		/* it is legal to fail READA, no __drbd_chk_io_error in that case. */
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
+#ifdef _WIN32
+		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
+#endif
 		break;
 
 	case DISCARD_COMPLETED_NOTSUPP:
@@ -1349,7 +1359,7 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 
 	if (device->disk_state[NOW] == D_UP_TO_DATE)
 		return true;
-#ifdef _WIN32_V9	// FIXED : kmpak. WDRBD FsctlLockVolume fail problem. DW-643
+#ifdef _WIN32 // DW-643 FsctlLockVolume fail problem.
 	else if (device->disk_state[NOW] == D_OUTDATED)
 		return true;
 #endif
@@ -1390,12 +1400,7 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 	switch (rbm) {
 	case RB_CONGESTED_REMOTE:
 #ifdef _WIN32
-		// WDRBD: not support data socket congestion
-        // Linux에서 아래 bdi_read_congested 에 의해 drbd_congested 함수가 콜백되는지 시험했으나 불려지지 않았다.
-        // drbd_seq_show 함수에서 시도했 듯이 직접 drbd_congested 콜백을 호출하여 효과를 볼 수 있겠으나
-        // 현재 디스크 혼잡 상태 판단 기능을 지원 못함으로 시도 자체가 의미없다.
-        // 따라서 WDRBD는 RB_CONGESTED_REMOTE(READ 시 로컬 디스크가 혼잡하면 원격 디스크에서 READ 하는 기능) 옵션을 지원 못함
-
+	// not support
         return false;
 #else
 		bdi = &device->ldev->backing_bdev->bd_disk->queue->backing_dev_info;
@@ -1452,7 +1457,7 @@ static void complete_conflicting_writes(struct drbd_request *req)
 			break;
 
 		/* Indicate to wake up device->misc_wait on progress.  */
-		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE); // _WIN32_V9_PATCH_1
+		prepare_to_wait(&device->misc_wait, &wait, TASK_UNINTERRUPTIBLE);
 		i->waiting = true;
 		spin_unlock_irq(&device->resource->req_lock);
 #ifdef _WIN32
@@ -1646,9 +1651,8 @@ static int drbd_process_write_request(struct drbd_request *req)
 			}
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
 		} else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size))
-		{		
 			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
-		}
+
 	}
 
 	return count;
@@ -1689,7 +1693,7 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 #else
 		else {
 			if (generic_make_request(bio)) {
-				bio_endio(bio, -EIO); // _WIN32_V9_PATCH_2:JHKIM: 패치중 endio 위치에 의문, 재확인
+				bio_endio(bio, -EIO);
 			}
 		}
 #endif
@@ -1797,7 +1801,7 @@ static bool may_do_writes(struct drbd_device *device)
 #ifndef blk_queue_plugged
 //#ifdef COMPAT_HAVE_BLK_CHECK_PLUGGED //skip 597b214 commit
 
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 struct drbd_plug_cb {
 	struct blk_plug_cb cb;
 	struct drbd_request *most_recent_req;
@@ -1806,7 +1810,7 @@ struct drbd_plug_cb {
 #endif
 static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct drbd_plug_cb *plug = container_of(cb, struct drbd_plug_cb, cb);
 	struct drbd_resource *resource = plug->cb.data;
 	struct drbd_request *req = plug->most_recent_req;
@@ -1817,7 +1821,7 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 
 	spin_lock_irq(&resource->req_lock);
 	/* In case the sender did not process it yet, raise the flag to
-	* have it followed with P_UNPLUG_REMOTE just after. */
+	 * have it followed with P_UNPLUG_REMOTE just after. */
 	req->rq_state[0] |= RQ_UNPLUG;
 	/* but also queue a generic unplug */
 	drbd_queue_unplug(req->device);
@@ -1828,9 +1832,9 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 
 static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	/* A lot of text to say
-	* return (struct drbd_plug_cb*)blk_check_plugged(); */
+	 * return (struct drbd_plug_cb*)blk_check_plugged(); */
 	struct drbd_plug_cb *plug;
 	struct blk_plug_cb *cb = blk_check_plugged(drbd_unplug, resource, sizeof(*plug));
 
@@ -1844,23 +1848,21 @@ static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 
 static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct drbd_request *tmp = plug->most_recent_req;
 	/* Will be sent to some peer.
-	* Remember to tag it with UNPLUG_REMOTE on unplug */
+	 * Remember to tag it with UNPLUG_REMOTE on unplug */
 	kref_get(&req->kref);
 	plug->most_recent_req = req;
 	if (tmp)
 		kref_put(&tmp->kref, drbd_req_destroy);
 #endif    
 }
-
 #else
 struct drbd_plug_cb { };
 static void * drbd_check_plugged(struct drbd_resource *resource) { return NULL; };
 static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req) { };
 #endif
-
 
 static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request *req)
 {
@@ -1945,13 +1947,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 		}
 		if (!drbd_process_write_request(req))
 			no_remote = true;
-#ifdef _WIN32_V9  //PATCHED_BY_MANTECH from lars.ellenberg@linbit.com 2016.05.03
 		wake_all_senders(resource);
-#else
-		else 
-			wake_all_senders(resource);
-#endif
-		
 	} else {
 		if (peer_device) {
 			_req_mod(req, TO_BE_SENT, peer_device);
@@ -1961,7 +1957,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			no_remote = true;
 	}
 
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	if (no_remote == false) {
 		struct drbd_plug_cb *plug = drbd_check_plugged(resource);
 		if (plug)
@@ -2012,11 +2008,11 @@ out:
 	 * That's why we cannot check on req->private_bio. */
 	if (submit_private_bio)
 		drbd_submit_req_private_bio(req);
-
+#ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */
 	drbd_plug_device(bdev_get_queue(device->this_bdev));
-
+#endif
 	if (m.bio)
 #ifdef _WIN32
         complete_master_bio(device, &m, __FUNCTION__, __LINE__);
@@ -2032,7 +2028,7 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 #endif
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	if ((LONG_PTR)req == -ENOMEM) //only memory allocation fail case
 		return STATUS_UNSUCCESSFUL;
 	if (IS_ERR_OR_NULL(req)) //retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
@@ -2044,19 +2040,19 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 	
 	drbd_send_and_submit(device, req);
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	return STATUS_SUCCESS;
 #endif
 }
 
 static void submit_fast_path(struct drbd_device *device, struct list_head *incoming)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct blk_plug plug;
 #endif
 	struct drbd_request *req, *tmp;
 
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	blk_start_plug(&plug);
 #endif
 
@@ -2080,7 +2076,7 @@ static void submit_fast_path(struct drbd_device *device, struct list_head *incom
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
 	}
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	blk_finish_plug(&plug);
 #endif
 }
@@ -2095,7 +2091,6 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 	int err;
 
 	spin_lock_irq(&device->al_lock);
-
 	while ((req = list_first_entry_or_null(incoming, struct drbd_request, tl_requests))) {
 		err = drbd_al_begin_io_nonblock(device, &req->i);
 		if (err == -ENOBUFS)
@@ -2115,12 +2110,12 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 
 static void send_and_submit_pending(struct drbd_device *device, struct list_head *pending)
 {
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	struct blk_plug plug;
 #endif
 	struct drbd_request *req;
 
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	blk_start_plug(&plug);
 #endif
 	while ((req = list_first_entry_or_null(pending, struct drbd_request, tl_requests))) {
@@ -2130,7 +2125,7 @@ static void send_and_submit_pending(struct drbd_device *device, struct list_head
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
 	}
-#ifdef _WIN32_V9_PLUG
+#ifndef _WIN32
 	blk_finish_plug(&plug);
 #endif
 }
@@ -2176,10 +2171,10 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &incoming, &pending, &busy);
 			if (!list_empty(&pending))
 				break;
-#ifndef _WIN32_V9	// Skipped 3d552f8 commit(linux drbd)
+#ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 			drbd_kick_lo(device);
 #endif
-#ifdef _WIN32_V9
+#ifdef _WIN32
 			schedule(&device->al_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 #else
 			schedule();
@@ -2254,7 +2249,7 @@ void do_submit(struct work_struct *ws)
 
 		send_and_submit_pending(device, &pending);
 	}
-#ifndef _WIN32_V9	// Skipped 3d552f8 commit(linux drbd)
+#ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 	drbd_kick_lo(device);
 #endif
 }
@@ -2292,7 +2287,7 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 	start_jif = jiffies;
 	inc_ap_bio(device, bio_data_dir(bio));
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	status = __drbd_make_request(device, bio, start_jif);
 	return status;
 #else
@@ -2339,7 +2334,7 @@ int drbd_merge_bvec(struct request_queue *q,
 }
 #endif
 
-#ifdef _WIN32_V9
+#ifdef _WIN32
 static ULONG_PTR time_min_in_future(ULONG_PTR now,
 		ULONG_PTR t1, ULONG_PTR t2)
 #else
@@ -2354,7 +2349,7 @@ static unsigned long time_min_in_future(unsigned long now,
 
 static bool net_timeout_reached(struct drbd_request *net_req,
 		struct drbd_connection *connection,
-#ifdef _WIN32_V9
+#ifdef _WIN32
 		ULONG_PTR now, ULONG_PTR ent,
 #else
 		unsigned long now, unsigned long ent,
@@ -2438,7 +2433,7 @@ void request_timer_fn(unsigned long data)
 	struct drbd_device *device = (struct drbd_device *) data;
 	struct drbd_connection *connection;
 	struct drbd_request *req_read, *req_write;
-#ifdef _WIN32_V9
+#ifdef _WIN32
 	UNREFERENCED_PARAMETER(Dpc);
 	UNREFERENCED_PARAMETER(SystemArgument1);
 	UNREFERENCED_PARAMETER(SystemArgument2);
@@ -2498,7 +2493,7 @@ void request_timer_fn(unsigned long data)
 	for_each_connection(connection, device->resource) {
 		struct net_conf *nc;
 		struct drbd_request *req;
-#ifdef _WIN32_V9
+#ifdef _WIN32
         ULONG_PTR ent = 0;
         ULONG_PTR pre_send_jif = 0;
 #else

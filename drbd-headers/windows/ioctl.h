@@ -1,4 +1,24 @@
-﻿#ifndef __MVF_IOCTL_H__
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+
+#ifndef __MVF_IOCTL_H__
 #define __MVF_IOCTL_H__
 
 
@@ -31,8 +51,11 @@
 
 #define	IOCTL_MVOL_GET_PROC_DRBD			CTL_CODE(MVOL_TYPE, 38, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
+#define IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR	CTL_CODE(MVOL_TYPE, 40, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-#define	MAXDEVICENAME			256     // kmpak 1024 -> 256
+#define IOCTL_MVOL_SET_LOGLV_MIN			CTL_CODE(MVOL_TYPE, 46, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define	MAXDEVICENAME			256     //  1024 -> 256
 #define MAX_PROC_BUF			2048		
 
 //
@@ -44,12 +67,11 @@ typedef struct _MVOL_VOLUME_INFO
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];		// src device
 	ULONG				PeerIp;
 	USHORT				PeerPort;
-	CHAR				Seq[MAX_PROC_BUF]; // DRBD_CHECK_DW130: check enough? and chaneg to dynamically
+	CHAR				Seq[MAX_PROC_BUF]; // DRBD_DW130: check enough? and chaneg to dynamically
 } MVOL_VOLUME_INFO, *PMVOL_VOLUME_INFO;
 
 typedef struct _MVOL_COUNT_INFO
 {
-	LARGE_INTEGER			WriteCount;
 	ULONG				IrpCount;
 } MVOL_COUNT_INFO, *PMVOL_COUNT_INFO;
 
@@ -60,5 +82,26 @@ typedef struct _MVOL_SYNC_REQ
 	ULONG				BlockSize;
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
+
+#define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail
+#define SIMUL_DISK_IO_ERROR_TYPE1		1 // Local I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE2		2 // Peer Request I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE3		3 // Meta I/O Completed with Error
+#define SIMUL_DISK_IO_ERROR_TYPE4		4 // Bitmap I/O Completed with Error
+
+typedef struct _SIMULATION_DISK_IO_ERROR {
+	BOOLEAN 	bDiskErrorOn;
+	UCHAR		ErrorType;
+}SIMULATION_DISK_IO_ERROR, *PSIMULATION_DISK_IO_ERROR;
+
+#define LOGGING_TYPE_SYSLOG		0
+#define LOGGING_TYPE_SVCLOG		1
+#define LOGGING_TYPE_DBGLOG		2
+
+typedef struct _LOGGING_MIN_LV {
+	int			nType;
+	int			nErrLvMin;
+}LOGGING_MIN_LV, *PLOGGING_MIN_LV;
+
 
 #endif __MVF_IOCTL_H__

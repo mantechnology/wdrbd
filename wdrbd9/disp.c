@@ -1,13 +1,33 @@
-﻿#include <wdm.h>
+﻿/*
+	Copyright(C) 2007-2016, ManTechnology Co., LTD.
+	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
+
+	Windows DRBD is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2, or (at your option)
+	any later version.
+
+	Windows DRBD is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Windows DRBD; see the file COPYING. If not, write to
+	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
+#include <wdm.h>
 #include <ntstrsafe.h>
+#include <ntddk.h>
 #include "drbd_windows.h"
-#include "drbd_wingenl.h"	/// SEO:
+#include "drbd_wingenl.h"	
 #include "disp.h"
 #include "mvolmsg.h"
 #include "proto.h"
 
 #include "drbd_int.h"
-#include "drbd_wrappers.h"
+#include "../drbd/drbd-kernel-compat/drbd_wrappers.h"
 
 #ifdef _WIN32_WPP
 #include "disp.tmh"
@@ -34,7 +54,6 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-#pragma alloc_text(PAGE, _query_mounted_devices)
 #endif
 
 NTSTATUS
@@ -45,6 +64,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     PROOT_EXTENSION			RootExtension = NULL;
     UNICODE_STRING      		nameUnicode, linkUnicode;
     ULONG				i;
+
+	// init logging system first
+	wdrbd_logger_init();
 
     WDRBD_TRACE("MVF Driver Loading...\n");
 
@@ -66,10 +88,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 
     DriverObject->DriverExtension->AddDevice = mvolAddDevice;
     DriverObject->DriverUnload = mvolUnload;
-
-    // init lookaside
-    ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
-    
+	    
     RtlInitUnicodeString(&nameUnicode, L"\\Device\\mvolCntl");
     status = IoCreateDevice(DriverObject, sizeof(ROOT_EXTENSION),
         &nameUnicode, FILE_DEVICE_UNKNOWN, 0, FALSE, &deviceObject);
@@ -95,16 +114,14 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Magic = MVOL_MAGIC;
     RootExtension->Head = NULL;
     RootExtension->Count = 0;
-    ucsdup(&RootExtension->RegistryPath, RegistryPath);
+	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
     RootExtension->PhysicalDeviceNameLength = nameUnicode.Length;
     RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
-#ifdef _WIN32_V9
-	downup_rwlock_init(&transport_classes_lock); //transport 에서 사용할 spinlock 초기화.
-#endif
+	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
 	
 #ifdef _WIN32_WPP
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
@@ -123,9 +140,109 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
 #ifdef _WIN32_WPP
-	// JHKIM: 엔진 드라이버는 종료가 안됨으로 이 함수 진입이 안됨. 일단 WPP 종료 의미를 부여하기 위해 삽입함.
 	WPP_CLEANUP(DriverObject);
 #endif
+}
+
+static
+NTSTATUS _QueryVolumeNameRegistry(
+	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
+	_Out_ PVOLUME_EXTENSION pvext)
+{
+	OBJECT_ATTRIBUTES           attributes;
+	PKEY_FULL_INFORMATION       keyInfo = NULL;
+	PKEY_VALUE_FULL_INFORMATION valueInfo = NULL;
+	size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
+
+	UNICODE_STRING mm_reg_path;
+	NTSTATUS status;
+	HANDLE hKey = NULL;
+	ULONG size;
+	int Count;
+
+	PAGED_CODE();
+
+	RtlUnicodeStringInit(&mm_reg_path, L"\\Registry\\Machine\\System\\MountedDevices");
+
+	InitializeObjectAttributes(&attributes,
+		&mm_reg_path,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL,
+		NULL);
+
+	status = ZwOpenKey(&hKey, KEY_READ, &attributes);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
+	if (status != STATUS_BUFFER_TOO_SMALL) {
+		ASSERT(!NT_SUCCESS(status));
+		goto cleanup;
+	}
+
+	keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, '00DW');
+	if (!keyInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
+	if (!NT_SUCCESS(status)) {
+		goto cleanup;
+	}
+
+	Count = keyInfo->Values;
+
+	valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, '10DW');
+	if (!valueInfo) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	}
+
+	for (int i = 0; i < Count; ++i) {
+		RtlZeroMemory(valueInfo, valueInfoSize);
+
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		if (!NT_SUCCESS(status)) {
+			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
+				goto cleanup;
+			}
+		}
+
+		if (REG_BINARY == valueInfo->Type && pmuid->UniqueIdLength == valueInfo->DataLength) {
+			PWCHAR key = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
+			if (!key) {
+				goto cleanup;
+			}
+			RtlZeroMemory(key, valueInfo->NameLength + sizeof(WCHAR));
+			RtlCopyMemory(key, valueInfo->Name, valueInfo->NameLength);
+
+			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
+				if (wcsstr(key, L"\\DosDevices\\")) {
+					ucsdup(&pvext->MountPoint, L" :", 4);
+					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+				}
+				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
+					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
+					key = NULL;
+				}
+			}
+
+			kfree(key);
+		}
+	}
+
+cleanup:
+	kfree(keyInfo);
+	kfree(valueInfo);
+
+	if (hKey) {
+		ZwClose(hKey);
+	}
+
+	return status;
 }
 
 NTSTATUS
@@ -140,35 +257,45 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
-        HANDLE		hThread = NULL;
+        HANDLE		hNetLinkThread = NULL;
+		HANDLE		hLogLinkThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
-        Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
+		Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
             return Status;
         }
-#ifdef _WIN32_LOGLINK
-		if (g_loglink_usage > LOGLINK_NOT_USED)
-		{
-			Status = PsCreateSystemThread(&hThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
-			if (!NT_SUCCESS(Status))
-			{
-				WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
-				return Status;
-			}
-		}
-#endif
-        Status = ObReferenceObjectByHandle(hThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_NetlinkServerThread, NULL);
-        ZwClose(hThread);
+
+		Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_NetlinkServerThread, NULL);
+		ZwClose(hNetLinkThread);
 
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
             return Status;
         }
+
+#ifdef _WIN32_LOGLINK
+		// TODO: LogLink_ListenThread does not finish ever. We need to make sure cleaning it up when no need anymore.
+		Status = PsCreateSystemThread(&hLogLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
+			return Status;
+		}
+
+		Status = ObReferenceObjectByHandle(hLogLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_LoglinkServerThread, NULL);
+		ZwClose(hLogLinkThread);
+
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("ObReferenceObjectByHandle() for loglink thread failed with status 0x%08X\n", Status);
+			return Status;
+		}		
+#endif
     }
 
     ReferenceDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);
@@ -204,19 +331,23 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     }
 
 	IoInitializeRemoveLock(&VolumeExtension->RemoveLock, '00FS', 0, 0);
+	KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
     status = GetDeviceName(PhysicalDeviceObject,
         VolumeExtension->PhysicalDeviceName, MAXDEVICENAME * sizeof(WCHAR)); // -> \Device\HarddiskVolumeXX
     if (!NT_SUCCESS(status))
     {
         mvolLogError(mvolRootDeviceObject, 101, MSG_ADD_DEVICE_ERROR, status);
+		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
-
     VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
-    KeInitializeMutex(&VolumeExtension->CountMutex, 0);
 
-    query_targetdev(VolumeExtension);  // letter, VolIndex(minor), block_device assign
+	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
+	if (pmuid) {
+		_QueryVolumeNameRegistry(pmuid, VolumeExtension);
+		ExFreePool(pmuid);
+	}
 
     MVOL_LOCK();
     mvolAddDeviceList(VolumeExtension);
@@ -235,12 +366,12 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         VolumeExtension->Active = TRUE;
     }
 #endif
-    WDRBD_INFO("VolumeExtension(0x%p) minor(%d) Letter(%c) PhysicalDeviceName(%ws) Active(%d)\n",
+    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
-        VolumeExtension->VolIndex,
-        (VolumeExtension->Letter) ? (VolumeExtension->Letter) : '?',
         VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->Active);
+        VolumeExtension->VolIndex,
+        VolumeExtension->Active,
+        &VolumeExtension->MountPoint);
 
     return STATUS_SUCCESS;
 }
@@ -381,7 +512,6 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (DeviceObject == mvolRootDeviceObject)
     {
-        /// SEO: DRBD DriverObject로 READ/WRITE가 들어올 수 없음
         goto invalid_device;
     }
 
@@ -461,13 +591,13 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         if (device)
         {
             PMVOL_THREAD				pThreadInfo;
-
-            InterlockedIncrement64(&VolumeExtension->WriteCount.QuadPart);
-
 #ifdef DRBD_TRACE
-            PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
-            WDRBD_TRACE("\n(%s):Upper driver WRITE request start! vol:%c: sect:0x%llx sz:%d ................Queuing(%d)!\n",
-                current->comm, VolumeExtension->Letter, (writeIrpSp->Parameters.Write.ByteOffset.QuadPart / 512), writeIrpSp->Parameters.Write.Length, VolumeExtension->IrpCount);
+			PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
+			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
+				&VolumeExtension->MountPoint,
+				(writeIrpSp->Parameters.Write.ByteOffset.QuadPart >> 9),
+				(writeIrpSp->Parameters.Write.Length >> 9),
+				VolumeExtension->IrpCount);
 #endif
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
@@ -539,7 +669,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             MVOL_LOCK();
             seq_file_idx = 0;
-            drbd_seq_show((struct seq_file *)&p->Seq, 0); // DRBD_DOC:DW130: struct seq_file 는 바로 char buffer 임으로 강제 캐스팅 가능
+            drbd_seq_show((struct seq_file *)&p->Seq, 0);
             MVOL_UNLOCK();
 
             irpSp->Parameters.DeviceIoControl.OutputBufferLength = sizeof(MVOL_VOLUME_INFO);
@@ -616,6 +746,17 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             WDRBD_TRACE("IOCTL_MVOL_MOUNT_VOLUME. status(0x%x)\n", status);
             MVOL_IOCOMPLETE_REQ(Irp, status, 0);
         }
+		case IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR: 
+		{
+			status = IOCTL_SetSimulDiskIoError(DeviceObject, Irp); // Simulate Disk I/O Error IOCTL Handler
+            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
+
+		case IOCTL_MVOL_SET_LOGLV_MIN:
+		{
+			status = IOCTL_SetMinimumLogLevel(DeviceObject, Irp); // Set minimum level of logging (system event log, service log)
+			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||
@@ -666,119 +807,4 @@ mvolDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
 
     return status;
-}
-
-/**
-* @brief
-*   MOUNTDEV_UNIQUE_ID 값이 레지스트리에 있는지를 query 한다.
-*   있다면 "\DosDevices\" 로 시작되는 drive letter 가 존재하는지를 확인 한 후
-*   그 letter값을 return한다.
-*   참고 http://msdn.microsoft.com/en-us/library/windows/hardware/ff567603(v=vs.85).aspx
-*/
-char _query_mounted_devices(PMOUNTDEV_UNIQUE_ID pmuid)
-{
-    OBJECT_ATTRIBUTES           attributes;
-    PKEY_FULL_INFORMATION       keyInfo = NULL;
-    PKEY_VALUE_FULL_INFORMATION valueInfo = NULL;
-    size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
-
-    UNICODE_STRING mm_reg_path;
-    char letter_token = '\0';
-
-    NTSTATUS status;
-    HANDLE hKey = NULL;
-    ULONG size;
-    int Count;
-
-    PAGED_CODE();
-
-    RtlUnicodeStringInit(&mm_reg_path, L"\\Registry\\Machine\\System\\MountedDevices");
-
-    InitializeObjectAttributes(&attributes,
-        &mm_reg_path,
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-        NULL,
-        NULL);
-
-    status = ZwOpenKey(&hKey, KEY_READ, &attributes);
-    if (!NT_SUCCESS(status))
-    {
-        goto cleanup;
-    }
-
-    status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
-    if (status != STATUS_BUFFER_TOO_SMALL)
-    {
-        ASSERT(!NT_SUCCESS(status));
-        goto cleanup;
-    }
-
-    keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, '00DW');
-    if (!keyInfo)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto cleanup;
-    }
-
-    status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
-    if (!NT_SUCCESS(status))
-    {
-        goto cleanup;
-    }
-
-    Count = keyInfo->Values;
-
-    valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, '10DW');
-    if (!valueInfo)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto cleanup;
-    }
-
-    for (int i = 0; i < Count; ++i)
-    {
-        RtlZeroMemory(valueInfo, valueInfoSize);
-
-        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
-
-        if (!NT_SUCCESS(status))
-        {
-            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL)
-            {
-                goto cleanup;
-            }
-        }
-
-        if (REG_BINARY == valueInfo->Type)
-        {
-            PWCHAR dos_name = ExAllocatePoolWithTag(PagedPool, valueInfo->NameLength + sizeof(WCHAR), '20DW');
-			if (!dos_name) {
-				goto cleanup;
-			}
-            RtlZeroMemory(dos_name, valueInfo->NameLength + sizeof(WCHAR));
-            RtlCopyMemory(dos_name, valueInfo->Name, valueInfo->NameLength);
-
-            if (wcsstr(dos_name, L"\\DosDevices\\"))
-            {
-                if (pmuid->UniqueIdLength == valueInfo->DataLength &&
-                    ((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (unsigned char *)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength)))
-                {
-                    letter_token = (char)(*(dos_name + wcslen(L"\\DosDevices\\")));
-                }
-            }
-
-            ExFreePool(dos_name);
-        }
-    }
-
-cleanup:
-    kfree(keyInfo);
-    kfree(valueInfo);
-
-    if (hKey)
-    {
-        ZwClose(hKey);
-    }
-
-    return letter_token & ~0x20;
 }
