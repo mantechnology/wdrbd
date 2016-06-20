@@ -1546,6 +1546,10 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 
 	if (bitmap_uuid == 0 && peer_device &&
 	    peer_device->current_uuid != 0 &&
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-968: Sending -1 while we are source of initial sync causes peer deluding itself that 3rd node is outdated.
+		peer_device->current_uuid != UUID_JUST_CREATED &&
+#endif
 	    (peer_device->current_uuid & ~UUID_PRIMARY) !=
 	    (drbd_current_uuid(device) & ~UUID_PRIMARY))
 		bitmap_uuid = -1;
