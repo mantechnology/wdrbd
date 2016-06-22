@@ -2465,8 +2465,8 @@ static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_c
 
 		if (new_state.conn >= C_CONNECTED)
 			drbd_send_state(peer_device, new_state);
+		}
 	}
-}
 
 static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 {
@@ -2758,7 +2758,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				(repl_state[OLD] < L_SYNC_SOURCE || repl_state[OLD] > L_PAUSED_SYNC_T))
 				send_state = true;
 
-			/* We want to pause/continue resync, tell peer. */
+			/* We want to pause/continue resync, tell peer. */			
 			if (repl_state[NEW] >= L_ESTABLISHED &&
 			     ((resync_susp_dependency[OLD] != resync_susp_dependency[NEW]) ||
 			      (resync_susp_other_c[OLD] != resync_susp_other_c[NEW]) ||
@@ -4290,7 +4290,11 @@ enum drbd_state_rv change_repl_state(struct drbd_peer_device *peer_device,
 			.vnr = peer_device->device->vnr,
 			.mask = { { .conn = conn_MASK } },
 			.val = { { .conn = new_repl_state } },
-			.target_node_id = peer_device->node_id,
+			.target_node_id = peer_device->node_id,			
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-954 
+			/* send TWOPC_COMMIT packets to other nodes before updating the local state */
+			.change_local_state_last = true,
+#endif
 			.flags = flags
 		},
 		.peer_device = peer_device
