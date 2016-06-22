@@ -4118,7 +4118,11 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	struct drbd_connection *connection = adm_ctx->connection;
 	struct drbd_transport *transport = &connection->transport;
 	struct nlattr *my_addr = NULL, *peer_addr = NULL;
+#ifdef _WIN32
+	struct drbd_path *path = NULL; 
+#else
 	struct drbd_path *path;
+#endif
 	int nr_paths = 0;
 	int err;
 
@@ -4169,7 +4173,13 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		drbd_msg_put_info(adm_ctx->reply_skb, "del_path on transport failed");
 		return ERR_INVALID_REQUEST;
 	}
+#ifdef _WIN32
+	if(connection != NULL && path != NULL) 
+		notify_path(connection, path, NOTIFY_DESTROY);	
+#else
 	notify_path(connection, path, NOTIFY_DESTROY);
+#endif
+
 	return NO_ERROR;
 }
 
