@@ -2465,9 +2465,8 @@ static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_c
 
 		if (new_state.conn >= C_CONNECTED)
 			drbd_send_state(peer_device, new_state);
-		}
 	}
-
+}
 static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 {
 	struct drbd_resource *resource = lost_peer->resource;
