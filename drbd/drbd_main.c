@@ -1548,10 +1548,15 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 		peer_device->current_uuid != 0 &&
 		(peer_device->current_uuid & ~UUID_PRIMARY) !=
 		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+#ifdef _WIN32
 	{
+		// MODIFIED_BY_MANTECH DW-978: Set MDF_PEER_DIFF_CUR_UUID flag so that we're able to recognize -1 is sent.
 		peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
 		bitmap_uuid = -1;
 	}
+#else
+		bitmap_uuid = -1;
+#endif
 
 	rcu_read_unlock();
 
