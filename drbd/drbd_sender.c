@@ -1190,18 +1190,7 @@ static void __downgrade_peer_disk_state_by_mask(struct drbd_device *device,
 		if (!(nodes & NODE_MASK(node_id)))
 			continue;
 		peer_device = peer_device_by_node_id(device, node_id);
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-967: It often downgrades unrelated node of sync. 
-		// We exceptionally prevent downgrading as a stopgap work since the purpose of downgrading peer disk state is unclear.
-		// Complement all the state once this stopgap work makes not to peer goes outdated state.
-		// (It means that the purpose of downgrading is clear.)
-		if (peer_device && peer_device->disk_state[NEW] > disk_state &&
-			(device->disk_state[OLD] != D_INCONSISTENT || device->disk_state[NEW] != D_UP_TO_DATE ||
-				peer_device->disk_state[OLD] != D_UP_TO_DATE || peer_device->disk_state[NEW] != D_UP_TO_DATE ||
-				peer_device->repl_state[OLD] != L_ESTABLISHED || peer_device->repl_state[NEW] != L_ESTABLISHED || peer_device->last_repl_state != L_ESTABLISHED))
-#else
 		if (peer_device && peer_device->disk_state[NEW] > disk_state)
-#endif
 			__change_peer_disk_state(peer_device, disk_state);
 	}
 }
