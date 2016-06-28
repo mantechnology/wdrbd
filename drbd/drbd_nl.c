@@ -2519,6 +2519,9 @@ static int open_backing_devices(struct drbd_device *device,
 	if (IS_ERR(bdev))
 		return ERR_OPEN_MD_DISK;
 	nbc->md_bdev = bdev;
+#ifdef _WIN32
+	bdev->bd_disk->private_data = nbc;		// for removing
+#endif
 	return NO_ERROR;
 }
 
