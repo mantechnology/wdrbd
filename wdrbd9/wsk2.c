@@ -511,7 +511,6 @@ Send(
 		LARGE_INTEGER	nWaitTime;
 		LARGE_INTEGER	*pTime;
 
-		int retry_count = 0;
 	retry:
 		if (Timeout <= 0 || Timeout == MAX_SCHEDULE_TIMEOUT)
 		{
@@ -539,22 +538,9 @@ Send(
 			switch (Status)
 			{
 			case STATUS_TIMEOUT:
-#ifdef _WIN32_SEND_BUFFING
-				if (wObjCount == 1)
-				{
-					retry_count++;
-					WDRBD_WARN("(%s) sent timeout=%d sz=%d retry_count=%d WskSocket=%p IRP=%p\n",
-						current->comm, Timeout, BufferSize, retry_count,WskSocket, Irp);
 
-					// required to refactroing about retrying method.
-
-					goto retry;
-				}
-#endif
-				if (transport != NULL)
-				{
-					if (!drbd_stream_send_timed_out(transport, stream))
-					{
+				if (transport != NULL) {
+					if (!drbd_stream_send_timed_out(transport, stream)) {
 						goto retry;
 					}
 				}
