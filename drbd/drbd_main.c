@@ -5141,13 +5141,6 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		if (node_id == device->ldev->md.node_id)
 			continue;
-#ifdef _WIN32 // DW-837
-		if (peer_md[node_id].bitmap_index == -1) 
-		{
-			/* Skip bitmap indexes which are not assigned to a peer. */
-			continue;
-		}			
-#endif
 		bm_uuid = peer_md[node_id].bitmap_uuid;
 		if (bm_uuid)
 			continue;
