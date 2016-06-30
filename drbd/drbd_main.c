@@ -5141,13 +5141,6 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		if (node_id == device->ldev->md.node_id)
 			continue;
-#ifdef _WIN32 // DW-837
-		if (peer_md[node_id].bitmap_index == -1) 
-		{
-			/* Skip bitmap indexes which are not assigned to a peer. */
-			continue;
-		}			
-#endif
 		bm_uuid = peer_md[node_id].bitmap_uuid;
 		if (bm_uuid)
 			continue;
@@ -5311,6 +5304,8 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 			got_new_bitmap_uuid = rotate_current_into_bitmap(device, weak_nodes, dagtag);
 		__drbd_uuid_set_current(device, val);
 #ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-837: Apply updated current uuid to meta disk.
+		drbd_md_mark_dirty(device);
 		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
 		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
 #endif
