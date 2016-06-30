@@ -2649,6 +2649,15 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
 			}
 
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
+			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
+				clear_bit(CRASHED_PRIMARY, &device->flags);
+				if (peer_device->uuids_received)
+					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
+			}
+#endif
+
 			if (!(role[OLD] == R_PRIMARY && disk_state[OLD] < D_UP_TO_DATE && !one_peer_disk_up_to_date[OLD]) &&
 			     (role[NEW] == R_PRIMARY && disk_state[NEW] < D_UP_TO_DATE && !one_peer_disk_up_to_date[NEW]) &&
 			    !test_bit(UNREGISTERED, &device->flags))
