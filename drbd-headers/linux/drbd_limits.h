@@ -138,7 +138,7 @@
    * 200 should be more than enough even for very short timeouts */
 #define DRBD_KO_COUNT_MIN  0
 #define DRBD_KO_COUNT_MAX  200
-#ifdef _WIN32
+#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase.
 #define DRBD_KO_COUNT_DEF  3
 #else
 #define DRBD_KO_COUNT_DEF  7

@@ -539,6 +539,7 @@ Send(
 			{
 			case STATUS_TIMEOUT:
 
+				// DW-988 refactoring about retry_count. retry_count is removed.
 				if (transport != NULL) {
 					if (!drbd_stream_send_timed_out(transport, stream)) {
 						goto retry;
