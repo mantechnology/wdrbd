@@ -24,6 +24,8 @@
 #include <strsafe.h>
 #include "mvol.h"
 #include "LogManager.h"
+#include "../../wdrbd_service/drbdService.h"
+
 
 HANDLE
 OpenDevice( PCHAR devicename )
@@ -1015,6 +1017,61 @@ DWORD WriteLogToFile(HANDLE hLogFile, LPCTSTR pszTimeStamp, PBYTE pszData)
 	}
 
 exit:
+	return dwStatus;
+}
+
+DWORD WriteEventLog(LPCSTR pszProviderName, LPCSTR pszData)
+{
+	HANDLE hEventLog = NULL;	
+	PWSTR pwszLogData = NULL;
+	DWORD dwStatus = ERROR_SUCCESS;
+	DWORD dwDataSize = 0;
+	
+	hEventLog = RegisterEventSourceA(NULL, pszProviderName);
+
+	if (NULL == hEventLog)
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("RegisterEventSource failed, err : %d\n"), dwStatus);
+		goto cleanup;
+	}
+
+	dwDataSize = (strlen(pszData) + 1) * sizeof(WCHAR);
+
+	pwszLogData = (PWSTR)malloc(dwDataSize);
+
+	if (0 == MultiByteToWideChar(CP_ACP, 0, pszData, -1, pwszLogData, dwDataSize))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwStatus);
+		goto cleanup;
+	}
+
+	PCWSTR aInsertions[] = { pwszLogData };
+
+	if (!ReportEventW(hEventLog, EVENTLOG_INFORMATION_TYPE, 0, ONELINE_INFO, NULL, 1, dwDataSize, aInsertions, (PVOID)pwszLogData))
+	{
+		dwStatus = GetLastError();
+		_tprintf(_T("ReportEvent failed, err : %d\n"), dwStatus);
+		goto cleanup;
+	}
+
+	printf("Log data has been written (%s : %s)\n", pszProviderName, pszData);
+
+cleanup:
+
+	if (NULL != pwszLogData)
+	{
+		free(pwszLogData);
+		pwszLogData = NULL;
+	}
+
+	if (NULL != hEventLog)
+	{
+		CloseHandle(hEventLog);
+		hEventLog = NULL;
+	}
+
 	return dwStatus;
 }
 
