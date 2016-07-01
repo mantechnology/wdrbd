@@ -41,9 +41,9 @@ int g_netlink_tcp_port;
 int g_daemon_tcp_port;
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
-atomic_t g_syslog_lv_min = KERN_CRIT_NUM;
-atomic_t g_svclog_lv_min = KERN_ERR_NUM;
-atomic_t g_dbglog_lv_min = KERN_INFO_NUM;
+atomic_t g_syslog_lv_min = LOG_LV_DEFAULT_SYS;
+atomic_t g_svclog_lv_min = LOG_LV_DEFAULT_SVC;
+atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;
@@ -2909,4 +2909,49 @@ struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 #else
 	return NULL;
 #endif
+}
+/* Save current log level in registry, this value is used when drbd is loading.*/
+NTSTATUS SaveCurrentLogLv()
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PROOT_EXTENSION pRootExtension = NULL;
+	UNICODE_STRING usValueName = { 0, };
+	OBJECT_ATTRIBUTES oa = { 0, };
+	HANDLE hKey = NULL;
+	int log_level = Get_log_lv();
+
+	if (NULL == mvolRootDeviceObject ||
+		NULL == mvolRootDeviceObject->DeviceExtension)
+	{
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	do
+	{
+		pRootExtension = mvolRootDeviceObject->DeviceExtension;
+
+		InitializeObjectAttributes(&oa, &pRootExtension->RegistryPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+		status = ZwOpenKey(&hKey, KEY_ALL_ACCESS, &oa);
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+
+		RtlInitUnicodeString(&usValueName, LOG_LV_REG_VALUE_NAME);
+		status = ZwSetValueKey(hKey, &usValueName, 0, REG_DWORD, &log_level, sizeof(log_level));
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+
+	} while (FALSE);
+
+	if (NULL != hKey)
+	{
+		ZwClose(hKey);
+		hKey = NULL;
+	}
+
+	return status;
 }

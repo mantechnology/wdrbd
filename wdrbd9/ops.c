@@ -583,10 +583,6 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 	if (Irp->AssociatedIrp.SystemBuffer) {
-		extern atomic_t g_syslog_lv_min;
-		extern atomic_t g_svclog_lv_min;
-		extern atomic_t g_dbglog_lv_min;
-
 		pLoggingMinLv = (PLOGGING_MIN_LV)Irp->AssociatedIrp.SystemBuffer;
 
 		if (pLoggingMinLv->nType == LOGGING_TYPE_SYSLOG)
@@ -595,6 +591,8 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			atomic_set(&g_svclog_lv_min, pLoggingMinLv->nErrLvMin);
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
+
+		SaveCurrentLogLv();
 
 		WDRBD_TRACE("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin);
 	}

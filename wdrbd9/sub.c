@@ -688,9 +688,6 @@ void _printk(const char * func, const char * format, ...)
 	BOOLEAN bSysEventLog = FALSE;
 	BOOLEAN bServiceLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
-	extern atomic_t g_syslog_lv_min;
-	extern atomic_t g_svclog_lv_min;
-	extern atomic_t g_dbglog_lv_min;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
 	
