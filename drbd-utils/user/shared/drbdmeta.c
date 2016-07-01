@@ -2835,21 +2835,26 @@ int v07_style_md_open(struct format *cfg)
 		ASSERT(cfg->md_index != DRBD_MD_INDEX_INTERNAL);
 	}
 #ifdef _WIN32
-	cfg->md_hard_sect_size = bdev_sect_size_nt(cfg->md_device_name);
-	cfg->bd_size = bdev_size(cfg->md_device_name);
+	ioctl_err = bdev_sect_size_nt(cfg->md_device_name, &hard_sect_size);
 #else
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
+#endif
 	if (ioctl_err) {
+#ifndef _WIN32 // DW-999
 		fprintf(stderr, "ioctl(md_fd, BLKSSZGET) returned %d, "
 			"assuming hard_sect_size is 512 Byte\n", ioctl_err);
+#endif
 		cfg->md_hard_sect_size = 512;
-	} else {
+	}
+	else {
 		cfg->md_hard_sect_size = hard_sect_size;
 		if (verbose >= 2)
 			fprintf(stderr, "hard_sect_size is %d Byte\n",
-				cfg->md_hard_sect_size);
+			cfg->md_hard_sect_size);
 	}
-
+#ifdef _WIN32
+	cfg->bd_size = bdev_size(cfg->md_device_name);
+#else
 	cfg->bd_size = bdev_size(cfg->md_fd);
 #endif
 	/* check_for_existing_data() wants to read that much,

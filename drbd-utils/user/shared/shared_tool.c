@@ -341,7 +341,10 @@ DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY_EX *pdg)
 	if (!bResult)
 	{
 		err = GetLastError();
-		fprintf(stderr, "Failed to IOCTL_DISK_GET_DRIVE_GEOMETRY_EX(%s) error_code=%d\n", device_name, err);
+		if (ERROR_INVALID_FUNCTION != err) // ignore ERROR_INVALID_FUNCTION error message for dynamic disk
+		{
+			fprintf(stderr, "Failed to IOCTL_DISK_GET_DRIVE_GEOMETRY_EX(%s) error_code=%d\n", device_name, err);
+		}
 		CloseHandle(hDevice);
 		return err;
 	}
@@ -361,13 +364,16 @@ uint64_t _bdev_size_nt(char * device_name)
 	return ret ? 0 : gli.Length.QuadPart;
 }
 
-int bdev_sect_size_nt(char * device_name)
+int bdev_sect_size_nt(char * device_name, unsigned int *hard_sect_size)
 {
 	DISK_GEOMETRY_EX dg = { .Geometry.BytesPerSector = 0, };
 
 	DWORD ret = _GetDriveGeometry(device_name, &dg);
-
-	return ret ? 0 : dg.Geometry.BytesPerSector;
+	if (!ret)
+	{
+		*hard_sect_size = dg.Geometry.BytesPerSector;
+	}
+	return ret;
 }
 #endif
 
