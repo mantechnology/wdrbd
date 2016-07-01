@@ -22,6 +22,7 @@ usage()
         "   /d[f] : dismount[force] \n"
 		"   /get_log [ProviderName] \n"
 		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
+		"   /write_log [ProviderName] \"[LogData]\" \n"
 
 		"\n\n"
 
@@ -40,6 +41,7 @@ usage()
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService \n"
 		"drbdcon /minlog_lv svc 6 \n"
+		"drbdcon /write_log drbdService \"Logging start\" \n"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -62,8 +64,10 @@ main(int argc, char* argv [])
 	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
 	char	GetLog = 0;
+	char	WriteLog = 0;
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
+	char	*LoggingData = NULL;
 
     int     Force = 0;
 
@@ -125,6 +129,24 @@ main(int argc, char* argv [])
 
 			if (argIndex < argc)
 				ProviderName = argv[argIndex];
+			else
+				usage();
+		}
+		else if (strcmp(argv[argIndex], "/write_log") == 0)
+		{
+			argIndex++;
+			WriteLog++;
+			
+			// Get eventlog provider name.
+			if (argIndex < argc)
+				ProviderName = argv[argIndex];
+			else
+				usage();
+
+			// Get eventlog data to be written.
+			argIndex++;
+			if (argIndex < argc)
+				LoggingData = argv[argIndex];
 			else
 				usage();
 		}
@@ -413,6 +435,11 @@ main(int argc, char* argv [])
 	if (GetLog)
 	{
 		res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+	}
+
+	if (WriteLog)
+	{
+		res = WriteEventLog((LPCSTR)ProviderName, (LPCSTR)LoggingData);
 	}
 
 	return res;
