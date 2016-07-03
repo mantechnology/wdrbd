@@ -312,7 +312,7 @@ DWORD _GetVolumeSize(LPSTR device_name, GET_LENGTH_INFORMATION * pgli)
 *   success - 0, fail - GetLastError()
 */
 static
-DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY_EX *pdg)
+DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY *pdg)
 {
 	DWORD err = 0, junk = 0;
 	
@@ -332,7 +332,7 @@ DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY_EX *pdg)
 	}
 
 	BOOL bResult = DeviceIoControl(hDevice,		// device to be queried
-		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,		// operation to perform
+		IOCTL_DISK_GET_DRIVE_GEOMETRY,		// operation to perform
 		NULL, 0,								// no input buffer
 		pdg, sizeof(*pdg),						// output buffer
 		&junk,									// # bytes returned
@@ -341,16 +341,13 @@ DWORD _GetDriveGeometry(LPSTR device_name, DISK_GEOMETRY_EX *pdg)
 	if (!bResult)
 	{
 		err = GetLastError();
-		if (ERROR_INVALID_FUNCTION != err) // ignore ERROR_INVALID_FUNCTION error message for dynamic disk
-		{
-			fprintf(stderr, "Failed to IOCTL_DISK_GET_DRIVE_GEOMETRY_EX(%s) error_code=%d\n", device_name, err);
-		}
+		fprintf(stderr, "Failed to IOCTL_DISK_GET_DRIVE_GEOMETRY_EX(%s) error_code=%d\n", device_name, err);
 		CloseHandle(hDevice);
 		return err;
 	}
 
 	CloseHandle(hDevice);
-	//fprintf(stdout, "(%s)'s sector size = %d\n", device_name, pdg->Geometry.BytesPerSector);
+	//fprintf(stdout, "(%s)'s sector size = %d\n", device_name, pdg->BytesPerSector);
 	return err;
 }
 
@@ -366,12 +363,12 @@ uint64_t _bdev_size_nt(char * device_name)
 
 int bdev_sect_size_nt(char * device_name, unsigned int *hard_sect_size)
 {
-	DISK_GEOMETRY_EX dg = { .Geometry.BytesPerSector = 0, };
+	DISK_GEOMETRY dg = { .BytesPerSector = 0, };
 
 	DWORD ret = _GetDriveGeometry(device_name, &dg);
 	if (!ret)
 	{
-		*hard_sect_size = dg.Geometry.BytesPerSector;
+		*hard_sect_size = dg.BytesPerSector;
 	}
 	return ret;
 }

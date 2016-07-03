@@ -2840,10 +2840,8 @@ int v07_style_md_open(struct format *cfg)
 	ioctl_err = ioctl(cfg->md_fd, BLKSSZGET, &hard_sect_size);
 #endif
 	if (ioctl_err) {
-#ifndef _WIN32 // DW-999
 		fprintf(stderr, "ioctl(md_fd, BLKSSZGET) returned %d, "
 			"assuming hard_sect_size is 512 Byte\n", ioctl_err);
-#endif
 		cfg->md_hard_sect_size = 512;
 	}
 	else {
