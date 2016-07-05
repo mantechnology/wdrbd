@@ -645,7 +645,13 @@ static int drbd_finish_peer_reqs(struct drbd_peer_device *peer_device)
 		if (!err)
 			err = err2;
 		if (!list_empty(&peer_req->recv_order)) {
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-972: Gotten peer_req is not always allocated in current connection since the work_list is spliced from device->done_ee.
+			// Provide peer_req associated transport to be freed from right connection.
+			drbd_free_page_chain(&peer_req->peer_device->connection->transport, &peer_req->page_chain, 0);
+#else
 			drbd_free_page_chain(&connection->transport, &peer_req->page_chain, 0);
+#endif
 		} else
 			drbd_free_peer_req(peer_req);
 	}
