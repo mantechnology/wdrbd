@@ -76,12 +76,14 @@ Disconnect(
 
 PWSK_SOCKET
 NTAPI
-  SocketConnect(
+SocketConnect(
 	__in USHORT		SocketType,
 	__in ULONG		Protocol,
-	__in PSOCKADDR	RemoteAddress,
-	__in PSOCKADDR	LocalAddress
-	);
+	__in PSOCKADDR	LocalAddress, // address family desc. required
+	__in PSOCKADDR	RemoteAddress, // address family desc. required
+	__inout  NTSTATUS* pStatus
+);
+
 #ifdef _WSK_IRP_REUSE
 LONG
 NTAPI
@@ -243,3 +245,5 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
+
+char *GetSockErrorString(NTSTATUS status);

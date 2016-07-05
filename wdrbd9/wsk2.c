@@ -327,8 +327,9 @@ NTAPI
 SocketConnect(
 	__in USHORT		SocketType,
 	__in ULONG		Protocol,
-	__in PSOCKADDR	RemoteAddress,
-	__in PSOCKADDR	LocalAddress
+	__in PSOCKADDR	LocalAddress, // address family desc. required
+	__in PSOCKADDR	RemoteAddress, // address family desc. required
+	__inout  NTSTATUS* pStatus
 )
 {
 	KEVENT			CompletionEvent = { 0 };
@@ -336,7 +337,7 @@ SocketConnect(
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 	PWSK_SOCKET		WskSocket = NULL;
 
-	if (g_SocketsState != INITIALIZED || !RemoteAddress || !LocalAddress)
+	if (g_SocketsState != INITIALIZED || !RemoteAddress || !LocalAddress || !pStatus)
 		return NULL;
 
 	Status = InitWskData(&Irp, &CompletionEvent);
@@ -360,7 +361,7 @@ SocketConnect(
 
 	if (Status == STATUS_PENDING) {
 		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = Irp->IoStatus.Status;
+		*pStatus = Status = Irp->IoStatus.Status;
 	}
 
 	WskSocket = NT_SUCCESS(Status) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
