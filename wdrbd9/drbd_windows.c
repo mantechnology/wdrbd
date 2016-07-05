@@ -1535,9 +1535,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 
 	status = CloseSocket(sock->sk);
-	if (!NT_SUCCESS(status))
-	{
-		WDRBD_ERROR("CloseSocket error=0x%x\n", status);
+	if (!NT_SUCCESS(status)) {
 		return;
 	}
 #endif

@@ -38,6 +38,7 @@
 
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
 #define _WSK_IRP_REUSE					// WSK IRP reuse.
+#define _WSK_SOCKETCONNECT
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define minor_to_letter(m)	('C'+(m))
@@ -400,7 +401,7 @@ extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SK					// about socket
 #define WDRBD_TRACE_SEM
-#define WDRBD_TRACE_IP4
+#define WDRBD_TRACE_IP4					
 #define WDRBD_TRACE_SB
 #define WDRBD_TRACE_CO
 
@@ -498,6 +499,9 @@ struct socket {
 #endif
 };
 
+char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+	
 #define WQNAME_LEN	16	
 struct workqueue_struct {
 #ifdef _WIN32
