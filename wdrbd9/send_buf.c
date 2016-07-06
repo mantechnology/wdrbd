@@ -347,6 +347,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 
 		default:
 			WDRBD_ERROR("unexpected wakwup case(0x%x). ignore.\n", status);
+			goto done;
 		}
 	}
 
