@@ -7164,6 +7164,82 @@ static void drbdd(struct drbd_connection *connection)
 	size_t shs; /* sub header size */
 	int err;
 
+#if 1 // DRBD_SEND_TIMEOUT_TEST
+	struct drbd_transport_ops *tr_ops = connection->transport.ops;
+	int rv;
+	DbgPrint("DRBD_TEST: send timeout test ! Rx start!!!! ##################");
+
+	int size = 1024 * 1024;
+	char *buf = kmalloc(size, 0, 'XXX');
+	if (!buf)
+	{
+		DbgPrint("DRBD_TEST: malloc failed!\n");
+		return;
+	}
+
+	int i = 0;
+	int loop = 0;
+
+	size = 1024; //  00;
+	while (1)
+	{
+		int rv = 0;
+		loop++;
+
+		DbgPrint("DRBD_TEST: rx start(%d) read 1KB!!! ################\n", i++);
+		if (i > 100)
+		{
+			DbgPrint("DRBD_TEST: rx test done!\n");
+		}
+
+		rv = tr_ops->recv(&connection->transport, DATA_STREAM, (void**)buf, size, WSK_FLAG_WAITALL);
+		if (rv > 0)
+		{
+			DbgPrint("DRBD_TEST: rx=%d ###### ok!\n", rv);
+		}
+		else
+		{
+			if (rv == 0)
+			{
+				DbgPrint("DRBD_TEST: rx reset???!!!\n");
+				break;
+			}
+			DbgPrint("DRBD_TEST: rx error=%d !!!!!!\n", rv);
+			break;
+		}
+
+#if 1
+		// 10K 만 수신하고 추가 수신을 보류함
+		while (1) // for(k = 0; k < 10 ; k++)
+		{
+			LARGE_INTEGER	nWaitTime;
+			KTIMER ktimer;
+			DbgPrint("DRBD_TEST: rx sleep................................5 sec ########################");
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * 5 * 1000 * 1000 * 10);
+			KeInitializeTimer(&ktimer);
+			KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
+			KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+		}
+#endif
+	}
+
+#if 1
+
+	int loopx = 0;
+	while (1)
+	{
+		LARGE_INTEGER	nWaitTime;
+		KTIMER ktimer;
+		nWaitTime = RtlConvertLongToLargeInteger(-1 * 3000 * 1000 * 10);
+		KeInitializeTimer(&ktimer);
+		KeSetTimerEx(&ktimer, nWaitTime, 0, NULL);
+		KeWaitForSingleObject(&ktimer, Executive, KernelMode, FALSE, NULL);
+		DbgPrint("DRBD_TEST: sleep#(%d) reboot please !!!! ########################", loopx++);
+	}
+	// 1회 용 시험코드임. 더 이상 진행은 의미없음. 리부팅!!!
+#endif
+#endif
+
 	while (get_t_state(&connection->receiver) == RUNNING) {
 		struct data_cmd const *cmd;
 

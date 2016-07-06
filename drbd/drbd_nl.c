@@ -4680,6 +4680,84 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 
 	resource = device->resource;
 
+#if 1 // DRBD_SEND_TIME_TEST
+
+	DbgPrint("DRBD_TEST: #### send timeout error test. ###\n");
+	int size = 1024 * 1024;
+	size = 1024 * 1024;
+	char *buf = kmalloc(size, 0, 'XXX');
+	if (!buf)
+	{
+		DbgPrint("DRBD_TEST: malloc failed!\n");
+		return;
+	}
+
+	int i = 0;
+	for (i = 0; i < 100; i++)
+	{
+		int rv;
+		DbgPrint("DRBD_TEST: send test loop (%d) sz=%d : send start!!!!!!!!!!!\n", i, size);
+
+		struct drbd_connection *connection, *tmp;
+
+		for_each_connection_safe(connection, tmp, resource) 
+		{
+			int sent;
+
+			struct drbd_transport *transport = &connection->transport;
+			struct drbd_transport_ops *tr_ops = transport->ops;
+			int err;
+
+			// test 1
+			//sent = tr_ops->send_page(transport, DATA_STREAM, buf, 0, size, 0); //  msg_flags);
+			
+			// test 2
+			////sent = send_buf(transport, DATA_STREAM, socket, (void *) buf, size);
+			////DbgPrint("DRBD_TEST sent2 =%d", sent);
+
+			//DbgPrint("DRBD_TEST sent sz=%d return=%d @@@", size, sent);
+
+			// WSK를 이용 직접 send !!!!
+
+			struct buffer {
+				void *base;
+				void *pos;
+			};
+
+			struct drbd_tcp_transport {
+				struct drbd_transport transport; /* Must be first! */
+				struct mutex paths_mutex;
+				unsigned long flags;
+				struct socket *stream[2];
+				struct buffer rbuf[2];
+			};
+
+			struct drbd_tcp_transport *tcp_transport =
+				container_of(transport, struct drbd_tcp_transport, transport);
+
+			struct socket *socket = tcp_transport->stream[DATA_STREAM];
+			if (!socket) {
+				WDRBD_INFO("Socket error\n");
+				return -EIO;
+			}
+
+			// test 3
+			sent = Send(socket->sk, buf, size, 0, 6000, NULL, transport, DATA_STREAM);
+
+			//test 4
+			//sent = Send(socket->sk, buf, size, 0, 0, NULL, transport, DATA_STREAM);
+
+			// test 5
+			//ret = SendEx(pReuseIrp, sock, bab->static_big_buf, tx_sz, 0, NULL, 0);
+
+			DbgPrint("DRBD_TEST sent =%d !!!$$$$$$$$$$$$$$$$$$$$", sent);
+
+		}
+	}
+	DbgPrint("DRBD_TEST: send timeout test done\n");
+	return SS_TARGET_DISK_TOO_SMALL;
+#endif
+
 	mutex_lock(&resource->adm_mutex);
 
 	if (info->attrs[DRBD_NLA_INVALIDATE_PARMS]) {
