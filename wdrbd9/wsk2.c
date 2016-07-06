@@ -439,8 +439,8 @@ __in KEVENT			*send_buf_kill_event
 	if (Status == STATUS_PENDING)
 	{
 		LARGE_INTEGER	nWaitTime;
-		LARGE_INTEGER	*pTime;
 		PVOID       waitObjects[2];
+		int retry_count = 0;
 
 		nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
 		waitObjects[0] = (PVOID) &CompletionEvent;
@@ -451,8 +451,10 @@ __in KEVENT			*send_buf_kill_event
 		switch (Status)
 		{
 			case STATUS_TIMEOUT:
-				DbgPrint("STATUS_TIMEOUT #########################");
-				WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);
+				if (!(retry_count++ % 5))
+				{
+					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
+				}
 				// TCP session is no problem. peer does not receive this data yet. he may be busy. So, just retry forever. 
 				// the real tx timeout will be occured by upper level sender thread decreasing ko_count at drbd_stream_send_timed_out.
 				goto retry;
@@ -481,7 +483,6 @@ __in KEVENT			*send_buf_kill_event
 				break;
 
 			case STATUS_WAIT_1: // send_buffering thread's kill signal
-				DbgPrint("STATUS_WAIT_1 #########################");
 				BytesSent = -EINTR;
 				break;
 
