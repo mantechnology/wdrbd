@@ -405,8 +405,8 @@ __in PWSK_SOCKET	WskSocket,
 __in PVOID			Buffer,
 __in ULONG			BufferSize,
 __in ULONG			Flags,
-__in struct			drbd_transport *transport,
-__in enum			drbd_stream stream
+__in ULONG			Timeout,
+__in KEVENT			*send_buf_kill_event
 )
 {
 	KEVENT		CompletionEvent = { 0 };
@@ -436,26 +436,70 @@ __in enum			drbd_stream stream
 		Flags,
 		pIrp);
 
-	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = pIrp->IoStatus.Status;
-	}
+	if (Status == STATUS_PENDING)
+	{
+		LARGE_INTEGER	nWaitTime;
+		LARGE_INTEGER	*pTime;
+		PVOID       waitObjects[2];
 
-	if (NT_SUCCESS(Status)) {
-		BytesSent = (LONG)pIrp->IoStatus.Information;
+		nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+		waitObjects[0] = (PVOID) &CompletionEvent;
+		waitObjects[1] = send_buf_kill_event;
+
+	retry:
+		Status = KeWaitForMultipleObjects(2, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, &nWaitTime, NULL);
+		switch (Status)
+		{
+			case STATUS_TIMEOUT:
+				DbgPrint("STATUS_TIMEOUT #########################");
+				WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);
+				// TCP session is no problem. peer does not receive this data yet. he may be busy. So, just retry forever. 
+				// the real tx timeout will be occured by upper level sender thread decreasing ko_count at drbd_stream_send_timed_out.
+				goto retry;
+
+			case STATUS_WAIT_0:
+				if (NT_SUCCESS(pIrp->IoStatus.Status))
+				{
+					BytesSent = (LONG) pIrp->IoStatus.Information;
+				}
+				else
+				{
+					WDRBD_ERROR("sendbuffing: tx error(%s) wsk(0x%p)\n", GetSockErrorString(pIrp->IoStatus.Status), WskSocket);
+					switch (pIrp->IoStatus.Status)
+					{
+					case STATUS_IO_TIMEOUT:
+						BytesSent = -EAGAIN;
+						break;
+					case STATUS_INVALID_DEVICE_STATE:
+						BytesSent = -EAGAIN;
+						break;
+					default:
+						BytesSent = -ECONNRESET;
+						break;
+					}
+				}
+				break;
+
+			case STATUS_WAIT_1: // send_buffering thread's kill signal
+				DbgPrint("STATUS_WAIT_1 #########################");
+				BytesSent = -EINTR;
+				break;
+
+			default:
+				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
+				BytesSent = SOCKET_ERROR;
+		}
 	}
-	else {
-		WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(pIrp->IoStatus.Status), WskSocket);
-		switch (Status) {
-		case STATUS_IO_TIMEOUT:
-			BytesSent = -EAGAIN;
-			break;
-		case STATUS_INVALID_DEVICE_STATE:
-			BytesSent = -EAGAIN;
-			break;
-		default:
-			BytesSent = -ECONNRESET;
-			break;
+	else
+	{
+		if (Status == STATUS_SUCCESS)
+		{
+			BytesSent = (LONG) pIrp->IoStatus.Information;
+		}
+		else
+		{
+			WDRBD_ERROR("sendbuffing: WskSend error(0x%x)\n", Status);
+			BytesSent = SOCKET_ERROR;
 		}
 	}
 
