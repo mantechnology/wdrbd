@@ -5745,7 +5745,7 @@ bool drbd_have_local_disk(struct drbd_resource *resource)
 }
 
 static enum drbd_state_rv
-far_away_change(struct drbd_resource *resource, union drbd_state mask,
+far_away_change(struct drbd_connection *connection, union drbd_state mask,
 		union drbd_state val, struct twopc_reply *reply,
 		enum chg_state_flags flags)
 {
