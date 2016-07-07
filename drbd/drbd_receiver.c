@@ -841,7 +841,10 @@ int connect_work(struct drbd_work *work, int cancel)
 	struct drbd_connection *connection =
 		container_of(work, struct drbd_connection, connect_timer_work);
 	enum drbd_state_rv rv;
-	
+
+	if (connection->cstate[NOW] != C_CONNECTING)
+		goto out_put;
+
 	rv = change_cstate(connection, C_CONNECTED, CS_SERIALIZE | CS_VERBOSE | CS_DONT_RETRY);
 
 	if (rv >= SS_SUCCESS) {
@@ -861,6 +864,7 @@ int connect_work(struct drbd_work *work, int cancel)
 		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 
+out_put:
 	kref_debug_put(&connection->kref_debug, 11);
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
@@ -7295,10 +7299,11 @@ void conn_disconnect(struct drbd_connection *connection)
 	 * Make sure drbd_make_request knows about that.
 	 * Usually we should be in some network failure state already,
 	 * but just in case we are not, we fix it up here.
-	 */
-	del_connect_timer(connection);
+	 */	
 
 	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+
+	del_connect_timer(connection);
 
 	/* ack_receiver does not clean up anything. it must not interfere, either */
 	drbd_thread_stop(&connection->ack_receiver);
