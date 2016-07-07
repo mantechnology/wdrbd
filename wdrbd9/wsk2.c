@@ -213,6 +213,37 @@ CreateSocket(
 
 NTSTATUS
 NTAPI
+CloseSocketLocal(
+	__in PWSK_SOCKET WskSocket
+)
+{
+	KEVENT		CompletionEvent = { 0 };
+	PIRP		Irp = NULL;
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+	if (g_SocketsState != INITIALIZED || !WskSocket)
+		return STATUS_INVALID_PARAMETER;
+
+	Status = InitWskData(&Irp, &CompletionEvent);
+	if (!NT_SUCCESS(Status)) {
+		return Status;
+	}
+
+	if(gbShutdown) {
+		IoFreeIrp(Irp);
+		return STATUS_UNSUCCESSFUL;
+	}
+	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
+	if (Status == STATUS_PENDING) {
+		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		Status = Irp->IoStatus.Status;
+	}
+	IoFreeIrp(Irp);
+	return Status;
+}
+
+NTSTATUS
+NTAPI
 CloseSocket(
 	__in PWSK_SOCKET WskSocket
 )
@@ -684,6 +715,11 @@ SendLocal(
 
 	Flags |= WSK_FLAG_NODELAY;
 
+	if(gbShutdown) { // DW-1015 fix crash. WskSocket->Dispatch)->WskSend is NULL while machine is shutdowning
+		IoFreeIrp(Irp);
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 		WskSocket,
 		&WskBuffer,
@@ -826,6 +862,152 @@ SendTo(
 	FreeWskBuffer(&WskBuffer);
 	return BytesSent;
 }
+
+LONG NTAPI ReceiveLocal(
+	__in  PWSK_SOCKET	WskSocket,
+	__out PVOID			Buffer,
+	__in  ULONG			BufferSize,
+	__in  ULONG			Flags,
+	__in ULONG			Timeout
+)
+{
+	KEVENT		CompletionEvent = { 0 };
+	PIRP		Irp = NULL;
+	WSK_BUF		WskBuffer = { 0 };
+	LONG		BytesReceived = SOCKET_ERROR;
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+    struct      task_struct *thread = current;
+    PVOID       waitObjects[2];
+    int         wObjCount = 1;
+
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
+		return SOCKET_ERROR;
+
+	if ((int) BufferSize <= 0)
+	{
+		return SOCKET_ERROR;
+	}
+
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	if (!NT_SUCCESS(Status)) {
+		return SOCKET_ERROR;
+	}
+
+	Status = InitWskData(&Irp, &CompletionEvent);
+
+	if (!NT_SUCCESS(Status)) {
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
+	if(gbShutdown) {
+		IoFreeIrp(Irp);
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
+	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskReceive(
+				WskSocket,
+				&WskBuffer,
+				Flags,
+				Irp);
+
+    if (Status == STATUS_PENDING)
+    {
+        LARGE_INTEGER	nWaitTime;
+        LARGE_INTEGER	*pTime;
+
+        if (Timeout <= 0 || Timeout == MAX_SCHEDULE_TIMEOUT)
+        {
+            pTime = 0;
+        }
+        else
+        {
+            nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+            pTime = &nWaitTime;
+        }
+
+        waitObjects[0] = (PVOID) &CompletionEvent;
+        if (thread->has_sig_event)
+        {
+            waitObjects[1] = (PVOID) &thread->sig_event;
+            wObjCount = 2;
+        }
+        Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
+        switch (Status)
+        {
+        case STATUS_WAIT_0: // waitObjects[0] CompletionEvent
+            if (Irp->IoStatus.Status == STATUS_SUCCESS)
+            {
+                BytesReceived = (LONG) Irp->IoStatus.Information;
+            }
+            else
+            {
+#ifdef _WIN32_LOGLINK 
+                DbgPrint("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
+#else
+				WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status));
+#endif
+				if(Irp->IoStatus.Status)
+                {
+                    BytesReceived = -ECONNRESET;
+                }
+            }
+            break;
+
+        case STATUS_WAIT_1:
+            BytesReceived = -EINTR;
+            break;
+
+        case STATUS_TIMEOUT:
+            BytesReceived = -EAGAIN;
+            break;
+
+        default:
+            BytesReceived = SOCKET_ERROR;
+            break;
+        }
+    }
+	else
+	{
+		if (Status == STATUS_SUCCESS)
+		{
+			BytesReceived = (LONG) Irp->IoStatus.Information;
+#ifdef _WIN32_LOGLINK
+			DbgPrint("(%s) Rx No pending and data(%d) is avail\n", current->comm, BytesReceived);
+#else
+			WDRBD_INFO("(%s) Rx No pending and data(%d) is avail\n", current->comm, BytesReceived);
+#endif
+		}
+		else
+		{
+#ifdef _WIN32_LOGLINK
+			DbgPrint("WskReceive Error Status=0x%x\n", Status); // EVENT_LOG!
+#else
+			WDRBD_TRACE("WskReceive Error Status=0x%x\n", Status); // EVENT_LOG!
+#endif
+		}
+	}
+
+	if (BytesReceived == -EINTR || BytesReceived == -EAGAIN)
+	{
+		// cancel irp in wsk subsystem
+		IoCancelIrp(Irp);
+		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		if (Irp->IoStatus.Information > 0)
+		{
+			//WDRBD_INFO("rx canceled but rx data(%d) avaliable.\n", Irp->IoStatus.Information);
+			BytesReceived = Irp->IoStatus.Information;
+		}
+	}
+
+	IoFreeIrp(Irp);
+	FreeWskBuffer(&WskBuffer);
+
+	return BytesReceived;
+}
+
 
 LONG NTAPI Receive(
 	__in  PWSK_SOCKET	WskSocket,
@@ -1048,6 +1230,109 @@ Bind(
 	}
 	IoFreeIrp(Irp);
 	return Status;
+}
+
+PWSK_SOCKET
+NTAPI
+AcceptLocal(
+	__in PWSK_SOCKET	WskSocket,
+	__out_opt PSOCKADDR	LocalAddress,
+	__out_opt PSOCKADDR	RemoteAddress,
+	__out_opt NTSTATUS	*RetStaus,
+	__in int			timeout
+)
+{
+	KEVENT			CompletionEvent = { 0 };
+	PIRP			Irp = NULL;
+	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
+	PWSK_SOCKET		AcceptedSocket = NULL;
+    struct task_struct *thread = current;
+    PVOID waitObjects[2];
+    int wObjCount = 1;
+
+	if (g_SocketsState != INITIALIZED || !WskSocket)
+	{
+		*RetStaus = SOCKET_ERROR;
+		return NULL;
+	}
+
+	Status = InitWskData(&Irp, &CompletionEvent);
+	if (!NT_SUCCESS(Status)) {
+		*RetStaus = Status;
+		return NULL;
+	}
+
+	if(gbShutdown) {
+		*RetStaus = SOCKET_ERROR;
+		IoFreeIrp(Irp);
+		return NULL;	
+	}
+	Status = ((PWSK_PROVIDER_LISTEN_DISPATCH) WskSocket->Dispatch)->WskAccept(
+		WskSocket,
+		0,
+		NULL,
+		NULL,
+		LocalAddress,
+		RemoteAddress,
+		Irp);
+
+	if (Status == STATUS_PENDING)
+	{
+		LARGE_INTEGER	nWaitTime;
+		LARGE_INTEGER	*pTime;
+
+		if (timeout <= 0 || timeout == MAX_SCHEDULE_TIMEOUT)
+		{
+			pTime = 0;
+		}
+		else
+		{
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * timeout * 10000000);
+			pTime = &nWaitTime;
+		}
+
+        waitObjects[0] = (PVOID) &CompletionEvent;
+        if (thread->has_sig_event)
+        {
+            waitObjects[1] = (PVOID) &thread->sig_event;
+            wObjCount = 2;
+        }
+
+        Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
+
+		switch (Status)
+		{
+			case STATUS_WAIT_0:
+				break;
+
+			case STATUS_WAIT_0 + 1:
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				*RetStaus = -EINTR;	
+				break;
+
+			case STATUS_TIMEOUT:
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				*RetStaus = STATUS_TIMEOUT;
+				break;
+
+			default:
+				WDRBD_ERROR("Unexpected Error Status=0x%x\n", Status);
+				break;
+		}
+	}
+	else
+	{
+		if (Status != STATUS_SUCCESS)
+		{
+			WDRBD_TRACE("Accept Error Status=0x%x\n", Status);
+		}
+	}
+
+	AcceptedSocket = (Status == STATUS_SUCCESS) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
+	IoFreeIrp(Irp);
+	return AcceptedSocket;
 }
 
 

@@ -57,6 +57,12 @@ NTAPI
 
 NTSTATUS
 NTAPI
+CloseSocketLocal(
+	__in PWSK_SOCKET WskSocket
+);
+
+NTSTATUS
+NTAPI
   CloseSocket(
 	__in PWSK_SOCKET WskSocket
 	);
@@ -123,16 +129,16 @@ SendLocal(
 
 LONG
 NTAPI
-  SendTo(
+SendTo(
 	__in PWSK_SOCKET	WskSocket,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in_opt PSOCKADDR	RemoteAddress
 	);
 
-LONG
-NTAPI
-  Receive(
+LONG 
+NTAPI 
+ReceiveLocal(
 	__in  PWSK_SOCKET	WskSocket,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
@@ -142,7 +148,17 @@ NTAPI
 
 LONG
 NTAPI
-  ReceiveFrom(
+Receive(
+	__in  PWSK_SOCKET	WskSocket,
+	__out PVOID			Buffer,
+	__in  ULONG			BufferSize,
+	__in  ULONG			Flags,
+	__in ULONG			Timeout
+	);
+
+LONG
+NTAPI
+ReceiveFrom(
 	__in  PWSK_SOCKET	WskSocket,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
@@ -152,14 +168,23 @@ NTAPI
 
 NTSTATUS
 NTAPI
-  Bind(
+Bind(
 	__in PWSK_SOCKET	WskSocket,
 	__in PSOCKADDR		LocalAddress
 	);
+PWSK_SOCKET
+NTAPI
+AcceptLocal(
+	__in PWSK_SOCKET	WskSocket,
+	__out_opt PSOCKADDR	LocalAddress,
+	__out_opt PSOCKADDR	RemoteAddress,
+	__out_opt NTSTATUS	*RetStaus,
+	__in int			timeout
+);
 
 PWSK_SOCKET
 NTAPI
-  Accept(
+Accept(
 	__in PWSK_SOCKET	WskSocket,
 	__out_opt PSOCKADDR	LocalAddress,
 	__out_opt PSOCKADDR	RemoteAddress,

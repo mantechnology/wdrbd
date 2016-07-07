@@ -3468,6 +3468,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         {
             WDRBD_ERROR("DRBD_PANIC: No memory\n");
             rcu_read_unlock();
+			gbShutdown = TRUE;
             return;
         }
         device_list_p->device = device;
@@ -3498,6 +3499,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         list_del(&device_list_p->list);
         kfree(device_list_p);
     }
+
+	gbShutdown = TRUE;
 }
 #endif
 /**
