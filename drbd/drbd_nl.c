@@ -499,7 +499,7 @@ static void conn_md_sync(struct drbd_connection *connection)
 		struct drbd_device *device = peer_device->device;
 		kref_get(&device->kref);
 		rcu_read_unlock();
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 		kref_put(&device->kref, drbd_destroy_device);
 #ifdef _WIN32
         rcu_read_lock_w32_inner();
@@ -782,7 +782,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	/* The helper may take some time.
 	 * write out any unsynced meta data changes now */
 	if (device)
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 	else if (connection)
 		conn_md_sync(connection);
 
@@ -1319,7 +1319,7 @@ retry:
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 		set_disk_ro(device->vdisk, role == R_SECONDARY);
 		if (!resource->res_opts.auto_promote && role == R_PRIMARY)
 			drbd_kobject_uevent(device);
@@ -1806,7 +1806,7 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
  * Check if all peer devices that have bitmap slots assigned in the metadata
  * are connected.
  */
-static bool all_known_peer_devices_connected(struct drbd_device *device) __must_hold(local)
+static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __must_hold(local)
 {
 	int node_id;
 	bool all_known;
@@ -1814,68 +1814,116 @@ static bool all_known_peer_devices_connected(struct drbd_device *device) __must_
 	all_known = true;
 	rcu_read_lock();
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
+		struct drbd_peer_md *peer_md = &device->ldev->md.peers[node_id];
 		struct drbd_peer_device *peer_device;
 
-		if (device->ldev->md.peers[node_id].bitmap_index == -1 ||
-		    !device->ldev->md.peers[node_id].bitmap_uuid)
+		if (device->ldev->md.node_id == node_id) {
+			drbd_info(device, "my node_id: %u\n", node_id);
+			continue; /* skip myself... */
+		}
+		/* Have we met this peer node id before? */
+		if (peer_md->bitmap_index == -1)
 			continue;
 		peer_device = peer_device_by_node_id(device, node_id);
-		if (peer_device && peer_device->repl_state[NOW] >= L_ESTABLISHED)
+		if (peer_device) {
+			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
+			drbd_info(peer_device, "node_id: %u idx: %u bm-uuid: 0x%llx flags: 0x%x max_size: %llu (%s)\n",
+					node_id,
+					peer_md->bitmap_index,
+					peer_md->bitmap_uuid,
+					peer_md->flags,
+					peer_device->max_size,
+					drbd_disk_str(pdsk));
+
+			if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
+				/* If we still can see it, consider its last
+				 * known size, even if it may have meanwhile
+				 * detached from its disk.
+				 * If we no longer see it, we may want to
+				 * ignore the size we last knew, and
+				 * "assume_peer_has_space".  */
+				*max = min_not_zero(*max, peer_device->max_size);
+				continue;
+			}
+		} else {
+			drbd_info(device, "node_id: %u idx: %u bm-uuid: 0x%llx flags: 0x%x (not currently reachable)\n",
+					node_id,
+					peer_md->bitmap_index,
+					peer_md->bitmap_uuid,
+					peer_md->flags);
+		}
+		/* Even the currently diskless peer does not really know if it
+		 * is diskless on purpose (a "DRBD client") or if it just was
+		 * not possible to attach (backend device gone for some
+		 * reason).  But we remember in our meta data if we have ever
+		 * seen a peer disk for this peer.  If we did not ever see a
+		 * peer disk, assume that's intentional. */
+		if ((peer_md->flags & MDF_PEER_DEVICE_SEEN) == 0)
 			continue;
 
 		all_known = false;
-		break;
+		/* don't break yet, min aggregation may still find a peer */
 	}
 	rcu_read_unlock();
 	return all_known;
 }
 
+#if 0
+#define DDUMP_LLU(d, x) do { drbd_info(d, "%u: " #x ": %llu\n", __LINE__, (unsigned long long)x); } while (0)
+#else
+#define DDUMP_LLU(d, x) do { } while (0)
+#endif
+
+/* MUST hold a reference on ldev. */
+
 sector_t
 drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_has_space) __must_hold(local)
 {
-	struct drbd_peer_device *peer_device;
-	sector_t p_size = 0;
-	sector_t la_size = device->ldev->md.effective_size; /* last agreed size */
-	sector_t m_size; /* my size */
-	sector_t size = 0;
-
-	rcu_read_lock();
-	for_each_peer_device_rcu(peer_device, device) {
-		if (peer_device->disk_state[NOW] > D_DISKLESS)
-			p_size = min_not_zero(p_size, peer_device->max_size);
-	}
-	rcu_read_unlock();
+	uint64_t p_size = 0;
+	uint64_t la_size = device->ldev->md.effective_size; /* last agreed size */
+	uint64_t m_size; /* my size */
+	uint64_t size = 0;
+	bool all_known_connected;
 
 	m_size = drbd_get_max_capacity(device->ldev);
+	all_known_connected = get_max_agreeable_size(device, &p_size);
 
-	if (assume_peer_has_space && !all_known_peer_devices_connected(device)) {
-		drbd_warn(device, "Resize while not connected was forced by the user!\n");
-		p_size = m_size;
-	}
-
-	if (p_size && m_size) {
-		size = min_t(sector_t, p_size, m_size);
+	if (all_known_connected) {
+		/* If we currently can see all peer devices,
+		 * and p_size is still 0, apparently all our peers have been
+		 * diskless, always.  If we have the only persistent backend,
+		 * only our size counts. */
+		DDUMP_LLU(device, p_size);
+		DDUMP_LLU(device, m_size);
+		p_size = min_not_zero(p_size, m_size);
+	} else if (assume_peer_has_space) {
+		DDUMP_LLU(device, p_size);
+		DDUMP_LLU(device, m_size);
+		DDUMP_LLU(device, la_size);
+		p_size = min_not_zero(p_size, m_size);
+		if (p_size > la_size)	
+			drbd_warn(device, "Resize while not connected was forced by the user!\n");
 	} else {
-		if (la_size) {
-			size = la_size;
-			if (m_size && m_size < size)
-				size = m_size;
-			if (p_size && p_size < size)
-				size = p_size;
-		} else {
-			if (m_size)
-				size = m_size;
-			if (p_size)
-				size = p_size;
-		}
+		DDUMP_LLU(device, p_size);
+		DDUMP_LLU(device, m_size);
+		DDUMP_LLU(device, la_size);
+		/* We currently cannot see all peer devices,
+		 * fall back to what we last agreed upon. */
+		p_size = min_not_zero(p_size, la_size);
 	}
+
+	DDUMP_LLU(device, p_size);
+	DDUMP_LLU(device, m_size);
+	size = min_not_zero(p_size, m_size);
+	DDUMP_LLU(device, size);
+
 
 	if (size == 0)
-		drbd_err(device, "Both nodes diskless!\n");
+		drbd_err(device, "All nodes diskless!\n");
 
 	if (u_size) {
 		if (u_size > size)
-			drbd_err(device, "Requested disk size is too big (%lu > %lu)\n",
+			drbd_err(device, "Requested disk size is too big (%lu > %lu)kiB\n",
 			    (unsigned long)u_size>>1, (unsigned long)size>>1);
 		else
 			size = u_size;
@@ -2364,7 +2412,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	if (old_disk_conf->discard_zeroes_if_aligned != new_disk_conf->discard_zeroes_if_aligned)
 		drbd_reconsider_queue_parameters(device, device->ldev, NULL);
 
-	drbd_md_sync(device);
+	drbd_md_sync_if_dirty(device);
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
@@ -2865,12 +2913,16 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	unlock_all_resources();
 
 	/* Prevent shrinking of consistent devices ! */
-	if (drbd_md_test_flag(device->ldev, MDF_CONSISTENT) &&
-	    drbd_new_dev_size(device, device->ldev->disk_conf->disk_size, 0) <
-	    device->ldev->md.effective_size) {
-		drbd_warn(device, "refusing to truncate a consistent device\n");
+	{
+	unsigned long long nsz = drbd_new_dev_size(device, device->ldev->disk_conf->disk_size, 0);
+	unsigned long long eff = device->ldev->md.effective_size;
+	if (drbd_md_test_flag(device->ldev, MDF_CONSISTENT) && nsz < eff) {
+		drbd_warn(device,
+			"refusing to truncate a consistent device (%llu < %llu)\n",
+			nsz, eff);		
 		retcode = ERR_DISK_TOO_SMALL;
 		goto force_diskless_dec;
+	}
 	}
 
 	if (drbd_md_test_flag(device->ldev, MDF_CRASHED_PRIMARY))
@@ -3023,7 +3075,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	else
 		device->ldev->md.current_uuid &= ~UUID_PRIMARY;
 
-	drbd_md_mark_dirty(device);
 	drbd_md_sync(device);
 
 	drbd_kobject_uevent(device);
@@ -3037,7 +3088,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	put_ldev(device);
  force_diskless:
 	change_disk_state(device, D_DISKLESS, CS_HARD);
-	drbd_md_sync(device);
  fail:
 	mutex_unlock_cond(&resource->conf_update, &have_conf_update);
 	drbd_backing_dev_free(device, nbc);
@@ -4421,7 +4471,8 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	sector_t u_size;
 	int err;
 	struct drbd_peer_device *peer_device;
-	bool has_primary = false, resolve_by_node_id = true;
+	bool resolve_by_node_id = true;
+	bool has_up_to_date_primary;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -4459,18 +4510,27 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		goto fail_ldev;
 	}
 
-	has_primary = device->resource->role[NOW] == R_PRIMARY;
-	if (!has_primary) {
+	/* Maybe I could serve as sync source myself? */
+	has_up_to_date_primary =
+		device->resource->role[NOW] == R_PRIMARY &&
+		device->disk_state[NOW] == D_UP_TO_DATE;
+
+	if (!has_up_to_date_primary) {
 		for_each_peer_device(peer_device, device) {
-			if (peer_device->connection->peer_role[NOW] == R_PRIMARY) {
-				has_primary = true;
-				break;
-			}
-			if (peer_device->connection->agreed_pro_version < 111)
+			/* ignore unless connection is fully established */
+			if (peer_device->repl_state[NOW] < L_ESTABLISHED)
+				continue;
+			if (peer_device->connection->agreed_pro_version < 111) {
 				resolve_by_node_id = false;
+				if (peer_device->connection->peer_role[NOW] == R_PRIMARY                
+				&&  peer_device->disk_state[NOW] == D_UP_TO_DATE) {
+					has_up_to_date_primary = true;
+					break;
+				}
+			}
 		}
 	}
-	if (!has_primary && !resolve_by_node_id) {
+	if (!has_up_to_date_primary && !resolve_by_node_id) {
 		retcode = ERR_NO_PRIMARY;
 		goto fail_ldev;
 	}
@@ -4539,7 +4599,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 
 	ddsf = (rs.resize_force ? DDSF_FORCED : 0) | (rs.no_resync ? DDSF_NO_RESYNC : 0);
 	dd = drbd_determine_dev_size(device, ddsf, change_al_layout ? &rs : NULL);
-	drbd_md_sync(device);
+	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
 	if (dd == DS_ERROR) {
 		retcode = ERR_NOMEM_BITMAP;
@@ -5803,7 +5863,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 		end_state_change(device->resource, &irq_flags);
 	}
 
-	drbd_md_sync(device);
+	drbd_md_sync_if_dirty(device);
 out_dec:
 	put_ldev(device);
 out:

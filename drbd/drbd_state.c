@@ -280,7 +280,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
-	if (test_and_clear_bit(NEGOTIATION_RESULT_TOCHED, &resource->flags))
+	if (test_and_clear_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags))
 		return true;
 
 	if (resource->role[OLD] != resource->role[NEW] ||
@@ -1425,6 +1425,9 @@ static void sanitize_state(struct drbd_resource *resource)
 		int good_data_count[2] = { };
 #endif
 
+		if (disk_state[OLD] == D_DISKLESS && disk_state[NEW] == D_DETACHING)
+			disk_state[NEW] = D_DISKLESS;
+
 		if ((resource->state_change_flags & CS_IGN_OUTD_FAIL) &&
 		    disk_state[OLD] < D_OUTDATED && disk_state[NEW] == D_OUTDATED)
 			disk_state[NEW] = disk_state[OLD];
@@ -1955,10 +1958,15 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 			}
 
 
-			if (repl_state[OLD] > L_ESTABLISHED && repl_state[NEW] <= L_ESTABLISHED) {
+			if (repl_state[OLD] > L_ESTABLISHED && repl_state[NEW] <= L_ESTABLISHED)
 				clear_bit(RECONCILIATION_RESYNC, &peer_device->flags);
+#if 0
+/* Why would I want to reset this?
+ * It is useful to not accidentally resize beyond end of backend of peer.
+ */
+			if (repl_state[OLD] >= L_ESTABLISHED && repl_state[NEW] < L_ESTABLISHED)
 				peer_device->max_size = 0;
-			}
+#endif
 
 			if (repl_state[OLD] == L_ESTABLISHED &&
 			    (repl_state[NEW] == L_VERIFY_S || repl_state[NEW] == L_VERIFY_T)) {
@@ -1994,13 +2002,21 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (disk_state[NEW] != D_NEGOTIATING && get_ldev(device)) {
 				if (peer_device->bitmap_index != -1) {
+					enum drbd_disk_state pdsk = peer_device->disk_state[NEW];
 					u32 mdf = device->ldev->md.peers[peer_device->node_id].flags;
+					/* Do NOT clear MDF_PEER_DEVICE_SEEN.
+					 * We want to be able to refuse a resize beyond "last agreed" size,
+					 * even if the peer is currently detached.
+					 */
 					mdf &= ~(MDF_PEER_CONNECTED | MDF_PEER_OUTDATED | MDF_PEER_FENCING);
 					if (repl_state[NEW] > L_OFF)
 						mdf |= MDF_PEER_CONNECTED;
-					if (peer_device->disk_state[NEW] <= D_OUTDATED &&
-					    peer_device->disk_state[NEW] >= D_INCONSISTENT)
-						mdf |= MDF_PEER_OUTDATED;
+					if (pdsk >= D_INCONSISTENT) {
+						if (pdsk <= D_OUTDATED)
+							mdf |= MDF_PEER_OUTDATED;
+						if (pdsk != D_UNKNOWN)
+							mdf |= MDF_PEER_DEVICE_SEEN;
+                    }
 					if (peer_device->connection->fencing_policy != FP_DONT_CARE)
 						mdf |= MDF_PEER_FENCING;
 					if (mdf != device->ldev->md.peers[peer_device->node_id].flags) {
@@ -2982,7 +2998,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				/* In case we want to get something to stable storage still,
 				 * this may be the last chance.
 				 * Following put_ldev may transition to D_DISKLESS. */
-				drbd_md_sync(device);
+				drbd_md_sync_if_dirty(device);
 			}
 		}
 
@@ -2996,6 +3012,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_err(device,
 					"ASSERT FAILED: disk is %s while going diskless\n",
 					drbd_disk_str(device->disk_state[NOW]));
+
+			/* we may need to cancel the md_sync timer */
+			del_timer_sync(&device->md_sync_timer);
 
 			if (expect(device, device_state_change->have_ldev))
 				send_new_state_to_all_peer_devices(state_change, n_device);
@@ -3011,7 +3030,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		if (disk_state[OLD] != D_CONSISTENT && disk_state[NEW] == D_CONSISTENT)
 			try_become_up_to_date = true;
 
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 	}
 
 	if (role[OLD] == R_PRIMARY && role[NEW] == R_SECONDARY)
@@ -3369,6 +3388,54 @@ static enum drbd_state_rv primary_nodes_allowed(struct drbd_resource *resource)
 	return rv;
 }
 
+static enum drbd_state_rv
+check_primaries_distances(struct drbd_resource *resource)
+{
+	struct twopc_reply *reply = &resource->twopc_reply;
+	u64 common_server;
+	int node_id;
+
+
+	/* All primaries directly connected. Good */
+	if (!(reply->primary_nodes & reply->weak_nodes))
+		return SS_SUCCESS;
+
+	/* For virtualisation setups with diskless hypervisors (R_PRIMARY) and one
+	 or multiple storage servers (R_SECONDAY) allow live-migration between the
+	 hypervisors. */
+	common_server = ~reply->weak_nodes;
+	if (common_server) {
+		/* Only allow if the new primary is diskless. See also far_away_change()
+		 in drbd_receiver.c for the diskless check on the other primary */
+		if ((reply->primary_nodes & NODE_MASK(resource->res_opts.node_id)) &&
+			drbd_have_local_disk(resource))
+			return SS_WEAKLY_CONNECTED;
+
+		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
+			struct drbd_connection *connection;
+			struct net_conf *nc;
+			bool two_primaries;
+
+			if (!(common_server & NODE_MASK(node_id)))
+				continue;
+			connection = drbd_connection_by_node_id(resource, node_id);
+			if (!connection)
+				continue;
+
+			rcu_read_lock();
+			nc = rcu_dereference(connection->transport.net_conf);
+			two_primaries = nc ? nc->two_primaries : false;
+			rcu_read_unlock();
+
+			if (!two_primaries)
+				return SS_TWO_PRIMARIES;
+		}
+		return SS_SUCCESS;
+	}
+	return SS_WEAKLY_CONNECTED;
+}
+
+
 long twopc_retry_timeout(struct drbd_resource *resource, int retries)
 {
 	struct drbd_connection *connection;
@@ -3421,6 +3488,14 @@ struct change_context {
 	bool change_local_state_last;
 };
 
+enum change_phase {
+    PH_LOCAL_COMMIT,
+    PH_PREPARE,
+    PH_84_COMMIT,
+    PH_COMMIT,
+};
+
+
 /**
  * change_cluster_wide_state  -  Cluster-wide two-phase commit
  *
@@ -3459,7 +3534,7 @@ struct change_context {
  * to have aborted.
  */
 static enum drbd_state_rv
-change_cluster_wide_state(bool (*change)(struct change_context *, bool),
+change_cluster_wide_state(bool (*change)(struct change_context *, enum change_phase),
 			  struct change_context *context)
 {
 	struct drbd_resource *resource = context->resource;
@@ -3479,11 +3554,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 
 	begin_state_change(resource, &irq_flags, context->flags | CS_LOCAL_ONLY);
 	if (local_state_change(context->flags)) {
-		/* Not a cluster-wide state change. */
-		change(context, false);
+		/* Not a cluster-wide state change. */       
+		change(context, PH_LOCAL_COMMIT);
 		return end_state_change(resource, &irq_flags);
 	} else {
-		if (!change(context, true)) {
+		if (!change(context, PH_PREPARE)) {
 			/* Not a cluster-wide state change. */
 			return end_state_change(resource, &irq_flags);
 		}
@@ -3508,7 +3583,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 			kref_put(&connection->kref, drbd_destroy_connection);
 		}
 		if (rv >= SS_SUCCESS)
-			change(context, false);
+			change(context, PH_84_COMMIT);
 		return __end_state_change(resource, &irq_flags, rv);
 	}
 
@@ -3640,11 +3715,9 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 			if (context->mask.role == role_MASK && context->val.role == R_PRIMARY)
 				rv = primary_nodes_allowed(resource);
 			if ((context->mask.role == role_MASK && context->val.role == R_PRIMARY) ||
-			    (context->mask.conn == conn_MASK && context->val.conn == C_CONNECTED)) {
-				/* All the primary nodes must be connected to each other. */
-				if (reply->primary_nodes & reply->weak_nodes)
-					rv = SS_WEAKLY_CONNECTED;
-			}
+				(context->mask.conn == conn_MASK && context->val.conn == C_CONNECTED))
+				rv = check_primaries_distances(resource);
+
 			if (!(context->mask.conn == conn_MASK && context->val.conn == C_DISCONNECTING) ||
 			    (reply->reachable_nodes & reply->target_reachable_nodes)) {
 				/* The cluster is still connected after this
@@ -3705,7 +3778,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, bool),
 		twopc_phase2(resource, context->vnr, rv >= SS_SUCCESS, &request, reach_immediately);
 	end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
 	if (rv >= SS_SUCCESS) {
-		change(context, false);
+		change(context, PH_COMMIT);
 		if (target_connection &&
 		    target_connection->peer_role[NOW] == R_UNKNOWN) {
 			enum drbd_role target_role =
@@ -3749,13 +3822,8 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	drbd_debug(twopc_parent, "Nested state change %u result: %s\n",
 		   twopc_reply.tid, drbd_packet_name(cmd));
 #endif
-	if (cmd == P_TWOPC_NO) {
-		del_timer(&resource->twopc_timer);
-		abort_nested_twopc_work(&resource->twopc_work, false);
-	} else {
-		if (twopc_reply.is_disconnect)
-			set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
-	}
+	if (twopc_reply.is_disconnect)
+		set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
 
 	drbd_send_twopc_reply(twopc_parent, cmd, &twopc_reply);
 	kref_debug_put(&twopc_parent->kref_debug, 9);
@@ -3851,13 +3919,13 @@ static void __change_role(struct change_role_context *role_context)
 	}
 }
 
-static bool do_change_role(struct change_context *context, bool prepare)
+static bool do_change_role(struct change_context *context, enum change_phase phase)
 {
 	struct change_role_context *role_context =
 		container_of(context, struct change_role_context, context);
 
 	__change_role(role_context);
-	return !prepare ||
+	return phase != PH_PREPARE ||
 	       (context->resource->role[NOW] != R_PRIMARY &&
 		context->val.role == R_PRIMARY);
 }
@@ -3999,14 +4067,14 @@ static bool device_has_peer_devices_with_disk(struct drbd_device *device)
 	return rv;
 }
 
-static bool do_change_from_consistent(struct change_context *context, bool prepare)
+static bool do_change_from_consistent(struct change_context *context, enum change_phase phase)
 {
 	struct drbd_resource *resource = context->resource;
 	struct twopc_reply *reply = &resource->twopc_reply;
 	u64 directly_reachable = directly_connected_nodes(resource, NEW) |
 		NODE_MASK(resource->res_opts.node_id);
 
-	if (reply->primary_nodes & ~directly_reachable) {
+	if (phase == PH_COMMIT && (reply->primary_nodes & ~directly_reachable)) {
 		__outdate_myself(resource);
 	} else {
 		struct drbd_device *device;
@@ -4022,7 +4090,7 @@ static bool do_change_from_consistent(struct change_context *context, bool prepa
 		}
 	}
 
-	return !prepare || reply->reachable_nodes != NODE_MASK(resource->res_opts.node_id);
+	return phase != PH_PREPARE || reply->reachable_nodes != NODE_MASK(resource->res_opts.node_id);
 }
 
 enum drbd_state_rv change_from_consistent(struct drbd_resource *resource,
@@ -4054,7 +4122,7 @@ struct change_disk_state_context {
 	struct drbd_device *device;
 };
 
-static bool do_change_disk_state(struct change_context *context, bool prepare)
+static bool do_change_disk_state(struct change_context *context, enum change_phase phase)
 {
 	struct drbd_device *device =
 		container_of(context, struct change_disk_state_context, context)->device;
@@ -4075,7 +4143,7 @@ static bool do_change_disk_state(struct change_context *context, bool prepare)
 		cluster_wide_state_change = true;
 	}
 	__change_disk_state(device, context->val.disk);
-	return !prepare || cluster_wide_state_change;
+	return phase != PH_PREPARE || cluster_wide_state_change;
 }
 
 enum drbd_state_rv change_disk_state(struct drbd_device *device,
@@ -4174,12 +4242,12 @@ struct change_cstate_context {
 	enum outdate_what outdate_what;
 };
 
-static bool do_change_cstate(struct change_context *context, bool prepare)
+static bool do_change_cstate(struct change_context *context, enum change_phase phase)
 {
 	struct change_cstate_context *cstate_context =
 		container_of(context, struct change_cstate_context, context);
 
-	if (prepare) {
+	if (phase == PH_PREPARE) {
 		cstate_context->outdate_what = OUTDATE_NOTHING;
 		if (context->val.conn == C_DISCONNECTING) {
 			cstate_context->outdate_what =
@@ -4202,7 +4270,7 @@ static bool do_change_cstate(struct change_context *context, bool prepare)
 				    context->val.conn,
 				    cstate_context->outdate_what);
 
-	if (!prepare && context->val.conn == C_DISCONNECTING) {
+	if (phase == PH_COMMIT && context->val.conn == C_DISCONNECTING) {
 		struct drbd_resource *resource = context->resource;
 		struct twopc_reply *reply = &resource->twopc_reply;
 		u64 directly_reachable = directly_connected_nodes(resource, NEW) |
@@ -4212,7 +4280,7 @@ static bool do_change_cstate(struct change_context *context, bool prepare)
 			__outdate_myself(resource);
 	}
 
-	return !prepare ||
+	return phase != PH_PREPARE ||
 	       context->val.conn == C_CONNECTED ||
 	       (context->val.conn == C_DISCONNECTING &&
 		connection_has_connected_peer_devices(cstate_context->connection));
@@ -4276,7 +4344,7 @@ struct change_repl_context {
 	struct drbd_peer_device *peer_device;
 };
 
-static bool do_change_repl_state(struct change_context *context, bool prepare)
+static bool do_change_repl_state(struct change_context *context, enum change_phase phase)
 {
 	struct change_repl_context *repl_context =
 		container_of(context, struct change_repl_context, context);
@@ -4286,7 +4354,7 @@ static bool do_change_repl_state(struct change_context *context, bool prepare)
 
 	__change_repl_state(peer_device, new_repl_state);
 
-	return !prepare ||
+	return phase != PH_PREPARE ||
 		((repl_state[NOW] >= L_ESTABLISHED &&
 		  (new_repl_state == L_STARTING_SYNC_S || new_repl_state == L_STARTING_SYNC_T)) ||
 		 (repl_state[NOW] == L_ESTABLISHED &&

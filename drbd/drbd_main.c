@@ -1831,7 +1831,11 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 
 	p->d_size = cpu_to_be64(d_size);
 	p->u_size = cpu_to_be64(u_size);
+	/*
+	TODO verify: this may be needed for v8 compatibility still.
 	p->c_size = cpu_to_be64(trigger_reply ? 0 : drbd_get_capacity(device->this_bdev));
+	*/
+	p->c_size = cpu_to_be64(drbd_get_capacity(device->this_bdev));
 	p->max_bio_size = cpu_to_be32(max_bio_size);
 	p->queue_order_type = cpu_to_be16(q_order_type);
 	p->dds_flags = cpu_to_be16(flags);
@@ -4721,10 +4725,11 @@ void drbd_md_write(struct drbd_device *device, void *b)
 }
 
 /**
- * drbd_md_sync() - Writes the meta data super block if the MD_DIRTY flag bit is set
- * @mdev:	DRBD device.
+ * __drbd_md_sync() - Writes the meta data super block (conditionally) if the MD_DIRTY flag bit is set
+ * @device:    DRBD device.
+ * @maybe:    meta data may in fact be "clean", the actual write may be skipped.
  */
-void drbd_md_sync(struct drbd_device *device)
+static void __drbd_md_sync(struct drbd_device *device, bool maybe)
 {
 	struct meta_data_on_disk_9 *buffer;
 
@@ -4735,7 +4740,7 @@ void drbd_md_sync(struct drbd_device *device)
 
 	del_timer(&device->md_sync_timer);
 	/* timer may be rearmed by drbd_md_mark_dirty() now. */
-	if (!test_and_clear_bit(MD_DIRTY, &device->flags))
+	if (!test_and_clear_bit(MD_DIRTY, &device->flags) && maybe)
 		return;
 
 	/* We use here D_FAILED and not D_ATTACHING because we try to write
@@ -4752,6 +4757,16 @@ void drbd_md_sync(struct drbd_device *device)
 	drbd_md_put_buffer(device);
 out:
 	put_ldev(device);
+}
+
+void drbd_md_sync(struct drbd_device *device)
+{
+	__drbd_md_sync(device, false);
+}
+
+void drbd_md_sync_if_dirty(struct drbd_device *device)
+{
+	__drbd_md_sync(device, true);
 }
 
 static int check_activity_log_stripe_size(struct drbd_device *device,

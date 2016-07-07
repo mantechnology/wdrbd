@@ -841,7 +841,10 @@ int connect_work(struct drbd_work *work, int cancel)
 	struct drbd_connection *connection =
 		container_of(work, struct drbd_connection, connect_timer_work);
 	enum drbd_state_rv rv;
-	
+
+	if (connection->cstate[NOW] != C_CONNECTING)
+		goto out_put;
+
 	rv = change_cstate(connection, C_CONNECTED, CS_SERIALIZE | CS_VERBOSE | CS_DONT_RETRY);
 
 	if (rv >= SS_SUCCESS) {
@@ -861,6 +864,7 @@ int connect_work(struct drbd_work *work, int cancel)
 		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 
+out_put:
 	kref_debug_put(&connection->kref_debug, 11);
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
@@ -4745,7 +4749,7 @@ static void drbd_setup_order_type(struct drbd_device *device, int peer)
 }
 
 /* warn if the arguments differ by more than 12.5% */
-static void warn_if_differ_considerably(struct drbd_device *device,
+static void warn_if_differ_considerably(struct drbd_peer_device *peer_device,
 	const char *s, sector_t a, sector_t b)
 {
 	sector_t d;
@@ -4753,7 +4757,7 @@ static void warn_if_differ_considerably(struct drbd_device *device,
 		return;
 	d = (a > b) ? (a - b) : (b - a);
 	if (d > (a>>3) || d > (b>>3))
-		drbd_warn(device, "Considerable difference in %s: %llus vs. %llus\n", s,
+		drbd_warn(peer_device, "Considerable difference in %s: %llus vs. %llus\n", s,
 		     (unsigned long long)a, (unsigned long long)b);
 }
 
@@ -4768,7 +4772,7 @@ static unsigned int conn_max_bio_size(struct drbd_connection *connection)
 		return DRBD_MAX_SIZE_H80_PACKET;
 }
 
-static struct drbd_peer_device *get_neighbor(struct drbd_device *device,
+static struct drbd_peer_device *get_neighbor_device(struct drbd_device *device,
 		enum drbd_neighbor neighbor)
 {
 	s32 self_id, peer_id, pivot;
@@ -4793,7 +4797,7 @@ static struct drbd_peer_device *get_neighbor(struct drbd_device *device,
 		else if (neighbor == NEXT_HIGHER && peer_id > self_id && peer_id <= pivot)
 			found_new = true;
 
-		if (found_new) {
+		if (found_new && peer_device->disk_state[NOW] >= D_INCONSISTENT) {
 			pivot = peer_id;
 			peer_device_ret = peer_device;
 		}
@@ -4803,17 +4807,38 @@ static struct drbd_peer_device *get_neighbor(struct drbd_device *device,
 	return peer_device_ret;
 }
 
+static void maybe_trigger_resync(struct drbd_device *device, struct drbd_peer_device *peer_device, bool grew, bool skip)
+{
+	if (!peer_device)
+		return;
+	if (peer_device->repl_state[NOW] <= L_OFF)
+		return;
+	if (test_and_clear_bit(RESIZE_PENDING, &peer_device->flags) ||
+		(grew && peer_device->repl_state[NOW] == L_ESTABLISHED)) {
+		if (peer_device->disk_state[NOW] >= D_INCONSISTENT &&
+			device->disk_state[NOW] >= D_INCONSISTENT) {
+			if (skip)
+				drbd_info(peer_device, "Resync of new storage suppressed with --assume-clean\n");
+			else
+				resync_after_online_grow(peer_device);
+		} else
+		set_bit(RESYNC_AFTER_NEG, &peer_device->flags);
+	}
+}
+
 static int receive_sizes(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device, *peer_device_it = NULL;
 	struct drbd_device *device;
 	struct p_sizes *p = pi->data;
 	struct o_qlim *o = (connection->agreed_features & DRBD_FF_WSAME) ? p->qlim : NULL;
+	uint64_t p_size, p_usize, p_csize, my_usize;
 	enum determine_dev_size dd = DS_UNCHANGED;
-	int ldsc = 0; /* local disk size changed */
+	bool should_send_sizes = false;
 	enum dds_flags ddsf;
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
+	bool have_mutex = false;
 #ifdef _WIN32
 	int err = 0;
 #else 
@@ -4825,27 +4850,40 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		return config_unknown_volume(connection, pi);
 	device = peer_device->device;
 
+	err = mutex_lock_interruptible(&connection->resource->conf_update);
+	if (err) {
+		drbd_err(connection, "Interrupted while waiting for conf_update\n");
+		goto out;
+	}
+	have_mutex = true;
+
 	/* just store the peer's disk size for now.
 	 * we still need to figure out whether we accept that. */
-	/* In case I am diskless, need to accept the peer's *current* size.
-	 *
-	 * At this point, the peer knows more about my disk, or at
-	 * least about what we last agreed upon, than myself.
-	 * So if his c_size is less than his d_size, the most likely
-	 * reason is that *my* d_size was smaller last time we checked.
-	 *
-	 * However, if he sends a zero current size,
-	 * take his (user-capped or) backing disk size anyways.
-	 */
-	peer_device->max_size =
+	p_size = be64_to_cpu(p->d_size);
+	p_usize = be64_to_cpu(p->u_size);
+	p_csize = be64_to_cpu(p->c_size);
+
+	peer_device->d_size = p_size;
+	peer_device->u_size = p_usize;
+	peer_device->c_size = p_csize;
+
+	/* Ignore "current" size for calculating "max" size. */
+	/* If it used to have a disk, but now is detached, don't revert back to zero. */
+
 #ifdef _WIN32
-			be64_to_cpu(p->c_size) ? be64_to_cpu(p->c_size) : be64_to_cpu(p->u_size) ? be64_to_cpu(p->u_size) : be64_to_cpu(p->d_size);
-#else 
-		be64_to_cpu(p->c_size) ?: be64_to_cpu(p->u_size) ?: be64_to_cpu(p->d_size);
+	peer_device->max_size = min_not_zero(p_size ? p_size : peer_device->max_size, p_usize);
+#else
+	peer_device->max_size = min_not_zero(p_size ?: peer_device->max_size, p_usize);
 #endif
 
+	drbd_info(device, "current_size: %llu\n", (unsigned long long)drbd_get_capacity(device->this_bdev));
+	drbd_info(peer_device, "c_size: %llu u_size: %llu d_size: %llu max_size: %llu\n",
+			(unsigned long long)p_csize,
+			(unsigned long long)p_usize,
+			(unsigned long long)p_size,
+			(unsigned long long)peer_device->max_size);
+
 	if (get_ldev(device)) {
-		sector_t p_usize = be64_to_cpu(p->u_size), my_usize;
 		sector_t new_size, cur_size;
 
 		have_ldev = true;
@@ -4854,15 +4892,28 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 
-		warn_if_differ_considerably(device, "lower level device sizes",
-			   peer_device->max_size, drbd_get_max_capacity(device->ldev));
-		warn_if_differ_considerably(device, "user requested size",
+		drbd_info(peer_device, "la_size: %llu my_usize: %llu\n",
+			(unsigned long long)device->ldev->md.effective_size,
+			(unsigned long long)my_usize);
+
+		if (peer_device->disk_state[NOW] > D_DISKLESS)
+			warn_if_differ_considerably(peer_device, "lower level device sizes",
+					p_size, drbd_get_max_capacity(device->ldev));
+		warn_if_differ_considerably(peer_device, "user requested size",
 					    p_usize, my_usize);
 
 		/* if this is the first connect, or an otherwise expected
 		 * param exchange, choose the minimum */
 		if (peer_device->repl_state[NOW] == L_OFF)
 			p_usize = min_not_zero(my_usize, p_usize);
+
+		if (p_usize == 0) {
+			/* Peer may reset usize to zero only if it has a backend.
+			 * Because a diskless node has no disk config,
+			 * and always sends zero. */
+			if (p_size == 0)
+				p_usize = my_usize;
+		}
 
 		/* Never shrink a device with usable data during connect.
 		   But allow online shrinking if we are connected. */
@@ -4871,8 +4922,10 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		if (new_size < cur_size &&
 		    device->disk_state[NOW] >= D_OUTDATED &&
 		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
-			drbd_err(device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
+		    drbd_err(peer_device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
 					(unsigned long long)new_size, (unsigned long long)cur_size);
+			/* don't let a rejected peer confuse future handshakes with different peers. */
+			peer_device->max_size = 0;
 			change_cstate(connection, C_DISCONNECTING, CS_HARD);
 			err = -EIO;
 			goto out;
@@ -4890,12 +4943,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				err = -ENOMEM;
 				goto out;
 			}
-
-			err = mutex_lock_interruptible(&connection->resource->conf_update);
-			if (err) {
-				drbd_err(connection, "Interrupted while waiting for conf_update\n");
-				goto out;
-			}
+			
 			old_disk_conf = device->ldev->disk_conf;
 			*new_disk_conf = *old_disk_conf;
 			new_disk_conf->disk_size = p_usize;
@@ -4903,12 +4951,11 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			synchronize_rcu_w32_wlock(); 
 #endif
 			rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
-			mutex_unlock(&connection->resource->conf_update);
 			synchronize_rcu();
 			kfree(old_disk_conf);
 
-			drbd_info(device, "Peer sets u_size to %lu sectors\n",
-				 (unsigned long)my_usize);
+			drbd_info(peer_device, "Peer sets u_size to %llu sectors\n",
+				(unsigned long long)p_usize);
 		}
 	}
 
@@ -4926,28 +4973,45 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	   drbd_determine_dev_size() no REQ_DISCARDs are in the queue. */
 	if (have_ldev) {
 		drbd_reconsider_queue_parameters(device, device->ldev, o);
+		drbd_info(peer_device, "calling drbd_determine_dev_size()\n");		
 		dd = drbd_determine_dev_size(device, ddsf, NULL);
 		if (dd == DS_ERROR) {
 			err = -EIO;
 			goto out;
 		}
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 	} else {
 		struct drbd_peer_device *peer_device;
-		sector_t size = 0;
+		uint64_t size = 0;
 
 		drbd_reconsider_queue_parameters(device, NULL, o);
-		/* I am diskless, need to accept the peer disk sizes. */
-
+		/* In case I am diskless, need to accept the peer's *current* size.
+		 *
+		 * At this point, the peer knows more about my disk, or at
+		 * least about what we last agreed upon, than myself.
+		 * So if his c_size is less than his d_size, the most likely
+		 * reason is that *my* d_size was smaller last time we checked,
+		 * or some other peer does not (yet) have enough room.
+		 */
+		size = p_csize;
+		size = min_not_zero(size, p_usize);
+		size = min_not_zero(size, p_size);
+		
 		rcu_read_lock();
 		for_each_peer_device_rcu(peer_device, device) {
 			/* When a peer device is in L_OFF state, max_size is zero
 			 * until a P_SIZES packet is received.  */
-			size = min_not_zero(size, peer_device->max_size);
+			uint64_t tmp = peer_device->max_size;
+			size = min_not_zero(size, tmp);
 		}
 		rcu_read_unlock();
-		if (size)
+		if (size != drbd_get_capacity(device->this_bdev)) {
+			char ppb[10];
+			should_send_sizes = true;
 			drbd_set_my_capacity(device, size);
+			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+				(unsigned long long)size >> 1);
+		}
 	}
 
 	if (device->device_conf.max_bio_size > protocol_max_bio_size ||
@@ -4964,44 +5028,41 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	if (have_ldev) {
 		if (device->ldev->known_size != drbd_get_capacity(device->ldev->backing_bdev)) {
 			device->ldev->known_size = drbd_get_capacity(device->ldev->backing_bdev);
-			ldsc = 1;
+			should_send_sizes = true;
 		}
 
 		drbd_setup_order_type(device, be16_to_cpu(p->queue_order_type));
 	}
 
-	if (peer_device->repl_state[NOW] > L_OFF) {
-		if (peer_device->max_size !=
-		    drbd_get_capacity(device->this_bdev) || ldsc) {
-			/* we have different sizes, probably peers
-			 * need to know my new size... */
-			rcu_read_lock();
-			for_each_peer_device_rcu(peer_device_it, device) {
-				drbd_send_sizes(peer_device_it, 1, ddsf);
-			}
-			rcu_read_unlock();
+	if (should_send_sizes) {
+		rcu_read_lock();
+		for_each_peer_device_rcu(peer_device_it, device) {
+			drbd_send_sizes(peer_device_it, 0, ddsf);
 		}
-		if (test_and_clear_bit(RESIZE_PENDING, &peer_device->flags) ||
-		    (dd == DS_GREW && peer_device->repl_state[NOW] == L_ESTABLISHED)) {
-			if (peer_device->disk_state[NOW] >= D_INCONSISTENT &&
-			    device->disk_state[NOW] >= D_INCONSISTENT) {
-				if (ddsf & DDSF_NO_RESYNC)
-					drbd_info(device, "Resync of new storage suppressed with --assume-clean\n");
-				else {
-					if ((peer_device_it = get_neighbor(device, NEXT_HIGHER)))
-						resync_after_online_grow(peer_device_it);
-					if ((peer_device_it = get_neighbor(device, NEXT_LOWER)))
-						resync_after_online_grow(peer_device_it);
-				}
-			} else
-				set_bit(RESYNC_AFTER_NEG, &peer_device->flags);
+		rcu_read_unlock();
+	} else {
+		sector_t my_size = drbd_get_capacity(device->this_bdev);
+
+		rcu_read_lock();
+		for_each_peer_device_rcu(peer_device_it, device) {
+			if (peer_device_it->repl_state[NOW] > L_OFF
+				&&  peer_device_it->c_size != my_size)
+				drbd_send_sizes(peer_device_it, 0, ddsf);
 		}
+		rcu_read_unlock();
 	}
+
+	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),
+			dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
+	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_LOWER),
+			dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
 	err = 0;
 
 out:
 	if (have_ldev)
 		put_ldev(device);
+	if (have_mutex)
+		mutex_unlock(&connection->resource->conf_update);	
 	return err;
 }
 
@@ -5010,6 +5071,7 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 {
 	enum drbd_role peer_role = peer_device->connection->peer_role[NOW];
 	enum drbd_repl_state new_repl_state;
+	enum drbd_disk_state peer_disk_state;
 	int hg, rule_nr, peer_node_id;
 	enum drbd_state_rv rv;
 
@@ -5023,6 +5085,18 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 		bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
 		drbd_info(peer_device, "Becoming %s %s\n", drbd_repl_str(new_repl_state),
 			  reason == AFTER_UNSTABLE ? "after unstable" : "because primary is diskless");
+	}
+	peer_disk_state = peer_device->disk_state[NOW];
+	if (new_repl_state == L_ESTABLISHED && peer_disk_state >= D_CONSISTENT &&
+		peer_device->device->disk_state[NOW] == D_OUTDATED) {
+		/* No resync with up-to-date peer -> I should be consistent or up-to-date as well.
+		   Note: Former unstable (but up-to-date) nodes become consistent for a short
+		   time after loosing their primary peer. Therefore consider consistent here
+		   as well. */
+		drbd_info(peer_device, "Upgrading local disk to %s after unstable (and no resync).\n",
+				drbd_disk_str(peer_disk_state));
+		change_disk_state(peer_device->device, peer_disk_state, CS_VERBOSE);
+		return;
 	}
 
 	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
@@ -5122,7 +5196,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 
 		drbd_uuid_detect_finished_resyncs(peer_device);
 
-		drbd_md_sync(device);
+		drbd_md_sync_if_dirty(device);
 		put_ldev(device);
 	} else if (device->disk_state[NOW] < D_INCONSISTENT && !bad_server &&
 		   peer_device->current_uuid != device->exposed_data_uuid) {
@@ -5564,7 +5638,7 @@ static int receive_req_state(struct drbd_connection *connection, struct packet_i
 		drbd_send_sr_reply(connection, vnr, rv);
 		rv = change_peer_device_state(peer_device, mask, val, flags | CS_PREPARED);
 		if (rv >= SS_SUCCESS)
-			drbd_md_sync(peer_device->device);
+			drbd_md_sync_if_dirty(peer_device->device);
 	} else {
 		flags |= CS_IGN_OUTD_FAIL;
 		rv = change_connection_state(connection, mask, val, NULL, flags | CS_PREPARE);
@@ -5647,6 +5721,51 @@ static enum drbd_state_rv outdate_if_weak(struct drbd_resource *resource,
 	}
 
 	return SS_NOTHING_TO_DO;
+}
+
+bool drbd_have_local_disk(struct drbd_resource *resource)
+{
+	struct drbd_device *device;
+	int vnr;
+
+	rcu_read_lock();
+
+#ifdef _WIN32
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
+	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
+		if (device->disk_state[NOW] > D_DISKLESS) {
+			rcu_read_unlock();
+			return true;
+		}
+	}
+	rcu_read_unlock();
+	return false;
+}
+
+static enum drbd_state_rv
+far_away_change(struct drbd_connection *connection, union drbd_state mask,
+		union drbd_state val, struct twopc_reply *reply,
+		enum chg_state_flags flags)
+{
+	struct drbd_resource *resource = connection->resource;
+
+	if (flags & CS_PREPARE && mask.role == role_MASK && val.role == R_PRIMARY &&
+		resource->role[NEW] == R_PRIMARY) {
+		struct net_conf *nc;
+
+		nc = rcu_dereference(connection->transport.net_conf);
+		if (!nc || !nc->two_primaries)
+			return SS_TWO_PRIMARIES;
+
+		/* A node further away wants to become primary. In case I am
+		 primary allow it only when I am diskless. See
+		 also check_primaries_distances() in drbd_state.c */
+		if (drbd_have_local_disk(resource))
+			return SS_WEAKLY_CONNECTED;
+	}
+	return outdate_if_weak(resource, reply, flags);
 }
 
 enum csc_rv {
@@ -6054,18 +6173,20 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 		/* only indirectly connected */
 		affected_connection = NULL;
-		goto next;
 	}
 
     directly_connected:
 	if (reply->target_node_id != -1 &&
 	    reply->target_node_id != resource->res_opts.node_id) {
 		affected_connection = NULL;
-		goto next;
 	}
 
 	mask.i = be32_to_cpu(p->mask);
 	val.i = be32_to_cpu(p->val);
+	
+	if (affected_connection && affected_connection->cstate[NOW] < C_CONNECTED &&
+		mask.conn == 0)
+		affected_connection = NULL;
 
 	if (mask.conn == conn_MASK) {
 		u64 m = NODE_MASK(reply->initiator_node_id);
@@ -6078,7 +6199,7 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 	}
 
-	if (pi->vnr != -1) {
+	if (pi->vnr != -1 && affected_connection) {
 		peer_device = conn_peer_device(affected_connection, pi->vnr);
 		/* If we do not know the peer_device, then we are fine with
 		   whatever is going on in the cluster. E.g. detach and del-minor
@@ -6087,7 +6208,6 @@ static int process_twopc(struct drbd_connection *connection,
 		affected_connection = NULL; /* It is intended for a peer_device! */
 	}
 
-    next:
 	if (pi->cmd == P_TWOPC_PREPARE) {
 		if ((mask.peer == role_MASK && val.peer == R_PRIMARY) ||
 		    (mask.peer != role_MASK && resource->role[NOW] == R_PRIMARY)) {
@@ -6125,7 +6245,7 @@ static int process_twopc(struct drbd_connection *connection,
 		rv = change_connection_state(affected_connection,
 					     mask, val, reply, flags | CS_IGN_OUTD_FAIL);
 	else
-		rv = outdate_if_weak(resource, reply, flags);
+		rv = far_away_change(connection, mask, val, reply, flags);
 
 	if (flags & CS_PREPARE) {
 		spin_lock_irq(&resource->req_lock);
@@ -6150,7 +6270,7 @@ static int process_twopc(struct drbd_connection *connection,
 		clear_remote_state_change(resource);
 
 		if (peer_device && rv >= SS_SUCCESS && !(flags & CS_ABORT))
-			drbd_md_sync(peer_device->device);
+			drbd_md_sync_if_dirty(peer_device->device);
 
 		if (rv >= SS_SUCCESS && !(flags & CS_ABORT)) {
 			struct drbd_device *device;
@@ -6395,7 +6515,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		}
 
 		if (device->disk_state[NOW] == D_NEGOTIATING) {
-			set_bit(NEGOTIATION_RESULT_TOCHED, &resource->flags);
+			set_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags);
 			peer_device->negotiation_result = new_repl_state;
 		}
 	} else if (peer_state.role == R_PRIMARY &&
@@ -7249,10 +7369,11 @@ void conn_disconnect(struct drbd_connection *connection)
 	 * Make sure drbd_make_request knows about that.
 	 * Usually we should be in some network failure state already,
 	 * but just in case we are not, we fix it up here.
-	 */
-	del_connect_timer(connection);
+	 */	
 
 	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+
+	del_connect_timer(connection);
 
 	/* ack_receiver does not clean up anything. it must not interfere, either */
 	drbd_thread_stop(&connection->ack_receiver);
@@ -7518,8 +7639,11 @@ int drbd_do_features(struct drbd_connection *connection)
 		}
 	}
 
-	drbd_info(connection, "Handshake successful: "
-	     "Agreed network protocol version %d\n", connection->agreed_pro_version);
+	drbd_info(connection, "Handshake to peer %d successful: "
+		  "Agreed network protocol version %d\n",
+		  connection->peer_node_id,
+		  connection->agreed_pro_version);
+
 
 	drbd_info(connection, "Feature flags enabled on protocol level: 0x%x%s%s%s.\n",
 		  connection->agreed_features,
