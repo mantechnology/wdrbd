@@ -2446,7 +2446,7 @@ extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
 #else
 extern void queued_twopc_timer_fn(unsigned long data);
 #endif
-
+extern bool drbd_have_local_disk(struct drbd_resource *resource);
 
 static inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
