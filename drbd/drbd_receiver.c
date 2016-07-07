@@ -4834,11 +4834,11 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	struct o_qlim *o = (connection->agreed_features & DRBD_FF_WSAME) ? p->qlim : NULL;
 	uint64_t p_size, p_usize, p_csize, my_usize;
 	enum determine_dev_size dd = DS_UNCHANGED;
-    bool should_send_sizes = false;
+	bool should_send_sizes = false;
 	enum dds_flags ddsf;
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
-    bool have_mutex = false;
+	bool have_mutex = false;
 #ifdef _WIN32
 	int err = 0;
 #else 
@@ -4892,9 +4892,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 
-        drbd_info(peer_device, "la_size: %llu my_usize: %llu\n",
-            (unsigned long long)device->ldev->md.effective_size,
-            (unsigned long long)my_usize);
+		drbd_info(peer_device, "la_size: %llu my_usize: %llu\n",
+			(unsigned long long)device->ldev->md.effective_size,
+			(unsigned long long)my_usize);
 
 		if (peer_device->disk_state[NOW] > D_DISKLESS)
 			warn_if_differ_considerably(peer_device, "lower level device sizes",
@@ -5053,9 +5053,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	}
 
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),
-					dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
+			dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_LOWER),
-					dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
+			dd == DS_GREW, ddsf & DDSF_NO_RESYNC);
 	err = 0;
 
 out:
@@ -7640,9 +7640,9 @@ int drbd_do_features(struct drbd_connection *connection)
 	}
 
 	drbd_info(connection, "Handshake to peer %d successful: "
-			"Agreed network protocol version %d\n",
-			connection->peer_node_id,
-			connection->agreed_pro_version);
+		  "Agreed network protocol version %d\n",
+		  connection->peer_node_id,
+		  connection->agreed_pro_version);
 
 
 	drbd_info(connection, "Feature flags enabled on protocol level: 0x%x%s%s%s.\n",
