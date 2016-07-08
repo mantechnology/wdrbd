@@ -33,6 +33,7 @@ PETHREAD g_LoglinkServerThread;
 static PWSK_SOCKET g_loglink_sock = NULL;
 static int send_err_count;
 
+
 VOID LogLink_MakeUsable()
 {
 	mutex_init(&loglink_mutex);
@@ -138,12 +139,12 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 
 	atomic_cmpxchg(&g_loglink_state, LOGLINK_USABLE, LOGLINK_INITIALIZED);
 
-	while (TRUE) 
+	while (!gbShutdown) 
 	{
 		PWSK_SOCKET		AcceptSock = NULL;
 		static int accept_error_retry = 0;
 
-		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 0)) == NULL)
+		if ((AcceptSock = AcceptLocal(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 0)) == NULL)
 		{
 			if (accept_error_retry++ < 3)
 			{
@@ -160,7 +161,7 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 		if (g_loglink_sock)
 		{
 			printk(KERN_DEBUG "LogLink: close previous socket first.\n");
-			CloseSocket(g_loglink_sock);
+			CloseSocketLocal(g_loglink_sock);
 			// ignore error
 		}
 
@@ -210,7 +211,7 @@ void LogLink_Sender(struct work_struct *ws)
 				goto error;
 			}
 
-			if ((ret = Receive(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
+			if ((ret = ReceiveLocal(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
 			{
 				step = 3;
 				goto error;
@@ -237,7 +238,8 @@ void LogLink_Sender(struct work_struct *ws)
 				}
 			}
 			
-			CloseSocket(sock); // just close, no retry/handshake!
+			CloseSocketLocal(sock); // just close, no retry/handshake!
+			
 			sock = NULL;
 		}
 

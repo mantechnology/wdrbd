@@ -1550,4 +1550,6 @@ extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 NTSTATUS SaveCurrentLogLv();
 #endif
 
+BOOLEAN gbShutdown;
+
 #endif // DRBD_WINDOWS_H
