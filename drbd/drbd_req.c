@@ -322,6 +322,14 @@ void drbd_req_destroy(struct kref *kref)
 					else
 						clear_bit(bitmap_index, &mask);
 				}
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1012: Setting out-of-sync with out-of-sync related request breaks consistency of out-of-sync between nodes, prevent it by clearing mask.
+				else if (!(rq_state & RQ_EXP_BARR_ACK))
+				{
+					int bitmap_index = peer_md[node_id].bitmap_index;
+					clear_bit(bitmap_index, &mask);
+				}
+#endif
 			}
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
 			put_ldev(device);

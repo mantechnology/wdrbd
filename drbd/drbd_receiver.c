@@ -2524,10 +2524,6 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	sector_t sector = peer_req->i.sector;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
-#ifdef _WIN32		
-	int protocol = 0;
-	struct net_conf *nc = NULL;
-#endif
 
 	if (peer_req->flags & EE_IS_BARRIER) {
 		epoch = previous_epoch(peer_device->connection, peer_req->epoch);
@@ -2538,25 +2534,26 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	if (peer_req->flags & EE_SEND_WRITE_ACK) {
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 
-#ifdef _WIN32 // DW-830
-			rcu_read_lock();
-			nc = rcu_dereference(peer_device->connection->transport.net_conf);
-			protocol = nc->wire_protocol;
-			rcu_read_unlock();
-
-			pcmd = (((peer_device->repl_state[NOW] >= L_SYNC_SOURCE &&
-				peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A ) &&	// DW-830 sending wrong ack type causes OOS remaining.
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1012: Existing out of sync means that the data for current req is outdated.
+			// Sending 'P_RS_WRITE_ACK' for replication data could break consistency since it removes newly set out of sync.
+			pcmd = P_WRITE_ACK;
+			err = drbd_send_ack(peer_device, pcmd, peer_req);
 #else
 			pcmd = (peer_device->repl_state[NOW] >= L_SYNC_SOURCE &&
 				peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T &&
-#endif
 				peer_req->flags & EE_MAY_SET_IN_SYNC) ?
 				P_RS_WRITE_ACK : P_WRITE_ACK;
 			err = drbd_send_ack(peer_device, pcmd, peer_req);
 			if (pcmd == P_RS_WRITE_ACK)
 				drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+#endif
 		} else {
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
+			drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
+#endif
 			/* we expect it to be marked out of sync anyways...
 			 * maybe assert this?  */
 		}
@@ -2936,6 +2933,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 
 		err = wait_for_and_update_peer_seq(peer_device, d.peer_seq);
 		drbd_send_ack_dp(peer_device, P_NEG_ACK, &d);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when replication data hasn't been written on my disk, source node does same once it receives negative ack.
+		drbd_set_out_of_sync(peer_device, d.sector, d.bi_size);
+#endif
 		atomic_inc(&connection->current_epoch->epoch_size);
 		err2 = ignore_remaining_packet(connection, pi->size);
 		if (!err)
@@ -3102,7 +3103,15 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 
 	err = drbd_submit_peer_request(device, peer_req, rw, DRBD_FAULT_DT_WR);
 	if (!err)
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
+	{		
+		drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 		return 0;
+	}
+#else
+		return 0;
+#endif
 
 	/* don't care for the reason here */
 	drbd_err(device, "submit failed, triggering re-connect\n");
@@ -8218,6 +8227,10 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 	err = validate_req_change_req_state(peer_device, p->block_id, sector,
 					    &device->write_requests, __func__,
 					    NEG_ACKED, true);
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH: Set out-of-sync if peer sent negative ack for this request, doesn't matter req exists or not.
+	drbd_set_out_of_sync(peer_device, sector, size);
+#else
 	if (err) {
 		/* Protocol A has no P_WRITE_ACKs, but has P_NEG_ACKs.
 		   The master bio might already be completed, therefore the
@@ -8226,6 +8239,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		   but then get a P_NEG_ACK afterwards. */
 		drbd_set_out_of_sync(peer_device, sector, size);
 	}
+#endif
 	return 0;
 }
 
@@ -8454,10 +8468,13 @@ found:
 		u64 in_sync_b;
 
 		if (get_ldev(device)) {
+#ifndef _WIN32
+			// MODIFIED_BY_MANTECH DW-1012: Affecting out-of-sync by replication request may cause oos inconsistency, set or clear when request is just received or disk error.
 			in_sync_b = node_ids_to_bitmap(device, in_sync);
 
 			drbd_set_sync(device, peer_req->i.sector,
 				      peer_req->i.size, ~in_sync_b, -1);
+#endif
 			drbd_al_complete_io(device, &peer_req->i);
 			put_ldev(device);
 		}
