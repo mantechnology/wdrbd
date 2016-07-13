@@ -2636,6 +2636,9 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
+    sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+    WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
+
     Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
 	if (Socket == NULL) {
 		WDRBD_ERROR("CreateSocket() returned NULL\n");
@@ -2680,10 +2683,10 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	{
 		LONG readcount;
 		char hello[2];
-		WDRBD_INFO("Wait Hi\n");
+		WDRBD_TRACE("Wait Hi\n");
 		if ((readcount = Receive(Socket, &hello, 2, 0, g_handler_timeout)) == 2)
 		{
-			WDRBD_INFO("recv HI!!! \n");
+			WDRBD_TRACE("recv HI!!! \n");
 			//CloseSocket(Socket);
 			//kfree(cmd_line);
 			//return ret; 
@@ -2718,7 +2721,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 
 		if ((readcount = Receive(Socket, &ret, 1, 0, g_handler_timeout)) > 0)
 		{
-			WDRBD_INFO("recv val=0x%x\n", ret);
+			WDRBD_TRACE("recv val=0x%x\n", ret);
 			//CloseSocket(Socket);
 			//kfree(cmd_line);
 			//return ret; 
@@ -2745,7 +2748,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			WDRBD_ERROR("send bye fail stat=0x%x\n", Status); // ignore!
 		}
 
-		WDRBD_INFO("Disconnect:shutdown...\n", Status);
+		WDRBD_TRACE("Disconnect:shutdown...\n", Status);
 		Disconnect(Socket);
 
 		/*
