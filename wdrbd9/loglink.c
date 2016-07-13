@@ -60,6 +60,13 @@ BOOLEAN LogLink_IsTransferable()
 NTSTATUS LogLink_QueueBuffer(char* buf)
 {
 	struct loglink_msg_list  *loglink_msg;
+
+	if (KeGetCurrentIrql() >= DISPATCH_LEVEL)
+	{
+		// IRQL must not be DISPATCH_LEVEL or above since we wait for mutex to add message buffer, no log.
+		// Waiting for mutex should be changed, log has to be written no matter what the irql is.
+		return STATUS_UNSUCCESSFUL;
+	}
 		
 	loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&loglink_printk_msg);
 	if (loglink_msg == NULL)
