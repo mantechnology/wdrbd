@@ -1799,9 +1799,6 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
 		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
-#ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;
-#endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;

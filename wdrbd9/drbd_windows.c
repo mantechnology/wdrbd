@@ -2273,6 +2273,12 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
         return NULL;
     }
 
+	dev->bd_contains = kmalloc(sizeof(struct block_device), 0, 'C5DW');
+	if (!dev) {
+        WDRBD_ERROR("Failed to allocate block_device NonPagedMemory\n");
+        return NULL;
+    }
+
 	dev->bd_disk = alloc_disk(0);
 	if (!dev->bd_disk)
 	{
@@ -2287,7 +2293,9 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 		goto request_queue_failed;
 	}
 
-	dev->d_size = get_targetdev_volsize(pvext);
+	unsigned long long d_size = get_targetdev_volsize(pvext);
+	dev->bd_contains->d_size = d_size;
+	dev->bd_contains->bd_disk = dev->bd_disk;
 
 	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
 	dev->bd_disk->pDeviceExtension = pvext;
@@ -2295,7 +2303,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_disk->queue->backing_dev_info.pvext = pvext;
 	dev->bd_disk->queue->logical_block_size = 512;
 	dev->bd_disk->queue->max_hw_sectors =
-		dev->d_size ? dev->d_size >> 9 : DRBD_MAX_BIO_SIZE;
+		d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 
     return dev;
 

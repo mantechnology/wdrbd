@@ -262,20 +262,7 @@ static inline struct block_device *blkdev_get_by_path(const char *path,
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 {
 #ifdef _WIN32
-	/* move to mvol level
-	if (bdev->bd_disk->queue)
-	{
-		kfree(bdev->bd_disk->queue);
-	}
-	if (bdev->bd_disk)
-	{
-		kfree(bdev->bd_disk);
-	}
-	if (bdev)
-	{
-		kfree(bdev);
-	}
-	*/
+	kfree(bdev);
 #else
 	/* blkdev_put != close_bdev_exclusive, in general, so this is obviously
 	 * not correct, and there should be some if (mode & FMODE_EXCL) ...
