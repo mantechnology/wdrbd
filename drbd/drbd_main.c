@@ -5240,7 +5240,16 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1030: Do not send newly created uuid to outdated node, if I'm primary.
+			// Resync will be started when outdated node reconnects since it has old uuid.
+		{
+			if (peer_device->disk_state[NOW] != D_OUTDATED || device->resource->role[NOW] != R_PRIMARY)
+				drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
+		}
+#else
 			drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
+#endif
 	}
 }
 

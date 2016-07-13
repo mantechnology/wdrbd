@@ -1644,7 +1644,15 @@ static int drbd_process_write_request(struct drbd_request *req)
 		send_oos = drbd_should_send_out_of_sync(peer_device);
 
 		if (!remote && !send_oos)
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1030: If request won't be replicated or sent as out-of-sync, set this as out-of-sync to do resync when it reconnects.
+		{
+			drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
 			continue;
+		}
+#else
+			continue;
+#endif
 
 		D_ASSERT(device, !(remote && send_oos));
 
