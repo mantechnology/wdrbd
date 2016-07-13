@@ -5572,7 +5572,7 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 			if (peer_current_uuid == (drbd_current_uuid(device) & ~UUID_PRIMARY)) {
 
 #ifdef _WIN32
-				// DW-979, DW-780
+				// MODIFIED_BY_MANTECH DW-978, DW-979, DW-980
 				// bitmap_uuid was already '0', just clear_flag and drbd_propagate_uuids().
 				if((peer_md[node_id].bitmap_uuid == 0) && (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))
 					goto clear_flag;
