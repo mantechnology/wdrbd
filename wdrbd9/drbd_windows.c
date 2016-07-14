@@ -41,9 +41,9 @@ int g_netlink_tcp_port;
 int g_daemon_tcp_port;
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
-atomic_t g_syslog_lv_min = KERN_CRIT_NUM;
-atomic_t g_svclog_lv_min = KERN_ERR_NUM;
-atomic_t g_dbglog_lv_min = KERN_INFO_NUM;
+atomic_t g_syslog_lv_min = LOG_LV_DEFAULT_SYS;
+atomic_t g_svclog_lv_min = LOG_LV_DEFAULT_SVC;
+atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;
@@ -1535,9 +1535,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 
 	status = CloseSocket(sock->sk);
-	if (!NT_SUCCESS(status))
-	{
-		WDRBD_ERROR("CloseSocket error=0x%x\n", status);
+	if (!NT_SUCCESS(status)) {
 		return;
 	}
 #endif
@@ -2638,6 +2636,9 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
+    sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+    WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
+
     Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
 	if (Socket == NULL) {
 		WDRBD_ERROR("CreateSocket() returned NULL\n");
@@ -2682,10 +2683,10 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	{
 		LONG readcount;
 		char hello[2];
-		WDRBD_INFO("Wait Hi\n");
+		WDRBD_TRACE("Wait Hi\n");
 		if ((readcount = Receive(Socket, &hello, 2, 0, g_handler_timeout)) == 2)
 		{
-			WDRBD_INFO("recv HI!!! \n");
+			WDRBD_TRACE("recv HI!!! \n");
 			//CloseSocket(Socket);
 			//kfree(cmd_line);
 			//return ret; 
@@ -2720,7 +2721,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 
 		if ((readcount = Receive(Socket, &ret, 1, 0, g_handler_timeout)) > 0)
 		{
-			WDRBD_INFO("recv val=0x%x\n", ret);
+			WDRBD_TRACE("recv val=0x%x\n", ret);
 			//CloseSocket(Socket);
 			//kfree(cmd_line);
 			//return ret; 
@@ -2747,7 +2748,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			WDRBD_ERROR("send bye fail stat=0x%x\n", Status); // ignore!
 		}
 
-		WDRBD_INFO("Disconnect:shutdown...\n", Status);
+		WDRBD_TRACE("Disconnect:shutdown...\n", Status);
 		Disconnect(Socket);
 
 		/*
@@ -2909,4 +2910,49 @@ struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 #else
 	return NULL;
 #endif
+}
+/* Save current log level in registry, this value is used when drbd is loading.*/
+NTSTATUS SaveCurrentLogLv()
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PROOT_EXTENSION pRootExtension = NULL;
+	UNICODE_STRING usValueName = { 0, };
+	OBJECT_ATTRIBUTES oa = { 0, };
+	HANDLE hKey = NULL;
+	int log_level = Get_log_lv();
+
+	if (NULL == mvolRootDeviceObject ||
+		NULL == mvolRootDeviceObject->DeviceExtension)
+	{
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	do
+	{
+		pRootExtension = mvolRootDeviceObject->DeviceExtension;
+
+		InitializeObjectAttributes(&oa, &pRootExtension->RegistryPath, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+		status = ZwOpenKey(&hKey, KEY_ALL_ACCESS, &oa);
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+
+		RtlInitUnicodeString(&usValueName, LOG_LV_REG_VALUE_NAME);
+		status = ZwSetValueKey(hKey, &usValueName, 0, REG_DWORD, &log_level, sizeof(log_level));
+		if (!NT_SUCCESS(status))
+		{
+			break;
+		}
+
+	} while (FALSE);
+
+	if (NULL != hKey)
+	{
+		ZwClose(hKey);
+		hKey = NULL;
+	}
+
+	return status;
 }

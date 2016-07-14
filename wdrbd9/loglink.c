@@ -33,6 +33,7 @@ PETHREAD g_LoglinkServerThread;
 static PWSK_SOCKET g_loglink_sock = NULL;
 static int send_err_count;
 
+
 VOID LogLink_MakeUsable()
 {
 	mutex_init(&loglink_mutex);
@@ -59,6 +60,13 @@ BOOLEAN LogLink_IsTransferable()
 NTSTATUS LogLink_QueueBuffer(char* buf)
 {
 	struct loglink_msg_list  *loglink_msg;
+
+	if (KeGetCurrentIrql() >= DISPATCH_LEVEL)
+	{
+		// IRQL must not be DISPATCH_LEVEL or above since we wait for mutex to add message buffer, no log.
+		// Waiting for mutex should be changed, log has to be written no matter what the irql is.
+		return STATUS_UNSUCCESSFUL;
+	}
 		
 	loglink_msg = (struct loglink_msg_list *) ExAllocateFromNPagedLookasideList(&loglink_printk_msg);
 	if (loglink_msg == NULL)
@@ -82,13 +90,13 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 	PWSK_SOCKET		ListenSock = NULL;
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
+	PWSK_SOCKET		AcceptSock = NULL;
 		
 	while (1)
 	{
 		extern LONG	g_SocketsState;
-		if (g_SocketsState == INITIALIZED &&
-			LOGLINK_USABLE <= atomic_read(&g_loglink_state))
-		{
+		if (g_SocketsState == INITIALIZED)
+		{			
 			break;
 		}
 
@@ -99,20 +107,24 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 
 	DbgPrint("DRBD: LogLink listener start. port=%d\n", g_loglink_tcp_port);
 
-	loglink.wq = create_singlethread_workqueue("loglink");
-	if (!loglink.wq) 
+	if (!loglink.wq)
 	{
-		printk(KERN_ERR "LogLink: create_singlethread_workqueue failed\n");
-		PsTerminateSystemThread(STATUS_SUCCESS);
-	}
+		loglink.wq = create_singlethread_workqueue("loglink");
+		
+		if (!loglink.wq)
+		{
+			printk(KERN_ERR "LogLink: create_singlethread_workqueue failed\n");
+			goto cleanup;
+		}
 
-	INIT_WORK(&loglink.worker, LogLink_Sender);
+		INIT_WORK(&loglink.worker, LogLink_Sender);
+	}
 
 	ListenSock = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
 	if (ListenSock == NULL) 
 	{
 		printk(KERN_ERR "LogLink: ListenSock failed\n");
-		PsTerminateSystemThread(STATUS_SUCCESS);
+		goto cleanup;
 	}
 
 	LocalAddress.sin_family = AF_INET;
@@ -124,56 +136,37 @@ VOID NTAPI LogLink_ListenThread(PVOID p)
 	if (!NT_SUCCESS(Status)) 
 	{
 		printk(KERN_ERR "LogLink: SO_REUSEADDR failed = 0x%x\n", Status);
-		CloseSocket(ListenSock);
-		PsTerminateSystemThread(Status);
+		goto cleanup;
 	}
 
 	Status = Bind(ListenSock, (PSOCKADDR) &LocalAddress);
 	if (!NT_SUCCESS(Status)) {
 		printk(KERN_ERR "LogLink: Bind() failed with status 0x%08X\n", Status);
-		CloseSocket(ListenSock);
-		PsTerminateSystemThread(Status);
-		// retry?
+		goto cleanup;
+	}
+	
+	if ((AcceptSock = AcceptLocal(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 0)) == NULL)
+	{		
+		printk(KERN_ERR "LogLink: accept error=0x%08X.\n", Status);		
+		goto cleanup;
 	}
 
-	atomic_cmpxchg(&g_loglink_state, LOGLINK_USABLE, LOGLINK_INITIALIZED);
+	g_loglink_sock = AcceptSock;
+	send_err_count = 0;
 
-	while (TRUE) 
+	printk(KERN_INFO "LogLink: accept new loglink socket success.\n");
+	
+cleanup:
+	if (ListenSock)
 	{
-		PWSK_SOCKET		AcceptSock = NULL;
-		static int accept_error_retry = 0;
-
-		if ((AcceptSock = Accept(ListenSock, (PSOCKADDR) &LocalAddress, (PSOCKADDR) &RemoteAddress, &Status, 0)) == NULL)
-		{
-			if (accept_error_retry++ < 3)
-			{
-				printk(KERN_ERR "LogLink: accept error=0x%08X. retry(%d)\n", Status, accept_error_retry);
-			}
-
-			LARGE_INTEGER	Interval;
-			Interval.QuadPart = (-1 * 5000 * 10000);   // 5 sec
-			KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-			continue;
-		}
-
-		// lock? don't care! ignore it.
-		if (g_loglink_sock)
-		{
-			printk(KERN_DEBUG "LogLink: close previous socket first.\n");
-			CloseSocket(g_loglink_sock);
-			// ignore error
-		}
-
-		printk(KERN_INFO "LogLink: accept new loglink socket success. retry(%d)\n", accept_error_retry);
-		send_err_count = 0;
-		g_loglink_sock = AcceptSock;
-		accept_error_retry = 0;
-		atomic_cmpxchg(&g_loglink_state, LOGLINK_INITIALIZED, LOGLINK_TRANSFERABLE);
+		CloseSocket(ListenSock);
+		ListenSock = NULL;
 	}
 
-	// not reached here.
-	destroy_workqueue(loglink.wq);
-	PsTerminateSystemThread(STATUS_SUCCESS);
+	if (g_loglink_sock)
+		atomic_xchg(&g_loglink_state, LOGLINK_TRANSFERABLE);
+	else
+		atomic_xchg(&g_loglink_state, LOGLINK_USABLE);
 }
 
 void LogLink_Sender(struct work_struct *ws)
@@ -181,7 +174,13 @@ void LogLink_Sender(struct work_struct *ws)
 	struct loglink_worker *worker = container_of(ws, struct loglink_worker, worker);
 	struct loglink_msg_list *msg, *q;
 	PWSK_SOCKET	sock = g_loglink_sock;
-	int count = 0;
+
+	if (LOGLINK_TRANSFERABLE != atomic_read(&g_loglink_state))
+	{
+		// found listen thread error or listen thread isn't working even though loglink isn't transfable, create new one.
+		DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: could not send log through loglink\n");
+		goto handleiferror;
+	}
 
 	LIST_HEAD(work_list);	
 	mutex_lock(&loglink_mutex);
@@ -193,7 +192,6 @@ void LogLink_Sender(struct work_struct *ws)
 		int step = 0;
 		int ret = 0;
 
-		count++;
 		if (sock)
 		{
 			int sz = strlen(msg->buf);
@@ -210,7 +208,7 @@ void LogLink_Sender(struct work_struct *ws)
 				goto error;
 			}
 
-			if ((ret = Receive(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
+			if ((ret = ReceiveLocal(sock, &sz, sizeof(int), 0, LOGLINK_TIMEOUT)) != sizeof(int))
 			{
 				step = 3;
 				goto error;
@@ -221,28 +219,51 @@ void LogLink_Sender(struct work_struct *ws)
 			step = 4;
 
 		error:
-			if (send_err_count++ == 0)
+			DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: send error: step=%d sock=0x%p ret=%d.\n", step, sock, ret);			
+			if (sock)
 			{
-				// save only one first error after new loglink connection
-
-				char *tmp;
-				if ((tmp = kmalloc(512, GFP_KERNEL, 'ACDW')) == NULL)
-				{
-					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: malloc fail\n");
-				}
-				else
-				{
-					DbgPrintEx(FLTR_COMPONENT, DPFLTR_ERROR_LEVEL, "LogLink: send error: step=%d sock=0x%p ret=%d.\n", step, sock, ret);
-					kfree(tmp);
-				}
+				CloseSocketLocal(sock);
+				sock = NULL;
 			}
-			
-			CloseSocket(sock); // just close, no retry/handshake!
-			sock = NULL;
 		}
 
 		ExFreeToNPagedLookasideList(&drbd_printk_msg, msg->buf);
 		list_del(&msg->list);
 		ExFreeToNPagedLookasideList(&loglink_printk_msg, msg);
+	}
+
+handleiferror:
+
+	// an error occured, re-create loglink listen thread to accept client.
+	if (!sock)
+	{
+		NTSTATUS Status = STATUS_UNSUCCESSFUL;
+		HANDLE hLogLinkThread = NULL;
+
+		atomic_xchg(&g_loglink_state, LOGLINK_USABLE);
+		g_loglink_sock = NULL;
+
+		if (g_LoglinkServerThread)
+		{
+			ObDereferenceObject(g_LoglinkServerThread);
+			g_LoglinkServerThread = NULL;
+		}
+
+		Status = PsCreateSystemThread(&hLogLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
+			return;
+		}
+
+		Status = ObReferenceObjectByHandle(hLogLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_LoglinkServerThread, NULL);
+		ZwClose(hLogLinkThread);
+
+		if (!NT_SUCCESS(Status))
+		{
+			WDRBD_ERROR("ObReferenceObjectByHandle() for loglink thread failed with status 0x%08X\n", Status);
+			return;
+		}
+		KeWaitForSingleObject(g_LoglinkServerThread, Executive, KernelMode, FALSE, NULL);
 	}
 }

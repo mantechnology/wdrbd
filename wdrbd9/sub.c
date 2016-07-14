@@ -169,6 +169,23 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				// error ignored.
 			}
 		}
+		else {
+			// meta case
+			struct block_device * bd = VolumeExtension->dev;
+			if (bd->bd_disk) {
+				blk_cleanup_queue(bd->bd_disk->queue);
+				bd->bd_disk->queue = NULL;
+				if (bd->bd_disk->private_data) {
+					struct drbd_backing_dev * pdbd = (struct drbd_backing_dev *)bd->bd_disk->private_data;
+					pdbd->md_bdev = NULL;
+				}
+				put_disk(bd->bd_disk);
+				bd->bd_disk = NULL;
+			}
+			ExFreePool(VolumeExtension->dev);
+			VolumeExtension->dev = NULL;
+			WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
+		}
 	}
 
 	FreeUnicodeString(&VolumeExtension->MountPoint);
@@ -671,9 +688,6 @@ void _printk(const char * func, const char * format, ...)
 	BOOLEAN bSysEventLog = FALSE;
 	BOOLEAN bServiceLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
-	extern atomic_t g_syslog_lv_min;
-	extern atomic_t g_svclog_lv_min;
-	extern atomic_t g_dbglog_lv_min;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
 	

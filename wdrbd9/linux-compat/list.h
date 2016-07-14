@@ -157,11 +157,12 @@ static __inline int list_is_last(const struct list_head *list, const struct list
  * @head:	the head for your list.
  * @member:	the name of the list_struct within the struct.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // DW-987 fix NULL reference by container_of
 #define list_for_each_entry(type, pos, head, member) \
-	for (pos = list_entry((head)->next, type, member);	\
-			&pos->member != (head); 	\
-			pos = list_entry(pos->member.next, type, member))
+	if((head)->next != NULL )	\
+		for (pos = list_entry((head)->next, type, member);	\
+				&pos->member != (head); 	\
+				pos = list_entry(pos->member.next, type, member))
 #else
 #define list_for_each_entry(pos, head, member)				\
 		for (pos = list_entry((head)->next, typeof(*pos), member);	\
@@ -175,11 +176,12 @@ static __inline int list_is_last(const struct list_head *list, const struct list
  * @head:	the head for your list.
  * @member:	the name of the list_struct within the struct.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // DW-987 fix NULL reference by container_of
 #define list_for_each_entry_reverse(type, pos, head, member)			\
-	for (pos = list_entry((head)->prev, type, member);	\
-	     prefetch(pos->member.prev), &pos->member != (head); 	\
-	     pos = list_entry(pos->member.prev, type, member))
+	if((head)->prev != NULL )	\
+		for (pos = list_entry((head)->prev, type, member);	\
+		     prefetch(pos->member.prev), &pos->member != (head); 	\
+		     pos = list_entry(pos->member.prev, type, member))
 #else
 #define list_for_each_entry_reverse(pos, head, member)			\
 	for (pos = list_entry((head)->prev, typeof(*pos), member);	\
@@ -201,11 +203,12 @@ static __inline int list_is_last(const struct list_head *list, const struct list
  * Continue to iterate over list of given type, continuing after
  * the current position.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // DW-987 fix NULL reference by container_of
 #define list_for_each_entry_continue(type, pos, head, member) 		\
-	for (pos = list_entry(pos->member.next, type, member);	\
-	     prefetch(pos->member.next), &pos->member != (head);	\
-	     pos = list_entry(pos->member.next, type, member))
+	if(pos->member.next != NULL )	\
+		for (pos = list_entry(pos->member.next, type, member);	\
+		     prefetch(pos->member.next), &pos->member != (head);	\
+		     pos = list_entry(pos->member.next, type, member))
 #else
 #define list_for_each_entry_continue(pos, head, member) 		\
 	for (pos = list_entry(pos->member.next, typeof(*pos), member);	\
@@ -220,12 +223,13 @@ static __inline int list_is_last(const struct list_head *list, const struct list
  * @head:	the head for your list.
  * @member:	the name of the list_struct within the struct.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // DW-987 fix NULL reference by container_of
 #define list_for_each_entry_safe(type, pos, n, head, member)                  \
-		for (pos = list_entry((head)->next, type, member),      \
-					n = list_entry(pos->member.next, type, member); \
-				&pos->member != (head);                                    \
-				pos = n, n = list_entry(n->member.next, type, member))
+		if((head)->next != NULL )	\
+			for (pos = list_entry((head)->next, type, member),      \
+						n = list_entry(pos->member.next, type, member); \
+					&pos->member != (head);                                    \
+					pos = n, n = list_entry(n->member.next, type, member))
 #else
 #define list_for_each_entry_safe(pos, n, head, member)                  \
 			for (pos = list_entry((head)->next, typeof(*pos), member),      \
@@ -243,11 +247,12 @@ static __inline int list_is_last(const struct list_head *list, const struct list
  * Iterate over list of given type from current point, safe against
  * removal of list entry.
  */
-#ifdef _WIN32
+#ifdef _WIN32 // DW-987 fix NULL reference by container_of
 #define list_for_each_entry_safe_from(type, pos, n, head, member) 			\
-	for (n = list_entry(pos->member.next, type, member);		\
-			&pos->member != (head);						\
-			pos = n, n = list_entry(n->member.next, type, member))
+	if(pos->member.next != NULL )	\
+		for (n = list_entry(pos->member.next, type, member);		\
+				&pos->member != (head);						\
+				pos = n, n = list_entry(n->member.next, type, member))
 #else
 #define list_for_each_entry_safe_from(pos, n, head, member) 			\
 		for (n = list_entry(pos->member.next, typeof(*pos), member);		\
