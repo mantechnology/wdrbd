@@ -720,6 +720,13 @@ SendLocal(
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
 	}
+
+	if (!WskSocket->Dispatch) { // DW-1029 to prevent possible contingency, check if dispatch table is valid.
+		IoFreeIrp(Irp);
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 		WskSocket,
 		&WskBuffer,

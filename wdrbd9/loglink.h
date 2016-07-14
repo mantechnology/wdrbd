@@ -33,7 +33,6 @@ struct loglink_worker {
 enum loglink_state {
 	LOGLINK_UNINITIALIZED,	// you can't do anything with loglink.
 	LOGLINK_USABLE,			// minimum state of using loglink, the only thing you can do is queueing buffer. sender thread isn't created yet.
-	LOGLINK_INITIALIZED,	// init completed. loglink is about to wait for client.
 	LOGLINK_TRANSFERABLE	// init completed and has client. data will be transfered to client immediately.
 };
 
