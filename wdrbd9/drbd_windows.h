@@ -589,12 +589,13 @@ struct gendisk
 };
 
 struct block_device {
-#ifndef _WIN32 
-	// if block_device is device for disk partition, bd_contains point to block_device descriptor about full disk,
-	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel  2015.08.24
-	// just porting field.
+	// If the block device descriptor refers to a disk partition,
+	// the bd_contains field points to the descriptor of the
+	// block device associated with the whole disk
+	// Otherwise, if the block device descriptor refers to a whole disk
+	// the bd_contains field points to the block device descriptor itself ...
+	// FROM Understanding the Linux Kernel, 3rd Edition
 	struct block_device *	bd_contains;
-#endif
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
 };

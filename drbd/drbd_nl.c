@@ -1835,7 +1835,11 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 					peer_device->max_size,
 					drbd_disk_str(pdsk));
 
-			if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
+			/* Note: in receive_sizes during connection handshake,
+			 * repl_state may still be L_OFF;
+			 * double check on cstate ... */
+			if (peer_device->repl_state[NOW] >= L_ESTABLISHED ||
+				peer_device->connection->cstate[NOW] >= C_CONNECTED) {
 				/* If we still can see it, consider its last
 				 * known size, even if it may have meanwhile
 				 * detached from its disk.
@@ -2534,6 +2538,11 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 				bdev_path, err);
 		bdev = ERR_PTR(err);
 	}
+#ifdef _WIN32
+	if (bdev->bd_contains) {
+		return bdev->bd_contains;
+	}
+#endif
 	return bdev;
 }
 
@@ -2592,8 +2601,9 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 {
 	if (ldev == NULL)
 		return;
-
+#ifndef _WIN32
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
+#endif
 	close_backing_dev(device, ldev->backing_bdev, true);
 
 	kfree(ldev->disk_conf);
