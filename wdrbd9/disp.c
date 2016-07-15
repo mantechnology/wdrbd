@@ -145,6 +145,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 #ifdef _WIN32_WPP
 	WPP_CLEANUP(DriverObject);
 #endif
+	wdrbd_logger_cleanup();
 }
 
 static

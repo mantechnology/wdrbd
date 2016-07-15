@@ -650,6 +650,14 @@ void printk_init(void)
 #endif
 }
 
+void printk_cleanup(void)
+{
+#ifdef _WIN32_LOGLINK
+	LogLink_MakeUnusable();
+#endif
+	ExDeleteNPagedLookasideList(&drbd_printk_msg);
+}
+
 void _printk(const char * func, const char * format, ...)
 {
 	int ret = 0;

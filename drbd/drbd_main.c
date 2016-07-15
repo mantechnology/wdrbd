@@ -3100,6 +3100,10 @@ static int drbd_create_mempools(void)
 		0, sizeof(struct bm_extent), '28DW', 0);
 	ExInitializeNPagedLookasideList(&drbd_al_ext_cache, NULL, NULL,
 		0, sizeof(struct lc_element), '38DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
+		0, sizeof(struct drbd_request), '48DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
+		0, sizeof(struct drbd_peer_request), '58DW', 0);
 #else
 	drbd_request_cache = kmem_cache_create(
 		"drbd_req", sizeof(struct drbd_request), 0, 0, NULL);
@@ -3132,12 +3136,8 @@ static int drbd_create_mempools(void)
 	if (drbd_md_io_page_pool == NULL)
 		goto Enomem;
 
-#ifdef _WIN32
-	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
-		0, sizeof(struct drbd_request), '48DW', 0);
-	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
-		0, sizeof(struct drbd_peer_request), '58DW', 0);
-#else
+
+#ifndef _WIN32
 	drbd_request_mempool = mempool_create_slab_pool(number, drbd_request_cache);
 	if (drbd_request_mempool == NULL)
 		goto Enomem;
