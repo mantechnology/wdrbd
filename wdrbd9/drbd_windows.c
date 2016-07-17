@@ -869,6 +869,11 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 {
     struct work_struct_wrapper * wr = kmalloc(sizeof(struct work_struct_wrapper), 0, '68DW');
+#ifdef _WIN32 // DW-1051	
+	if(!wr) {
+		return FALSE;
+	}
+#endif	
     wr->w = work;
     ExInterlockedInsertTailList(&queue->list_head, &wr->element, &queue->list_lock);
     KeSetEvent(&queue->wakeupEvent, 0, FALSE); // signal to run_singlethread_workqueue
@@ -2274,7 +2279,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
     }
 
 	dev->bd_contains = kmalloc(sizeof(struct block_device), 0, 'C5DW');
-	if (!dev) {
+	if (!dev->bd_contains) {
         WDRBD_ERROR("Failed to allocate block_device NonPagedMemory\n");
         return NULL;
     }

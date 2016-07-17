@@ -326,7 +326,7 @@ extern atomic_t g_dbglog_lv_min;
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_SYS	KERN_CRIT_NUM
-#define LOG_LV_DEFAULT_SVC	KERN_INFO_NUM
+#define LOG_LV_DEFAULT_SVC	KERN_ERR_NUM
 #define LOG_LV_DEFAULT_DBG	KERN_INFO_NUM
 #define LOG_LV_DEFAULT		(LOG_LV_DEFAULT_SYS << LOG_LV_BIT_POS_SYS) | (LOG_LV_DEFAULT_SVC << LOG_LV_BIT_POS_SVC) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
 

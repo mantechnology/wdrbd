@@ -5757,6 +5757,9 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	D_ASSERT(device, current == device->resource->worker.task);
 #ifdef _WIN32
     bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+	if(!bm_io_work) {
+		return;
+	}
 #else
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO);
 #endif
