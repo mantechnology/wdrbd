@@ -3209,7 +3209,6 @@ void drbd_destroy_device(struct kref *kref)
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
 	kfree2(device->this_bdev);
-	device->vdisk->pDeviceExtension->dev = NULL;
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
@@ -4496,6 +4495,12 @@ void drbd_put_device(struct drbd_device *device)
 		refs++;
 
 	kref_debug_sub(&device->kref_debug, refs, 1);
+#ifdef _WIN32 // DW-1057
+	if(device->kref.refcount > refs)
+	{
+		drbd_warn(device, "FIXME!!! device->kref.refcount (%d) refs (%d)\n", device->kref.refcount, refs);
+	}
+#endif
 	kref_sub(&device->kref, refs, drbd_destroy_device);
 }
 
