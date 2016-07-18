@@ -5044,21 +5044,28 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	}
 
 	if (should_send_sizes) {
+#ifndef _WIN32 // DW-1063 fix wait at dispach level		
 		rcu_read_lock();
+#endif
 		for_each_peer_device_rcu(peer_device_it, device) {
 			drbd_send_sizes(peer_device_it, 0, ddsf);
 		}
+#ifndef _WIN32 
 		rcu_read_unlock();
+#endif
 	} else {
 		sector_t my_size = drbd_get_capacity(device->this_bdev);
-
+#ifndef _WIN32 // DW-1063 fix wait at dispach level		
 		rcu_read_lock();
+#endif
 		for_each_peer_device_rcu(peer_device_it, device) {
 			if (peer_device_it->repl_state[NOW] > L_OFF
 				&&  peer_device_it->c_size != my_size)
 				drbd_send_sizes(peer_device_it, 0, ddsf);
 		}
+#ifndef _WIN32 
 		rcu_read_unlock();
+#endif
 	}
 
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),
