@@ -1491,7 +1491,6 @@ void drbd_unregister_blkdev(unsigned int major, const char *name)
 void del_gendisk(struct gendisk *disk)
 {
 	// free disk
-	disk->pDeviceExtension->dev->bd_contains = NULL; // DW-1057 temporary patch
 }
 
  void destroy_workqueue(struct workqueue_struct *wq)
