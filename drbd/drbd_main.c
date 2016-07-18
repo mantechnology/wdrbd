@@ -4500,6 +4500,7 @@ void drbd_put_device(struct drbd_device *device)
 	if(device->kref.refcount > refs)
 	{
 		drbd_warn(device, "FIXME!!! device->kref.refcount (%d) refs (%d)\n", device->kref.refcount, refs);
+		device->kref.refcount = refs;
 	}
 #endif
 	kref_sub(&device->kref, refs, drbd_destroy_device);
