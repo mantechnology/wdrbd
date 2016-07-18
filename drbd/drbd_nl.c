@@ -3121,7 +3121,7 @@ static int adm_detach(struct drbd_device *device, int force)
 {
 	enum drbd_state_rv retcode;
 #ifdef _WIN32
-	long timeo;
+	long timeo = 3*HZ;
 	int ret = 0;
 #else
 	int ret;
@@ -3143,7 +3143,8 @@ static int adm_detach(struct drbd_device *device, int force)
 #ifdef _WIN32 // DW-1046 detour adm_detach hang
 	wait_event_interruptible_timeout(timeo, device->misc_wait,
 						 get_disk_state(device) != D_DETACHING,
-						 HZ);
+						 timeo);
+	WDRBD_INFO("wait_event_interruptible_timeout timeo:%d device->disk_state[NOW]:%d\n", timeo, device->disk_state[NOW]);
 #else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
