@@ -3120,7 +3120,12 @@ static enum drbd_disk_state get_disk_state(struct drbd_device *device)
 static int adm_detach(struct drbd_device *device, int force)
 {
 	enum drbd_state_rv retcode;
+#ifdef _WIN32
+	long timeo = 3*HZ;
+	int ret = 0;
+#else
 	int ret;
+#endif
 
 	if (force) {
 		set_bit(FORCE_DETACH, &device->flags);
@@ -3135,9 +3140,11 @@ static int adm_detach(struct drbd_device *device, int force)
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
-#ifdef _WIN32
-	wait_event_interruptible(ret, device->misc_wait,
-			get_disk_state(device) != D_DETACHING);
+#ifdef _WIN32 // DW-1046 detour adm_detach hang
+	wait_event_interruptible_timeout(timeo, device->misc_wait,
+						 get_disk_state(device) != D_DETACHING,
+						 timeo);
+	WDRBD_INFO("wait_event_interruptible_timeout timeo:%d device->disk_state[NOW]:%d\n", timeo, device->disk_state[NOW]);
 #else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
