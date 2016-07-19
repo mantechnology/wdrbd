@@ -4141,6 +4141,71 @@ static void disk_states_to_goodness(struct drbd_device *device,
 			  *hg > 0 ? "source" : "target");
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1014: if we determined not to do sync in spite of existing out-of-sync, check couple of more states.
+static void various_states_to_goodness(struct drbd_device *device,
+						struct drbd_peer_device *peer_device,
+						enum drbd_disk_state peer_disk_state,
+						enum drbd_role peer_role,
+						int *hg)
+{
+	enum drbd_disk_state disk_state = device->disk_state[NOW];
+	enum drbd_repl_state peer_last_repl_state = peer_device->last_repl_state;
+	int syncReason = 0;
+
+	if (*hg != 0 || drbd_bm_total_weight(peer_device) == 0)
+		return;
+
+	if (disk_state == D_NEGOTIATING)
+		disk_state = disk_state_from_md(device);
+
+	// 1. compare peer role.
+	if (device->resource->role[NOW] == R_PRIMARY || peer_role == R_PRIMARY)
+	{
+		*hg = device->resource->role[NOW] == R_PRIMARY ? 2 : -2;
+		syncReason = 1;
+		goto out;
+	}
+
+	// 2. compare disk state.
+	if (peer_disk_state != disk_state &&
+		(peer_disk_state > D_OUTDATED || disk_state > D_OUTDATED))
+	{
+		*hg = disk_state > peer_disk_state ? 2 : -2;
+		syncReason = 2;
+		goto out;
+	}
+
+	// 3. compare last repl state
+	if (peer_last_repl_state == L_AHEAD ||
+		peer_last_repl_state == L_SYNC_SOURCE ||
+		peer_last_repl_state == L_PAUSED_SYNC_S ||
+		peer_last_repl_state == L_STARTING_SYNC_S)
+	{
+		//peer was sync source.
+		*hg = -2;
+		syncReason = 3;
+		goto out;
+	}
+	else if (peer_last_repl_state == L_BEHIND ||
+		peer_last_repl_state == L_SYNC_TARGET ||
+		peer_last_repl_state == L_PAUSED_SYNC_T ||
+		peer_last_repl_state == L_STARTING_SYNC_T)
+	{
+		//peer was sync target.
+		*hg = 2;
+		syncReason = 3;
+		goto out;
+	}
+
+out:
+	if (*hg)
+		drbd_info(device, "Becoming sync %s due to %s.\n",
+		*hg > 0 ? "source" : "target",
+		syncReason == 1 ? "role" : syncReason == 2 ? "disk states" : "last repl state");
+}
+#endif
+
 static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_device,
 						  enum drbd_disk_state peer_disk_state) __must_hold(local)
 {
@@ -4186,6 +4251,10 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	}
 
 	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
+
+#ifdef _WIN32
+	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);
+#endif
 
 	if (abs(hg) == 100)
 		drbd_khelper(device, connection, "initial-split-brain");
