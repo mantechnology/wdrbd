@@ -175,10 +175,6 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			if (bd->bd_disk) {
 				blk_cleanup_queue(bd->bd_disk->queue);
 				bd->bd_disk->queue = NULL;
-				if (bd->bd_disk->private_data) {
-					struct drbd_backing_dev * pdbd = (struct drbd_backing_dev *)bd->bd_disk->private_data;
-					pdbd->md_bdev = NULL;
-				}
 				put_disk(bd->bd_disk);
 				bd->bd_disk = NULL;
 			}
@@ -652,6 +648,14 @@ void printk_init(void)
 #ifdef _WIN32_LOGLINK
 	LogLink_MakeUsable();
 #endif
+}
+
+void printk_cleanup(void)
+{
+#ifdef _WIN32_LOGLINK
+	LogLink_MakeUnusable();
+#endif
+	ExDeleteNPagedLookasideList(&drbd_printk_msg);
 }
 
 void _printk(const char * func, const char * format, ...)

@@ -326,7 +326,7 @@ extern atomic_t g_dbglog_lv_min;
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_SYS	KERN_CRIT_NUM
-#define LOG_LV_DEFAULT_SVC	KERN_INFO_NUM
+#define LOG_LV_DEFAULT_SVC	KERN_ERR_NUM
 #define LOG_LV_DEFAULT_DBG	KERN_INFO_NUM
 #define LOG_LV_DEFAULT		(LOG_LV_DEFAULT_SYS << LOG_LV_BIT_POS_SYS) | (LOG_LV_DEFAULT_SVC << LOG_LV_BIT_POS_SVC) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
 
@@ -352,11 +352,13 @@ extern atomic_t g_dbglog_lv_min;
 #define FEATURE_WDRBD_PRINT
 
 extern void printk_init(void);
+extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
+#define wdrbd_logger_cleanup()	printk_cleanup();
 #define printk(format, ...)   \
     _printk(__FUNCTION__, format, __VA_ARGS__)
 #else
@@ -589,12 +591,13 @@ struct gendisk
 };
 
 struct block_device {
-#ifndef _WIN32 
-	// if block_device is device for disk partition, bd_contains point to block_device descriptor about full disk,
-	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel  2015.08.24
-	// just porting field.
+	// If the block device descriptor refers to a disk partition,
+	// the bd_contains field points to the descriptor of the
+	// block device associated with the whole disk
+	// Otherwise, if the block device descriptor refers to a whole disk
+	// the bd_contains field points to the block device descriptor itself ...
+	// FROM Understanding the Linux Kernel, 3rd Edition
 	struct block_device *	bd_contains;
-#endif
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
 };

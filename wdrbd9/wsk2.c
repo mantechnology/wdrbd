@@ -391,11 +391,19 @@ SocketConnect(
 				Irp);
 
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		*pStatus = Status = Irp->IoStatus.Status;
+		LARGE_INTEGER nWaitTime = { 0, };
+		nWaitTime = RtlConvertLongToLargeInteger(-1 * 1000 * 1000 * 10);	// 1s
+		if ((Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime)) == STATUS_TIMEOUT)
+		{
+			IoCancelIrp(Irp);
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);			
+			*pStatus = STATUS_TIMEOUT;
+		}
+		else
+			*pStatus = Status = Irp->IoStatus.Status;
 	}
-
-	WskSocket = NT_SUCCESS(Status) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
+	
+	WskSocket = Status == STATUS_SUCCESS ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
 	IoFreeIrp(Irp);
 	return WskSocket;
 }

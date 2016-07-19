@@ -1835,7 +1835,11 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 					peer_device->max_size,
 					drbd_disk_str(pdsk));
 
-			if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
+			/* Note: in receive_sizes during connection handshake,
+			 * repl_state may still be L_OFF;
+			 * double check on cstate ... */
+			if (peer_device->repl_state[NOW] >= L_ESTABLISHED ||
+				peer_device->connection->cstate[NOW] >= C_CONNECTED) {
 				/* If we still can see it, consider its last
 				 * known size, even if it may have meanwhile
 				 * detached from its disk.
@@ -2534,6 +2538,11 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 				bdev_path, err);
 		bdev = ERR_PTR(err);
 	}
+#ifdef _WIN32
+	if (bdev->bd_contains) {
+		return bdev->bd_contains;
+	}
+#endif
 	return bdev;
 }
 
@@ -2592,8 +2601,9 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 {
 	if (ldev == NULL)
 		return;
-
+#ifndef _WIN32
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
+#endif
 	close_backing_dev(device, ldev->backing_bdev, true);
 
 	kfree(ldev->disk_conf);
@@ -3110,7 +3120,12 @@ static enum drbd_disk_state get_disk_state(struct drbd_device *device)
 static int adm_detach(struct drbd_device *device, int force)
 {
 	enum drbd_state_rv retcode;
+#ifdef _WIN32
+	long timeo = 3*HZ;
+	int ret = 0;
+#else
 	int ret;
+#endif
 
 	if (force) {
 		set_bit(FORCE_DETACH, &device->flags);
@@ -3125,9 +3140,11 @@ static int adm_detach(struct drbd_device *device, int force)
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
-#ifdef _WIN32
-	wait_event_interruptible(ret, device->misc_wait,
-			get_disk_state(device) != D_DETACHING);
+#ifdef _WIN32 // DW-1046 detour adm_detach hang
+	wait_event_interruptible_timeout(timeo, device->misc_wait,
+						 get_disk_state(device) != D_DETACHING,
+						 timeo);
+	WDRBD_INFO("wait_event_interruptible_timeout timeo:%d device->disk_state[NOW]:%d\n", timeo, device->disk_state[NOW]);
 #else
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);

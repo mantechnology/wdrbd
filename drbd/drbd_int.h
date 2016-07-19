@@ -2448,28 +2448,32 @@ extern void queued_twopc_timer_fn(unsigned long data);
 #endif
 extern bool drbd_have_local_disk(struct drbd_resource *resource);
 
-static inline sector_t drbd_get_capacity(struct block_device *bdev)
+static __inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
 #ifdef _WIN32
-    if (bdev && bdev->d_size)
-    {
-        return bdev->d_size >> 9;
-    }
+	if (!bdev) {
+		WDRBD_WARN("Null argument\n");
+		return 0;
+	}
 
-    if (!bdev->bd_disk || !bdev->bd_disk->pDeviceExtension)
-    {
-        WDRBD_WARN("Bad argument\n");
-        return 0;
-    }
+	if (bdev->d_size) {
+		return bdev->d_size >> 9;
+	}
 
-    if (1 < KeGetCurrentIrql())
-    {
-        WDRBD_ERROR("Failed to get size. higher irql problem\n");
-        return 0;
-    }
+	if (bdev->bd_contains) {	// not real device
+		bdev = bdev->bd_contains;
+		if (bdev->d_size) {
+			return bdev->d_size >> 9;
+		}
+	}
 
-    bdev->d_size = get_targetdev_volsize(bdev->bd_disk->pDeviceExtension);
-    return bdev->d_size >> 9;
+	// Maybe... need to recalculate volume size
+	PVOLUME_EXTENSION pvext = (bdev->bd_disk) ? bdev->bd_disk->pDeviceExtension : NULL;
+	if (!pvext && (KeGetCurrentIrql() < 2)) {
+		bdev->d_size = get_targetdev_volsize(pvext);	// real size
+	}
+
+	return bdev->d_size >> 9;
 #else
 	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
 	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;

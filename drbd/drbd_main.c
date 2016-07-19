@@ -1799,9 +1799,6 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
 		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
-#ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;
-#endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
@@ -3103,6 +3100,10 @@ static int drbd_create_mempools(void)
 		0, sizeof(struct bm_extent), '28DW', 0);
 	ExInitializeNPagedLookasideList(&drbd_al_ext_cache, NULL, NULL,
 		0, sizeof(struct lc_element), '38DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
+		0, sizeof(struct drbd_request), '48DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
+		0, sizeof(struct drbd_peer_request), '58DW', 0);
 #else
 	drbd_request_cache = kmem_cache_create(
 		"drbd_req", sizeof(struct drbd_request), 0, 0, NULL);
@@ -3135,12 +3136,8 @@ static int drbd_create_mempools(void)
 	if (drbd_md_io_page_pool == NULL)
 		goto Enomem;
 
-#ifdef _WIN32
-	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
-		0, sizeof(struct drbd_request), '48DW', 0);
-	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
-		0, sizeof(struct drbd_peer_request), '58DW', 0);
-#else
+
+#ifndef _WIN32
 	drbd_request_mempool = mempool_create_slab_pool(number, drbd_request_cache);
 	if (drbd_request_mempool == NULL)
 		goto Enomem;
@@ -3212,7 +3209,7 @@ void drbd_destroy_device(struct kref *kref)
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
 	kfree2(device->this_bdev);
-	device->vdisk->pDeviceExtension->dev = NULL;
+	device->vdisk->pDeviceExtension->dev = NULL; 
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
@@ -4499,6 +4496,13 @@ void drbd_put_device(struct drbd_device *device)
 		refs++;
 
 	kref_debug_sub(&device->kref_debug, refs, 1);
+#ifdef _WIN32 // DW-1057
+	if(device->kref.refcount > refs)
+	{
+		drbd_warn(device, "FIXME!!! device->kref.refcount (%d) refs (%d)\n", device->kref.refcount, refs);
+		device->kref.refcount = refs;
+	}
+#endif
 	kref_sub(&device->kref, refs, drbd_destroy_device);
 }
 
@@ -5329,12 +5333,14 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-837: Apply updated current uuid to meta disk.
 		drbd_md_mark_dirty(device);
-		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
-		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
 #endif
 	}
-
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
+
+	if(set_current) {
+		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
+		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
+	}
 	drbd_propagate_uuids(device, got_new_bitmap_uuid);
 }
 
@@ -5760,6 +5766,9 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	D_ASSERT(device, current == device->resource->worker.task);
 #ifdef _WIN32
     bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+	if(!bm_io_work) {
+		return;
+	}
 #else
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO);
 #endif
