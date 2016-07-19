@@ -4169,7 +4169,7 @@ static void various_states_to_goodness(struct drbd_device *device,
 
 	// 2. compare disk state.
 	if (peer_disk_state != disk_state &&
-		(peer_disk_state > D_OUTDATED || disk_state > D_OUTDATED))
+		(peer_disk_state >= D_OUTDATED || disk_state >= D_OUTDATED))
 	{
 		*hg = disk_state > peer_disk_state ? 2 : -2;
 		syncReason = 2;
