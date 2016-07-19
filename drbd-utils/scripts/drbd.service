@@ -1,0 +1,18 @@
+[Unit]
+Description=DRBD -- please disable. Unless you are NOT using a cluster manager.
+Wants=network.target sshd.service
+After=network.target sshd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/lib/drbd/drbd start
+ExecStop=/lib/drbd/drbd stop
+
+# Re-adjust everything on reload
+ExecReload=/lib/drbd/drbd reload
+
+[Install]
+WantedBy=multi-user.target
+

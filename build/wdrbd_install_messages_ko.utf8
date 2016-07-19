@@ -1,0 +1,9 @@
+WizardPreparing=준비 중...
+SendInformationTitle=설치정보전송
+SendInformationSubTitle=설치정보를 전송합니다
+SendInformationNotify=익명으로 설치 정보를 전송합니다.
+SendTextLabel1=소프트웨어 사용 현황 분석을 위해 다음의 정보를 전송합니다.
+SendTextContent1=운영체제 버전
+SnedTextContent2=소프트웨어 버전
+SendTextLabel2=이외의 시스템 또는 사용자에 관련된 어떠한 정보도 전송하지 않습니다.
+ 
