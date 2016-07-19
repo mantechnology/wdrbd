@@ -12,5 +12,6 @@ DWORD WriteLogWithRecordBuf(HANDLE hLogFile, LPCTSTR pszProviderName, PBYTE pBuf
 void GetTimestamp(const DWORD Time, WCHAR DisplayString[]);
 DWORD WriteLogToFile(HANDLE hLogFile, LPCTSTR pszTimeStamp, PBYTE pszData);
 DWORD GetLogFilePath(LPCTSTR pszLogFileName, PTSTR pszLogFileFullPath);
+DWORD WriteEventLog(LPCSTR pszProviderName, LPCSTR pszData);
 
 #endif

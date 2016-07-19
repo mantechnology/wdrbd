@@ -57,6 +57,12 @@ NTAPI
 
 NTSTATUS
 NTAPI
+CloseSocketLocal(
+	__in PWSK_SOCKET WskSocket
+);
+
+NTSTATUS
+NTAPI
   CloseSocket(
 	__in PWSK_SOCKET WskSocket
 	);
@@ -76,12 +82,14 @@ Disconnect(
 
 PWSK_SOCKET
 NTAPI
-  SocketConnect(
+SocketConnect(
 	__in USHORT		SocketType,
 	__in ULONG		Protocol,
-	__in PSOCKADDR	RemoteAddress,
-	__in PSOCKADDR	LocalAddress
-	);
+	__in PSOCKADDR	LocalAddress, // address family desc. required
+	__in PSOCKADDR	RemoteAddress, // address family desc. required
+	__inout  NTSTATUS* pStatus
+);
+
 #ifdef _WSK_IRP_REUSE
 LONG
 NTAPI
@@ -91,8 +99,8 @@ __in PWSK_SOCKET	WskSocket,
 __in PVOID			Buffer,
 __in ULONG			BufferSize,
 __in ULONG			Flags,
-__in struct			drbd_transport *transport,
-__in enum			drbd_stream stream
+__in ULONG			Timeout,
+__in KEVENT			*send_buf_kill_event
 );
 #endif
 
@@ -121,16 +129,16 @@ SendLocal(
 
 LONG
 NTAPI
-  SendTo(
+SendTo(
 	__in PWSK_SOCKET	WskSocket,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in_opt PSOCKADDR	RemoteAddress
 	);
 
-LONG
-NTAPI
-  Receive(
+LONG 
+NTAPI 
+ReceiveLocal(
 	__in  PWSK_SOCKET	WskSocket,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
@@ -140,7 +148,17 @@ NTAPI
 
 LONG
 NTAPI
-  ReceiveFrom(
+Receive(
+	__in  PWSK_SOCKET	WskSocket,
+	__out PVOID			Buffer,
+	__in  ULONG			BufferSize,
+	__in  ULONG			Flags,
+	__in ULONG			Timeout
+	);
+
+LONG
+NTAPI
+ReceiveFrom(
 	__in  PWSK_SOCKET	WskSocket,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
@@ -150,14 +168,23 @@ NTAPI
 
 NTSTATUS
 NTAPI
-  Bind(
+Bind(
 	__in PWSK_SOCKET	WskSocket,
 	__in PSOCKADDR		LocalAddress
 	);
+PWSK_SOCKET
+NTAPI
+AcceptLocal(
+	__in PWSK_SOCKET	WskSocket,
+	__out_opt PSOCKADDR	LocalAddress,
+	__out_opt PSOCKADDR	RemoteAddress,
+	__out_opt NTSTATUS	*RetStaus,
+	__in int			timeout
+);
 
 PWSK_SOCKET
 NTAPI
-  Accept(
+Accept(
 	__in PWSK_SOCKET	WskSocket,
 	__out_opt PSOCKADDR	LocalAddress,
 	__out_opt PSOCKADDR	RemoteAddress,
@@ -243,3 +270,5 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
+
+char *GetSockErrorString(NTSTATUS status);

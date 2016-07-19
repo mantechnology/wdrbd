@@ -41,6 +41,7 @@ DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD mvolUnload;
 DRIVER_ADD_DEVICE mvolAddDevice;
 
+
 _Dispatch_type_(IRP_MJ_CREATE) DRIVER_DISPATCH mvolCreate;
 _Dispatch_type_(IRP_MJ_CLOSE) DRIVER_DISPATCH mvolClose;
 _Dispatch_type_(IRP_MJ_SHUTDOWN) DRIVER_DISPATCH mvolShutdown;
@@ -88,7 +89,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 
     DriverObject->DriverExtension->AddDevice = mvolAddDevice;
     DriverObject->DriverUnload = mvolUnload;
-	    
+
+	gbShutdown = FALSE;
+		
     RtlInitUnicodeString(&nameUnicode, L"\\Device\\mvolCntl");
     status = IoCreateDevice(DriverObject, sizeof(ROOT_EXTENSION),
         &nameUnicode, FILE_DEVICE_UNKNOWN, 0, FALSE, &deviceObject);
@@ -142,6 +145,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 #ifdef _WIN32_WPP
 	WPP_CLEANUP(DriverObject);
 #endif
+	wdrbd_logger_cleanup();
 }
 
 static

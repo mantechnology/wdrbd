@@ -38,6 +38,7 @@
 
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
 #define _WSK_IRP_REUSE					// WSK IRP reuse.
+#define _WSK_SOCKETCONNECT
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
 #define minor_to_letter(m)	('C'+(m))
@@ -307,6 +308,38 @@ enum km_type {
 
 typedef unsigned int                fmode_t;
 
+extern atomic_t g_syslog_lv_min;
+extern atomic_t g_svclog_lv_min;
+extern atomic_t g_dbglog_lv_min;
+
+#define LOG_LV_REG_VALUE_NAME	L"log_level"
+
+/* Log level value is 32-bit integer
+   00000000 00000000 00000000 00000000
+								   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
+								|||	   3 bit between 3 ~ 5 indicates service log level (0 ~ 7)
+							| ||	   3 bit between 6 ~ 8 indicates debug print log level (0 ~ 7)
+*/
+#define LOG_LV_BIT_POS_SYS	0
+#define LOG_LV_BIT_POS_SVC	(LOG_LV_BIT_POS_SYS + 3)
+#define LOG_LV_BIT_POS_DBG	(LOG_LV_BIT_POS_SVC + 3)
+
+// Default values are used when log_level value doesn't exist.
+#define LOG_LV_DEFAULT_SYS	KERN_CRIT_NUM
+#define LOG_LV_DEFAULT_SVC	KERN_ERR_NUM
+#define LOG_LV_DEFAULT_DBG	KERN_INFO_NUM
+#define LOG_LV_DEFAULT		(LOG_LV_DEFAULT_SYS << LOG_LV_BIT_POS_SYS) | (LOG_LV_DEFAULT_SVC << LOG_LV_BIT_POS_SVC) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
+
+#define LOG_LV_MASK			0x7
+
+#define Set_log_lv(log_level) \
+	atomic_set(&g_syslog_lv_min, (log_level >> LOG_LV_BIT_POS_SYS) & LOG_LV_MASK);	\
+	atomic_set(&g_svclog_lv_min, (log_level >> LOG_LV_BIT_POS_SVC) & LOG_LV_MASK);	\
+	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
+
+#define Get_log_lv() \
+	(atomic_read(&g_syslog_lv_min) << LOG_LV_BIT_POS_SYS) | (atomic_read(&g_svclog_lv_min) << LOG_LV_BIT_POS_SVC) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
+
 #define MAX_ELOG_BUF				512
 #define MAX_TEXT_BUF                256
 
@@ -319,11 +352,13 @@ typedef unsigned int                fmode_t;
 #define FEATURE_WDRBD_PRINT
 
 extern void printk_init(void);
+extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
+#define wdrbd_logger_cleanup()	printk_cleanup();
 #define printk(format, ...)   \
     _printk(__FUNCTION__, format, __VA_ARGS__)
 #else
@@ -368,7 +403,7 @@ extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 #define WDRBD_TRACE_RS
 #define WDRBD_TRACE_SK					// about socket
 #define WDRBD_TRACE_SEM
-#define WDRBD_TRACE_IP4
+#define WDRBD_TRACE_IP4					
 #define WDRBD_TRACE_SB
 #define WDRBD_TRACE_CO
 
@@ -466,6 +501,9 @@ struct socket {
 #endif
 };
 
+char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
+char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+	
 #define WQNAME_LEN	16	
 struct workqueue_struct {
 #ifdef _WIN32
@@ -553,12 +591,13 @@ struct gendisk
 };
 
 struct block_device {
-#ifndef _WIN32 
-	// if block_device is device for disk partition, bd_contains point to block_device descriptor about full disk,
-	// if block_device is device for full disk, point to self. from Understanding the Linux Kernel  2015.08.24
-	// just porting field.
+	// If the block device descriptor refers to a disk partition,
+	// the bd_contains field points to the descriptor of the
+	// block device associated with the whole disk
+	// Otherwise, if the block device descriptor refers to a whole disk
+	// the bd_contains field points to the block device descriptor itself ...
+	// FROM Understanding the Linux Kernel, 3rd Edition
 	struct block_device *	bd_contains;
-#endif
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
 };
@@ -965,7 +1004,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	do {\
 		int i = 0;\
 		int t = 0;\
-		int real_timeout = ret; \
+		int real_timeout = ret/100; \
 		for (;;) {\
 			i++; \
 			if (condition)   \
@@ -978,7 +1017,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 				ret = 0;\
 				break;\
 						}\
-			schedule(&wq, 1, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
+			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
 				}  \
 		} while (0)
 
@@ -1013,7 +1052,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
-        int real_timeout = to; /*divide*/\
+        int real_timeout = to/100; /*divide*/\
         for (;;) { \
             if (condition) {   \
                 break;      \
@@ -1022,7 +1061,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		        ret = -ETIMEDOUT;\
 		        break;\
             }\
-	        ret = schedule(&wq, 1, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
+	        ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
     } while (0)
@@ -1510,6 +1549,10 @@ struct blk_plug_cb {
 
 extern struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data, int size);
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
+
+NTSTATUS SaveCurrentLogLv();
 #endif
+
+BOOLEAN gbShutdown;
 
 #endif // DRBD_WINDOWS_H

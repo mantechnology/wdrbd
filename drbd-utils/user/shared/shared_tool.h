@@ -64,7 +64,7 @@ extern int fget_token(char *s, int size, FILE* stream);
 #endif
 extern int sget_token(char *s, int size, const char** text);
 #ifdef _WIN32
-extern int bdev_sect_size_nt(char * device_name);
+extern int bdev_sect_size_nt(char * device_name, unsigned int *hard_sect_size);
 extern uint64_t bdev_size(char * device_name);
 #else
 extern uint64_t bdev_size(int fd);

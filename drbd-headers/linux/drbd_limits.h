@@ -138,7 +138,11 @@
    * 200 should be more than enough even for very short timeouts */
 #define DRBD_KO_COUNT_MIN  0
 #define DRBD_KO_COUNT_MAX  200
+#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase.
+#define DRBD_KO_COUNT_DEF  3
+#else
 #define DRBD_KO_COUNT_DEF  7
+#endif
 #define DRBD_KO_COUNT_SCALE '1'
 /* } */
 
@@ -195,7 +199,11 @@
 
 #define DRBD_C_PLAN_AHEAD_MIN  0
 #define DRBD_C_PLAN_AHEAD_MAX  300
+#ifdef _WIN32 // DW-1039 a continuos resync throuput is required.
+#define DRBD_C_PLAN_AHEAD_DEF  0
+#else
 #define DRBD_C_PLAN_AHEAD_DEF  20
+#endif
 #define DRBD_C_PLAN_AHEAD_SCALE '1'
 
 #define DRBD_C_DELAY_TARGET_MIN 1

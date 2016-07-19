@@ -1343,6 +1343,8 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 	struct p_peer_ack *p;
 	u64 mask = 0;
 
+#ifndef _WIN32
+	// MODIFIED_BY_MANTECH DW-1012: The mask won't be used by receiver, setting value is meaningless.
 	if (req->rq_state[0] & RQ_LOCAL_OK)
 		mask |= NODE_MASK(resource->res_opts.node_id);
 
@@ -1355,6 +1357,7 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 			mask |= NODE_MASK(node_id);
 	}
 	rcu_read_unlock();
+#endif
 
 	p = conn_prepare_command(connection, sizeof(*p), CONTROL_STREAM);
 	if (!p)
@@ -1545,10 +1548,18 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 	peer_device = peer_device_by_node_id(device, node_id);
 
 	if (bitmap_uuid == 0 && peer_device &&
-	    peer_device->current_uuid != 0 &&
-	    (peer_device->current_uuid & ~UUID_PRIMARY) !=
-	    (drbd_current_uuid(device) & ~UUID_PRIMARY))
+		peer_device->current_uuid != 0 &&
+		(peer_device->current_uuid & ~UUID_PRIMARY) !=
+		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+#ifdef _WIN32
+	{
+		// MODIFIED_BY_MANTECH DW-978: Set MDF_PEER_DIFF_CUR_UUID flag so that we're able to recognize -1 is sent.
+		peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
 		bitmap_uuid = -1;
+	}
+#else
+		bitmap_uuid = -1;
+#endif
 
 	rcu_read_unlock();
 
@@ -1788,9 +1799,6 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
 		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
-#ifdef _WIN32
-        device->ldev->backing_bdev->d_size = 0;
-#endif
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
 		u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
@@ -1823,7 +1831,11 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 
 	p->d_size = cpu_to_be64(d_size);
 	p->u_size = cpu_to_be64(u_size);
+	/*
+	TODO verify: this may be needed for v8 compatibility still.
 	p->c_size = cpu_to_be64(trigger_reply ? 0 : drbd_get_capacity(device->this_bdev));
+	*/
+	p->c_size = cpu_to_be64(drbd_get_capacity(device->this_bdev));
 	p->max_bio_size = cpu_to_be32(max_bio_size);
 	p->queue_order_type = cpu_to_be16(q_order_type);
 	p->dds_flags = cpu_to_be16(flags);
@@ -2544,8 +2556,6 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	int digest_size = 0;
 #ifdef _WIN32
 	int err = 0;
-	int protocol = 0;
-	struct net_conf *nc = NULL;
 #else
 	int err;
 #endif
@@ -2584,20 +2594,9 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 	p->block_id = (unsigned long)req;
 #endif
 	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
-
-#ifdef _WIN32
-	rcu_read_lock();
-	nc = rcu_dereference(peer_device->connection->transport.net_conf);
-	protocol = nc->wire_protocol;
-	rcu_read_unlock();
-#endif
 	
 	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
-#ifdef _WIN32 // DW-830 In protocol A, we need to deal with already increased OOS no matter what the replication state is.
-	if ((peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T) || protocol == DRBD_PROT_A)
-#else
 	if (peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T)
-#endif
 		dp_flags |= DP_MAY_SET_IN_SYNC;
 	if (peer_device->connection->agreed_pro_version >= 100) {
 		if (s & RQ_EXP_RECEIVE_ACK)
@@ -2654,6 +2653,12 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 			err = _drbd_no_send_page(peer_device, req->req_databuf, 0, req->i.size, 0);
 #else
 			err = _drbd_send_zc_bio(peer_device, req->master_bio);
+#endif
+
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1012: Remove out of sync when data is sent, this is the newest one.
+		if (!err)
+			drbd_set_in_sync(peer_device, req->i.sector, req->i.size);
 #endif
 
 		/* double check digest, sometimes buffers have been modified in flight. */
@@ -3095,6 +3100,10 @@ static int drbd_create_mempools(void)
 		0, sizeof(struct bm_extent), '28DW', 0);
 	ExInitializeNPagedLookasideList(&drbd_al_ext_cache, NULL, NULL,
 		0, sizeof(struct lc_element), '38DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
+		0, sizeof(struct drbd_request), '48DW', 0);
+	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
+		0, sizeof(struct drbd_peer_request), '58DW', 0);
 #else
 	drbd_request_cache = kmem_cache_create(
 		"drbd_req", sizeof(struct drbd_request), 0, 0, NULL);
@@ -3127,12 +3136,8 @@ static int drbd_create_mempools(void)
 	if (drbd_md_io_page_pool == NULL)
 		goto Enomem;
 
-#ifdef _WIN32
-	ExInitializeNPagedLookasideList(&drbd_request_mempool, NULL, NULL,
-		0, sizeof(struct drbd_request), '48DW', 0);
-	ExInitializeNPagedLookasideList(&drbd_ee_mempool, NULL, NULL,
-		0, sizeof(struct drbd_peer_request), '58DW', 0);
-#else
+
+#ifndef _WIN32
 	drbd_request_mempool = mempool_create_slab_pool(number, drbd_request_cache);
 	if (drbd_request_mempool == NULL)
 		goto Enomem;
@@ -3204,7 +3209,7 @@ void drbd_destroy_device(struct kref *kref)
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
 	kfree2(device->this_bdev);
-	device->vdisk->pDeviceExtension->dev = NULL;
+	device->vdisk->pDeviceExtension->dev = NULL; 
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
@@ -3456,6 +3461,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         {
             WDRBD_ERROR("DRBD_PANIC: No memory\n");
             rcu_read_unlock();
+			gbShutdown = TRUE;
             return;
         }
         device_list_p->device = device;
@@ -3486,6 +3492,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         list_del(&device_list_p->list);
         kfree(device_list_p);
     }
+
+	gbShutdown = TRUE;
 }
 #endif
 /**
@@ -4488,6 +4496,13 @@ void drbd_put_device(struct drbd_device *device)
 		refs++;
 
 	kref_debug_sub(&device->kref_debug, refs, 1);
+#ifdef _WIN32 // DW-1057
+	if(device->kref.refcount > refs)
+	{
+		drbd_warn(device, "FIXME!!! device->kref.refcount (%d) refs (%d)\n", device->kref.refcount, refs);
+		device->kref.refcount = refs;
+	}
+#endif
 	kref_sub(&device->kref, refs, drbd_destroy_device);
 }
 
@@ -4713,10 +4728,11 @@ void drbd_md_write(struct drbd_device *device, void *b)
 }
 
 /**
- * drbd_md_sync() - Writes the meta data super block if the MD_DIRTY flag bit is set
- * @mdev:	DRBD device.
+ * __drbd_md_sync() - Writes the meta data super block (conditionally) if the MD_DIRTY flag bit is set
+ * @device:    DRBD device.
+ * @maybe:    meta data may in fact be "clean", the actual write may be skipped.
  */
-void drbd_md_sync(struct drbd_device *device)
+static void __drbd_md_sync(struct drbd_device *device, bool maybe)
 {
 	struct meta_data_on_disk_9 *buffer;
 
@@ -4727,7 +4743,7 @@ void drbd_md_sync(struct drbd_device *device)
 
 	del_timer(&device->md_sync_timer);
 	/* timer may be rearmed by drbd_md_mark_dirty() now. */
-	if (!test_and_clear_bit(MD_DIRTY, &device->flags))
+	if (!test_and_clear_bit(MD_DIRTY, &device->flags) && maybe)
 		return;
 
 	/* We use here D_FAILED and not D_ATTACHING because we try to write
@@ -4744,6 +4760,16 @@ void drbd_md_sync(struct drbd_device *device)
 	drbd_md_put_buffer(device);
 out:
 	put_ldev(device);
+}
+
+void drbd_md_sync(struct drbd_device *device)
+{
+	__drbd_md_sync(device, false);
+}
+
+void drbd_md_sync_if_dirty(struct drbd_device *device)
+{
+	__drbd_md_sync(device, true);
 }
 
 static int check_activity_log_stripe_size(struct drbd_device *device,
@@ -5133,13 +5159,6 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		if (node_id == device->ldev->md.node_id)
 			continue;
-#ifdef _WIN32 // DW-837
-		if (peer_md[node_id].bitmap_index == -1) 
-		{
-			/* Skip bitmap indexes which are not assigned to a peer. */
-			continue;
-		}			
-#endif
 		bm_uuid = peer_md[node_id].bitmap_uuid;
 		if (bm_uuid)
 			continue;
@@ -5225,7 +5244,16 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1030: Do not send newly created uuid to outdated node, if I'm primary.
+			// Resync will be started when outdated node reconnects since it has old uuid.
+		{
+			if (peer_device->disk_state[NOW] != D_OUTDATED || device->resource->role[NOW] != R_PRIMARY)
+				drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
+		}
+#else
 			drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
+#endif
 	}
 }
 
@@ -5280,6 +5308,10 @@ static void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
 void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 val, u64 weak_nodes) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-977
+	struct drbd_peer_device *peer_uuid_sent = peer_device;
+#endif
 	u64 dagtag = peer_device->connection->last_dagtag_sector;
 	u64 got_new_bitmap_uuid = 0;
 	bool set_current = true;
@@ -5298,9 +5330,17 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 		if (device->disk_state[NOW] == D_UP_TO_DATE)
 			got_new_bitmap_uuid = rotate_current_into_bitmap(device, weak_nodes, dagtag);
 		__drbd_uuid_set_current(device, val);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-837: Apply updated current uuid to meta disk.
+		drbd_md_mark_dirty(device);
+#endif
 	}
-
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
+
+	if(set_current) {
+		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
+		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
+	}
 	drbd_propagate_uuids(device, got_new_bitmap_uuid);
 }
 
@@ -5535,11 +5575,24 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 		if (peer_md[node_id].bitmap_index == -1 && !(peer_md[node_id].flags & MDF_NODE_EXISTS))
 			continue;
 
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-978: Need to check if uuid has to be propagated even if bitmap_uuid is 0, it could be set -1 during sent, check the flag 'MDF_PEER_DIFF_CUR_UUID'.
+		if (peer_device->bitmap_uuids[node_id] == 0 && (peer_md[node_id].bitmap_uuid != 0 || (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))) {
+#else
 		if (peer_device->bitmap_uuids[node_id] == 0 && peer_md[node_id].bitmap_uuid != 0) {
+#endif
 			u64 peer_current_uuid = peer_device->current_uuid & ~UUID_PRIMARY;
 			int from_node_id;
 
 			if (peer_current_uuid == (drbd_current_uuid(device) & ~UUID_PRIMARY)) {
+
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-978, DW-979, DW-980
+				// bitmap_uuid was already '0', just clear_flag and drbd_propagate_uuids().
+				if((peer_md[node_id].bitmap_uuid == 0) && (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))
+					goto clear_flag;
+#endif
+				
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
 				peer_md[node_id].bitmap_uuid = 0;
 				if (node_id == peer_device->node_id)
@@ -5550,11 +5603,20 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 					drbd_info(device, "Clearing bitmap UUID for node %d\n",
 						  node_id);
 				drbd_md_mark_dirty(device);
+#ifdef _WIN32
+clear_flag:
+				// MODIFIED_BY_MANTECH DW-978: Clear the flag once we determine that uuid will be propagated.
+				peer_md[node_id].flags &= ~MDF_PEER_DIFF_CUR_UUID;
+#endif
 				write_bm = true;
 			}
 
 			from_node_id = find_node_id_by_bitmap_uuid(device, peer_current_uuid);
 			if (from_node_id != -1 && node_id != from_node_id &&
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-978: Copying bitmap here assumed that bitmap uuid wasn't 0, check bitmap uuid again since flag 'MDF_PEER_DIFF_CUR_UUID' is added.
+				peer_md[node_id].bitmap_uuid != 0 &&
+#endif
 			    dagtag_newer(peer_md[from_node_id].bitmap_dagtag,
 					 peer_md[node_id].bitmap_dagtag)) {
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
@@ -5567,6 +5629,10 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 					drbd_info(device, "Node %d synced up to node %d.\n",
 						  node_id, from_node_id);
 				drbd_md_mark_dirty(device);
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-978: Clear the flag once we determine that uuid will be propagated.
+				peer_md[node_id].flags &= ~MDF_PEER_DIFF_CUR_UUID;
+#endif
 				filled = true;
 			}
 		}
@@ -5700,6 +5766,9 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	D_ASSERT(device, current == device->resource->worker.task);
 #ifdef _WIN32
     bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+	if(!bm_io_work) {
+		return;
+	}
 #else
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO);
 #endif

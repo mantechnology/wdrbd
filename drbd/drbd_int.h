@@ -1080,7 +1080,7 @@ enum {
 				 * so shrink_page_list() would not recurse into,
 				 * and potentially deadlock on, this drbd worker.
 				 */
-	NEGOTIATION_RESULT_TOCHED,
+	NEGOTIATION_RESULT_TOUCHED,
 	TWOPC_ABORT_LOCAL,
 	DEVICE_WORK_PENDING,	/* tell worker that some device has pending work */
 	PEER_DEVICE_WORK_PENDING,/* tell worker that some peer_device has pending work */
@@ -1404,7 +1404,10 @@ struct drbd_peer_device {
 	unsigned int peer_seq;
 	spinlock_t peer_seq_lock;
 	unsigned int max_bio_size;
-	sector_t max_size;  /* maximum disk size allowed by peer */
+	uint64_t d_size;  /* size of disk */
+	uint64_t u_size;  /* user requested size */
+	uint64_t c_size;  /* current exported size */
+	uint64_t max_size;
 	int bitmap_index;
 	int node_id;
 #ifdef _WIN32
@@ -1875,6 +1878,7 @@ extern void drbd_md_set_sector_offsets(struct drbd_device *device,
 				       struct drbd_backing_dev *bdev);
 extern void drbd_md_write(struct drbd_device *device, void *buffer);
 extern void drbd_md_sync(struct drbd_device *device);
+extern void drbd_md_sync_if_dirty(struct drbd_device *device);
 extern int  drbd_md_read(struct drbd_device *device, struct drbd_backing_dev *bdev);
 extern void drbd_uuid_received_new_current(struct drbd_peer_device *, u64 , u64) __must_hold(local);
 extern void drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
@@ -2442,30 +2446,34 @@ extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
 #else
 extern void queued_twopc_timer_fn(unsigned long data);
 #endif
+extern bool drbd_have_local_disk(struct drbd_resource *resource);
 
-
-static inline sector_t drbd_get_capacity(struct block_device *bdev)
+static __inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
 #ifdef _WIN32
-    if (bdev && bdev->d_size)
-    {
-        return bdev->d_size >> 9;
-    }
+	if (!bdev) {
+		WDRBD_WARN("Null argument\n");
+		return 0;
+	}
 
-    if (!bdev->bd_disk || !bdev->bd_disk->pDeviceExtension)
-    {
-        WDRBD_WARN("Bad argument\n");
-        return 0;
-    }
+	if (bdev->d_size) {
+		return bdev->d_size >> 9;
+	}
 
-    if (1 < KeGetCurrentIrql())
-    {
-        WDRBD_ERROR("Failed to get size. higher irql problem\n");
-        return 0;
-    }
+	if (bdev->bd_contains) {	// not real device
+		bdev = bdev->bd_contains;
+		if (bdev->d_size) {
+			return bdev->d_size >> 9;
+		}
+	}
 
-    bdev->d_size = get_targetdev_volsize(bdev->bd_disk->pDeviceExtension);
-    return bdev->d_size >> 9;
+	// Maybe... need to recalculate volume size
+	PVOLUME_EXTENSION pvext = (bdev->bd_disk) ? bdev->bd_disk->pDeviceExtension : NULL;
+	if (!pvext && (KeGetCurrentIrql() < 2)) {
+		bdev->d_size = get_targetdev_volsize(pvext);	// real size
+	}
+
+	return bdev->d_size >> 9;
 #else
 	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
 	return bdev ? i_size_read(bdev->bd_inode) >> 9 : 0;
