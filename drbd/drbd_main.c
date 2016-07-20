@@ -3208,6 +3208,7 @@ void drbd_destroy_device(struct kref *kref)
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
+	kfree2(device->this_bdev->bd_contains);
 	kfree2(device->this_bdev);
 	device->vdisk->pDeviceExtension->dev = NULL; 
 #else
