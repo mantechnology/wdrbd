@@ -2601,11 +2601,16 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 {
 	if (ldev == NULL)
 		return;
-#ifndef _WIN32
+#ifdef _WIN32
+	if (ldev->md_bdev) {
+		// Unlink not to be referred when removing meta volume
+		struct block_device * bd = ldev->md_bdev;
+		bd->bd_disk->private_data = NULL;
+	}
+#else
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
-#endif
 	close_backing_dev(device, ldev->backing_bdev, true);
-
+#endif
 	kfree(ldev->disk_conf);
 	kfree(ldev);
 }
