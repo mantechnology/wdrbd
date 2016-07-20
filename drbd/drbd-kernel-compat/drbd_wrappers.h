@@ -261,16 +261,12 @@ static inline struct block_device *blkdev_get_by_path(const char *path,
 #endif
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 {
-#ifdef _WIN32
-	kfree(bdev);
-#else
 	/* blkdev_put != close_bdev_exclusive, in general, so this is obviously
 	 * not correct, and there should be some if (mode & FMODE_EXCL) ...
 	 * But this is the only way it is used in DRBD,
 	 * and for <= 2.6.27, there is no FMODE_EXCL anyways. */
 	close_bdev_exclusive(bdev, mode);
 
-#endif
 	/* blkdev_put seems to not have useful return values,
 	 * close_bdev_exclusive is void. */
 	return 0;
