@@ -18,6 +18,9 @@ NTAPI CompletionRoutine(
 {
 	ASSERT(CompletionEvent);
 	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
+	if(!NT_SUCCESS(Irp->IoStatus.Status)) {
+		WDRBD_INFO("socket error: %s\n",GetSockErrorString(Irp->IoStatus.Status));
+	}
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
