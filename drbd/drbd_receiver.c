@@ -4153,7 +4153,7 @@ static void various_states_to_goodness(struct drbd_device *device,
 	enum drbd_repl_state peer_last_repl_state = peer_device->last_repl_state;
 	int syncReason = 0;
 
-	if (*hg != 0 || drbd_bm_total_weight(peer_device) == 0)
+	if (*hg != 0 || (drbd_bm_total_weight(peer_device) == 0 && peer_device->dirty_bits == 0))
 		return;
 
 	if (disk_state == D_NEGOTIATING)
