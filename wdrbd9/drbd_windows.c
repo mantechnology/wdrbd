@@ -1514,7 +1514,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 
 #ifndef _WIN32_SEND_BUFFING
-	WDRBD_INFO("=============================== CloseSocket\\n");
+	
 	status = CloseSocket(sock->sk); 
 	if (!NT_SUCCESS(status)) 
 	{
@@ -1541,7 +1541,7 @@ void del_gendisk(struct gendisk *disk)
 		}
 		kfree(bab);
 	}
-	WDRBD_INFO("=============================== CloseSocket\\n");
+	
 	status = CloseSocket(sock->sk);
 	if (!NT_SUCCESS(status)) {
 		return;
