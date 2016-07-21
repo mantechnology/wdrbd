@@ -1514,6 +1514,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 
 #ifndef _WIN32_SEND_BUFFING
+	
 	status = CloseSocket(sock->sk); 
 	if (!NT_SUCCESS(status)) 
 	{
@@ -1540,7 +1541,7 @@ void del_gendisk(struct gendisk *disk)
 		}
 		kfree(bab);
 	}
-
+	
 	status = CloseSocket(sock->sk);
 	if (!NT_SUCCESS(status)) {
 		return;
