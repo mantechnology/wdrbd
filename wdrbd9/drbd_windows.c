@@ -2212,7 +2212,18 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	}
 
 	if (!pvext->dev) {
-		pvext->dev = create_drbd_block_device(pvext);
+
+		struct drbd_device * device = minor_to_device(pvext->VolIndex);
+		if (device && device->this_bdev) {
+			// link and some values are reassigned
+			pvext->dev = device->this_bdev;
+			device->vdisk->pDeviceExtension = pvext;
+			device->rq_queue->backing_dev_info.pvext = pvext;
+			pvext->dev->bd_contains->d_size = get_targetdev_volsize(pvext);
+		}
+		else {
+			pvext->dev = create_drbd_block_device(pvext);
+		}
 	}
 }
 

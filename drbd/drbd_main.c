@@ -3470,24 +3470,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     }
 
     rcu_read_unlock();
-#if 0   // to escape shutdown mutex hang.
-    list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
-    {
-        PVOLUME_EXTENSION VolExt;
-        VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-		// required to convert drbd_conf with drbd_connection. 
-		extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
-        
-		int ret = drbd_adm_down_from_engine(device_list_p->device->resource);
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("failed. ret=%d\n", ret);
-            // error ignored.
-        }
-        
-        //drbdFreeDev(VolExt);  // required to debug for free VolExt
-    }
-#endif
+
     list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
     {
         list_del(&device_list_p->list);
