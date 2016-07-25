@@ -3209,6 +3209,14 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 #endif
 			if (t)
 				break;
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1073: The condition evaluated to false after the timeout elapsed, stop waiting for remote state change.
+			else
+			{
+				__clear_remote_state_change(resource);
+				twopc_end_nested(resource, P_TWOPC_NO);
+			}
+#endif			
 			if (when_done_lock(resource, irq_flags)) {
 				drbd_info(resource, "Two-phase commit: "
 					  "not woken up in time\n");
