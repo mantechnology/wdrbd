@@ -617,6 +617,7 @@ DWORD MVOL_MountVolume(char drive_letter)
     char            letter[] = "\\\\.\\ :";
     DWORD			retVal = ERROR_SUCCESS;
     DWORD           dwReturned = 0;
+	char			MsgBuff[MAX_PATH] = { 0, };
     BOOL            ok = FALSE;
 
     letter[4] = drive_letter;
@@ -633,7 +634,7 @@ DWORD MVOL_MountVolume(char drive_letter)
     }
 
     ok = DeviceIoControl(hDrive, IOCTL_MVOL_MOUNT_VOLUME,
-        NULL, 0, NULL, 0, &dwReturned, NULL);
+        NULL, 0, MsgBuff, MAX_PATH, &dwReturned, NULL);
     if (!ok)
     {
         retVal = GetLastError();
@@ -642,6 +643,13 @@ DWORD MVOL_MountVolume(char drive_letter)
         goto out;
     }
 
+	if (dwReturned)
+	{
+		fprintf(stderr, MsgBuff);
+		retVal = 1;
+		goto out;
+	}
+	
     retVal = ERROR_SUCCESS;
 out:
     if (INVALID_HANDLE_VALUE != hDrive)

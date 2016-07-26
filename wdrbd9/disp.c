@@ -744,11 +744,12 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
         case IOCTL_MVOL_MOUNT_VOLUME:
         {
+			ULONG size = 0;
             WDRBD_INFO("IOCTL_MVOL_MOUNT_VOLUME. DeviceObject(0x%p) VolumeExtension(0x%p)\n", DeviceObject, VolumeExtension);
-
-            status = IOCTL_MountVolume(DeviceObject, Irp);
-            WDRBD_TRACE("IOCTL_MVOL_MOUNT_VOLUME. status(0x%x)\n", status);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+			
+            status = IOCTL_MountVolume(DeviceObject, Irp, &size);
+            WDRBD_TRACE("IOCTL_MVOL_MOUNT_VOLUME. status(0x%x) size(%d)\n", status, size);
+            MVOL_IOCOMPLETE_REQ(Irp, status, size);
         }
 		case IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR: 
 		{

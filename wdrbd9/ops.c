@@ -21,6 +21,7 @@
 #include "drbd_windows.h"
 #include "disp.h"
 #include "proto.h"
+#include "drbd_int.h"
 
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
@@ -395,45 +396,41 @@ IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 }
 
 NTSTATUS
-IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 {
-    ULONG inlen;
-    NTSTATUS status = STATUS_SUCCESS;
-    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
-
     if (DeviceObject == mvolRootDeviceObject)
     {
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
+	NTSTATUS status = STATUS_SUCCESS;
+    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
     PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
+	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	PCHAR pOutBuffer = (PCHAR)Irp->AssociatedIrp.SystemBuffer;
 
     COUNT_LOCK(pvext);
 
     if (!pvext->Active)
     {
-        WDRBD_ERROR("%wZ: volume is not dismounted\n", &pvext->MountPoint);
+    	sprintf(pOutBuffer, "%wZ volume is not dismounted", &pvext->MountPoint);
+		*ReturnLength = strlen(pOutBuffer);
+        WDRBD_ERROR("%s\n", pOutBuffer);
         status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
     }
 
-    int irp_count = atomic_read((atomic_t *)&pvext->IrpCount);
-    if (irp_count > 0)
+    if (pvext->WorkThreadInfo.Active && minor_to_device(pvext->VolIndex))
     {
-        status = STATUS_DEVICE_BUSY;
-        mvolLogError(pvext->DeviceObject, 235, MSG_DEVICE_BUSY, status);
-		WDRBD_ERROR("%wZ: volume is busy. irp_count(%d)\n", &pvext->MountPoint, irp_count);
-        goto out;
-    }
-
-    if (pvext->WorkThreadInfo.Active)
-    {
-		WDRBD_ERROR("%wZ: volume is attached by wdrbd, so it's impossible to access\n", &pvext->MountPoint);
-        status = STATUS_VOLUME_DISMOUNTED;
+    	sprintf(pOutBuffer, "%wZ volume is handling by drbd. Failed to mount", &pvext->MountPoint);
+		*ReturnLength = strlen(pOutBuffer);
+		WDRBD_ERROR("%s\n", pOutBuffer);
+        //status = STATUS_VOLUME_DISMOUNTED;
         goto out;
     }
 
     pvext->Active = FALSE;
+	*ReturnLength = 0;
 
 out:
     COUNT_UNLOCK(pvext);

@@ -98,7 +98,7 @@ IOCTL_VolumeWriteOff( PDEVICE_OBJECT DeviceObject, PIRP Irp, BOOLEAN WriteEnable
 NTSTATUS
 IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength );
 NTSTATUS
-IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength);
 NTSTATUS
 IOCTL_SetSimulDiskIoError( PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS
