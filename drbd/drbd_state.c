@@ -452,6 +452,8 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	for_each_connection(connection, resource) {
 		connection->cstate[NOW] = connection->cstate[NEW];
 		connection->peer_role[NOW] = connection->peer_role[NEW];
+
+		wake_up(&connection->ping_wait);
 	}
 
 #ifdef _WIN32
@@ -487,7 +489,12 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 			clear_bit(__NEW_CUR_UUID, &device->flags);
 			set_bit(NEW_CUR_UUID, &device->flags);
 		}
+
+		wake_up(&device->al_wait);
+		wake_up(&device->misc_wait);
 	}
+
+	wake_up(&resource->state_wait);
 out:
 #ifdef _WIN32 
 	// __begin_state_change aquire lock at the beginning
@@ -1903,10 +1910,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 		}
 
-		wake_up(&device->al_wait);
-		wake_up(&device->misc_wait);
-		wake_up(&device->resource->state_wait);
-
 		for_each_peer_device(peer_device, device) {
 			enum drbd_repl_state *repl_state = peer_device->repl_state;
 			enum drbd_disk_state *peer_disk_state = peer_device->disk_state;
@@ -2108,8 +2111,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 	for_each_connection(connection, resource) {
 		enum drbd_conn_state *cstate = connection->cstate;
 		enum drbd_role *peer_role = connection->peer_role;
-
-		wake_up(&connection->ping_wait);
 
 		/* Receiver should clean up itself */
 		if (cstate[OLD] != C_DISCONNECTING && cstate[NEW] == C_DISCONNECTING)
