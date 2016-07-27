@@ -855,6 +855,15 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 			p->resync_susp_other_c[NEW] = false;
 			if (r == L_PAUSED_SYNC_T && !resync_suspended(p, NEW)) {
 				p->repl_state[NEW] = L_SYNC_TARGET;
+#ifdef _WIN32				
+				if (device->disk_state[NEW] != D_INCONSISTENT)
+				{
+					// MODIFIED_BY_MANTECH DW-1075 
+					// Min/Max disk state of the SyncTarget is D_INCONSISTENT.
+					// So, change disk_state to D_INCONSISTENT.
+					device->disk_state[NEW] = D_INCONSISTENT;
+				}
+#endif
 				return;
 			}
 		}
