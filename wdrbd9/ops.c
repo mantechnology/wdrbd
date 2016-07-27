@@ -437,6 +437,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     }
 
     pvext->Active = FALSE;
+	mvolTerminateThread(&pvext->WorkThreadInfo);
 
 out:
     COUNT_UNLOCK(pvext);
