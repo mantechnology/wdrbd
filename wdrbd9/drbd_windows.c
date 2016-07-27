@@ -1321,25 +1321,6 @@ void del_timer(struct timer_list *t)
     t->expires = 0;
 }
 
-int del_timer_sync(struct timer_list *t)
-{
-#ifdef _WIN32
-    del_timer(t);
-    return 0;
-#ifndef _WIN32
-	// from linux kernel 2.6.24
-  	for (;;) {
-		int ret = try_to_del_timer_sync(timer);
-		if (ret >= 0)
-			return ret;
-		cpu_relax();
-	}
-#endif
-#else
-	KeCancelTimer(&t->ktimer);
-#endif
-}
-
 #ifdef _WIN32
 /**
  * timer_pending - is a timer pending?
@@ -1355,6 +1336,27 @@ static __inline int timer_pending(const struct timer_list * timer)
 {
     return timer->ktimer.Header.Inserted;
 }
+
+int del_timer_sync(struct timer_list *t)
+{
+#ifdef _WIN32		
+	bool pending = 0;
+	pending = timer_pending(t);
+	
+	del_timer(t);
+
+	return pending;
+#else
+	// from linux kernel 2.6.24
+	for (;;) {
+		int ret = try_to_del_timer_sync(timer);
+		if (ret >= 0)
+			return ret;
+		cpu_relax();
+	}
+#endif
+}
+
 
 static int
 __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
@@ -1512,6 +1514,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 
 #ifndef _WIN32_SEND_BUFFING
+	
 	status = CloseSocket(sock->sk); 
 	if (!NT_SUCCESS(status)) 
 	{
@@ -1538,7 +1541,7 @@ void del_gendisk(struct gendisk *disk)
 		}
 		kfree(bab);
 	}
-
+	
 	status = CloseSocket(sock->sk);
 	if (!NT_SUCCESS(status)) {
 		return;

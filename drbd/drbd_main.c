@@ -3208,6 +3208,7 @@ void drbd_destroy_device(struct kref *kref)
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 #ifdef _WIN32
+	kfree2(device->this_bdev->bd_contains);
 	kfree2(device->this_bdev);
 	device->vdisk->pDeviceExtension->dev = NULL; 
 #else
@@ -4496,13 +4497,6 @@ void drbd_put_device(struct drbd_device *device)
 		refs++;
 
 	kref_debug_sub(&device->kref_debug, refs, 1);
-#ifdef _WIN32 // DW-1057
-	if(device->kref.refcount > refs)
-	{
-		drbd_warn(device, "FIXME!!! device->kref.refcount (%d) refs (%d)\n", device->kref.refcount, refs);
-		device->kref.refcount = refs;
-	}
-#endif
 	kref_sub(&device->kref, refs, drbd_destroy_device);
 }
 
@@ -5217,7 +5211,7 @@ u64 drbd_weak_nodes_device(struct drbd_device *device)
 }
 
 
-static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __must_hold(local)
+static void __drbd_uuid_new_current(struct drbd_device *device, bool forced, bool send) __must_hold(local)
 {
 	struct drbd_peer_device *peer_device;
 	u64 got_new_bitmap_uuid, weak_nodes, val;
@@ -5241,19 +5235,12 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 
 	/* get it to stable storage _now_ */
 	drbd_md_sync(device);
+	if (!send)
+		return;
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED)
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1030: Do not send newly created uuid to outdated node, if I'm primary.
-			// Resync will be started when outdated node reconnects since it has old uuid.
-		{
-			if (peer_device->disk_state[NOW] != D_OUTDATED || device->resource->role[NOW] != R_PRIMARY)
-				drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
-		}
-#else
 			drbd_send_uuids(peer_device, forced ? 0 : UUID_FLAG_NEW_DATAGEN, weak_nodes);
-#endif
 	}
 }
 
@@ -5268,7 +5255,7 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced) __m
 void drbd_uuid_new_current(struct drbd_device *device, bool forced)
 {
 	if (get_ldev_if_state(device, D_UP_TO_DATE)) {
-		__drbd_uuid_new_current(device, forced);
+		__drbd_uuid_new_current(device, forced, true);
 		put_ldev(device);
 	} else {
 		struct drbd_peer_device *peer_device;
@@ -5284,6 +5271,14 @@ void drbd_uuid_new_current(struct drbd_device *device, bool forced)
 			drbd_send_current_uuid(peer_device, current_uuid, weak_nodes);
 			peer_device->current_uuid = current_uuid; /* In case resync finishes soon */
 		}
+	}
+}
+
+void drbd_uuid_new_current_by_user(struct drbd_device *device)
+{
+	if (get_ldev(device)) {
+		__drbd_uuid_new_current(device, false, false);
+		put_ldev(device);
 	}
 }
 

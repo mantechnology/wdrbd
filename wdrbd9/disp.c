@@ -744,12 +744,23 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
         case IOCTL_MVOL_MOUNT_VOLUME:
         {
-            WDRBD_INFO("IOCTL_MVOL_MOUNT_VOLUME. DeviceObject(0x%p) VolumeExtension(0x%p)\n", DeviceObject, VolumeExtension);
+			ULONG size = 0;
 
-            status = IOCTL_MountVolume(DeviceObject, Irp);
-            WDRBD_TRACE("IOCTL_MVOL_MOUNT_VOLUME. status(0x%x)\n", status);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+            status = IOCTL_MountVolume(DeviceObject, Irp, &size);
+			if (!NT_SUCCESS(status))
+			{
+				WDRBD_WARN("IOCTL_MVOL_MOUNT_VOLUME. %wZ Volume fail. status(0x%x)\n",
+					&VolumeExtension->MountPoint, status);
+			}
+			else if (!size)
+			{	// ok
+				WDRBD_INFO("IOCTL_MVOL_MOUNT_VOLUME. %wZ Volume is mounted\n",
+					&VolumeExtension->MountPoint);
+			}
+
+			MVOL_IOCOMPLETE_REQ(Irp, status, size);
         }
+
 		case IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR: 
 		{
 			status = IOCTL_SetSimulDiskIoError(DeviceObject, Irp); // Simulate Disk I/O Error IOCTL Handler

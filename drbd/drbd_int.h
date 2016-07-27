@@ -151,13 +151,13 @@ struct drbd_connection;
         const struct drbd_device *__d;				\
         const struct drbd_connection *__c;			\
         const struct drbd_resource *__r;			\
-        const char *__cn;					\
+        int __cn;					\
         /*rcu_read_lock();		_WIN32 // DW-	*/		\
         __d = (peer_device)->device;				\
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
-        __cn = rcu_dereference(__c->transport.net_conf)->name;	\
-        printk(level "drbd %s/%u drbd%u %s, ds(%s), rs(%s), f(0x%x): " fmt,		\
+        __cn = __c->peer_node_id;	\
+        printk(level "drbd %s/%u drbd%u node-id:%d, pdsk(%s), pr(%s), f(0x%x): " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32 // DW-	*/		\
     } while (0)
@@ -168,8 +168,8 @@ struct drbd_connection;
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32 // DW- */ \
-        printk(level "drbd %s %s, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
-        rcu_dereference((connection)->transport.net_conf)->name, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
+        printk(level "drbd %s node-id:%d, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
+        (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)
 
@@ -1885,6 +1885,7 @@ extern void drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) 
 extern void _drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_current(struct drbd_device *device, u64 val) __must_hold(local);
 extern void drbd_uuid_new_current(struct drbd_device *device, bool forced);
+extern void drbd_uuid_new_current_by_user(struct drbd_device *device);
 extern void _drbd_uuid_push_history(struct drbd_device *device, u64 val) __must_hold(local);
 extern u64 _drbd_uuid_pull_history(struct drbd_peer_device *peer_device) __must_hold(local);
 extern void __drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);

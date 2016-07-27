@@ -2601,11 +2601,16 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 {
 	if (ldev == NULL)
 		return;
-#ifndef _WIN32
+#ifdef _WIN32
+	if (ldev->md_bdev) {
+		// Unlink not to be referred when removing meta volume
+		struct block_device * bd = ldev->md_bdev;
+		bd->bd_disk->private_data = NULL;
+	}
+#else
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
-#endif
 	close_backing_dev(device, ldev->backing_bdev, true);
-
+#endif
 	kfree(ldev->disk_conf);
 	kfree(ldev);
 }
@@ -5564,7 +5569,23 @@ static void peer_device_to_statistics(struct peer_device_statistics *s,
 	s->peer_dev_pending = atomic_read(&peer_device->ap_pending_cnt) +
 			      atomic_read(&peer_device->rs_pending_cnt);
 	s->peer_dev_unacked = atomic_read(&peer_device->unacked_cnt);
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-953
+	if (peer_device->repl_state[NOW] == L_VERIFY_S)
+	{
+		s->peer_dev_out_of_sync = drbd_bm_bits(device) - BM_SECT_TO_BIT(peer_device->ov_position);
+	}
+	else if (peer_device->repl_state[NOW] == L_VERIFY_T)
+	{
+		s->peer_dev_out_of_sync = peer_device->ov_left << (BM_BLOCK_SHIFT - 9);
+	}
+	else
+	{
+		s->peer_dev_out_of_sync = drbd_bm_total_weight(peer_device) << (BM_BLOCK_SHIFT - 9);
+	}
+#else
 	s->peer_dev_out_of_sync = drbd_bm_total_weight(peer_device) << (BM_BLOCK_SHIFT - 9);
+#endif
 	s->peer_dev_resync_failed = peer_device->rs_failed << (BM_BLOCK_SHIFT - 9);
 	if (get_ldev(device)) {
 		struct drbd_md *md = &device->ldev->md;
@@ -5817,6 +5838,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 	enum drbd_ret_code retcode;
 	int err;
 	struct new_c_uuid_parms args;
+	u64 nodes = 0, diskfull = 0;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -5843,17 +5865,22 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 
 	/* this is "skip initial sync", assume to be clean */
 	for_each_peer_device(peer_device, device) {
-		if (args.clear_bm && should_skip_initial_sync(peer_device))
-			drbd_info(peer_device, "Preparing to skip initial sync\n");
-		else if (peer_device->repl_state[NOW] != L_OFF) {
+		if (args.clear_bm && should_skip_initial_sync(peer_device)) {
+			if (peer_device->disk_state[NOW] >= D_INCONSISTENT) {
+				drbd_info(peer_device, "Preparing to skip initial sync\n");
+				diskfull |= NODE_MASK(peer_device->node_id);
+			}
+			nodes |= NODE_MASK(peer_device->node_id);
+		} else if (peer_device->repl_state[NOW] != L_OFF) {
 			retcode = ERR_CONNECTED;
 			goto out_dec;
 		}
+
 	}
 
 	for_each_peer_device(peer_device, device)
 		drbd_uuid_set_bitmap(peer_device, 0); /* Rotate UI_BITMAP to History 1, etc... */
-	drbd_uuid_new_current(device, false); /* New current, previous to UI_BITMAP */
+	drbd_uuid_new_current_by_user(device); /* New current, previous to UI_BITMAP */
 
 	if (args.clear_bm) {
 		unsigned long irq_flags;
@@ -5865,8 +5892,9 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 			retcode = ERR_IO_MD_DISK;
 		}
 		for_each_peer_device(peer_device, device) {
-			if (should_skip_initial_sync(peer_device)) {
-				drbd_send_uuids(peer_device, UUID_FLAG_SKIP_INITIAL_SYNC, 0);
+			if (NODE_MASK(peer_device->node_id) & nodes) {
+				if (NODE_MASK(peer_device->node_id) & diskfull)
+					drbd_send_uuids(peer_device, UUID_FLAG_SKIP_INITIAL_SYNC, 0);
 				_drbd_uuid_set_bitmap(peer_device, 0);
 				drbd_print_uuids(peer_device, "cleared bitmap UUID");
 			}
@@ -5874,7 +5902,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 		__change_disk_state(device, D_UP_TO_DATE);
 		for_each_peer_device(peer_device, device) {
-			if (should_skip_initial_sync(peer_device))
+			if (NODE_MASK(peer_device->node_id) & diskfull)
 				__change_peer_disk_state(peer_device, D_UP_TO_DATE);
 		}
 		end_state_change(device->resource, &irq_flags);
