@@ -634,7 +634,7 @@ DWORD MVOL_MountVolume(char drive_letter)
     }
 
     ok = DeviceIoControl(hDrive, IOCTL_MVOL_MOUNT_VOLUME,
-        NULL, 0, MsgBuff, MAX_PATH, &dwReturned, NULL);
+		NULL, 0, MsgBuff, MAX_PATH, &dwReturned, NULL);
     if (!ok)
     {
         retVal = GetLastError();

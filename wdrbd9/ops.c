@@ -398,43 +398,58 @@ IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 NTSTATUS
 IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 {
-    if (DeviceObject == mvolRootDeviceObject)
-    {
-        return STATUS_INVALID_DEVICE_REQUEST;
-    }
+	if (DeviceObject == mvolRootDeviceObject)
+	{
+		return STATUS_INVALID_DEVICE_REQUEST;
+	}
+
+	if (!Irp->AssociatedIrp.SystemBuffer)
+	{
+		WDRBD_WARN("SystemBuffer is NULL. Maybe older drbdcon was used or other access was tried\n");
+		return STATUS_INVALID_PARAMETER;
+	}
 
 	NTSTATUS status = STATUS_SUCCESS;
-    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
-    PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
-	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	PCHAR pOutBuffer = (PCHAR)Irp->AssociatedIrp.SystemBuffer;
+	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
+	CHAR Message[128] = { 0, };
+	*ReturnLength = 0;
 
     COUNT_LOCK(pvext);
 
     if (!pvext->Active)
     {
-    	sprintf(pOutBuffer, "%wZ volume is not dismounted", &pvext->MountPoint);
-		*ReturnLength = strlen(pOutBuffer);
-        WDRBD_ERROR("%s\n", pOutBuffer);
-        status = STATUS_INVALID_DEVICE_REQUEST;
+    	sprintf(Message, "%wZ volume is not dismounted", &pvext->MountPoint);
+		*ReturnLength = strlen(Message);
+        WDRBD_ERROR("%s\n", Message);
+        //status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
     }
 
     if (pvext->WorkThreadInfo.Active && minor_to_device(pvext->VolIndex))
     {
-    	sprintf(pOutBuffer, "%wZ volume is handling by drbd. Failed to mount", &pvext->MountPoint);
-		*ReturnLength = strlen(pOutBuffer);
-		WDRBD_ERROR("%s\n", pOutBuffer);
+    	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
+			&pvext->MountPoint);
+		*ReturnLength = strlen(Message);
+		WDRBD_ERROR("%s\n", Message);
         //status = STATUS_VOLUME_DISMOUNTED;
         goto out;
     }
 
     pvext->Active = FALSE;
-	*ReturnLength = 0;
 
 out:
     COUNT_UNLOCK(pvext);
-        
+
+	if (*ReturnLength)
+	{
+		ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+		ULONG DecidedLength = ((*ReturnLength) >= outlen) ?
+			outlen - 1 : *ReturnLength;
+		memcpy((PCHAR)Irp->AssociatedIrp.SystemBuffer, Message, DecidedLength);
+		*((PCHAR)Irp->AssociatedIrp.SystemBuffer + DecidedLength) = '\0';
+	}
+
     return status;
 }
 
