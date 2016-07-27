@@ -47,6 +47,58 @@ usage()
 	exit(ERROR_INVALID_PARAMETER);
 }
 
+const TCHAR gDrbdRegistryPath[] = _T("System\\CurrentControlSet\\Services\\drbd\\volumes");
+
+static
+DWORD DeleteVolumeReg(TCHAR letter)
+{
+	HKEY hKey = NULL;
+	DWORD dwIndex = 0;
+	const int MAX_VALUE_NAME = 16;
+	const int MAX_VOLUME_GUID = 256;
+
+	TCHAR szSrcLetter[2] = { letter, 0 };
+	TCHAR szRegLetter[MAX_VALUE_NAME] = { 0, };
+	DWORD cbRegLetter = MAX_VALUE_NAME;
+	UCHAR volGuid[MAX_VOLUME_GUID] = { 0, };
+	DWORD cbVolGuid = MAX_VOLUME_GUID;
+
+	LONG lResult = ERROR_SUCCESS;
+
+	lResult = RegOpenKeyEx(HKEY_LOCAL_MACHINE, gDrbdRegistryPath, 0, KEY_ALL_ACCESS, &hKey);
+	if (ERROR_SUCCESS != lResult) {
+		if (lResult == ERROR_FILE_NOT_FOUND) {
+			fprintf(stderr, "Key not found\n");
+		}
+		else {
+			fprintf(stderr, "Error opening key\n");
+		}
+		return lResult;
+	}
+
+	while (ERROR_SUCCESS == RegEnumValue(hKey, dwIndex++, szRegLetter, &cbRegLetter,
+		NULL, NULL, (LPBYTE)volGuid, &cbVolGuid)) {
+
+		if (!_tcsicmp(szRegLetter, szSrcLetter)) {
+			lResult = RegDeleteValue(hKey, szRegLetter);
+			if (ERROR_SUCCESS != lResult) {
+				fprintf(stderr, "Error deleting value. code(0x%x)\n", lResult);
+			}
+			RegCloseKey(hKey);
+			return lResult;
+		}
+
+		memset(szRegLetter, 0, MAX_VALUE_NAME * sizeof(TCHAR));
+		memset(volGuid, 0, MAX_VOLUME_GUID * sizeof(UCHAR));
+		cbRegLetter = MAX_VALUE_NAME;
+		cbVolGuid = MAX_VOLUME_GUID;
+	}
+
+	RegCloseKey(hKey);
+
+	return lResult;
+}
+
 DWORD
 main(int argc, char* argv [])
 {
@@ -419,10 +471,14 @@ main(int argc, char* argv [])
         }
     }
 
-    if (MountFlag)
-    {
-        res = MVOL_MountVolume(Letter);
-    }
+	if (MountFlag) {
+		res = MVOL_MountVolume(Letter);
+		if (ERROR_SUCCESS == res) {
+			if (ERROR_SUCCESS == DeleteVolumeReg(Letter)) {
+				fprintf(stderr, "%c: is Mounted\n", Letter);
+			}
+		}
+	}
 
 	if (SimulDiskIoErrorFlag) {
 		res = MVOL_SimulDiskIoError(&sdie);
