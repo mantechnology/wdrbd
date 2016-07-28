@@ -1124,13 +1124,32 @@ DWORD del_registry_volume(char * letter)
      (ARGC)++; \
   })
 
-static void add_setup_options(char **argv, int *argcp)
+static bool is_valid_backend_option(const char* name, const struct context_def *context_def)
+{
+	const struct field_def *field;
+	/* options have a leading "--", while field names do not have that -> name + 2 */
+		
+	if (context_def == &wildcard_ctx)
+		return true;
+	
+	if (!context_def || strlen(name) <= 2)
+		return false;
+	
+	for (field = context_def->fields; field->name; field++) {
+		if (!strcmp(name + 2, field->name))
+			return true;
+	}
+	return false;
+}
+
+static void add_setup_options(char **argv, int *argcp, const struct context_def *context_def)
 {
 	struct d_name *b_opt;
 	int argc = *argcp;
 
 	STAILQ_FOREACH(b_opt, &backend_options, link) {
-		argv[NA(argc)] = b_opt->name;
+		if (is_valid_backend_option(b_opt->name, context_def))
+			argv[NA(argc)] = b_opt->name;
 	}
 	*argcp = argc;
 }
@@ -1200,7 +1219,7 @@ static int adm_attach(const struct cfg_ctx *ctx)
 			make_options(argv[NA(argc)], &ctx->vol->disk_options);
 		}
 	}
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, SLEEPS_LONG, ctx->res->name);
@@ -1272,7 +1291,7 @@ static int adm_resource(const struct cfg_ctx *ctx)
 		argv[NA(argc)] = "--set-defaults";
 	if (reset || do_new_resource)
 		make_options(argv[NA(argc)], &res->res_options);
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = NULL;
 
 	ex = m_system_ex(argv, SLEEPS_SHORT, res->name);
@@ -1297,7 +1316,7 @@ int adm_resize(const struct cfg_ctx *ctx)
 		opt = find_opt(&ctx->res->disk_options, "size");
 	if (opt)
 		argv[NA(argc)] = ssprintf("--%s=%s", opt->name, opt->value);
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	/* if this is not "resize", but "check-resize", be silent! */
@@ -1354,9 +1373,9 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 		argv[NA(argc)] = argument;
 #ifdef _WIN32 // DW-774
 	if (ctx->cmd->drbdsetup_ctx)
-		add_setup_options(argv, &argc);
+		add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 #else
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 #endif
 	argv[NA(argc)] = 0;
 
@@ -1389,7 +1408,7 @@ static void __adm_drbdsetup(const struct cfg_ctx *ctx, int flags, pid_t *pid, in
 			argv[NA(argc)] = ssprintf("%d", ctx->vol->device_minor);
 	}
 
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 
 	if (ctx->cmd == &invalidate_setup_cmd && ctx->conn)
 		argv[NA(argc)] = ssprintf("--sync-from-peer-node-id=%s", ctx->conn->peer->node_id);
@@ -1732,7 +1751,7 @@ int adm_peer_device(const struct cfg_ctx *ctx)
 		argv[NA(argc)] = "--set-defaults";
 
 	make_options(argv[NA(argc)], &peer_device->pd_options);
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, SLEEPS_SHORT, res->name);
@@ -1750,7 +1769,7 @@ static int adm_connect(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%s", res->name);
 	argv[NA(argc)] = ssprintf("%s", conn->peer->node_id);
 
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, SLEEPS_SHORT, res->name);
@@ -1779,7 +1798,7 @@ static int adm_new_peer(const struct cfg_ctx *ctx)
 	
 	make_options(argv[NA(argc)], &conn->net_options);
 
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, SLEEPS_SHORT, res->name);
@@ -1802,7 +1821,7 @@ static int adm_path(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf_addr(path->my_address);
 	argv[NA(argc)] = ssprintf_addr(path->connect_to);
 
-	add_setup_options(argv, &argc);
+	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
 	return m_system_ex(argv, SLEEPS_SHORT, res->name);

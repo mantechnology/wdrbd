@@ -810,12 +810,15 @@ struct context_def path_cmd_ctx = {
 	.fields = { { } },
 };
 
+#define CONNECT_CMD_OPTIONS                    \
+     { "tentative", FLAG(tentative) },            \
+     { "discard-my-data", FLAG(discard_my_data) }
+
 struct context_def connect_cmd_ctx = {
 	NLA_POLICY(connect_parms),
 	.nla_type = DRBD_NLA_CONNECT_PARMS,
 	.fields = {
-		{ "tentative", FLAG(tentative) },
-		{ "discard-my-data", FLAG(discard_my_data) },
+		CONNECT_CMD_OPTIONS,
 		{ } },
 };
 
@@ -920,6 +923,7 @@ struct context_def create_md_ctx = {
 		{ .name = "peer-max-bio-size", .argument_is_optional = false },
 		{ .name = "al-stripes", .argument_is_optional = false },
 		{ .name = "al-stripe-size-kB", .argument_is_optional = false },
+		{ .name = "force", .argument_is_optional = true },
 		{ } },
 };
 
@@ -927,6 +931,7 @@ struct context_def adjust_ctx = {
 	.fields = {
 		{ "do-disk", .ops = &fc_boolean, .u = { .b = { .def = true } } },
 		{ "do-net", .ops = &fc_boolean, .u = { .b = { .def = true } } },
+		CONNECT_CMD_OPTIONS,
 		{ } },
 };
 
@@ -978,4 +983,7 @@ struct context_def startup_options_ctx = {
 		{ "outdated-wfc-timeout", ADM_NUMERIC(OUTDATED_WFC_TIMEOUT) },
 		{ "wait-after-sb", .ops = &fc_boolean },
 		{ } },
+};
+
+struct context_def wildcard_ctx = {
 };
