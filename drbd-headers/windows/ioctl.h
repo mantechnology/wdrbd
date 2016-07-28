@@ -83,6 +83,20 @@ typedef struct _MVOL_SYNC_REQ
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
 
+typedef struct _WDRBD_VOLUME_ENTRY
+{
+	WCHAR		PhysicalDeviceName[MAXDEVICENAME];
+	WCHAR		MountPoint[MAXDEVICENAME];
+	WCHAR		VolumeGuid[MAXDEVICENAME];
+
+	ULONGLONG	Size;
+
+	UCHAR		VolIndex;
+	BOOLEAN		ExtensionActive;
+	BOOLEAN		ThreadActive;
+	BOOLEAN		ThreadExit;
+} WDRBD_VOLUME_ENTRY, *PWDRBD_VOLUME_ENTRY;
+
 #define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail
 #define SIMUL_DISK_IO_ERROR_TYPE1		1 // Local I/O Completed with Error
 #define SIMUL_DISK_IO_ERROR_TYPE2		2 // Peer Request I/O Completed with Error

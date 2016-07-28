@@ -28,42 +28,53 @@ extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 NTSTATUS
 IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 {
-	PIO_STACK_LOCATION			irpSp=IoGetCurrentIrpStackLocation(Irp);
-	PROOT_EXTENSION				RootExtension = mvolRootDeviceObject->DeviceExtension;
-	PVOLUME_EXTENSION			VolumeExtension = NULL;
-	PMVOL_VOLUME_INFO			pOutBuffer = NULL;
-	ULONG					outlen, count = 0;
-
-	count = RootExtension->Count;
-	if( count == 0 )
-		return STATUS_SUCCESS;
-
-	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( outlen < (count * sizeof(MVOL_VOLUME_INFO)) )
-	{
-		mvolLogError( mvolRootDeviceObject, 201,
-						MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
-		WDRBD_ERROR("buffer too small\n");
-		*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
-
-	pOutBuffer = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
+	*ReturnLength = 0;
+	NTSTATUS status = STATUS_SUCCESS;
+	PROOT_EXTENSION	prext = mvolRootDeviceObject->DeviceExtension;
 
 	MVOL_LOCK();
-	VolumeExtension = RootExtension->Head;
-	while (VolumeExtension != NULL)
+	ULONG count = prext->Count;
+	if (count == 0)
 	{
-		RtlCopyMemory(pOutBuffer->PhysicalDeviceName, VolumeExtension->PhysicalDeviceName,
-			MAXDEVICENAME * sizeof(WCHAR));
-		pOutBuffer->Active = VolumeExtension->Active;
-		pOutBuffer++;
-		VolumeExtension = VolumeExtension->Next;
+		goto out;
 	}
 
+	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	if (outlen < (count * sizeof(WDRBD_VOLUME_ENTRY)))
+	{
+		WDRBD_ERROR("buffer too small\n");
+		*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+		status = STATUS_BUFFER_TOO_SMALL;
+		goto out;
+	}
+
+	PWDRBD_VOLUME_ENTRY pventry = (PWDRBD_VOLUME_ENTRY)Irp->AssociatedIrp.SystemBuffer;
+	PVOLUME_EXTENSION pvext = prext->Head;
+	for ( ; pvext; pvext = pvext->Next, pventry++)
+	{
+		RtlZeroMemory(pventry, sizeof(WDRBD_VOLUME_ENTRY));
+
+		RtlCopyMemory(pventry->PhysicalDeviceName, pvext->PhysicalDeviceName, pvext->PhysicalDeviceNameLength);
+		RtlCopyMemory(pventry->MountPoint, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
+		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
+		pventry->ExtensionActive = pvext->Active;
+		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
+		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
+		if (pvext->dev && pvext->dev->bd_contains)
+		{
+			pventry->Size = pvext->dev->bd_contains->d_size;
+		}
+
+		//pventry->DrbdDevice = minor_to_device(pvext->VolIndex);
+	}
+
+	*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+out:
 	MVOL_UNLOCK();
-	*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-	return STATUS_SUCCESS;
+
+	return status;
 }
 
 NTSTATUS
