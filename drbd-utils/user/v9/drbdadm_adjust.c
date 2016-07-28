@@ -724,6 +724,111 @@ static struct d_volume *matching_volume(struct d_volume *conf_vol, struct volume
 	return NULL;
 }
 
+
+static void
+adjust_net(const struct cfg_ctx *ctx, struct d_resource* running, int can_do_proxy)
+{
+	struct connection *conn;
+	
+	if (running) {
+		for_each_connection(conn, &running->connections) {
+			struct connection *configured_conn;
+			
+			configured_conn = matching_conn(conn, &ctx->res->connections);
+			if (!configured_conn) {
+				struct cfg_ctx tmp_ctx = { .res = running, .conn = conn };
+				schedule_deferred_cmd(&del_peer_cmd, &tmp_ctx, CFG_NET_PREP_DOWN);	
+			}
+		}
+	}
+		for_each_connection(conn, &ctx->res->connections) {
+		struct connection *running_conn = NULL;
+		struct path *path;
+		const struct cfg_ctx tmp_ctx = { .res = ctx->res, .conn = conn };
+		
+			if (conn->ignore)
+				continue;
+		
+			if (running)
+				running_conn = matching_conn(conn, &running->connections);
+			if (!running_conn) {
+				schedule_deferred_cmd(&new_peer_cmd, &tmp_ctx, CFG_NET_PREP_UP);
+				schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
+				schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
+				schedule_peer_device_options(&tmp_ctx);
+		}
+		else {
+			struct context_def *oc = &show_net_options_ctx;
+			struct options *conf_o = &conn->net_options;
+			struct options *runn_o = &running_conn->net_options;
+			bool connect = false, new_path = false;
+			
+				if (running_conn->is_standalone)
+					connect = true;
+			
+				if (!opts_equal(oc, conf_o, runn_o)) {
+				if (!opt_equal(oc, "transport", conf_o, runn_o)) {
+					                     /* disconnect implicit by del-peer */
+					schedule_deferred_cmd(&del_peer_cmd, &tmp_ctx, CFG_NET_PREP_DOWN);
+					schedule_deferred_cmd(&new_peer_cmd, &tmp_ctx, CFG_NET_PREP_UP);
+					new_path = true;
+					connect = true;
+					schedule_peer_device_options(&tmp_ctx);
+				}
+				else {
+					del_opt(&tmp_ctx.conn->net_options, "transport");
+					schedule_deferred_cmd(&net_options_defaults_cmd, &tmp_ctx, CFG_NET);
+					
+				}
+			}
+			
+				if (new_path)
+					schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
+				else
+					connect |= adjust_paths(&tmp_ctx, running_conn);
+				if (connect)
+					schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
+				adjust_peer_devices(&tmp_ctx, conn, running_conn);
+		}
+		path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+		if (path->my_proxy && can_do_proxy)
+			proxy_reconf(&tmp_ctx, running_conn);
+	}
+}
+
+
+static void adjust_disk(const struct cfg_ctx *ctx, struct d_resource* running)
+{
+	struct d_volume *vol;
+	
+	     /* do we need to attach,
+	      * do we need to detach first,
+	      * or is this just some attribute change? */
+	for_each_volume(vol, &ctx->res->me->volumes) {
+		struct cfg_ctx tmp_ctx = { .res = ctx->res, .vol = vol };
+		if (vol->adj_detach || vol->adj_del_minor) {
+			struct d_volume *kern_vol = matching_volume(vol, &running->me->volumes);
+			struct cfg_ctx k_ctx = tmp_ctx;
+			if (kern_vol != NULL)
+				k_ctx.vol = kern_vol;
+			if (vol->adj_detach)
+				schedule_deferred_cmd(&detach_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
+			if (vol->adj_del_minor)
+				schedule_deferred_cmd(&del_minor_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
+		}
+		if (vol->adj_new_minor) {
+			schedule_deferred_cmd(&new_minor_cmd, &tmp_ctx, CFG_DISK_PREP_UP);
+			schedule_peer_device_options(&tmp_ctx);
+		}
+		if (vol->adj_attach)
+			schedule_deferred_cmd(&attach_cmd, &tmp_ctx, CFG_DISK);
+		if (vol->adj_disk_opts)
+			schedule_deferred_cmd(&disk_options_defaults_cmd, &tmp_ctx, CFG_DISK);
+		if (vol->adj_resize)
+			schedule_deferred_cmd(&resize_cmd, &tmp_ctx, CFG_DISK);
+	}
+}
+
 /*
  * CAUTION this modifies global static char * config_file!
  */
@@ -732,8 +837,6 @@ int adm_adjust(const struct cfg_ctx *ctx)
 	char* argv[20];
 	int pid, argc;
 	struct d_resource* running;
-	struct d_volume *vol;
-	struct connection *conn;
 	struct volumes empty = STAILQ_HEAD_INITIALIZER(empty);
 
 	/* necessary per resource actions */
@@ -785,6 +888,7 @@ int adm_adjust(const struct cfg_ctx *ctx)
 	 * settings from the config file without prior proxy-down, this won't
 	 * clean them from the proxy. */
 	if (running) {
+		struct connection *conn;
 		for_each_connection(conn, &running->connections) {
 			struct connection *configured_conn = NULL;
 			struct path *configured_path;
@@ -831,102 +935,12 @@ int adm_adjust(const struct cfg_ctx *ctx)
 		schedule_deferred_cmd(&new_resource_cmd, ctx, CFG_PREREQ);
 	}
 
-	if (running) {
-		for_each_connection(conn, &running->connections) {
-			struct connection *configured_conn;
-
-			configured_conn = matching_conn(conn, &ctx->res->connections);
-			if (!configured_conn) {
-				struct cfg_ctx tmp_ctx = { .res = running, .conn = conn };
-				schedule_deferred_cmd(&del_peer_cmd, &tmp_ctx, CFG_NET_PREP_DOWN);
-			}
-		}
-	}
-
-	for_each_connection(conn, &ctx->res->connections) {
-		struct connection *running_conn = NULL;
-		struct path *path;
-		const struct cfg_ctx tmp_ctx = { .res = ctx->res, .conn = conn };
-
-		if (conn->ignore)
-			continue;
-
-		if (running)
-			running_conn = matching_conn(conn, &running->connections);
-		if (!running_conn) {
-			schedule_deferred_cmd(&new_peer_cmd, &tmp_ctx, CFG_NET_PREP_UP);
-			schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
-			schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
-			schedule_peer_device_options(&tmp_ctx);
-		} else {
-			struct context_def *oc = &show_net_options_ctx;
-			struct options *conf_o = &conn->net_options;
-			struct options *runn_o = &running_conn->net_options;
-			bool connect = false, new_path = false;
-
-			if (running_conn->is_standalone)
-				connect = true;
-
-			if (!opts_equal(oc, conf_o, runn_o)) {
-				if (!opt_equal(oc, "transport", conf_o, runn_o)) {
-					/* disconnect implicit by del-peer */
-					schedule_deferred_cmd(&del_peer_cmd, &tmp_ctx, CFG_NET_PREP_DOWN);
-					schedule_deferred_cmd(&new_peer_cmd, &tmp_ctx, CFG_NET_PREP_UP);
-					new_path = true;
-					connect = true;
-					schedule_peer_device_options(&tmp_ctx);
-				} else {
-					del_opt(&tmp_ctx.conn->net_options, "transport");
-					schedule_deferred_cmd(&net_options_defaults_cmd, &tmp_ctx, CFG_NET);
-				}
-			}
-
-			if (new_path)
-				schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
-			else
-				connect |= adjust_paths(&tmp_ctx, running_conn);
-
-			if (connect)
-				schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
-
-			adjust_peer_devices(&tmp_ctx, conn, running_conn);
-		}
-
-		path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
-		if (path->my_proxy && can_do_proxy)
-			proxy_reconf(&tmp_ctx, running_conn);
-	}
-
+	adjust_net(ctx, running, can_do_proxy);
 
 	if (do_res_options)
 		schedule_deferred_cmd(&res_options_defaults_cmd, ctx, CFG_RESOURCE);
 
-	/* do we need to attach,
-	 * do we need to detach first,
-	 * or is this just some attribute change? */
-	for_each_volume(vol, &ctx->res->me->volumes) {
-		struct cfg_ctx tmp_ctx = { .res = ctx->res, .vol = vol };
-		if (vol->adj_detach || vol->adj_del_minor) {
-			struct d_volume *kern_vol = matching_volume(vol, &running->me->volumes);
-			struct cfg_ctx k_ctx = tmp_ctx;
-			if (kern_vol != NULL)
-				k_ctx.vol = kern_vol;
-			if (vol->adj_detach)
-				schedule_deferred_cmd(&detach_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
-			if (vol->adj_del_minor)
-				schedule_deferred_cmd(&del_minor_cmd, &k_ctx, CFG_DISK_PREP_DOWN);
-	        }
-		if (vol->adj_new_minor) {
-			schedule_deferred_cmd(&new_minor_cmd, &tmp_ctx, CFG_DISK_PREP_UP);
-			schedule_peer_device_options(&tmp_ctx);
-		}
-		if (vol->adj_attach)
-			schedule_deferred_cmd(&attach_cmd, &tmp_ctx, CFG_DISK);
-		if (vol->adj_disk_opts)
-			schedule_deferred_cmd(&disk_options_defaults_cmd, &tmp_ctx, CFG_DISK);
-		if (vol->adj_resize)
-			schedule_deferred_cmd(&resize_cmd, &tmp_ctx, CFG_DISK);
-	}
+	adjust_disk(ctx, running);
 
 	return 0;
 }
