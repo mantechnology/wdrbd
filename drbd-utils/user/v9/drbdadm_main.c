@@ -830,19 +830,14 @@ static int sh_resources_list(const struct cfg_ctx *ctx)
 static int sh_resources(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res;
-	int first = 1;
-
+	
 	for_each_resource(res, &config) {
 		if (res->ignore)
 			continue;
 		if (is_drbd_top != res->stacked)
 			continue;
-		printf(first ? "%s" : " %s", esc(res->name));
-		first = 0;
+		printf("%s\n", res->name);
 	}
-	if (!first)
-		printf("\n");
-
 	return 0;
 }
 
