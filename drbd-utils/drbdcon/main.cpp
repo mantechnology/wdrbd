@@ -10,12 +10,12 @@ usage()
 {
 	printf("usage: drbdcon cmds options \n\n"
 		"cmds:\n"
-		"   /proc/drbd \n"
-		"   /init_thread \n"
-		"   /close_thread \n"
-		"   /start_volume \n"
-		"   /stop_volume\n"
-		"   /get_volume_size \n"
+/*		"   /proc/drbd \n"*/
+/*		"   /init_thread \n"*/
+/*		"   /close_thread \n"*/
+/*		"   /start_volume \n"*/
+/*		"   /stop_volume\n"*/
+/*		"   /get_volume_size \n"*/
         "   /nagle_disable \n"
         "   /nagle_enable \n"
         "   /m [letter] : mount\n"
@@ -23,6 +23,7 @@ usage()
 		"   /get_log [ProviderName] \n"
 		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
+		"   /info\n"
 
 		"\n\n"
 
@@ -31,11 +32,11 @@ usage()
 		"\n\n"
 
 		"examples:\n"
-		"drbdcon /proc/drbd\n"
-		"drbdcon /status\n"
-		"drbdcon /s\n"
-		"drbdcon /letter F /start_volume \n"
-		"drbdcon /letter F /init_thread \n"
+/*		"drbdcon /proc/drbd\n"*/
+/*		"drbdcon /status\n"*/
+/*		"drbdcon /s\n"*/
+/*		"drbdcon /letter F /start_volume \n"*/
+/*		"drbdcon /letter F /init_thread \n"*/
         "drbdcon /nagle_disable r0 \n"
         "drbdcon /d F \n"
         "drbdcon /m F \n"
@@ -120,6 +121,8 @@ main(int argc, char* argv [])
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
 	char	*LoggingData = NULL;
+	char	VolumesInfoFlag = 0;
+	char	Verbose = 0;
 
     int     Force = 0;
 
@@ -301,6 +304,14 @@ main(int argc, char* argv [])
 			}
 			else
 				usage();
+		}
+		else if (!strcmp(argv[argIndex], "/info"))
+		{
+			VolumesInfoFlag++;
+		}
+		else if (!strcmp(argv[argIndex], "--verbose"))
+		{
+			Verbose++;
 		}
 		else
 		{
@@ -496,6 +507,17 @@ main(int argc, char* argv [])
 	if (WriteLog)
 	{
 		res = WriteEventLog((LPCSTR)ProviderName, (LPCSTR)LoggingData);
+	}
+
+	if (VolumesInfoFlag)
+	{
+		res = MVOL_GetVolumesInfo(Verbose);
+		if( res != ERROR_SUCCESS )
+		{
+			fprintf( stderr, "Failed MVOL_InitThread. Err=%u\n", res );
+		}
+
+		return res;
 	}
 
 	return res;
