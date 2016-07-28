@@ -3467,7 +3467,8 @@ int main(int argc, char **argv)
 				if (ctx.res->ignore && !is_dump) {
 					err("'%s' ignored, since this host (%s) is not mentioned with an 'on' keyword.\n",
 					    ctx.res->name, hostname);
-					/* rv = E_USAGE; rc in for scope and (re)set at beginning */
+					if (rv < E_USAGE)
+						rv = E_USAGE;
 					continue;
 				}
 				if (is_drbd_top != ctx.res->stacked && !is_dump) {
@@ -3475,7 +3476,8 @@ int main(int argc, char **argv)
 					    ctx.res->name,
 					    ctx.res->stacked ? "stacked" : "normal",
 					    is_drbd_top ? "stacked" : "normal");
-					/* rv = E_USAGE; rc in for scope and (re)set at beginning */
+					if (rv < E_USAGE)
+						rv = E_USAGE;
 					continue;
 				}
 				verify_ips(ctx.res);
@@ -3498,8 +3500,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* do we really have to bitor the exit code?
-	 * it is even only a Boolean value in this case! */
 	r = run_deferred_cmds();
 	if (r > rv)
 		rv = r;
