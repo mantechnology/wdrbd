@@ -90,6 +90,7 @@ typedef struct _WDRBD_VOLUME_ENTRY
 	WCHAR		VolumeGuid[MAXDEVICENAME];
 
 	ULONGLONG	Size;
+	ULONGLONG	AgreedSize;
 
 	UCHAR		VolIndex;
 	BOOLEAN		ExtensionActive;

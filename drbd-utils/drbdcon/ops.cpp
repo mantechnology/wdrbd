@@ -117,7 +117,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	if (verbose)
 	{
 		printf("=====================================================================================\n");
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit Size\n");
+		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
 		printf("=====================================================================================\n");
 	}
 	else
@@ -133,7 +133,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 
 		if (verbose)
 		{
-			printf("%ws, %3ws, %ws, %2d, %d, %d, %d, %llu\n",
+			printf("%ws, %3ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
 				pEntry->PhysicalDeviceName,
 				pEntry->MountPoint,
 				pEntry->VolumeGuid,
@@ -141,6 +141,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 				pEntry->ExtensionActive,
 				pEntry->ThreadActive,
 				pEntry->ThreadExit,
+				pEntry->AgreedSize,
 				pEntry->Size
 			);
 		}
@@ -152,7 +153,6 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 				pEntry->ExtensionActive
 			);
 		}
-		
 	}
 out:
 	if (INVALID_HANDLE_VALUE != handle)

@@ -62,12 +62,14 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 		pventry->VolIndex = (UCHAR)pvext->VolIndex;
 		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
 		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
-		if (pvext->dev && pvext->dev->bd_contains)
+		if (pvext->dev)
 		{
-			pventry->Size = pvext->dev->bd_contains->d_size;
+			pventry->AgreedSize = pvext->dev->d_size;
+			if (pvext->dev->bd_contains)
+			{
+				pventry->Size = pvext->dev->bd_contains->d_size;
+			}
 		}
-
-		//pventry->DrbdDevice = minor_to_device(pvext->VolIndex);
 	}
 
 	*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
