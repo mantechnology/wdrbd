@@ -6445,7 +6445,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				goto fail;
 		}
 		return 0;
-        }
+    }
 
 	peer_disk_state = peer_state.disk;
 	if (peer_state.disk == D_NEGOTIATING) {
@@ -6567,7 +6567,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		consider_resync |= (old_peer_state.conn == L_ESTABLISHED &&
 				    (peer_state.conn == L_STARTING_SYNC_S ||
 				     peer_state.conn == L_STARTING_SYNC_T));
-		
+
+#ifdef _WIN32 // DW-1093 MODIFIED_BY_MANTECH detour 2-primary SB
+		if( (peer_state.role == R_PRIMARY) && (device->resource->role[NOW] == R_PRIMARY) ) {
+			drbd_err(device, "2 primary is not allowed.\n");
+			goto fail;
+		}
+#endif
 		if (consider_resync) {
 			new_repl_state = drbd_sync_handshake(peer_device, peer_state.role, peer_disk_state);
 		} else if (old_peer_state.conn == L_ESTABLISHED &&
