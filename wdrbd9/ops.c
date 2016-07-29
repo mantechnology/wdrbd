@@ -21,48 +21,62 @@
 #include "drbd_windows.h"
 #include "disp.h"
 #include "proto.h"
+#include "drbd_int.h"
 
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
 NTSTATUS
 IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 {
-	PIO_STACK_LOCATION			irpSp=IoGetCurrentIrpStackLocation(Irp);
-	PROOT_EXTENSION				RootExtension = mvolRootDeviceObject->DeviceExtension;
-	PVOLUME_EXTENSION			VolumeExtension = NULL;
-	PMVOL_VOLUME_INFO			pOutBuffer = NULL;
-	ULONG					outlen, count = 0;
-
-	count = RootExtension->Count;
-	if( count == 0 )
-		return STATUS_SUCCESS;
-
-	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( outlen < (count * sizeof(MVOL_VOLUME_INFO)) )
-	{
-		mvolLogError( mvolRootDeviceObject, 201,
-						MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
-		WDRBD_ERROR("buffer too small\n");
-		*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
-
-	pOutBuffer = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
+	*ReturnLength = 0;
+	NTSTATUS status = STATUS_SUCCESS;
+	PROOT_EXTENSION	prext = mvolRootDeviceObject->DeviceExtension;
 
 	MVOL_LOCK();
-	VolumeExtension = RootExtension->Head;
-	while (VolumeExtension != NULL)
+	ULONG count = prext->Count;
+	if (count == 0)
 	{
-		RtlCopyMemory(pOutBuffer->PhysicalDeviceName, VolumeExtension->PhysicalDeviceName,
-			MAXDEVICENAME * sizeof(WCHAR));
-		pOutBuffer->Active = VolumeExtension->Active;
-		pOutBuffer++;
-		VolumeExtension = VolumeExtension->Next;
+		goto out;
 	}
 
+	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	if (outlen < (count * sizeof(WDRBD_VOLUME_ENTRY)))
+	{
+		WDRBD_ERROR("buffer too small\n");
+		*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+		status = STATUS_BUFFER_TOO_SMALL;
+		goto out;
+	}
+
+	PWDRBD_VOLUME_ENTRY pventry = (PWDRBD_VOLUME_ENTRY)Irp->AssociatedIrp.SystemBuffer;
+	PVOLUME_EXTENSION pvext = prext->Head;
+	for ( ; pvext; pvext = pvext->Next, pventry++)
+	{
+		RtlZeroMemory(pventry, sizeof(WDRBD_VOLUME_ENTRY));
+
+		RtlCopyMemory(pventry->PhysicalDeviceName, pvext->PhysicalDeviceName, pvext->PhysicalDeviceNameLength);
+		RtlCopyMemory(pventry->MountPoint, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
+		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
+		pventry->ExtensionActive = pvext->Active;
+		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
+		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
+		if (pvext->dev)
+		{
+			pventry->AgreedSize = pvext->dev->d_size;
+			if (pvext->dev->bd_contains)
+			{
+				pventry->Size = pvext->dev->bd_contains->d_size;
+			}
+		}
+	}
+
+	*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+out:
 	MVOL_UNLOCK();
-	*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-	return STATUS_SUCCESS;
+
+	return status;
 }
 
 NTSTATUS
@@ -395,49 +409,61 @@ IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 }
 
 NTSTATUS
-IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 {
-    ULONG inlen;
-    NTSTATUS status = STATUS_SUCCESS;
-    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	if (DeviceObject == mvolRootDeviceObject)
+	{
+		return STATUS_INVALID_DEVICE_REQUEST;
+	}
 
-    if (DeviceObject == mvolRootDeviceObject)
-    {
-        return STATUS_INVALID_DEVICE_REQUEST;
-    }
+	if (!Irp->AssociatedIrp.SystemBuffer)
+	{
+		WDRBD_WARN("SystemBuffer is NULL. Maybe older drbdcon was used or other access was tried\n");
+		return STATUS_INVALID_PARAMETER;
+	}
 
-    PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
+	NTSTATUS status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
+	CHAR Message[128] = { 0, };
+	*ReturnLength = 0;
 
     COUNT_LOCK(pvext);
 
     if (!pvext->Active)
     {
-        WDRBD_ERROR("%wZ: volume is not dismounted\n", &pvext->MountPoint);
-        status = STATUS_INVALID_DEVICE_REQUEST;
+    	sprintf(Message, "%wZ volume is not dismounted", &pvext->MountPoint);
+		*ReturnLength = strlen(Message);
+        WDRBD_ERROR("%s\n", Message);
+        //status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
     }
 
-    int irp_count = atomic_read((atomic_t *)&pvext->IrpCount);
-    if (irp_count > 0)
+    if (pvext->WorkThreadInfo.Active && minor_to_device(pvext->VolIndex))
     {
-        status = STATUS_DEVICE_BUSY;
-        mvolLogError(pvext->DeviceObject, 235, MSG_DEVICE_BUSY, status);
-		WDRBD_ERROR("%wZ: volume is busy. irp_count(%d)\n", &pvext->MountPoint, irp_count);
-        goto out;
-    }
-
-    if (pvext->WorkThreadInfo.Active)
-    {
-		WDRBD_ERROR("%wZ: volume is attached by wdrbd, so it's impossible to access\n", &pvext->MountPoint);
-        status = STATUS_VOLUME_DISMOUNTED;
+    	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
+			&pvext->MountPoint);
+		*ReturnLength = strlen(Message);
+		WDRBD_ERROR("%s\n", Message);
+        //status = STATUS_VOLUME_DISMOUNTED;
         goto out;
     }
 
     pvext->Active = FALSE;
+	mvolTerminateThread(&pvext->WorkThreadInfo);
 
 out:
     COUNT_UNLOCK(pvext);
-        
+
+	if (*ReturnLength)
+	{
+		ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+		ULONG DecidedLength = ((*ReturnLength) >= outlen) ?
+			outlen - 1 : *ReturnLength;
+		memcpy((PCHAR)Irp->AssociatedIrp.SystemBuffer, Message, DecidedLength);
+		*((PCHAR)Irp->AssociatedIrp.SystemBuffer + DecidedLength) = '\0';
+	}
+
     return status;
 }
 

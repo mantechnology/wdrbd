@@ -10,12 +10,12 @@ usage()
 {
 	printf("usage: drbdcon cmds options \n\n"
 		"cmds:\n"
-		"   /proc/drbd \n"
-		"   /init_thread \n"
-		"   /close_thread \n"
-		"   /start_volume \n"
-		"   /stop_volume\n"
-		"   /get_volume_size \n"
+/*		"   /proc/drbd \n"*/
+/*		"   /init_thread \n"*/
+/*		"   /close_thread \n"*/
+/*		"   /start_volume \n"*/
+/*		"   /stop_volume\n"*/
+/*		"   /get_volume_size \n"*/
         "   /nagle_disable \n"
         "   /nagle_enable \n"
         "   /m [letter] : mount\n"
@@ -23,6 +23,7 @@ usage()
 		"   /get_log [ProviderName] \n"
 		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
+		"   /info\n"
 
 		"\n\n"
 
@@ -31,11 +32,11 @@ usage()
 		"\n\n"
 
 		"examples:\n"
-		"drbdcon /proc/drbd\n"
-		"drbdcon /status\n"
-		"drbdcon /s\n"
-		"drbdcon /letter F /start_volume \n"
-		"drbdcon /letter F /init_thread \n"
+/*		"drbdcon /proc/drbd\n"*/
+/*		"drbdcon /status\n"*/
+/*		"drbdcon /s\n"*/
+/*		"drbdcon /letter F /start_volume \n"*/
+/*		"drbdcon /letter F /init_thread \n"*/
         "drbdcon /nagle_disable r0 \n"
         "drbdcon /d F \n"
         "drbdcon /m F \n"
@@ -45,6 +46,58 @@ usage()
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
+}
+
+const TCHAR gDrbdRegistryPath[] = _T("System\\CurrentControlSet\\Services\\drbd\\volumes");
+
+static
+DWORD DeleteVolumeReg(TCHAR letter)
+{
+	HKEY hKey = NULL;
+	DWORD dwIndex = 0;
+	const int MAX_VALUE_NAME = 16;
+	const int MAX_VOLUME_GUID = 256;
+
+	TCHAR szSrcLetter[2] = { letter, 0 };
+	TCHAR szRegLetter[MAX_VALUE_NAME] = { 0, };
+	DWORD cbRegLetter = MAX_VALUE_NAME;
+	UCHAR volGuid[MAX_VOLUME_GUID] = { 0, };
+	DWORD cbVolGuid = MAX_VOLUME_GUID;
+
+	LONG lResult = ERROR_SUCCESS;
+
+	lResult = RegOpenKeyEx(HKEY_LOCAL_MACHINE, gDrbdRegistryPath, 0, KEY_ALL_ACCESS, &hKey);
+	if (ERROR_SUCCESS != lResult) {
+		if (lResult == ERROR_FILE_NOT_FOUND) {
+			fprintf(stderr, "Key not found\n");
+		}
+		else {
+			fprintf(stderr, "Error opening key\n");
+		}
+		return lResult;
+	}
+
+	while (ERROR_SUCCESS == RegEnumValue(hKey, dwIndex++, szRegLetter, &cbRegLetter,
+		NULL, NULL, (LPBYTE)volGuid, &cbVolGuid)) {
+
+		if (!_tcsicmp(szRegLetter, szSrcLetter)) {
+			lResult = RegDeleteValue(hKey, szRegLetter);
+			if (ERROR_SUCCESS != lResult) {
+				fprintf(stderr, "Error deleting value. code(0x%x)\n", lResult);
+			}
+			RegCloseKey(hKey);
+			return lResult;
+		}
+
+		memset(szRegLetter, 0, MAX_VALUE_NAME * sizeof(TCHAR));
+		memset(volGuid, 0, MAX_VOLUME_GUID * sizeof(UCHAR));
+		cbRegLetter = MAX_VALUE_NAME;
+		cbVolGuid = MAX_VOLUME_GUID;
+	}
+
+	RegCloseKey(hKey);
+
+	return lResult;
 }
 
 DWORD
@@ -68,6 +121,8 @@ main(int argc, char* argv [])
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
 	char	*LoggingData = NULL;
+	char	VolumesInfoFlag = 0;
+	char	Verbose = 0;
 
     int     Force = 0;
 
@@ -250,6 +305,14 @@ main(int argc, char* argv [])
 			else
 				usage();
 		}
+		else if (!strcmp(argv[argIndex], "/info"))
+		{
+			VolumesInfoFlag++;
+		}
+		else if (!strcmp(argv[argIndex], "--verbose"))
+		{
+			Verbose++;
+		}
 		else
 		{
 			printf("Please check undefined arg[%d]=(%s)\n", argIndex, argv[argIndex]);
@@ -419,10 +482,14 @@ main(int argc, char* argv [])
         }
     }
 
-    if (MountFlag)
-    {
-        res = MVOL_MountVolume(Letter);
-    }
+	if (MountFlag) {
+		res = MVOL_MountVolume(Letter);
+		if (ERROR_SUCCESS == res) {
+			if (ERROR_SUCCESS == DeleteVolumeReg(Letter)) {
+				fprintf(stderr, "%c: is Mounted\n", Letter);
+			}
+		}
+	}
 
 	if (SimulDiskIoErrorFlag) {
 		res = MVOL_SimulDiskIoError(&sdie);
@@ -440,6 +507,17 @@ main(int argc, char* argv [])
 	if (WriteLog)
 	{
 		res = WriteEventLog((LPCSTR)ProviderName, (LPCSTR)LoggingData);
+	}
+
+	if (VolumesInfoFlag)
+	{
+		res = MVOL_GetVolumesInfo(Verbose);
+		if( res != ERROR_SUCCESS )
+		{
+			fprintf( stderr, "Failed MVOL_InitThread. Err=%u\n", res );
+		}
+
+		return res;
 	}
 
 	return res;

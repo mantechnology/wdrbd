@@ -452,6 +452,8 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	for_each_connection(connection, resource) {
 		connection->cstate[NOW] = connection->cstate[NEW];
 		connection->peer_role[NOW] = connection->peer_role[NEW];
+
+		wake_up(&connection->ping_wait);
 	}
 
 #ifdef _WIN32
@@ -487,7 +489,12 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 			clear_bit(__NEW_CUR_UUID, &device->flags);
 			set_bit(NEW_CUR_UUID, &device->flags);
 		}
+
+		wake_up(&device->al_wait);
+		wake_up(&device->misc_wait);
 	}
+
+	wake_up(&resource->state_wait);
 out:
 #ifdef _WIN32 
 	// __begin_state_change aquire lock at the beginning
@@ -848,6 +855,15 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 			p->resync_susp_other_c[NEW] = false;
 			if (r == L_PAUSED_SYNC_T && !resync_suspended(p, NEW)) {
 				p->repl_state[NEW] = L_SYNC_TARGET;
+#ifdef _WIN32				
+				if (device->disk_state[NEW] != D_INCONSISTENT)
+				{
+					// MODIFIED_BY_MANTECH DW-1075 
+					// Min/Max disk state of the SyncTarget is D_INCONSISTENT.
+					// So, change disk_state to D_INCONSISTENT.
+					device->disk_state[NEW] = D_INCONSISTENT;
+				}
+#endif
 				return;
 			}
 		}
@@ -1903,10 +1919,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 		}
 
-		wake_up(&device->al_wait);
-		wake_up(&device->misc_wait);
-		wake_up(&device->resource->state_wait);
-
 		for_each_peer_device(peer_device, device) {
 			enum drbd_repl_state *repl_state = peer_device->repl_state;
 			enum drbd_disk_state *peer_disk_state = peer_device->disk_state;
@@ -2108,8 +2120,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 	for_each_connection(connection, resource) {
 		enum drbd_conn_state *cstate = connection->cstate;
 		enum drbd_role *peer_role = connection->peer_role;
-
-		wake_up(&connection->ping_wait);
 
 		/* Receiver should clean up itself */
 		if (cstate[OLD] != C_DISCONNECTING && cstate[NEW] == C_DISCONNECTING)
@@ -2583,6 +2593,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 	struct drbd_resource_state_change *resource_state_change = &state_change->resource[0];
 	struct drbd_resource *resource = resource_state_change->resource;
 	enum drbd_role *role = resource_state_change->role;
+	struct drbd_peer_device *send_state_others = NULL;
 	bool *susp_nod = resource_state_change->susp_nod;
 	bool *susp_fen = resource_state_change->susp_fen;
 	int n_device, n_connection;
@@ -2620,6 +2631,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			struct drbd_peer_device_state_change *peer_device_state_change =
 				&state_change->peer_devices[
 					n_device * state_change->n_connections + n_connection];
+			struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
 			enum drbd_disk_state *peer_disk_state = peer_device_state_change->disk_state;
 			enum drbd_repl_state *repl_state = peer_device_state_change->repl_state;
 
@@ -2631,6 +2643,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if ((repl_state[OLD] == L_SYNC_TARGET || repl_state[OLD] == L_PAUSED_SYNC_T) &&
 				repl_state[NEW] == L_ESTABLISHED)
 				 resync_finished = true;
+
+			if (disk_state[OLD] == D_INCONSISTENT && disk_state[NEW] == D_UP_TO_DATE &&
+				peer_disk_state[OLD] == D_INCONSISTENT && peer_disk_state[NEW] == D_UP_TO_DATE)	
+				send_state_others = peer_device;
+
 		}
 
 		for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
@@ -2856,6 +2873,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if (disk_state[OLD] >= D_OUTDATED && disk_state[NEW] >= D_OUTDATED &&
 #endif
 			    disk_state[NEW] != disk_state[OLD] && repl_state[NEW] >= L_ESTABLISHED)
+				send_state = true;
+
+			/* Skipped resync with peer_device, tell others... */
+			if (send_state_others && send_state_others != peer_device)
 				send_state = true;
 
 			/* This triggers bitmap writeout of potentially still unwritten pages
@@ -3209,6 +3230,14 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 #endif
 			if (t)
 				break;
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1073: The condition evaluated to false after the timeout elapsed, stop waiting for remote state change.
+			else
+			{
+				__clear_remote_state_change(resource);
+				twopc_end_nested(resource, P_TWOPC_NO);
+			}
+#endif			
 			if (when_done_lock(resource, irq_flags)) {
 				drbd_info(resource, "Two-phase commit: "
 					  "not woken up in time\n");

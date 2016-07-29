@@ -5,6 +5,8 @@
 
 
 DWORD MVOL_GetVolumeInfo( CHAR DriveLetter, PMVOL_VOLUME_INFO pVolumeInfo );
+extern DWORD MVOL_GetVolumesInfo(BOOLEAN verbose);
+
 DWORD MVOL_InitThread( PWCHAR PhysicalVolume );
 /**
  *      @brief  Create a thread processing a volume I/O
