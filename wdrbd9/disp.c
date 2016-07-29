@@ -806,6 +806,7 @@ mvolDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             status = mvolStartDevice(DeviceObject, Irp);
             break;
         }
+		case IRP_MN_SURPRISE_REMOVAL:
         case IRP_MN_REMOVE_DEVICE:
         {
             status = mvolRemoveDevice(DeviceObject, Irp);
