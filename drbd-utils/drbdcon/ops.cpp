@@ -1093,7 +1093,7 @@ DWORD WriteLogToFile(HANDLE hLogFile, LPCTSTR pszTimeStamp, PBYTE pszData)
 	strcpy(szAnsiLogData, szLogData);
 #endif
 
-	dwBytesToWrite = strlen(szAnsiLogData);
+	dwBytesToWrite = (DWORD)strlen(szAnsiLogData);
 	if (!WriteFile(hLogFile, szAnsiLogData, dwBytesToWrite, &dwBytesWritten, NULL))
 	{
 		dwStatus = GetLastError();
@@ -1121,7 +1121,7 @@ DWORD WriteEventLog(LPCSTR pszProviderName, LPCSTR pszData)
 		goto cleanup;
 	}
 
-	dwDataSize = (strlen(pszData) + 1) * sizeof(WCHAR);
+	dwDataSize = (DWORD)((strlen(pszData) + 1) * sizeof(WCHAR));
 
 	pwszLogData = (PWSTR)malloc(dwDataSize);
 

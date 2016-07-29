@@ -97,17 +97,18 @@ void dt_pretty_print_v9_uuids(const uint64_t* uuid, unsigned int mdf_flags, unsi
 "       V               V                 V         V\n");
 	dt_print_v9_uuids(uuid, mdf_flags, mdf_peer_flags);
 	printf(
-"                                                                    ^ ^ ^ ^ ^ ^ ^ ^ ^ ^\n"
-"                                      -<  Data consistency flag  >--+ | | | | | | | | |\n"
-"                             -<  Data was/is currently up-to-date  >--+ | | | | | | | |\n"
-"                                  -<  Node was/is currently primary  >--+ | | | | | | |\n"
-" -<  This node was a crashed primary, and has not seen its peer since  >--+ | | | | | |\n"
-"             -<  The activity-log was applied, the disk can be attached  >--+ | | | | |\n"
-"        -<  The activity-log was disabled, peer is completely out of sync  >--+ | | | |\n"
-"                                        -<  Node was/is currently connected  >--+ | | |\n"
-"                            -<  The peer's disk was out-dated or inconsistent  >--+ | |\n"
-"                               -<   A fence policy other the dont-care was used  >--+ |\n"
-"                -<  Node was in the progress of marking all blocks as out of sync  >--+\n"
+"                                                                    ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^\n"
+"                                      -<  Data consistency flag  >--+ | | | | | | | | | |\n"
+"                             -<  Data was/is currently up-to-date  >--+ | | | | | | | | |\n"
+"                                  -<  Node was/is currently primary  >--+ | | | | | | | |\n"
+" -<  This node was a crashed primary, and has not seen its peer since  >--+ | | | | | | |\n"
+"             -<  The activity-log was applied, the disk can be attached  >--+ | | | | | |\n"
+"        -<  The activity-log was disabled, peer is completely out of sync  >--+ | | | | |\n"
+"                                        -<  Node was/is currently connected  >--+ | | | |\n"
+"                            -<  The peer's disk was out-dated or inconsistent  >--+ | | |\n"
+"                               -<   A fence policy other the dont-care was used  >--+ | |\n"
+"                -<  Node was in the progress of marking all blocks as out of sync  >--+ |\n"
+"                   -<  At least once we saw this node with a backing device attached >--+\n"
 "\n");
 }
 

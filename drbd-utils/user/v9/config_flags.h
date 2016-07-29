@@ -14,6 +14,7 @@ enum check_codes {
 	CC_NOT_A_NUMBER,
 	CC_TOO_SMALL,
 	CC_TOO_BIG,
+	CC_STR_TOO_LONG,
 };
 
 struct field_class {
@@ -46,6 +47,9 @@ struct field_def {
 		struct {
 			bool def;
 		} b;  /* BOOLEAN */
+		struct {
+			unsigned max_len;
+		} s; /* string */
 	} u;
 	bool needs_double_quoting;
 	bool argument_is_optional;
@@ -86,10 +90,12 @@ extern struct context_def verify_cmd_ctx;
 extern struct context_def device_options_ctx;
 extern struct context_def invalidate_ctx;
 extern struct context_def create_md_ctx;
+extern struct context_def adjust_ctx;
 extern struct context_def peer_device_options_ctx;
 extern struct context_def handlers_ctx;
 extern struct context_def proxy_options_ctx;
 extern struct context_def startup_options_ctx;
+extern struct context_def wildcard_ctx;
 
 
 extern const char *double_quote_string(const char *str);

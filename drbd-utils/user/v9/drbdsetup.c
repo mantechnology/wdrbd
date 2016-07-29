@@ -216,6 +216,8 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 	default:
 		assert(0);
 	}
+
+	return "unknown argument";
 }
 
 struct drbd_cmd {
@@ -1512,6 +1514,10 @@ static int shortest_timeout(struct peer_devices_list *peer_devices)
 	struct peer_devices_list *peer_device;
 	int timeout = -1;
 
+	/* There is no point waiting for peers I do not even know about. */
+	if (peer_devices == NULL)
+		return 1;
+	
 	for (peer_device = peer_devices; peer_device; peer_device = peer_device->next) {
 		if (peer_device->timeout_ms > 0 &&
 		    (peer_device->timeout_ms < timeout || timeout == -1))
@@ -1629,7 +1635,7 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 		timeout_ms =
 			timeout_arg == MULTIPLE_TIMEOUTS ? shortest_timeout(u_ptr) : timeout_arg;
 
-		ret = poll(pollfds, 2, timeout_arg);
+		ret = poll(pollfds, 2, timeout_ms);
 		if (ret == 0) {
 			err = 5;
 			goto out2;
@@ -2126,6 +2132,9 @@ static int show_cmd(struct drbd_cmd *cm, int argc, char **argv)
 
 	resources_list = sort_resources(list_resources());
 
+	if (resources_list == NULL)
+		printf("# No currently configured DRBD found.\n");
+	
 	for (resource = resources_list; resource; resource = resource->next) {
 		struct devices_list *devices, *device;
 		struct connections_list *connections, *connection;
@@ -2526,6 +2535,9 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 
 	resources = sort_resources(list_resources());
 
+	if (resources == NULL)
+		printf("# No currently configured DRBD found.\n");
+	
 	sigaction(SIGHUP, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGPIPE, &sa, NULL);
@@ -3702,11 +3714,10 @@ static int wait_for_family(struct drbd_cmd *cm, struct genl_info *info, void *u_
 			if (!wait_after_split_brain)
 				return -1;  /* done waiting */
 
-			fprintf(stderr, "\ndrbd%u (%s[%u]) is %s, "
-				       "but I'm configured to wait anways (--wait-after-sb)\n",
-				       dh->minor,
-				       ctx.ctx_resource_name, ctx.ctx_volume,
-				       drbd_conn_str(connection_info.conn_connection_state));
+			fprintf(stderr, "\ndrbd %s connection to peer-id %u ('%s') is %s, "
+						"but I'm configured to wait anways (--wait-after-sb)\n",
+						ctx.ctx_resource_name, ctx.ctx_peer_node_id, ctx.ctx_conn_name,
+						drbd_conn_str(connection_info.conn_connection_state));
 		}
 		break;
 	}

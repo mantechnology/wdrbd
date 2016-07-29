@@ -244,7 +244,7 @@ struct hsearch_data global_htable;
 void check_uniq_init(void)
 {
 	memset(&global_htable, 0, sizeof(global_htable));
-	if (!hcreate_r(256 * ((2 * 4) + 4), &global_htable)) {
+	if (!hcreate_r(16384 * ((2 * 4) + 4), &global_htable)) {
 		err("Insufficient memory.\n");
 		exit(E_EXEC_ERROR);
 	};
@@ -488,12 +488,17 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 		[CC_NOT_A_NUMBER] = "not a number",
 		[CC_TOO_SMALL] = "too small",
 		[CC_TOO_BIG] = "too big",
+		[CC_STR_TOO_LONG] = "too long",
 	};
-	err("%s:%u: Parse error: while parsing value ('%s') for %s. Value is %s.\n",
-	    config_file, line, value, field->name, err_strings[e]);
+	err("%s:%u: Parse error: while parsing value ('%.20s%s')\nfor %s. Value is %s.\n",
+		config_file, line,
+		value, strlen(value) > 20 ? "..." : "",
+		field->name, err_strings[e]);
 
 	if (e == CC_NOT_AN_ENUM)
 		pe_valid_enums(field->u.e.map, field->u.e.size);
+	if (e == CC_STR_TOO_LONG)
+		err("max len: %u\n", field->u.s.max_len - 1);
 
 	if (config_valid <= 1)
 		config_valid = 0;
@@ -1842,27 +1847,6 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 	}
 
 	return res;
-}
-
-struct d_resource* parse_resource_for_adjust(const struct cfg_ctx *ctx)
-{
-	int token;
-
-	token = yylex();
-	if (token != TK_RESOURCE)
-		return NULL;
-
-	token = yylex();
-	if (token != TK_STRING)
-		return NULL;
-
-	/* FIXME assert that string and ctx->res->name match? */
-
-	token = yylex();
-	if (token != '{')
-		return NULL;
-
-	return parse_resource(ctx->res->name, PARSE_FOR_ADJUST);
 }
 
 /* Returns the "previous" count, ie. 0 if this file wasn't seen before. */
