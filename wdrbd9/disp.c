@@ -358,7 +358,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex))
+    if (do_add_minor(VolumeExtension->VolIndex) && !minor_to_device(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
         if (!NT_SUCCESS(status))
