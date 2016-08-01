@@ -760,7 +760,7 @@ $retry:
 			switch (Status)
 			{
 			case STATUS_TIMEOUT:
-
+				// DW-1095 adjust retry_count logic 
 				if (!(++retry_count % 5)) {
 					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
 				} else {
