@@ -749,12 +749,13 @@ SendAsync(
 			pTime = &nWaitTime;
 		}
 		{
-			struct      task_struct *thread = current;
+			//struct      task_struct *thread = current;
 			PVOID       waitObjects[2];
-			int         wObjCount = 1;
+			int         wObjCount = 2;
 			int 		retry_count = 0;
 
 			waitObjects[0] = (PVOID) &CompletionEvent;
+			waitObjects[1] = (PVOID) send_buf_kill_event;
 $retry:			
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status) {
@@ -795,8 +796,11 @@ $retry:
 				break;
 
 			case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
+				DbgPrint("DRBD_TEST: receiveed kill signal, cancel IRP");
 				IoCancelIrp(Irp);
+				DbgPrint("DRBD_TEST: wait for IPR cancel");
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				DbgPrint("DRBD_TEST: IPR cancel done");
 				BytesSent = -EINTR;
 				break;
 
