@@ -761,7 +761,7 @@ $retry:
 			{
 			case STATUS_TIMEOUT:
 
-				if (!(retry_count++ % 5)) {
+				if (!(++retry_count % 5)) {
 					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
 				} else {
 					goto $retry;
