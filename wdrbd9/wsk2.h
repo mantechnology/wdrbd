@@ -119,6 +119,19 @@ NTAPI
 
 LONG
 NTAPI
+SendAsync(
+	__in PWSK_SOCKET	WskSocket,
+	__in PVOID			Buffer,
+	__in ULONG			BufferSize,
+	__in ULONG			Flags,
+	__in ULONG			Timeout,
+	__in KEVENT			*send_buf_kill_event,
+	__in struct			drbd_transport *transport,
+	__in enum			drbd_stream stream
+);
+
+LONG
+NTAPI
 SendLocal(
 	__in PWSK_SOCKET	WskSocket,
 	__in PVOID			Buffer,

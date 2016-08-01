@@ -3210,7 +3210,10 @@ void drbd_destroy_device(struct kref *kref)
 #ifdef _WIN32
 	kfree2(device->this_bdev->bd_contains);
 	kfree2(device->this_bdev);
-	device->vdisk->pDeviceExtension->dev = NULL; 
+	if (device->vdisk->pDeviceExtension) {
+		// just in case existing a VolumeExtension
+		device->vdisk->pDeviceExtension->dev = NULL;
+	}
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
