@@ -692,6 +692,142 @@ Send(
 	return BytesSent;
 }
 
+
+LONG
+NTAPI
+SendAsync(
+	__in PWSK_SOCKET	WskSocket,
+	__in PVOID			Buffer,
+	__in ULONG			BufferSize,
+	__in ULONG			Flags,
+	__in ULONG			Timeout,
+	__in KEVENT			*send_buf_kill_event,
+	__in struct			drbd_transport *transport,
+	__in enum			drbd_stream stream
+)
+{
+	KEVENT		CompletionEvent = { 0 };
+	PIRP		Irp = NULL;
+	WSK_BUF		WskBuffer = { 0 };
+	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
+		return SOCKET_ERROR;
+
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	if (!NT_SUCCESS(Status)) {
+		return SOCKET_ERROR;
+	}
+
+	Status = InitWskData(&Irp, &CompletionEvent);
+	if (!NT_SUCCESS(Status)) {
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
+	Flags |= WSK_FLAG_NODELAY;
+
+	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
+		WskSocket,
+		&WskBuffer,
+		Flags,
+		Irp);
+
+	if (Status == STATUS_PENDING)
+	{
+		LARGE_INTEGER	nWaitTime;
+		LARGE_INTEGER	*pTime;
+
+		if (Timeout <= 0 || Timeout == MAX_SCHEDULE_TIMEOUT)
+		{
+			pTime = NULL;
+		}
+		else
+		{
+			nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+			pTime = &nWaitTime;
+		}
+		{
+			struct      task_struct *thread = current;
+			PVOID       waitObjects[2];
+			int         wObjCount = 1;
+			int 		retry_count = 0;
+
+			waitObjects[0] = (PVOID) &CompletionEvent;
+$retry:			
+			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
+			switch (Status)
+			{
+			case STATUS_TIMEOUT:
+				// DW-1095 adjust retry_count logic 
+				if (!(++retry_count % 5)) {
+					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
+				} else {
+					goto $retry;
+				}
+				
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				BytesSent = -EAGAIN;
+				break;
+
+			case STATUS_WAIT_0:
+				if (NT_SUCCESS(Irp->IoStatus.Status))
+				{
+					BytesSent = (LONG)Irp->IoStatus.Information;
+				}
+				else
+				{
+					WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+					switch (Irp->IoStatus.Status)
+					{
+						case STATUS_IO_TIMEOUT:
+							BytesSent = -EAGAIN;
+							break;
+						case STATUS_INVALID_DEVICE_STATE:
+							BytesSent = -EAGAIN;
+							break;
+						default:
+							BytesSent = -ECONNRESET;
+							break;
+					}
+				}
+				break;
+
+			//case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
+			//	IoCancelIrp(Irp);
+			//	KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			//	BytesSent = -EINTR;
+			//	break;
+
+			default:
+				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
+				BytesSent = SOCKET_ERROR;
+			}
+		}
+	}
+	else
+	{
+		if (Status == STATUS_SUCCESS)
+		{
+			BytesSent = (LONG) Irp->IoStatus.Information;
+			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+		}
+		else
+		{
+			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+			BytesSent = SOCKET_ERROR;
+		}
+	}
+
+	IoFreeIrp(Irp);
+	FreeWskBuffer(&WskBuffer);
+
+	return BytesSent;
+}
+
+
 LONG
 NTAPI
 SendLocal(
