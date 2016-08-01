@@ -757,19 +757,18 @@ SendAsync(
 			waitObjects[0] = (PVOID) &CompletionEvent;
 $retry:			
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
-			switch (Status)
-			{
+			switch (Status) {
 			case STATUS_TIMEOUT:
 				// DW-1095 adjust retry_count logic 
 				if (!(++retry_count % 5)) {
 					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
-				} else {
-					goto $retry;
-				}
+				} 
+
+				goto $retry;
 				
-				IoCancelIrp(Irp);
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				BytesSent = -EAGAIN;
+				//IoCancelIrp(Irp);
+				//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				//BytesSent = -EAGAIN;
 				break;
 
 			case STATUS_WAIT_0:
@@ -795,11 +794,11 @@ $retry:
 				}
 				break;
 
-			//case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
-			//	IoCancelIrp(Irp);
-			//	KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-			//	BytesSent = -EINTR;
-			//	break;
+			case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				BytesSent = -EINTR;
+				break;
 
 			default:
 				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
