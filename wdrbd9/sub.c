@@ -101,6 +101,18 @@ mvolStartDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return status;
 }
 
+static
+enum drbd_disk_state get_disk_state2(struct drbd_device *device)
+{
+	struct drbd_resource *resource = device->resource;
+	enum drbd_disk_state disk_state;
+
+	spin_lock_irq(&resource->req_lock);
+	disk_state = device->disk_state[NOW];
+	spin_unlock_irq(&resource->req_lock);
+	return disk_state;
+}
+
 NTSTATUS
 mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
@@ -153,10 +165,17 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	if (VolumeExtension->dev) {
 		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
-		if (device) {
+		if (device)
+		{
 			drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
+
+			long timeo = 3 * HZ;
+			wait_event_interruptible_timeout(timeo, device->misc_wait,
+						 get_disk_state2(device) != D_FAILED, timeo);
+			
 			device->vdisk->pDeviceExtension = NULL;
 			device->rq_queue->backing_dev_info.pvext = NULL;
+
 			drbd_bm_free(device->bitmap);
 			device->bitmap = NULL;
 		}
