@@ -167,11 +167,15 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
 		if (device)
 		{
-			drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
+			if (get_ldev(device))
+			{
+				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
 
-			long timeo = 3 * HZ;
-			wait_event_interruptible_timeout(timeo, device->misc_wait,
-						 get_disk_state2(device) != D_FAILED, timeo);
+				long timeo = 3 * HZ;
+				wait_event_interruptible_timeout(timeo, device->misc_wait,
+							 get_disk_state2(device) != D_FAILED, timeo);
+				put_ldev(device);
+			}
 			
 			device->vdisk->pDeviceExtension = NULL;
 			device->rq_queue->backing_dev_info.pvext = NULL;
