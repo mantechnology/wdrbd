@@ -3424,12 +3424,32 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	if (connection->agreed_pro_version >= 110) {
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
 		   Instruct the SyncSource to retry */
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-953: replace drbd_try_rs_begin_io with drbd_rs_begin_io like version 8.4.x for only L_VERIFY_T
+		if (peer_device->repl_state[NOW] == L_VERIFY_T)
+		{
+			if (drbd_rs_begin_io(peer_device, sector)) 
+			{
+				err = -EIO;
+				goto fail3;
+			}
+		}
+		else
+		{
+			err = drbd_try_rs_begin_io(peer_device, sector, false);
+			if (err) {
+				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+				/* If err is set, we will drop the connection... */
+				goto fail3;
+			}
+		}
+#else
 		err = drbd_try_rs_begin_io(peer_device, sector, false);
 		if (err) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 			/* If err is set, we will drop the connection... */
 			goto fail3;
 		}
+#endif
 	} else {
 		update_receiver_timing_details(connection, drbd_rs_begin_io);
 		if (drbd_rs_begin_io(peer_device, sector)) {
