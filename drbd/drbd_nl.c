@@ -2514,11 +2514,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 
 	bdev = blkdev_get_by_path(bdev_path,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
-#ifdef _WIN32
-	if (IS_ERR_OR_NULL(bdev)) {
-#else
 	if (IS_ERR(bdev)) {
-#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
 		return bdev;
