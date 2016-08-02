@@ -50,7 +50,6 @@
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// used in NETLINK
 
 //#define _WIN32_WPP
-#define _WIN32_LOGLINK			// NEW: socket link for eventlog between engine and drbdService 
 #define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
 
 #ifdef _WIN32_WPP

@@ -34,10 +34,6 @@
 #include "sub.tmh" 
 #endif
 
-#ifdef _WIN32_LOGLINK
-#include "loglink.h"
-#endif
-
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -591,26 +587,6 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
-char * printk_str(const char *fmt, ...)
-{
-	int ret = 0;
-	va_list args;
-
-    char * buf = (char *)ExAllocateFromNPagedLookasideList(&drbd_printk_msg);
-    if (!buf)
-    {
-        return 0;
-    }
-    RtlZeroMemory(buf, MAX_ELOG_BUF);
-
-	va_start(args, fmt);
-	ret = vsprintf(buf, fmt, args); // DRBD_DOC: vsnprintf 개선
-	va_end(args);
-
-    // caller must ExFreePoolWithTag(buf, DRBD_GENERIC_POOL_TAG);
-
-	return buf;
-}
 
 DWORD msgids [] = {
 	PRINTK_EMERG,
@@ -650,16 +626,10 @@ void printk_init(void)
 {
 	// initialization for logging. the function '_prink' shouldn't be called before this initialization.
 	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
-#ifdef _WIN32_LOGLINK
-	LogLink_MakeUsable();
-#endif
 }
 
 void printk_cleanup(void)
 {
-#ifdef _WIN32_LOGLINK
-	LogLink_MakeUnusable();
-#endif
 	ExDeleteNPagedLookasideList(&drbd_printk_msg);
 }
 
@@ -766,20 +736,11 @@ void _printk(const char * func, const char * format, ...)
 	if (bDbgLog)
 		DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
 
-#ifdef _WIN32_LOGLINK
-	if (FALSE == bServiceLog ||
-		FALSE == LogLink_IsUsable() ||
-		STATUS_SUCCESS != LogLink_QueueBuffer(buf))
-	{
-		// buf will be freed by loglink sender thread if it's queued, otherwise free it here.
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-	}
-#else
     // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
     DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
 
 	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-#endif
+
 #endif
 }
 #endif

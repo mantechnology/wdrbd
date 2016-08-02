@@ -33,9 +33,6 @@
 #include "disp.tmh"
 #endif
 
-#ifdef _WIN32_LOGLINK
-#include "loglink.h"
-#endif
 
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD mvolUnload;
@@ -281,25 +278,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
             WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
             return Status;
         }
-
-#ifdef _WIN32_LOGLINK
-		// TODO: LogLink_ListenThread does not finish ever. We need to make sure cleaning it up when no need anymore.
-		Status = PsCreateSystemThread(&hLogLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
-		if (!NT_SUCCESS(Status))
-		{
-			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
-			return Status;
-		}
-
-		Status = ObReferenceObjectByHandle(hLogLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_LoglinkServerThread, NULL);
-		ZwClose(hLogLinkThread);
-
-		if (!NT_SUCCESS(Status))
-		{
-			WDRBD_ERROR("ObReferenceObjectByHandle() for loglink thread failed with status 0x%08X\n", Status);
-			return Status;
-		}		
-#endif
     }
 
     ReferenceDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);

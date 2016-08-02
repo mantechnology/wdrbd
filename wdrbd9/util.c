@@ -26,10 +26,6 @@
 #include "proto.h"
 #include "drbd_int.h"
 
-#ifdef _WIN32_LOGLINK
-#include "loglink.h"
-#endif
-
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
 #ifdef _WIN32_MVFL
@@ -988,28 +984,6 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_use_volume_lock = 0;
 	}
 
-#ifdef _WIN32_LOGLINK
-	// set loglink_tcp_port
-	status = GetRegistryValue(L"loglink_tcp_port", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
-	if (status == STATUS_SUCCESS){
-		g_loglink_tcp_port = *(int*) aucTemp;
-	}
-	else
-	{
-		g_loglink_tcp_port = 5677;
-	}
-
-	// set g_loglink_usage
-	status = GetRegistryValue(L"loglink_usage", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
-	if (status == STATUS_SUCCESS){
-		g_loglink_usage = *(int*) aucTemp;
-	}
-	else
-	{
-		g_loglink_usage = LOGLINK_NOT_USED;
-	}
-#endif
-
 	// set log level
 	int log_level = LOG_LV_DEFAULT;	
 	status = GetRegistryValue(LOG_LV_REG_VALUE_NAME, &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
@@ -1086,40 +1060,6 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
 	}
-#ifdef _WIN32_LOGLINK
-#ifdef _WIN32_HANDLER_TIMEOUT
-    WDRBD_INFO("registry_path[%wZ]\n"
-        "bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, loglink_usage=%d "
-        "netlink_tcp_port=%d, daemon_tcp_port=%d, handler_use=%d, handler_timeout=%d, handler_retry=%d, ver=%ws\n",
-        RegPath_unicode,
-        g_bypass_level,
-        g_read_filter,
-        g_use_volume_lock,
-        g_loglink_tcp_port,
-		g_loglink_usage,
-        g_netlink_tcp_port,
-        g_daemon_tcp_port,
-		g_handler_use,
-		g_handler_timeout,
-		g_handler_retry,
-        g_ver
-        );
-#else
-	WDRBD_INFO("registry_path[%wZ]\n"
-		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, loglink_tcp_port=%d, loglink_usage=%d "
-		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
-		RegPath_unicode,
-		g_bypass_level,
-		g_read_filter,
-		g_use_volume_lock,
-		g_loglink_tcp_port,
-		g_loglink_usage,
-		g_netlink_tcp_port,
-		g_daemon_tcp_port,
-		g_ver
-		);
-#endif
-#else
 	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"
 		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
@@ -1132,7 +1072,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_daemon_tcp_port,
 		g_ver
 		);
-#endif
+
 	return 0;
 }
 
