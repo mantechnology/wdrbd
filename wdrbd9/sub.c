@@ -631,6 +631,7 @@ void printk_cleanup(void)
 	
 }
 
+
 void _printk(const char * func, const char * format, ...)
 {
 	int ret = 0;
@@ -641,61 +642,66 @@ void _printk(const char * func, const char * format, ...)
 	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
-	BOOLEAN bSysEventLog = FALSE;
-	BOOLEAN bServiceLog = FALSE;
+	BOOLEAN bEventLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
+	LARGE_INTEGER systemTime, localTime;
+    TIME_FIELDS timeFields = {0,};
+	KIRQL	oldirql;
 
 	ASSERT((level_index >= 0) && (level_index < 8));
-	
-	// Add lock
-	if(gLogCnt >= LOGBUF_MAXCNT) {
-		gLogCnt = 0;
-	} else {
-		gLogCnt++;
-	}
-	logcnt = gLogCnt;
-	// Add unlock
 
+	// to write system event log.
+	if (level_index <= atomic_read(&g_eventlog_lv_min))
+		bEventLog = TRUE;
+	// to print through debugger.
+	if (level_index <= atomic_read(&g_dbglog_lv_min))
+		bDbgLog = TRUE;
+
+	// nothing to log.
+	if (!bEventLog && !bDbgLog) {
+		return;
+	}
+	
+	InterlockedCompareExchange(&gLogCnt, 0, LOGBUF_MAXCNT);
+	logcnt = InterlockedExchangeAdd(&gLogCnt, 1); 
+	
 	buf = gLogBuf[logcnt];
 	RtlZeroMemory(buf, MAX_ELOG_BUF);
 
+#define TIME_OFFSET		24	//08/02/2016 13:24:13.123
+	KeQuerySystemTime(&systemTime);
+    ExSystemTimeToLocalTime(&systemTime, &localTime);
+
+    RtlTimeToTimeFields(&localTime, &timeFields);
+
+	sprintf(buf , "%02d/%02d/%04d %02d:%02d:%02d.%03d ", 
+										timeFields.Month,
+										timeFields.Day,
+										timeFields.Year,
+										timeFields.Hour,
+										timeFields.Minute,
+										timeFields.Second,
+										timeFields.Milliseconds);
+
+#define LEVEL_OFFSET	10
+
 	switch (level_index) {
-	case KERN_EMERG_NUM:
-	case KERN_ALERT_NUM:
-	case KERN_CRIT_NUM:
-		printLevel = DPFLTR_ERROR_LEVEL;
-		memcpy(buf, "WDRBD_FATA", 10);
-		break;
-	case KERN_ERR_NUM:
-		printLevel = DPFLTR_ERROR_LEVEL;
-		memcpy(buf, "WDRBD_ERRO", 10);
-		break;
-	case KERN_WARNING_NUM:
-		printLevel = DPFLTR_WARNING_LEVEL;
-		memcpy(buf, "WDRBD_WARN", 10);
-		break;
-	case KERN_NOTICE_NUM:
-	case KERN_INFO_NUM:
-		printLevel = DPFLTR_INFO_LEVEL;
-		memcpy(buf, "WDRBD_INFO", 10);
-		break;
-	case KERN_DEBUG_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL;
-		memcpy(buf, "WDRBD_TRAC", 10);
-		break;
-	default:
-		printLevel = DPFLTR_TRACE_LEVEL;
-		memcpy(buf, "WDRBD_UNKN", 10);
-		break;
+	case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM: 
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_FATA", LEVEL_OFFSET); break;
+	case KERN_ERR_NUM: 
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_ERRO", LEVEL_OFFSET); break;
+	case KERN_WARNING_NUM: 
+		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_WARN", LEVEL_OFFSET); break;
+	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
+		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_INFO", LEVEL_OFFSET); break;
+	case KERN_DEBUG_NUM: 
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_TRAC", LEVEL_OFFSET); break;
+	default: 
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_UNKN", LEVEL_OFFSET); break;
 	}
-
-	//time 08/02/2016 13:24:13.123
-	
-
-
 	
 	va_start(args, format);
-	ret = vsprintf(buf + 10, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = vsprintf(buf + TIME_OFFSET + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
 	int length = strlen(buf);
@@ -711,21 +717,8 @@ void _printk(const char * func, const char * format, ...)
 	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf);
 	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf);
 #else
-	// to write system event log.
-	if (level_index <= atomic_read(&g_syslog_lv_min))
-		bSysEventLog = TRUE;
-	// to send to drbd service.	
-	if (level_index <= atomic_read(&g_svclog_lv_min))
-		bServiceLog = TRUE;
-	// to print through debugger.
-	if (level_index <= atomic_read(&g_dbglog_lv_min))
-		bDbgLog = TRUE;
-
-	// nothing to log.
-	if (!bSysEventLog && !bServiceLog && !bDbgLog) {
-		return;
-	}
-	if (bSysEventLog) {
+	
+	if (bEventLog) {
 		save_to_system_event(buf, length, level_index);
 	}
 	

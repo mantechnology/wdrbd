@@ -612,9 +612,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		pLoggingMinLv = (PLOGGING_MIN_LV)Irp->AssociatedIrp.SystemBuffer;
 
 		if (pLoggingMinLv->nType == LOGGING_TYPE_SYSLOG)
-			atomic_set(&g_syslog_lv_min, pLoggingMinLv->nErrLvMin);
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_SVCLOG)
-			atomic_set(&g_svclog_lv_min, pLoggingMinLv->nErrLvMin);
+			atomic_set(&g_eventlog_lv_min, pLoggingMinLv->nErrLvMin);
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
 

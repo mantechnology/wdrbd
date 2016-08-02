@@ -43,8 +43,7 @@ int g_netlink_tcp_port;
 int g_daemon_tcp_port;
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
-atomic_t g_syslog_lv_min = LOG_LV_DEFAULT_SYS;
-atomic_t g_svclog_lv_min = LOG_LV_DEFAULT_SVC;
+atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
