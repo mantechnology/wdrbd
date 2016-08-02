@@ -4039,7 +4039,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 
 	if (hg == 4) {
 #ifndef _WIN32
-		// MODIFIED_BY_MANTECH DW-1023: copying bitmap has a defect, do sync whole out-of-sync until fixed.
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		int from = device->ldev->md.peers[peer_node_id].bitmap_index;
 
 		if (from == -1)
@@ -4055,7 +4055,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 #endif
 	} else if (hg == -4) {
 #ifndef _WIN32
-		// MODIFIED_BY_MANTECH DW-1023: copying bitmap has a defect, do sync whole out-of-sync until fixed.
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		drbd_info(peer_device, "synced up with node %d in the mean time\n", peer_node_id);
 		drbd_suspend_io(device, WRITE_ONLY);
 		drbd_bm_slot_lock(peer_device, "bm_clear_many_bits from sync_handshake", BM_LOCK_BULK);
@@ -8557,14 +8557,14 @@ found:
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;
 #ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1023: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 		ULONG_PTR set_sync_mask = -1;
 #endif    
 
 		if (get_ldev(device)) {
 			in_sync_b = node_ids_to_bitmap(device, in_sync);
 #ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1023: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+			// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 			clear_bit(peer_device->bitmap_index, &set_sync_mask);
 			drbd_set_sync(device, peer_req->i.sector,
 				peer_req->i.size, ~in_sync_b, set_sync_mask);

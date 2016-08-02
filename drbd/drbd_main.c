@@ -1344,7 +1344,7 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 	u64 mask = 0;
 
 #ifndef _WIN32
-	// MODIFIED_BY_MANTECH DW-1023: masking my node id causes peers to improper in-sync.
+	// MODIFIED_BY_MANTECH DW-1099: masking my node id causes peers to improper in-sync.
 	if (req->rq_state[0] & RQ_LOCAL_OK)
 		mask |= NODE_MASK(resource->res_opts.node_id);
 #endif
@@ -5610,6 +5610,7 @@ clear_flag:
 			}
 
 #ifndef _WIN32
+			// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 			from_node_id = find_node_id_by_bitmap_uuid(device, peer_current_uuid);
 			if (from_node_id != -1 && node_id != from_node_id &&
 #ifdef _WIN32
@@ -5639,7 +5640,7 @@ clear_flag:
 	}
 
 #ifndef _WIN32
-	// MODIFIED_BY_MANTECH DW-1023: copying bitmap has a defect, do sync whole out-of-sync until fixed.
+	// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 	write_bm |= detect_copy_ops_on_peer(peer_device);
 #endif
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
