@@ -227,7 +227,6 @@ void LogLink_Sender(struct work_struct *ws)
 			}
 		}
 
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, msg->buf);
 		list_del(&msg->list);
 		ExFreeToNPagedLookasideList(&loglink_printk_msg, msg);
 	}

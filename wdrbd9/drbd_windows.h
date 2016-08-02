@@ -353,7 +353,7 @@ extern atomic_t g_dbglog_lv_min;
 extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
-extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
+
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
@@ -1553,5 +1553,10 @@ NTSTATUS SaveCurrentLogLv();
 #endif
 
 BOOLEAN gbShutdown;
+
+//#define LOGBUF_MAXLEN		256
+#define LOGBUF_MAXCNT		10000
+long	gLogCnt;
+char	gLogBuf[LOGBUF_MAXCNT][MAX_ELOG_BUF];
 
 #endif // DRBD_WINDOWS_H
