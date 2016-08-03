@@ -6310,6 +6310,79 @@ out:
 	return 0;
 }
 #ifdef _WIN32
+
+int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
+{
+	struct drbd_connection *connection, *tmp;    
+    struct drbd_device *device;
+    int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+    int i;
+	
+	// DW-876: It possibly creates hang issue if worker isn't working, perhaps it's been called with resource which is already down.
+	if (get_t_state(&resource->worker) != RUNNING)
+	{		
+		retcode = SS_NOTHING_TO_DO;
+		goto out;
+	}
+    
+    mutex_lock(&resource->adm_mutex);
+    /* demote */
+    retcode = drbd_set_role(resource, R_SECONDARY, false);
+    if (retcode < SS_SUCCESS) {
+        WDRBD_ERROR("failed to demote\n");
+        goto out;
+    }
+
+    mutex_lock(&resource->conf_update);
+    for_each_connection_safe(connection, tmp, resource) {
+        retcode = conn_try_disconnect(connection, 0);
+        if (retcode >= SS_SUCCESS) {
+            del_connection(connection);
+        }
+        else {
+            WDRBD_ERROR("failed to disconnect\n");
+            goto unlock_out;
+        }
+    }
+
+    /* detach */
+#ifdef _WIN32
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
+    idr_for_each_entry(&resource->devices, device, i) {
+#endif
+        retcode = adm_detach(device, 0);
+        if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
+            WDRBD_ERROR("failed to detach\n");
+            goto unlock_out;
+        }
+    }
+
+    /* delete volumes */
+#ifdef _WIN32
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
+#else
+    idr_for_each_entry(&resource->devices, device, i) {
+#endif
+        retcode = adm_del_minor(device);
+        if (retcode != NO_ERROR) {
+            /* "can not happen" */
+            WDRBD_ERROR("failed to delete volume\n");
+            goto unlock_out;
+        }
+    }
+
+	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
+	
+unlock_out:
+    mutex_unlock(&resource->conf_update);
+out:
+    mutex_unlock(&resource->adm_mutex);
+	
+    return retcode;
+}
+
+
 int drbd_adm_down_from_engine(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection, *tmp;    
