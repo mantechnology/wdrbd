@@ -6555,7 +6555,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	/* Start resync after AHEAD/BEHIND */
 	if (connection->agreed_pro_version >= 110 &&
-	    peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/Behind'.
+		// L_PAUSED_SYNC_S also call drbd_start_resync(). L_BEHIND will transition to L_PAUSED_SYNC_T.
+		(peer_state.conn == L_SYNC_SOURCE || peer_state.conn == L_PAUSED_SYNC_S) && old_peer_state.conn == L_BEHIND) {
+#else
+		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#endif
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
