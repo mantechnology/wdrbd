@@ -863,6 +863,13 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 					// So, change disk_state to D_INCONSISTENT.
 					device->disk_state[NEW] = D_INCONSISTENT;
 				}
+
+				if (peer_device->repl_state[NEW] == L_BEHIND)
+				{
+					// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/SyncTarget'.
+					// Set resync_susp_other_c when repl_state is L_BEHIND. L_BEHIND will transition to L_PAUSED_SYNC_T.
+					peer_device->resync_susp_other_c[NEW] = true;
+				}
 #endif
 				return;
 			}
