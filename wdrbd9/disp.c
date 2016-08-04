@@ -55,6 +55,9 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 #endif
 
 NTSTATUS
+mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
+NTSTATUS
 DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 {
     NTSTATUS            		status;
@@ -406,11 +409,15 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
-    drbd_cleanup_by_win_shutdown(VolumeExtension);
+    //return mvolSendToNextDriver(DeviceObject, Irp);
+    status = mvolRunIrpSynchronous(DeviceObject, Irp);
 
-    return mvolSendToNextDriver(DeviceObject, Irp);
+	drbd_cleanup_by_win_shutdown(VolumeExtension);
+		
+	return status;
 }
 
 NTSTATUS

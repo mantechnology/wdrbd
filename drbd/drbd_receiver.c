@@ -3424,12 +3424,32 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	if (connection->agreed_pro_version >= 110) {
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
 		   Instruct the SyncSource to retry */
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-953: replace drbd_try_rs_begin_io with drbd_rs_begin_io like version 8.4.x for only L_VERIFY_T
+		if (peer_device->repl_state[NOW] == L_VERIFY_T)
+		{
+			if (drbd_rs_begin_io(peer_device, sector)) 
+			{
+				err = -EIO;
+				goto fail3;
+			}
+		}
+		else
+		{
+			err = drbd_try_rs_begin_io(peer_device, sector, false);
+			if (err) {
+				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+				/* If err is set, we will drop the connection... */
+				goto fail3;
+			}
+		}
+#else
 		err = drbd_try_rs_begin_io(peer_device, sector, false);
 		if (err) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 			/* If err is set, we will drop the connection... */
 			goto fail3;
 		}
+#endif
 	} else {
 		update_receiver_timing_details(connection, drbd_rs_begin_io);
 		if (drbd_rs_begin_io(peer_device, sector)) {
@@ -4038,6 +4058,8 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 	struct drbd_device *device = peer_device->device;
 
 	if (hg == 4) {
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		int from = device->ldev->md.peers[peer_node_id].bitmap_index;
 
 		if (from == -1)
@@ -4050,7 +4072,10 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		drbd_bm_write(device, NULL);
 		drbd_bm_slot_unlock(peer_device);
 		drbd_resume_io(device);
+#endif
 	} else if (hg == -4) {
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		drbd_info(peer_device, "synced up with node %d in the mean time\n", peer_node_id);
 		drbd_suspend_io(device, WRITE_ONLY);
 		drbd_bm_slot_lock(peer_device, "bm_clear_many_bits from sync_handshake", BM_LOCK_BULK);
@@ -4058,6 +4083,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		drbd_bm_write(device, NULL);
 		drbd_bm_slot_unlock(peer_device);
 		drbd_resume_io(device);
+#endif
 	} else if (abs(hg) >= 3) {
 		if (hg == -3 &&
 		    drbd_current_uuid(device) == UUID_JUST_CREATED &&
@@ -6529,7 +6555,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	/* Start resync after AHEAD/BEHIND */
 	if (connection->agreed_pro_version >= 110 &&
-	    peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/Behind'.
+		// L_PAUSED_SYNC_S also call drbd_start_resync(). L_BEHIND will transition to L_PAUSED_SYNC_T.
+		(peer_state.conn == L_SYNC_SOURCE || peer_state.conn == L_PAUSED_SYNC_S) && old_peer_state.conn == L_BEHIND) {
+#else
+		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#endif
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
@@ -8550,12 +8582,19 @@ found:
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+		ULONG_PTR set_sync_mask = -1;
+#endif    
 
 		if (get_ldev(device)) {
-#ifndef _WIN32
-			// MODIFIED_BY_MANTECH DW-1012: Affecting out-of-sync by replication request may cause oos inconsistency, set or clear when request is just received or disk error.
 			in_sync_b = node_ids_to_bitmap(device, in_sync);
-
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+			clear_bit(peer_device->bitmap_index, &set_sync_mask);
+			drbd_set_sync(device, peer_req->i.sector,
+				peer_req->i.size, ~in_sync_b, set_sync_mask);
+#else
 			drbd_set_sync(device, peer_req->i.sector,
 				      peer_req->i.size, ~in_sync_b, -1);
 #endif
