@@ -6334,6 +6334,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
     }
 
     mutex_lock(&resource->conf_update);
+#if 0
     for_each_connection_safe(connection, tmp, resource) {
         retcode = conn_try_disconnect(connection, 0);
         if (retcode >= SS_SUCCESS) {
@@ -6344,6 +6345,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
             goto unlock_out;
         }
     }
+#endif
 
     /* detach */
 #ifdef _WIN32
@@ -6357,7 +6359,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
             goto unlock_out;
         }
     }
-
+#if 0
     /* delete volumes */
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
@@ -6371,7 +6373,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
             goto unlock_out;
         }
     }
-
+#endif
 	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
 	
 unlock_out:

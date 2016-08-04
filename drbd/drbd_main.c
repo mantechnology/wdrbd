@@ -3460,6 +3460,7 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 
 	device = minor_to_device(VolumeExtension->VolIndex);
 	if(device && device->resource) {
+		// DW-1103 drbdadm down while IRP_MJ_SHUTDOWN 
 		drbd_adm_down_from_shutdown(device->resource);
 	}
 	gbShutdown = TRUE;
