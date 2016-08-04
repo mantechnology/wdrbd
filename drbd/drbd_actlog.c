@@ -859,8 +859,8 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			return true;
 		if (bm_e_weight(peer_device, rs_enr) == 0)
 			return true;
-		} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
-			peer_device->repl_state[NOW] == L_SYNC_TARGET) {
+	} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
+		peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 		bool rv = false;
 
 		if (!drbd_try_rs_begin_io(peer_device, BM_EXT_TO_SECT(rs_enr), false)) {
