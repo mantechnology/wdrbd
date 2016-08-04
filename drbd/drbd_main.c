@@ -3437,10 +3437,13 @@ static void drbd_cleanup(void)
 }
 
 #ifdef _WIN32
+
+int drbd_adm_down_from_shutdown(struct drbd_resource *resource);
+
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
-    struct drbd_device *device;
+    struct drbd_device *device = NULL;
 
     struct device_list {
         struct drbd_device *device;
@@ -3453,50 +3456,13 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 
     if (retry.wq)
         destroy_workqueue(retry.wq);
-    retry.wq = 0;
+    retry.wq = NULL;
 
-    INIT_LIST_HEAD(&device_list.list);
-
-    rcu_read_lock();
-
-    idr_for_each_entry(struct drbd_device *, &drbd_devices, device, i)
-    {
-        if ((device_list_p = kmalloc(sizeof(struct device_list), GFP_KERNEL, 'C0DW')) == NULL)
-        {
-            WDRBD_ERROR("DRBD_PANIC: No memory\n");
-            rcu_read_unlock();
-			gbShutdown = TRUE;
-            return;
-        }
-        device_list_p->device = device;
-        list_add(&device_list_p->list, &device_list.list);
-    }
-
-    rcu_read_unlock();
-#if 0   // to escape shutdown mutex hang.
-    list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
-    {
-        PVOLUME_EXTENSION VolExt;
-        VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-		// required to convert drbd_conf with drbd_connection. 
-		extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
-        
-		int ret = drbd_adm_down_from_engine(device_list_p->device->resource);
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("failed. ret=%d\n", ret);
-            // error ignored.
-        }
-        
-        //drbdFreeDev(VolExt);  // required to debug for free VolExt
-    }
-#endif
-    list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
-    {
-        list_del(&device_list_p->list);
-        kfree(device_list_p);
-    }
-
+	device = minor_to_device(VolumeExtension->VolIndex);
+	if(device && device->resource) {
+		// DW-1103 drbdadm down while IRP_MJ_SHUTDOWN 
+		drbd_adm_down_from_shutdown(device->resource);
+	}
 	gbShutdown = TRUE;
 }
 #endif
