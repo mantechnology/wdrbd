@@ -1207,6 +1207,12 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	if (size == 0)
 		return 0;
 
+	if (drbd_stream == DATA_STREAM) {
+    	rcu_read_lock();
+		connection->transport.ko_count = rcu_dereference(connection->transport.net_conf)->ko_count;
+		rcu_read_unlock();
+	}
+
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 #ifdef _WIN32
@@ -1778,7 +1784,9 @@ void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct r
 }
 #endif
 
-int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+//int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+int drbd_send_sizes(struct drbd_peer_device *peer_device,
+			uint64_t u_size_diskless, enum dds_flags flags)
 {
 	struct drbd_device *device = peer_device->device;
 	struct p_sizes *p;
@@ -1816,7 +1824,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		put_ldev(device);
 	} else {
 		d_size = 0;
-		u_size = 0;
+		u_size = u_size_diskless;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
 #ifndef _WIN32
