@@ -1906,7 +1906,7 @@ drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_h
 		DDUMP_LLU(device, la_size);
 		p_size = min_not_zero(p_size, m_size);
 		if (p_size > la_size)	
-			drbd_warn(device, "Resize while not connected was forced by the user!\n");
+			drbd_warn(device, "Resize forced while not fully connected!\n");
 	} else {
 		DDUMP_LLU(device, p_size);
 		DDUMP_LLU(device, m_size);
@@ -2793,7 +2793,43 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (!get_ldev_if_state(device, D_ATTACHING))
 		goto force_diskless;
+#ifdef _WIN32_MVFL
+	struct drbd_genlmsghdr *dh = info->userhdr;
+	if (do_add_minor(dh->minor)) {
+		NTSTATUS status = STATUS_UNSUCCESSFUL;
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
+		if (pvext) {
+			status = mvolInitializeThread(pvext, &pvext->WorkThreadInfo, mvolWorkThread);
+			if (NT_SUCCESS(status)) {
+				if (NT_SUCCESS(FsctlLockVolume(dh->minor))) {
+					pvext->Active = TRUE;
+					status = FsctlDismountVolume(dh->minor);
+					FsctlUnlockVolume(dh->minor);
 
+					if (!NT_SUCCESS(status)) {
+						retcode = ERR_RES_NOT_KNOWN;
+						goto force_diskless_dec;
+					}
+				}
+				else {
+					retcode = ERR_RES_IN_USE;
+					goto force_diskless_dec;
+				}
+			}
+			else if (STATUS_DEVICE_ALREADY_ATTACHED == status) {
+				struct block_device * bd = pvext->dev;
+				if (bd) {
+					// required to analyze that this job is done at this point
+					//bd->bd_disk->fops->open(bd, FMODE_WRITE);
+					//bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
+				}
+			}
+			else {
+				WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+			}
+		}
+	}
+#endif
 	drbd_info(device, "Maximum number of peer devices = %u\n",
 		  device->bitmap->bm_max_peers);
 
@@ -3030,54 +3066,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
-#ifdef _WIN32_MVFL
-    struct drbd_genlmsghdr *dh = info->userhdr;
-    if (do_add_minor(dh->minor))
-    {
-        PVOLUME_EXTENSION pvolext = NULL;
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        pvolext = get_targetdev_by_minor(dh->minor);
-        if (pvolext)
-        {
-            status = mvolInitializeThread(pvolext, &pvolext->WorkThreadInfo, mvolWorkThread);
-            if (NT_SUCCESS(status))
-            {
-                if (NT_SUCCESS(FsctlLockVolume(dh->minor)))
-                {
-                    pvolext->Active = TRUE;
-                    status = FsctlDismountVolume(dh->minor);
-                    FsctlUnlockVolume(dh->minor);
-
-                    if (!NT_SUCCESS(status))
-                    {
-                        retcode = ERR_RES_NOT_KNOWN;
-                        goto force_diskless_dec;
-                    }
-                }
-                else
-                {
-                    retcode = ERR_RES_IN_USE;
-                    goto force_diskless_dec;
-                }
-            }
-            else if (STATUS_DEVICE_ALREADY_ATTACHED == status)
-            {
-                struct block_device * bd = pvolext->dev;
-                if (bd)
-                {
-                    // required to analyze that this job is done at this point
-                    //bd->bd_disk->fops->open(bd, FMODE_WRITE);
-                    //bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
-                }
-            }
-            else
-            {
-                WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
-            }
-        }
-    }
-#endif
 
 	mod_timer(&device->request_timer, jiffies + HZ);
 
@@ -4635,7 +4623,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 			if (dd == DS_GREW)
 				set_bit(RESIZE_PENDING, &peer_device->flags);
 			drbd_send_uuids(peer_device, 0, 0);
-			drbd_send_sizes(peer_device, 1, ddsf);
+			drbd_send_sizes(peer_device, rs.resize_size, ddsf);
 		}
 	}
 

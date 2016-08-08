@@ -179,8 +179,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			device->vdisk->pDeviceExtension = NULL;
 			device->rq_queue->backing_dev_info.pvext = NULL;
 
-			drbd_bm_free(device->bitmap);
-			device->bitmap = NULL;
+			//drbd_bm_free(device->bitmap);
+			//device->bitmap = NULL;
 		}
 		else {
 			// meta case
