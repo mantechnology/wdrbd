@@ -1906,7 +1906,7 @@ drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_h
 		DDUMP_LLU(device, la_size);
 		p_size = min_not_zero(p_size, m_size);
 		if (p_size > la_size)	
-			drbd_warn(device, "Resize while not connected was forced by the user!\n");
+			drbd_warn(device, "Resize forced while not fully connected!\n");
 	} else {
 		DDUMP_LLU(device, p_size);
 		DDUMP_LLU(device, m_size);
@@ -4623,7 +4623,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 			if (dd == DS_GREW)
 				set_bit(RESIZE_PENDING, &peer_device->flags);
 			drbd_send_uuids(peer_device, 0, 0);
-			drbd_send_sizes(peer_device, 1, ddsf);
+			drbd_send_sizes(peer_device, rs.resize_size, ddsf);
 		}
 	}
 
