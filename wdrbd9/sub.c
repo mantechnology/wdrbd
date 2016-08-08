@@ -659,8 +659,9 @@ void _printk(const char * func, const char * format, ...)
 	BOOLEAN bDbgLog = FALSE;
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
-	KIRQL	oldirql;
-
+	KIRQL		oldirql;
+	LONGLONG	totallogcnt = 0;
+	
 	ASSERT((level_index >= 0) && (level_index < 8));
 
 	// to write system event log.
@@ -677,17 +678,19 @@ void _printk(const char * func, const char * format, ...)
 	
 	InterlockedCompareExchange(&gLogCnt, 0, LOGBUF_MAXCNT);
 	logcnt = InterlockedExchangeAdd(&gLogCnt, 1); 
+	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
 	
 	buf = gLogBuf[logcnt];
 	RtlZeroMemory(buf, MAX_ELOG_BUF);
-
-#define TIME_OFFSET		24	//08/02/2016 13:24:13.123
+#define TOTALCNT_OFFSET	(9)
+#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
 	KeQuerySystemTime(&systemTime);
     ExSystemTimeToLocalTime(&systemTime, &localTime);
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	sprintf(buf , "%02d/%02d/%04d %02d:%02d:%02d.%03d ", 
+	sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d ", 
+										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
 										timeFields.Year,

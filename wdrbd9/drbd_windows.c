@@ -32,8 +32,9 @@
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
 #endif
-long	gLogCnt = 0;
-char	gLogBuf[LOGBUF_MAXCNT][MAX_ELOG_BUF] = {0,};
+long		gLogCnt = 0;
+LONGLONG 	gTotalLogCnt = 0;
+char		gLogBuf[LOGBUF_MAXCNT][MAX_ELOG_BUF] = {0,};
 
 int g_bypass_level;
 int g_read_filter;

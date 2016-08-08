@@ -142,7 +142,7 @@ struct drbd_connection;
     do {								\
         const struct drbd_device *__d = (device);		\
         const struct drbd_resource *__r = __d->resource;	\
-        printk(level "drbd %s/%u drbd%u, ds(%s), f(0x%x): " fmt,			\
+        printk(level "drbd %s/%u minor %u, ds(%s), dvflag(0x%x): " fmt,			\
             __r->name, __d->vnr, __d->minor, drbd_disk_str(__d->disk_state[NOW]), __d->flags, __VA_ARGS__);	\
     } while (0)
 
@@ -157,7 +157,7 @@ struct drbd_connection;
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = __c->peer_node_id;	\
-        printk(level "drbd %s/%u drbd%u node-id:%d, pdsk(%s), pr(%s), f(0x%x): " fmt,		\
+        printk(level "drbd %s/%u minor %u pnode-id:%d, pdsk(%s), prpl(%s), pdvflag(0x%x): " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32 // DW-	*/		\
     } while (0)
@@ -168,7 +168,7 @@ struct drbd_connection;
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32 // DW- */ \
-        printk(level "drbd %s node-id:%d, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
+        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x): " fmt, (connection)->resource->name,  \
         (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)

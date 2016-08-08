@@ -1552,6 +1552,7 @@ BOOLEAN gbShutdown;
 
 //#define LOGBUF_MAXLEN		256
 #define LOGBUF_MAXCNT		10000
+LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_ELOG_BUF];
 #endif // DRBD_WINDOWS_H
