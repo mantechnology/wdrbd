@@ -5143,7 +5143,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		rcu_read_lock();
 #endif
 		for_each_peer_device_rcu(peer_device_it, device) {
-			drbd_send_sizes(peer_device_it, 0, ddsf);
+			drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
 #ifndef _WIN32 
 		rcu_read_unlock();
@@ -5156,7 +5156,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		for_each_peer_device_rcu(peer_device_it, device) {
 			if (peer_device_it->repl_state[NOW] > L_OFF
 				&&  peer_device_it->c_size != my_size)
-				drbd_send_sizes(peer_device_it, 0, ddsf);
+					drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
 #ifndef _WIN32 
 		rcu_read_unlock();

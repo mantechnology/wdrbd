@@ -1784,7 +1784,9 @@ void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct r
 }
 #endif
 
-int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+//int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+int drbd_send_sizes(struct drbd_peer_device *peer_device,
+			uint64_t u_size_diskless, enum dds_flags flags)
 {
 	struct drbd_device *device = peer_device->device;
 	struct p_sizes *p;
@@ -1822,7 +1824,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		put_ldev(device);
 	} else {
 		d_size = 0;
-		u_size = 0;
+		u_size = u_size_diskless;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
 #ifndef _WIN32
