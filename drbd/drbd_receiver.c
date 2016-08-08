@@ -5145,6 +5145,15 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		drbd_setup_order_type(device, be16_to_cpu(p->queue_order_type));
 	}
 
+	cur_size = drbd_get_capacity(device->this_bdev);
+
+	/* Loop avoidance band-aid: If I've not been able to resize to at least
+	 * the peer's current size, disconnect. */
+	if (!is_handshake) {
+		if (cur_size < p_csize)
+			goto disconnect;
+	}
+
 	if (should_send_sizes) {
 #ifndef _WIN32 // DW-1063 fix wait at dispach level		
 		rcu_read_lock();
@@ -5156,14 +5165,13 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		rcu_read_unlock();
 #endif
 	} else {
-		sector_t my_size = drbd_get_capacity(device->this_bdev);
 #ifndef _WIN32 // DW-1063 fix wait at dispach level		
 		rcu_read_lock();
 #endif
 		for_each_peer_device_rcu(peer_device_it, device) {
 			if (peer_device_it->repl_state[NOW] > L_OFF
-				&&  peer_device_it->c_size != my_size)
-					drbd_send_sizes(peer_device_it, p_usize, ddsf);
+			&&  peer_device_it->c_size != cur_size)
+				drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
 #ifndef _WIN32 
 		rcu_read_unlock();
