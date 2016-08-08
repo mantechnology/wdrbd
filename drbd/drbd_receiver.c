@@ -4203,34 +4203,37 @@ static void various_states_to_goodness(struct drbd_device *device,
 		syncReason = 2;
 		goto out;
 	}
-
-	// 3. compare last repl state
-	if (peer_last_repl_state == L_AHEAD ||
-		peer_last_repl_state == L_SYNC_SOURCE ||
-		peer_last_repl_state == L_PAUSED_SYNC_S ||
-		peer_last_repl_state == L_STARTING_SYNC_S)
+	
+	// MODIFIED_BY_MANTECH DW-955: no chance to in-sync consistent sector since peer_in_sync has been left out of receiving while disconnected.
+	// 3. get rid of unnecessary out-of-sync.
+	if (device->disk_state[NOW] == D_UP_TO_DATE &&
+		peer_disk_state == D_UP_TO_DATE &&
+		peer_device->dirty_bits == 0)
 	{
-		//peer was sync source.
-		*hg = -2;
-		syncReason = 3;
-		goto out;
-	}
-	else if (peer_last_repl_state == L_BEHIND ||
-		peer_last_repl_state == L_SYNC_TARGET ||
-		peer_last_repl_state == L_PAUSED_SYNC_T ||
-		peer_last_repl_state == L_STARTING_SYNC_T)
-	{
-		//peer was sync target.
-		*hg = 2;
-		syncReason = 3;
-		goto out;
-	}
+		struct drbd_peer_md *peer_md = device->ldev->md.peers;
+		int peer_node_id = 0;
+		u64 peer_bm_uuid = 0;
 
+		spin_lock_irq(&device->ldev->md.uuid_lock);
+		peer_node_id = peer_device->node_id;
+		peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+
+		drbd_warn(peer_device, "FIXME, both nodes are UpToDate, but have inconsistent bits set. clear it without resync\n");
+
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			forget_bitmap(device, peer_node_id);
+		}
+		drbd_md_mark_dirty(device);
+		spin_unlock_irq(&device->ldev->md.uuid_lock);
+	}
 out:
 	if (*hg)
 		drbd_info(device, "Becoming sync %s due to %s.\n",
 		*hg > 0 ? "source" : "target",
-		syncReason == 1 ? "role" : syncReason == 2 ? "disk states" : "last repl state");
+		syncReason == 1 ? "role" : syncReason == 2 ? "disk states" : "unknown reason");
 }
 #endif
 

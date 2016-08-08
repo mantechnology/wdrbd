@@ -1212,13 +1212,62 @@ static bool was_resync_stable(struct drbd_peer_device *peer_device)
 	return true;
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-955: need to upgrade disk state after unstable resync.
+static void sanitize_state_after_unstable_resync(struct drbd_peer_device *peer_device)
+{
+	struct drbd_device *device = peer_device->device;
+	struct drbd_peer_device *found_peer = NULL;
+	
+	// unstable resync's done, does mean primary node exists. try to find it.
+	for_each_peer_device_rcu(found_peer, device)
+	{
+		// my disk is consistent with primary's, adopt it's disk state.
+		if (found_peer->connection->peer_role[NOW] == R_PRIMARY &&
+			drbd_bm_total_weight(found_peer) == 0)
+		{
+			__change_disk_state(device, found_peer->disk_state[NOW]);
+			return;
+		}
+	}
+
+	// I have no connection with primary, but disk is consistent with unstable node. I may be outdated.
+	if (drbd_bm_total_weight(peer_device) == 0 &&
+		device->disk_state[NOW] < D_OUTDATED &&
+		peer_device->disk_state[NOW] >= D_OUTDATED)
+		__change_disk_state(device, D_OUTDATED);
+}
+#endif
+
 static void __cancel_other_resyncs(struct drbd_device *device)
 {
 	struct drbd_peer_device *peer_device;
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NEW] == L_PAUSED_SYNC_T)
+#ifdef _WIN32
+		{
+			// MODIFIED_BY_MANTECH DW-955: canceling other resync may causes out-oof-sync remained, clear the bitmap since no need.
+			struct drbd_peer_md *peer_md = device->ldev->md.peers;
+			int peer_node_id = 0;
+			u64 peer_bm_uuid = 0;
+
+			spin_lock_irq(&device->ldev->md.uuid_lock);
+			peer_node_id = peer_device->node_id;
+			peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+
+			if (peer_bm_uuid)
+				_drbd_uuid_push_history(device, peer_bm_uuid);
+			if (peer_md[peer_node_id].bitmap_index != -1)
+				forget_bitmap(device, peer_node_id);
+			drbd_md_mark_dirty(device);
+			spin_unlock_irq(&device->ldev->md.uuid_lock);
+
 			__change_repl_state(peer_device, L_ESTABLISHED);
+		}
+#else
+			__change_repl_state(peer_device, L_ESTABLISHED);
+#endif
 	}
 }
 
@@ -1385,6 +1434,11 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)
 				__change_disk_state(device, peer_device->disk_state[NOW]);
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-955: need to upgrade disk state after unstable resync.
+			else
+				sanitize_state_after_unstable_resync(peer_device);
+#endif
 
 			if (device->disk_state[NEW] == D_UP_TO_DATE)
 				__cancel_other_resyncs(device);

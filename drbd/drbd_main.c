@@ -5381,7 +5381,11 @@ static const char* name_of_node_id(struct drbd_resource *resource, int node_id)
 	return connection ? rcu_dereference(connection->transport.net_conf)->name : "";
 }
 
+#ifdef _WIN32
+void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(local)
+#else
 static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(local)
+#endif
 {
 	int bitmap_index = device->ldev->md.peers[node_id].bitmap_index;
 	const char* name;
@@ -5563,6 +5567,12 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				// bitmap_uuid was already '0', just clear_flag and drbd_propagate_uuids().
 				if((peer_md[node_id].bitmap_uuid == 0) && (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))
 					goto clear_flag;
+
+				// MODIFIED_BY_MANTECH DW-955: do not forget SyncSource's bitmap.
+				struct drbd_peer_device *found_peer = peer_device_by_node_id(device, node_id);
+
+				if (found_peer && found_peer->repl_state[NOW] == L_SYNC_SOURCE)
+					goto clear_flag;
 #endif
 				
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
@@ -5613,7 +5623,24 @@ clear_flag:
 		}
 	}
 
-#ifndef _WIN32
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-955: peer has already cleared my bitmap, or receiving peer_in_sync has been left out. no resync is needed.
+	if (drbd_bm_total_weight(peer_device) &&
+		peer_device->dirty_bits == 0 &&
+		peer_device->uuids_received &&
+		(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
+		(peer_device->current_uuid & ~UUID_PRIMARY) ==
+		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+	{
+		int peer_node_id = peer_device->node_id;
+		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+			forget_bitmap(device, peer_node_id);
+		drbd_md_mark_dirty(device);
+	}
+#else
 	// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 	write_bm |= detect_copy_ops_on_peer(peer_device);
 #endif
