@@ -37,7 +37,7 @@ static int send_err_count;
 VOID LogLink_MakeUsable()
 {
 	mutex_init(&loglink_mutex);
-	ExInitializeNPagedLookasideList(&loglink_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, 'AADW', 0);
+	ExInitializeNPagedLookasideList(&loglink_printk_msg, NULL, NULL, 0, MAX_DRBDLOG_BUF, 'AADW', 0);
 	INIT_LIST_HEAD(&loglink.loglist);
 	atomic_cmpxchg(&g_loglink_state, LOGLINK_UNINITIALIZED, LOGLINK_USABLE);
 }

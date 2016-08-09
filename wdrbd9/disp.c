@@ -757,6 +757,16 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			status = IOCTL_SetMinimumLogLevel(DeviceObject, Irp); // Set minimum level of logging (system event log, service log)
 			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
+		case IOCTL_MVOL_GET_DRBD_LOG:
+		{
+			ULONG size = 0;
+			status = IOCTL_GetDrbdLog(DeviceObject, Irp, &size);
+			if(status == STATUS_SUCCESS) {
+				MVOL_IOCOMPLETE_REQ(Irp, status, size);
+			} else {
+				MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+			}
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||

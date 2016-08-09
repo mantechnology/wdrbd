@@ -681,7 +681,7 @@ void _printk(const char * func, const char * format, ...)
 	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
 	
 	buf = gLogBuf[logcnt];
-	RtlZeroMemory(buf, MAX_ELOG_BUF);
+	RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
 #define TOTALCNT_OFFSET	(9)
 #define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
 	KeQuerySystemTime(&systemTime);
@@ -721,9 +721,9 @@ void _printk(const char * func, const char * format, ...)
 	va_end(args);
 
 	int length = strlen(buf);
-	if (length > MAX_ELOG_BUF) {
-		length = MAX_ELOG_BUF - 1;
-		buf[MAX_ELOG_BUF - 1] = 0;
+	if (length > MAX_DRBDLOG_BUF) {
+		length = MAX_DRBDLOG_BUF - 1;
+		buf[MAX_DRBDLOG_BUF - 1] = 0;
 	} else {
 		// TODO: chekc min?
 	}

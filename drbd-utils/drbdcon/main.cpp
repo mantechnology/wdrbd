@@ -501,7 +501,8 @@ main(int argc, char* argv [])
 
 	if (GetLog)
 	{
-		res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+		res = MVOL_GetDrbdLog((LPCTSTR)ProviderName);
 	}
 
 	if (WriteLog)

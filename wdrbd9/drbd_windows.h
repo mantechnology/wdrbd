@@ -335,7 +335,7 @@ extern atomic_t g_dbglog_lv_min;
 #define Get_log_lv() \
 	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
 
-#define MAX_ELOG_BUF				512
+
 #define MAX_TEXT_BUF                256
 
 #define MAX_SPILT_BLOCK_SZ			(1 << 20)
@@ -1550,9 +1550,8 @@ NTSTATUS SaveCurrentLogLv();
 
 BOOLEAN gbShutdown;
 
-//#define LOGBUF_MAXLEN		256
-#define LOGBUF_MAXCNT		10000
+
 LONGLONG	gTotalLogCnt;
 long		gLogCnt;
-char		gLogBuf[LOGBUF_MAXCNT][MAX_ELOG_BUF];
+char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 #endif // DRBD_WINDOWS_H

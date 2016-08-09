@@ -599,7 +599,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	ULONG			inlen;
 	PLOGGING_MIN_LV pLoggingMinLv = NULL;
-
+	
 	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 
@@ -624,5 +624,41 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	return STATUS_SUCCESS;
+}
+
+
+NTSTATUS
+IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size)
+{
+	ULONG			inlen, outlen;
+	DRBD_LOG* 		pDrbdLog = NULL;
+	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
+	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
+	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+
+	if(!size) {
+		WDRBD_ERROR("GetDrbdLog Invalid parameter. size is NULL\n");
+		return STATUS_INVALID_PARAMETER;
+	}
+	*size = 0;	
+	
+	if (inlen < DRBD_LOG_SIZE || outlen < DRBD_LOG_SIZE) {
+		mvolLogError(DeviceObject, 355, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL);
+		WDRBD_ERROR("GetDrbdLog buffer too small\n");
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	if (Irp->AssociatedIrp.SystemBuffer) {
+		pDrbdLog = (DRBD_LOG*)Irp->AssociatedIrp.SystemBuffer;
+		pDrbdLog->totalcnt = gTotalLogCnt;
+		if(pDrbdLog->LogBuf) {
+			RtlCopyMemory(pDrbdLog->LogBuf, gLogBuf, MAX_DRBDLOG_BUF*LOGBUF_MAXCNT);
+			*size = DRBD_LOG_SIZE;
+		} else {
+			WDRBD_ERROR("GetDrbdLog Invalid parameter. pDrbdLog->LogBuf is NULL\n");
+			return STATUS_INVALID_PARAMETER;
+		}
+	}
+	
 	return STATUS_SUCCESS;
 }
