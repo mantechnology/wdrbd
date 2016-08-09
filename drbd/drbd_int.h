@@ -881,6 +881,8 @@ enum {
 #ifdef _WIN32
 	// DW-874: Moved from device flag. See device flag comment for detail.
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
+	// MODIFIED_BY_MANTECH DW-955: add resync aborted flag to resume it later.
+	RESYNC_ABORTED,			/* Resync has been aborted due to unsyncable (peer)disk state, need to resume it when it goes syncable. */
 #endif
 };
 

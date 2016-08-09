@@ -2290,6 +2290,11 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		return;
 	}
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-955: clear resync aborted flag when just starting resync.
+	clear_bit(RESYNC_ABORTED, &peer_device->flags);
+#endif
+
 	if (!test_bit(B_RS_H_DONE, &peer_device->flags)) {
 		if (side == L_SYNC_TARGET) {
 			/* Since application IO was locked out during L_WF_BITMAP_T and

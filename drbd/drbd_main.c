@@ -5627,8 +5627,7 @@ clear_flag:
 	// MODIFIED_BY_MANTECH DW-955: peer has already cleared my bitmap, or receiving peer_in_sync has been left out. no resync is needed.
 	if (drbd_bm_total_weight(peer_device) &&
 		peer_device->dirty_bits == 0 &&
-		peer_device->uuids_received &&
-		(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
+		peer_device->repl_state[NOW] >= L_ESTABLISHED &&
 		(peer_device->current_uuid & ~UUID_PRIMARY) ==
 		(drbd_current_uuid(device) & ~UUID_PRIMARY))
 	{
