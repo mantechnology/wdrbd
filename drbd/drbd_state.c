@@ -1548,6 +1548,29 @@ static void sanitize_state(struct drbd_resource *resource)
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
 				repl_state[NEW] = L_ESTABLISHED;
+				// MODIFIED_BY_MANTECH DW-955: need to set flag to resume aborted resync when it goes syncable.
+				set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+
+			// MODIFIED_BY_MANTECH DW-955: (peer)disk state is going syncable, resume aborted resync.
+			if ((disk_state[OLD] <= D_INCONSISTENT && peer_disk_state[OLD] <= D_INCONSISTENT) &&
+				(disk_state[NEW] <= D_INCONSISTENT || peer_disk_state[NEW] <= D_INCONSISTENT) &&
+				test_bit(RESYNC_ABORTED, &peer_device->flags))
+			{
+				if (disk_state[NEW] == D_OUTDATED ||
+					disk_state[NEW] == D_CONSISTENT ||
+					disk_state[NEW] == D_UP_TO_DATE)
+				{
+					repl_state[NEW] = L_SYNC_SOURCE;
+					clear_bit(RESYNC_ABORTED, &peer_device->flags);
+				}
+				else if (peer_disk_state[NEW] == D_OUTDATED ||
+					peer_disk_state[NEW] == D_CONSISTENT ||
+					peer_disk_state[NEW] == D_UP_TO_DATE)
+				{
+					repl_state[NEW] = L_SYNC_TARGET;
+					clear_bit(RESYNC_ABORTED, &peer_device->flags);
+				}				
 			}
 #endif
 
