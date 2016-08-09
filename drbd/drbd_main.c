@@ -5580,7 +5580,15 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				if (node_id == peer_device->node_id)
 					drbd_print_uuids(peer_device, "updated UUIDs");
 				else if (peer_md[node_id].bitmap_index != -1)
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
+				{
+					drbd_info(device, "bitmap will be cleared due to other resync\n");
 					forget_bitmap(device, node_id);
+				}
+#else
+					forget_bitmap(device, node_id);
+#endif
 				else
 					drbd_info(device, "Clearing bitmap UUID for node %d\n",
 						  node_id);
@@ -5636,7 +5644,10 @@ clear_flag:
 		if (peer_bm_uuid)
 			_drbd_uuid_push_history(device, peer_bm_uuid);
 		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync\n");
 			forget_bitmap(device, peer_node_id);
+		}
 		drbd_md_mark_dirty(device);
 	}
 #else

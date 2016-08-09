@@ -1259,7 +1259,10 @@ static void __cancel_other_resyncs(struct drbd_device *device)
 			if (peer_bm_uuid)
 				_drbd_uuid_push_history(device, peer_bm_uuid);
 			if (peer_md[peer_node_id].bitmap_index != -1)
+			{
+				drbd_info(peer_device, "bitmap will be cleared due to resync cancelation\n");
 				forget_bitmap(device, peer_node_id);
+			}
 			drbd_md_mark_dirty(device);
 			spin_unlock_irq(&device->ldev->md.uuid_lock);
 
@@ -1478,6 +1481,11 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			}
 		}
 	}
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-955: clear resync aborted flag when just resync is done.
+	clear_bit(RESYNC_ABORTED, &peer_device->flags);
+#endif
 
 out_unlock:
 	end_state_change_locked(device->resource);

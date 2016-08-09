@@ -4224,6 +4224,7 @@ static void various_states_to_goodness(struct drbd_device *device,
 			_drbd_uuid_push_history(device, peer_bm_uuid);
 		if (peer_md[peer_node_id].bitmap_index != -1)
 		{
+			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync\n");
 			forget_bitmap(device, peer_node_id);
 		}
 		drbd_md_mark_dirty(device);
