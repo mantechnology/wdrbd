@@ -464,12 +464,15 @@ void complete_master_bio(struct drbd_device *device,
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
-		master_bio =  m->bio; // if pMasterIrp is exist, bio is master bio.
+		master_bio = m->bio; // if pMasterIrp is exist, bio is master bio.
+		NTSTATUS status = STATUS_SUCCESS;
 
-		// In diskless mode, io access should be completed non-arbitrary thread.
-		// Error status is not assigned properly yet, so should do.
-		if (D_DISKLESS == device->disk_state[NOW]) {
-			m->error = STATUS_UNSUCCESSFUL;			
+		// In diskless mode, if irp was sent to peer,
+		// then would be completed success,
+		// The others should be converted to the Windows error status.
+		if (-EIO == m->error) {
+			status = (D_DISKLESS == device->disk_state[NOW]) ?
+				STATUS_SUCCESS : STATUS_INVALID_DEVICE_REQUEST;
 		}
 
 		if (!master_bio->splitInfo) {
@@ -478,14 +481,14 @@ void complete_master_bio(struct drbd_device *device,
 	            BUG();
 	        }
 
-	        if (NT_SUCCESS(m->error)) {
+			if (NT_SUCCESS(status)) {
 	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
 	        } else {
-	            master_bio->pMasterIrp->IoStatus.Status = m->error;
+	            master_bio->pMasterIrp->IoStatus.Status = status;
 	            master_bio->pMasterIrp->IoStatus.Information = 0;
 	        }
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
+	        if (NT_SUCCESS(status) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
 	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
 				if (buffer == NULL) {
@@ -502,7 +505,7 @@ void complete_master_bio(struct drbd_device *device,
 	    } else {
 
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
-	        if (NT_SUCCESS(m->error) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
+	        if (NT_SUCCESS(status) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
 	            buffer = MmGetSystemAddressForMdlSafe(master_bio->pMasterIrp->MdlAddress, NormalPagePriority);
 	            if (buffer == NULL) {
@@ -517,7 +520,7 @@ void complete_master_bio(struct drbd_device *device,
 	        }
 #endif
 
-			if (!NT_SUCCESS(m->error)) {
+			if (!NT_SUCCESS(status)) {
 	        	master_bio->splitInfo->LastError = m->error;
 	        }
 			
@@ -527,7 +530,7 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Status = STATUS_SUCCESS;
 					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
 				} else {
-					WDRBD_ERROR("0x%x ERRROR! sec:%d size:%d\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size);
+					WDRBD_WARN("0x%x ERRROR! sec(0x%llx+%d)\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size >> 9);
 					master_bio->pMasterIrp->IoStatus.Status = master_bio->splitInfo->LastError;
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}
@@ -544,12 +547,10 @@ void complete_master_bio(struct drbd_device *device,
 	   	}
 #endif
 		kfree(master_bio);
-
-#endif
 	} else {
 		panic("complete_master_bio ERRROR! pMasterIrp is NULL\n");
 	}
-	
+#endif	
 	dec_ap_bio(device, rw);
 }
 
@@ -1080,9 +1081,6 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		drbd_report_io_error(device, req);
 		__drbd_chk_io_error(device, DRBD_WRITE_ERROR);
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
-#ifdef _WIN32
-		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
-#endif
 		break;
 
 	case READ_COMPLETED_WITH_ERROR:
@@ -1093,9 +1091,6 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 	case READ_AHEAD_COMPLETED_WITH_ERROR:
 		/* it is legal to fail READA, no __drbd_chk_io_error in that case. */
 		mod_rq_state(req, m, peer_device, RQ_LOCAL_PENDING, RQ_LOCAL_COMPLETED);
-#ifdef _WIN32
-		m->error = STATUS_UNSUCCESSFUL;	// spedified error statuss
-#endif
 		break;
 
 	case DISCARD_COMPLETED_NOTSUPP:
