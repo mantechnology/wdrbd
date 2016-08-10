@@ -29,7 +29,7 @@ DWORD RunProcess(
 
 #define DRBD_DAEMON_TCP_PORT	5679
 
-#define _WIN32_LOGLINK	
+//#define _WIN32_LOGLINK	
 #define DRBD_EVENTLOG_LINK_PORT	5677
 
 #define	LOGLINK_NOT_USED	0	// kernel level log with multi-line

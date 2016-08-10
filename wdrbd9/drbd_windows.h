@@ -50,7 +50,6 @@
 #define DRBD_EVENT_SOCKET_STRING	"DRBD_EVENTS"		/// used in NETLINK
 
 //#define _WIN32_WPP
-#define _WIN32_LOGLINK			// NEW: socket link for eventlog between engine and drbdService 
 #define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
 
 #ifdef _WIN32_WPP
@@ -308,8 +307,7 @@ enum km_type {
 
 typedef unsigned int                fmode_t;
 
-extern atomic_t g_syslog_lv_min;
-extern atomic_t g_svclog_lv_min;
+extern atomic_t g_eventlog_lv_min;
 extern atomic_t g_dbglog_lv_min;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
@@ -317,30 +315,26 @@ extern atomic_t g_dbglog_lv_min;
 /* Log level value is 32-bit integer
    00000000 00000000 00000000 00000000
 								   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-								|||	   3 bit between 3 ~ 5 indicates service log level (0 ~ 7)
 							| ||	   3 bit between 6 ~ 8 indicates debug print log level (0 ~ 7)
 */
-#define LOG_LV_BIT_POS_SYS	0
-#define LOG_LV_BIT_POS_SVC	(LOG_LV_BIT_POS_SYS + 3)
-#define LOG_LV_BIT_POS_DBG	(LOG_LV_BIT_POS_SVC + 3)
+#define LOG_LV_BIT_POS_EVENTLOG		(0)
+#define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
 
 // Default values are used when log_level value doesn't exist.
-#define LOG_LV_DEFAULT_SYS	KERN_CRIT_NUM
-#define LOG_LV_DEFAULT_SVC	KERN_ERR_NUM
-#define LOG_LV_DEFAULT_DBG	KERN_INFO_NUM
-#define LOG_LV_DEFAULT		(LOG_LV_DEFAULT_SYS << LOG_LV_BIT_POS_SYS) | (LOG_LV_DEFAULT_SVC << LOG_LV_BIT_POS_SVC) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
+#define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
+#define LOG_LV_DEFAULT_DBG		KERN_INFO_NUM
+#define LOG_LV_DEFAULT			(LOG_LV_DEFAULT_EVENTLOG << LOG_LV_BIT_POS_EVENTLOG) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
 
 #define LOG_LV_MASK			0x7
 
 #define Set_log_lv(log_level) \
-	atomic_set(&g_syslog_lv_min, (log_level >> LOG_LV_BIT_POS_SYS) & LOG_LV_MASK);	\
-	atomic_set(&g_svclog_lv_min, (log_level >> LOG_LV_BIT_POS_SVC) & LOG_LV_MASK);	\
+	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
 
 #define Get_log_lv() \
-	(atomic_read(&g_syslog_lv_min) << LOG_LV_BIT_POS_SYS) | (atomic_read(&g_svclog_lv_min) << LOG_LV_BIT_POS_SVC) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
+	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
 
-#define MAX_ELOG_BUF				512
+
 #define MAX_TEXT_BUF                256
 
 #define MAX_SPILT_BLOCK_SZ			(1 << 20)
@@ -354,7 +348,7 @@ extern atomic_t g_dbglog_lv_min;
 extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
-extern NPAGED_LOOKASIDE_LIST drbd_printk_msg;
+
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
@@ -1555,4 +1549,8 @@ NTSTATUS SaveCurrentLogLv();
 
 BOOLEAN gbShutdown;
 
+
+LONGLONG	gTotalLogCnt;
+long		gLogCnt;
+char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 #endif // DRBD_WINDOWS_H

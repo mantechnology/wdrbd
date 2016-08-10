@@ -87,4 +87,6 @@ DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);
 
 DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml);
 
+DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName);
+
 #endif __MVOL_H__

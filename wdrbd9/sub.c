@@ -34,10 +34,6 @@
 #include "sub.tmh" 
 #endif
 
-#ifdef _WIN32_LOGLINK
-#include "loglink.h"
-#endif
-
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -601,29 +597,8 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 	IoWriteErrorLogEntry(pLogEntry);
 }
 
-NPAGED_LOOKASIDE_LIST drbd_printk_msg;
 
 #ifdef _WIN32_EVENTLOG
-char * printk_str(const char *fmt, ...)
-{
-	int ret = 0;
-	va_list args;
-
-    char * buf = (char *)ExAllocateFromNPagedLookasideList(&drbd_printk_msg);
-    if (!buf)
-    {
-        return 0;
-    }
-    RtlZeroMemory(buf, MAX_ELOG_BUF);
-
-	va_start(args, fmt);
-	ret = vsprintf(buf, fmt, args); // DRBD_DOC: vsnprintf 개선
-	va_end(args);
-
-    // caller must ExFreePoolWithTag(buf, DRBD_GENERIC_POOL_TAG);
-
-	return buf;
-}
 
 DWORD msgids [] = {
 	PRINTK_EMERG,
@@ -662,137 +637,110 @@ void save_to_system_event(char * buf, int length, int level_index)
 void printk_init(void)
 {
 	// initialization for logging. the function '_prink' shouldn't be called before this initialization.
-	ExInitializeNPagedLookasideList(&drbd_printk_msg, NULL, NULL, 0, MAX_ELOG_BUF, '65DW', 0);
-#ifdef _WIN32_LOGLINK
-	LogLink_MakeUsable();
-#endif
 }
 
 void printk_cleanup(void)
 {
-#ifdef _WIN32_LOGLINK
-	LogLink_MakeUnusable();
-#endif
-	ExDeleteNPagedLookasideList(&drbd_printk_msg);
+	
 }
+
 
 void _printk(const char * func, const char * format, ...)
 {
 	int ret = 0;
 	va_list args;
-
-	char * buf = (char *) ExAllocateFromNPagedLookasideList(&drbd_printk_msg);
-	if (!buf)
-	{
-		return;
-	}
-	RtlZeroMemory(buf, MAX_ELOG_BUF);
-
-	va_start(args, format);
-	ret = vsprintf(buf, format, args); // DRBD_DOC: improve vsnprintf 
-	va_end(args);
-
-	int length = strlen(buf);
-	if (length > MAX_ELOG_BUF)
-	{
-		length = MAX_ELOG_BUF - 1;
-		buf[MAX_ELOG_BUF - 1] = 0;
-	}
-	else
-	{
-		// TODO: chekc min?
-	}
+	char* buf = NULL;
+	long logcnt = 0;
 
 	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
-	CHAR szTempBuf[MAX_ELOG_BUF] = "";
-	BOOLEAN bSysEventLog = FALSE;
-	BOOLEAN bServiceLog = FALSE;
+	BOOLEAN bEventLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
-
-	ASSERT((level_index >= 0) && (level_index < 8));
+	LARGE_INTEGER systemTime, localTime;
+    TIME_FIELDS timeFields = {0,};
+	KIRQL		oldirql;
+	LONGLONG	totallogcnt = 0;
 	
-#ifdef _WIN32_WPP
-	DoTraceMessage(TRCINFO, "%s", buf);
-	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3);
-	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-#else
+	ASSERT((level_index >= 0) && (level_index < 8));
+
 	// to write system event log.
-	if (level_index <= atomic_read(&g_syslog_lv_min))
-		bSysEventLog = TRUE;
-	// to send to drbd service.	
-	if (level_index <= atomic_read(&g_svclog_lv_min))
-		bServiceLog = TRUE;
+	if (level_index <= atomic_read(&g_eventlog_lv_min))
+		bEventLog = TRUE;
 	// to print through debugger.
 	if (level_index <= atomic_read(&g_dbglog_lv_min))
 		bDbgLog = TRUE;
 
 	// nothing to log.
-	if (!bSysEventLog &&
-		!bServiceLog &&
-		!bDbgLog)
-	{
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
+	if (!bEventLog && !bDbgLog) {
 		return;
 	}
+	
+	InterlockedCompareExchange(&gLogCnt, 0, LOGBUF_MAXCNT);
+	logcnt = InterlockedExchangeAdd(&gLogCnt, 1); 
+	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
+	
+	buf = gLogBuf[logcnt];
+	RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
+#define TOTALCNT_OFFSET	(9)
+#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
+	KeQuerySystemTime(&systemTime);
+    ExSystemTimeToLocalTime(&systemTime, &localTime);
 
-	if (bSysEventLog)
-	{
+    RtlTimeToTimeFields(&localTime, &timeFields);
+
+	sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d ", 
+										totallogcnt,
+										timeFields.Month,
+										timeFields.Day,
+										timeFields.Year,
+										timeFields.Hour,
+										timeFields.Minute,
+										timeFields.Second,
+										timeFields.Milliseconds);
+
+#define LEVEL_OFFSET	10
+
+	switch (level_index) {
+	case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM: 
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_FATA", LEVEL_OFFSET); break;
+	case KERN_ERR_NUM: 
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_ERRO", LEVEL_OFFSET); break;
+	case KERN_WARNING_NUM: 
+		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_WARN", LEVEL_OFFSET); break;
+	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
+		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_INFO", LEVEL_OFFSET); break;
+	case KERN_DEBUG_NUM: 
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_TRAC", LEVEL_OFFSET); break;
+	default: 
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_UNKN", LEVEL_OFFSET); break;
+	}
+	
+	va_start(args, format);
+	ret = vsprintf(buf + TIME_OFFSET + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
+	va_end(args);
+
+	int length = strlen(buf);
+	if (length > MAX_DRBDLOG_BUF) {
+		length = MAX_DRBDLOG_BUF - 1;
+		buf[MAX_DRBDLOG_BUF - 1] = 0;
+	} else {
+		// TODO: chekc min?
+	}
+	
+#ifdef _WIN32_WPP
+	DoTraceMessage(TRCINFO, "%s", buf);
+	WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf);
+	DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf);
+#else
+	
+	if (bEventLog) {
 		save_to_system_event(buf, length, level_index);
 	}
-
-	switch (level_index)
-	{
-	case KERN_EMERG_NUM:
-	case KERN_ALERT_NUM:
-	case KERN_CRIT_NUM:
-		printLevel = DPFLTR_ERROR_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_FATA", func, buf + 3);
-		break;
-	case KERN_ERR_NUM:
-		printLevel = DPFLTR_ERROR_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_ERRO", func, buf + 3);
-		break;
-	case KERN_WARNING_NUM:
-		printLevel = DPFLTR_WARNING_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_WARN", func, buf + 3);
-		break;
-	case KERN_NOTICE_NUM:
-	case KERN_INFO_NUM:
-		printLevel = DPFLTR_INFO_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_INFO", func, buf + 3);
-		break;
-	case KERN_DEBUG_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_TRAC", func, buf + 3);
-		break;
-	default:
-		printLevel = DPFLTR_TRACE_LEVEL;
-		sprintf(szTempBuf, "<%d>%s: [%s] %s", level_index, "WDRBD_UNKN", func, buf + 3);
-		break;
-	}
-
-	strcpy_s(buf, MAX_ELOG_BUF, szTempBuf);
-
+	
 	if (bDbgLog)
-		DbgPrintEx(FLTR_COMPONENT, printLevel, buf + 3);
+		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
 
-#ifdef _WIN32_LOGLINK
-	if (FALSE == bServiceLog ||
-		FALSE == LogLink_IsUsable() ||
-		STATUS_SUCCESS != LogLink_QueueBuffer(buf))
-	{
-		// buf will be freed by loglink sender thread if it's queued, otherwise free it here.
-		ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-	}
-#else
-    // WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", buf + 3); //old style
-    DbgPrintEx(FLTR_COMPONENT, DPFLTR_INFO_LEVEL, "WDRBD_INFO: [%s] %s", func, buf + 3);
-
-	ExFreeToNPagedLookasideList(&drbd_printk_msg, buf);
-#endif
 #endif
 }
 #endif

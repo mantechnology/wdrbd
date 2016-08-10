@@ -1239,3 +1239,90 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 	return retVal;
 }
 
+DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
+{
+	HANDLE      hDevice = INVALID_HANDLE_VALUE;
+	DWORD       retVal = ERROR_SUCCESS;
+	DWORD       dwReturned = 0;
+	DWORD		dwControlCode = 0;
+	BOOL        ret = FALSE;
+	PDRBD_LOG	pDrbdLog = NULL;
+
+	// 1. Open MVOL_DEVICE
+	hDevice = OpenDevice(MVOL_DEVICE);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed open drbd. Err=%u\n",
+			__FUNCTION__, retVal);
+		return retVal;
+	}
+	pDrbdLog = (PDRBD_LOG)malloc(DRBD_LOG_SIZE);
+	if (!pDrbdLog) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed malloc. Err=%u\n",
+			__FUNCTION__, retVal);
+		return retVal;
+	}
+	// 2. DeviceIoControl with DRBD_LOG_SIZE parameter (DW-1054)
+	ret = DeviceIoControl(hDevice, IOCTL_MVOL_GET_DRBD_LOG, pDrbdLog, DRBD_LOG_SIZE, pDrbdLog, DRBD_LOG_SIZE, &dwReturned, NULL);
+	if (ret == FALSE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_GET_DRBD_LOG. Err=%u\n",
+			__FUNCTION__, retVal);
+	}
+	else {
+		//printf("%lld\n", pDrbdLog->totalcnt);
+		HANDLE hLogFile = INVALID_HANDLE_VALUE;
+		hLogFile = CreateFile(L"drbdService.log", GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hLogFile != INVALID_HANDLE_VALUE) {
+			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
+			if (pDrbdLog->totalcnt <= LOGBUF_MAXCNT) {
+				for (unsigned int i = 0; i < (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+					//printf("%s", &pDrbdLog->LogBuf[i]);
+					DWORD dwWritten;
+					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
+					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
+					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
+				}
+			}
+			else { // pDrbdLog->totalcnt > LOGBUF_MAXCNT
+				unsigned int loopcnt1 = 0, loopcnt2 = 0;
+				
+				loopcnt1 = LOGBUF_MAXCNT - (pDrbdLog->totalcnt - LOGBUF_MAXCNT);
+				for (unsigned int i = (pDrbdLog->totalcnt - LOGBUF_MAXCNT )*MAX_DRBDLOG_BUF; i < (loopcnt1*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+					DWORD dwWritten;
+					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
+					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
+					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
+				}
+
+				loopcnt2 = (pDrbdLog->totalcnt - LOGBUF_MAXCNT);
+				for (unsigned int i = 0; i < (loopcnt2*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+					DWORD dwWritten;
+					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
+					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
+					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
+				}
+			}
+			
+			CloseHandle(hLogFile);
+		}
+		else {
+			retVal = GetLastError();
+			fprintf(stderr, "LOG_ERROR: %s: Failed CreateFile. Err=%u\n",
+				__FUNCTION__, retVal);
+		}
+	}
+
+	// 3. CloseHandle MVOL_DEVICE
+	if (hDevice != INVALID_HANDLE_VALUE) {
+		CloseHandle(hDevice);
+	}
+
+	if (pDrbdLog) {
+		free(pDrbdLog);
+	}
+
+	return retVal;
+}
+

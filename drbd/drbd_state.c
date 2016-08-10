@@ -3707,13 +3707,22 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	request.primary_nodes = 0;  /* Computed in phase 1. */
 	request.mask = cpu_to_be32(context->mask.i);
 	request.val = cpu_to_be32(context->val.i);
-
+#ifdef _WIN32
+	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)\n",
+			be32_to_cpu(request.tid),
+		  	resource->res_opts.node_id,
+		  	context->target_node_id,
+		  	context->mask.i,
+		  	context->val.i);
+#else
 	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)",
-		  be32_to_cpu(request.tid),
-		  resource->res_opts.node_id,
-		  context->target_node_id,
-		  context->mask.i,
-		  context->val.i);
+			be32_to_cpu(request.tid),
+		  	resource->res_opts.node_id,
+		  	context->target_node_id,
+		  	context->mask.i,
+		  	context->val.i);
+#endif
+		  
 	resource->remote_state_change = true;
 	reply->initiator_node_id = resource->res_opts.node_id;
 	reply->target_node_id = context->target_node_id;
