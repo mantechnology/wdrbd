@@ -985,12 +985,12 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set log level
-	//int log_level = LOG_LV_DEFAULT;	
-	//status = GetRegistryValue(LOG_LV_REG_VALUE_NAME, &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
-	//if (status == STATUS_SUCCESS){
-	//	log_level = *(int*)aucTemp;;
-	//}
-	//Set_log_lv(log_level);
+	int log_level = LOG_LV_DEFAULT;	
+	status = GetRegistryValue(LOG_LV_REG_VALUE_NAME, &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
+	if (status == STATUS_SUCCESS){
+		log_level = *(int*)aucTemp;;
+	}
+	Set_log_lv(log_level);
 
 	// set g_netlink_tcp_port
 	status = GetRegistryValue(L"netlink_tcp_port", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);

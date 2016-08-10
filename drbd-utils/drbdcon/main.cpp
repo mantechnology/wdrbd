@@ -284,10 +284,6 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_SYSLOG;
 				}
-				else if (strcmp(argv[argIndex], "svc") == 0)
-				{
-					lml.nType = LOGGING_TYPE_SVCLOG;
-				}
 				else if (strcmp(argv[argIndex], "dbg") == 0)
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
