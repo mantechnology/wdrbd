@@ -661,7 +661,7 @@ void _printk(const char * func, const char * format, ...)
     TIME_FIELDS timeFields = {0,};
 	KIRQL		oldirql;
 	LONGLONG	totallogcnt = 0;
-	
+	long 		offset = 0;
 	ASSERT((level_index >= 0) && (level_index < 8));
 
 	// to write system event log.
@@ -682,14 +682,14 @@ void _printk(const char * func, const char * format, ...)
 	
 	buf = gLogBuf[logcnt];
 	RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
-#define TOTALCNT_OFFSET	(9)
-#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
+//#define TOTALCNT_OFFSET	(9)
+//#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
 	KeQuerySystemTime(&systemTime);
     ExSystemTimeToLocalTime(&systemTime, &localTime);
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d ", 
+	offset = sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ", 
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -697,27 +697,28 @@ void _printk(const char * func, const char * format, ...)
 										timeFields.Hour,
 										timeFields.Minute,
 										timeFields.Second,
-										timeFields.Milliseconds);
+										timeFields.Milliseconds,
+										func);
 
 #define LEVEL_OFFSET	10
 
 	switch (level_index) {
 	case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_FATA", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_FATA", LEVEL_OFFSET); break;
 	case KERN_ERR_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_ERRO", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_ERRO", LEVEL_OFFSET); break;
 	case KERN_WARNING_NUM: 
-		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_WARN", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+offset, "WDRBD_WARN", LEVEL_OFFSET); break;
 	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
-		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_INFO", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
 	case KERN_DEBUG_NUM: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_TRAC", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
 	default: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+TIME_OFFSET, "WDRBD_UNKN", LEVEL_OFFSET); break;
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
 	}
 	
 	va_start(args, format);
-	ret = vsprintf(buf + TIME_OFFSET + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
 	int length = strlen(buf);
