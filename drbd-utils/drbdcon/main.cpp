@@ -21,7 +21,7 @@ usage()
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
 		"   /get_log [ProviderName] \n"
-		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
+		"   /minlog_lv [LoggingType : sys, dbg] [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /info\n"
 
