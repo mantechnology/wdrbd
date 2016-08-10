@@ -1448,6 +1448,10 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 
 			if (stable_resync &&
 			    !test_bit(RECONCILIATION_RESYNC, &peer_device->flags) &&
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1034: we've already had the newest one.
+				((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) &&
+#endif
 			    peer_device->uuids_received) {
 				u64 newer = drbd_uuid_resync_finished(peer_device);
 				__outdate_peer_disk_by_mask(device, newer);
