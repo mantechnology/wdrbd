@@ -103,6 +103,8 @@ NTSTATUS
 IOCTL_SetSimulDiskIoError( PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS
 IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS
+IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size);
 
 //
 // thread.c

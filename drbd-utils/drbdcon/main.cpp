@@ -21,7 +21,7 @@ usage()
         "   /m [letter] : mount\n"
         "   /d[f] : dismount[force] \n"
 		"   /get_log [ProviderName] \n"
-		"   /minlog_lv [LoggingType : sys, svc, dbg] [Level : 0~7] \n"
+		"   /minlog_lv [LoggingType : sys, dbg] [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /info\n"
 
@@ -284,10 +284,6 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_SYSLOG;
 				}
-				else if (strcmp(argv[argIndex], "svc") == 0)
-				{
-					lml.nType = LOGGING_TYPE_SVCLOG;
-				}
 				else if (strcmp(argv[argIndex], "dbg") == 0)
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
@@ -501,7 +497,8 @@ main(int argc, char* argv [])
 
 	if (GetLog)
 	{
-		res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
+		res = MVOL_GetDrbdLog((LPCTSTR)ProviderName);
 	}
 
 	if (WriteLog)
