@@ -315,7 +315,6 @@ extern atomic_t g_dbglog_lv_min;
 /* Log level value is 32-bit integer
    00000000 00000000 00000000 00000000
 								   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-								|||	   3 bit between 3 ~ 5 indicates service log level (0 ~ 7)
 							| ||	   3 bit between 6 ~ 8 indicates debug print log level (0 ~ 7)
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
