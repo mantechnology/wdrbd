@@ -1398,6 +1398,7 @@ void m_set_v9_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attri
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_OUTDATED)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FENCING)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FULL_SYNC)) break;
+		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_DEVICE_SEEN)) break;
 	} while (0);
 }
 
@@ -1646,9 +1647,7 @@ void re_initialize_md_offsets(struct format *cfg)
 		md_size_sect = bm_bytes(&cfg->md, cfg->bd_size >> 9) >> 9;
 		md_size_sect = ALIGN(md_size_sect, 8);    /* align on 4K blocks */
 		if (md_size_sect > (MD_BM_MAX_BYTE_FLEX>>9)) {
-			char ppbuf[10];
-			fprintf(stderr, "Device too large. We only support up to %s.\n",
-					ppsize(ppbuf, MD_BM_MAX_BYTE_FLEX << (3+2)));
+			fprintf(stderr, "Bitmap for that device got too large.\n");
 			if (BITS_PER_LONG == 32)
 				fprintf(stderr, "Maybe try a 64bit arch?\n");
 			exit(10);
@@ -2366,7 +2365,7 @@ int meta_apply_al(struct format *cfg, char **argv __attribute((unused)), int arg
 			if (err == -ENODATA)
 				return 1;
 			return 2;
-		} else if (is_v08(cfg)) {
+		} else if (is_v08(cfg) || is_v09(cfg)) {
 			fprintf(stderr, "Error ignored, no need to apply the AL\n");
 			re_initialize_anyways = 1;
 		}
@@ -2998,7 +2997,7 @@ int v07_md_initialize(struct format *cfg, int do_disk_writes,
  * caller knows he must move the meta data to actually find it. */
 void v08_check_for_resize(struct format *cfg)
 {
-	struct md_cpu md_08;
+	struct md_cpu md_test;
 	off_t flex_offset;
 	int found = 0;
 
@@ -3038,8 +3037,14 @@ void v08_check_for_resize(struct format *cfg)
 	/* If someone shrunk that device, I won't be able to read it! */
 	if (flex_offset < cfg->bd_size) {
 		PREAD(cfg, on_disk_buffer, 4096, flex_offset);
-		md_disk_08_to_cpu(&md_08, (struct md_on_disk_08*)on_disk_buffer);
-		found = is_valid_md(DRBD_V08, &md_08, DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size);
+		if (is_v08(cfg)) {
+			md_disk_08_to_cpu(&md_test, (struct md_on_disk_08*)on_disk_buffer);
+			found = is_valid_md(DRBD_V08, &md_test, DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size);
+		}
+		else if (is_v09(cfg)) {
+			md_disk_09_to_cpu(&md_test, (struct meta_data_on_disk_9*)on_disk_buffer);
+			found = is_valid_md(DRBD_V09, &md_test, DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size);
+		}
 	}
 
 	if (verbose) {
@@ -3061,7 +3066,7 @@ void v08_check_for_resize(struct format *cfg)
 	}
 
 	if (found) {
-		if (cfg->lk_bd.bd_uuid && md_08.device_uuid != cfg->lk_bd.bd_uuid) {
+		if (cfg->lk_bd.bd_uuid && md_test.device_uuid != cfg->lk_bd.bd_uuid) {
 			fprintf(stderr, "Last known and found uuid differ!?\n"
 					X64(016)" != "X64(016)"\n",
 					cfg->lk_bd.bd_uuid, cfg->md.device_uuid);
@@ -3073,7 +3078,7 @@ void v08_check_for_resize(struct format *cfg)
 		}
 	}
 	if (found)
-		cfg->md = md_08;
+		cfg->md = md_test;
 	return;
 }
 
@@ -3745,6 +3750,8 @@ int verify_dumpfile_or_restore(struct format *cfg, char **argv, int argc, int pa
 	int new_max_peers = 1;
 	int i;
 	int err;
+	char slots_seen[DRBD_NODE_ID_MAX] = { 0, };
+	int cur_slot;
 
 	if (argc > 0) {
 		yyin = fopen(argv[0],"r");
@@ -3825,22 +3832,31 @@ int verify_dumpfile_or_restore(struct format *cfg, char **argv, int argc, int pa
 			for (i = 0; i < DRBD_NODE_ID_MAX; i++) {
 				EXP(TK_PEER); EXP('[');
 				EXP(TK_NUM); EXP(']');
-				if (yylval.u64 != i) {
+				cur_slot = yylval.u64;
+				if (cur_slot < 0 || cur_slot >= DRBD_NODE_ID_MAX) {
 					fprintf(stderr, "Parse error in line %u: "
-						"Expected peer slot %d but found %d\n",
-						yylineno, i, (int)yylval.u64);
+						"Slot %d out of range\n",
+						yylineno, cur_slot);
 					exit(10);
 				}
+				if (slots_seen[cur_slot]) {
+					fprintf(stderr, "Parse error in line %u: "
+						"Peer slot %d defined multiple times\n",
+						yylineno, cur_slot);
+					exit(10);
+				}
+				slots_seen[cur_slot] = 1;
+
 				EXP('{');
 				EXP(TK_BITMAP_INDEX);
 				EXP(TK_NUM); EXP(';');
-				cfg->md.peers[i].bitmap_index = yylval.u64;
+				cfg->md.peers[cur_slot].bitmap_index = yylval.u64;
 				EXP(TK_BITMAP_UUID); EXP(TK_U64); EXP(';');
-				cfg->md.peers[i].bitmap_uuid = yylval.u64;
+				cfg->md.peers[cur_slot].bitmap_uuid = yylval.u64;
 				EXP(TK_BITMAP_DAGTAG); EXP(TK_U64); EXP(';');
-				cfg->md.peers[i].bitmap_dagtag = yylval.u64;
+				cfg->md.peers[cur_slot].bitmap_dagtag = yylval.u64;
 				EXP(TK_FLAGS); EXP(TK_U32); EXP(';');
-				cfg->md.peers[i].flags = (uint32_t)yylval.u64;
+				cfg->md.peers[cur_slot].flags = (uint32_t)yylval.u64;
 				EXP('}');
 			}
 			EXP(TK_HISTORY_UUIDS); EXP('{');
@@ -4671,7 +4687,7 @@ int v08_move_internal_md_after_resize(struct format *cfg)
 	/* we just read it in v08_check_for_resize().
 	 * no need to do it again, but ASSERT this. */
 	md_old = cfg->md;
-	ASSERT(is_valid_md(DRBD_V08, &md_old, DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size));
+	ASSERT(is_valid_md(format_version(cfg), &md_old, DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size));
 	old_offset = v07_style_md_get_byte_offset(DRBD_MD_INDEX_FLEX_INT, cfg->lk_bd.bd_size);
 
 	/* fix AL and bitmap offsets, populate byte offsets for the new location */

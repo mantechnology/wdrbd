@@ -2514,11 +2514,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 
 	bdev = blkdev_get_by_path(bdev_path,
 				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
-#ifdef _WIN32
-	if (IS_ERR_OR_NULL(bdev)) {
-#else
 	if (IS_ERR(bdev)) {
-#endif
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
 		return bdev;
@@ -2797,7 +2793,43 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (!get_ldev_if_state(device, D_ATTACHING))
 		goto force_diskless;
+#ifdef _WIN32_MVFL
+	struct drbd_genlmsghdr *dh = info->userhdr;
+	if (do_add_minor(dh->minor)) {
+		NTSTATUS status = STATUS_UNSUCCESSFUL;
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
+		if (pvext) {
+			status = mvolInitializeThread(pvext, &pvext->WorkThreadInfo, mvolWorkThread);
+			if (NT_SUCCESS(status)) {
+				if (NT_SUCCESS(FsctlLockVolume(dh->minor))) {
+					pvext->Active = TRUE;
+					status = FsctlDismountVolume(dh->minor);
+					FsctlUnlockVolume(dh->minor);
 
+					if (!NT_SUCCESS(status)) {
+						retcode = ERR_RES_NOT_KNOWN;
+						goto force_diskless_dec;
+					}
+				}
+				else {
+					retcode = ERR_RES_IN_USE;
+					goto force_diskless_dec;
+				}
+			}
+			else if (STATUS_DEVICE_ALREADY_ATTACHED == status) {
+				struct block_device * bd = pvext->dev;
+				if (bd) {
+					// required to analyze that this job is done at this point
+					//bd->bd_disk->fops->open(bd, FMODE_WRITE);
+					//bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
+				}
+			}
+			else {
+				WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+			}
+		}
+	}
+#endif
 	drbd_info(device, "Maximum number of peer devices = %u\n",
 		  device->bitmap->bm_max_peers);
 
@@ -3034,54 +3066,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
-#ifdef _WIN32_MVFL
-    struct drbd_genlmsghdr *dh = info->userhdr;
-    if (do_add_minor(dh->minor))
-    {
-        PVOLUME_EXTENSION pvolext = NULL;
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        pvolext = get_targetdev_by_minor(dh->minor);
-        if (pvolext)
-        {
-            status = mvolInitializeThread(pvolext, &pvolext->WorkThreadInfo, mvolWorkThread);
-            if (NT_SUCCESS(status))
-            {
-                if (NT_SUCCESS(FsctlLockVolume(dh->minor)))
-                {
-                    pvolext->Active = TRUE;
-                    status = FsctlDismountVolume(dh->minor);
-                    FsctlUnlockVolume(dh->minor);
-
-                    if (!NT_SUCCESS(status))
-                    {
-                        retcode = ERR_RES_NOT_KNOWN;
-                        goto force_diskless_dec;
-                    }
-                }
-                else
-                {
-                    retcode = ERR_RES_IN_USE;
-                    goto force_diskless_dec;
-                }
-            }
-            else if (STATUS_DEVICE_ALREADY_ATTACHED == status)
-            {
-                struct block_device * bd = pvolext->dev;
-                if (bd)
-                {
-                    // required to analyze that this job is done at this point
-                    //bd->bd_disk->fops->open(bd, FMODE_WRITE);
-                    //bd->bd_disk->fops->release(bd->bd_disk, FMODE_WRITE);
-                }
-            }
-            else
-            {
-                WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
-            }
-        }
-    }
-#endif
 
 	mod_timer(&device->request_timer, jiffies + HZ);
 
@@ -4639,7 +4623,7 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 			if (dd == DS_GREW)
 				set_bit(RESIZE_PENDING, &peer_device->flags);
 			drbd_send_uuids(peer_device, 0, 0);
-			drbd_send_sizes(peer_device, 1, ddsf);
+			drbd_send_sizes(peer_device, rs.resize_size, ddsf);
 		}
 	}
 
@@ -6309,8 +6293,9 @@ out:
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
 }
+
 #ifdef _WIN32
-int drbd_adm_down_from_engine(struct drbd_resource *resource)
+int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection, *tmp;    
     struct drbd_device *device;
@@ -6333,6 +6318,7 @@ int drbd_adm_down_from_engine(struct drbd_resource *resource)
     }
 
     mutex_lock(&resource->conf_update);
+#if 0
     for_each_connection_safe(connection, tmp, resource) {
         retcode = conn_try_disconnect(connection, 0);
         if (retcode >= SS_SUCCESS) {
@@ -6343,6 +6329,7 @@ int drbd_adm_down_from_engine(struct drbd_resource *resource)
             goto unlock_out;
         }
     }
+#endif
 
     /* detach */
 #ifdef _WIN32
@@ -6371,12 +6358,17 @@ int drbd_adm_down_from_engine(struct drbd_resource *resource)
         }
     }
 
-    retcode = adm_del_resource(resource);
-
+	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
+	drbd_flush_workqueue(&resource->work);
+	mutex_lock(&resources_mutex);
+	drbd_thread_stop(&resource->worker);
+	mutex_unlock(&resources_mutex);
+	
 unlock_out:
     mutex_unlock(&resource->conf_update);
 out:
     mutex_unlock(&resource->adm_mutex);
+	
     return retcode;
 }
 #endif

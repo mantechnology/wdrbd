@@ -28,42 +28,55 @@ extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 NTSTATUS
 IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 {
-	PIO_STACK_LOCATION			irpSp=IoGetCurrentIrpStackLocation(Irp);
-	PROOT_EXTENSION				RootExtension = mvolRootDeviceObject->DeviceExtension;
-	PVOLUME_EXTENSION			VolumeExtension = NULL;
-	PMVOL_VOLUME_INFO			pOutBuffer = NULL;
-	ULONG					outlen, count = 0;
-
-	count = RootExtension->Count;
-	if( count == 0 )
-		return STATUS_SUCCESS;
-
-	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( outlen < (count * sizeof(MVOL_VOLUME_INFO)) )
-	{
-		mvolLogError( mvolRootDeviceObject, 201,
-						MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
-		WDRBD_ERROR("buffer too small\n");
-		*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
-
-	pOutBuffer = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
+	*ReturnLength = 0;
+	NTSTATUS status = STATUS_SUCCESS;
+	PROOT_EXTENSION	prext = mvolRootDeviceObject->DeviceExtension;
 
 	MVOL_LOCK();
-	VolumeExtension = RootExtension->Head;
-	while (VolumeExtension != NULL)
+	ULONG count = prext->Count;
+	if (count == 0)
 	{
-		RtlCopyMemory(pOutBuffer->PhysicalDeviceName, VolumeExtension->PhysicalDeviceName,
-			MAXDEVICENAME * sizeof(WCHAR));
-		pOutBuffer->Active = VolumeExtension->Active;
-		pOutBuffer++;
-		VolumeExtension = VolumeExtension->Next;
+		goto out;
 	}
 
+	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	if (outlen < (count * sizeof(WDRBD_VOLUME_ENTRY)))
+	{
+		WDRBD_ERROR("buffer too small\n");
+		*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+		status = STATUS_BUFFER_TOO_SMALL;
+		goto out;
+	}
+
+	PWDRBD_VOLUME_ENTRY pventry = (PWDRBD_VOLUME_ENTRY)Irp->AssociatedIrp.SystemBuffer;
+	PVOLUME_EXTENSION pvext = prext->Head;
+	for ( ; pvext; pvext = pvext->Next, pventry++)
+	{
+		RtlZeroMemory(pventry, sizeof(WDRBD_VOLUME_ENTRY));
+
+		RtlCopyMemory(pventry->PhysicalDeviceName, pvext->PhysicalDeviceName, pvext->PhysicalDeviceNameLength);
+		RtlCopyMemory(pventry->MountPoint, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
+		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
+		pventry->ExtensionActive = pvext->Active;
+		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
+		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
+		if (pvext->dev)
+		{
+			pventry->AgreedSize = pvext->dev->d_size;
+			if (pvext->dev->bd_contains)
+			{
+				pventry->Size = pvext->dev->bd_contains->d_size;
+			}
+		}
+	}
+
+	*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
+out:
 	MVOL_UNLOCK();
-	*ReturnLength = count * sizeof(MVOL_VOLUME_INFO);
-	return STATUS_SUCCESS;
+
+	return status;
 }
 
 NTSTATUS
@@ -586,7 +599,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	ULONG			inlen;
 	PLOGGING_MIN_LV pLoggingMinLv = NULL;
-
+	
 	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 
@@ -599,9 +612,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		pLoggingMinLv = (PLOGGING_MIN_LV)Irp->AssociatedIrp.SystemBuffer;
 
 		if (pLoggingMinLv->nType == LOGGING_TYPE_SYSLOG)
-			atomic_set(&g_syslog_lv_min, pLoggingMinLv->nErrLvMin);
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_SVCLOG)
-			atomic_set(&g_svclog_lv_min, pLoggingMinLv->nErrLvMin);
+			atomic_set(&g_eventlog_lv_min, pLoggingMinLv->nErrLvMin);
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
 
@@ -613,5 +624,41 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	return STATUS_SUCCESS;
+}
+
+
+NTSTATUS
+IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size)
+{
+	ULONG			inlen, outlen;
+	DRBD_LOG* 		pDrbdLog = NULL;
+	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
+	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
+	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+
+	if(!size) {
+		WDRBD_ERROR("GetDrbdLog Invalid parameter. size is NULL\n");
+		return STATUS_INVALID_PARAMETER;
+	}
+	*size = 0;	
+	
+	if (inlen < DRBD_LOG_SIZE || outlen < DRBD_LOG_SIZE) {
+		mvolLogError(DeviceObject, 355, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL);
+		WDRBD_ERROR("GetDrbdLog buffer too small\n");
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	if (Irp->AssociatedIrp.SystemBuffer) {
+		pDrbdLog = (DRBD_LOG*)Irp->AssociatedIrp.SystemBuffer;
+		pDrbdLog->totalcnt = gTotalLogCnt;
+		if(pDrbdLog->LogBuf) {
+			RtlCopyMemory(pDrbdLog->LogBuf, gLogBuf, MAX_DRBDLOG_BUF*LOGBUF_MAXCNT);
+			*size = DRBD_LOG_SIZE;
+		} else {
+			WDRBD_ERROR("GetDrbdLog Invalid parameter. pDrbdLog->LogBuf is NULL\n");
+			return STATUS_INVALID_PARAMETER;
+		}
+	}
+	
 	return STATUS_SUCCESS;
 }

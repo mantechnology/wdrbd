@@ -142,7 +142,7 @@ struct drbd_connection;
     do {								\
         const struct drbd_device *__d = (device);		\
         const struct drbd_resource *__r = __d->resource;	\
-        printk(level "drbd %s/%u drbd%u, ds(%s), f(0x%x): " fmt,			\
+        printk(level "drbd %s/%u minor %u, ds(%s), dvflag(0x%x): " fmt,			\
             __r->name, __d->vnr, __d->minor, drbd_disk_str(__d->disk_state[NOW]), __d->flags, __VA_ARGS__);	\
     } while (0)
 
@@ -157,7 +157,7 @@ struct drbd_connection;
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = __c->peer_node_id;	\
-        printk(level "drbd %s/%u drbd%u node-id:%d, pdsk(%s), pr(%s), f(0x%x): " fmt,		\
+        printk(level "drbd %s/%u minor %u pnode-id:%d, pdsk(%s), prpl(%s), pdvflag(0x%x): " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32 // DW-	*/		\
     } while (0)
@@ -168,7 +168,7 @@ struct drbd_connection;
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32 // DW- */ \
-        printk(level "drbd %s node-id:%d, cs(%s), pr(%s), f(0x%x): " fmt, (connection)->resource->name,  \
+        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x): " fmt, (connection)->resource->name,  \
         (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)
@@ -881,6 +881,8 @@ enum {
 #ifdef _WIN32
 	// DW-874: Moved from device flag. See device flag comment for detail.
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
+	// MODIFIED_BY_MANTECH DW-955: add resync aborted flag to resume it later.
+	RESYNC_ABORTED,			/* Resync has been aborted due to unsyncable (peer)disk state, need to resume it when it goes syncable. */
 #endif
 };
 
@@ -1843,7 +1845,7 @@ extern int drbd_send_protocol(struct drbd_connection *connection);
 extern int drbd_send_uuids(struct drbd_peer_device *, u64 uuid_flags, u64 weak_nodes);
 extern void drbd_gen_and_send_sync_uuid(struct drbd_peer_device *);
 extern int drbd_attach_peer_device(struct drbd_peer_device *);
-extern int drbd_send_sizes(struct drbd_peer_device *, int trigger_reply, enum dds_flags flags);
+extern int drbd_send_sizes(struct drbd_peer_device *, uint64_t u_size_diskless, enum dds_flags flags);
 extern int conn_send_state(struct drbd_connection *, union drbd_state);
 extern int drbd_send_state(struct drbd_peer_device *, union drbd_state);
 extern int drbd_send_current_state(struct drbd_peer_device *);
@@ -1890,6 +1892,10 @@ extern void _drbd_uuid_push_history(struct drbd_device *device, u64 val) __must_
 extern u64 _drbd_uuid_pull_history(struct drbd_peer_device *peer_device) __must_hold(local);
 extern void __drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern u64 drbd_uuid_resync_finished(struct drbd_peer_device *peer_device) __must_hold(local);
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-955
+extern void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(local);
+#endif
 extern void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __must_hold(local);
 extern u64 drbd_weak_nodes_device(struct drbd_device *device);
 extern void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag) __must_hold(local);

@@ -863,6 +863,13 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 					// So, change disk_state to D_INCONSISTENT.
 					device->disk_state[NEW] = D_INCONSISTENT;
 				}
+
+				if (peer_device->repl_state[NEW] == L_BEHIND)
+				{
+					// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/SyncTarget'.
+					// Set resync_susp_other_c when repl_state is L_BEHIND. L_BEHIND will transition to L_PAUSED_SYNC_T.
+					peer_device->resync_susp_other_c[NEW] = true;
+				}
 #endif
 				return;
 			}
@@ -1117,7 +1124,9 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 
 		nc = rcu_dereference(connection->transport.net_conf);
 		two_primaries = nc ? nc->two_primaries : false;
-		if (peer_role[NEW] == R_PRIMARY && peer_role[OLD] == R_SECONDARY && !two_primaries) {
+		if (peer_role[NEW] == R_PRIMARY && peer_role[OLD] != R_PRIMARY && !two_primaries) {
+			if (role[NOW] == R_PRIMARY)
+				return SS_TWO_PRIMARIES;
 #ifdef _WIN32
             idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
@@ -1539,6 +1548,29 @@ static void sanitize_state(struct drbd_resource *resource)
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
 				repl_state[NEW] = L_ESTABLISHED;
+				// MODIFIED_BY_MANTECH DW-955: need to set flag to resume aborted resync when it goes syncable.
+				set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+
+			// MODIFIED_BY_MANTECH DW-955: (peer)disk state is going syncable, resume aborted resync.
+			if ((disk_state[OLD] <= D_INCONSISTENT && peer_disk_state[OLD] <= D_INCONSISTENT) &&
+				(disk_state[NEW] <= D_INCONSISTENT || peer_disk_state[NEW] <= D_INCONSISTENT) &&
+				test_bit(RESYNC_ABORTED, &peer_device->flags))
+			{
+				if (disk_state[NEW] == D_OUTDATED ||
+					disk_state[NEW] == D_CONSISTENT ||
+					disk_state[NEW] == D_UP_TO_DATE)
+				{
+					repl_state[NEW] = L_SYNC_SOURCE;
+					clear_bit(RESYNC_ABORTED, &peer_device->flags);
+				}
+				else if (peer_disk_state[NEW] == D_OUTDATED ||
+					peer_disk_state[NEW] == D_CONSISTENT ||
+					peer_disk_state[NEW] == D_UP_TO_DATE)
+				{
+					repl_state[NEW] = L_SYNC_TARGET;
+					clear_bit(RESYNC_ABORTED, &peer_device->flags);
+				}				
 			}
 #endif
 
@@ -3675,13 +3707,22 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	request.primary_nodes = 0;  /* Computed in phase 1. */
 	request.mask = cpu_to_be32(context->mask.i);
 	request.val = cpu_to_be32(context->val.i);
-
+#ifdef _WIN32
+	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)\n",
+			be32_to_cpu(request.tid),
+		  	resource->res_opts.node_id,
+		  	context->target_node_id,
+		  	context->mask.i,
+		  	context->val.i);
+#else
 	drbd_info(resource, "Preparing cluster-wide state change %u (%u->%d %u/%u)",
-		  be32_to_cpu(request.tid),
-		  resource->res_opts.node_id,
-		  context->target_node_id,
-		  context->mask.i,
-		  context->val.i);
+			be32_to_cpu(request.tid),
+		  	resource->res_opts.node_id,
+		  	context->target_node_id,
+		  	context->mask.i,
+		  	context->val.i);
+#endif
+		  
 	resource->remote_state_change = true;
 	reply->initiator_node_id = resource->res_opts.node_id;
 	reply->target_node_id = context->target_node_id;

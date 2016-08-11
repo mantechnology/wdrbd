@@ -43,6 +43,7 @@
 #include "drbdtool_common.h"
 #include "drbd_endian.h"
 #include "linux/drbd.h"		/* only use DRBD_MAGIC from here! */
+#include "config_flags.h"
 
 #define HTTP_PORT 80
 #define HTTP_HOST "usage.drbd.org"
@@ -505,7 +506,7 @@ static char* run_adm_drbdmeta(const struct cfg_ctx *ctx, const char *arg_overrid
 	return buffer;
 }
 
-static struct d_name *find_backend_option(const char *opt_name)
+struct d_name *find_backend_option(const char *opt_name)
 {
 	struct d_name *b_opt;
 	const int str_len = strlen(opt_name);
@@ -527,7 +528,7 @@ int adm_create_md(const struct cfg_ctx *ctx)
 	char *uri;
 	int send=0;
 	char *tb;
-	int rv,fd;
+	int rv, fd, verbose_tmp;
 	char *r, *max_peers_str = NULL;
 	struct d_name *b_opt_max_peers;
 	const char *opt_max_peers = "--max-peers=";
@@ -553,7 +554,10 @@ int adm_create_md(const struct cfg_ctx *ctx)
 	if (b_opt_max_peers)
 		STAILQ_REMOVE(&backend_options, b_opt_max_peers, d_name, link);
 
+	verbose_tmp = verbose;
+	verbose = 0;
 	tb = run_adm_drbdmeta(ctx, "read-dev-uuid");
+	verbose = verbose_tmp;
 	device_uuid = strto_u64(tb,NULL,16);
 	free(tb);
 
@@ -623,6 +627,7 @@ int adm_create_md(const struct cfg_ctx *ctx)
 
 		local_cmd.name = "write-dev-uuid";
 		local_ctx.cmd = &local_cmd;
+		local_cmd.drbdsetup_ctx = &wildcard_ctx;
 		_adm_drbdmeta(&local_ctx, SLEEPS_VERY_LONG, NULL);
 
 		free_names(&backend_options);

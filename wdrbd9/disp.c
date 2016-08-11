@@ -33,9 +33,6 @@
 #include "disp.tmh"
 #endif
 
-#ifdef _WIN32_LOGLINK
-#include "loglink.h"
-#endif
 
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD mvolUnload;
@@ -56,6 +53,9 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
 #endif
+
+NTSTATUS
+mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 NTSTATUS
 DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
@@ -281,25 +281,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
             WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
             return Status;
         }
-
-#ifdef _WIN32_LOGLINK
-		// TODO: LogLink_ListenThread does not finish ever. We need to make sure cleaning it up when no need anymore.
-		Status = PsCreateSystemThread(&hLogLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, LogLink_ListenThread, NULL);
-		if (!NT_SUCCESS(Status))
-		{
-			WDRBD_ERROR("LogLinkThread failed with status 0x%08X !!!\n", Status);
-			return Status;
-		}
-
-		Status = ObReferenceObjectByHandle(hLogLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &g_LoglinkServerThread, NULL);
-		ZwClose(hLogLinkThread);
-
-		if (!NT_SUCCESS(Status))
-		{
-			WDRBD_ERROR("ObReferenceObjectByHandle() for loglink thread failed with status 0x%08X\n", Status);
-			return Status;
-		}		
-#endif
     }
 
     ReferenceDeviceObject = IoGetAttachedDeviceReference(PhysicalDeviceObject);
@@ -358,7 +339,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex))
+    if (do_add_minor(VolumeExtension->VolIndex) && !minor_to_device(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
         if (!NT_SUCCESS(status))
@@ -428,11 +409,15 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
-    drbd_cleanup_by_win_shutdown(VolumeExtension);
+    //return mvolSendToNextDriver(DeviceObject, Irp);
+    status = mvolRunIrpSynchronous(DeviceObject, Irp);
 
-    return mvolSendToNextDriver(DeviceObject, Irp);
+	drbd_cleanup_by_win_shutdown(VolumeExtension);
+		
+	return status;
 }
 
 NTSTATUS
@@ -772,6 +757,16 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			status = IOCTL_SetMinimumLogLevel(DeviceObject, Irp); // Set minimum level of logging (system event log, service log)
 			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
+		case IOCTL_MVOL_GET_DRBD_LOG:
+		{
+			ULONG size = 0;
+			status = IOCTL_GetDrbdLog(DeviceObject, Irp, &size);
+			if(status == STATUS_SUCCESS) {
+				MVOL_IOCOMPLETE_REQ(Irp, status, size);
+			} else {
+				MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+			}
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||
@@ -806,6 +801,7 @@ mvolDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             status = mvolStartDevice(DeviceObject, Irp);
             break;
         }
+		case IRP_MN_SURPRISE_REMOVAL:
         case IRP_MN_REMOVE_DEVICE:
         {
             status = mvolRemoveDevice(DeviceObject, Irp);

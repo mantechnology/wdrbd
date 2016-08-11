@@ -1207,6 +1207,12 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	if (size == 0)
 		return 0;
 
+	if (drbd_stream == DATA_STREAM) {
+    	rcu_read_lock();
+		connection->transport.ko_count = rcu_dereference(connection->transport.net_conf)->ko_count;
+		rcu_read_unlock();
+	}
+
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 #ifdef _WIN32
@@ -1344,9 +1350,10 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 	u64 mask = 0;
 
 #ifndef _WIN32
-	// MODIFIED_BY_MANTECH DW-1012: The mask won't be used by receiver, setting value is meaningless.
+	// MODIFIED_BY_MANTECH DW-1099: masking my node id causes peers to improper in-sync.
 	if (req->rq_state[0] & RQ_LOCAL_OK)
 		mask |= NODE_MASK(resource->res_opts.node_id);
+#endif
 
 	rcu_read_lock();
 	for_each_connection_rcu(c, resource) {
@@ -1357,7 +1364,6 @@ int drbd_send_peer_ack(struct drbd_connection *connection,
 			mask |= NODE_MASK(node_id);
 	}
 	rcu_read_unlock();
-#endif
 
 	p = conn_prepare_command(connection, sizeof(*p), CONTROL_STREAM);
 	if (!p)
@@ -1778,7 +1784,9 @@ void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct r
 }
 #endif
 
-int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+//int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enum dds_flags flags)
+int drbd_send_sizes(struct drbd_peer_device *peer_device,
+			uint64_t u_size_diskless, enum dds_flags flags)
 {
 	struct drbd_device *device = peer_device->device;
 	struct p_sizes *p;
@@ -1816,7 +1824,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device, int trigger_reply, enu
 		put_ldev(device);
 	} else {
 		d_size = 0;
-		u_size = 0;
+		u_size = u_size_diskless;
 		q_order_type = QUEUE_ORDERED_NONE;
 		max_bio_size = DRBD_MAX_BIO_SIZE; /* ... multiple BIOs per peer_request */
 #ifndef _WIN32
@@ -3210,7 +3218,10 @@ void drbd_destroy_device(struct kref *kref)
 #ifdef _WIN32
 	kfree2(device->this_bdev->bd_contains);
 	kfree2(device->this_bdev);
-	device->vdisk->pDeviceExtension->dev = NULL; 
+	if (device->vdisk->pDeviceExtension) {
+		// just in case existing a VolumeExtension
+		device->vdisk->pDeviceExtension->dev = NULL;
+	}
 #else
 	if (device->this_bdev)
 		bdput(device->this_bdev);
@@ -3434,10 +3445,13 @@ static void drbd_cleanup(void)
 }
 
 #ifdef _WIN32
+
+int drbd_adm_down_from_shutdown(struct drbd_resource *resource);
+
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
-    struct drbd_device *device;
+    struct drbd_device *device = NULL;
 
     struct device_list {
         struct drbd_device *device;
@@ -3450,50 +3464,13 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 
     if (retry.wq)
         destroy_workqueue(retry.wq);
-    retry.wq = 0;
+    retry.wq = NULL;
 
-    INIT_LIST_HEAD(&device_list.list);
-
-    rcu_read_lock();
-
-    idr_for_each_entry(struct drbd_device *, &drbd_devices, device, i)
-    {
-        if ((device_list_p = kmalloc(sizeof(struct device_list), GFP_KERNEL, 'C0DW')) == NULL)
-        {
-            WDRBD_ERROR("DRBD_PANIC: No memory\n");
-            rcu_read_unlock();
-			gbShutdown = TRUE;
-            return;
-        }
-        device_list_p->device = device;
-        list_add(&device_list_p->list, &device_list.list);
-    }
-
-    rcu_read_unlock();
-#if 0   // to escape shutdown mutex hang.
-    list_for_each_entry(struct device_list, device_list_p, &device_list.list, list)
-    {
-        PVOLUME_EXTENSION VolExt;
-        VolExt = device_list_p->device->this_bdev->bd_disk->pDeviceExtension;
-		// required to convert drbd_conf with drbd_connection. 
-		extern int drbd_adm_down_from_engine(struct drbd_resource *resource);
-        
-		int ret = drbd_adm_down_from_engine(device_list_p->device->resource);
-        if (ret != NO_ERROR)
-        {
-            WDRBD_ERROR("failed. ret=%d\n", ret);
-            // error ignored.
-        }
-        
-        //drbdFreeDev(VolExt);  // required to debug for free VolExt
-    }
-#endif
-    list_for_each_entry_safe(struct device_list, device_list_p, p, &device_list.list, list)
-    {
-        list_del(&device_list_p->list);
-        kfree(device_list_p);
-    }
-
+	device = minor_to_device(VolumeExtension->VolIndex);
+	if(device && device->resource) {
+		// DW-1103 drbdadm down while IRP_MJ_SHUTDOWN 
+		drbd_adm_down_from_shutdown(device->resource);
+	}
 	gbShutdown = TRUE;
 }
 #endif
@@ -5322,7 +5299,10 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 	}
 
 	if (set_current) {
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1034: split-brain could be caused since old one's been extinguished, always preserve old one when setting new one.
 		if (device->disk_state[NOW] == D_UP_TO_DATE)
+#endif
 			got_new_bitmap_uuid = rotate_current_into_bitmap(device, weak_nodes, dagtag);
 		__drbd_uuid_set_current(device, val);
 #ifdef _WIN32
@@ -5404,7 +5384,11 @@ static const char* name_of_node_id(struct drbd_resource *resource, int node_id)
 	return connection ? rcu_dereference(connection->transport.net_conf)->name : "";
 }
 
+#ifdef _WIN32
+void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(local)
+#else
 static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(local)
+#endif
 {
 	int bitmap_index = device->ldev->md.peers[node_id].bitmap_index;
 	const char* name;
@@ -5586,6 +5570,12 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				// bitmap_uuid was already '0', just clear_flag and drbd_propagate_uuids().
 				if((peer_md[node_id].bitmap_uuid == 0) && (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))
 					goto clear_flag;
+
+				// MODIFIED_BY_MANTECH DW-955: do not forget SyncSource's bitmap.
+				struct drbd_peer_device *found_peer = peer_device_by_node_id(device, node_id);
+
+				if (found_peer && found_peer->repl_state[NOW] == L_SYNC_SOURCE)
+					goto clear_flag;
 #endif
 				
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
@@ -5593,7 +5583,15 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				if (node_id == peer_device->node_id)
 					drbd_print_uuids(peer_device, "updated UUIDs");
 				else if (peer_md[node_id].bitmap_index != -1)
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
+				{
+					drbd_info(device, "bitmap will be cleared due to other resync\n");
 					forget_bitmap(device, node_id);
+				}
+#else
+					forget_bitmap(device, node_id);
+#endif
 				else
 					drbd_info(device, "Clearing bitmap UUID for node %d\n",
 						  node_id);
@@ -5606,6 +5604,8 @@ clear_flag:
 				write_bm = true;
 			}
 
+#ifndef _WIN32
+			// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 			from_node_id = find_node_id_by_bitmap_uuid(device, peer_current_uuid);
 			if (from_node_id != -1 && node_id != from_node_id &&
 #ifdef _WIN32
@@ -5630,10 +5630,33 @@ clear_flag:
 #endif
 				filled = true;
 			}
+#endif
 		}
 	}
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-955: peer has already cleared my bitmap, or receiving peer_in_sync has been left out. no resync is needed.
+	if (drbd_bm_total_weight(peer_device) &&
+		peer_device->dirty_bits == 0 &&
+		peer_device->repl_state[NOW] >= L_ESTABLISHED &&
+		(peer_device->current_uuid & ~UUID_PRIMARY) ==
+		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+	{
+		int peer_node_id = peer_device->node_id;
+		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync\n");
+			forget_bitmap(device, peer_node_id);
+		}
+		drbd_md_mark_dirty(device);
+	}
+#else
+	// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 	write_bm |= detect_copy_ops_on_peer(peer_device);
+#endif
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
 
 	if (write_bm || filled) {

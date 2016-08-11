@@ -859,8 +859,13 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			return true;
 		if (bm_e_weight(peer_device, rs_enr) == 0)
 			return true;
-		} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
-			peer_device->repl_state[NOW] == L_SYNC_TARGET) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-955: Need to send peer_in_sync to Established and UpToDate node.
+		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
+			return true;
+#endif
+	} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
+		peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 		bool rv = false;
 
 		if (!drbd_try_rs_begin_io(peer_device, BM_EXT_TO_SECT(rs_enr), false)) {
@@ -875,6 +880,27 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 
 		return rv;
 	}
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-955: Need to send peer_in_sync to PausedSyncTarget and UpToDate node.
+		else if (peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {
+			if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
+				return true;
+		}
+
+		// MODIFIED_BY_MANTECH DW-955: peer was sync source, and has gone down. simply in-sync resync done sector so that peer might also clear it.
+		if (peer_device->connection->cstate[NOW] < C_CONNECTED)
+		{
+			if (peer_device->last_repl_state == L_SYNC_SOURCE ||
+				peer_device->last_repl_state == L_PAUSED_SYNC_S)
+			{
+				struct drbd_device *device = peer_device->device;
+				sector_t sector = BM_EXT_TO_SECT(rs_enr);
+				int size_sect = min(BM_SECT_PER_EXT, drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
+				
+				drbd_set_in_sync(peer_device, sector, size_sect << 9);
+			}
+		}
+#endif
 
 	return false;
 }
@@ -897,6 +923,11 @@ consider_sending_peers_in_sync(struct drbd_peer_device *peer_device, unsigned in
 			mask |= NODE_MASK(p->node_id);
 	}
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-955: I can be both sync source and target, peers might need to remove out-of-sync for me, mask my node.
+	if (mask)
+		mask |= NODE_MASK(device->resource->res_opts.node_id);
+#endif
 	size_sect = min(BM_SECT_PER_EXT,
 			drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
 
@@ -1310,9 +1341,9 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	sector_t esector, nr_sectors;
 	bool set = false;
 	struct drbd_peer_device *peer_device;
-
+#ifndef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
-
+#endif
 	if (size <= 0 || !IS_ALIGNED(size, 512)) {
 		drbd_err(device, "%s sector: %llus, size: %d\n",
 			 __func__, (unsigned long long)sector, size);
@@ -1321,7 +1352,9 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 
 	if (!get_ldev(device))
 		return false; /* no disk, no metadata, no bitmap to set bits in */
-
+#ifdef _WIN32
+	mask &= (1 << device->bitmap->bm_max_peers) - 1;
+#endif
 	nr_sectors = drbd_get_capacity(device->this_bdev);
 	esector = sector + (size >> 9) - 1;
 

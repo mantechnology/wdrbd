@@ -55,6 +55,8 @@
 
 #define IOCTL_MVOL_SET_LOGLV_MIN			CTL_CODE(MVOL_TYPE, 46, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
+#define IOCTL_MVOL_GET_DRBD_LOG				CTL_CODE(MVOL_TYPE, 50, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 #define	MAXDEVICENAME			256     //  1024 -> 256
 #define MAX_PROC_BUF			2048		
 
@@ -83,6 +85,21 @@ typedef struct _MVOL_SYNC_REQ
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
 
+typedef struct _WDRBD_VOLUME_ENTRY
+{
+	WCHAR		PhysicalDeviceName[MAXDEVICENAME];
+	WCHAR		MountPoint[MAXDEVICENAME];
+	WCHAR		VolumeGuid[MAXDEVICENAME];
+
+	ULONGLONG	Size;
+	ULONGLONG	AgreedSize;
+
+	UCHAR		VolIndex;
+	BOOLEAN		ExtensionActive;
+	BOOLEAN		ThreadActive;
+	BOOLEAN		ThreadExit;
+} WDRBD_VOLUME_ENTRY, *PWDRBD_VOLUME_ENTRY;
+
 #define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail
 #define SIMUL_DISK_IO_ERROR_TYPE1		1 // Local I/O Completed with Error
 #define SIMUL_DISK_IO_ERROR_TYPE2		2 // Peer Request I/O Completed with Error
@@ -103,5 +120,14 @@ typedef struct _LOGGING_MIN_LV {
 	int			nErrLvMin;
 }LOGGING_MIN_LV, *PLOGGING_MIN_LV;
 
+#define MAX_DRBDLOG_BUF				512
+#define LOGBUF_MAXCNT				10000
+
+typedef struct _DRBD_LOG {
+	LONGLONG 	totalcnt;
+	char		LogBuf[1]; // LOGBUF_MAXCNT*MAX_DRBDLOG_BUF
+}DRBD_LOG, *PDRBD_LOG;
+
+#define DRBD_LOG_SIZE				((LOGBUF_MAXCNT*MAX_DRBDLOG_BUF) + sizeof(LONGLONG))
 
 #endif __MVF_IOCTL_H__

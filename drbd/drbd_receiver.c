@@ -850,6 +850,8 @@ int connect_work(struct drbd_work *work, int cancel)
 	if (rv >= SS_SUCCESS) {
 		conn_connect2(connection);
 	} else if (rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) {
+		if (connection->cstate[NOW] != C_CONNECTING)
+			goto out_put;
 		connection->connect_timer.expires = jiffies + HZ/20;
 		add_timer(&connection->connect_timer);
 		return 0; /* Return early. Keep the reference on the connection! */
@@ -1218,6 +1220,22 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		ctx->error = error;
 		drbd_info(device, "local disk FLUSH FAILED with status %d\n", error);
 	}
+
+#ifdef _WIN32 // DW-1117 patch flush io memory leak
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (Irp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			Irp->MdlAddress = NULL;
+		}
+		IoFreeIrp(Irp);
+	}
+#endif
+	
 	kfree(octx);
 	bio_put(bio);
 
@@ -3424,12 +3442,32 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	if (connection->agreed_pro_version >= 110) {
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
 		   Instruct the SyncSource to retry */
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-953: replace drbd_try_rs_begin_io with drbd_rs_begin_io like version 8.4.x for only L_VERIFY_T
+		if (peer_device->repl_state[NOW] == L_VERIFY_T)
+		{
+			if (drbd_rs_begin_io(peer_device, sector)) 
+			{
+				err = -EIO;
+				goto fail3;
+			}
+		}
+		else
+		{
+			err = drbd_try_rs_begin_io(peer_device, sector, false);
+			if (err) {
+				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+				/* If err is set, we will drop the connection... */
+				goto fail3;
+			}
+		}
+#else
 		err = drbd_try_rs_begin_io(peer_device, sector, false);
 		if (err) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 			/* If err is set, we will drop the connection... */
 			goto fail3;
 		}
+#endif
 	} else {
 		update_receiver_timing_details(connection, drbd_rs_begin_io);
 		if (drbd_rs_begin_io(peer_device, sector)) {
@@ -4038,6 +4076,8 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 	struct drbd_device *device = peer_device->device;
 
 	if (hg == 4) {
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		int from = device->ldev->md.peers[peer_node_id].bitmap_index;
 
 		if (from == -1)
@@ -4050,7 +4090,10 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		drbd_bm_write(device, NULL);
 		drbd_bm_slot_unlock(peer_device);
 		drbd_resume_io(device);
+#endif
 	} else if (hg == -4) {
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 		drbd_info(peer_device, "synced up with node %d in the mean time\n", peer_node_id);
 		drbd_suspend_io(device, WRITE_ONLY);
 		drbd_bm_slot_lock(peer_device, "bm_clear_many_bits from sync_handshake", BM_LOCK_BULK);
@@ -4058,6 +4101,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		drbd_bm_write(device, NULL);
 		drbd_bm_slot_unlock(peer_device);
 		drbd_resume_io(device);
+#endif
 	} else if (abs(hg) >= 3) {
 		if (hg == -3 &&
 		    drbd_current_uuid(device) == UUID_JUST_CREATED &&
@@ -4175,34 +4219,38 @@ static void various_states_to_goodness(struct drbd_device *device,
 		syncReason = 2;
 		goto out;
 	}
-
-	// 3. compare last repl state
-	if (peer_last_repl_state == L_AHEAD ||
-		peer_last_repl_state == L_SYNC_SOURCE ||
-		peer_last_repl_state == L_PAUSED_SYNC_S ||
-		peer_last_repl_state == L_STARTING_SYNC_S)
+	
+	// MODIFIED_BY_MANTECH DW-955: no chance to in-sync consistent sector since peer_in_sync has been left out of receiving while disconnected.
+	// 3. get rid of unnecessary out-of-sync.
+	if (device->disk_state[NOW] == D_UP_TO_DATE &&
+		peer_disk_state == D_UP_TO_DATE &&
+		peer_device->dirty_bits == 0)
 	{
-		//peer was sync source.
-		*hg = -2;
-		syncReason = 3;
-		goto out;
-	}
-	else if (peer_last_repl_state == L_BEHIND ||
-		peer_last_repl_state == L_SYNC_TARGET ||
-		peer_last_repl_state == L_PAUSED_SYNC_T ||
-		peer_last_repl_state == L_STARTING_SYNC_T)
-	{
-		//peer was sync target.
-		*hg = 2;
-		syncReason = 3;
-		goto out;
-	}
+		struct drbd_peer_md *peer_md = device->ldev->md.peers;
+		int peer_node_id = 0;
+		u64 peer_bm_uuid = 0;
 
+		spin_lock_irq(&device->ldev->md.uuid_lock);
+		peer_node_id = peer_device->node_id;
+		peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+
+		drbd_warn(peer_device, "FIXME, both nodes are UpToDate, but have inconsistent bits set. clear it without resync\n");
+
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync\n");
+			forget_bitmap(device, peer_node_id);
+		}
+		drbd_md_mark_dirty(device);
+		spin_unlock_irq(&device->ldev->md.uuid_lock);
+	}
 out:
 	if (*hg)
 		drbd_info(device, "Becoming sync %s due to %s.\n",
 		*hg > 0 ? "source" : "target",
-		syncReason == 1 ? "role" : syncReason == 2 ? "disk states" : "last repl state");
+		syncReason == 1 ? "role" : syncReason == 2 ? "disk states" : "unknown reason");
 }
 #endif
 
@@ -4949,11 +4997,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	/* Ignore "current" size for calculating "max" size. */
 	/* If it used to have a disk, but now is detached, don't revert back to zero. */
 
-#ifdef _WIN32
-	peer_device->max_size = min_not_zero(p_size ? p_size : peer_device->max_size, p_usize);
-#else
-	peer_device->max_size = min_not_zero(p_size ?: peer_device->max_size, p_usize);
-#endif
+	if (p_size)
+		peer_device->max_size = p_size;
 
 	drbd_info(device, "current_size: %llu\n", (unsigned long long)drbd_get_capacity(device->this_bdev));
 	drbd_info(peer_device, "c_size: %llu u_size: %llu d_size: %llu max_size: %llu\n",
@@ -4971,9 +5016,10 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
 
-		drbd_info(peer_device, "la_size: %llu my_usize: %llu\n",
+		drbd_info(peer_device, "la_size: %llu my_usize: %llu my_max_size: %llu\n",
 			(unsigned long long)device->ldev->md.effective_size,
-			(unsigned long long)my_usize);
+			(unsigned long long)my_usize,
+			(unsigned long long)drbd_get_max_capacity(device->ldev));
 
 		if (peer_device->disk_state[NOW] > D_DISKLESS)
 			warn_if_differ_considerably(peer_device, "lower level device sizes",
@@ -5035,6 +5081,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 			drbd_info(peer_device, "Peer sets u_size to %llu sectors\n",
 				(unsigned long long)p_usize);
+			should_send_sizes = true;
 		}
 	}
 
@@ -5075,7 +5122,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		size = p_csize;
 		size = min_not_zero(size, p_usize);
 		size = min_not_zero(size, p_size);
-		
+
 		rcu_read_lock();
 		for_each_peer_device_rcu(peer_device, device) {
 			/* When a peer device is in L_OFF state, max_size is zero
@@ -5118,7 +5165,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		rcu_read_lock();
 #endif
 		for_each_peer_device_rcu(peer_device_it, device) {
-			drbd_send_sizes(peer_device_it, 0, ddsf);
+			drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
 #ifndef _WIN32 
 		rcu_read_unlock();
@@ -5131,7 +5178,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		for_each_peer_device_rcu(peer_device_it, device) {
 			if (peer_device_it->repl_state[NOW] > L_OFF
 				&&  peer_device_it->c_size != my_size)
-				drbd_send_sizes(peer_device_it, 0, ddsf);
+					drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
 #ifndef _WIN32 
 		rcu_read_unlock();
@@ -6445,7 +6492,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				goto fail;
 		}
 		return 0;
-        }
+    }
 
 	peer_disk_state = peer_state.disk;
 	if (peer_state.disk == D_NEGOTIATING) {
@@ -6529,7 +6576,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	/* Start resync after AHEAD/BEHIND */
 	if (connection->agreed_pro_version >= 110 &&
-	    peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/Behind'.
+		// L_PAUSED_SYNC_S also call drbd_start_resync(). L_BEHIND will transition to L_PAUSED_SYNC_T.
+		(peer_state.conn == L_SYNC_SOURCE || peer_state.conn == L_PAUSED_SYNC_S) && old_peer_state.conn == L_BEHIND) {
+#else
+		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
+#endif
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
@@ -6567,7 +6620,14 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		consider_resync |= (old_peer_state.conn == L_ESTABLISHED &&
 				    (peer_state.conn == L_STARTING_SYNC_S ||
 				     peer_state.conn == L_STARTING_SYNC_T));
-		
+
+#ifdef _WIN32 // DW-1093 MODIFIED_BY_MANTECH detour 2-primary SB
+		if( (peer_state.role == R_PRIMARY) && (device->resource->role[NOW] == R_PRIMARY) ) {
+			drbd_err(device, "2 primary is not allowed.\n");
+			put_ldev(device);
+			goto fail;
+		}
+#endif
 		if (consider_resync) {
 			new_repl_state = drbd_sync_handshake(peer_device, peer_state.role, peer_disk_state);
 		} else if (old_peer_state.conn == L_ESTABLISHED &&
@@ -8543,12 +8603,19 @@ found:
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		u64 in_sync_b;
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+		ULONG_PTR set_sync_mask = -1;
+#endif    
 
 		if (get_ldev(device)) {
-#ifndef _WIN32
-			// MODIFIED_BY_MANTECH DW-1012: Affecting out-of-sync by replication request may cause oos inconsistency, set or clear when request is just received or disk error.
 			in_sync_b = node_ids_to_bitmap(device, in_sync);
-
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
+			clear_bit(peer_device->bitmap_index, &set_sync_mask);
+			drbd_set_sync(device, peer_req->i.sector,
+				peer_req->i.size, ~in_sync_b, set_sync_mask);
+#else
 			drbd_set_sync(device, peer_req->i.sector,
 				      peer_req->i.size, ~in_sync_b, -1);
 #endif

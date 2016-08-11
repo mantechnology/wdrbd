@@ -32,6 +32,9 @@
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
 #endif
+long		gLogCnt = 0;
+LONGLONG 	gTotalLogCnt = 0;
+char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF] = {0,};
 
 int g_bypass_level;
 int g_read_filter;
@@ -41,8 +44,7 @@ int g_netlink_tcp_port;
 int g_daemon_tcp_port;
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
-atomic_t g_syslog_lv_min = LOG_LV_DEFAULT_SYS;
-atomic_t g_svclog_lv_min = LOG_LV_DEFAULT_SVC;
+atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
@@ -2185,6 +2187,7 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
 	if (!pvext) {
+		WDRBD_WARN("Null parameter\n");
 		return;
 	}
 
@@ -2212,7 +2215,18 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	}
 
 	if (!pvext->dev) {
-		pvext->dev = create_drbd_block_device(pvext);
+
+		struct drbd_device * device = minor_to_device(pvext->VolIndex);
+		if (device && device->this_bdev) {
+			// link and some values are reassigned
+			pvext->dev = device->this_bdev;
+			device->vdisk->pDeviceExtension = pvext;
+			device->rq_queue->backing_dev_info.pvext = pvext;
+			pvext->dev->bd_contains->d_size = get_targetdev_volsize(pvext);
+		}
+		else {
+			pvext->dev = create_drbd_block_device(pvext);
+		}
 	}
 }
 
@@ -2238,8 +2252,12 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 {
 	char path[3] = { minor_to_letter(minor), ':', '\0' };
 	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL);
+	if (IS_ERR(dev))
+	{
+		return NULL;
+	}
 
-	return dev ? dev->bd_disk->pDeviceExtension : NULL;
+	return dev->bd_disk->pDeviceExtension;
 }
 
 /**
@@ -2555,13 +2573,13 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
 	if (!NT_SUCCESS(status)) {
 		WDRBD_WARN("Wrong path = %s\n", path);
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	struct block_device * dev = blkdev_get_by_link(&upath);
 	RtlFreeUnicodeString(&upath);
 
-	return dev;
+	return dev ? dev : ERR_PTR(-ENODEV);
 #else
 	return open_bdev_exclusive(path, mode, holder);
 #endif

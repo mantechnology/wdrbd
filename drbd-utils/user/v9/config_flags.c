@@ -499,6 +499,10 @@ static void string_describe_xml(struct field_def *field)
 
 static enum check_codes string_check(struct field_def *field, const char *value)
 {
+	if (field->u.s.max_len) {
+		if (strlen(value) >= field->u.s.max_len)
+			return CC_STR_TOO_LONG;
+	}
 	return CC_OK;
 }
 
@@ -585,6 +589,10 @@ struct field_class fc_string = {
 	.nla_type = T_ ## f,								\
 	.ops = &fc_string,								\
 	.needs_double_quoting = true
+
+#define STRING_MAX_LEN(f, l)                                \
+     STRING(f),                                    \
+     .u = { .s = { .max_len = l } } }
 
 /* ============================================================================================== */
 
@@ -717,7 +725,7 @@ const char *read_balancing_map[] = {
 	{ "ko-count", NUMERIC(ko_count, KO_COUNT) },					\
 	{ "allow-two-primaries", BOOLEAN(two_primaries, ALLOW_TWO_PRIMARIES) },		\
 	{ "cram-hmac-alg", STRING(cram_hmac_alg) },					\
-	{ "shared-secret", STRING(shared_secret) },					\
+	{ "shared-secret", STRING_MAX_LEN(shared_secret, SHARED_SECRET_MAX),         \
 	{ "after-sb-0pri", ENUM(after_sb_0p, AFTER_SB_0P) },				\
 	{ "after-sb-1pri", ENUM(after_sb_1p, AFTER_SB_1P) },				\
 	{ "after-sb-2pri", ENUM(after_sb_2p, AFTER_SB_2P) },				\
@@ -802,12 +810,15 @@ struct context_def path_cmd_ctx = {
 	.fields = { { } },
 };
 
+#define CONNECT_CMD_OPTIONS                    \
+     { "tentative", FLAG(tentative) },            \
+     { "discard-my-data", FLAG(discard_my_data) }
+
 struct context_def connect_cmd_ctx = {
 	NLA_POLICY(connect_parms),
 	.nla_type = DRBD_NLA_CONNECT_PARMS,
 	.fields = {
-		{ "tentative", FLAG(tentative) },
-		{ "discard-my-data", FLAG(discard_my_data) },
+		CONNECT_CMD_OPTIONS,
 		{ } },
 };
 
@@ -853,6 +864,7 @@ struct context_def resource_options_ctx = {
 		{ "twopc-timeout", NUMERIC(twopc_timeout, TWOPC_TIMEOUT) },
 		{ "twopc-retry-timeout", NUMERIC(twopc_retry_timeout, TWOPC_RETRY_TIMEOUT) },
 		{ "auto-promote-timeout", NUMERIC(auto_promote_timeout, AUTO_PROMOTE_TIMEOUT) },
+		{ "max-io-depth", NUMERIC(nr_requests, NR_REQUESTS) },
 		{ } },
 };
 
@@ -911,8 +923,18 @@ struct context_def create_md_ctx = {
 		{ .name = "peer-max-bio-size", .argument_is_optional = false },
 		{ .name = "al-stripes", .argument_is_optional = false },
 		{ .name = "al-stripe-size-kB", .argument_is_optional = false },
+		{ .name = "force", .argument_is_optional = true },
 		{ } },
 };
+
+struct context_def adjust_ctx = {
+	.fields = {
+		{ "skip-disk", .argument_is_optional = true },
+		{ "skip-net", .argument_is_optional = true },
+		CONNECT_CMD_OPTIONS,
+		{ } },
+};
+
 
 // only used by drbdadm's config file parser:
 struct context_def handlers_ctx = {
@@ -961,4 +983,7 @@ struct context_def startup_options_ctx = {
 		{ "outdated-wfc-timeout", ADM_NUMERIC(OUTDATED_WFC_TIMEOUT) },
 		{ "wait-after-sb", .ops = &fc_boolean },
 		{ } },
+};
+
+struct context_def wildcard_ctx = {
 };
