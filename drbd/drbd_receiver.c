@@ -1218,6 +1218,23 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		ctx->error = error;
 		drbd_info(device, "local disk FLUSH FAILED with status %d\n", error);
 	}
+
+#ifdef _WIN32
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
+	{
+		if (Irp->MdlAddress != NULL) {
+			PMDL mdl, nextMdl;
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+				nextMdl = mdl->Next;
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl); // This function will also unmap pages.
+			}
+			Irp->MdlAddress = NULL;
+		}
+		IoFreeIrp(Irp);
+	}
+#endif
+	
 	kfree(octx);
 	bio_put(bio);
 
