@@ -5571,10 +5571,12 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				if((peer_md[node_id].bitmap_uuid == 0) && (peer_md[node_id].flags & MDF_PEER_DIFF_CUR_UUID))
 					goto clear_flag;
 
-				// MODIFIED_BY_MANTECH DW-955: do not forget SyncSource's bitmap.
+				// MODIFIED_BY_MANTECH DW-955, DW-1116: do not forget bitmap if peer is below specified state.
 				struct drbd_peer_device *found_peer = peer_device_by_node_id(device, node_id);
 
-				if (found_peer && found_peer->repl_state[NOW] == L_SYNC_SOURCE)
+				if (found_peer && 
+					(found_peer->repl_state[NOW] < L_ESTABLISHED || found_peer->repl_state[NOW] == L_SYNC_SOURCE ||
+					found_peer->repl_state[NOW] == L_AHEAD || found_peer->repl_state[NOW] == L_WF_BITMAP_S))
 					goto clear_flag;
 #endif
 				
@@ -5586,7 +5588,8 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 #ifdef _WIN32
 				// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
 				{
-					drbd_info(device, "bitmap will be cleared due to other resync\n");
+					drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
+						found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (ULONG)found_peer->flags);
 					forget_bitmap(device, node_id);
 				}
 #else
@@ -5648,7 +5651,7 @@ clear_flag:
 			_drbd_uuid_push_history(device, peer_bm_uuid);
 		if (peer_md[peer_node_id].bitmap_index != -1)
 		{
-			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync\n");
+			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync, disk(%d)\n", device->disk_state[NOW]);
 			forget_bitmap(device, peer_node_id);
 		}
 		drbd_md_mark_dirty(device);
