@@ -5351,7 +5351,15 @@ static u64 __test_bitmap_slots_of_peer(struct drbd_peer_device *peer_device) __m
 	int node_id;
 
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1113: identical current uuid means they've cleared each other's bitmap uuid, while I haven't known it.
+		struct drbd_peer_device *found_peer = peer_device_by_node_id(peer_device->device, node_id);
+		if (peer_device->bitmap_uuids[node_id] &&
+			found_peer &&
+			((peer_device->current_uuid & ~UUID_PRIMARY) != (found_peer->current_uuid & ~UUID_PRIMARY)))
+#else
 		if (peer_device->bitmap_uuids[node_id])
+#endif
 			set_bitmap_slots |= NODE_MASK(node_id);
 	}
 
