@@ -1271,7 +1271,6 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 			__FUNCTION__, retVal);
 	}
 	else {
-		//printf("%lld\n", pDrbdLog->totalcnt);
 		HANDLE hLogFile = INVALID_HANDLE_VALUE;
 		hLogFile = CreateFile(L"drbdService.log", GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hLogFile != INVALID_HANDLE_VALUE) {
@@ -1287,24 +1286,20 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 			}
 			else { // pDrbdLog->totalcnt > LOGBUF_MAXCNT
 				unsigned int loopcnt1 = 0, loopcnt2 = 0;
-				
-				loopcnt1 = LOGBUF_MAXCNT - (pDrbdLog->totalcnt - LOGBUF_MAXCNT);
-				for (unsigned int i = (pDrbdLog->totalcnt - LOGBUF_MAXCNT )*MAX_DRBDLOG_BUF; i < (loopcnt1*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+				pDrbdLog->totalcnt = pDrbdLog->totalcnt%LOGBUF_MAXCNT;
+				for (unsigned int i = pDrbdLog->totalcnt*MAX_DRBDLOG_BUF; i < (LOGBUF_MAXCNT*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
 				}
-
-				loopcnt2 = (pDrbdLog->totalcnt - LOGBUF_MAXCNT);
-				for (unsigned int i = 0; i < (loopcnt2*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+				for (unsigned int i = 0; i < (pDrbdLog->totalcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
 				}
 			}
-			
 			CloseHandle(hLogFile);
 		}
 		else {
@@ -1313,16 +1308,13 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 				__FUNCTION__, retVal);
 		}
 	}
-
 	// 3. CloseHandle MVOL_DEVICE
 	if (hDevice != INVALID_HANDLE_VALUE) {
 		CloseHandle(hDevice);
 	}
-
 	if (pDrbdLog) {
 		free(pDrbdLog);
 	}
-
 	return retVal;
 }
 
