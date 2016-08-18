@@ -1286,16 +1286,16 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 			}
 			else { // pDrbdLog->totalcnt > LOGBUF_MAXCNT
 				unsigned int loopcnt1 = 0, loopcnt2 = 0;
-				pDrbdLog->totalcnt = pDrbdLog->totalcnt%LOGBUF_MAXCNT - 1;
+				pDrbdLog->totalcnt = pDrbdLog->totalcnt%LOGBUF_MAXCNT;
 				
-				for (unsigned int i = pDrbdLog->totalcnt*MAX_DRBDLOG_BUF; i < (LOGBUF_MAXCNT*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+				for (unsigned int i = (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i < (LOGBUF_MAXCNT*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
 				}
 
-				for (unsigned int i = 0; i < (pDrbdLog->totalcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+				for (unsigned int i = 0; i < (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);

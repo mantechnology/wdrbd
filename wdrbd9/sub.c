@@ -676,7 +676,7 @@ void _printk(const char * func, const char * format, ...)
 		return;
 	}
 	
-	logcnt = InterlockedExchangeAdd(&gLogCnt, 1); 
+	logcnt = InterlockedIncrement(&gLogCnt);
 	if(logcnt >= LOGBUF_MAXCNT) {
 		gLogCnt = 0;
 		logcnt = 0;
