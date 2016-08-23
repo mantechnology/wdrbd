@@ -99,15 +99,27 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 		return res;
 	}
 
+	DWORD mem_size = 1 << 13;
 	DWORD dwReturned;
-	PVOID buffer = malloc(8192);
-	memset(buffer, 0, 8192);
- 	if (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO,
-			NULL, 0, buffer, 8192, &dwReturned, NULL))
+	PVOID buffer = malloc(mem_size);
+	memset(buffer, 0, mem_size);
+
+	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO,
+		NULL, 0, buffer, mem_size, &dwReturned, NULL))
 	{
 		res = GetLastError();
-		fprintf(stderr, "%s: ioctl err. GetLastError(%d)\n", __FUNCTION__, res);
-		goto out;
+		if (ERROR_INSUFFICIENT_BUFFER == res)
+		{
+			mem_size <<= 1;
+			free(buffer);
+			buffer = malloc(mem_size);
+			memset(buffer, 0, mem_size);
+		}
+		else
+		{
+			fprintf(stderr, "%s: ioctl err. GetLastError(%d)\n", __FUNCTION__, res);
+			goto out;
+		}
 	}
 
 	res = ERROR_SUCCESS;
@@ -158,6 +170,11 @@ out:
 	if (INVALID_HANDLE_VALUE != handle)
 	{
 		CloseHandle(handle);
+	}
+
+	if (buffer)
+	{
+		free(buffer);
 	}
 
 	return res;
