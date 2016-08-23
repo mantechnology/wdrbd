@@ -1204,6 +1204,27 @@ static bool was_resync_stable(struct drbd_peer_device *peer_device)
 	    !test_bit(STABLE_RESYNC, &device->flags))
 		return false;
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1113: clear UNSTABLE_RESYNC flag for all peers that I'm getting synced with and have set primary as authoritative node since I have consistent disk with primary.
+	if (peer_device->connection->peer_role[NOW] == R_PRIMARY)
+	{
+		struct drbd_peer_device *found_peer = NULL;
+		for_each_peer_device_rcu(found_peer, device)
+		{
+			enum drbd_repl_state repl_state = found_peer->repl_state[NOW];
+			u64 authoritative_nodes = found_peer->uuid_authoritative_nodes;
+
+			if (found_peer == peer_device)
+				continue;
+
+			if (test_bit(UNSTABLE_RESYNC, &found_peer->flags) &&
+				(repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T) &&
+				authoritative_nodes & NODE_MASK(peer_device->node_id))
+				clear_bit(UNSTABLE_RESYNC, &found_peer->flags);
+		}
+	}
+#endif
+
 	set_bit(STABLE_RESYNC, &device->flags);
 	/* that STABLE_RESYNC bit gets reset if in any other ongoing resync
 	   we receive something from a resync source that is marked with

@@ -4767,6 +4767,13 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		if (inv.sync_from_peer_node_id != -1) {
 			struct drbd_connection *connection =
 				drbd_connection_by_node_id(resource, inv.sync_from_peer_node_id);
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1134 fix crash for invalid peer node id
+			if(connection == NULL) {
+				retcode = ERR_INVALID_PEER_NODE_ID;
+				drbd_msg_put_info(adm_ctx.reply_skb, from_attrs_err_to_txt(err));
+				goto out_no_resume;
+			}
+#endif			
 			sync_from_peer_device = conn_peer_device(connection, device->vnr);
 		}
 	}
