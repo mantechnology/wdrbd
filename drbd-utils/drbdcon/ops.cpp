@@ -111,6 +111,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 		if (ERROR_INSUFFICIENT_BUFFER == res)
 		{
 			mem_size <<= 1;
+			free(buffer);
 			buffer = malloc(mem_size);
 			memset(buffer, 0, mem_size);
 		}
