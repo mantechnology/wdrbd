@@ -5968,8 +5968,12 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	mutex_lock(&resources_mutex);
 #endif
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, 0);
-	if (!adm_ctx.reply_skb)
+	if (!adm_ctx.reply_skb) {
+#ifdef _PARALLEL_OPS
+		mutex_unlock(&resources_mutex);
+#endif		
 		return retcode;
+	}
 
 	set_res_opts_defaults(&res_opts);
 	err = res_opts_from_attrs(&res_opts, info);
