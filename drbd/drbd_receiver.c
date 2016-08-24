@@ -6209,6 +6209,10 @@ static int process_twopc(struct drbd_connection *connection,
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1127
+	bool noStateChange = false;
+#endif
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
@@ -6388,7 +6392,18 @@ static int process_twopc(struct drbd_connection *connection,
 	else
 		rv = far_away_change(connection, mask, val, reply, flags);
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed.
+	if (rv == SS_NOTHING_TO_DO)
+		noStateChange = true;
+#endif
+
 	if (flags & CS_PREPARE) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed, no need remote state change.
+		if (noStateChange)
+			resource->remote_state_change = false;
+#endif
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
@@ -6408,6 +6423,10 @@ static int process_twopc(struct drbd_connection *connection,
 			del_timer(&resource->twopc_timer);
 
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1127: don't clear remote state change if I haven't set.
+		if (!noStateChange)
+#endif
 		clear_remote_state_change(resource);
 
 		if (peer_device && rv >= SS_SUCCESS && !(flags & CS_ABORT))
