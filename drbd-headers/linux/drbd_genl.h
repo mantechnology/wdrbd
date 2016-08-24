@@ -521,6 +521,7 @@ GENL_op(
 	DRBD_ADM_GET_INITIAL_STATE, 38,
 	GENL_op_init(
 		.dumpit = drbd_adm_get_initial_state,
+		.done = drbd_adm_get_initial_state_done,
 	),
 	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_GENLA_F_MANDATORY))
 

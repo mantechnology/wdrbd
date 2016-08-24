@@ -112,6 +112,7 @@ int drbd_adm_dump_connections_done(struct netlink_callback *cb);
 int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb);
 int drbd_adm_dump_peer_devices_done(struct netlink_callback *cb);
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb);
+int drbd_adm_get_initial_state_done(struct netlink_callback *cb);
 
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"
@@ -6839,6 +6840,21 @@ next:
 	}
 out:
 	return skb->len;
+}
+
+int drbd_adm_get_initial_state_done(struct netlink_callback *cb)
+{
+	LIST_HEAD(head);
+	if (cb->args[0]) {
+		struct drbd_state_change *state_change =
+			(struct drbd_state_change *)cb->args[0];
+		cb->args[0] = 0;
+
+		/* connect list to head */
+		list_add(&head, &state_change->list);
+		free_state_changes(&head);
+	}
+	return 0;
 }
 
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
