@@ -792,31 +792,10 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
-	int rr;
-	char tb[4];
-
 	if (!*socket)
 		return false;
 
 #ifdef _WIN32 
-#if 0   
-    // required to refactoring
-    if ((rr = SendLocal((*socket)->sk, tb, 1, 0, 3000)) != 1)
-    {
-        WDRBD_INFO("socket(%s) is ok. but send error(%d)\n", (*socket)->name, rr);
-        sock_release(*socket);
-        *socket = NULL;
-        return false;
-    }
-
-    if ((rr = Receive((*socket)->sk, tb, 1, 0, 5000)) != 1)
-    {
-        WDRBD_INFO("socket(%s) is ok. but recv timeout(%d)!\n", (*socket)->name, rr);
-        sock_release(*socket);
-        *socket = NULL;
-        return false;
-    }
-#else
     SIZE_T out = 0;
     NTSTATUS Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
 	if (!NT_SUCCESS(Status)) {
@@ -827,18 +806,14 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 	}
 
     WDRBD_TRACE_SK("socket(0x%p) wsk(0x%p) ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->sk, (*socket)->name, out); // _WIN32
-#endif
     return true;
 #else
-	rr = dtt_recv_short(*socket, tb, 4, MSG_DONTWAIT | MSG_PEEK);
-
-	if (rr > 0 || rr == -EAGAIN) {
+	if ((*socket)->sk->sk_state == TCP_ESTABLISHED)
 		return true;
-	} else {
-		sock_release(*socket);
-		*socket = NULL;
-		return false;
-	}
+	
+	sock_release(*socket);
+	*socket = NULL;
+	return false;
 #endif
 }
 
