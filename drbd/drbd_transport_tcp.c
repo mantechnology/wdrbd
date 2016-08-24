@@ -1487,6 +1487,21 @@ out:
 	return err;
 }
 
+#ifndef _WIN32
+static void dtt_cleanup_accepted_sockets(struct dtt_path *path)
+{
+	while (!list_empty(&path->sockets)) {
+		struct dtt_socket_container *socket_c =
+			list_first_entry(&path->sockets, struct dtt_socket_container, list);
+
+		list_del(&socket_c->list);
+		kernel_sock_shutdown(socket_c->socket, SHUT_RDWR);
+		sock_release(socket_c->socket);
+		kfree(socket_c);
+	}
+}
+#endif
+
 static void dtt_put_listeners(struct drbd_transport *transport)
 {
 	struct drbd_tcp_transport *tcp_transport =
@@ -1509,16 +1524,10 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 		if (path->socket) {
 			sock_release(path->socket);
 			path->socket = NULL;
-#else
-		while (!list_empty(&path->sockets)) {
-			struct dtt_socket_container *socket_c =
-				list_first_entry(&path->sockets, struct dtt_socket_container, list);
-
-			list_del(&socket_c->list);
-			sock_release(socket_c->socket);
-			kfree(socket_c);
-#endif
 		}
+#else
+		dtt_cleanup_accepted_sockets(path);
+#endif
 	}
 	mutex_unlock(&tcp_transport->paths_mutex);
 }
@@ -1584,6 +1593,10 @@ static int dtt_connect(struct drbd_transport *transport)
 	list_for_each_entry(drbd_path, &transport->paths, list) {
 #endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
+#ifndef _WIN32
+		dtt_cleanup_accepted_sockets(path);
+#endif
+
 #ifdef _WIN32
 		{
 			if (path->path.my_addr.ss_family == AF_INET6) {
