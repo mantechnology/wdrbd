@@ -86,11 +86,22 @@ struct dtt_wait_first {
 	struct drbd_transport *transport;
 };
 
+#ifndef _WIN32
+struct dtt_socket_container {
+	struct list_head list;
+	struct socket *socket;
+};
+#endif
+
 struct dtt_path {
 	struct drbd_path path;
 
 	struct drbd_waiter waiter;
+#ifdef _WIN32
 	struct socket *socket;
+#else
+	struct list_head sockets;
+#endif
 	struct dtt_wait_first *first;
 };
 
@@ -874,7 +885,11 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 		WDRBD_TRACE_CO("[%p]dtt_wait_connect_cond: peer:%s sname=%s accept=%d\n", KeGetCurrentThread(), get_ip4(sbuf, &path->path.peer_addr), path->socket->name, listener->pending_accepts);		
 #endif
 		spin_lock_bh(&listener->waiters_lock);
+#ifdef _WIN32
 		rv = listener->pending_accepts > 0 || path->socket != NULL;
+#else
+		rv = listener->pending_accepts > 0 || !list_empty(&path->sockets);
+#endif
 		spin_unlock_bh(&listener->waiters_lock);
 
 		if (rv)
@@ -906,6 +921,7 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PWSK_SOCKET paccept_socket = NULL;
 #else
+	struct dtt_socket_container *socket_c;
 	struct sockaddr_storage peer_addr;
 #endif
 	int connect_int, peer_addr_len, err = 0;
@@ -955,9 +971,17 @@ retry:
 
 	listener = container_of(path->waiter.listener, struct dtt_listener, listener);
 	spin_lock_bh(&listener->listener.waiters_lock);
+#ifdef _WIN32
 	if (path->socket) {
 		s_estab = path->socket;
 		path->socket = NULL;
+#else
+	socket_c = list_first_entry_or_null(&path->sockets, struct dtt_socket_container, list);
+	if (socket_c) {
+		s_estab = socket_c->socket;
+		list_del(&socket_c->list);
+		kfree(socket_c);
+#endif
 	} else if (listener->listener.pending_accepts > 0) {
 		listener->listener.pending_accepts--;
 		spin_unlock_bh(&listener->listener.waiters_lock);
@@ -1048,13 +1072,27 @@ retry:
 			struct dtt_path *path2 =
 				container_of(waiter2_gen, struct dtt_path, waiter);
 
+#ifdef _WIN32
 			if (path2->socket) {
 				tr_err(path2->waiter.transport,
 					 "Receiver busy; rejecting incoming connection\n");
+#else
+			socket_c = kmalloc(sizeof(*socket_c), GFP_KERNEL);
+			if (!socket_c) {
+				tr_info(path2->waiter.transport,
+					"No mem, dropped an incoming connection\n");
+#endif
 				goto retry_locked;
 			}
+#ifdef _WIN32
 			path2->socket = s_estab;
+#else
+			socket_c->socket = s_estab;
+#endif
 			s_estab = NULL;
+#ifndef _WIN32
+			list_add_tail(&socket_c->list, &path2->sockets);
+#endif
 			wake_up(&path2->waiter.wait);
 			goto retry_locked;
 		}
@@ -1467,9 +1505,19 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 
 		path->first = NULL;
 		drbd_put_listener(&path->waiter);
+#ifdef _WIN32
 		if (path->socket) {
 			sock_release(path->socket);
 			path->socket = NULL;
+#else
+		while (!list_empty(&path->sockets)) {
+			struct dtt_socket_container *socket_c =
+				list_first_entry(&path->sockets, struct dtt_socket_container, list);
+
+			list_del(&socket_c->list);
+			sock_release(socket_c->socket);
+			kfree(socket_c);
+#endif
 		}
 	}
 	mutex_unlock(&tcp_transport->paths_mutex);
@@ -2083,7 +2131,9 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 
 	path->waiter.transport = transport;
 	drbd_path->established = false;
-
+#ifndef _WIN32
+	INIT_LIST_HEAD(&path->sockets);
+#endif
 	mutex_lock(&tcp_transport->paths_mutex);
 	if (test_bit(DTT_CONNECTING, &tcp_transport->flags)) {
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
