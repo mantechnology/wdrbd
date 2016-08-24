@@ -5950,6 +5950,9 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	struct res_opts res_opts;
 	int err;
 
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, 0);
 	if (!adm_ctx.reply_skb)
 		return retcode;
@@ -5984,10 +5987,14 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 #endif
-	mutex_lock(&resources_mutex);
-	resource = drbd_create_resource(adm_ctx.resource_name, &res_opts);
-	mutex_unlock(&resources_mutex);
 
+#ifndef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
+	resource = drbd_create_resource(adm_ctx.resource_name, &res_opts);
+#ifndef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	if (resource) {
 		struct resource_info resource_info;
 
@@ -6003,6 +6010,9 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	}
 
 out:
+#ifdef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
 }
