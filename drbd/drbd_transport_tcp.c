@@ -811,7 +811,8 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
     NTSTATUS Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
 	if (!NT_SUCCESS(Status)) {
         WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
-        sock_release(*socket);
+		kernel_sock_shutdown(*socket, SHUT_RDWR);
+		sock_release(*socket);
         *socket = NULL;
         return false;
 	}
@@ -821,7 +822,8 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 #else
 	if ((*socket)->sk->sk_state == TCP_ESTABLISHED)
 		return true;
-	
+
+	kernel_sock_shutdown(*socket, SHUT_RDWR);
 	sock_release(*socket);
 	*socket = NULL;
 	return false;
@@ -1108,6 +1110,7 @@ retry:
 retry_locked:
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	if (s_estab) {
+		kernel_sock_shutdown(s_estab, SHUT_RDWR);
 		sock_release(s_estab);
 		s_estab = NULL;
 	}
@@ -1664,6 +1667,7 @@ static int dtt_connect(struct drbd_transport *transport)
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
 				tr_warn(transport, "initial pathes crossed A\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 				connect_to_path = first_path;
 				continue;
@@ -1739,6 +1743,7 @@ retry:
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
 				tr_warn(transport, "initial pathes crossed P\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 				connect_to_path = first_path;
 				goto randomize;
@@ -1749,6 +1754,7 @@ retry:
 			case P_INITIAL_DATA:
 				if (dsocket) {
 					tr_warn(transport, "initial packet S crossed\n");
+					kernel_sock_shutdown(dsocket, SHUT_RDWR);
 					sock_release(dsocket);
 					dsocket = s;
 					goto randomize;
@@ -1759,6 +1765,7 @@ retry:
 				set_bit(RESOLVE_CONFLICTS, &transport->flags);
 				if (csocket) {
 					tr_warn(transport, "initial packet M crossed\n");
+					kernel_sock_shutdown(csocket, SHUT_RDWR);
 					sock_release(csocket);
 					csocket = s;
 					goto randomize;
@@ -1767,6 +1774,7 @@ retry:
 				break;
 			default:
 				tr_warn(transport, "Error receiving initial packet\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 randomize:
 				if (prandom_u32() & 1)
@@ -1860,10 +1868,14 @@ out_unlock:
 out:
 	dtt_put_listeners(transport);
 
-	if (dsocket)
+	if (dsocket) {
+		kernel_sock_shutdown(dsocket, SHUT_RDWR);
 		sock_release(dsocket);
-	if (csocket)
+	}
+	if (csocket) {
+		kernel_sock_shutdown(csocket, SHUT_RDWR);
 		sock_release(csocket);
+	}
 
 	return err;
 }
