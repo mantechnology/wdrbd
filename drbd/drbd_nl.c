@@ -1367,7 +1367,6 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock();
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
@@ -1442,7 +1441,6 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 fail:
 #endif
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
-	genl_lock();
 out:
 	drbd_adm_finish(&adm_ctx, info, (enum drbd_ret_code)retcode);
 	return 0;
