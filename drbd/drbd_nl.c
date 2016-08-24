@@ -6877,14 +6877,6 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 	if (cb->args[5] >= 1) {
 		if (cb->args[5] > 1)
 			return get_initial_state(skb, cb);
-		if (cb->args[0]) {
-			struct drbd_state_change *state_change =
-				(struct drbd_state_change *)cb->args[0];
-
-			/* connect list to head */
-			list_add(&head, &state_change->list);
-			free_state_changes(&head);
-		}
 		return 0;
 	}
 
