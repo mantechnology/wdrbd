@@ -3296,7 +3296,7 @@ check_net_options(struct drbd_connection *connection, struct net_conf *new_net_c
 	rv = _check_net_options(connection, rcu_dereference(connection->transport.net_conf), new_net_conf);
 	rcu_read_unlock();
 
-	/* connection->peer_devices protected by genl_lock() here */
+	/* connection->peer_devices protected by resource->conf_update here */
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
@@ -4003,7 +4003,7 @@ check_path_usable(const struct drbd_config_context *adm_ctx,
 	}
 
 	/* No need for _rcu here. All reconfiguration is
-	 * strictly serialized on genl_lock(). We are protected against
+	 * strictly serialized on resources_mutex. We are protected against
 	 * concurrent reconfiguration/addition/deletion */
 	for_each_resource(resource, &drbd_resources) {
 		for_each_connection(connection, resource) {
@@ -5102,6 +5102,9 @@ int drbd_adm_dump_resources(struct sk_buff *skb, struct netlink_callback *cb)
 	struct resource_statistics resource_statistics;
 	int err;
 
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	rcu_read_lock();
 	if (cb->args[0]) {
 		for_each_resource_rcu(resource, &drbd_resources)
@@ -5166,6 +5169,9 @@ put_result:
 
 out:
 	rcu_read_unlock();
+#ifdef _PARALLEL_OPS	
+	mutex_unlock(&resources_mutex);
+#endif
 	if (err)
 		return err;
 	return skb->len;
@@ -5246,7 +5252,10 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct device_info device_info;
 	struct device_statistics device_statistics;
 	struct idr *idr_to_search;
-	
+
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	resource = (struct drbd_resource *)cb->args[0];
 
 	rcu_read_lock();
@@ -5344,6 +5353,9 @@ put_result:
 
 out:
 	rcu_read_unlock();
+#ifdef _PARALLEL_OPS	
+	mutex_unlock(&resources_mutex);
+#endif
 	if (err)
 		return err;
 	return skb->len;
@@ -5397,7 +5409,9 @@ int drbd_adm_dump_connections(struct sk_buff *skb, struct netlink_callback *cb)
 	struct drbd_genlmsghdr *dh;
 	struct connection_info connection_info;
 	struct connection_statistics connection_statistics;
-
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	rcu_read_lock();
 	resource = (struct drbd_resource *)cb->args[0];
 	if (!cb->args[0]) {
@@ -5548,6 +5562,9 @@ out:
 	rcu_read_unlock();
 	if (resource)
 		mutex_unlock(&resource->conf_update);
+#ifdef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	if (err)
 		return err;
 	return skb->len;
@@ -5617,7 +5634,9 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	
 	struct drbd_genlmsghdr *dh;
 	struct idr *idr_to_search;
-
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	resource = (struct drbd_resource *)cb->args[0];
 
 	rcu_read_lock();
@@ -5739,6 +5758,9 @@ put_result:
 
 out:
 	rcu_read_unlock();
+#ifdef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	if (err)
 		return err;
 	return skb->len;
@@ -6306,6 +6328,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	retcode = adm_del_resource(resource);
+	/* holding a reference to resource in adm_crx until drbd_adm_finish() */
 
 unlock_out:
 	mutex_unlock(&resource->conf_update);
