@@ -4349,7 +4349,13 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	   to guarantee a consistent object model. idr_preload() doesn't help
 	   because it can only guarantee that a single idr_alloc() will
 	   succeed. This fails (and will be retried) if no memory is
-	   immediately available. */
+	   immediately available.
+	   Keep in mid that RCU readers might find the device in the moment
+	   we add it to the resources->devices IDR!
+	*/
+
+	INIT_LIST_HEAD(&device->peer_devices);
+	INIT_LIST_HEAD(&device->pending_bitmap_io);
 
 	locked = true;
 	spin_lock_irq(&resource->req_lock);
@@ -4371,8 +4377,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	kref_get(&device->kref);
 	kref_debug_get(&device->kref_debug, 1);
 
-	INIT_LIST_HEAD(&device->peer_devices);
-	INIT_LIST_HEAD(&device->pending_bitmap_io);
 #ifdef _WIN32
     list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &peer_devices, peer_devices) {
 #else
