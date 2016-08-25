@@ -1526,6 +1526,10 @@ static void sanitize_state(struct drbd_resource *resource)
 			enum drbd_conn_state *cstate = connection->cstate;
 			enum drbd_disk_state min_disk_state, max_disk_state;
 			enum drbd_disk_state min_peer_disk_state, max_peer_disk_state;
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1142
+			enum drbd_role *peer_role = connection->peer_role;
+#endif
 
 			if (repl_state[NEW] < L_ESTABLISHED) {
 				peer_device->resync_susp_peer[NEW] = false;
@@ -1547,7 +1551,18 @@ static void sanitize_state(struct drbd_resource *resource)
 			    (disk_state[NEW] <= D_FAILED ||
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Abort resync if disk state goes unsyncable.			
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1142: Abort resync since SyncSource goes secondary.
+			if ((peer_role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_TARGET) ||
+				(role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_SOURCE))
+			{
+				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");
+				repl_state[NEW] = L_ESTABLISHED;
+				set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+
+			// MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Abort resync if disk state goes unsyncable.
 			if (((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_PAUSED_SYNC_T ) && peer_disk_state[NEW] <= D_INCONSISTENT) ||
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
