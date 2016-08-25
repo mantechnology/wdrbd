@@ -468,7 +468,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 		for_each_peer_device(peer_device, device) {
 			peer_device->disk_state[NOW] = peer_device->disk_state[NEW];
 #ifndef _WIN32	
-    		// MODIFIED_BY_MANTECH DW-1131
+			// MODIFIED_BY_MANTECH DW-1131
 			// Move to queue_after_state_change_work.
 			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
 #endif			
@@ -1799,7 +1799,7 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	struct drbd_device *device;
 	int vnr;
 
-    work = kmalloc(sizeof(*work), gfp, '83DW');
+	work = kmalloc(sizeof(*work), gfp, '83DW');
 #else
 	work = kmalloc(sizeof(*work), gfp);
 #endif
@@ -1809,10 +1809,8 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1131
 	// Updating repl_state, before w_after_state_change add to drbd_work_queue. 
-    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 		struct drbd_peer_device *peer_device;
-
 		for_each_peer_device(peer_device, device) {			
 			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
 		}

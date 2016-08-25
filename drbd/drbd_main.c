@@ -5831,8 +5831,8 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	struct bm_io_work *bm_io_work;
 
 	D_ASSERT(device, current == device->resource->worker.task);
-#ifdef _WIN32
-    bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+#ifdef _WIN32    
+	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
 	if(!bm_io_work) {
 		drbd_err(peer_device, "Could not allocate bm io work.\n");
 		return;
