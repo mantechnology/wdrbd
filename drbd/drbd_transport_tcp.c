@@ -86,11 +86,22 @@ struct dtt_wait_first {
 	struct drbd_transport *transport;
 };
 
+#ifndef _WIN32
+struct dtt_socket_container {
+	struct list_head list;
+	struct socket *socket;
+};
+#endif
+
 struct dtt_path {
 	struct drbd_path path;
 
 	struct drbd_waiter waiter;
+#ifdef _WIN32
 	struct socket *socket;
+#else
+	struct list_head sockets;
+#endif
 	struct dtt_wait_first *first;
 };
 
@@ -515,6 +526,15 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
+static bool dtt_path_cmp_addr(struct dtt_path *path)
+{
+	struct drbd_path *drbd_path = &path->path;
+	int addr_size;
+
+	addr_size = min(drbd_path->my_addr_len, drbd_path->peer_addr_len);
+	return memcmp(&drbd_path->my_addr, &drbd_path->peer_addr, addr_size) > 0;
+}
+
 static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 {
 	struct drbd_transport *transport = path->waiter.transport;
@@ -783,53 +803,30 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
-	int rr;
-	char tb[4];
-
 	if (!*socket)
 		return false;
 
 #ifdef _WIN32 
-#if 0   
-    // required to refactoring
-    if ((rr = SendLocal((*socket)->sk, tb, 1, 0, 3000)) != 1)
-    {
-        WDRBD_INFO("socket(%s) is ok. but send error(%d)\n", (*socket)->name, rr);
-        sock_release(*socket);
-        *socket = NULL;
-        return false;
-    }
-
-    if ((rr = Receive((*socket)->sk, tb, 1, 0, 5000)) != 1)
-    {
-        WDRBD_INFO("socket(%s) is ok. but recv timeout(%d)!\n", (*socket)->name, rr);
-        sock_release(*socket);
-        *socket = NULL;
-        return false;
-    }
-#else
     SIZE_T out = 0;
     NTSTATUS Status = ControlSocket( (*socket)->sk, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
 	if (!NT_SUCCESS(Status)) {
         WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
-        sock_release(*socket);
+		kernel_sock_shutdown(*socket, SHUT_RDWR);
+		sock_release(*socket);
         *socket = NULL;
         return false;
 	}
 
     WDRBD_TRACE_SK("socket(0x%p) wsk(0x%p) ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->sk, (*socket)->name, out); // _WIN32
-#endif
     return true;
 #else
-	rr = dtt_recv_short(*socket, tb, 4, MSG_DONTWAIT | MSG_PEEK);
-
-	if (rr > 0 || rr == -EAGAIN) {
+	if ((*socket)->sk->sk_state == TCP_ESTABLISHED)
 		return true;
-	} else {
-		sock_release(*socket);
-		*socket = NULL;
-		return false;
-	}
+
+	kernel_sock_shutdown(*socket, SHUT_RDWR);
+	sock_release(*socket);
+	*socket = NULL;
+	return false;
 #endif
 }
 
@@ -890,7 +887,11 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 		WDRBD_TRACE_CO("[%p]dtt_wait_connect_cond: peer:%s sname=%s accept=%d\n", KeGetCurrentThread(), get_ip4(sbuf, &path->path.peer_addr), path->socket->name, listener->pending_accepts);		
 #endif
 		spin_lock_bh(&listener->waiters_lock);
+#ifdef _WIN32
 		rv = listener->pending_accepts > 0 || path->socket != NULL;
+#else
+		rv = listener->pending_accepts > 0 || !list_empty(&path->sockets);
+#endif
 		spin_unlock_bh(&listener->waiters_lock);
 
 		if (rv)
@@ -922,6 +923,7 @@ static int dtt_wait_for_connect(struct dtt_wait_first *waiter, struct socket **s
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PWSK_SOCKET paccept_socket = NULL;
 #else
+	struct dtt_socket_container *socket_c;
 	struct sockaddr_storage peer_addr;
 #endif
 	int connect_int, peer_addr_len, err = 0;
@@ -971,9 +973,17 @@ retry:
 
 	listener = container_of(path->waiter.listener, struct dtt_listener, listener);
 	spin_lock_bh(&listener->listener.waiters_lock);
+#ifdef _WIN32
 	if (path->socket) {
 		s_estab = path->socket;
 		path->socket = NULL;
+#else
+	socket_c = list_first_entry_or_null(&path->sockets, struct dtt_socket_container, list);
+	if (socket_c) {
+		s_estab = socket_c->socket;
+		list_del(&socket_c->list);
+		kfree(socket_c);
+#endif
 	} else if (listener->listener.pending_accepts > 0) {
 		listener->listener.pending_accepts--;
 		spin_unlock_bh(&listener->listener.waiters_lock);
@@ -1064,14 +1074,28 @@ retry:
 			struct dtt_path *path2 =
 				container_of(waiter2_gen, struct dtt_path, waiter);
 
+#ifdef _WIN32
 			if (path2->socket) {
 				tr_err(path2->waiter.transport,
 					 "Receiver busy; rejecting incoming connection\n");
+#else
+			socket_c = kmalloc(sizeof(*socket_c), GFP_KERNEL);
+			if (!socket_c) {
+				tr_info(path2->waiter.transport,
+					"No mem, dropped an incoming connection\n");
+#endif
 				goto retry_locked;
 			}
+#ifdef _WIN32
 			path2->socket = s_estab;
+#else
+			socket_c->socket = s_estab;
+#endif
 			s_estab = NULL;
-			wake_up(&path2->waiter.wait);
+#ifndef _WIN32
+			list_add_tail(&socket_c->list, &path2->sockets);
+#endif
+			wake_up(&path2->first->wait);
 			goto retry_locked;
 		}
 	}
@@ -1086,6 +1110,7 @@ retry:
 retry_locked:
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	if (s_estab) {
+		kernel_sock_shutdown(s_estab, SHUT_RDWR);
 		sock_release(s_estab);
 		s_estab = NULL;
 	}
@@ -1465,6 +1490,21 @@ out:
 	return err;
 }
 
+#ifndef _WIN32
+static void dtt_cleanup_accepted_sockets(struct dtt_path *path)
+{
+	while (!list_empty(&path->sockets)) {
+		struct dtt_socket_container *socket_c =
+			list_first_entry(&path->sockets, struct dtt_socket_container, list);
+
+		list_del(&socket_c->list);
+		kernel_sock_shutdown(socket_c->socket, SHUT_RDWR);
+		sock_release(socket_c->socket);
+		kfree(socket_c);
+	}
+}
+#endif
+
 static void dtt_put_listeners(struct drbd_transport *transport)
 {
 	struct drbd_tcp_transport *tcp_transport =
@@ -1483,10 +1523,14 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 
 		path->first = NULL;
 		drbd_put_listener(&path->waiter);
+#ifdef _WIN32
 		if (path->socket) {
 			sock_release(path->socket);
 			path->socket = NULL;
 		}
+#else
+		dtt_cleanup_accepted_sockets(path);
+#endif
 	}
 	mutex_unlock(&tcp_transport->paths_mutex);
 }
@@ -1552,6 +1596,10 @@ static int dtt_connect(struct drbd_transport *transport)
 	list_for_each_entry(drbd_path, &transport->paths, list) {
 #endif
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
+#ifndef _WIN32
+		dtt_cleanup_accepted_sockets(path);
+#endif
+
 #ifdef _WIN32
 		{
 			if (path->path.my_addr.ss_family == AF_INET6) {
@@ -1613,21 +1661,36 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 			}
 #endif
+			bool use_for_data;
+
 			if (!first_path) {
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
 				tr_warn(transport, "initial pathes crossed A\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 				connect_to_path = first_path;
 				continue;
 			}
 
-			if (!dsocket) {
+			if (!dsocket && !csocket) {
+		       use_for_data = dtt_path_cmp_addr(first_path);
+			} else if (!dsocket) {
+           		use_for_data = true;
+			} else {
+				if (csocket) {
+					tr_err(transport, "Logic error in conn_connect()\n");
+					goto out_eagain;
+				}	
+				use_for_data = false;
+			}
+
+			if (use_for_data) {
+
 				dsocket = s;
 #ifdef _WIN32 // DW-154 
                 sprintf(dsocket->name, "data_sock\0");
-                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0)
-                {
+                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0) {
                     sock_release(s);
                     dsocket = 0;
                     goto retry;
@@ -1635,7 +1698,7 @@ static int dtt_connect(struct drbd_transport *transport)
 #else
 				dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM);
 #endif
-			} else if (!csocket) {
+			} else {
 				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
 				csocket = s;
 #ifdef _WIN32 // DW-154 
@@ -1649,9 +1712,6 @@ static int dtt_connect(struct drbd_transport *transport)
 #else
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
 #endif
-			} else {
-				tr_err(transport, "Logic error in conn_connect()\n");
-				goto out_eagain;
 			}
 		} else if (!first_path)
 			connect_to_path = dtt_next_path(tcp_transport, connect_to_path);
@@ -1683,6 +1743,7 @@ retry:
 				first_path = connect_to_path;
 			} else if (first_path != connect_to_path) {
 				tr_warn(transport, "initial pathes crossed P\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 				connect_to_path = first_path;
 				goto randomize;
@@ -1693,6 +1754,7 @@ retry:
 			case P_INITIAL_DATA:
 				if (dsocket) {
 					tr_warn(transport, "initial packet S crossed\n");
+					kernel_sock_shutdown(dsocket, SHUT_RDWR);
 					sock_release(dsocket);
 					dsocket = s;
 					goto randomize;
@@ -1703,6 +1765,7 @@ retry:
 				set_bit(RESOLVE_CONFLICTS, &transport->flags);
 				if (csocket) {
 					tr_warn(transport, "initial packet M crossed\n");
+					kernel_sock_shutdown(csocket, SHUT_RDWR);
 					sock_release(csocket);
 					csocket = s;
 					goto randomize;
@@ -1711,6 +1774,7 @@ retry:
 				break;
 			default:
 				tr_warn(transport, "Error receiving initial packet\n");
+				kernel_sock_shutdown(s, SHUT_RDWR);
 				sock_release(s);
 randomize:
 				if (prandom_u32() & 1)
@@ -1804,10 +1868,14 @@ out_unlock:
 out:
 	dtt_put_listeners(transport);
 
-	if (dsocket)
+	if (dsocket) {
+		kernel_sock_shutdown(dsocket, SHUT_RDWR);
 		sock_release(dsocket);
-	if (csocket)
+	}
+	if (csocket) {
+		kernel_sock_shutdown(csocket, SHUT_RDWR);
 		sock_release(csocket);
+	}
 
 	return err;
 }
@@ -2088,7 +2156,9 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 
 	path->waiter.transport = transport;
 	drbd_path->established = false;
-
+#ifndef _WIN32
+	INIT_LIST_HEAD(&path->sockets);
+#endif
 	mutex_lock(&tcp_transport->paths_mutex);
 	if (test_bit(DTT_CONNECTING, &tcp_transport->flags)) {
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,

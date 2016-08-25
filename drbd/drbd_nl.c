@@ -112,6 +112,7 @@ int drbd_adm_dump_connections_done(struct netlink_callback *cb);
 int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb);
 int drbd_adm_dump_peer_devices_done(struct netlink_callback *cb);
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb);
+int drbd_adm_get_initial_state_done(struct netlink_callback *cb);
 
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"
@@ -211,10 +212,6 @@ static struct drbd_path *first_path(struct drbd_connection *connection)
  * and per-family private info->pointers.
  * But we need to stay compatible with older kernels.
  * If it returns successfully, adm_ctx members are valid.
- *
- * At this point, we still rely on the global genl_lock().
- * If we want to avoid that, and allow "genl_family.parallel_ops", we may need
- * to add additional synchronization against object destruction/modification.
  */
 #define DRBD_ADM_NEED_MINOR        (1 << 0)
 #define DRBD_ADM_NEED_RESOURCE     (1 << 1)
@@ -314,7 +311,14 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	}
 
 	adm_ctx->minor = d_in->minor;
+	rcu_read_lock();
 	adm_ctx->device = minor_to_device(d_in->minor);
+	if (adm_ctx->device) {
+		kref_get(&adm_ctx->device->kref);
+		kref_debug_get(&adm_ctx->device->kref_debug, 4);
+	}
+	rcu_read_unlock();
+
 	if (!adm_ctx->device && (flags & DRBD_ADM_NEED_MINOR)) {
 		drbd_msg_put_info(adm_ctx->reply_skb, "unknown minor");
 		err = ERR_MINOR_INVALID;
@@ -355,6 +359,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 		}
 	}
 	if (flags & DRBD_ADM_NEED_PEER_DEVICE) {
+		rcu_read_lock();
 		if (adm_ctx->volume != VOLUME_UNSPECIFIED)
 			adm_ctx->peer_device =
 				idr_find(&adm_ctx->connection->peer_devices,
@@ -362,14 +367,15 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 		if (!adm_ctx->peer_device) {
 			drbd_msg_put_info(adm_ctx->reply_skb, "unknown volume");
 			err = ERR_INVALID_REQUEST;
+			rcu_read_unlock();
 			goto finish;
 		}
-		if (!adm_ctx->device)
+		if (!adm_ctx->device) {
 			adm_ctx->device = adm_ctx->peer_device->device;
-	}
-	if (adm_ctx->device) {
-		kref_get(&adm_ctx->device->kref);
-		kref_debug_get(&adm_ctx->device->kref_debug, 4);
+			kref_get(&adm_ctx->device->kref);
+			kref_debug_get(&adm_ctx->device->kref_debug, 4);
+		}
+		rcu_read_unlock();
 	}
 
 	/* some more paranoia, if the request was over-determined */
@@ -1361,7 +1367,6 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			goto out;
 		}
 	}
-	genl_unlock();
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
@@ -1436,7 +1441,6 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 fail:
 #endif
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
-	genl_lock();
 out:
 	drbd_adm_finish(&adm_ctx, info, (enum drbd_ret_code)retcode);
 	return 0;
@@ -3284,7 +3288,7 @@ _check_net_options(struct drbd_connection *connection, struct net_conf *old_net_
 static enum drbd_ret_code
 check_net_options(struct drbd_connection *connection, struct net_conf *new_net_conf)
 {
-	static enum drbd_ret_code rv;
+	enum drbd_ret_code rv;
 	struct drbd_peer_device *peer_device;
 	int i;
 
@@ -3292,7 +3296,7 @@ check_net_options(struct drbd_connection *connection, struct net_conf *new_net_c
 	rv = _check_net_options(connection, rcu_dereference(connection->transport.net_conf), new_net_conf);
 	rcu_read_unlock();
 
-	/* connection->peer_devices protected by genl_lock() here */
+	/* connection->peer_devices protected by resource->conf_update here */
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
@@ -3786,8 +3790,6 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 			goto unlock_fail_free_connection;
 	}
 
-	spin_lock_irq(&adm_ctx->resource->req_lock);
-	list_add_tail_rcu(&connection->connections, &adm_ctx->resource->connections);
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
@@ -3803,7 +3805,10 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 		kref_get(&device->kref);
 		kref_debug_get(&device->kref_debug, 1);
 		peer_devices++;
+		peer_device->node_id = connection->peer_node_id;
 	}
+	spin_lock_irq(&adm_ctx->resource->req_lock);
+	list_add_tail_rcu(&connection->connections, &adm_ctx->resource->connections);
 	spin_unlock_irq(&adm_ctx->resource->req_lock);
 
 	old_net_conf = connection->transport.net_conf;
@@ -3822,13 +3827,6 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	/* transferred ownership. prevent double cleanup. */
 	new_net_conf = NULL;
 	memset(&crypto, 0, sizeof(crypto));
-
-#ifdef _WIN32
-    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i)
-#else
-	idr_for_each_entry(&connection->peer_devices, peer_device, i)
-#endif
-		peer_device->node_id = connection->peer_node_id;
 
 	if (connection->peer_node_id > adm_ctx->resource->max_node_id)
 		adm_ctx->resource->max_node_id = connection->peer_node_id;
@@ -3999,7 +3997,7 @@ check_path_usable(const struct drbd_config_context *adm_ctx,
 	}
 
 	/* No need for _rcu here. All reconfiguration is
-	 * strictly serialized on genl_lock(). We are protected against
+	 * strictly serialized on resources_mutex. We are protected against
 	 * concurrent reconfiguration/addition/deletion */
 	for_each_resource(resource, &drbd_resources) {
 		for_each_connection(connection, resource) {
@@ -5242,7 +5240,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 	struct device_info device_info;
 	struct device_statistics device_statistics;
 	struct idr *idr_to_search;
-	
+
 	resource = (struct drbd_resource *)cb->args[0];
 
 	rcu_read_lock();
@@ -5944,9 +5942,16 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	struct res_opts res_opts;
 	int err;
 
+#ifdef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, 0);
-	if (!adm_ctx.reply_skb)
+	if (!adm_ctx.reply_skb) {
+#ifdef _PARALLEL_OPS
+		mutex_unlock(&resources_mutex);
+#endif		
 		return retcode;
+	}
 
 	set_res_opts_defaults(&res_opts);
 	err = res_opts_from_attrs(&res_opts, info);
@@ -5978,10 +5983,14 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 #endif
-	mutex_lock(&resources_mutex);
-	resource = drbd_create_resource(adm_ctx.resource_name, &res_opts);
-	mutex_unlock(&resources_mutex);
 
+#ifndef _PARALLEL_OPS
+	mutex_lock(&resources_mutex);
+#endif
+	resource = drbd_create_resource(adm_ctx.resource_name, &res_opts);
+#ifndef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	if (resource) {
 		struct resource_info resource_info;
 
@@ -5997,6 +6006,9 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 	}
 
 out:
+#ifdef _PARALLEL_OPS
+	mutex_unlock(&resources_mutex);
+#endif
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
 }
@@ -6292,6 +6304,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	retcode = adm_del_resource(resource);
+	/* holding a reference to resource in adm_crx until drbd_adm_finish() */
 
 unlock_out:
 	mutex_unlock(&resource->conf_update);
@@ -6841,6 +6854,21 @@ out:
 	return skb->len;
 }
 
+int drbd_adm_get_initial_state_done(struct netlink_callback *cb)
+{
+	LIST_HEAD(head);
+	if (cb->args[0]) {
+		struct drbd_state_change *state_change =
+			(struct drbd_state_change *)cb->args[0];
+		cb->args[0] = 0;
+
+		/* connect list to head */
+		list_add(&head, &state_change->list);
+		free_state_changes(&head);
+	}
+	return 0;
+}
+
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct drbd_resource *resource;
@@ -6849,14 +6877,6 @@ int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 	if (cb->args[5] >= 1) {
 		if (cb->args[5] > 1)
 			return get_initial_state(skb, cb);
-		if (cb->args[0]) {
-			struct drbd_state_change *state_change =
-				(struct drbd_state_change *)cb->args[0];
-
-			/* connect list to head */
-			list_add(&head, &state_change->list);
-			free_state_changes(&head);
-		}
 		return 0;
 	}
 

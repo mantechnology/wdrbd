@@ -467,7 +467,11 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 
 		for_each_peer_device(peer_device, device) {
 			peer_device->disk_state[NOW] = peer_device->disk_state[NEW];
+#ifndef _WIN32	
+			// MODIFIED_BY_MANTECH DW-1131
+			// Move to queue_after_state_change_work.
 			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
+#endif			
 			peer_device->resync_susp_user[NOW] =
 				peer_device->resync_susp_user[NEW];
 			peer_device->resync_susp_peer[NOW] =
@@ -1791,14 +1795,28 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	/* Caller holds req_lock */
 	struct after_state_change_work *work;
 	gfp_t gfp = GFP_ATOMIC;
-
 #ifdef _WIN32
-    work = kmalloc(sizeof(*work), gfp, '83DW');
+	struct drbd_device *device;
+	int vnr;
+
+	work = kmalloc(sizeof(*work), gfp, '83DW');
 #else
 	work = kmalloc(sizeof(*work), gfp);
 #endif
 	if (work)
 		work->state_change = remember_state_change(resource, gfp);
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1131
+	// Updating repl_state, before w_after_state_change add to drbd_work_queue. 
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		struct drbd_peer_device *peer_device;
+		for_each_peer_device(peer_device, device) {			
+			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
+		}
+	}
+#endif
+	
 	if (work && work->state_change) {
 		work->w.cb = w_after_state_change;
 		work->done = done;
@@ -2182,13 +2200,14 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 			}
 		}
 
-		if (connection->last_reconnect_jif)
-			set_bit(RECONNECT, &connection->flags);
 		/* remember last connect time so request_timer_fn() won't
 		 * kill newly established sessions while we are still trying to thaw
 		 * previously frozen IO */
-		if (cstate[OLD] < C_CONNECTED && cstate[NEW] == C_CONNECTED)
+		if (cstate[OLD] < C_CONNECTED && cstate[NEW] == C_CONNECTED) {
+			if (connection->last_reconnect_jif)
+		       set_bit(RECONNECT, &connection->flags);
 			connection->last_reconnect_jif = jiffies;
+		}
 
 		if (starting_resync && peer_role[NEW] == R_PRIMARY)
 			apply_unacked_peer_requests(connection);

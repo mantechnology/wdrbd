@@ -295,6 +295,9 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
 	.hdrsize = NLA_ALIGN(GENL_MAGIC_FAMILY_HDRSZ),
 #endif
 	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy)-1,
+#ifdef _PARALLEL_OPS	
+	.parallel_ops = true,
+#endif	
 };
 
 /*

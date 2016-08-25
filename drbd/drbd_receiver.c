@@ -3909,8 +3909,12 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 				return rv;
 		}
 
-
 		*rule_nr = 38;
+		/* This is a safety net for the following two clauses */
+		if (peer_device->uuid_flags & UUID_FLAG_RECONNECT &&
+			test_bit(RECONNECT, &peer_device->connection->flags))
+			return 0;
+
 		/* Peer crashed as primary, I survived, resync from me */
 		if (peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY &&
 		    test_bit(RECONNECT, &peer_device->connection->flags))
@@ -4025,8 +4029,22 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 
 static void log_handshake(struct drbd_peer_device *peer_device)
 {
+	struct drbd_device *device = peer_device->device;
+	u64 uuid_flags = 0;
+
+	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+       uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
+	if (test_bit(CRASHED_PRIMARY, &device->flags))
+       uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
+	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+       uuid_flags |= UUID_FLAG_INCONSISTENT;
+	if (test_bit(RECONNECT, &peer_device->connection->flags))
+       uuid_flags |= UUID_FLAG_RECONNECT;
+	if (drbd_device_stable(device, NULL))
+       uuid_flags |= UUID_FLAG_STABLE;
+
 	drbd_info(peer_device, "drbd_sync_handshake:\n");
-	drbd_uuid_dump_self(peer_device, peer_device->comm_bm_set, 0);
+	drbd_uuid_dump_self(peer_device, peer_device->comm_bm_set, uuid_flags);
 	drbd_uuid_dump_peer(peer_device, peer_device->dirty_bits, peer_device->uuid_flags);
 }
 
@@ -4167,6 +4185,12 @@ static void disk_states_to_goodness(struct drbd_device *device,
 	if (*hg != 0 && rule_nr != 40)
 		return;
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1127: no resync if pdisk is D_UNKNOWN.
+	if (peer_disk_state == D_UNKNOWN)
+		return;
+#endif
+
 	/* rule_nr 40 means that the current UUIDs are equal. The decision
 	   was found by looking at the crashed_primary bits.
 	   The current disk states might give a better basis for decision-making! */
@@ -4212,7 +4236,9 @@ static void various_states_to_goodness(struct drbd_device *device,
 	}
 
 	// 2. compare disk state.
-	if (peer_disk_state != disk_state &&
+	// DW-1127: no resync if pdisk is D_UNKNOWN.
+	if (peer_disk_state != D_UNKNOWN &&
+		peer_disk_state != disk_state &&
 		(peer_disk_state >= D_OUTDATED || disk_state >= D_OUTDATED))
 	{
 		*hg = disk_state > peer_disk_state ? 2 : -2;
@@ -5161,28 +5187,18 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	}
 
 	if (should_send_sizes) {
-#ifndef _WIN32 // DW-1063 fix wait at dispach level		
-		rcu_read_lock();
-#endif
-		for_each_peer_device_rcu(peer_device_it, device) {
+		u64 im;
+		for_each_peer_device_ref(peer_device_it, im, device)
 			drbd_send_sizes(peer_device_it, p_usize, ddsf);
-		}
-#ifndef _WIN32 
-		rcu_read_unlock();
-#endif
 	} else {
 		sector_t my_size = drbd_get_capacity(device->this_bdev);
-#ifndef _WIN32 // DW-1063 fix wait at dispach level		
-		rcu_read_lock();
-#endif
-		for_each_peer_device_rcu(peer_device_it, device) {
+		u64 im;
+
+		for_each_peer_device_ref(peer_device_it, im, device) {
 			if (peer_device_it->repl_state[NOW] > L_OFF
 				&&  peer_device_it->c_size != my_size)
 					drbd_send_sizes(peer_device_it, p_usize, ddsf);
 		}
-#ifndef _WIN32 
-		rcu_read_unlock();
-#endif
 	}
 
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),
@@ -6201,6 +6217,10 @@ static int process_twopc(struct drbd_connection *connection,
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1127
+	bool noStateChange = false;
+#endif
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
@@ -6380,7 +6400,18 @@ static int process_twopc(struct drbd_connection *connection,
 	else
 		rv = far_away_change(connection, mask, val, reply, flags);
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed.
+	if (rv == SS_NOTHING_TO_DO)
+		noStateChange = true;
+#endif
+
 	if (flags & CS_PREPARE) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed, no need remote state change.
+		if (noStateChange)
+			resource->remote_state_change = false;
+#endif
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
@@ -6400,6 +6431,10 @@ static int process_twopc(struct drbd_connection *connection,
 			del_timer(&resource->twopc_timer);
 
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1127: don't clear remote state change if I haven't set.
+		if (!noStateChange)
+#endif
 		clear_remote_state_change(resource);
 
 		if (peer_device && rv >= SS_SUCCESS && !(flags & CS_ABORT))
@@ -7716,8 +7751,11 @@ int drbd_do_features(struct drbd_connection *connection)
 		return 0;
 
 	err = drbd_recv_header(connection, &pi);
-	if (err)
+	if (err) {
+		if (err == -EAGAIN)
+			drbd_err(connection, "timeout while waiting for feature packet\n");
 		return 0;
+	}
 
 	if (pi.cmd != P_CONNECTION_FEATURES) {
 		drbd_err(connection, "expected ConnectionFeatures packet, received: %s (0x%04x)\n",
