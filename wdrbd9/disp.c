@@ -579,22 +579,14 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
         if (device)
         {
-			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
-			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
-			ULONG size_sector = pisl->Parameters.Write.Length >> 9;
-			sector_t vol_size_sector = drbd_get_capacity(device->this_bdev);
-
-			// if io offset is larger than volume size oacassionally,
-			// then allow to lower device, so not try to send to peer
-			if (offset_sector + size_sector > vol_size_sector)
-			{
-				goto skip;
-			}
-
             PMVOL_THREAD				pThreadInfo;
 #ifdef DRBD_TRACE
+			PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
-				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
+				&VolumeExtension->MountPoint,
+				(writeIrpSp->Parameters.Write.ByteOffset.QuadPart >> 9),
+				(writeIrpSp->Parameters.Write.Length >> 9),
+				VolumeExtension->IrpCount);
 #endif
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
@@ -626,7 +618,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             return STATUS_INVALID_DEVICE_REQUEST;
         }
     }
-skip:
+
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
