@@ -127,7 +127,10 @@ static const char * const __error_messages[] = {
 #ifdef _WIN32
     [-SS_TARGET_DISK_TOO_SMALL] = "Target disk is smaller than source.",
 	[-SS_CONNECTED_DISKLESS] = "Refusing to be Diskless while Connected",
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	// MODIFIED_BY_MANTECH DW-1142
 	[-SS_RESYNC_FROM_SECONDARY] = "Non-primary node can't be sync source",
+#endif
 #endif
 };
 

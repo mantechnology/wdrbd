@@ -4153,7 +4153,32 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 		}
 		/* No current primary. Handle it as a common power failure, consider the
 		   roles at crash time */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+		// it repeatedly tries sync if CRASHED_PRIMARY bit is set and can't get sync, need to clear it and make it outdated.
+		else if (hg == -1)
+		{
+			unsigned long irq_flags;
+
+			drbd_info(device, "I am crashed primary, but could not get sync. clear bit and get sync later\n");
+			clear_bit(CRASHED_PRIMARY, &device->flags);
+			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+			if (device->disk_state[NOW] > D_OUTDATED)
+				__change_disk_state(device, D_OUTDATED);
+			end_state_change(device->resource, &irq_flags);
+		}
+#endif
 	}
+
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	// MODIFIED_BY_MANTECH DW-1142: don't try to do sync if no primary.
+	if (hg != 0 &&
+		(role != R_PRIMARY && peer_role != R_PRIMARY))
+	{
+		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
+		rv = L_ESTABLISHED;
+		return rv;
+	}
+#endif
 
 	if (hg > 0) { /* become sync source. */
 		rv = L_WF_BITMAP_S;
