@@ -1035,6 +1035,30 @@ out:
 	return device_stable;
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1145: it returns true if my disk is consistent with primary's
+bool is_consistent_with_primary(struct drbd_device *device)
+{
+	struct drbd_peer_device *peer_device = NULL;
+	int node_id = -1;
+
+	if (device->disk_state[NOW] != D_UP_TO_DATE)
+		return false;
+
+	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++){
+		peer_device = peer_device_by_node_id(device, node_id);
+		if (!peer_device)
+			continue;
+		if (peer_device->connection->peer_role[NOW] == R_PRIMARY &&
+			peer_device->repl_state[NOW] >= L_ESTABLISHED &&
+			peer_device->uuids_received &&
+			drbd_bm_total_weight(peer_device) == 0)
+			return true;		
+	}
+	return false;
+}
+#endif
+
 /**
  * drbd_header_size  -  size of a packet header
  *
@@ -1651,6 +1675,12 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		p->node_mask = cpu_to_be64(authoritative_mask);
 	}
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1145: set UUID_FLAG_CONSISTENT_WITH_PRI if my disk is consistent with primary's
+	if (is_consistent_with_primary(device))
+		uuid_flags |= UUID_FLAG_CONSISTENT_WITH_PRI;
+#endif
+	
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
 	put_ldev(device);
@@ -5300,7 +5330,12 @@ void drbd_uuid_new_current_by_user(struct drbd_device *device)
 	}
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1145
+void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
+#else
 static void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
+#endif
 {
 	struct drbd_peer_device *peer_device;
 
@@ -5706,6 +5741,29 @@ clear_flag:
 		}
 		drbd_md_mark_dirty(device);
 	}
+	
+	// MODIFIED_BY_MANTECH DW-1145: clear bitmap if peer has consistent disk with primary's, peer will also clear bitmap.
+	if (drbd_bm_total_weight(peer_device) &&
+		peer_device->uuid_flags & UUID_FLAG_CONSISTENT_WITH_PRI &&
+		is_consistent_with_primary(device) &&
+		(peer_device->current_uuid & ~UUID_PRIMARY) ==
+		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+	{
+		int peer_node_id = peer_device->node_id;
+		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			drbd_info(peer_device, "bitmap will be cleared because peer has consistent disk with primary's\n");
+			forget_bitmap(device, peer_node_id);
+		}
+		drbd_md_mark_dirty(device);
+
+		if (peer_device->dirty_bits)
+			filled = true;
+	}
+		
 #else
 	// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 	write_bm |= detect_copy_ops_on_peer(peer_device);
