@@ -774,6 +774,11 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 			}
 		}
+		case IOCTL_MVOL_SET_HANDLER_USE:
+		{
+			status = IOCTL_SetHandlerUse(DeviceObject, Irp); // Set handler_use value.
+			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||

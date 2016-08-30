@@ -1337,3 +1337,42 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 	return retVal;
 }
 
+
+DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler)
+{
+	HANDLE      hDevice = INVALID_HANDLE_VALUE;
+	DWORD       retVal = ERROR_SUCCESS;
+	DWORD       dwReturned = 0;
+	DWORD		dwControlCode = 0;
+	BOOL        ret = FALSE;
+
+	if (pHandler == NULL || pHandler->use < 0 || pHandler->use > 1)
+	{
+		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	// 1. Open MVOL_DEVICE
+	hDevice = OpenDevice(MVOL_DEVICE);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed open drbd. Err=%u\n",
+			__FUNCTION__, retVal);
+		return retVal;
+	}
+
+
+	// 2. DeviceIoControl with HANDLER_USE parameter
+	ret = DeviceIoControl(hDevice, IOCTL_MVOL_SET_HANDLER_USE, pHandler, sizeof(HANDLER_INFO), NULL, 0, &dwReturned, NULL);
+	if (ret == FALSE) {
+		retVal = GetLastError();
+		fprintf(stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_SET_HANDLER_USE. Err=%u\n",
+			__FUNCTION__, retVal);
+	}
+
+	// 3. CloseHandle MVOL_DEVICE
+	if (hDevice != INVALID_HANDLE_VALUE) {
+		CloseHandle(hDevice);
+	}
+	return retVal;
+}
