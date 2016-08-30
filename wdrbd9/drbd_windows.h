@@ -1544,7 +1544,7 @@ struct blk_plug_cb {
 extern struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data, int size);
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
-NTSTATUS SaveCurrentLogLv();
+NTSTATUS SaveCurrentValue(PCWSTR valueName, int value);
 #endif
 
 BOOLEAN gbShutdown;
