@@ -3036,6 +3036,8 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1148: resync after promotion.
 			if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
+				// MODIFIED_BY_MANTECH DW-1151: must not trigger resync after promotion when initial full sync.
+				drbd_current_uuid(device) != UUID_JUST_CREATED &&
 				device->disk_state[NOW] >= D_OUTDATED)
 				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);
 #endif
