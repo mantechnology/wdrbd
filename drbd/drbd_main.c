@@ -5726,6 +5726,7 @@ clear_flag:
 	if (drbd_bm_total_weight(peer_device) &&
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
+		device->disk_state[NOW] >= D_OUTDATED &&
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
 		(peer_device->current_uuid & ~UUID_PRIMARY) ==
 		(drbd_current_uuid(device) & ~UUID_PRIMARY))

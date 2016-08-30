@@ -5284,6 +5284,31 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	}
 }
 
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+// MODIFIED_BY_MANTECH DW-1148: one of node has gone primary, compare bitmap and start resync when necessary.
+static void drbd_resync_after_promotion(struct drbd_peer_device *peer_device, enum drbd_repl_state side)
+{
+	enum drbd_repl_state new_repl_state;
+	enum drbd_state_rv rv;
+
+	new_repl_state = side == L_SYNC_SOURCE ? L_WF_BITMAP_S : side == L_SYNC_TARGET ? L_WF_BITMAP_T : -1;
+
+	if (new_repl_state == -1)
+	{
+		drbd_info(peer_device, "Invalid resync side %s\n", drbd_repl_str(side));
+		return;
+	}
+
+	drbd_info(peer_device, "Becoming %s after one node promoted\n", drbd_repl_str(new_repl_state));
+
+	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
+	if (rv == SS_NOTHING_TO_DO || rv == SS_RESYNC_RUNNING) {
+		peer_device->resync_again++;
+		drbd_info(peer_device, "...postponing this until current resync finished\n");
+	}
+}
+#endif
+
 static void update_bitmap_slot_of_peer(struct drbd_peer_device *peer_device, int node_id, u64 bitmap_uuid)
 {
 	if (peer_device->bitmap_uuids[node_id] && bitmap_uuid == 0) {
@@ -5531,6 +5556,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
 	if (peer_device->uuid_flags & UUID_FLAG_RESYNC &&
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+		// MODIFIED_BY_MANTECH DW-1148: added checking flag to segregate resync reason.
+		!(peer_device->uuid_flags & UUID_FLAG_PROMOTED) &&
+#endif
 		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
 #else
 	if (peer_device->uuid_flags & UUID_FLAG_RESYNC) { 
@@ -5541,6 +5570,32 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 			put_ldev(device);
 		}
 	}
+
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	// MODIFIED_BY_MANTECH DW-1148: start resync when one node has been promoted.
+	// be synctarget if only UUID_FLAG_PROMOTED bit is set, and be syncsource if both UUID_FLAG_PROMOTED and UUID_FLAG_RESYNC bits are set.
+	if (peer_device->uuid_flags & UUID_FLAG_PROMOTED)
+	{
+		if (peer_device->uuid_flags & UUID_FLAG_RESYNC)
+		{
+			if (get_ldev(device))
+			{
+				drbd_resync_after_promotion(peer_device, L_SYNC_SOURCE);
+				put_ldev(device);
+			}
+		}
+		else
+		{
+			if (peer_device->repl_state[NOW] == L_ESTABLISHED &&				
+				get_ldev(device))
+			{
+				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED | UUID_FLAG_RESYNC, 0);
+				drbd_resync_after_promotion(peer_device, L_SYNC_TARGET);
+				put_ldev(device);
+			}
+		}
+	}
+#endif
 
 	return err;
 }
