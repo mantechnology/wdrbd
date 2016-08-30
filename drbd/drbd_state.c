@@ -1578,16 +1578,32 @@ static void sanitize_state(struct drbd_resource *resource)
 				(disk_state[NEW] <= D_INCONSISTENT || peer_disk_state[NEW] <= D_INCONSISTENT) &&
 				test_bit(RESYNC_ABORTED, &peer_device->flags))
 			{
+#ifndef _WIN32_DISABLE_RESYNC_FROM_SECONDARY				
 				if (disk_state[NEW] == D_OUTDATED ||
 					disk_state[NEW] == D_CONSISTENT ||
 					disk_state[NEW] == D_UP_TO_DATE)
+#else
+				// MODIFIED_BY_MANTECH DW-1148: the only role can be sync source is primary, checking role must be added when determine syncable state.
+				if ((disk_state[NEW] == D_OUTDATED ||
+					disk_state[NEW] == D_CONSISTENT ||
+					disk_state[NEW] == D_UP_TO_DATE) &&
+					role[NEW] == R_PRIMARY)
+#endif
 				{
 					repl_state[NEW] = L_SYNC_SOURCE;
 					clear_bit(RESYNC_ABORTED, &peer_device->flags);
 				}
+#ifndef _WIN32_DISABLE_RESYNC_FROM_SECONDARY				
 				else if (peer_disk_state[NEW] == D_OUTDATED ||
 					peer_disk_state[NEW] == D_CONSISTENT ||
 					peer_disk_state[NEW] == D_UP_TO_DATE)
+#else
+				// MODIFIED_BY_MANTECH DW-1148: the only role can be sync source is primary, checking role must be added when determine syncable state.
+				else if ((peer_disk_state[NEW] == D_OUTDATED ||
+					peer_disk_state[NEW] == D_CONSISTENT ||
+					peer_disk_state[NEW] == D_UP_TO_DATE) &&
+					peer_role[NEW] == R_PRIMARY)
+#endif
 				{
 					repl_state[NEW] = L_SYNC_TARGET;
 					clear_bit(RESYNC_ABORTED, &peer_device->flags);
@@ -3016,6 +3032,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, UUID_FLAG_GOT_STABLE, 0);
 				put_ldev(device);
 			}
+#endif
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+			// MODIFIED_BY_MANTECH DW-1148: resync after promotion.
+			if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
+				device->disk_state[NOW] >= D_OUTDATED)
+				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);
 #endif
 
 			if (peer_disk_state[OLD] == D_UP_TO_DATE &&

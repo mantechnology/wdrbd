@@ -310,6 +310,10 @@ struct p_protocol {
 #ifdef _WIN32
 // MODIFIED_BY_MANTECH DW-1145
 #define UUID_FLAG_CONSISTENT_WITH_PRI 1024	/* this flag indicates that my disk is consistent with primary's */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+// MODIFIED_BY_MANTECH DW-1148
+#define UUID_FLAG_PROMOTED	2048		/* one of node has been promoted, about to start resync */
+#endif
 #endif
 
 struct p_uuids {
