@@ -1201,6 +1201,15 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 		     (role[NEW] == R_PRIMARY && !any_disk_up_to_date[NEW]))
 			return SS_NO_UP_TO_DATE_DISK;
 
+#ifdef _WIN32
+		/* MODIFIED_BY_MANTECH DW-1155 not support Outdated-Primary */
+		if (!(role[OLD] == R_PRIMARY && (disk_state[OLD] <= D_OUTDATED)) &&
+		     (role[NEW] == R_PRIMARY && (disk_state[NEW] <= D_OUTDATED)))
+		{
+			return SS_NO_UP_TO_DATE_DISK;
+		}
+#endif
+
 		/* Prevent detach or disconnect while held open read only */
 		if (device->open_ro_cnt && any_disk_up_to_date[OLD] && !any_disk_up_to_date[NEW])
 			return SS_NO_UP_TO_DATE_DISK;
@@ -4046,13 +4055,19 @@ static void __change_role(struct change_role_context *role_context)
 
 		rcu_read_lock();
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
 			if (device->disk_state[NEW] < D_UP_TO_DATE &&
-			    device->disk_state[NEW] >= D_INCONSISTENT &&
-			    !has_up_to_date_peer_disks(device)) {
+#ifdef _WIN32			    
+				device->disk_state[NEW] >= D_INCONSISTENT) {
+				/* MODIFIED_BY_MANTECH DW-1155 */
+				/* If Force-Primary, change the disk state to D_UP_TO_DATE. Do not consider a peer_disks. */
+#else
+				device->disk_state[NEW] >= D_INCONSISTENT &&
+				!has_up_to_date_peer_disks(device)) {
+#endif
 				device->disk_state[NEW] = D_UP_TO_DATE;
 				/* adding it to the context so that it gets sent to the peers */
 				role_context->context.mask.disk |= disk_MASK;
