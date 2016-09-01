@@ -6513,7 +6513,8 @@ static int process_twopc(struct drbd_connection *connection,
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1127: don't clear remote state change if I haven't set.
-		if (!noStateChange)
+		// DW-1160: 'noStateChange' could be different if received packet is 'P_TWOPC_ABORT', clear it no matter what the state change result is.
+		if (!noStateChange || (flags & CS_ABORT))
 #endif
 		clear_remote_state_change(resource);
 
