@@ -5393,6 +5393,10 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 			}
 		}
 
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+		// MODIFIED_BY_MANTECH DW-1162: setting 'UUID_FLAG_PROMOTED' means resync is about to start, uuid will be sent again when resync's done.
+		if (!(peer_device->uuid_flags & UUID_FLAG_PROMOTED))
+#endif
 		drbd_uuid_detect_finished_resyncs(peer_device);
 
 		drbd_md_sync_if_dirty(device);

@@ -5693,6 +5693,10 @@ clear_flag:
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
 		device->disk_state[NOW] >= D_OUTDATED &&
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+		// MODIFIED_BY_MANTECH DW-1162: clear bitmap only when peer stays secondary.
+		peer_device->connection->peer_role[NEW] == R_SECONDARY &&
+#endif
 		(peer_device->current_uuid & ~UUID_PRIMARY) ==
 		(drbd_current_uuid(device) & ~UUID_PRIMARY))
 	{
