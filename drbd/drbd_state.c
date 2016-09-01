@@ -1563,7 +1563,8 @@ static void sanitize_state(struct drbd_resource *resource)
 
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: Abort resync since SyncSource goes secondary.
-			if ((peer_role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_TARGET) ||
+			// DW-1159: aboring resync on behind is necessary, behind need to receive primary's state transition to go synctarget.
+			if ((peer_role[NEW] != R_PRIMARY && (repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND)) ||
 				(role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_SOURCE))
 			{
 				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");
