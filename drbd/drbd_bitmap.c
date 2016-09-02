@@ -584,6 +584,9 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 	unsigned long word;
 #endif
 	unsigned int page, bit_in_page;
+#ifdef _WIN32_DEBUG_OOS	
+	ULONG_PTR init_start = start;
+#endif
 
 	if (end >= bitmap->bm_bits)
 		end = bitmap->bm_bits - 1;
@@ -788,12 +791,28 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 	switch(op) {
 	case BM_OP_CLEAR:
 		if (total)
+#ifdef _WIN32_DEBUG_OOS
+		{
 			bitmap->bm_set[bitmap_index] -= total;
+			// DW-1153: Write log when clear bit.
+			WriteOOSTraceLog(init_start, total, SET_IN_SYNC);
+		}
+#else
+			bitmap->bm_set[bitmap_index] -= total;
+#endif
 		break;
 	case BM_OP_SET:
 	case BM_OP_MERGE:
 		if (total)
+#ifdef _WIN32_DEBUG_OOS
+		{
 			bitmap->bm_set[bitmap_index] += total;
+			// DW-1153: Write log when set bit.
+			WriteOOSTraceLog(init_start, total, SET_OUT_OF_SYNC);
+		}
+#else
+			bitmap->bm_set[bitmap_index] += total;
+#endif
 		break;
 	case BM_OP_FIND_BIT:
 	case BM_OP_FIND_ZERO_BIT:

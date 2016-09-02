@@ -80,6 +80,9 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
+#ifdef _WIN32_DEBUG_OOS
+#define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
+#endif
 
 enum
 {
@@ -349,6 +352,9 @@ extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
+#ifdef _WIN32_DEBUG_OOS
+extern VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+#endif
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
@@ -1553,4 +1559,16 @@ BOOLEAN gbShutdown;
 LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
+
+#ifdef _WIN32_DEBUG_OOS
+typedef USHORT(*pfnRtlCaptureStackBackTrace)(
+	_In_      ULONG  FramesToSkip,
+	_In_      ULONG  FramesToCapture,
+	_Out_     PVOID  *BackTrace,
+	_Out_opt_ PULONG BackTraceHash
+	);
+
+#define STACK_FRAME_CAPTURE_COUNT	10
+#endif
+
 #endif // DRBD_WINDOWS_H

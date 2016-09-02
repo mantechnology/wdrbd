@@ -122,8 +122,20 @@ typedef struct _LOGGING_MIN_LV {
 	int			nErrLvMin;
 }LOGGING_MIN_LV, *PLOGGING_MIN_LV;
 
+#define _WIN32_DEBUG_OOS		// DW-1153: debug oos.
+
+#ifdef _WIN32_DEBUG_OOS
+#pragma warning (disable : 4055)
+#define FRAME_DELIMITER		"@"
+#define OOS_TRACE_STRING	"oos_trace"
+#endif
+
 #define MAX_DRBDLOG_BUF				512
+#ifdef _WIN32_DEBUG_OOS
+#define LOGBUF_MAXCNT				100000
+#else
 #define LOGBUF_MAXCNT				10000
+#endif
 
 typedef struct _DRBD_LOG {
 	LONGLONG 	totalcnt;
