@@ -23,6 +23,7 @@ usage()
 		"   /get_log [ProviderName] \n"
 		"   /minlog_lv [LoggingType : sys, dbg] [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
+		"   /handler_use [0,1]\n"
 		"   /info\n"
 
 		"\n\n"
@@ -43,6 +44,7 @@ usage()
 		"drbdcon /get_log drbdService \n"
 		"drbdcon /minlog_lv svc 6 \n"
 		"drbdcon /write_log drbdService \"Logging start\" \n"
+		"drbdcon /handler_use 1 \n"
 	);
 
 	exit(ERROR_INVALID_PARAMETER);
@@ -113,6 +115,7 @@ main(int argc, char* argv [])
 	char	ProcDrbdFlagWithLetter = 0;
     char    NagleEnableFlag = 0;
     char    NagleDisableFlag = 0;
+	char	HandlerUseFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
 	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
@@ -131,6 +134,7 @@ main(int argc, char* argv [])
 	ULONG	Count = 0;
 	SIMULATION_DISK_IO_ERROR sdie = { 0, };
 	LOGGING_MIN_LV lml = { 0, };
+	HANDLER_INFO hInfo = { 0, };
 
 	if (argc < 2)
 		usage();
@@ -202,6 +206,16 @@ main(int argc, char* argv [])
 			argIndex++;
 			if (argIndex < argc)
 				LoggingData = argv[argIndex];
+			else
+				usage();
+		}
+		else if (strcmp(argv[argIndex], "/handler_use") == 0)
+		{
+			HandlerUseFlag++;
+			argIndex++;
+
+			if (argIndex < argc)
+				hInfo.use = atoi(argv[argIndex]);
 			else
 				usage();
 		}
@@ -515,6 +529,11 @@ main(int argc, char* argv [])
 		}
 
 		return res;
+	}
+
+	if (HandlerUseFlag)
+	{
+		res = MVOL_SetHandlerUse(&hInfo);
 	}
 
 	return res;

@@ -105,6 +105,8 @@ NTSTATUS
 IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS
 IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size);
+NTSTATUS
+IOCTL_SetHandlerUse(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 //
 // thread.c

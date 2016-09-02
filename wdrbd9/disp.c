@@ -412,12 +412,10 @@ mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
-    //return mvolSendToNextDriver(DeviceObject, Irp);
-    status = mvolRunIrpSynchronous(DeviceObject, Irp);
-
-	drbd_cleanup_by_win_shutdown(VolumeExtension);
-		
-	return status;
+    return mvolSendToNextDriver(DeviceObject, Irp);
+    //status = mvolRunIrpSynchronous(DeviceObject, Irp); // DW-1146 disable cleaunup logic. for some case, hang occurred while shutdown
+	//drbd_cleanup_by_win_shutdown(VolumeExtension);
+	//return status;
 }
 
 NTSTATUS
@@ -579,14 +577,22 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
         if (device)
         {
+			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
+			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
+			ULONG size_sector = pisl->Parameters.Write.Length >> 9;
+			sector_t vol_size_sector = drbd_get_capacity(device->this_bdev);
+
+			// if io offset is larger than volume size oacassionally,
+			// then allow to lower device, so not try to send to peer
+			if (offset_sector + size_sector > vol_size_sector)
+			{
+				goto skip;
+			}
+
             PMVOL_THREAD				pThreadInfo;
 #ifdef DRBD_TRACE
-			PIO_STACK_LOCATION writeIrpSp = IoGetCurrentIrpStackLocation(Irp);
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
-				&VolumeExtension->MountPoint,
-				(writeIrpSp->Parameters.Write.ByteOffset.QuadPart >> 9),
-				(writeIrpSp->Parameters.Write.Length >> 9),
-				VolumeExtension->IrpCount);
+				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
 #endif
 
 #ifdef MULTI_WRITE_HOOKER_THREADS
@@ -619,6 +625,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
     }
 
+skip:
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
 		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
@@ -766,6 +773,11 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			} else {
 				MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 			}
+		}
+		case IOCTL_MVOL_SET_HANDLER_USE:
+		{
+			status = IOCTL_SetHandlerUse(DeviceObject, Irp); // Set handler_use value.
+			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
     }
 

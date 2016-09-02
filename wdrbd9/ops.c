@@ -616,7 +616,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
 
-		SaveCurrentLogLv();
+		SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
 
 		WDRBD_TRACE("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin);
 	}
@@ -660,5 +660,34 @@ IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size)
 		}
 	}
 	
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS
+IOCTL_SetHandlerUse(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	ULONG			inlen;
+	PHANDLER_INFO	pHandlerInfo = NULL;
+	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
+	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
+
+	if (inlen < sizeof(HANDLER_INFO)) {
+		mvolLogError(DeviceObject, 356, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL);
+		WDRBD_ERROR("buffer too small\n");
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	
+	if (Irp->AssociatedIrp.SystemBuffer) {
+		pHandlerInfo = (PHANDLER_INFO)Irp->AssociatedIrp.SystemBuffer;
+		g_handler_use = pHandlerInfo->use;
+
+		SaveCurrentValue(L"handler_use", g_handler_use);
+
+		WDRBD_TRACE("IOCTL_MVOL_SET_HANDLER_USE : %d \n", g_handler_use);
+	}
+	else {
+		return STATUS_INVALID_PARAMETER;
+	}
+
 	return STATUS_SUCCESS;
 }

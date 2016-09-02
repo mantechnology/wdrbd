@@ -89,4 +89,6 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml);
 
 DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName);
 
+DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler);
+
 #endif __MVOL_H__

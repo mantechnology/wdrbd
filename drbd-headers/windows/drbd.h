@@ -91,6 +91,11 @@
 
 #endif
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1142
+#define _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+#endif
+
 enum drbd_io_error_p {
 	EP_PASS_ON, /* FIXME should the better be named "Ignore"? */
 	EP_CALL_HELPER,
@@ -375,7 +380,11 @@ enum drbd_state_rv {
 #ifdef _WIN32
     SS_TARGET_DISK_TOO_SMALL = -25,
 	SS_CONNECTED_DISKLESS = -26, 
-    SS_AFTER_LAST_ERROR = -27,    /* Keep this at bottom */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	// MODIFIED_BY_MANTECH DW-1142
+	SS_RESYNC_FROM_SECONDARY = -27,
+#endif
+    SS_AFTER_LAST_ERROR = -28,    /* Keep this at bottom */
 #else
 	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
 #endif

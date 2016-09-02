@@ -307,6 +307,10 @@ struct p_protocol {
 #define UUID_FLAG_RECONNECT 256
 #define UUID_FLAG_DISKLESS_PRIMARY 512 /* Use with UUID_FLAG_RESYNC if a diskless primary is
 					  the reason */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+// MODIFIED_BY_MANTECH DW-1148
+#define UUID_FLAG_PROMOTED	2048		/* one of node has been promoted, about to start resync */
+#endif
 
 struct p_uuids {
 	uint64_t current_uuid;

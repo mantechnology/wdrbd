@@ -4798,8 +4798,7 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 			/* refer to 
 			http://www.drbd.org/en/doc/users-guide-90/ch-internals#s-meta-data-size */
 			+ 1		/* for drbd reservation */
-			+ 1;	/* for vhd reservation */
-		evsm = (evsm < 3) ? 3 : evsm;
+			+ 7;	/* for vhd reservation */
 
 		// check the pre-created vhd
 		if (F_OK == access(cfg->vhd_dev_path, R_OK)) {

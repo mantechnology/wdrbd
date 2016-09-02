@@ -2945,15 +2945,14 @@ struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 	return NULL;
 #endif
 }
-/* Save current log level in registry, this value is used when drbd is loading.*/
-NTSTATUS SaveCurrentLogLv()
+/* Save current value in registry, this value is used when drbd is loading.*/
+NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PROOT_EXTENSION pRootExtension = NULL;
 	UNICODE_STRING usValueName = { 0, };
 	OBJECT_ATTRIBUTES oa = { 0, };
 	HANDLE hKey = NULL;
-	int log_level = Get_log_lv();
 
 	if (NULL == mvolRootDeviceObject ||
 		NULL == mvolRootDeviceObject->DeviceExtension)
@@ -2973,8 +2972,8 @@ NTSTATUS SaveCurrentLogLv()
 			break;
 		}
 
-		RtlInitUnicodeString(&usValueName, LOG_LV_REG_VALUE_NAME);
-		status = ZwSetValueKey(hKey, &usValueName, 0, REG_DWORD, &log_level, sizeof(log_level));
+		RtlInitUnicodeString(&usValueName, valueName);
+		status = ZwSetValueKey(hKey, &usValueName, 0, REG_DWORD, &value, sizeof(value));
 		if (!NT_SUCCESS(status))
 		{
 			break;

@@ -223,7 +223,11 @@
 
 #define DRBD_C_MIN_RATE_MIN     0
 #define DRBD_C_MIN_RATE_MAX     (4 << 20)
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1041 
+#define DRBD_C_MIN_RATE_DEF     0
+#else
 #define DRBD_C_MIN_RATE_DEF     250
+#endif
 #define DRBD_C_MIN_RATE_SCALE	'k'  /* kilobytes */
 
 #define DRBD_CONG_FILL_MIN	0
@@ -258,7 +262,11 @@
 #define DRBD_AUTO_PROMOTE_DEF	1
 
 #define DRBD_NR_REQUESTS_MIN	4
+#ifdef _WIN32 // DW-836 MODIFIED_BY_MANTECH 
+#define DRBD_NR_REQUESTS_DEF	1000
+#else
 #define DRBD_NR_REQUESTS_DEF	8000
+#endif
 #define DRBD_NR_REQUESTS_MAX	-1U
 #define DRBD_NR_REQUESTS_SCALE	'1'
 

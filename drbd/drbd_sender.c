@@ -2323,6 +2323,22 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		return;
 	}
 
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	// MODIFIED_BY_MANTECH DW-1142: don't start resync if resync source side node is not primary.
+	if ((side == L_SYNC_TARGET && peer_device->connection->peer_role[NOW] != R_PRIMARY) ||
+		(side == L_SYNC_SOURCE && device->resource->role[NOW] != R_PRIMARY))
+	{
+		drbd_info(peer_device, "Unable to start resync since SyncSource node is NOT primary\n");
+
+		unsigned long irq_flags;
+
+		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+		__change_repl_state(peer_device, L_ESTABLISHED);
+		end_state_change(device->resource, &irq_flags);
+		return;
+	}
+#endif
+
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-955: clear resync aborted flag when just starting resync.
 	clear_bit(RESYNC_ABORTED, &peer_device->flags);

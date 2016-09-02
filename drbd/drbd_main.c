@@ -2155,13 +2155,25 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	len = fill_bitmap_rle_bits(peer_device, pc,
 			DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*pc), c);
 	if (len < 0)
+	{
+#ifdef _WIN32
+		drbd_err(peer_device, "unexpected len : %d \n", len);
+#endif
 		return -EIO;
+	}
 
 	if (len) {
 		dcbp_set_code(pc, RLE_VLI_Bits);
 		resize_prepared_command(peer_device->connection, DATA_STREAM, sizeof(*pc) + len);
 		err = __send_command(peer_device->connection, device->vnr,
 				     P_COMPRESSED_BITMAP, DATA_STREAM);
+#ifdef _WIN32
+		if (err)
+		{
+			drbd_err(peer_device, "error sending P_COMPRESSED_BITMAP, e: %d \n", err);
+		}
+		
+#endif
 		c->packets[0]++;
 		c->bytes[0] += header_size + sizeof(*pc) + len;
 
@@ -2187,6 +2199,12 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 
 		resize_prepared_command(peer_device->connection, DATA_STREAM, len);
 		err = __send_command(peer_device->connection, device->vnr, P_BITMAP, DATA_STREAM);
+#ifdef _WIN32
+		if (err)
+		{
+			drbd_err(peer_device, "error sending P_BITMAP, e: %d \n", err);
+		}		
+#endif
 
 		c->word_offset += num_words;
 		c->bit_offset = c->word_offset * BITS_PER_LONG;
@@ -2215,7 +2233,12 @@ static int _drbd_send_bitmap(struct drbd_device *device,
 	int err;
 
 	if (!expect(device, device->bitmap))
+	{
+#ifdef _WIN32
+		drbd_err(peer_device, "bitmap is NULL!\n");
+#endif
 		return false;
+	}
 
 	if (get_ldev(device)) {
 		if (drbd_md_test_peer_flag(peer_device, MDF_PEER_FULL_SYNC)) {
@@ -4326,7 +4349,13 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	   to guarantee a consistent object model. idr_preload() doesn't help
 	   because it can only guarantee that a single idr_alloc() will
 	   succeed. This fails (and will be retried) if no memory is
-	   immediately available. */
+	   immediately available.
+	   Keep in mid that RCU readers might find the device in the moment
+	   we add it to the resources->devices IDR!
+	*/
+
+	INIT_LIST_HEAD(&device->peer_devices);
+	INIT_LIST_HEAD(&device->pending_bitmap_io);
 
 	locked = true;
 	spin_lock_irq(&resource->req_lock);
@@ -4348,8 +4377,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	kref_get(&device->kref);
 	kref_debug_get(&device->kref_debug, 1);
 
-	INIT_LIST_HEAD(&device->peer_devices);
-	INIT_LIST_HEAD(&device->pending_bitmap_io);
 #ifdef _WIN32
     list_for_each_entry_safe(struct drbd_peer_device, peer_device, tmp_peer_device, &peer_devices, peer_devices) {
 #else
@@ -5664,7 +5691,12 @@ clear_flag:
 	if (drbd_bm_total_weight(peer_device) &&
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
+		device->disk_state[NOW] >= D_OUTDATED &&
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+		// MODIFIED_BY_MANTECH DW-1162: clear bitmap only when peer stays secondary.
+		peer_device->connection->peer_role[NEW] == R_SECONDARY &&
+#endif
 		(peer_device->current_uuid & ~UUID_PRIMARY) ==
 		(drbd_current_uuid(device) & ~UUID_PRIMARY))
 	{
@@ -5808,9 +5840,10 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	struct bm_io_work *bm_io_work;
 
 	D_ASSERT(device, current == device->resource->worker.task);
-#ifdef _WIN32
-    bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
+#ifdef _WIN32    
+	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
 	if(!bm_io_work) {
+		drbd_err(peer_device, "Could not allocate bm io work.\n");
 		return;
 	}
 #else
