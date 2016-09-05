@@ -412,9 +412,10 @@ mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
+	drbd_cleanup_by_win_shutdown(VolumeExtension);
+	
     return mvolSendToNextDriver(DeviceObject, Irp);
     //status = mvolRunIrpSynchronous(DeviceObject, Irp); // DW-1146 disable cleaunup logic. for some case, hang occurred while shutdown
-	//drbd_cleanup_by_win_shutdown(VolumeExtension);
 	//return status;
 }
 
@@ -590,6 +591,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			}
 
             PMVOL_THREAD				pThreadInfo;
+			WDRBD_INFO("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
+				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
 #ifdef DRBD_TRACE
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
 				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);

@@ -1339,6 +1339,123 @@ out:
 #undef try
 #endif
 
+#ifdef _WIN32
+enum drbd_state_rv
+drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
+{
+	struct drbd_device *device;
+	int vnr;
+	const int max_tries = 1;
+	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
+	int try = 0;
+	bool with_force = false;
+
+
+retry:
+	down(&resource->state_sem);
+
+	if (start_new_tl_epoch(resource)) {
+		struct drbd_connection *connection;
+		u64 im;
+
+		for_each_connection_ref(connection, im, resource)
+			drbd_flush_workqueue(&connection->sender_work);
+	}
+	wait_event(resource->barrier_wait, !barrier_pending(resource));
+	/* After waiting for pending barriers, we got any possible NEG_ACKs,
+	   and see them in wait_for_peer_disk_updates() */
+	wait_for_peer_disk_updates(resource);
+	
+	/* In case switching from R_PRIMARY to R_SECONDARY works
+	   out, there is no rw opener at this point. Thus, no new
+	   writes can come in. -> Flushing queued peer acks is
+	   necessary and sufficient.
+	   The cluster wide role change required packets to be
+	   received by the aserder. -> We can be sure that the
+	   peer_acks queued on asender's TODO list go out before
+	   we send the two phase commit packet.
+	*/
+	drbd_flush_peer_acks(resource);
+	
+
+	while (try++ < max_tries) {
+		rv = stable_state_change(resource,
+			change_role(resource, R_SECONDARY,
+				    CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
+				    with_force));
+
+		if (rv == SS_CONCURRENT_ST_CHG)
+			continue;
+
+		if (rv == SS_TIMEOUT) {
+			long timeout = twopc_retry_timeout(resource, try);
+			/* It might be that the receiver tries to start resync, and
+			   sleeps on state_sem. Give it up, and retry in a short
+			   while */
+			up(&resource->state_sem);
+			schedule_timeout_interruptible(timeout);
+			goto retry;
+		}
+		/* in case we first succeeded to outdate,
+		 * but now suddenly could establish a connection */
+		if (rv == SS_CW_FAILED_BY_PEER) {
+			with_force = false;
+			continue;
+		}
+
+		if (rv == SS_NOTHING_TO_DO)
+			goto out;
+		
+		if (rv < SS_SUCCESS) {
+			rv = stable_state_change(resource,
+				change_role(resource, R_SECONDARY,
+					    CS_VERBOSE | CS_ALREADY_SERIALIZED |
+					    CS_DONT_RETRY | CS_WAIT_COMPLETE,
+					    with_force));
+			if (rv < SS_SUCCESS)
+				goto out;
+		}
+		break;
+	}
+
+	if (rv < SS_SUCCESS)
+		goto out;
+
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		if (get_ldev(device)) {
+			device->ldev->md.current_uuid &= ~UUID_PRIMARY;
+			put_ldev(device);
+		}
+	}
+
+
+
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		 struct drbd_peer_device *peer_device;
+		 u64 im;
+
+		 for_each_peer_device_ref(peer_device, im, device) {
+			/* writeout of activity log covered areas of the bitmap
+			 * to stable storage done in after state change already */
+
+			if (peer_device->connection->cstate[NOW] == C_CONNECTED) {
+				drbd_send_current_state(peer_device);
+			}
+		}
+	}
+
+
+    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		drbd_md_sync_if_dirty(device);
+		set_disk_ro(device->vdisk, true);
+	}
+
+out:
+	up(&resource->state_sem);
+	return rv;
+}
+#endif
+
 static const char *from_attrs_err_to_txt(int err)
 {
 	return	err == -ENOMSG ? "required attribute missing" :
@@ -6338,15 +6455,14 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
     int i;
 	
 	// DW-876: It possibly creates hang issue if worker isn't working, perhaps it's been called with resource which is already down.
-	if (get_t_state(&resource->worker) != RUNNING)
-	{		
+	if (get_t_state(&resource->worker) != RUNNING) {		
 		retcode = SS_NOTHING_TO_DO;
 		goto out;
 	}
     
     mutex_lock(&resource->adm_mutex);
     /* demote */
-    retcode = drbd_set_role(resource, R_SECONDARY, false);
+    retcode = drbd_set_secondary_from_shutdown(resource);
     if (retcode < SS_SUCCESS) {
         WDRBD_ERROR("failed to demote\n");
         goto out;
@@ -6365,13 +6481,9 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
         }
     }
 #endif
-
+#if 0
     /* detach */
-#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
-#else
-    idr_for_each_entry(&resource->devices, device, i) {
-#endif
         retcode = adm_detach(device, 0);
         if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
             WDRBD_ERROR("failed to detach\n");
@@ -6380,11 +6492,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
     }
 
     /* delete volumes */
-#ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
-#else
-    idr_for_each_entry(&resource->devices, device, i) {
-#endif
         retcode = adm_del_minor(device);
         if (retcode != NO_ERROR) {
             /* "can not happen" */
@@ -6392,14 +6500,16 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
             goto unlock_out;
         }
     }
-
+#endif
 	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
+#if 0
 	drbd_flush_workqueue(&resource->work);
 	mutex_lock(&resources_mutex);
 	drbd_thread_stop(&resource->worker);
 	mutex_unlock(&resources_mutex);
-	
-unlock_out:
+#endif	
+
+//unlock_out:
     mutex_unlock(&resource->conf_update);
 out:
     mutex_unlock(&resource->adm_mutex);
