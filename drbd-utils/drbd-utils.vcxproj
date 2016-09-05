@@ -146,6 +146,7 @@
     <ClInclude Include="drbdcon\ioctl.h" />
     <ClInclude Include="drbdcon\LogManager.h" />
     <ClInclude Include="drbdcon\mvol.h" />
+    <ClInclude Include="drbdcon\OosTrace.h" />
     <ClInclude Include="user\linux\drbd_config.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>

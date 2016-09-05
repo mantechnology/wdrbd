@@ -120,6 +120,7 @@ main(int argc, char* argv [])
 	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
 	char	GetLog = 0;
+	char	OosTrace = 0;
 	char	WriteLog = 0;
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
@@ -190,6 +191,14 @@ main(int argc, char* argv [])
 				ProviderName = argv[argIndex];
 			else
 				usage();
+#ifdef _WIN32_DEBUG_OOS
+			argIndex++;
+			if (argIndex < argc)
+			{
+				if (strcmp(argv[argIndex], "oos") == 0)
+					OosTrace++;
+			}
+#endif
 		}
 		else if (strcmp(argv[argIndex], "/write_log") == 0)
 		{
@@ -302,6 +311,12 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
 				}
+#ifdef _WIN32_DEBUG_OOS
+				else if (strcmp(argv[argIndex], "oos") == 0)
+				{
+					lml.nType = LOGGING_TYPE_OOSLOG;
+				}
+#endif
 				else
 					usage();				
 			}
@@ -512,7 +527,7 @@ main(int argc, char* argv [])
 	if (GetLog)
 	{
 		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
-		res = MVOL_GetDrbdLog((LPCTSTR)ProviderName);
+		res = MVOL_GetDrbdLog((LPCTSTR)ProviderName, OosTrace);
 	}
 
 	if (WriteLog)

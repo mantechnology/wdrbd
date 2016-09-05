@@ -80,6 +80,9 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
+#ifdef _WIN32_DEBUG_OOS
+#define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
+#endif
 
 enum
 {
@@ -309,16 +312,23 @@ typedef unsigned int                fmode_t;
 
 extern atomic_t g_eventlog_lv_min;
 extern atomic_t g_dbglog_lv_min;
+#ifdef _WIN32_DEBUG_OOS
+extern atomic_t g_oos_trace;
+#endif
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
 /* Log level value is 32-bit integer
    00000000 00000000 00000000 00000000
-								   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-							| ||	   3 bit between 6 ~ 8 indicates debug print log level (0 ~ 7)
+                                   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
+                                |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
+                               |	   1 bit on 6 indicates if oos is being traced. (0 or 1), it is valid only when _WIN32_DEBUG_OOS is defined.
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
 #define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
+#ifdef _WIN32_DEBUG_OOS
+#define LOG_LV_BIT_POS_OOS_TRACE	(LOG_LV_BIT_POS_DBG + 3)
+#endif
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
@@ -327,12 +337,22 @@ extern atomic_t g_dbglog_lv_min;
 
 #define LOG_LV_MASK			0x7
 
+#ifdef _WIN32_DEBUG_OOS
+#define Set_log_lv(log_level) \
+	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
+	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
+	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1);
+
+#define Get_log_lv() \
+	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_oos_trace) << LOG_LV_BIT_POS_OOS_TRACE)
+#else
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
 
 #define Get_log_lv() \
 	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
+#endif
 
 
 #define MAX_TEXT_BUF                256
@@ -349,6 +369,9 @@ extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
+#ifdef _WIN32_DEBUG_OOS
+extern VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+#endif
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
@@ -1553,4 +1576,14 @@ BOOLEAN gbShutdown;
 LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
+
+#ifdef _WIN32_DEBUG_OOS
+typedef USHORT(*pfnRtlCaptureStackBackTrace)(
+	_In_      ULONG  FramesToSkip,
+	_In_      ULONG  FramesToCapture,
+	_Out_     PVOID  *BackTrace,
+	_Out_opt_ PULONG BackTraceHash
+	);
+#endif
+
 #endif // DRBD_WINDOWS_H

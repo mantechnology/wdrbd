@@ -1625,6 +1625,11 @@ static int drbd_process_write_request(struct drbd_request *req)
 		remote = drbd_should_do_remote(peer_device, NOW);
 		send_oos = drbd_should_send_out_of_sync(peer_device);
 
+#ifdef _WIN32_DEBUG_OOS
+		// DW-1153: Write log when process I/O
+		printk("%s["OOS_TRACE_STRING"] req(%p), remote(%d), send_oos(%d), sector(%Iu)\n", KERN_DEBUG_OOS, req, remote, send_oos, req->i.sector);
+#endif
+
 		if (!remote && !send_oos)
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1030: If request won't be replicated or sent as out-of-sync, set this as out-of-sync to do resync when it reconnects.
