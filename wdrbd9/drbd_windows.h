@@ -1567,8 +1567,6 @@ typedef USHORT(*pfnRtlCaptureStackBackTrace)(
 	_Out_     PVOID  *BackTrace,
 	_Out_opt_ PULONG BackTraceHash
 	);
-
-#define STACK_FRAME_CAPTURE_COUNT	10
 #endif
 
 #endif // DRBD_WINDOWS_H

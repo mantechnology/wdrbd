@@ -128,6 +128,10 @@ typedef struct _LOGGING_MIN_LV {
 #pragma warning (disable : 4055)
 #define FRAME_DELIMITER		"@"
 #define OOS_TRACE_STRING	"oos_trace"
+#define STACK_FRAME_CAPTURE_COUNT	(10)
+#define MAX_FUNC_NAME_LEN		(50)
+#define MAX_FUNCS_STR_LEN		(MAX_FUNC_NAME_LEN * (STACK_FRAME_CAPTURE_COUNT + 1))
+#define MAX_FUNC_ADDR_LEN		(20)
 #endif
 
 #define MAX_DRBDLOG_BUF				512
