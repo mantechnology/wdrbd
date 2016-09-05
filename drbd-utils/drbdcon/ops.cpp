@@ -1379,7 +1379,7 @@ BOOLEAN GetFuncNameWithOffset(ULONG ulOffset, PCHAR pszFuncName)
 		bRet = SymFromAddr(GetCurrentProcess(), SymAddr, &Displacement, &sip.si);
 		if (!bRet)
 		{
-			_tprintf(_T("SymFromAddr fail : %d\n"), GetLastError());
+			_tprintf(_T("SymFromAddr fail : %d, offset(%Ix)\n"), GetLastError(), ulOffset);
 			break;
 		}
 
@@ -1400,9 +1400,9 @@ BOOLEAN GetFuncNameWithOffset(ULONG ulOffset, PCHAR pszFuncName)
 BOOLEAN GetFuncNameWithAddr(PVOID pAddr, PCHAR pszFuncName)
 {
 	BOOLEAN bRet = FALSE;
-	ULONG ulOffset = 0;
+	ULONG_PTR ulOffset = 0;
 
-	ulOffset = (ULONG)((DWORD64)pAddr - (DWORD64)g_pDrbdBaseAddr);
+	ulOffset = (ULONG_PTR)((DWORD64)pAddr - (DWORD64)g_pDrbdBaseAddr);
 	
 	if (ulOffset > g_ulDrbdImageSize)
 	{
