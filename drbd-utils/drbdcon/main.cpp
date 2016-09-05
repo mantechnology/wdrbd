@@ -120,9 +120,7 @@ main(int argc, char* argv [])
 	char	SimulDiskIoErrorFlag = 0;
     char    *ResourceName = NULL;
 	char	GetLog = 0;
-#ifdef _WIN32_DEBUG_OOS
 	char	OosTrace = 0;
-#endif
 	char	WriteLog = 0;
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
@@ -313,6 +311,12 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
 				}
+#ifdef _WIN32_DEBUG_OOS
+				else if (strcmp(argv[argIndex], "oos") == 0)
+				{
+					lml.nType = LOGGING_TYPE_OOSLOG;
+				}
+#endif
 				else
 					usage();				
 			}

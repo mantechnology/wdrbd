@@ -46,6 +46,9 @@ int g_daemon_tcp_port;
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
 atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
+#ifdef _WIN32_DEBUG_OOS
+atomic_t g_oos_trace = 0;
+#endif
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;

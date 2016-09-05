@@ -113,16 +113,19 @@ typedef struct _SIMULATION_DISK_IO_ERROR {
 	UCHAR		ErrorType;
 }SIMULATION_DISK_IO_ERROR, *PSIMULATION_DISK_IO_ERROR;
 
-#define LOGGING_TYPE_SYSLOG		0
-#define LOGGING_TYPE_SVCLOG		1
-#define LOGGING_TYPE_DBGLOG		2
-
 typedef struct _LOGGING_MIN_LV {
 	int			nType;
 	int			nErrLvMin;
 }LOGGING_MIN_LV, *PLOGGING_MIN_LV;
 
 #define _WIN32_DEBUG_OOS		// DW-1153: debug oos.
+
+#define LOGGING_TYPE_SYSLOG		0
+#define LOGGING_TYPE_DBGLOG		1
+#ifdef _WIN32_DEBUG_OOS
+// DW-1153
+#define LOGGING_TYPE_OOSLOG		2
+#endif
 
 #ifdef _WIN32_DEBUG_OOS
 #pragma warning (disable : 4055)

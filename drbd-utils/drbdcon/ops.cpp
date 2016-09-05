@@ -1228,7 +1228,11 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 	BOOL        ret = FALSE;
 
 	if (pLml == NULL ||
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_SVCLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
+#ifdef _WIN32_DEBUG_OOS
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_OOSLOG) ||
+#else
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
+#endif
 		(pLml->nErrLvMin < 0 || pLml->nErrLvMin > 7))
 	{
 		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
@@ -1410,7 +1414,7 @@ BOOLEAN GetFuncNameWithAddr(PVOID pAddr, PCHAR pszFuncName)
 		return FALSE;
 	}
 
-	bRet = GetFuncNameWithOffset(ulOffset, pszFuncName);
+	bRet = GetFuncNameWithOffset((ULONG)ulOffset, pszFuncName);
 
 	return bRet;
 }
@@ -1423,7 +1427,8 @@ VOID ConvertCallStack(PCHAR LogLine)
 	CHAR szStackFramesName[MAX_FUNCS_STR_LEN] = "";
 
 	if (LogLine == NULL ||
-		strstr(LogLine, OOS_TRACE_STRING) == NULL)
+		strstr(LogLine, OOS_TRACE_STRING) == NULL ||
+		NULL == strchr(LogLine, szDelimiter[0]))
 	{
 		return;
 	}
@@ -1598,6 +1603,11 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
 						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
 #endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
@@ -1613,6 +1623,11 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
 						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
 #endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
@@ -1624,6 +1639,11 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
 						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
 #endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);

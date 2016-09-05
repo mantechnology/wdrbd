@@ -1627,7 +1627,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 #ifdef _WIN32_DEBUG_OOS
 		// DW-1153: Write log when process I/O
-		WDRBD_TRACE("req(%p), remote(%d), send_oos(%d), sector(%Iu)\n", req, remote, send_oos, req->i.sector);
+		printk("%s["OOS_TRACE_STRING"] req(%p), remote(%d), send_oos(%d), sector(%Iu)\n", KERN_DEBUG_OOS, req, remote, send_oos, req->i.sector);
 #endif
 
 		if (!remote && !send_oos)

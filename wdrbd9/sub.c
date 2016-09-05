@@ -657,6 +657,9 @@ void _printk(const char * func, const char * format, ...)
 	int printLevel = 0;
 	BOOLEAN bEventLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
+#ifdef _WIN32_DEBUG_OOS
+	BOOLEAN bOosLog = FALSE;
+#endif
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
 	KIRQL		oldirql;
@@ -670,13 +673,19 @@ void _printk(const char * func, const char * format, ...)
 	// to print through debugger.
 	if (level_index <= atomic_read(&g_dbglog_lv_min))
 		bDbgLog = TRUE;
-
-#ifndef _WIN32_DEBUG_OOS	// DW-1153: memory all logs when we need to trace out-of-sync.
+#ifdef _WIN32_DEBUG_OOS
+	if (TRUE == atomic_read(&g_oos_trace))
+		bOosLog = TRUE;
+#endif
+	
 	// nothing to log.
+#ifdef _WIN32_DEBUG_OOS
+	if (!bEventLog && !bDbgLog && !bOosLog) {
+#else
 	if (!bEventLog && !bDbgLog) {
+#endif
 		return;
 	}
-#endif
 	
 	logcnt = InterlockedIncrement(&gLogCnt);
 	if(logcnt >= LOGBUF_MAXCNT) {
