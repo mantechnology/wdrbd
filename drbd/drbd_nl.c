@@ -1381,7 +1381,7 @@ drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
 	int try = 0;
 	bool with_force = false;
-	long time_out = 100;
+	long time_out = 1000;
 
 
 retry:
@@ -1396,11 +1396,13 @@ retry:
 	}
 	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
 	if(!time_out) {
+		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
 		goto out;
 	}
 	/* After waiting for pending barriers, we got any possible NEG_ACKs,
 	   and see them in wait_for_peer_disk_updates() */
 	if(!wait_for_peer_disk_updates_timeout(resource)) {
+		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
 		goto out;
 	}
 	
@@ -1456,8 +1458,10 @@ retry:
 		break;
 	}
 
-	if (rv < SS_SUCCESS)
+	if (rv < SS_SUCCESS) {
+		WDRBD_ERROR("drbd_set_secondary_from_shutdown change_role_timeout fail\n ");
 		goto out;
+	}
 
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 		if (get_ldev(device)) {
