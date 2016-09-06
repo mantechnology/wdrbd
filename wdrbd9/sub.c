@@ -657,6 +657,9 @@ void _printk(const char * func, const char * format, ...)
 	int printLevel = 0;
 	BOOLEAN bEventLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
+#ifdef _WIN32_DEBUG_OOS
+	BOOLEAN bOosLog = FALSE;
+#endif
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
 	KIRQL		oldirql;
@@ -670,9 +673,17 @@ void _printk(const char * func, const char * format, ...)
 	// to print through debugger.
 	if (level_index <= atomic_read(&g_dbglog_lv_min))
 		bDbgLog = TRUE;
-
+#ifdef _WIN32_DEBUG_OOS
+	if (TRUE == atomic_read(&g_oos_trace))
+		bOosLog = TRUE;
+#endif
+	
 	// nothing to log.
+#ifdef _WIN32_DEBUG_OOS
+	if (!bEventLog && !bDbgLog && !bOosLog) {
+#else
 	if (!bEventLog && !bDbgLog) {
+#endif
 		return;
 	}
 	
@@ -948,3 +959,72 @@ VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 	kfree(VolumeExtension->dev->bd_disk);
 	kfree2(VolumeExtension->dev);
 }
+
+#ifdef _WIN32_DEBUG_OOS
+static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
+{
+	pfnRtlCaptureStackBackTrace pfnStackTrace = NULL;
+	UNICODE_STRING usFuncName = { 0, };
+	USHORT usCaptured = 0;
+
+	if (NULL == frames ||
+		0 == usFrameCount)
+	{
+		WDRBD_ERROR("Invalid Parameter, frames(%p), usFrameCount(%d)\n", frames, usFrameCount);
+		return 0;
+	}
+	
+	RtlInitUnicodeString(&usFuncName, L"RtlCaptureStackBackTrace");
+	pfnStackTrace = (pfnRtlCaptureStackBackTrace)MmGetSystemRoutineAddress(&usFuncName);
+	if (NULL == pfnStackTrace)
+	{
+		WDRBD_ERROR("Failed to get routine(RtlCaptureStackBackTrace) address\n");
+		return 0;
+	}	
+
+	usCaptured = pfnStackTrace(2, usFrameCount, frames, NULL);
+	if (0 == usCaptured)
+	{
+		WDRBD_ERROR("Captured frame count is 0\n");
+		return 0;
+	}
+
+	return usCaptured;	
+}
+
+// DW-1153: Write Out-of-sync trace specific log. it includes stack frame.
+VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
+{
+	PVOID* stackFrames = NULL;
+	USHORT frameCount = STACK_FRAME_CAPTURE_COUNT;
+	CHAR buf[MAX_DRBDLOG_BUF] = { 0, };
+
+	sprintf(buf, "%s["OOS_TRACE_STRING"] % s %Iu bits for pos(%Iu), sector(%Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, startBit, BM_BIT_TO_SECT(startBit));
+
+	stackFrames = (PVOID*)ExAllocatePool(NonPagedPool, sizeof(PVOID) * frameCount);
+
+	if (NULL == stackFrames)
+	{
+		WDRBD_ERROR("Failed to allcate pool for stackFrames\n");
+		return;
+	}
+
+	frameCount = getStackFrames(stackFrames, frameCount);
+		
+	for (int i = 0; i < frameCount; i++)
+	{
+		CHAR temp[20] = { 0, };
+		sprintf(temp, FRAME_DELIMITER"%p", stackFrames[i]);
+		strcat(buf, temp);
+	}
+	
+	printk(buf);
+
+	if (NULL != stackFrames)
+	{
+		ExFreePool(stackFrames);
+		stackFrames = NULL;
+	}
+}
+#endif
+

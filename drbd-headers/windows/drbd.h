@@ -493,4 +493,5 @@ enum drbd_peer_state {
 #define DRBD_MAX_BIO_SIZE (1U << 20)
 
 #define _WIN32_MVFL
+#define _WIN32_MULTI_VOLUME
 #endif
