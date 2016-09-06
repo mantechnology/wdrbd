@@ -4090,6 +4090,53 @@ static bool do_change_role(struct change_context *context, enum change_phase pha
 		context->val.role == R_PRIMARY);
 }
 
+#ifdef _WIN32
+enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
+			       enum drbd_role role,
+			       enum chg_state_flags flags,
+			       bool force)
+{
+	struct change_role_context role_context = {
+		.context = {
+			.resource = resource,
+			.vnr = -1,
+			.mask = { { .role = role_MASK } },
+			.val = { { .role = role } },
+			.target_node_id = -1,
+			.flags = flags | CS_SERIALIZE | CS_DONT_RETRY,
+		},
+		.force = force,
+	};
+	enum drbd_state_rv rv;
+	bool got_state_sem = false;
+
+	if (role == R_SECONDARY) {
+		struct drbd_device *device;
+		int vnr;
+
+		if (!(flags & CS_ALREADY_SERIALIZED)) {
+			down(&resource->state_sem);
+			got_state_sem = true;
+			role_context.context.flags |= CS_ALREADY_SERIALIZED;
+		}
+
+        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+			long t = 100;
+			wait_event_timeout(t, device->misc_wait, !atomic_read(&device->ap_bio_cnt[WRITE]), t);
+			if(!t) {
+				if(got_state_sem)
+					up(&resource->state_sem);
+				return SS_TIMEOUT;
+			}
+        }
+	}
+	rv = change_cluster_wide_state(do_change_role, &role_context.context);
+	if (got_state_sem)
+		up(&resource->state_sem);
+	return rv;
+}
+#endif
+
 enum drbd_state_rv change_role(struct drbd_resource *resource,
 			       enum drbd_role role,
 			       enum chg_state_flags flags,

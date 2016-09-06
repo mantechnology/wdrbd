@@ -1032,6 +1032,38 @@ static bool barrier_pending(struct drbd_resource *resource)
 	return rv;
 }
 
+#ifdef _WIN32
+static bool wait_for_peer_disk_updates_timeout(struct drbd_resource *resource)
+{
+	struct drbd_peer_device *peer_device;
+	struct drbd_device *device;
+	int vnr;
+	unsigned char oldIrql_rLock;
+	long time_out = 100;
+	int retry_count = 0;
+restart:
+	if(retry_count == 3) {
+		return FALSE;
+	}
+	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);
+	
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		for_each_peer_device_rcu(peer_device, device) {
+			if (test_bit(GOT_NEG_ACK, &peer_device->flags)) {
+				clear_bit(GOT_NEG_ACK, &peer_device->flags);
+				ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);
+				wait_event_timeout(time_out, resource->state_wait, peer_device->disk_state[NOW] < D_UP_TO_DATE, time_out);
+				retry_count++;
+				goto restart;
+			}
+		}
+	}
+
+	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);
+	return TRUE;
+}
+#endif
+
 static void wait_for_peer_disk_updates(struct drbd_resource *resource)
 {
 	struct drbd_peer_device *peer_device;
@@ -1349,6 +1381,7 @@ drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
 	int try = 0;
 	bool with_force = false;
+	long time_out = 100;
 
 
 retry:
@@ -1359,12 +1392,17 @@ retry:
 		u64 im;
 
 		for_each_connection_ref(connection, im, resource)
-			drbd_flush_workqueue(&connection->sender_work);
+			drbd_flush_workqueue_timeout(&connection->sender_work);
 	}
-	wait_event(resource->barrier_wait, !barrier_pending(resource));
+	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
+	if(!time_out) {
+		goto out;
+	}
 	/* After waiting for pending barriers, we got any possible NEG_ACKs,
 	   and see them in wait_for_peer_disk_updates() */
-	wait_for_peer_disk_updates(resource);
+	if(!wait_for_peer_disk_updates_timeout(resource)) {
+		goto out;
+	}
 	
 	/* In case switching from R_PRIMARY to R_SECONDARY works
 	   out, there is no rw opener at this point. Thus, no new
@@ -1380,7 +1418,7 @@ retry:
 
 	while (try++ < max_tries) {
 		rv = stable_state_change(resource,
-			change_role(resource, R_SECONDARY,
+			change_role_timeout(resource, R_SECONDARY,
 				    CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
 				    with_force));
 
@@ -1408,7 +1446,7 @@ retry:
 		
 		if (rv < SS_SUCCESS) {
 			rv = stable_state_change(resource,
-				change_role(resource, R_SECONDARY,
+				change_role_timeout(resource, R_SECONDARY,
 					    CS_VERBOSE | CS_ALREADY_SERIALIZED |
 					    CS_DONT_RETRY | CS_WAIT_COMPLETE,
 					    with_force));
@@ -6481,16 +6519,16 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
         }
     }
 #endif
-#if 0
+
     /* detach */
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
-        retcode = adm_detach(device, 0);
+        retcode = adm_detach(device, TRUE);
         if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
             WDRBD_ERROR("failed to detach\n");
             goto unlock_out;
         }
     }
-
+#if 0
     /* delete volumes */
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
         retcode = adm_del_minor(device);
@@ -6502,14 +6540,14 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
     }
 #endif
 	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
-#if 0
-	drbd_flush_workqueue(&resource->work);
-	mutex_lock(&resources_mutex);
-	drbd_thread_stop(&resource->worker);
-	mutex_unlock(&resources_mutex);
-#endif	
 
-//unlock_out:
+	drbd_flush_workqueue_timeout(&resource->work);
+	mutex_lock(&resources_mutex);
+	drbd_thread_stop_nowait(&resource->worker);
+	mutex_unlock(&resources_mutex);
+
+
+unlock_out:
     mutex_unlock(&resource->conf_update);
 out:
     mutex_unlock(&resource->adm_mutex);

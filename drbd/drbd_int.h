@@ -2891,6 +2891,9 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 }
 
 extern void drbd_flush_workqueue(struct drbd_work_queue *work_queue);
+#ifdef _WIN32
+extern void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue);
+#endif
 
 /* To get the ack_receiver out of the blocking network stack,
  * so it can change its sk_rcvtimeo from idle- to ping-timeout,

@@ -3624,6 +3624,20 @@ void drbd_queue_work(struct drbd_work_queue *q, struct drbd_work *w)
 	wake_up(&q->q_wait);
 }
 
+#ifdef _WIN32
+void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue)
+{
+	struct completion_work completion_work;
+
+	completion_work.w.cb = w_complete;
+	init_completion(&completion_work.done);
+	drbd_queue_work(work_queue, &completion_work.w);
+    while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
+        WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+    }
+}
+#endif
+
 void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
 {
 	struct completion_work completion_work;
