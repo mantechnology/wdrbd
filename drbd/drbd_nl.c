@@ -6632,7 +6632,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 
     /* detach */
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
-        retcode = adm_detach(device, TRUE);
+        retcode = adm_detach(device, 0);
         if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
             WDRBD_ERROR("failed to detach\n");
             goto unlock_out;
