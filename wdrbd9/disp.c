@@ -591,8 +591,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			}
 
             PMVOL_THREAD				pThreadInfo;
-			WDRBD_INFO("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
-				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
 #ifdef DRBD_TRACE
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
 				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
