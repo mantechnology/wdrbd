@@ -517,8 +517,16 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 				break;
 			if (!(r->rq_state[0] & RQ_WRITE))
 				continue;
+#ifdef _WIN32_MULTI_VOLUME
+			if (!(r->rq_state[idx] & RQ_NET_MASK))
+				continue;
+			// MODIFIED_BY_MANTECH DW-1166 : Check RQ_NET_DONE for multi-volume
+			if (r->rq_state[idx] & RQ_NET_DONE)
+				continue;
+#else
 			/* if (s & RQ_DONE): not expected */
 			/* if (!(s & RQ_NET_MASK)): not expected */
+#endif
 			expect_size++;
 		}
 	}
