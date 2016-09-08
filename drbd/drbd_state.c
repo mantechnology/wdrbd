@@ -4090,7 +4090,7 @@ static bool do_change_role(struct change_context *context, enum change_phase pha
 		context->val.role == R_PRIMARY);
 }
 
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
 enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
 			       enum drbd_role role,
 			       enum chg_state_flags flags,

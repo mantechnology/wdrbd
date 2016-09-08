@@ -1032,7 +1032,7 @@ static bool barrier_pending(struct drbd_resource *resource)
 	return rv;
 }
 
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
 static bool wait_for_peer_disk_updates_timeout(struct drbd_resource *resource)
 {
 	struct drbd_peer_device *peer_device;
@@ -1042,7 +1042,7 @@ static bool wait_for_peer_disk_updates_timeout(struct drbd_resource *resource)
 	long time_out = 100;
 	int retry_count = 0;
 restart:
-	if(retry_count == 3) {
+	if(retry_count == 3) { // retry 3 times and if it expired, return FALSE
 		return FALSE;
 	}
 	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);
@@ -1371,7 +1371,7 @@ out:
 #undef try
 #endif
 
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
 enum drbd_state_rv
 drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 {
@@ -1387,6 +1387,7 @@ drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 retry:
 	down(&resource->state_sem);
 
+	// step 1 : flush sender work queue with timeout
 	if (start_new_tl_epoch(resource)) {
 		struct drbd_connection *connection;
 		u64 im;
@@ -1394,6 +1395,7 @@ retry:
 		for_each_connection_ref(connection, im, resource)
 			drbd_flush_workqueue_timeout(&connection->sender_work);
 	}
+	// step 2 : wait barrier pending with timeout
 	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
 	if(!time_out) {
 		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
@@ -1401,6 +1403,7 @@ retry:
 	}
 	/* After waiting for pending barriers, we got any possible NEG_ACKs,
 	   and see them in wait_for_peer_disk_updates() */
+	// step 3 : wait for updating peer disk with timeout   
 	if(!wait_for_peer_disk_updates_timeout(resource)) {
 		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
 		goto out;
@@ -1415,10 +1418,12 @@ retry:
 	   peer_acks queued on asender's TODO list go out before
 	   we send the two phase commit packet.
 	*/
+	// step 4 : flush peer acks
 	drbd_flush_peer_acks(resource);
 	
-
+	// step 5 : change role with timeout , just retry 1 time.
 	while (try++ < max_tries) {
+		// step 5-1 : change role with timeout
 		rv = stable_state_change(resource,
 			change_role_timeout(resource, R_SECONDARY,
 				    CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
@@ -1434,6 +1439,7 @@ retry:
 			   while */
 			up(&resource->state_sem);
 			schedule_timeout_interruptible(timeout);
+			// step 5-2 : retry
 			goto retry;
 		}
 		/* in case we first succeeded to outdate,
@@ -1471,7 +1477,7 @@ retry:
 	}
 
 
-
+	// step 6 : if it connected, send a current state to each peer. 
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 		 struct drbd_peer_device *peer_device;
 		 u64 im;
@@ -1486,7 +1492,7 @@ retry:
 		}
 	}
 
-
+	// step 7 : sync meta-data
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 		drbd_md_sync_if_dirty(device);
 		set_disk_ro(device->vdisk, true);
@@ -6594,7 +6600,7 @@ out:
 	return 0;
 }
 
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
 int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection, *tmp;    
@@ -6609,7 +6615,9 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 	}
     
     mutex_lock(&resource->adm_mutex);
-    /* demote */
+
+	// step 1 : change role to secondary
+	
     retcode = drbd_set_secondary_from_shutdown(resource);
     if (retcode < SS_SUCCESS) {
         WDRBD_ERROR("failed to demote\n");
@@ -6630,7 +6638,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
     }
 #endif
 
-    /* detach */
+	// step 2 : detach with no-force
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
         retcode = adm_detach(device, 0);
         if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
@@ -6651,6 +6659,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 #endif
 	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
 
+	// step 3 : release worker thread
 	drbd_flush_workqueue_timeout(&resource->work);
 	mutex_lock(&resources_mutex);
 	drbd_thread_stop_nowait(&resource->worker);

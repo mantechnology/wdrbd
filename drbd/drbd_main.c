@@ -3624,7 +3624,7 @@ void drbd_queue_work(struct drbd_work_queue *q, struct drbd_work *w)
 	wake_up(&q->q_wait);
 }
 
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
 void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue)
 {
 	struct completion_work completion_work;
