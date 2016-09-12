@@ -20,6 +20,9 @@ goto wdrbd9 directory and open wdrbd9.sln, config 32 or 64 properly, finally bui
 - install package (windows service(drbdService daemon) will be installed automatically)
 - reboot required.
 
+## Download & Documentations
+- https://github.com/mantechnology/wdrbd/wiki
+
 ## Debug & Tests 
 - setup WinDbg debugging environment
 - copy drbd.sys to "install forder"/drbd/bin on target host.
