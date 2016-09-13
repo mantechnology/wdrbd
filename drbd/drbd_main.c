@@ -3322,6 +3322,7 @@ void drbd_destroy_resource(struct kref *kref)
 void drbd_free_resource(struct drbd_resource *resource)
 {
 	struct queued_twopc *q, *q1;
+	struct drbd_connection *connection, *tmp;
 
 	del_timer_sync(&resource->queued_twopc_timer);
 
@@ -3338,10 +3339,14 @@ void drbd_free_resource(struct drbd_resource *resource)
 	spin_unlock_irq(&resource->queued_twopc_lock);
 
 	drbd_thread_stop(&resource->worker);
-	if (resource->twopc_parent) {
-		kref_debug_put(&resource->twopc_parent->kref_debug, 9);
-		kref_put(&resource->twopc_parent->kref,
-			 drbd_destroy_connection);
+
+#ifdef _WIN32
+	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#else
+	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#endif
+		kref_debug_put(&connection->kref_debug, 9);
+		kref_put(&connection->kref, drbd_destroy_connection);
 	}
 #ifdef _WIN32
     if (resource->peer_ack_req)
@@ -3881,6 +3886,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	init_waitqueue_head(&resource->state_wait);
 	init_waitqueue_head(&resource->twopc_wait);
 	init_waitqueue_head(&resource->barrier_wait);
+	INIT_LIST_HEAD(&resource->twopc_parents);
 #ifdef _WIN32
     setup_timer(&resource->twopc_timer, twopc_timer_fn, resource);
 #else
