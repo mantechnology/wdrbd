@@ -4063,12 +4063,8 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_connection *connection = container_of(kref, struct drbd_connection, kref);
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
-	int vnr, rr;
-
-	rr = drbd_free_peer_reqs(resource, &connection->net_ee, true);
-	if (rr)
-		drbd_err(connection, "%d EEs in net list found!\n", rr);
-
+	int vnr;
+	
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
@@ -4084,7 +4080,6 @@ void drbd_destroy_connection(struct kref *kref)
 	}
 	idr_destroy(&connection->peer_devices);
 
-	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 	kfree(connection->transport.net_conf);
 	drbd_put_send_buffers(connection);
 	conn_free_crypto(connection);
@@ -4586,7 +4581,7 @@ void del_connect_timer(struct drbd_connection *connection)
 void drbd_put_connection(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
-	int vnr, refs = 1;
+	int vnr, rr, refs = 1;
 
 	del_connect_timer(connection);
 #ifdef _WIN32
@@ -4595,6 +4590,12 @@ void drbd_put_connection(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
 		refs++;
+
+	rr = drbd_free_peer_reqs(connection->resource, &connection->net_ee, true);
+	if (rr)
+		drbd_err(connection, "%d EEs in net list found!\n", rr);
+	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
+
 	kref_debug_sub(&connection->kref_debug, refs - 1, 3);
 	kref_debug_put(&connection->kref_debug, 10);
 	kref_sub(&connection->kref, refs, drbd_destroy_connection);
