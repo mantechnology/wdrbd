@@ -17,6 +17,7 @@
 	the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 
+#include <ntifs.h>
 #include <wdm.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	
@@ -963,8 +964,6 @@ VOID drbdFreeDev(PVOLUME_EXTENSION VolumeExtension)
 #ifdef _WIN32_DEBUG_OOS
 static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 {
-	pfnRtlCaptureStackBackTrace pfnStackTrace = NULL;
-	UNICODE_STRING usFuncName = { 0, };
 	USHORT usCaptured = 0;
 
 	if (NULL == frames ||
@@ -974,15 +973,7 @@ static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 		return 0;
 	}
 	
-	RtlInitUnicodeString(&usFuncName, L"RtlCaptureStackBackTrace");
-	pfnStackTrace = (pfnRtlCaptureStackBackTrace)MmGetSystemRoutineAddress(&usFuncName);
-	if (NULL == pfnStackTrace)
-	{
-		WDRBD_ERROR("Failed to get routine(RtlCaptureStackBackTrace) address\n");
-		return 0;
-	}	
-
-	usCaptured = pfnStackTrace(2, usFrameCount, frames, NULL);
+	usCaptured = RtlCaptureStackBackTrace(2, usFrameCount, frames, NULL);	
 	if (0 == usCaptured)
 	{
 		WDRBD_ERROR("Captured frame count is 0\n");
