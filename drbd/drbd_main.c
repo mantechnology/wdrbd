@@ -28,6 +28,7 @@
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
+#include <ntifs.h>
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"
 #include <linux-compat/Kernel.h>
@@ -5781,6 +5782,127 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 
 	return rv;
 }
+
+#ifdef _WIN32
+// DW-844
+#define GetBitPos(bytes, bitsInByte)	((bytes * BITS_PER_BYTE) + bitsInByte)
+			  
+// set out-of-sync from provided bitmap
+ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
+{
+	LONGLONG llStartBit = -1, llEndBit = -1;
+	ULONG_PTR count = 0;
+	PCHAR pByte = NULL;
+	
+	if (NULL == pBitmap ||
+		NULL == pBitmap->Buffer ||
+		NULL == peer_device)
+	{
+		WDRBD_ERROR("Invalid parameter, pBitmap(0x%p), pBitmap->Buffer(0x%p) peer_device(0x%p)\n", pBitmap, pBitmap ? pBitmap->Buffer:NULL, peer_device);
+		return -1;
+	}
+
+	pByte = (PCHAR)pBitmap->Buffer;
+	
+	// find continuously set bits and set out-of-sync.
+	for (LONGLONG llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
+	{
+		for (LONGLONG llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
+		{
+			CHAR pBit = (pByte[llBytePos] >> llBitPosInByte) & 0x1;
+
+			// found first set bit.
+			if (llStartBit == -1 &&
+				pBit == 1)
+			{
+				llStartBit = GetBitPos(llBytePos, llBitPosInByte);
+				continue;
+			}
+
+			// found last set bit. set out-of-sync.
+			if (llStartBit != -1 &&
+				pBit == 0)
+			{
+				llEndBit = GetBitPos(llBytePos, llBitPosInByte) - 1;
+				count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
+
+				llStartBit = -1;
+				llEndBit = -1;
+				continue;
+			}
+		}
+	}
+
+	// met last bit while finding zero bit.
+	if (llStartBit != -1)
+	{
+		llEndBit = pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
+
+		llStartBit = -1;
+		llEndBit = -1;
+	}
+
+	return count;
+}
+
+// set out-of-sync for allocated clusters.
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device)
+{
+	bool bRet = false;
+	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
+	ULONG ulBitmapSize = 0;
+	ULONG_PTR count = 0;
+
+	if (NULL == device ||
+		NULL == peer_device)
+	{
+		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p)\n", device, peer_device);
+		return false;
+	}
+
+	// on the side of secondary, just wait for primary's bitmap.
+	if (device->resource->role[NOW] == R_SECONDARY)
+	{
+		WDRBD_INFO("I am a secondary, wait to receive primary's bitmap\n");
+		return true;
+	}
+
+	do
+	{
+		// Get volume bitmap which is converted into 4kb cluster unit.
+		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
+		if (NULL == pBitmap)
+		{
+			WDRBD_ERROR("Could not get bitmap for drbd\n");
+			break;
+		}
+
+		// Set out-of-sync for allocated cluster.
+		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
+		count = SetOOSFromBitmap(pBitmap, peer_device);		
+		drbd_bm_unlock(device);
+
+		if (count == -1)
+		{
+			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+			break;
+		}
+		
+		WDRBD_INFO("%Iu bits are set as out-of-sync\n", count);
+		bRet = true;
+
+	} while (false);
+
+	if (pBitmap)
+	{
+		ExFreePool(pBitmap);
+		pBitmap = NULL;
+	}
+
+	return bRet;
+}
+#endif	// _WIN32
 
 /**
  * drbd_bmio_clear_all_n_write() - io_fn for drbd_queue_bitmap_io() or drbd_bitmap_io()

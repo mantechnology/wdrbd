@@ -410,6 +410,383 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 
     return status;
 }
+
+HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
+{
+	PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+	if (!pvext)
+	{
+		WDRBD_ERROR("could not get volume extension from device minor(%u)\n", minor);
+		return NULL;
+	}
+
+	NTSTATUS status = STATUS_SUCCESS;
+	HANDLE hVolume = NULL;
+	OBJECT_ATTRIBUTES ObjectAttributes = { 0, };
+	IO_STATUS_BLOCK ioStatus = { 0, };	
+	UNICODE_STRING usPath = { 0, };
+		
+	do
+	{
+		RtlUnicodeStringInit(&usPath, pvext->PhysicalDeviceName);
+		InitializeObjectAttributes(&ObjectAttributes,
+			&usPath,
+			OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			NULL,
+			NULL);
+
+		status = ZwCreateFile(&hVolume,
+			FILE_WRITE_DATA | FILE_READ_ATTRIBUTES,
+			&ObjectAttributes,
+			&ioStatus,
+			NULL,
+			0,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			FILE_OPEN,
+			FILE_NON_DIRECTORY_FILE,
+			NULL,
+			0);
+
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
+			break;
+		}
+		
+	} while (false);
+			
+	return hVolume;
+}
+
+// returns file system type, NTFS(1), FAT(2), EXFAT(3), REFS(4)
+USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	IO_STATUS_BLOCK iostatus = { 0, };
+	FILESYSTEM_STATISTICS fss = { 0, };
+	
+	if (NULL == hVolume)
+	{
+		WDRBD_ERROR("Invalid parameter\n");
+		return 0;
+	}
+	
+	do
+	{
+		status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
+		// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
+		if (fss.FileSystemType == 0 &&
+			!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("ZwFsControlFile with FSCTL_FILESYSTEM_GET_STATISTICS failed, status(0x%x)\n", status);
+			break;
+		}
+
+	} while (false);
+
+	return fss.FileSystemType;
+}
+
+// retrieves file system specified cluster information ( total cluster count, number of bytes per cluster )
+BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalCluster, PULONG pulBytesPerCluster)
+{
+	BOOLEAN bRet = FALSE;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	IO_STATUS_BLOCK ioStatus = { 0, };
+	USHORT usFileSystemType = 0;
+	ULONGLONG ullTotalCluster = 0;
+	ULONG ulBytesPerCluster = 0;
+	HANDLE hEvent = NULL;
+
+	if (NULL == hVolume ||
+		NULL == pullTotalCluster ||
+		NULL == pulBytesPerCluster)
+	{
+		WDRBD_ERROR("Invalid parameter, hVolume(%p), pullTotalCluster(%p), pulBytesPerCluster(%p)\n", hVolume, pullTotalCluster, pulBytesPerCluster);
+		return FALSE;
+	}
+
+	do
+	{
+		usFileSystemType = GetFileSystemTypeWithHandle(hVolume);
+		if (usFileSystemType == 0)
+		{
+			WDRBD_ERROR("GetFileSystemTypeWithHandle returned invalid file system type\n");
+			break;		
+		}
+
+		// getting fs volume data sometimes gets pended when it coincides with another peer's, need to wait until the operation's done.
+		status = ZwCreateEvent(&hEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("ZwCreateEvent failed, status : 0x%x\n", status);
+			break;
+		}
+		
+		// supported file systems
+		// 1. NTFS
+		// 2. REFS
+		switch (usFileSystemType)
+		{
+		case FILESYSTEM_STATISTICS_TYPE_NTFS:
+		{
+			NTFS_VOLUME_DATA_BUFFER nvdb = { 0, };
+
+			status = ZwFsControlFile(hVolume, hEvent, NULL, NULL, &ioStatus, FSCTL_GET_NTFS_VOLUME_DATA, NULL, 0, &nvdb, sizeof(nvdb));
+			if (!NT_SUCCESS(status))
+			{
+				WDRBD_ERROR("ZwFsControlFile with FSCTL_GET_NTFS_VOLUME_DATA failed, status(%0x%x)\n", status);
+				break;
+			}
+
+			ZwWaitForSingleObject(hEvent, FALSE, NULL);
+			ullTotalCluster = nvdb.TotalClusters.QuadPart;
+			ulBytesPerCluster = nvdb.BytesPerCluster;
+			break;
+
+		}
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
+		case FILESYSTEM_STATISTICS_TYPE_REFS:
+		{
+			REFS_VOLUME_DATA_BUFFER rvdb = { 0, };
+
+			status = ZwFsControlFile(hVolume, hEvent, NULL, NULL, &ioStatus, FSCTL_GET_REFS_VOLUME_DATA, NULL, 0, &rvdb, sizeof(rvdb));
+			if (!NT_SUCCESS(status))
+			{
+				WDRBD_ERROR("ZwFsControlFile with FSCTL_GET_REFS_VOLUME_DATA failed, status(%0x%x)\n", status);
+				break;
+			}
+
+			ZwWaitForSingleObject(hEvent, FALSE, NULL);
+			ullTotalCluster = rvdb.TotalClusters.QuadPart;
+			ulBytesPerCluster = rvdb.BytesPerCluster;
+			break;
+		}
+#endif
+		default:
+			WDRBD_WARN("The file system %hu is not supported\n", usFileSystemType);
+			break;
+		}
+
+		if (0 == ullTotalCluster ||
+			0 == ulBytesPerCluster)
+		{
+			WDRBD_ERROR("Cluster information is invalid, ullTotalCluster(%llu), ulBytesPerCluster(%u)\n", ullTotalCluster, ulBytesPerCluster);
+			break;
+		}
+
+		bRet = TRUE;
+
+	} while (false);
+
+	if (bRet)
+	{
+		*pullTotalCluster = ALIGN(ullTotalCluster, BITS_PER_BYTE);
+		*pulBytesPerCluster = ulBytesPerCluster;
+	}
+
+	if (NULL != hEvent)
+	{
+		ZwClose(hEvent);
+		hEvent = NULL;
+	}
+	
+	return bRet;
+}
+
+// returns volume bitmap and cluster information.
+PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCluster, PULONG pulBytesPerCluster)
+{
+	PVOLUME_BITMAP_BUFFER pVbb = NULL;
+	HANDLE hVolume = NULL;
+	IO_STATUS_BLOCK ioStatus = { 0, };
+	STARTING_LCN_INPUT_BUFFER slib = { 0, };
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	BOOLEAN bRet = FALSE;
+
+	if (NULL == pullTotalCluster ||
+		NULL == pulBytesPerCluster)
+	{
+		WDRBD_ERROR("Invalid parameter, pullTotalCluster(%p), pulBytesPerCluster(%p)\n", pullTotalCluster, pulBytesPerCluster);
+		return NULL;
+	}
+
+	if (KeGetCurrentIrql() > PASSIVE_LEVEL)
+	{
+		WDRBD_ERROR("Could not get volume bitmap because of high irql(%d)\n", KeGetCurrentIrql());
+		return NULL;
+	}
+
+	do
+	{
+		hVolume = GetVolumeHandleFromDeviceMinor(minor);
+		if (NULL == hVolume)
+		{
+			WDRBD_ERROR("Could not get volume handle from minor(%u)\n", minor);
+			break;
+		}
+				
+		if (FALSE == GetClusterInfoWithVolumeHandle(hVolume, pullTotalCluster, pulBytesPerCluster))
+		{
+			WDRBD_ERROR("Could not get cluster information\n");
+			break;
+		}
+
+		ULONG ulBitmapSize = sizeof(VOLUME_BITMAP_BUFFER) + (ULONG)(*pullTotalCluster / BITS_PER_BYTE);
+		
+		pVbb = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, ulBitmapSize);
+		if (NULL == pVbb)
+		{
+			WDRBD_ERROR("pVbb allocation failed\n");
+			break;
+		}
+				
+		slib.StartingLcn.QuadPart = 0;
+		status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &ioStatus, FSCTL_GET_VOLUME_BITMAP, &slib, sizeof(slib), pVbb, ulBitmapSize);
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("ZwFsControlFile with FSCTL_GET_VOLUME_BITMAP failed, status(%0x%x)\n", status);
+			break;
+		}
+				
+		bRet = TRUE;
+
+	} while (false);
+
+	if (NULL != hVolume)
+	{
+		ZwClose(hVolume);
+		hVolume = NULL;
+	}
+
+	if (!bRet)
+	{
+		*pullTotalCluster = 0;
+		*pulBytesPerCluster = 0;
+
+		if (NULL != pVbb)
+		{
+			ExFreePool(pVbb);
+			pVbb = NULL;
+		}
+	}
+
+	return pVbb;
+}
+
+/* drbd assumes bytes per cluster as 4096. convert if need.
+ex:
+      2048 bytes    ->    4096 bytes
+       00110100              0110
+
+        16 kb       ->    4096 bytes
+        0110           00001111 11110000
+*/
+BOOLEAN ConvertVolumeBitmap(PVOLUME_BITMAP_BUFFER pVbb, PCHAR pConverted, ULONG bytesPerCluster, ULONG ulDrbdBitmapUnit)
+{
+	int readCount = 1;
+	int writeCount = 1;
+
+	if (NULL == pVbb ||
+		NULL == pVbb->Buffer ||
+		NULL == pConverted)
+	{
+		WDRBD_ERROR("Invalid parameter, pVbb(0x%p), pVbb->Buffer(0x%p), pConverted(0x%p)\n", pVbb, pVbb ? pVbb->Buffer : NULL, pConverted);
+		return FALSE;
+	}
+
+	writeCount = (bytesPerCluster / ulDrbdBitmapUnit) + (bytesPerCluster < ulDrbdBitmapUnit);	// drbd bits count affected by a bit of volume bitmap. maximum value : 16
+	readCount = (ulDrbdBitmapUnit / bytesPerCluster) + (bytesPerCluster > ulDrbdBitmapUnit);	// volume bits count to be converted into a drbd bit. maximum value : 8
+	
+	PCHAR pByte = (PCHAR)pVbb->Buffer;
+
+	for (ULONGLONG ullBytePos = 0; ullBytePos < (pVbb->BitmapSize.QuadPart + 1) / BITS_PER_BYTE; ullBytePos += 1)
+	{
+		for (ULONGLONG ullBitPos = 0; ullBitPos < BITS_PER_BYTE; ullBitPos += readCount)
+		{
+			CHAR pBit = (pByte[ullBytePos] >> ullBitPos) & ((1 << readCount) - 1);
+
+			if (pBit)
+			{
+				ULONGLONG ullBitPosTotal = ((ullBytePos * BITS_PER_BYTE + ullBitPos) * writeCount) / readCount;
+				ULONGLONG ullBytePos = ullBitPosTotal / BITS_PER_BYTE;
+				ULONGLONG ullBitPosInByte = ullBitPosTotal % BITS_PER_BYTE;
+
+				for (int i = 0; i <= (writeCount - 1) / BITS_PER_BYTE; i++)
+				{
+					CHAR setBits = (1 << (writeCount - i * BITS_PER_BYTE)) - 1;
+
+					if (i == 1)
+						ullBitPosInByte = 0;
+					pConverted[ullBytePos + i] |= (setBits << ullBitPosInByte);
+				}
+			}
+		}
+	}
+
+	return TRUE;
+}
+
+PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
+{
+	PVOLUME_BITMAP_BUFFER pVbb = NULL;
+	PVOLUME_BITMAP_BUFFER pDrbdBitmap = NULL;
+	ULONG ulConvertedBitmapSize = 0;
+	ULONGLONG ullTotalCluster = 0;
+	ULONG ulBytesPerCluster = 0;
+
+	do
+	{
+		// Get volume bitmap, bytes per cluster can be 512bytes ~ 64kb
+		pVbb = GetVolumeBitmap(minor, &ullTotalCluster, &ulBytesPerCluster);
+		if (NULL == pVbb)
+		{
+			WDRBD_ERROR("Could not get volume bitmap, minor(%u)\n", minor);
+			break;
+		}
+
+		// use file system returned volume bitmap if it's compatible with drbd.
+		if (ulBytesPerCluster == ulDrbdBitmapUnit)
+		{
+			pDrbdBitmap = pVbb;
+			pVbb = NULL;
+		}
+		else
+		{
+			// Convert gotten bitmap into 4kb unit cluster bitmap.
+			ullTotalCluster = (ullTotalCluster * ulBytesPerCluster) / ulDrbdBitmapUnit;
+			ulConvertedBitmapSize = (ULONG)(ullTotalCluster / BITS_PER_BYTE);
+
+			pDrbdBitmap = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, sizeof(VOLUME_BITMAP_BUFFER) +  ulConvertedBitmapSize);
+			if (NULL == pDrbdBitmap)
+			{
+				WDRBD_ERROR("pConvertedBitmap allocation failed\n");
+				break;
+			}
+
+			pDrbdBitmap->StartingLcn.QuadPart = 0;
+			pDrbdBitmap->BitmapSize.QuadPart = ulConvertedBitmapSize;
+
+			RtlZeroMemory(pDrbdBitmap->Buffer, pDrbdBitmap->BitmapSize.QuadPart);
+			if (FALSE == ConvertVolumeBitmap(pVbb, (PCHAR)pDrbdBitmap->Buffer, ulBytesPerCluster, ulDrbdBitmapUnit))
+			{
+				WDRBD_ERROR("Could not convert bitmap, ulBytesPerCluster(%u), ulDrbdBitmapUnit(%u)\n", ulBytesPerCluster, ulDrbdBitmapUnit);
+				ExFreePool(pDrbdBitmap);
+				pDrbdBitmap = NULL;
+				break;
+			}
+		}
+
+	} while (false);
+
+	if (NULL != pVbb)
+	{
+		ExFreePool(pVbb);
+		pVbb = NULL;
+	}
+
+	return (PVOLUME_BITMAP_BUFFER)pDrbdBitmap;
+}
 #endif
 
 PVOLUME_EXTENSION
