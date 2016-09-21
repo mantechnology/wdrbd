@@ -1579,13 +1579,4 @@ LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 
-#ifdef _WIN32_DEBUG_OOS
-typedef USHORT(*pfnRtlCaptureStackBackTrace)(
-	_In_      ULONG  FramesToSkip,
-	_In_      ULONG  FramesToCapture,
-	_Out_     PVOID  *BackTrace,
-	_Out_opt_ PULONG BackTraceHash
-	);
-#endif
-
 #endif // DRBD_WINDOWS_H

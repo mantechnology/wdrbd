@@ -3323,6 +3323,7 @@ void drbd_destroy_resource(struct kref *kref)
 void drbd_free_resource(struct drbd_resource *resource)
 {
 	struct queued_twopc *q, *q1;
+	struct drbd_connection *connection, *tmp;
 
 	del_timer_sync(&resource->queued_twopc_timer);
 
@@ -3339,10 +3340,14 @@ void drbd_free_resource(struct drbd_resource *resource)
 	spin_unlock_irq(&resource->queued_twopc_lock);
 
 	drbd_thread_stop(&resource->worker);
-	if (resource->twopc_parent) {
-		kref_debug_put(&resource->twopc_parent->kref_debug, 9);
-		kref_put(&resource->twopc_parent->kref,
-			 drbd_destroy_connection);
+
+#ifdef _WIN32
+	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#else
+	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#endif
+		kref_debug_put(&connection->kref_debug, 9);
+		kref_put(&connection->kref, drbd_destroy_connection);
 	}
 #ifdef _WIN32
     if (resource->peer_ack_req)
@@ -3882,6 +3887,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	init_waitqueue_head(&resource->state_wait);
 	init_waitqueue_head(&resource->twopc_wait);
 	init_waitqueue_head(&resource->barrier_wait);
+	INIT_LIST_HEAD(&resource->twopc_parents);
 #ifdef _WIN32
     setup_timer(&resource->twopc_timer, twopc_timer_fn, resource);
 #else
@@ -4064,12 +4070,8 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_connection *connection = container_of(kref, struct drbd_connection, kref);
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
-	int vnr, rr;
-
-	rr = drbd_free_peer_reqs(resource, &connection->net_ee, true);
-	if (rr)
-		drbd_err(connection, "%d EEs in net list found!\n", rr);
-
+	int vnr;
+	
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
@@ -4085,7 +4087,6 @@ void drbd_destroy_connection(struct kref *kref)
 	}
 	idr_destroy(&connection->peer_devices);
 
-	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 	kfree(connection->transport.net_conf);
 	drbd_put_send_buffers(connection);
 	conn_free_crypto(connection);
@@ -4587,7 +4588,7 @@ void del_connect_timer(struct drbd_connection *connection)
 void drbd_put_connection(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
-	int vnr, refs = 1;
+	int vnr, rr, refs = 1;
 
 	del_connect_timer(connection);
 #ifdef _WIN32
@@ -4596,6 +4597,12 @@ void drbd_put_connection(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
 		refs++;
+
+	rr = drbd_free_peer_reqs(connection->resource, &connection->net_ee, true);
+	if (rr)
+		drbd_err(connection, "%d EEs in net list found!\n", rr);
+	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
+
 	kref_debug_sub(&connection->kref_debug, refs - 1, 3);
 	kref_debug_put(&connection->kref_debug, 10);
 	kref_sub(&connection->kref, refs, drbd_destroy_connection);
