@@ -1084,6 +1084,7 @@ enum {
 				 */
 	NEGOTIATION_RESULT_TOUCHED,
 	TWOPC_ABORT_LOCAL,
+	TWOPC_EXECUTED,         /* Commited or aborted */
 	DEVICE_WORK_PENDING,	/* tell worker that some device has pending work */
 	PEER_DEVICE_WORK_PENDING,/* tell worker that some peer_device has pending work */
 	RESOURCE_WORK_PENDING,  /* tell worker that some peer_device has pending work */
@@ -1180,7 +1181,8 @@ struct drbd_resource {
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
 	bool remote_state_change;  /* remote state change in progress */
-	struct drbd_connection *twopc_parent;  /* prepared on behalf of peer */
+	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
+	struct list_head twopc_parents;  /* prepared on behalf of peer */
 	struct twopc_reply twopc_reply;
 	struct timer_list twopc_timer;
 	struct drbd_work twopc_work;
@@ -1376,6 +1378,7 @@ struct drbd_connection {
 	} send;
 
 	unsigned int peer_node_id;
+	struct list_head twopc_parent_list;
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal
 					    implementation might have more members than the
 					    abstract one. */
