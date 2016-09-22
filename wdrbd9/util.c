@@ -1472,7 +1472,7 @@ BOOLEAN isFastInitialSync()
 			bRet = (nTemp ? TRUE : FALSE);
 	}
 
-	WDRBD_INFO("Fast sync %s", bRet ? "enabled" : "disabled");
+	WDRBD_INFO("Fast sync %s\n", bRet ? "enabled" : "disabled");
 	
 	return bRet;
 }
