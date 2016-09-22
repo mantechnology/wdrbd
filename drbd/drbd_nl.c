@@ -6605,24 +6605,26 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection, *tmp;    
     struct drbd_device *device;
-    int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+    int retcode = SS_SUCCESS; /* enum drbd_ret_code rsp. enum drbd_state_rv */
     int i;
 	
 	// DW-876: It possibly creates hang issue if worker isn't working, perhaps it's been called with resource which is already down.
 	if (get_t_state(&resource->worker) != RUNNING) {		
 		retcode = SS_NOTHING_TO_DO;
-		goto out;
+		return retcode;
 	}
     
     mutex_lock(&resource->adm_mutex);
 
 	// step 1 : change role to secondary
-	
-    retcode = drbd_set_secondary_from_shutdown(resource);
-    if (retcode < SS_SUCCESS) {
-        WDRBD_ERROR("failed to demote\n");
-        goto out;
-    }
+	if (resource->role[NOW] == R_PRIMARY)
+	{
+	    retcode = drbd_set_secondary_from_shutdown(resource);
+	    if (retcode < SS_SUCCESS) {
+	        WDRBD_ERROR("failed to demote\n");
+    	    goto out;
+    	}
+	}
 
     mutex_lock(&resource->conf_update);
 #if 0
