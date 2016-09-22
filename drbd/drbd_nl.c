@@ -6619,11 +6619,11 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 	// step 1 : change role to secondary
 	if (resource->role[NOW] == R_PRIMARY)
 	{
-	    retcode = drbd_set_secondary_from_shutdown(resource);
-	    if (retcode < SS_SUCCESS) {
-	        WDRBD_ERROR("failed to demote\n");
-    	    goto out;
-    	}
+		retcode = drbd_set_secondary_from_shutdown(resource);
+		if (retcode < SS_SUCCESS) {
+			WDRBD_ERROR("failed to demote\n");
+			goto out;
+		}
 	}
 
     mutex_lock(&resource->conf_update);
