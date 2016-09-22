@@ -1455,6 +1455,28 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	return 0;
 }
 
+BOOLEAN isFastInitialSync()
+{
+	ULONG ulLength = 0;
+	int nTemp = 0;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PROOT_EXTENSION pRootExtension = NULL;
+	BOOLEAN bRet = FALSE;
+
+	pRootExtension = mvolRootDeviceObject->DeviceExtension;
+
+	if (NULL != pRootExtension)
+	{
+		status = GetRegistryValue(L"use_fast_sync", &ulLength, (UCHAR*)&nTemp, &pRootExtension->RegistryPath);
+		if (status == STATUS_SUCCESS)
+			bRet = (nTemp ? TRUE : FALSE);
+	}
+
+	WDRBD_INFO("Fast sync %s", bRet ? "enabled" : "disabled");
+	
+	return bRet;
+}
+
 /**
  * @brief
  *	caller should release unicode's buffer(in bytes)
