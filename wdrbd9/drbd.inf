@@ -66,6 +66,7 @@ HKR,,"bypass_level",0x00010001,0
 HKR,,"read_filter",0x00010001,0
 HKR,,"flush_filter",0x00010001,1
 HKR,,"use_volume_lock",0x00010001,1
+KHR,,"use_fast_sync",0x00010001,1
 HKR,,"dbgwin_output",0x00010001,0
 HKR,,"loglink_tcp_port",0x00010001,5677
 HKR,,"loglink_usage",0x00010001,1
@@ -84,6 +85,7 @@ HKR,,"bypass_level"
 HKR,,"read_filter"
 HKR,,"flush_filter"
 HKR,,"use_volume_lock"
+HKR,,"use_fast_sync"
 HKR,,"dbgwin_output"
 HKR,,"netlink_tcp_port"
 HKR,,"daemon_tcp_port"

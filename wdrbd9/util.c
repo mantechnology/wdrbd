@@ -749,6 +749,8 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 		if (ulBytesPerCluster == ulDrbdBitmapUnit)
 		{
 			pDrbdBitmap = pVbb;
+			// retrived bitmap size from os indicates that total bit count, convert it into byte of total bit.
+			pDrbdBitmap->BitmapSize.QuadPart = (ullTotalCluster / BITS_PER_BYTE);
 			pVbb = NULL;
 		}
 		else
@@ -1451,6 +1453,28 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		);
 
 	return 0;
+}
+
+BOOLEAN isFastInitialSync()
+{
+	ULONG ulLength = 0;
+	int nTemp = 0;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PROOT_EXTENSION pRootExtension = NULL;
+	BOOLEAN bRet = FALSE;
+
+	pRootExtension = mvolRootDeviceObject->DeviceExtension;
+
+	if (NULL != pRootExtension)
+	{
+		status = GetRegistryValue(L"use_fast_sync", &ulLength, (UCHAR*)&nTemp, &pRootExtension->RegistryPath);
+		if (status == STATUS_SUCCESS)
+			bRet = (nTemp ? TRUE : FALSE);
+	}
+
+	WDRBD_INFO("Fast sync %s\n", bRet ? "enabled" : "disabled");
+	
+	return bRet;
 }
 
 /**

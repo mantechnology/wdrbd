@@ -4127,18 +4127,15 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 			return 0;
 
 #ifdef _WIN32
-		// DW-844: set out-of-sync for allocated clusters.
-		drbd_info(peer_device, "Writing the bitmap for allocated clusters.\n");
-
-		if (!SetOOSAllocatedCluster(device, peer_device))
-		{
-			drbd_warn(peer_device,
-				"Could not write bitmap for allocated clusters, writing the whole bitmap and full sync will be started\n");
-
-			// set whole bits if couldn't set for allocated clusters.
+		// DW-844: check if fast sync is enalbed every time we do initial sync.
+		// set out-of-sync for allocated clusters.			
+		if (!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device))
+		{			
+			drbd_info(peer_device, "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");			
 			if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
 				BM_LOCK_CLEAR | BM_LOCK_BULK, peer_device))
-				return -1;
+				return -1;			
 		}
 #else
 		drbd_info(peer_device,
