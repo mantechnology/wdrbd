@@ -5896,7 +5896,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			break;
 		}
 		
-		WDRBD_INFO("%Iu bits are set as out-of-sync\n", count);
+		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT-10)));
 		bRet = true;
 
 	} while (false);

@@ -749,6 +749,8 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 		if (ulBytesPerCluster == ulDrbdBitmapUnit)
 		{
 			pDrbdBitmap = pVbb;
+			// retrived bitmap size from os indicates that total bit count, convert it into byte of total bit.
+			pDrbdBitmap->BitmapSize.QuadPart = (ullTotalCluster / BITS_PER_BYTE);
 			pVbb = NULL;
 		}
 		else

@@ -4130,6 +4130,11 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		// DW-844: set out-of-sync for allocated clusters.
 		drbd_info(peer_device, "Writing the bitmap for allocated clusters.\n");
 
+		// clear all bits before start initial sync.
+		drbd_bitmap_io(device, &drbd_bmio_clear_all_n_write,
+				"clear_n_write from initial sync",
+				BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK, NULL);
+
 		if (!SetOOSAllocatedCluster(device, peer_device))
 		{
 			drbd_warn(peer_device,
