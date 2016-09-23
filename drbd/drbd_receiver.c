@@ -1034,6 +1034,14 @@ start:
 retry:
 	conn_disconnect(connection);
 	schedule_timeout_interruptible(HZ);
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1076: retrying connection doesn't make sense while receiver's restarting, returning false lets drbd re-enters connection once receiver goes running.
+	if (get_t_state(&connection->receiver) == RESTARTING)
+	{
+		drbd_warn(connection, "could not retry connection since receiver is restarting\n");
+		return false;
+	}
+#endif
 	goto start;
 
 abort:
