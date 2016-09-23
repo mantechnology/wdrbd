@@ -411,9 +411,9 @@ mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
 	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
-
+#if 0 // DW-1181 disable drbd_cleanup_by_win_shutdown logic (cannot handle meta volume's unmount from system shutdown point)
 	drbd_cleanup_by_win_shutdown(VolumeExtension);
-	
+#endif	
     return mvolSendToNextDriver(DeviceObject, Irp);
     //status = mvolRunIrpSynchronous(DeviceObject, Irp); // DW-1146 disable cleaunup logic. for some case, hang occurred while shutdown
 	//return status;
