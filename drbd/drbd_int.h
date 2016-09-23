@@ -1928,6 +1928,10 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 		char *why, enum bm_flag flags,
 		struct drbd_peer_device *);
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#ifdef _WIN32
+// DW-844
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
@@ -2590,6 +2594,8 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+extern int update_sync_bits(struct drbd_peer_device *peer_device,
+	unsigned long sbnr, unsigned long ebnr, enum update_sync_bits_mode mode);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif

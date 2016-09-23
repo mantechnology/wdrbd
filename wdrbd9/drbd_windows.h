@@ -1271,6 +1271,9 @@ extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
 extern NTSTATUS FsctlFlushVolume(unsigned int minor);
 extern NTSTATUS FsctlCreateVolume(unsigned int minor);
+// DW-844
+extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
+extern BOOLEAN isFastInitialSync();
 #endif
 
 extern

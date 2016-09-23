@@ -4126,11 +4126,24 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		    is_resync_running(device))
 			return 0;
 
+#ifdef _WIN32
+		// DW-844: check if fast sync is enalbed every time we do initial sync.
+		// set out-of-sync for allocated clusters.			
+		if (!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device))
+		{			
+			drbd_info(peer_device, "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");			
+			if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
+				BM_LOCK_CLEAR | BM_LOCK_BULK, peer_device))
+				return -1;			
+		}
+#else
 		drbd_info(peer_device,
 			  "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");
 		if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
 					BM_LOCK_CLEAR | BM_LOCK_BULK, peer_device))
 			return -1;
+#endif
 	}
 	return 0;
 }
@@ -4142,6 +4155,9 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	struct drbd_device *device = peer_device->device;
 	enum drbd_role role = peer_device->device->resource->role[NOW];
 	enum drbd_repl_state rv;
+#ifdef _WIN32
+	unsigned long irq_flags;
+#endif
 
 	if (hg == 1 || hg == -1) {
 		if (role == R_PRIMARY || peer_role == R_PRIMARY) {
@@ -4157,8 +4173,6 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 		// it repeatedly tries sync if CRASHED_PRIMARY bit is set and can't get sync, need to clear it and make it outdated.
 		else if (hg == -1)
 		{
-			unsigned long irq_flags;
-
 			drbd_info(device, "I am crashed primary, but could not get sync. clear bit and get sync later\n");
 			clear_bit(CRASHED_PRIMARY, &device->flags);
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
@@ -4175,6 +4189,16 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 		(role != R_PRIMARY && peer_role != R_PRIMARY))
 	{
 		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
+
+		// DW-1172 If DISCARD_MY_DATA bit is set, to change the disk_state as Inconsistent.
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+		{
+			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+			if (device->disk_state[NOW] > D_INCONSISTENT)
+				__change_disk_state(device, D_INCONSISTENT);
+			end_state_change(device->resource, &irq_flags);
+
+		}		
 		rv = L_ESTABLISHED;
 		return rv;
 	}
