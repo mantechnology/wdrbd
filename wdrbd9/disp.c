@@ -413,7 +413,7 @@ mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
 	drbd_cleanup_by_win_shutdown(VolumeExtension);
-	
+
     return mvolSendToNextDriver(DeviceObject, Irp);
     //status = mvolRunIrpSynchronous(DeviceObject, Irp); // DW-1146 disable cleaunup logic. for some case, hang occurred while shutdown
 	//return status;

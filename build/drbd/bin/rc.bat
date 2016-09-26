@@ -76,7 +76,7 @@ for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
 	drbdadm sh-dev %%a > tmp_vol.txt
 REM MVL
 REM for /f "usebackq tokens=*"  %%b in (tmp_vol.txt) do ..\mvl\vollock /l %%b:
-REM for /f "usebackq tokens=*"  %%b in (tmp_vol.txt) do drbdcon /df %%b
+REM	for /f "usebackq tokens=*"  %%b in (tmp_vol.txt) do drbdcon /df %%b
 	del tmp_vol.txt
 
 	drbdsetup %%a  down
