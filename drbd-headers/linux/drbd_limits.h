@@ -151,7 +151,11 @@
 #define DRBD_RESYNC_RATE_MIN 1
 /* channel bonding 10 GbE, or other hardware */
 #define DRBD_RESYNC_RATE_MAX (4 << 20)
+#ifdef _WIN32 // DW-1188 we need to adjust resync-rate in normal 1G network.
+#define DRBD_RESYNC_RATE_DEF (100*1024)
+#else
 #define DRBD_RESYNC_RATE_DEF 250
+#endif
 #define DRBD_RESYNC_RATE_SCALE 'k'  /* kilobytes */
 
   /* less than 67 would hit performance unnecessarily. */
