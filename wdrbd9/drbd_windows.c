@@ -2154,13 +2154,13 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 	}
 #endif
 
+	n = idp->layers * IDR_BITS;
+	max = 1 << n;
 	p = rcu_dereference_raw(idp->top);
 	if (!p)
 		return NULL;
-	n = (p->layer + 1) * IDR_BITS;
-	max = idr_max(p->layer + 1);
 
-	while (id >= 0 && id <= max) {
+	while (id < max) {
 		while (n > 0 && p) {
 			n -= IDR_BITS;
 			*paa++ = p;
@@ -2170,10 +2170,9 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 		if (p) {
 			*nextidp = id;
 			return p;
-
 		}
 
-		id = round_up(id + 1, 1 << n);
+		id += 1 << n;
 		while (n < fls(id)) {
 			n += IDR_BITS;
 			p = *--paa;
