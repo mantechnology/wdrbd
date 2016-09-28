@@ -859,11 +859,6 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			return true;
 		if (bm_e_weight(peer_device, rs_enr) == 0)
 			return true;
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-955: Need to send peer_in_sync to Established and UpToDate node.
-		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
-			return true;
-#endif
 	} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
 		peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 		bool rv = false;
