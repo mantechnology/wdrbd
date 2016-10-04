@@ -1572,8 +1572,23 @@ static void sanitize_state(struct drbd_resource *resource)
 			// DW-1159: aboring resync on behind is necessary, behind need to receive primary's state transition to go synctarget.
 			if ((peer_role[NEW] != R_PRIMARY && (repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND)) ||
 				(role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_SOURCE))
-			{
-				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");
+			{	
+
+				// DW-1163 : clear Primary's bitmap UUID, update Secondary's current UUID when aborting resync.
+				if (repl_state[NEW] == L_SYNC_SOURCE && drbd_bitmap_uuid(peer_device))
+				{
+					_drbd_uuid_set_bitmap(peer_device, 0);
+					drbd_print_uuids(peer_device, "cleared bitmap UUID");
+				}
+				else if ((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND) &&
+					((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) && peer_device->uuids_received)				
+				{
+					_drbd_uuid_set_current(device, peer_device->current_uuid);
+					_drbd_uuid_set_bitmap(peer_device, 0);
+					drbd_print_uuids(peer_device, "updated UUIDs");
+				}
+
+				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");				
 				repl_state[NEW] = L_ESTABLISHED;
 				set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
