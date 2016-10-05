@@ -5925,10 +5925,11 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		return false;
 	}
 
-	// clear all bits before start initial sync.
-	drbd_bitmap_io(device, &drbd_bmio_clear_all_n_write,
-			"clear_n_write from initial sync",
-			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK, NULL);
+	// clear all bits before start initial sync. (clear bits only for this peer device)	
+	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
+	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+	drbd_bm_write(device, NULL);
+	drbd_bm_slot_unlock(peer_device);
 
 	// on the side of secondary, just wait for primary's bitmap.
 	if (device->resource->role[NOW] == R_SECONDARY)
