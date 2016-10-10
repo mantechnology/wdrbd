@@ -1387,6 +1387,17 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	drbd_ping_peer(connection);
 
 	spin_lock_irq(&device->resource->req_lock);
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1198 : If repl_state is L_AHEAD, do not finish resync. Keep the L_AHEAD.
+	if (repl_state[NOW] == L_AHEAD)
+	{
+		put_ldev(device);
+		spin_unlock_irq(&device->resource->req_lock);	
+		return 1;
+	}
+#endif
+	
 	begin_state_change_locked(device->resource, CS_VERBOSE);
 	old_repl_state = repl_state[NOW];
 
