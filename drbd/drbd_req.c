@@ -349,12 +349,15 @@ void drbd_req_destroy(struct kref *kref)
 							send_oos->sector = req->i.sector;
 							send_oos->size = req->i.size;
 							
+							spin_lock_irq(&peer_device->send_oos_lock);
 							list_add_tail(&send_oos->oos_list_head, &peer_device->send_oos_list);
+							spin_unlock_irq(&peer_device->send_oos_lock);
 							queue_work(peer_device->connection->ack_sender, &peer_device->send_oos_work);
 						}
 						else
 						{
-							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u), dropping connection\n", req->i.sector, req->i.size);
+							change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
 						}
 					}
 				}

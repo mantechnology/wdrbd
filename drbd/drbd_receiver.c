@@ -9207,6 +9207,7 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 		container_of(ws, struct drbd_peer_device, send_oos_work);
 	struct drbd_oos_no_req *send_oos, *tmp;
 
+	spin_lock_irq(&peer_device->send_oos_lock);
 	send_oos = list_first_entry(&peer_device->send_oos_list, struct drbd_oos_no_req, oos_list_head);
 
 	while (&send_oos->oos_list_head != &peer_device->send_oos_list)
@@ -9215,7 +9216,11 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 		req.i.sector = send_oos->sector;
 		req.i.size = send_oos->size;
 
+		spin_unlock_irq(&peer_device->send_oos_lock);
+
 		drbd_send_out_of_sync(peer_device, &req);
+
+		spin_lock_irq(&peer_device->send_oos_lock);
 		
 		tmp = list_next_entry(struct drbd_oos_no_req, send_oos, oos_list_head);
 
@@ -9224,6 +9229,7 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 
 		send_oos = tmp;
 	}
+	spin_unlock_irq(&peer_device->send_oos_lock);
 }
 #endif
 
