@@ -1408,6 +1408,7 @@ struct drbd_peer_device {
 	// MODIFIED_BY_MANTECH DW-1191: out-of-sync list and work that will be queued to send.
 	struct list_head send_oos_list;
 	struct work_struct send_oos_work;
+	spinlock_t send_oos_lock;
 #endif
 	struct peer_device_conf *conf; /* RCU, for updates: resource->conf_update */
 	enum drbd_disk_state disk_state[2];
