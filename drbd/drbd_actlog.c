@@ -918,11 +918,6 @@ consider_sending_peers_in_sync(struct drbd_peer_device *peer_device, unsigned in
 			mask |= NODE_MASK(p->node_id);
 	}
 
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-955: I can be both sync source and target, peers might need to remove out-of-sync for me, mask my node.
-	if (mask)
-		mask |= NODE_MASK(device->resource->res_opts.node_id);
-#endif
 	size_sect = min(BM_SECT_PER_EXT,
 			drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
 
@@ -1356,16 +1351,22 @@ bool drbd_set_all_out_of_sync(struct drbd_device *device, sector_t sector, int s
  * @bits:	bit values to use by bitmap index
  * @mask:	bitmap indexes to modify (mask set)
  */
-bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1191: caller needs to determine the peers that oos has been set.
+unsigned long drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   ULONG_PTR bits, ULONG_PTR mask)
 #else
+bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   unsigned long bits, unsigned long mask)
 #endif
 {
 	long set_start, set_end, clear_start, clear_end;
 	sector_t esector, nr_sectors;
+#ifdef _WIN32
+	unsigned long set_bits = 0;
+#else
 	bool set = false;
+#endif
 	struct drbd_peer_device *peer_device;
 #ifndef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
@@ -1427,7 +1428,15 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 			continue;
 
 		if (test_bit(bitmap_index, &bits))
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1191: caller needs to know if the bits has been set at least.
+		{
+			if (update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC) > 0)
+				set_bits |= (1 << bitmap_index);
+		}
+#else
 			update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC);
+#endif
 
 		else if (clear_start <= clear_end)
 			update_sync_bits(peer_device, clear_start, clear_end, SET_IN_SYNC);
@@ -1452,7 +1461,11 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 out:
 	put_ldev(device);
 
+#ifdef _WIN32
+	return set_bits;
+#else
 	return set;
+#endif
 }
 
 static

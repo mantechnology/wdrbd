@@ -322,16 +322,46 @@ void drbd_req_destroy(struct kref *kref)
 					else
 						clear_bit(bitmap_index, &mask);
 				}
-#ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-1012: Setting out-of-sync with out-of-sync related request breaks consistency of out-of-sync between nodes, prevent it by clearing mask.
-				else if (!(rq_state & RQ_EXP_BARR_ACK))
-				{
-					int bitmap_index = peer_md[node_id].bitmap_index;
-					clear_bit(bitmap_index, &mask);
-				}
-#endif
 			}
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1191: this req needs to go into bitmap, and notify peer if possible.
+			ULONG_PTR set_bits = 0;
+			
+			set_bits = drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);			
+			if (set_bits)
+			{
+				for_each_peer_device(peer_device, device) {
+					int bitmap_index = peer_device->bitmap_index;
+
+					if (test_bit(bitmap_index, &set_bits) &&
+						peer_device->connection->cstate[NOW] >= C_CONNECTED)
+					{
+						/* DW-1191: sending out-of-sync isn't available since we need to acquire mutex to prepare command and caller acquired spin lock.
+								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
+						struct drbd_oos_no_req* send_oos = NULL;
+
+						drbd_warn(peer_device, "found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+
+						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
+						if (send_oos)
+						{
+							INIT_LIST_HEAD(&send_oos->oos_list_head);
+							send_oos->sector = req->i.sector;
+							send_oos->size = req->i.size;
+							
+							list_add_tail(&send_oos->oos_list_head, &peer_device->send_oos_list);
+							queue_work(peer_device->connection->ack_sender, &peer_device->send_oos_work);
+						}
+						else
+						{
+							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+						}
+					}
+				}
+			}
+#else
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
+#endif
 			put_ldev(device);
 		}
 
@@ -1631,15 +1661,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 #endif
 
 		if (!remote && !send_oos)
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1030: If request won't be replicated or sent as out-of-sync, set this as out-of-sync to do resync when it reconnects.
-		{
-			drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
 			continue;
-		}
-#else
-			continue;
-#endif
 
 		D_ASSERT(device, !(remote && send_oos));
 

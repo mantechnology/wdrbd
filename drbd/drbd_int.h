@@ -687,6 +687,15 @@ struct drbd_request {
 	unsigned rq_state[1 + DRBD_NODE_ID_MAX];
 };
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1191: out-of-sync information that doesn't rely on drbd request.
+struct drbd_oos_no_req{
+	struct list_head oos_list_head;
+	sector_t sector;
+	unsigned int size;
+};
+#endif
+
 struct drbd_epoch {
 	struct drbd_connection *connection;
 	struct list_head list;
@@ -1395,6 +1404,11 @@ struct drbd_peer_device {
 	struct drbd_device *device;
 	struct drbd_connection *connection;
 	struct work_struct send_acks_work;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1191: out-of-sync list and work that will be queued to send.
+	struct list_head send_oos_list;
+	struct work_struct send_oos_work;
+#endif
 	struct peer_device_conf *conf; /* RCU, for updates: resource->conf_update */
 	enum drbd_disk_state disk_state[2];
 	enum drbd_repl_state repl_state[2];
@@ -2441,6 +2455,9 @@ extern int drbd_ack_receiver(struct drbd_thread *thi);
 extern void drbd_send_ping_wf(struct work_struct *ws);
 extern void drbd_send_acks_wf(struct work_struct *ws);
 extern void drbd_send_peer_ack_wf(struct work_struct *ws);
+#ifdef _WIN32
+extern void drbd_send_out_of_sync_wf(struct work_struct *ws);
+#endif
 extern bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *);
 extern bool drbd_rs_should_slow_down(struct drbd_peer_device *, sector_t,
 				     bool throttle_if_app_is_waiting);
@@ -2597,7 +2614,7 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 #endif
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
-extern bool drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
 extern int update_sync_bits(struct drbd_peer_device *peer_device,
 	unsigned long sbnr, unsigned long ebnr, enum update_sync_bits_mode mode);
 #else
