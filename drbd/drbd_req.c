@@ -356,7 +356,8 @@ void drbd_req_destroy(struct kref *kref)
 						}
 						else
 						{
-							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u), dropping connection\n", req->i.sector, req->i.size);
+							change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
 						}
 					}
 				}
