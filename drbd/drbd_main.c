@@ -4184,6 +4184,12 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	INIT_LIST_HEAD(&peer_device->propagate_uuids_work.list);
 	peer_device->propagate_uuids_work.cb = w_send_uuids;
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1191: to send disappeared out-of-sync which found when req_destroy.
+	INIT_LIST_HEAD(&peer_device->send_oos_list);
+	INIT_WORK(&peer_device->send_oos_work, drbd_send_out_of_sync_wf);
+#endif
+	
 	atomic_set(&peer_device->ap_pending_cnt, 0);
 	atomic_set(&peer_device->unacked_cnt, 0);
 	atomic_set(&peer_device->rs_pending_cnt, 0);
