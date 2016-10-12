@@ -109,6 +109,7 @@ enum
 #define gfp_t					int
 
 #define atomic_t				int
+#define atomic_t64				LONGLONG
 
 #define WARN_ON(x)				__noop
 #define ATOMIC_INIT(i)			(i)
@@ -845,15 +846,24 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define atomic_inc(_v)			atomic_inc_return(_v)
 #define atomic_dec(_v)			atomic_dec_return(_v)
 
+#define	atomic_inc_return64(_p)		InterlockedIncrement64((unsigned long long volatile*)(_p))
+#define	atomic_dec_return64(_p)		InterlockedDecrement64((unsigned long long volatile*)(_p))
+#define atomic_inc64(_v)		atomic_inc_return64(_v)
+#define atomic_dec64(_v)		atomic_dec_return64(_v)
+
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
 extern void atomic_add(int i, atomic_t *v);
+extern void atomic_add64(LONGLONG a, atomic_t64 *v);
 extern void atomic_sub(int i, atomic_t *v);
+extern void atomic_sub64(LONGLONG a, atomic_t64 *v);
 extern int atomic_sub_return(int i, atomic_t *v); 
+extern LONGLONG atomic_sub_return64(LONGLONG a, atomic_t64 *v);
 extern int atomic_dec_and_test(atomic_t *v);
 extern int atomic_sub_and_test(int i, atomic_t *v);
 extern int atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
+extern LONGLONG atomic_read64(const atomic_t64 *v);
 extern int atomic_xchg(atomic_t *v, int n);
 
 // from rcu_list.h

@@ -111,6 +111,11 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
+extern atomic_t64 g_total_req_buf_bytes;
+#endif
+
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -3265,10 +3270,28 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 {
 	bool rv = false;
 	unsigned int nr_requests;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
+	LONGLONG req_buf_size_max;
+#endif
 
 	spin_lock_irq(&device->resource->req_lock);
 	nr_requests = device->resource->res_opts.nr_requests;
 	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
+	req_buf_size_max = (device->resource->res_opts.req_buf_size << 10);	// convert to byte
+	req_buf_size_max != 0 ? req_buf_size_max : 1 << 30;	// use 1gb if value is invalid.
+
+	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
+	{		
+		if (drbd_ratelimit())
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory.\n");
+		rv = false;
+	}
+#endif
+
 	if (rv)
 		atomic_inc(&device->ap_bio_cnt[rw]);
 	spin_unlock_irq(&device->resource->req_lock);

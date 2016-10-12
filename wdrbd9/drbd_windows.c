@@ -348,9 +348,19 @@ void atomic_add(int i, atomic_t *v)
 	InterlockedExchangeAdd((long *)v, i);
 }
 
+void atomic_add64(LONGLONG a, atomic_t64 *v)
+{
+	InterlockedExchangeAdd64((LONGLONG*)v, a);
+}
+
 void atomic_sub(int i, atomic_t *v)
 {
 	atomic_sub_return(i, v);
+}
+
+void atomic_sub64(LONGLONG a, atomic_t64 *v)
+{
+	atomic_sub_return64(a, v);
 }
 
 int atomic_sub_return(int i, atomic_t *v)
@@ -358,6 +368,14 @@ int atomic_sub_return(int i, atomic_t *v)
 	int retval;
 	retval = InterlockedExchangeAdd((LONG*)v, -i);
 	retval -= i;
+	return retval;
+}
+
+LONGLONG atomic_sub_return64(LONGLONG a, atomic_t64 *v)
+{
+	LONGLONG retval;
+	retval = InterlockedExchangeAdd64((LONGLONG*)v, -a);
+	retval -= a;
 	return retval;
 }
 
@@ -387,6 +405,11 @@ int atomic_xchg(atomic_t *v, int n)
 int atomic_read(const atomic_t *v)
 {
 	return InterlockedAnd((LONG*)v, 0xffffffff);
+}
+
+LONGLONG atomic_read64(const atomic_t64 *v)
+{
+	return InterlockedAnd64((LONGLONG*)v, 0xffffffffffffffff);
 }
 
 void * kmalloc(int size, int flag, ULONG Tag)
