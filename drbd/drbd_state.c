@@ -388,15 +388,21 @@ static enum drbd_state_rv try_state_change(struct drbd_resource *resource)
 }
 
 static void __clear_remote_state_change(struct drbd_resource *resource) {
+	struct drbd_connection *connection, *tmp;
+
 	resource->remote_state_change = false;
 	resource->twopc_reply.initiator_node_id = -1;
 	resource->twopc_reply.tid = 0;
-	if (resource->twopc_parent) {
-		kref_debug_put(&resource->twopc_parent->kref_debug, 9);
-		kref_put(&resource->twopc_parent->kref,
-			 drbd_destroy_connection);
-		resource->twopc_parent = NULL;
+#ifdef _WIN32
+	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#else
+	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#endif
+		kref_debug_put(&connection->kref_debug, 9);
+		kref_put(&connection->kref, drbd_destroy_connection);
 	}
+	INIT_LIST_HEAD(&resource->twopc_parents);
+	
 	wake_up(&resource->twopc_wait);
 	queue_queued_twopc(resource);
 }
@@ -1566,8 +1572,23 @@ static void sanitize_state(struct drbd_resource *resource)
 			// DW-1159: aboring resync on behind is necessary, behind need to receive primary's state transition to go synctarget.
 			if ((peer_role[NEW] != R_PRIMARY && (repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND)) ||
 				(role[NEW] != R_PRIMARY && repl_state[NEW] == L_SYNC_SOURCE))
-			{
-				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");
+			{	
+
+				// DW-1163 : clear Primary's bitmap UUID, update Secondary's current UUID when aborting resync.
+				if (repl_state[NEW] == L_SYNC_SOURCE && drbd_bitmap_uuid(peer_device))
+				{
+					_drbd_uuid_set_bitmap(peer_device, 0);
+					drbd_print_uuids(peer_device, "cleared bitmap UUID");
+				}
+				else if ((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND) &&
+					((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) && peer_device->uuids_received)				
+				{
+					_drbd_uuid_set_current(device, peer_device->current_uuid);
+					_drbd_uuid_set_bitmap(peer_device, 0);
+					drbd_print_uuids(peer_device, "updated UUIDs");
+				}
+
+				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");				
 				repl_state[NEW] = L_ESTABLISHED;
 				set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
@@ -3060,6 +3081,13 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				   the new UUID right now (not wait for the next write to come in) */
 				drbd_uuid_new_current(device, false);
 			}
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1145: propagate uuid when I got connected with primary and established state.
+			if (repl_state[OLD] < L_ESTABLISHED &&
+				repl_state[NEW] >= L_ESTABLISHED &&
+				peer_role[NEW] == R_PRIMARY)
+				drbd_propagate_uuids(device, ~NODE_MASK(peer_device->node_id));
+#endif
 		}
 
 
@@ -3956,32 +3984,34 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 
 static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cmd)
 {
-	struct drbd_connection *twopc_parent;
+	struct drbd_connection *twopc_parent, *tmp;
 	struct twopc_reply twopc_reply;
+	LIST_HEAD(parents);
 
 	spin_lock_irq(&resource->req_lock);
-	twopc_parent = resource->twopc_parent;
-	resource->twopc_parent = NULL;
+	resource->twopc_prepare_reply_cmd = cmd;
+	list_splice_init(&resource->twopc_parents, &parents);
 	twopc_reply = resource->twopc_reply;
 	resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
-	if (!twopc_reply.tid || !expect(resource, twopc_parent))
+	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents)))
 		return;
 #ifdef _WIN32
-    struct drbd_connection * connection = twopc_parent;
-    drbd_debug(connection, "Nested state change %u result: %s\n",
+    drbd_debug(resource, "Nested state change %u result: %s\n",
         twopc_reply.tid, drbd_packet_name(cmd));
+	list_for_each_entry_safe(struct drbd_connection, twopc_parent, tmp, &parents, twopc_parent_list) {
 #else
 	drbd_debug(twopc_parent, "Nested state change %u result: %s\n",
 		   twopc_reply.tid, drbd_packet_name(cmd));
+	list_for_each_entry_safe(twopc_parent, tmp, &parents, twopc_parent_list) {
 #endif
-	if (twopc_reply.is_disconnect)
-		set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
-
-	drbd_send_twopc_reply(twopc_parent, cmd, &twopc_reply);
-	kref_debug_put(&twopc_parent->kref_debug, 9);
-	kref_put(&twopc_parent->kref, drbd_destroy_connection);
+		if (twopc_reply.is_disconnect)
+			set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
+		drbd_send_twopc_reply(twopc_parent, cmd, &twopc_reply);
+		kref_debug_put(&twopc_parent->kref_debug, 9);
+		kref_put(&twopc_parent->kref, drbd_destroy_connection);
+	}
 	wake_up(&resource->twopc_wait);
 }
 
@@ -4089,6 +4119,53 @@ static bool do_change_role(struct change_context *context, enum change_phase pha
 	       (context->resource->role[NOW] != R_PRIMARY &&
 		context->val.role == R_PRIMARY);
 }
+
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
+enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
+			       enum drbd_role role,
+			       enum chg_state_flags flags,
+			       bool force)
+{
+	struct change_role_context role_context = {
+		.context = {
+			.resource = resource,
+			.vnr = -1,
+			.mask = { { .role = role_MASK } },
+			.val = { { .role = role } },
+			.target_node_id = -1,
+			.flags = flags | CS_SERIALIZE | CS_DONT_RETRY,
+		},
+		.force = force,
+	};
+	enum drbd_state_rv rv;
+	bool got_state_sem = false;
+
+	if (role == R_SECONDARY) {
+		struct drbd_device *device;
+		int vnr;
+
+		if (!(flags & CS_ALREADY_SERIALIZED)) {
+			down(&resource->state_sem);
+			got_state_sem = true;
+			role_context.context.flags |= CS_ALREADY_SERIALIZED;
+		}
+
+        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+			long t = 100;
+			wait_event_timeout(t, device->misc_wait, !atomic_read(&device->ap_bio_cnt[WRITE]), t);
+			if(!t) {
+				if(got_state_sem)
+					up(&resource->state_sem);
+				return SS_TIMEOUT;
+			}
+        }
+	}
+	rv = change_cluster_wide_state(do_change_role, &role_context.context);
+	if (got_state_sem)
+		up(&resource->state_sem);
+	return rv;
+}
+#endif
 
 enum drbd_state_rv change_role(struct drbd_resource *resource,
 			       enum drbd_role role,

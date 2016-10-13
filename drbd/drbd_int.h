@@ -111,6 +111,11 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
+extern atomic_t64 g_total_req_buf_bytes;
+#endif
+
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -687,6 +692,15 @@ struct drbd_request {
 	unsigned rq_state[1 + DRBD_NODE_ID_MAX];
 };
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1191: out-of-sync information that doesn't rely on drbd request.
+struct drbd_oos_no_req{
+	struct list_head oos_list_head;
+	sector_t sector;
+	unsigned int size;
+};
+#endif
+
 struct drbd_epoch {
 	struct drbd_connection *connection;
 	struct list_head list;
@@ -1084,6 +1098,7 @@ enum {
 				 */
 	NEGOTIATION_RESULT_TOUCHED,
 	TWOPC_ABORT_LOCAL,
+	TWOPC_EXECUTED,         /* Commited or aborted */
 	DEVICE_WORK_PENDING,	/* tell worker that some device has pending work */
 	PEER_DEVICE_WORK_PENDING,/* tell worker that some peer_device has pending work */
 	RESOURCE_WORK_PENDING,  /* tell worker that some peer_device has pending work */
@@ -1180,7 +1195,8 @@ struct drbd_resource {
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
 	bool remote_state_change;  /* remote state change in progress */
-	struct drbd_connection *twopc_parent;  /* prepared on behalf of peer */
+	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
+	struct list_head twopc_parents;  /* prepared on behalf of peer */
 	struct twopc_reply twopc_reply;
 	struct timer_list twopc_timer;
 	struct drbd_work twopc_work;
@@ -1376,6 +1392,7 @@ struct drbd_connection {
 	} send;
 
 	unsigned int peer_node_id;
+	struct list_head twopc_parent_list;
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal
 					    implementation might have more members than the
 					    abstract one. */
@@ -1392,6 +1409,12 @@ struct drbd_peer_device {
 	struct drbd_device *device;
 	struct drbd_connection *connection;
 	struct work_struct send_acks_work;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1191: out-of-sync list and work that will be queued to send.
+	struct list_head send_oos_list;
+	struct work_struct send_oos_work;
+	spinlock_t send_oos_lock;
+#endif
 	struct peer_device_conf *conf; /* RCU, for updates: resource->conf_update */
 	enum drbd_disk_state disk_state[2];
 	enum drbd_repl_state repl_state[2];
@@ -1882,6 +1905,10 @@ extern void drbd_md_write(struct drbd_device *device, void *buffer);
 extern void drbd_md_sync(struct drbd_device *device);
 extern void drbd_md_sync_if_dirty(struct drbd_device *device);
 extern int  drbd_md_read(struct drbd_device *device, struct drbd_backing_dev *bdev);
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1145
+extern void drbd_propagate_uuids(struct drbd_device *device, u64 nodes) __must_hold(local);
+#endif
 extern void drbd_uuid_received_new_current(struct drbd_peer_device *, u64 , u64) __must_hold(local);
 extern void drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
@@ -1925,6 +1952,10 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 		char *why, enum bm_flag flags,
 		struct drbd_peer_device *);
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#ifdef _WIN32
+// DW-844
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
@@ -2289,6 +2320,9 @@ extern void resync_after_online_grow(struct drbd_peer_device *);
 extern void drbd_reconsider_queue_parameters(struct drbd_device *device,
 			struct drbd_backing_dev *bdev, struct o_qlim *o);
 extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool);
+#ifdef _WIN32
+extern enum drbd_state_rv drbd_set_secondary_from_shutdown(struct drbd_resource *);
+#endif
 extern bool conn_try_outdate_peer(struct drbd_connection *connection);
 extern void conn_try_outdate_peer_async(struct drbd_connection *connection);
 extern int drbd_khelper(struct drbd_device *, struct drbd_connection *, char *);
@@ -2427,6 +2461,9 @@ extern int drbd_ack_receiver(struct drbd_thread *thi);
 extern void drbd_send_ping_wf(struct work_struct *ws);
 extern void drbd_send_acks_wf(struct work_struct *ws);
 extern void drbd_send_peer_ack_wf(struct work_struct *ws);
+#ifdef _WIN32
+extern void drbd_send_out_of_sync_wf(struct work_struct *ws);
+#endif
 extern bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *);
 extern bool drbd_rs_should_slow_down(struct drbd_peer_device *, sector_t,
 				     bool throttle_if_app_is_waiting);
@@ -2583,7 +2620,9 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 #endif
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
-extern bool drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+extern int update_sync_bits(struct drbd_peer_device *peer_device,
+	unsigned long sbnr, unsigned long ebnr, enum update_sync_bits_mode mode);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
@@ -2888,6 +2927,9 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 }
 
 extern void drbd_flush_workqueue(struct drbd_work_queue *work_queue);
+#ifdef _WIN32
+extern void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue);
+#endif
 
 /* To get the ack_receiver out of the blocking network stack,
  * so it can change its sk_rcvtimeo from idle- to ping-timeout,
@@ -3228,10 +3270,28 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 {
 	bool rv = false;
 	unsigned int nr_requests;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
+	LONGLONG req_buf_size_max;
+#endif
 
 	spin_lock_irq(&device->resource->req_lock);
 	nr_requests = device->resource->res_opts.nr_requests;
 	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
+	req_buf_size_max = ((LONGLONG)device->resource->res_opts.req_buf_size << 10);	// convert to byte
+	req_buf_size_max != 0 ? req_buf_size_max : 1 << 30;	// use 1gb if value is invalid.
+
+	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
+	{		
+		if (drbd_ratelimit())
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+		rv = false;
+	}
+#endif
+
 	if (rv)
 		atomic_inc(&device->ap_bio_cnt[rw]);
 	spin_unlock_irq(&device->resource->req_lock);

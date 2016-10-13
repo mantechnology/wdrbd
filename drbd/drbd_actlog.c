@@ -859,11 +859,6 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			return true;
 		if (bm_e_weight(peer_device, rs_enr) == 0)
 			return true;
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-955: Need to send peer_in_sync to Established and UpToDate node.
-		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
-			return true;
-#endif
 	} else if (peer_device->repl_state[NOW] == L_SYNC_SOURCE ||
 		peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 		bool rv = false;
@@ -923,11 +918,6 @@ consider_sending_peers_in_sync(struct drbd_peer_device *peer_device, unsigned in
 			mask |= NODE_MASK(p->node_id);
 	}
 
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-955: I can be both sync source and target, peers might need to remove out-of-sync for me, mask my node.
-	if (mask)
-		mask |= NODE_MASK(device->resource->res_opts.node_id);
-#endif
 	size_sect = min(BM_SECT_PER_EXT,
 			drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
 
@@ -1192,9 +1182,16 @@ static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_d
 }
 
 
+#ifdef _WIN32
+// DW-844
+int update_sync_bits(struct drbd_peer_device *peer_device,
+		unsigned long sbnr, unsigned long ebnr,
+		enum update_sync_bits_mode mode)
+#else
 static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long sbnr, unsigned long ebnr,
 		enum update_sync_bits_mode mode)
+#endif
 {
 	/*
 	 * We keep a count of set bits per resync-extent in the ->rs_left
@@ -1282,13 +1279,29 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 	}
 
 	if (!get_ldev(device))
+#ifdef _WIN32_DEBUG_OOS
+		// MODIFIED_BY_MANTECH DW-1153: add error log
+	{
+		drbd_err(device, "get_ldev failed, sector(%llu)\n", sector);
 		return 0; /* no disk, no metadata, no bitmap to manipulate bits in */
+	}
+#else
+		return 0; /* no disk, no metadata, no bitmap to manipulate bits in */
+#endif
 
 	nr_sectors = drbd_get_capacity(device->this_bdev);
 	esector = sector + (size >> 9) - 1;
 
 	if (!expect(peer_device, sector < nr_sectors))
+#ifdef _WIN32_DEBUG_OOS
+		// MODIFIED_BY_MANTECH DW-1153: add error log
+	{
+		drbd_err(peer_device, "unexpected error, sector(%llu) < nr_sectors(%llu)\n", sector, nr_sectors);
 		goto out;
+	}
+#else
+		goto out;
+#endif
 	if (!expect(peer_device, esector < nr_sectors))
 		esector = nr_sectors - 1;
 
@@ -1298,7 +1311,15 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 		/* Round up start sector, round down end sector.  We make sure
 		 * we only clear full, aligned, BM_BLOCK_SIZE blocks. */
 		if (unlikely(esector < BM_SECT_PER_BIT-1))
+#ifdef _WIN32_DEBUG_OOS
+			// MODIFIED_BY_MANTECH DW-1153: add error log
+		{
+			drbd_err(peer_device, "unexpected error, sector(%llu), esector(%llu)\n", sector, esector);
 			goto out;
+		}
+#else
+			goto out;
+#endif
 		if (unlikely(esector == (nr_sectors-1)))
 			ebnr = lbnr;
 		else
@@ -1330,16 +1351,22 @@ bool drbd_set_all_out_of_sync(struct drbd_device *device, sector_t sector, int s
  * @bits:	bit values to use by bitmap index
  * @mask:	bitmap indexes to modify (mask set)
  */
-bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1191: caller needs to determine the peers that oos has been set.
+unsigned long drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   ULONG_PTR bits, ULONG_PTR mask)
 #else
+bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   unsigned long bits, unsigned long mask)
 #endif
 {
 	long set_start, set_end, clear_start, clear_end;
 	sector_t esector, nr_sectors;
+#ifdef _WIN32
+	unsigned long set_bits = 0;
+#else
 	bool set = false;
+#endif
 	struct drbd_peer_device *peer_device;
 #ifndef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
@@ -1351,7 +1378,15 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	}
 
 	if (!get_ldev(device))
+#ifdef _WIN32_DEBUG_OOS
+		// MODIFIED_BY_MANTECH DW-1153: add error log
+	{
+		drbd_err(device, "get_ldev failed, sector(%llu)\n", sector);
 		return false; /* no disk, no metadata, no bitmap to set bits in */
+	}
+#else
+		return false; /* no disk, no metadata, no bitmap to set bits in */
+#endif
 #ifdef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
 #endif
@@ -1359,7 +1394,15 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	esector = sector + (size >> 9) - 1;
 
 	if (!expect(device, sector < nr_sectors))
+#ifdef _WIN32_DEBUG_OOS
+		// MODIFIED_BY_MANTECH DW-1153: add error log
+	{
+		drbd_err(device, "unexpected error, sector(%llu) < nr_sectors(%llu)\n", sector, nr_sectors);
 		goto out;
+	}
+#else
+		goto out;
+#endif
 	if (!expect(device, esector < nr_sectors))
 		esector = nr_sectors - 1;
 
@@ -1385,7 +1428,15 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 			continue;
 
 		if (test_bit(bitmap_index, &bits))
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1191: caller needs to know if the bits has been set at least.
+		{
+			if (update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC) > 0)
+				set_bits |= (1 << bitmap_index);
+		}
+#else
 			update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC);
+#endif
 
 		else if (clear_start <= clear_end)
 			update_sync_bits(peer_device, clear_start, clear_end, SET_IN_SYNC);
@@ -1410,7 +1461,11 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 out:
 	put_ldev(device);
 
+#ifdef _WIN32
+	return set_bits;
+#else
 	return set;
+#endif
 }
 
 static

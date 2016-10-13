@@ -35,6 +35,10 @@
 #include "drbd_req.h"
 #endif
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
+atomic_t64 g_total_req_buf_bytes = 0;
+#endif
 
 static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, int size);
 
@@ -103,6 +107,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		return NULL;
 	}
+	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
+	atomic_add64(bio_src->bi_size, &g_total_req_buf_bytes);
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
@@ -110,6 +116,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree(req->req_databuf);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		atomic_sub64(bio_src->bi_size, &g_total_req_buf_bytes);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
@@ -181,6 +189,8 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         {
             // DW-596: required to verify to free req_databuf at this point
             kfree(req->req_databuf);
+			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -322,16 +332,49 @@ void drbd_req_destroy(struct kref *kref)
 					else
 						clear_bit(bitmap_index, &mask);
 				}
-#ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-1012: Setting out-of-sync with out-of-sync related request breaks consistency of out-of-sync between nodes, prevent it by clearing mask.
-				else if (!(rq_state & RQ_EXP_BARR_ACK))
-				{
-					int bitmap_index = peer_md[node_id].bitmap_index;
-					clear_bit(bitmap_index, &mask);
-				}
-#endif
 			}
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1191: this req needs to go into bitmap, and notify peer if possible.
+			ULONG_PTR set_bits = 0;
+			
+			set_bits = drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);			
+			if (set_bits)
+			{
+				for_each_peer_device(peer_device, device) {
+					int bitmap_index = peer_device->bitmap_index;
+
+					if (test_bit(bitmap_index, &set_bits) &&
+						peer_device->connection->cstate[NOW] >= C_CONNECTED)
+					{
+						/* DW-1191: sending out-of-sync isn't available since we need to acquire mutex to prepare command and caller acquired spin lock.
+								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
+						struct drbd_oos_no_req* send_oos = NULL;
+
+						drbd_warn(peer_device, "found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+
+						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
+						if (send_oos)
+						{
+							INIT_LIST_HEAD(&send_oos->oos_list_head);
+							send_oos->sector = req->i.sector;
+							send_oos->size = req->i.size;
+							
+							spin_lock_irq(&peer_device->send_oos_lock);
+							list_add_tail(&send_oos->oos_list_head, &peer_device->send_oos_list);
+							spin_unlock_irq(&peer_device->send_oos_lock);
+							queue_work(peer_device->connection->ack_sender, &peer_device->send_oos_work);
+						}
+						else
+						{
+							drbd_err(peer_device, "could not allocate send_oos for sector(%llu), size(%u), dropping connection\n", req->i.sector, req->i.size);
+							change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+						}
+					}
+				}
+			}
+#else
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
+#endif
 			put_ldev(device);
 		}
 
@@ -375,6 +418,8 @@ void drbd_req_destroy(struct kref *kref)
 				if (peer_ack_req->req_databuf)
 				{
 					kfree(peer_ack_req->req_databuf);
+					// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+					atomic_sub64(peer_ack_req->i.size, &g_total_req_buf_bytes);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 			}
@@ -395,6 +440,8 @@ void drbd_req_destroy(struct kref *kref)
     	if (req->req_databuf)
     	{
     		kfree(req->req_databuf);
+			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }
@@ -1625,16 +1672,13 @@ static int drbd_process_write_request(struct drbd_request *req)
 		remote = drbd_should_do_remote(peer_device, NOW);
 		send_oos = drbd_should_send_out_of_sync(peer_device);
 
-		if (!remote && !send_oos)
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1030: If request won't be replicated or sent as out-of-sync, set this as out-of-sync to do resync when it reconnects.
-		{
-			drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
-			continue;
-		}
-#else
-			continue;
+#ifdef _WIN32_DEBUG_OOS
+		// DW-1153: Write log when process I/O
+		printk("%s["OOS_TRACE_STRING"] req(%p), remote(%d), send_oos(%d), sector(%Iu)\n", KERN_DEBUG_OOS, req, remote, send_oos, req->i.sector);
 #endif
+
+		if (!remote && !send_oos)
+			continue;
 
 		D_ASSERT(device, !(remote && send_oos));
 

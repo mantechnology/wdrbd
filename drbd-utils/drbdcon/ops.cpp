@@ -23,6 +23,9 @@
 #include <tchar.h>
 #include <strsafe.h>
 #include "mvol.h"
+#ifdef _WIN32_DEBUG_OOS
+#include "OosTrace.h"
+#endif
 #include "LogManager.h"
 #include "../../wdrbd_service/drbdService.h"
 
@@ -861,8 +864,10 @@ DWORD CreateLogFromEventLog(LPCSTR pszProviderName)
 	strcpy(tszProviderName, pszProviderName);
 #endif
 
+	_tcscat_s(tszProviderName, MAX_PATH, LOG_FILE_EXT);
+
 	// Get log file full path( [current process path]\[provider name].log )
-	dwStatus = GetLogFilePath(tszProviderName, szLogFilePath);
+	dwStatus = GetCurrentFilePath(tszProviderName, szLogFilePath);
 	if (ERROR_SUCCESS != dwStatus)
 	{
 		_tprintf(_T("could not get log file path, err : %d\n"), dwStatus);
@@ -1018,7 +1023,7 @@ DWORD WriteLogWithRecordBuf(HANDLE hLogFile, LPCTSTR pszProviderName, PBYTE pBuf
 	return dwStatus;
 }
 
-DWORD GetLogFilePath(LPCTSTR pszLogFileName, PTSTR pszLogFileFullPath)
+DWORD GetCurrentFilePath(LPCTSTR pszCurrentFileName, PTSTR pszCurrentFileFullPath)
 {
 	DWORD dwStatus = ERROR_SUCCESS;
 	TCHAR szLogFilePath[MAX_PATH] = _T("");
@@ -1045,11 +1050,10 @@ DWORD GetLogFilePath(LPCTSTR pszLogFileName, PTSTR pszLogFileFullPath)
 	pTemp++;
 	*pTemp = _T('\0');
 
-	// Concatenate [logfilename].[ext]
-	StringCchCat(szLogFilePath, MAX_PATH, pszLogFileName);
-	StringCchCat(szLogFilePath, MAX_PATH, LOG_FILE_EXT);
+	// Concatenate [filename].[ext]
+	StringCchCat(szLogFilePath, MAX_PATH, pszCurrentFileName);
 
-	StringCchCopy(pszLogFileFullPath, MAX_PATH, szLogFilePath);
+	StringCchCopy(pszCurrentFileFullPath, MAX_PATH, szLogFilePath);
 
 	return dwStatus;
 }
@@ -1224,7 +1228,11 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 	BOOL        ret = FALSE;
 
 	if (pLml == NULL ||
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_SVCLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
+#ifdef _WIN32_DEBUG_OOS
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_OOSLOG) ||
+#else
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
+#endif
 		(pLml->nErrLvMin < 0 || pLml->nErrLvMin > 7))
 	{
 		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
@@ -1256,7 +1264,298 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 	return retVal;
 }
 
-DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
+#ifdef _WIN32_DEBUG_OOS
+// DW-1153
+PVOID g_pDrbdBaseAddr;		// base address of loaded drbd.sys
+ULONG g_ulDrbdImageSize;		// image size of loaded drbd.sys
+DWORD64 g_ModuleBase;			// base address of loaded drbd.pdb
+
+// get base address and image size of loaded drbd.sys
+BOOLEAN queryDrbdBase(VOID)
+{
+	DWORD dwSize = 0;
+	NTSTATUS status;
+	PVOID pDrbdAddr = NULL;
+	BOOLEAN bRet = FALSE;
+	PRTL_PROCESS_MODULES ModuleInfo = NULL;
+
+	do	
+	{
+		status = ZwQuerySystemInformation(SystemModuleInformation, NULL, 0, &dwSize);
+
+		if (status != STATUS_INFO_LENGTH_MISMATCH)
+		{
+			break;
+		}
+
+		ModuleInfo = (PRTL_PROCESS_MODULES)malloc(dwSize);
+
+		if (NULL == ModuleInfo)
+		{
+			break;
+		}
+
+		status = ZwQuerySystemInformation(SystemModuleInformation, ModuleInfo, dwSize, &dwSize);
+
+		if (status != STATUS_SUCCESS)
+		{
+			break;
+		}
+
+		// found all loaded system modules.
+
+		for (ULONG i = 0; i<ModuleInfo->NumberOfModules; i++)
+		{
+			PCHAR pFileName = (PCHAR)(ModuleInfo->Modules[i].FullPathName + ModuleInfo->Modules[i].OffsetToFileName);
+			if (strcmp(pFileName, DRBD_DRIVER_NAME) == 0)
+			{
+				// found loaded drbd.sys
+				g_pDrbdBaseAddr = ModuleInfo->Modules[i].ImageBase;
+				g_ulDrbdImageSize = ModuleInfo->Modules[i].ImageSize;
+				bRet = TRUE;
+
+				break;
+			}
+		}
+
+	} while (false);
+			
+	if (NULL != ModuleInfo)
+	{
+		free(ModuleInfo);
+		ModuleInfo = NULL;
+	}
+
+	return bRet;
+}
+
+BOOLEAN GetSymbolFileSize(const TCHAR* pFileName, DWORD& FileSize)
+{
+	BOOLEAN bRet = FALSE;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+
+	if (pFileName == NULL)
+	{
+		_tprintf(_T("filePath is NULL\n"));
+		return FALSE;	
+	}
+
+	do
+	{
+		hFile = CreateFile(pFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			_tprintf(_T("CreateFile failed, %d \n"), GetLastError());
+			break;
+		}
+
+		FileSize = GetFileSize(hFile, NULL);
+		if (FileSize == INVALID_FILE_SIZE)
+		{
+			_tprintf(_T("GetFileSize failed, %d \n"), GetLastError());
+			break;
+		}
+		
+		bRet = TRUE;
+
+	} while (false);
+
+	if (INVALID_HANDLE_VALUE != hFile)
+	{
+		CloseHandle(hFile);
+		hFile = INVALID_HANDLE_VALUE;
+	}
+
+	return bRet;
+}
+
+// 
+BOOLEAN GetFuncNameWithOffset(ULONG ulOffset, PCHAR pszFuncName)
+{
+	BOOLEAN bRet = FALSE;
+	DWORD64 SymAddr = g_ModuleBase + ulOffset;
+	CSymbolInfoPackage sip;
+	DWORD64 Displacement = 0;
+
+	do
+	{
+		bRet = SymFromAddr(GetCurrentProcess(), SymAddr, &Displacement, &sip.si);
+		if (!bRet)
+		{
+			_tprintf(_T("SymFromAddr fail : %d, offset(%Ix)\n"), GetLastError(), ulOffset);
+			break;
+		}
+
+		if (sip.si.Tag != SymTagFunction)
+		{
+			break;
+		}
+
+		sprintf_s(pszFuncName, 50, "%s+0x%x", sip.si.Name, SymAddr - sip.si.Address);
+
+		bRet = TRUE;
+
+	} while (false);
+
+	return bRet;
+}
+
+BOOLEAN GetFuncNameWithAddr(PVOID pAddr, PCHAR pszFuncName)
+{
+	BOOLEAN bRet = FALSE;
+	ULONG_PTR ulOffset = 0;
+
+	ulOffset = (ULONG_PTR)((DWORD64)pAddr - (DWORD64)g_pDrbdBaseAddr);
+	
+	if (ulOffset > g_ulDrbdImageSize)
+	{
+		// address is not in drbd range.
+		return FALSE;
+	}
+
+	bRet = GetFuncNameWithOffset((ULONG)ulOffset, pszFuncName);
+
+	return bRet;
+}
+
+// Convert call stack frame into readable function name.
+VOID ConvertCallStack(PCHAR LogLine)
+{
+	CHAR szDelimiter[2] = FRAME_DELIMITER;
+	PCHAR pTemp = LogLine;
+	CHAR szStackFramesName[MAX_FUNCS_STR_LEN] = "";
+
+	if (LogLine == NULL ||
+		strstr(LogLine, OOS_TRACE_STRING) == NULL ||
+		NULL == strchr(LogLine, szDelimiter[0]))
+	{
+		return;
+	}
+	
+	while ((pTemp = strchr(pTemp, szDelimiter[0])) != NULL)
+	{
+		CHAR szAddr[MAX_FUNC_ADDR_LEN] = "";
+		PVOID dwAddr = 0;
+		CHAR szFuncName[MAX_FUNC_NAME_LEN] = "";
+		pTemp++;
+		PCHAR pEnd = strchr(pTemp, szDelimiter[0]);
+		if (NULL == pEnd)
+		{
+			pEnd = strchr(pTemp, '\0');
+			if (NULL == pEnd)
+			{
+				_tprintf(_T("invalid string!!\n"));
+				continue;
+			}
+		}
+
+		ULONG ulAddrLen = (ULONG)(pEnd - pTemp);
+
+		strncpy_s(szAddr, pTemp, ulAddrLen);
+		sscanf_s(szAddr, "%Ix", &dwAddr);
+
+		strcat_s(szStackFramesName, MAX_FUNCS_STR_LEN, FRAME_DELIMITER);
+		
+		if (TRUE == GetFuncNameWithAddr(dwAddr, szFuncName))
+			strcat_s(szStackFramesName, MAX_FUNCS_STR_LEN, szFuncName);
+		else
+			strcat_s(szStackFramesName, MAX_FUNCS_STR_LEN, szAddr);
+	}
+
+	pTemp = strchr(LogLine, szDelimiter[0]);
+	if (NULL == pTemp)
+	{
+		_tprintf(_T("could not find delimiter from %s\n"), LogLine);
+		return;
+	}
+	
+	*pTemp = '\0';
+	strcat_s(LogLine, MAX_DRBDLOG_BUF, szStackFramesName);	
+}
+
+// initialize out-of-sync trace.
+// 1. get loaded drbd driver address, image size.
+// 2. initialize and load drbd symbol
+BOOLEAN InitOosTrace()
+{
+	BOOLEAN bRet = FALSE;
+	DWORD dwFileSize = 0;
+	DWORD64 BaseAddr = 0x10000000;
+	TCHAR tszDrbdSymbolPath[MAX_PATH] = _T("");
+#ifdef _UNICODE
+	CHAR szDrbdSymbolPath[MAX_PATH] = "";
+#endif
+
+	GetCurrentFilePath(DRBD_SYMBOL_NAME, tszDrbdSymbolPath);
+	
+	do
+	{
+		if (g_pDrbdBaseAddr == NULL &&
+			FALSE == queryDrbdBase())
+		{
+			_tprintf(_T("Failed to initialize drbd base\n"));
+			break;			
+		}
+
+		_tprintf(_T("drbd.sys(%p), imageSize(%x)\n"), g_pDrbdBaseAddr, g_ulDrbdImageSize);
+
+		DWORD Options = 0;
+
+		Options = SymGetOptions();
+		Options |= SYMOPT_DEBUG;
+		Options |= SYMOPT_LOAD_LINES;
+
+		SymSetOptions(Options);
+		
+		if (FALSE == SymInitialize(GetCurrentProcess(), NULL, FALSE))
+		{
+			_tprintf(_T("SymInitialize failed : %d\n"), GetLastError());
+			break;
+		}
+
+		GetSymbolFileSize(tszDrbdSymbolPath, dwFileSize);
+
+		if (0 == dwFileSize)
+		{
+			_tprintf(_T("Symbol file size is zero\n"));
+			break;
+		}
+
+#ifdef _UNICODE
+		if (0 == WideCharToMultiByte(CP_ACP, 0, tszDrbdSymbolPath, -1, (LPSTR)szDrbdSymbolPath, MAX_PATH, NULL, NULL))
+		{
+			_tprintf(_T("Failed to convert wchar to char : %d\n"), GetLastError());
+			break;
+		}
+
+		g_ModuleBase = SymLoadModule64(GetCurrentProcess(), NULL, szDrbdSymbolPath, NULL, BaseAddr, dwFileSize);
+#else
+		g_ModuleBase = SymLoadModule64(GetCurrentProcess(), NULL, tszDrbdSymbolPath, NULL, BaseAddr, dwFileSize);
+#endif
+		if (0 == g_ModuleBase)
+		{
+			_tprintf(_T("SymLoadModule64 failed : %d\n"), GetLastError());
+			break;
+		}
+
+		bRet = TRUE;
+
+	} while (false);
+
+	return bRet;
+}
+
+// initialize out-of-sync trace.
+// 1. unload and clean up drbd symbol
+VOID CleanupOosTrace()
+{
+	::SymUnloadModule64(GetCurrentProcess, g_ModuleBase);
+	::SymCleanup(GetCurrentProcess());
+}
+#endif	// _WIN32_DEBUG_OOS
+
+DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 {
 	HANDLE      hDevice = INVALID_HANDLE_VALUE;
 	DWORD       retVal = ERROR_SUCCESS;
@@ -1264,6 +1563,11 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 	DWORD		dwControlCode = 0;
 	BOOL        ret = FALSE;
 	PDRBD_LOG	pDrbdLog = NULL;
+
+#ifdef _WIN32_DEBUG_OOS
+	if (oosTrace)
+		oosTrace = InitOosTrace();	
+#endif
 
 	// 1. Open MVOL_DEVICE
 	hDevice = OpenDevice(MVOL_DEVICE);
@@ -1291,11 +1595,20 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 		HANDLE hLogFile = INVALID_HANDLE_VALUE;
 		hLogFile = CreateFile(L"drbdService.log", GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hLogFile != INVALID_HANDLE_VALUE) {
+			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
 			if (pDrbdLog->totalcnt <= LOGBUF_MAXCNT) {
-				for (unsigned int i = 0; i < (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
-					//printf("%s", &pDrbdLog->LogBuf[i]);
+				for (unsigned int i = 0; i < (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
 					DWORD dwWritten;
+#ifdef _WIN32_DEBUG_OOS
+					if (oosTrace)
+						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
+#endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
@@ -1307,6 +1620,15 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 				
 				for (unsigned int i = (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i < (LOGBUF_MAXCNT*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
+#ifdef _WIN32_DEBUG_OOS
+					if (oosTrace)
+						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
+#endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
@@ -1314,6 +1636,15 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 
 				for (unsigned int i = 0; i < (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i += MAX_DRBDLOG_BUF) {
 					DWORD dwWritten;
+#ifdef _WIN32_DEBUG_OOS
+					if (oosTrace)
+						ConvertCallStack(&pDrbdLog->LogBuf[i]);
+					else if (NULL != strstr(&pDrbdLog->LogBuf[i], OOS_TRACE_STRING))
+					{
+						// DW-1153: don't write out-of-sync trace log since user doesn't want to see..
+						continue;
+					}
+#endif
 					DWORD len = (DWORD)strlen(&pDrbdLog->LogBuf[i]);
 					WriteFile(hLogFile, &pDrbdLog->LogBuf[i], len - 1, &dwWritten, NULL);
 					WriteFile(hLogFile, "\r\n", 2, &dwWritten, NULL);
@@ -1334,6 +1665,12 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName)
 	if (pDrbdLog) {
 		free(pDrbdLog);
 	}
+#ifdef _WIN32_DEBUG_OOS
+	if (oosTrace){
+		CleanupOosTrace();
+	}
+#endif	
+
 	return retVal;
 }
 

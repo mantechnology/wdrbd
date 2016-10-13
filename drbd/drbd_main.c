@@ -28,6 +28,7 @@
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
+#include <ntifs.h>
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"
 #include <linux-compat/Kernel.h>
@@ -517,8 +518,16 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 				break;
 			if (!(r->rq_state[0] & RQ_WRITE))
 				continue;
+#ifdef _WIN32_MULTI_VOLUME
+			if (!(r->rq_state[idx] & RQ_NET_MASK))
+				continue;
+			// MODIFIED_BY_MANTECH DW-1166 : Check RQ_NET_DONE for multi-volume
+			if (r->rq_state[idx] & RQ_NET_DONE)
+				continue;
+#else
 			/* if (s & RQ_DONE): not expected */
 			/* if (!(s & RQ_NET_MASK)): not expected */
+#endif
 			expect_size++;
 		}
 	}
@@ -1034,6 +1043,30 @@ out:
 	rcu_read_unlock();
 	return device_stable;
 }
+
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1145: it returns true if my disk is consistent with primary's
+bool is_consistent_with_primary(struct drbd_device *device)
+{
+	struct drbd_peer_device *peer_device = NULL;
+	int node_id = -1;
+
+	if (device->disk_state[NOW] != D_UP_TO_DATE)
+		return false;
+
+	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++){
+		peer_device = peer_device_by_node_id(device, node_id);
+		if (!peer_device)
+			continue;
+		if (peer_device->connection->peer_role[NOW] == R_PRIMARY &&
+			peer_device->repl_state[NOW] >= L_ESTABLISHED &&
+			peer_device->uuids_received &&
+			drbd_bm_total_weight(peer_device) == 0)
+			return true;
+	}
+	return false;
+}
+#endif
 
 /**
  * drbd_header_size  -  size of a packet header
@@ -1650,6 +1683,11 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		D_ASSERT(peer_device, node_mask == 0);
 		p->node_mask = cpu_to_be64(authoritative_mask);
 	}
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1145: set UUID_FLAG_CONSISTENT_WITH_PRI if my disk is consistent with primary's
+	if (is_consistent_with_primary(device))
+		uuid_flags |= UUID_FLAG_CONSISTENT_WITH_PRI;
+#endif
 
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
@@ -3314,6 +3352,7 @@ void drbd_destroy_resource(struct kref *kref)
 void drbd_free_resource(struct drbd_resource *resource)
 {
 	struct queued_twopc *q, *q1;
+	struct drbd_connection *connection, *tmp;
 
 	del_timer_sync(&resource->queued_twopc_timer);
 
@@ -3330,10 +3369,14 @@ void drbd_free_resource(struct drbd_resource *resource)
 	spin_unlock_irq(&resource->queued_twopc_lock);
 
 	drbd_thread_stop(&resource->worker);
-	if (resource->twopc_parent) {
-		kref_debug_put(&resource->twopc_parent->kref_debug, 9);
-		kref_put(&resource->twopc_parent->kref,
-			 drbd_destroy_connection);
+
+#ifdef _WIN32
+	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#else
+	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#endif
+		kref_debug_put(&connection->kref_debug, 9);
+		kref_put(&connection->kref, drbd_destroy_connection);
 	}
 #ifdef _WIN32
     if (resource->peer_ack_req)
@@ -3624,6 +3667,20 @@ void drbd_queue_work(struct drbd_work_queue *q, struct drbd_work *w)
 	wake_up(&q->q_wait);
 }
 
+#ifdef _WIN32 // DW-1103 down from kernel with timeout
+void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue)
+{
+	struct completion_work completion_work;
+
+	completion_work.w.cb = w_complete;
+	init_completion(&completion_work.done);
+	drbd_queue_work(work_queue, &completion_work.w);
+    while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
+        WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+    }
+}
+#endif
+
 void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
 {
 	struct completion_work completion_work;
@@ -3859,6 +3916,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	init_waitqueue_head(&resource->state_wait);
 	init_waitqueue_head(&resource->twopc_wait);
 	init_waitqueue_head(&resource->barrier_wait);
+	INIT_LIST_HEAD(&resource->twopc_parents);
 #ifdef _WIN32
     setup_timer(&resource->twopc_timer, twopc_timer_fn, resource);
 #else
@@ -4041,12 +4099,8 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_connection *connection = container_of(kref, struct drbd_connection, kref);
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
-	int vnr, rr;
-
-	rr = drbd_free_peer_reqs(resource, &connection->net_ee, true);
-	if (rr)
-		drbd_err(connection, "%d EEs in net list found!\n", rr);
-
+	int vnr;
+	
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
@@ -4062,7 +4116,6 @@ void drbd_destroy_connection(struct kref *kref)
 	}
 	idr_destroy(&connection->peer_devices);
 
-	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
 	kfree(connection->transport.net_conf);
 	drbd_put_send_buffers(connection);
 	conn_free_crypto(connection);
@@ -4131,6 +4184,13 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	INIT_LIST_HEAD(&peer_device->propagate_uuids_work.list);
 	peer_device->propagate_uuids_work.cb = w_send_uuids;
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1191: to send disappeared out-of-sync which found when req_destroy.
+	INIT_LIST_HEAD(&peer_device->send_oos_list);
+	INIT_WORK(&peer_device->send_oos_work, drbd_send_out_of_sync_wf);
+	spin_lock_init(&peer_device->send_oos_lock);
+#endif
+	
 	atomic_set(&peer_device->ap_pending_cnt, 0);
 	atomic_set(&peer_device->unacked_cnt, 0);
 	atomic_set(&peer_device->rs_pending_cnt, 0);
@@ -4564,7 +4624,7 @@ void del_connect_timer(struct drbd_connection *connection)
 void drbd_put_connection(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
-	int vnr, refs = 1;
+	int vnr, rr, refs = 1;
 
 	del_connect_timer(connection);
 #ifdef _WIN32
@@ -4573,6 +4633,12 @@ void drbd_put_connection(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
 		refs++;
+
+	rr = drbd_free_peer_reqs(connection->resource, &connection->net_ee, true);
+	if (rr)
+		drbd_err(connection, "%d EEs in net list found!\n", rr);
+	drbd_transport_shutdown(connection, DESTROY_TRANSPORT);
+
 	kref_debug_sub(&connection->kref_debug, refs - 1, 3);
 	kref_debug_put(&connection->kref_debug, 10);
 	kref_sub(&connection->kref, refs, drbd_destroy_connection);
@@ -5300,7 +5366,12 @@ void drbd_uuid_new_current_by_user(struct drbd_device *device)
 	}
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1145
+void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
+#else
 static void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
+#endif
 {
 	struct drbd_peer_device *peer_device;
 
@@ -5711,6 +5782,29 @@ clear_flag:
 		}
 		drbd_md_mark_dirty(device);
 	}
+
+	// MODIFIED_BY_MANTECH DW-1145: clear bitmap if peer has consistent disk with primary's, peer will also clear bitmap.
+	if (drbd_bm_total_weight(peer_device) &&
+		peer_device->uuid_flags & UUID_FLAG_CONSISTENT_WITH_PRI &&
+		is_consistent_with_primary(device) &&
+		(peer_device->current_uuid & ~UUID_PRIMARY) ==
+		(drbd_current_uuid(device) & ~UUID_PRIMARY))
+	{
+		int peer_node_id = peer_device->node_id;
+		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
+		if (peer_bm_uuid)
+			_drbd_uuid_push_history(device, peer_bm_uuid);
+		if (peer_md[peer_node_id].bitmap_index != -1)
+		{
+			drbd_info(peer_device, "bitmap will be cleared because peer has consistent disk with primary's\n");
+			forget_bitmap(device, peer_node_id);
+		}
+		drbd_md_mark_dirty(device);
+
+		if (peer_device->dirty_bits)
+			filled = true;
+	}
+
 #else
 	// MODIFIED_BY_MANTECH DW-1099: copying bitmap has a defect, do sync whole out-of-sync until fixed.
 	write_bm |= detect_copy_ops_on_peer(peer_device);
@@ -5759,6 +5853,135 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 
 	return rv;
 }
+
+#ifdef _WIN32
+// DW-844
+#define GetBitPos(bytes, bitsInByte)	((bytes * BITS_PER_BYTE) + bitsInByte)
+			  
+// set out-of-sync from provided bitmap
+ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
+{
+	LONGLONG llStartBit = -1, llEndBit = -1;
+	ULONG_PTR count = 0;
+	PCHAR pByte = NULL;
+	
+	if (NULL == pBitmap ||
+		NULL == pBitmap->Buffer ||
+		NULL == peer_device)
+	{
+		WDRBD_ERROR("Invalid parameter, pBitmap(0x%p), pBitmap->Buffer(0x%p) peer_device(0x%p)\n", pBitmap, pBitmap ? pBitmap->Buffer:NULL, peer_device);
+		return -1;
+	}
+
+	pByte = (PCHAR)pBitmap->Buffer;
+	
+	// find continuously set bits and set out-of-sync.
+	for (LONGLONG llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
+	{
+		for (LONGLONG llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
+		{
+			CHAR pBit = (pByte[llBytePos] >> llBitPosInByte) & 0x1;
+
+			// found first set bit.
+			if (llStartBit == -1 &&
+				pBit == 1)
+			{
+				llStartBit = GetBitPos(llBytePos, llBitPosInByte);
+				continue;
+			}
+
+			// found last set bit. set out-of-sync.
+			if (llStartBit != -1 &&
+				pBit == 0)
+			{
+				llEndBit = GetBitPos(llBytePos, llBitPosInByte) - 1;
+				count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
+
+				llStartBit = -1;
+				llEndBit = -1;
+				continue;
+			}
+		}
+	}
+
+	// met last bit while finding zero bit.
+	if (llStartBit != -1)
+	{
+		llEndBit = pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
+
+		llStartBit = -1;
+		llEndBit = -1;
+	}
+
+	return count;
+}
+
+// set out-of-sync for allocated clusters.
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device)
+{
+	bool bRet = false;
+	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
+	ULONG ulBitmapSize = 0;
+	ULONG_PTR count = 0;
+
+	if (NULL == device ||
+		NULL == peer_device)
+	{
+		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p)\n", device, peer_device);
+		return false;
+	}
+
+	// clear all bits before start initial sync. (clear bits only for this peer device)	
+	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
+	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+	drbd_bm_write(device, NULL);
+	drbd_bm_slot_unlock(peer_device);
+
+	// on the side of secondary, just wait for primary's bitmap.
+	if (device->resource->role[NOW] == R_SECONDARY)
+	{
+		WDRBD_INFO("I am a secondary, wait to receive primary's bitmap\n");
+		return true;
+	}
+
+	drbd_info(peer_device, "Writing the bitmap for allocated clusters.\n");
+
+	do
+	{
+		// Get volume bitmap which is converted into 4kb cluster unit.
+		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
+		if (NULL == pBitmap)
+		{
+			WDRBD_ERROR("Could not get bitmap for drbd\n");
+			break;
+		}
+
+		// Set out-of-sync for allocated cluster.
+		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
+		count = SetOOSFromBitmap(pBitmap, peer_device);		
+		drbd_bm_unlock(device);
+
+		if (count == -1)
+		{
+			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+			break;
+		}
+		
+		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT-10)));
+		bRet = true;
+
+	} while (false);
+
+	if (pBitmap)
+	{
+		ExFreePool(pBitmap);
+		pBitmap = NULL;
+	}
+
+	return bRet;
+}
+#endif	// _WIN32
 
 /**
  * drbd_bmio_clear_all_n_write() - io_fn for drbd_queue_bitmap_io() or drbd_bitmap_io()

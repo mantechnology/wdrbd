@@ -80,6 +80,9 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
+#ifdef _WIN32_DEBUG_OOS
+#define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
+#endif
 
 enum
 {
@@ -106,6 +109,7 @@ enum
 #define gfp_t					int
 
 #define atomic_t				int
+#define atomic_t64				LONGLONG
 
 #define WARN_ON(x)				__noop
 #define ATOMIC_INIT(i)			(i)
@@ -309,16 +313,23 @@ typedef unsigned int                fmode_t;
 
 extern atomic_t g_eventlog_lv_min;
 extern atomic_t g_dbglog_lv_min;
+#ifdef _WIN32_DEBUG_OOS
+extern atomic_t g_oos_trace;
+#endif
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
 /* Log level value is 32-bit integer
    00000000 00000000 00000000 00000000
-								   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-							| ||	   3 bit between 6 ~ 8 indicates debug print log level (0 ~ 7)
+                                   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
+                                |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
+                               |	   1 bit on 6 indicates if oos is being traced. (0 or 1), it is valid only when _WIN32_DEBUG_OOS is defined.
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
 #define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
+#ifdef _WIN32_DEBUG_OOS
+#define LOG_LV_BIT_POS_OOS_TRACE	(LOG_LV_BIT_POS_DBG + 3)
+#endif
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
@@ -327,12 +338,22 @@ extern atomic_t g_dbglog_lv_min;
 
 #define LOG_LV_MASK			0x7
 
+#ifdef _WIN32_DEBUG_OOS
+#define Set_log_lv(log_level) \
+	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
+	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
+	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1);
+
+#define Get_log_lv() \
+	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_oos_trace) << LOG_LV_BIT_POS_OOS_TRACE)
+#else
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
 
 #define Get_log_lv() \
 	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
+#endif
 
 
 #define MAX_TEXT_BUF                256
@@ -349,6 +370,9 @@ extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
+#ifdef _WIN32_DEBUG_OOS
+extern VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+#endif
 
 #ifdef _WIN32_EVENTLOG
 #define wdrbd_logger_init()		printk_init();
@@ -822,15 +846,24 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define atomic_inc(_v)			atomic_inc_return(_v)
 #define atomic_dec(_v)			atomic_dec_return(_v)
 
+#define	atomic_inc_return64(_p)		InterlockedIncrement64((unsigned long long volatile*)(_p))
+#define	atomic_dec_return64(_p)		InterlockedDecrement64((unsigned long long volatile*)(_p))
+#define atomic_inc64(_v)		atomic_inc_return64(_v)
+#define atomic_dec64(_v)		atomic_dec_return64(_v)
+
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
 extern void atomic_add(int i, atomic_t *v);
+extern void atomic_add64(LONGLONG a, atomic_t64 *v);
 extern void atomic_sub(int i, atomic_t *v);
+extern void atomic_sub64(LONGLONG a, atomic_t64 *v);
 extern int atomic_sub_return(int i, atomic_t *v); 
+extern LONGLONG atomic_sub_return64(LONGLONG a, atomic_t64 *v);
 extern int atomic_dec_and_test(atomic_t *v);
 extern int atomic_sub_and_test(int i, atomic_t *v);
 extern int atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
+extern LONGLONG atomic_read64(const atomic_t64 *v);
 extern int atomic_xchg(atomic_t *v, int n);
 
 // from rcu_list.h
@@ -1248,6 +1281,9 @@ extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
 extern NTSTATUS FsctlFlushVolume(unsigned int minor);
 extern NTSTATUS FsctlCreateVolume(unsigned int minor);
+// DW-844
+extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
+extern BOOLEAN isFastInitialSync();
 #endif
 
 extern
@@ -1553,4 +1589,5 @@ BOOLEAN gbShutdown;
 LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
+
 #endif // DRBD_WINDOWS_H
