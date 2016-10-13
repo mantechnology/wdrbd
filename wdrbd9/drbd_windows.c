@@ -46,6 +46,9 @@ int g_daemon_tcp_port;
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
 atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
+#ifdef _WIN32_DEBUG_OOS
+atomic_t g_oos_trace = 0;
+#endif
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;
@@ -345,9 +348,19 @@ void atomic_add(int i, atomic_t *v)
 	InterlockedExchangeAdd((long *)v, i);
 }
 
+void atomic_add64(LONGLONG a, atomic_t64 *v)
+{
+	InterlockedExchangeAdd64((LONGLONG*)v, a);
+}
+
 void atomic_sub(int i, atomic_t *v)
 {
 	atomic_sub_return(i, v);
+}
+
+void atomic_sub64(LONGLONG a, atomic_t64 *v)
+{
+	atomic_sub_return64(a, v);
 }
 
 int atomic_sub_return(int i, atomic_t *v)
@@ -355,6 +368,14 @@ int atomic_sub_return(int i, atomic_t *v)
 	int retval;
 	retval = InterlockedExchangeAdd((LONG*)v, -i);
 	retval -= i;
+	return retval;
+}
+
+LONGLONG atomic_sub_return64(LONGLONG a, atomic_t64 *v)
+{
+	LONGLONG retval;
+	retval = InterlockedExchangeAdd64((LONGLONG*)v, -a);
+	retval -= a;
 	return retval;
 }
 
@@ -384,6 +405,11 @@ int atomic_xchg(atomic_t *v, int n)
 int atomic_read(const atomic_t *v)
 {
 	return InterlockedAnd((LONG*)v, 0xffffffff);
+}
+
+LONGLONG atomic_read64(const atomic_t64 *v)
+{
+	return InterlockedAnd64((LONGLONG*)v, 0xffffffffffffffff);
 }
 
 void * kmalloc(int size, int flag, ULONG Tag)
@@ -2151,13 +2177,13 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 	}
 #endif
 
+	n = idp->layers * IDR_BITS;
+	max = 1 << n;
 	p = rcu_dereference_raw(idp->top);
 	if (!p)
 		return NULL;
-	n = (p->layer + 1) * IDR_BITS;
-	max = idr_max(p->layer + 1);
 
-	while (id >= 0 && id <= max) {
+	while (id < max) {
 		while (n > 0 && p) {
 			n -= IDR_BITS;
 			*paa++ = p;
@@ -2167,10 +2193,9 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 		if (p) {
 			*nextidp = id;
 			return p;
-
 		}
 
-		id = round_up(id + 1, 1 << n);
+		id += 1 << n;
 		while (n < fls(id)) {
 			n += IDR_BITS;
 			p = *--paa;

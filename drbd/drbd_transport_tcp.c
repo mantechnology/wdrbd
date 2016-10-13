@@ -212,7 +212,7 @@ static void dtt_free_one_sock(struct socket *socket)
 #ifndef _WIN32
 		synchronize_rcu();
 #endif
-		kernel_sock_shutdown(socket, SHUT_RDWR);
+
 #ifdef _WIN32_SEND_BUFFING
         struct _buffering_attr *attr = &socket->buffering_attr;
         if (attr->send_buf_thread_handle)
@@ -222,6 +222,8 @@ static void dtt_free_one_sock(struct socket *socket)
             attr->send_buf_thread_handle = NULL;
         }
 #endif
+		// DW-1173: shut the socket down after send buf thread goes down.
+		kernel_sock_shutdown(socket, SHUT_RDWR);
 		sock_release(socket);
 	}
 }

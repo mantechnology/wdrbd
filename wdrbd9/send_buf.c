@@ -266,7 +266,7 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 		ret = SendEx(pReuseIrp, sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event);
 #else
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
-		ret = SendAsync(sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event, NULL, 0);
+		ret = SendAsync(sock, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
 #endif
 		if (ret != tx_sz) {
 			if (ret < 0) {

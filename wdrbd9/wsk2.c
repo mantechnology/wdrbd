@@ -701,7 +701,6 @@ SendAsync(
 	__in ULONG			BufferSize,
 	__in ULONG			Flags,
 	__in ULONG			Timeout,
-	__in KEVENT			*send_buf_kill_event,
 	__in struct			drbd_transport *transport,
 	__in enum			drbd_stream stream
 )
@@ -750,14 +749,10 @@ SendAsync(
 		}
 		{
 			//struct      task_struct *thread = current;
-			PVOID       waitObjects[2];
-			int         wObjCount = 2;
 			int 		retry_count = 0;
-
-			waitObjects[0] = (PVOID) &CompletionEvent;
-			waitObjects[1] = (PVOID) send_buf_kill_event;
 $retry:			
-			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
+			// DW-1173: do not wait for send_buf_kill_event, we need to send all items queued before cleaning up.
+			Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
 			switch (Status) {
 			case STATUS_TIMEOUT:
 				// DW-1095 adjust retry_count logic 
@@ -772,7 +767,7 @@ $retry:
 				//BytesSent = -EAGAIN;
 				break;
 
-			case STATUS_WAIT_0:
+			case STATUS_SUCCESS:
 				if (NT_SUCCESS(Irp->IoStatus.Status))
 				{
 					BytesSent = (LONG)Irp->IoStatus.Information;
@@ -793,15 +788,6 @@ $retry:
 							break;
 					}
 				}
-				break;
-
-			case STATUS_WAIT_1: // common: sender or send_bufferinf thread's kill signal
-				DbgPrint("DRBD_TEST: receiveed kill signal, cancel IRP");
-				IoCancelIrp(Irp);
-				DbgPrint("DRBD_TEST: wait for IPR cancel");
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				DbgPrint("DRBD_TEST: IPR cancel done");
-				BytesSent = -EINTR;
 				break;
 
 			default:

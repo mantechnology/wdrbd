@@ -158,6 +158,9 @@
     <ClInclude Include="drbdcon\LogManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="drbdcon\OosTrace.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="user\shared_prereqs.mk">
