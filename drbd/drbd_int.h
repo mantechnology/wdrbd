@@ -37,6 +37,7 @@
 #include "linux/drbd_genl_api.h"
 #include "windows/drbd.h"
 #include "linux/drbd_config.h"
+#include "linux/drbd_limits.h"
 #else
 #include <linux/compiler.h>
 #include <linux/types.h>
@@ -3282,8 +3283,13 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
 	req_buf_size_max = ((LONGLONG)device->resource->res_opts.req_buf_size << 10);	// convert to byte
-	req_buf_size_max != 0 ? req_buf_size_max : 1 << 30;	// use 1gb if value is invalid.
-
+	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
+		req_buf_size_max > ((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
+	{
+		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
+		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);	// use default if value is invalid.	
+	}
+	
 	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
 	{		
 		if (drbd_ratelimit())
