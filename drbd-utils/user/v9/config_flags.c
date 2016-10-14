@@ -865,10 +865,6 @@ struct context_def resource_options_ctx = {
 		{ "twopc-retry-timeout", NUMERIC(twopc_retry_timeout, TWOPC_RETRY_TIMEOUT) },
 		{ "auto-promote-timeout", NUMERIC(auto_promote_timeout, AUTO_PROMOTE_TIMEOUT) },
 		{ "max-io-depth", NUMERIC(nr_requests, NR_REQUESTS) },
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-		{ "req-buf-size", NUMERIC(req_buf_size, REQ_BUF_SIZE), .unit = "bytes"},
-#endif
 		{ } },
 };
 

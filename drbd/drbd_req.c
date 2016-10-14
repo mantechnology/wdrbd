@@ -35,11 +35,6 @@
 #include "drbd_req.h"
 #endif
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-atomic_t64 g_total_req_buf_bytes = 0;
-#endif
-
 static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, int size);
 
 #ifndef __disk_stat_inc
@@ -107,8 +102,6 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	//	ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 	//	return NULL;
 	//}
-	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
-	atomic_add64(bio_src->bi_size, &g_total_req_buf_bytes);
 	//memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 	req->req_databuf = bio_src->bio_databuf;
 #endif
@@ -117,8 +110,6 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		//kfree(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(bio_src->bi_size, &g_total_req_buf_bytes);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
@@ -190,8 +181,6 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         {
             // DW-596: required to verify to free req_databuf at this point
             //kfree(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -419,8 +408,6 @@ void drbd_req_destroy(struct kref *kref)
 				if (peer_ack_req->req_databuf)
 				{
 					//kfree(peer_ack_req->req_databuf);
-					// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-					atomic_sub64(peer_ack_req->i.size, &g_total_req_buf_bytes);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 			}
@@ -441,8 +428,6 @@ void drbd_req_destroy(struct kref *kref)
     	if (req->req_databuf)
     	{
     		//kfree(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }
