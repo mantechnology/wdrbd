@@ -329,7 +329,15 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 #ifdef _WIN32
 			// DW-1203 execvp() run with the full path.
 			char path[256];
-			sprintf(path, "%s\\%s", getenv("DRBD_PATH"), argv[0]);
+			char *temp = strdup(argv[0]);
+			char *ptr, *name;
+			// remove /usr/bin/
+			name = ptr = strtok(temp, "/");
+			while (ptr = strtok(NULL, "/"))
+			{
+				name = ptr;
+			}
+			sprintf(path, "%s\\%s", getenv("DRBD_PATH"), name);
 			execvp(path, argv);
 #else
 			execvp(argv[0], argv);
