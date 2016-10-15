@@ -325,7 +325,16 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 				fprintf(stderr, "freopen(/dev/null) failed\n");
 		}
 		if (argv[0])
+		{
+#ifdef _WIN32
+			// DW-1203 execvp() run with the full path.
+			char path[256];
+			sprintf(path, "%s\\%s", getenv("DRBD_PATH"), argv[0]);
+			execvp(path, argv);
+#else
 			execvp(argv[0], argv);
+#endif
+		}
 #ifdef _WIN32
 		fprintf(stderr, "Can not exec %s\n", argv[0]);
 		perror("Failed");
