@@ -1519,6 +1519,10 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 	on_congestion = nc ? nc->on_congestion : OC_BLOCK;
 	rcu_read_unlock();
 	if (on_congestion == OC_BLOCK ||
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1204: peer is already disconnected, no pull ahead
+		connection->cstate[NOW] < C_CONNECTED ||
+#endif
 	    connection->agreed_pro_version < 96)
 		return;
 
