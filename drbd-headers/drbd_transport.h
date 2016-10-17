@@ -94,6 +94,10 @@ enum drbd_tr_hints {
 enum { /* bits in the flags word */
 	NET_CONGESTED,		/* The data socket is congested */
 	RESOLVE_CONFLICTS,	/* Set on one node, cleared on the peer! */
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1204: flag to flush send buffer when disconnecting.
+	DISCONNECT_FLUSH,
+#endif
 };
 
 enum drbd_tr_free_op {

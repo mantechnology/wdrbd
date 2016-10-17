@@ -79,11 +79,6 @@ enum resync_reason {
 	DISKLESS_PRIMARY,
 };
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-extern atomic_t64 g_total_req_buf_bytes;
-#endif
-
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 static int drbd_disconnected(struct drbd_peer_device *);
@@ -7318,23 +7313,33 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct drbd_peer_device *peer_device;
 	struct drbd_device *device;
 	struct p_block_desc *p = pi->data;
+	sector_t sector; 
+	unsigned long bit; 
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
 		return -EIO;
 	device = peer_device->device;
-
+	
+	sector = be64_to_cpu(p->sector); 
 	switch (peer_device->repl_state[NOW]) {
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
 			break;
+	// DW-1205 SyncSource 100% stuck at low bandwith, resolve linbit patching b2bfb5c
+	case L_SYNC_TARGET: 
+		mutex_lock(&device->bm_resync_fo_mutex);
+		bit = BM_SECT_TO_BIT(sector);
+		if (bit < device->bm_resync_fo)
+			device->bm_resync_fo = bit; 
+		mutex_unlock(&device->bm_resync_fo_mutex);
+		break; 
 	default:
 		drbd_err(device, "ASSERT FAILED cstate = %s, expected: WFSyncUUID|WFBitMapT|Behind\n",
 				drbd_repl_str(peer_device->repl_state[NOW]));
 	}
-
-	drbd_set_out_of_sync(peer_device, be64_to_cpu(p->sector), be32_to_cpu(p->blksize));
+	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize)); 
 
 	return 0;
 }
@@ -8218,9 +8223,7 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        kfree(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
+        //kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -8874,9 +8877,7 @@ static void destroy_request(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        kfree(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
+        //kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);

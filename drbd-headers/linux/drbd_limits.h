@@ -274,14 +274,6 @@
 #define DRBD_NR_REQUESTS_MAX	-1U
 #define DRBD_NR_REQUESTS_SCALE	'1'
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size, 512mb ~ 10gb, default : 1gb
-#define DRBD_REQ_BUF_SIZE_MIN		(512 << 10)
-#define DRBD_REQ_BUF_SIZE_DEF		(1024 << 10)
-#define DRBD_REQ_BUF_SIZE_MAX		(10240 << 10)
-#define DRBD_REQ_BUF_SIZE_SCALE		'k'
-#endif
-
 #define DRBD_MAX_BIO_SIZE_DEF	DRBD_MAX_BIO_SIZE
 #define DRBD_MAX_BIO_SIZE_MIN	(1 << 9)
 #define DRBD_MAX_BIO_SIZE_MAX	DRBD_MAX_BIO_SIZE
@@ -307,8 +299,8 @@
 /* Two-phase commit timeout (1/10 seconds). */
 #define DRBD_TWOPC_TIMEOUT_MIN	50
 #define DRBD_TWOPC_TIMEOUT_MAX	600
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-957 adjust 2pc timout default value(300 is so long).
-#define DRBD_TWOPC_TIMEOUT_DEF	100
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1204 adjust 2pc timout default value
+#define DRBD_TWOPC_TIMEOUT_DEF	50
 #else
 #define DRBD_TWOPC_TIMEOUT_DEF	300
 #endif
