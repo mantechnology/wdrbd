@@ -3720,6 +3720,8 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	int retries = 1;
 #ifdef _WIN32
     ULONG_PTR start_time;
+	// MODIFIED_BY_MANTECH DW-1204: twopc is for disconnecting.
+	bool bDisconnecting = false;
 #else
 	unsigned long start_time;
 #endif
@@ -3803,6 +3805,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		}
 		target_connection = connection;
 
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1204: clear disconnect_flush flag when starting twopc and got target connection.
+		clear_bit(DISCONNECT_FLUSH, &target_connection->transport.flags);
+#endif
+
 		/* For connect transactions, add the target node id. */
 		reach_immediately |= NODE_MASK(context->target_node_id);
 	}
@@ -3849,6 +3856,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	} else if (context->mask.conn == conn_MASK && context->val.conn == C_DISCONNECTING) {
 		reply->target_reachable_nodes = NODE_MASK(context->target_node_id);
 		reply->reachable_nodes &= ~reply->target_reachable_nodes;
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1204: this twopc is for disconnecting.
+		bDisconnecting = true;
+#endif
 	} else {
 		reply->target_reachable_nodes = reply->reachable_nodes;
 	}
@@ -3927,6 +3938,28 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			request.primary_nodes = cpu_to_be64(reply->primary_nodes);
 		}
 	}
+	
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1204: sending twopc prepare needs to wait crowded send buffer, takes too much time. no more retry.
+	if (bDisconnecting &&
+		rv == SS_TIMEOUT &&
+		retries >= TWOPC_TIMEOUT_RETRY_COUNT)
+	{
+		drbd_warn(resource, "twopc timeout, no more retry(retry count: %d)\n", retries);
+		
+		if (target_connection) {
+			kref_debug_put(&target_connection->kref_debug, 8);
+			kref_put(&target_connection->kref, drbd_destroy_connection);
+			target_connection = NULL;
+		}
+
+		clear_remote_state_change(resource);
+		end_remote_state_change(resource, &irq_flags, context->flags);
+		context->flags |= CS_HARD;
+		change(context, PH_COMMIT);
+		return end_state_change(resource, &irq_flags);
+	}
+#endif
 
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
@@ -3945,6 +3978,13 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
 		goto retry;
 	}
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1204: twopc prepare has been sent, I must send twopc commit also, need to flush send buffer.
+	if (bDisconnecting &&
+		target_connection)
+		set_bit(DISCONNECT_FLUSH, &target_connection->transport.flags);
+#endif
 
 	if (rv >= SS_SUCCESS)
 		drbd_info(resource, "Committing cluster-wide state change %u (%ums)\n",
