@@ -25,6 +25,11 @@ struct drbd_work;
 #define susp_nod_MASK 1
 #define susp_fen_MASK 1
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1204: maximum retry count for twopc timeout.
+#define TWOPC_TIMEOUT_RETRY_COUNT	2
+#endif
+
 enum chg_state_flags {
 	CS_HARD          = 1 << 0, /* Forced state change, such as a connection loss */
 	CS_VERBOSE       = 1 << 1,

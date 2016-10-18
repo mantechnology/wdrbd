@@ -206,7 +206,13 @@ fail:
 	return -ENOMEM;
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1204: added argument bFlush.
+static void dtt_free_one_sock(struct socket *socket, bool bFlush)
+#else
 static void dtt_free_one_sock(struct socket *socket)
+#endif
+
 {
 	if (socket) {
 #ifndef _WIN32
@@ -214,6 +220,10 @@ static void dtt_free_one_sock(struct socket *socket)
 #endif
 
 #ifdef _WIN32_SEND_BUFFING
+		// MODIFIED_BY_MANTECH DW-1204: flushing send buffer takes too long when network is slow, just shut it down if possible.
+		if (!bFlush)
+			kernel_sock_shutdown(socket, SHUT_RDWR);			
+
         struct _buffering_attr *attr = &socket->buffering_attr;
         if (attr->send_buf_thread_handle)
         {
@@ -221,9 +231,12 @@ static void dtt_free_one_sock(struct socket *socket)
             KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
             attr->send_buf_thread_handle = NULL;
         }
-#endif
+#endif		
+#ifdef _WIN32_SEND_BUFFING
 		// DW-1173: shut the socket down after send buf thread goes down.
-		kernel_sock_shutdown(socket, SHUT_RDWR);
+		if (bFlush)
+#endif
+			kernel_sock_shutdown(socket, SHUT_RDWR);
 		sock_release(socket);
 	}
 }
@@ -239,7 +252,13 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
 		if (tcp_transport->stream[i]) {
+#ifdef _WIN32_SEND_BUFFING
+			// MODIFIED_BY_MANTECH DW-1204: provide boolean if send buffer has to be flushed.
+			dtt_free_one_sock(tcp_transport->stream[i], test_bit(DISCONNECT_FLUSH, &transport->flags));
+			clear_bit(DISCONNECT_FLUSH, &transport->flags);
+#else
 			dtt_free_one_sock(tcp_transport->stream[i]);
+#endif
 			tcp_transport->stream[i] = NULL;
 		}
 	}
