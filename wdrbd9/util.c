@@ -1334,6 +1334,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set read_filter
+#if 0	
 	status = GetRegistryValue(L"read_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_read_filter = *(int*) aucTemp;
@@ -1342,6 +1343,8 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		g_read_filter = 0;
 	}
+#endif
+	g_read_filter = 0;
 
 	//set g_mj_flush_buffers_filter
 	status = GetRegistryValue(L"flush_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
