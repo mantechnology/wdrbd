@@ -4332,6 +4332,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
 	if (!pvext) {
 		err = ERR_NO_DISK;
+		drbd_err(device, "%d: Device has no disk.\n", err);
 		goto out_no_disk;
 	}
 

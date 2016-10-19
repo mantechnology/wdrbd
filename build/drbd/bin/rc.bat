@@ -29,7 +29,9 @@ REM drbdadm -c /etc/drbd.conf adjust-with-progress all
 :wdrbd_start
 ::echo WDRBD Starting ...
 
-drbdadm -c /etc/drbd.conf adjust all
+for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
+	drbdadm -c /etc/drbd.conf adjust %%a
+)
 if %errorlevel% gtr 0 (
 	echo Failed to drbdadm adjust
 	goto end
