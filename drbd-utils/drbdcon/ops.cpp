@@ -1555,7 +1555,7 @@ VOID CleanupOosTrace()
 }
 #endif	// _WIN32_DEBUG_OOS
 
-DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
+DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 {
 	HANDLE      hDevice = INVALID_HANDLE_VALUE;
 	DWORD       retVal = ERROR_SUCCESS;
@@ -1593,7 +1593,7 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 	}
 	else {
 		HANDLE hLogFile = INVALID_HANDLE_VALUE;
-		hLogFile = CreateFile(L"drbdService.log", GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		hLogFile = CreateFileA(pszProviderName, GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hLogFile != INVALID_HANDLE_VALUE) {
 			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
