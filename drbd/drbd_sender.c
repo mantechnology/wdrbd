@@ -1483,6 +1483,13 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 #ifdef _WIN32
 				// MODIFIED_BY_MANTECH DW-1034: we've already had the newest one.
 				((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) &&
+				// MODIFIED_BY_MANTECH DW-1216: no downgrade if uuid flags contains belows because
+				// 1. receiver updates newly created uuid unless it is being gotten sync, downgrading shouldn't(or might not) affect.
+				!(peer_device->uuid_flags & UUID_FLAG_NEW_DATAGEN) &&
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+				// 2. one node goes primary and resync will be started for all secondaries. no downgrading is necessary.
+				!(peer_device->uuid_flags & UUID_FLAG_PROMOTED) &&
+#endif
 #endif
 			    peer_device->uuids_received) {
 				u64 newer = drbd_uuid_resync_finished(peer_device);
