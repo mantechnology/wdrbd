@@ -1627,11 +1627,6 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
 {
     struct task_struct *t;
 
-    if (++ct_thread_num > CT_MAX_THREAD_LIST)
-    {
-        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
-    }
-
     if ((t = kzalloc(sizeof(*t), GFP_KERNEL, Tag)) == NULL)
     {
         return NULL;
@@ -1645,7 +1640,10 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
     }
     strcpy(t->comm, name);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
-    list_add(&t->list, &ct_thread_list);
+	list_add(&t->list, &ct_thread_list);
+	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
+        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
+    }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
 }
