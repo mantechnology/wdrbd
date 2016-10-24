@@ -947,7 +947,7 @@ struct scatterlist {
 #define MINORMASK	0xff
 
 #ifdef _WIN32
-#define BUG()   panic("PANIC!!!")
+#define BUG()   WDRBD_FATAL("warning: failure\n")
 #else
 #define BUG()   WDRBD_FATAL("BUG: failure\n")
 #endif
