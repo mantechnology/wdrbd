@@ -54,12 +54,7 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
-#ifdef _WIN32
-// DW-915 
-#define DRBD_TIMEOUT_DEF 30       /* 3 seconds */
-#else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
-#endif
 #define DRBD_TIMEOUT_SCALE '1'
 
  /* If backing disk takes longer than disk_timeout, mark the disk as failed */
@@ -138,8 +133,8 @@
    * 200 should be more than enough even for very short timeouts */
 #define DRBD_KO_COUNT_MIN  0
 #define DRBD_KO_COUNT_MAX  200
-#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase.
-#define DRBD_KO_COUNT_DEF  3
+#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase. 
+#define DRBD_KO_COUNT_DEF  5 // DW-1208 3 -> 5 
 #else
 #define DRBD_KO_COUNT_DEF  7
 #endif
