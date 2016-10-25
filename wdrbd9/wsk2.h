@@ -19,7 +19,8 @@ NTSTATUS
 InitWskBuffer(
 	__in  PVOID		Buffer,
 	__in  ULONG		BufferSize,
-	__out PWSK_BUF	WskBuffer
+	__out PWSK_BUF	WskBuffer,
+	__in  BOOLEAN	bWriteAccess
 	);
 
 NTSTATUS
