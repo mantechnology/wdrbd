@@ -893,6 +893,9 @@ enum {
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
 	// MODIFIED_BY_MANTECH DW-955: add resync aborted flag to resume it later.
 	RESYNC_ABORTED,			/* Resync has been aborted due to unsyncable (peer)disk state, need to resume it when it goes syncable. */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	PROMOTED_RESYNC,		/* MODIFIED_BY_MANTECH DW-1225: I'm promoted, and there will be no initial sync. Do trigger resync after promotion */
+#endif
 #endif
 };
 
