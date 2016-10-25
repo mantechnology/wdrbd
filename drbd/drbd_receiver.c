@@ -5357,6 +5357,20 @@ static void drbd_resync_after_promotion(struct drbd_peer_device *peer_device, en
 	}
 
 	drbd_info(peer_device, "Becoming %s after one node promoted\n", drbd_repl_str(new_repl_state));
+	
+	// DW-1228: sync as much as set out-of-sync isn't enough for some cases, do initial sync instead.
+	if (new_repl_state == L_WF_BITMAP_S)
+	{
+		int hg, rule_nr, peer_node_id = 0;
+		hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, false);
+
+		if (abs(hg) >= 100 ||
+			abs(hg) == 3)
+		{
+			hg = 3;
+			bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
+		}
+	}
 
 	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
 	if (rv == SS_NOTHING_TO_DO || rv == SS_RESYNC_RUNNING) {
