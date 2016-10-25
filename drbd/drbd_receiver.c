@@ -4199,7 +4199,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
 
 		// DW-1172 If DISCARD_MY_DATA bit is set, to change the disk_state as Inconsistent.
-		if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+		if (hg < 0 && test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		{
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			if (device->disk_state[NOW] > D_INCONSISTENT)
@@ -4428,6 +4428,15 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	}
 
 	if (hg == -100) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1221 : If DISCARD_MY_DATA bit is set on both nodes, dropping connection.
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
+			(peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA)) {
+			drbd_err(connection, "incompatible %s settings\n", "discard-my-data");
+			rcu_read_unlock();
+			return -1;
+		}
+#endif
 		if (test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
 		    !(peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA))
 			hg = -2;
@@ -4440,6 +4449,14 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 			     "Sync from %s node\n",
 			     (hg < 0) ? "peer" : "this");
 	}
+#ifdef _WIN32 
+	//MODIFIED_BY_MANTECH DW-1221 : If Split-Brain not detected, clearing DISCARD_MY_DATA bit.
+	else
+	{
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+			clear_bit(DISCARD_MY_DATA, &peer_device->flags);
+	}
+#endif
 	rr_conflict = nc->rr_conflict;
 	rcu_read_unlock();
 
@@ -4559,10 +4576,13 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 			goto disconnect_rcu_unlock;
 		}
 
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1221 : move to drbd_sync_handshake()
 		if (p_discard_my_data && test_bit(CONN_DISCARD_MY_DATA, &connection->flags)) {
 			drbd_err(connection, "incompatible %s settings\n", "discard-my-data");
 			goto disconnect_rcu_unlock;
 		}
+#endif
 
 		if (p_two_primaries != nc->two_primaries) {
 			drbd_err(connection, "incompatible %s settings\n", "allow-two-primaries");
