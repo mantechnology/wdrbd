@@ -81,7 +81,8 @@ InitWskBuffer(
 	}
 
     try {
-	    MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, IoWriteAccess);
+		// DW-1223: Locking with 'IoWriteAccess' affects buffer, which causes infinite I/O from ntfs when the buffer is from mdl of write IRP. 
+	    MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, IoReadAccess);
     } except(EXCEPTION_EXECUTE_HANDLER) {
         if (WskBuffer->Mdl != NULL) {
             IoFreeMdl(WskBuffer->Mdl);

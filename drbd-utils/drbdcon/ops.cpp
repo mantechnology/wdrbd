@@ -836,6 +836,7 @@ DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force)
             CloseHandle(handle);
         }
     }
+	printf("%c: Volume Dismount Success\n", DriveLetter);
     return ERROR_SUCCESS;
 }
 
