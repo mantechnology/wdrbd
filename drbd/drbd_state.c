@@ -2160,6 +2160,18 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 					}
 				}
 
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+				// MODIFIED_BY_MANTECH DW-1255: if my disk goes uptodate from inconsistent and pdisk is inconsistent, initial sync will be started. Otherwise, start resync after promotion.
+				if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
+					cstate[NOW] >= C_CONNECTED &&					
+					device->disk_state[NEW] >= D_OUTDATED)
+				{
+					if (disk_state[OLD] != D_INCONSISTENT ||
+						disk_state[NEW] != D_UP_TO_DATE ||
+						peer_disk_state[OLD] != D_INCONSISTENT)
+						set_bit(PROMOTED_RESYNC, &peer_device->flags);
+				}
+#endif
 				/* Peer was forced D_UP_TO_DATE & R_PRIMARY, consider to resync */
 				if (disk_state[OLD] == D_INCONSISTENT &&
 				    peer_disk_state[OLD] == D_INCONSISTENT && peer_disk_state[NEW] == D_UP_TO_DATE &&
@@ -3070,12 +3082,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			}
 #endif
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
-			// MODIFIED_BY_MANTECH DW-1148: resync after promotion.
-			if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
-				// MODIFIED_BY_MANTECH DW-1151: must not trigger resync after promotion when initial full sync.
-				drbd_current_uuid(device) != UUID_JUST_CREATED &&
-				device->disk_state[NOW] >= D_OUTDATED)
-				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);
+			// MODIFIED_BY_MANTECH DW-1255: I am promoted, and there will be no initial sync. start resync after promotion.
+			if (test_bit(PROMOTED_RESYNC, &peer_device->flags))
+			{
+				clear_bit(PROMOTED_RESYNC, &peer_device->flags);
+				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);				
+			}
 #endif
 
 			if (peer_disk_state[OLD] == D_UP_TO_DATE &&
