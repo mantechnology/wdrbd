@@ -5,7 +5,7 @@
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
 
-extern int drbd_tla_parse(struct nlmsghdr *nlh);
+extern int drbd_tla_parse(struct nlmsghdr *nlh, struct nlattr **attr);
 
 extern int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_del_resource(struct sk_buff *skb, struct genl_info *info);
@@ -91,11 +91,10 @@ static struct genl_family drbd_genl_family  = {
 
 // globals
 
-struct nlattr *global_attrs[128];
-
-extern struct mutex g_genl_mutex;
-
 static ERESOURCE    genl_multi_socket_res_lock;
+// DW-1229: do not queue too many workitem, we only accept 64 items max.
+static atomic_t			g_Netlink_Count = 0;
+#define NETLINK_COUNT_MAX	64
 
 PTR_ENTRY gSocketList =
 {
@@ -304,7 +303,8 @@ typedef struct _NETLINK_WORK_ITEM{
     PWSK_SOCKET Socket;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
 
-struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
+// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket, struct nlattr **attrs)
 {
     struct genl_info * pinfo = ExAllocateFromNPagedLookasideList(&genl_info_mempool);
 
@@ -321,7 +321,7 @@ struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
     pinfo->nlhdr = nlh;
     pinfo->genlhdr = nlmsg_data(nlh);
     pinfo->userhdr = genlmsg_data(nlmsg_data(nlh));
-    pinfo->attrs = global_attrs;
+    pinfo->attrs = attrs;
     pinfo->snd_seq = nlh->nlmsg_seq;
     pinfo->snd_portid = nlh->nlmsg_pid;
     pinfo->NetlinkSock = socket;
@@ -595,14 +595,17 @@ NetlinkWorkThread(PVOID context)
         if (pinfo)
             ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
 
-        pinfo = genl_info_new(nlh, socket);
+		// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+		struct nlattr *local_attrs[128];
+
+        pinfo = genl_info_new(nlh, socket, local_attrs);
         if (!pinfo)
         {
             WDRBD_ERROR("Failed to allocate (struct genl_info) memory. size(%d)\n", sizeof(struct genl_info));
             goto cleanup;
         }
 
-        drbd_tla_parse(nlh);
+        drbd_tla_parse(nlh, local_attrs);
         if (!nlmsg_ok(nlh, readcount))
         {
             WDRBD_ERROR("rx message(%d) crashed!\n", readcount);
@@ -636,27 +639,16 @@ NetlinkWorkThread(PVOID context)
 
         if (pops)
         {
-			NTSTATUS status = STATUS_UNSUCCESSFUL;
-
             WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
-
-			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_LONG_DEF * 1000);
-
-			if (STATUS_SUCCESS == status)
-            {	
-				err = _genl_ops(pops, pinfo);
-                mutex_unlock(&g_genl_mutex);
-				if (err)
-				{
-					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
-					errcnt++;
-				}
-            }
-            else
-            {
-                WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
-            }
+			
+			
+			err = _genl_ops(pops, pinfo);
+			if (err)
+			{
+				WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
+				errcnt++;
+			}
         }
         else
         {
@@ -683,6 +675,8 @@ cleanup:
     {
         WDRBD_INFO("done\n");
     }
+
+	atomic_dec(&g_Netlink_Count);
 }
 
 // Listening socket callback which is invoked whenever a new connection arrives.
@@ -743,12 +737,22 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 
     netlinkWorkItem->Socket = AcceptSocket;
 
-    ExInitializeWorkItem(&netlinkWorkItem->Item,
-        NetlinkWorkThread,
-        netlinkWorkItem);
+	// DW-1229: do not queue too many workitem, we only accept 64 items max.
+	if (atomic_inc(&g_Netlink_Count) <= NETLINK_COUNT_MAX)
+	{
+		ExInitializeWorkItem(&netlinkWorkItem->Item,
+			NetlinkWorkThread,
+			netlinkWorkItem);
 
-    ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
-
+		ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
+	}
+	else
+	{
+		atomic_dec(&g_Netlink_Count);
+		ExFreeToNPagedLookasideList(&drbd_workitem_mempool, netlinkWorkItem);
+		WDRBD_ERROR("too many netlink request, current(%d), maximum(%d)\n", atomic_read(&g_Netlink_Count), NETLINK_COUNT_MAX);
+		return STATUS_REQUEST_NOT_ACCEPTED;
+	}    
     return STATUS_SUCCESS;
 }
 
