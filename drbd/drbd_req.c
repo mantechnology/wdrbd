@@ -95,21 +95,20 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
-	//req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
-	//if (!req->req_databuf)
-	//{
-	//	WDRBD_ERROR("req->req_databuf failed\n");
-	//	ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-	//	return NULL;
-	//}
-	//memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
-	req->req_databuf = bio_src->bio_databuf;
+	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
+	if (!req->req_databuf)
+	{
+		WDRBD_ERROR("req->req_databuf failed\n");
+		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		return NULL;
+	}
+	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
 #ifdef _WIN32
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
-		//kfree(req->req_databuf);
+		kfree(req->req_databuf);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
         return NULL;
     }
@@ -180,7 +179,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         if (req->req_databuf)
         {
             // DW-596: required to verify to free req_databuf at this point
-            //kfree(req->req_databuf);
+            kfree(req->req_databuf);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -407,7 +406,7 @@ void drbd_req_destroy(struct kref *kref)
 			{
 				if (peer_ack_req->req_databuf)
 				{
-					//kfree(peer_ack_req->req_databuf);
+					kfree(peer_ack_req->req_databuf);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 			}
@@ -427,7 +426,7 @@ void drbd_req_destroy(struct kref *kref)
     {
     	if (req->req_databuf)
     	{
-    		//kfree(req->req_databuf);
+    		kfree(req->req_databuf);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }

@@ -8262,7 +8262,7 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        //kfree(req->req_databuf);
+        kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -8916,7 +8916,7 @@ static void destroy_request(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        //kfree(req->req_databuf);
+        kfree(req->req_databuf);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
