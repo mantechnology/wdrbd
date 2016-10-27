@@ -138,7 +138,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	else
 	{
 		printf("================================\n");
-		printf(" PhysicalDeviceName Minor Lock\n");
+		printf(" PhysicalDeviceName Minor Replication Volume\n");
 		printf("================================\n");
 	}
 	
