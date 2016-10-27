@@ -1214,9 +1214,19 @@ static void dtt_incoming_connection(struct sock *sock)
     }
     
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
-
+	if(!listener) {
+		kfree(s_estab->sk_linux_attr);
+		kfree(s_estab);
+        return STATUS_REQUEST_NOT_ACCEPTED;
+	}
     spin_lock(&listener->listener.waiters_lock);
     struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
+	if(!waiter) {
+		kfree(s_estab->sk_linux_attr);
+		kfree(s_estab);
+		spin_unlock(&listener->listener.waiters_lock);
+        return STATUS_REQUEST_NOT_ACCEPTED;
+	}
     struct dtt_path * path = container_of(waiter, struct dtt_path, waiter);
 
     if (path)
