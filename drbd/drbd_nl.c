@@ -131,7 +131,7 @@ DEFINE_MUTEX(notification_mutex);
 static char *drbd_m_holder = "Hands off! this is DRBD's meta data device.";
 
 #ifdef _WIN32
-void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
+int drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
 #else
 static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
 #endif
@@ -148,12 +148,17 @@ static void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info)
         if (pnlh->nlmsg_flags & NLM_F_ECHO)
         {
             WDRBD_TRACE("done\n", 0);
-            return;
+            return 0;
         }
     }
 #endif
-	if (genlmsg_reply(skb, info))
+	if (genlmsg_reply(skb, info)) {
 		pr_err("error sending genl reply\n");
+		return -1;
+	} 
+
+	return 0;
+	
 }
 
 /* Used on a fresh "drbd_adm_prepare"d reply_skb, this cannot fail: The only
@@ -1139,7 +1144,11 @@ retry:
 			u64 im;
 
 			for_each_connection_ref(connection, im, resource)
+#ifdef _WIN32
+				drbd_flush_workqueue(resource, &connection->sender_work);
+#else
 				drbd_flush_workqueue(&connection->sender_work);
+#endif
 		}
 		wait_event(resource->barrier_wait, !barrier_pending(resource));
 		/* After waiting for pending barriers, we got any possible NEG_ACKs,
@@ -1393,7 +1402,7 @@ retry:
 		u64 im;
 
 		for_each_connection_ref(connection, im, resource)
-			drbd_flush_workqueue_timeout(&connection->sender_work);
+			drbd_flush_workqueue_timeout(resource, &connection->sender_work);
 	}
 	// step 2 : wait barrier pending with timeout
 	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
@@ -3010,7 +3019,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			   (!atomic_read(&peer_device->ap_pending_cnt) ||
 			    drbd_suspended(device)));
 	/* and for other previously queued resource work */
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &resource->work);
+#else
 	drbd_flush_workqueue(&resource->work);
+#endif
 
 	rv = stable_state_change(resource,
 		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
@@ -3624,9 +3637,6 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-
-
-
 	
 #ifdef _WIN32
     new_net_conf = kzalloc(sizeof(struct net_conf), GFP_KERNEL, 'A1DW');
@@ -3637,8 +3647,11 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NOMEM;
 		goto out;
 	}
-	
+#ifdef _WIN32
+	drbd_flush_workqueue(adm_ctx.resource, &connection->sender_work);
+#else
 	drbd_flush_workqueue(&connection->sender_work);
+#endif
 
 	mutex_lock(&connection->resource->conf_update);
 	mutex_lock(&connection->mutex[DATA_STREAM]);
@@ -4569,8 +4582,12 @@ void del_connection(struct drbd_connection *connection)
 	 * events like state change notifications for this connection
 	 * are queued: we want the "destroy" event to come last.
 	 */
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &resource->work);
+#else
 	drbd_flush_workqueue(&resource->work);
-
+#endif
+	
 	mutex_lock(&notification_mutex);
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
@@ -4909,7 +4926,11 @@ static enum drbd_state_rv invalidate_resync(struct drbd_peer_device *peer_device
 		return SS_RESYNC_FROM_SECONDARY;
 #endif
 
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
+#endif
 
 	rv = change_repl_state(peer_device, L_STARTING_SYNC_T, CS_SERIALIZE);
 
@@ -5108,7 +5129,12 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 
 	drbd_suspend_io(device, READ_AND_WRITE);
 	wait_event(device->misc_wait, !atomic_read(&device->pending_bitmap_work.n));
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
+#endif
+	
 	retcode = stable_change_repl_state(peer_device, L_STARTING_SYNC_S, CS_SERIALIZE);
 
 	if (retcode < SS_SUCCESS) {
@@ -6363,7 +6389,12 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	 * state change notifications for this device are queued: we want the
 	 * "destroy" event to come last.
 	 */
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &resource->work);
+#else
 	drbd_flush_workqueue(&resource->work);
+#endif
+	
 #ifdef _WIN32
     //synchronize_rcu_w32_wlock(); 	// _WIN32_V9_RCU //(2) this code is disabled for spinlock hang 
 #endif
@@ -6411,8 +6442,12 @@ static int adm_del_resource(struct drbd_resource *resource)
 	 * state change notifications are queued: we want the "destroy" event
 	 * to come last.
 	 */
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &resource->work);
+#else
 	drbd_flush_workqueue(&resource->work);
-
+#endif
+	
 	mutex_lock(&resources_mutex);
 	err = ERR_NET_CONFIGURED;
 	if (!list_empty(&resource->connections))
@@ -6450,7 +6485,6 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #else
 	unsigned i;
 #endif
-	
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info,
 			DRBD_ADM_NEED_RESOURCE | DRBD_ADM_IGNORE_VERSION);
@@ -6458,7 +6492,16 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		return retcode;
 
 	resource = adm_ctx.resource;
+
 	mutex_lock(&resource->adm_mutex);
+#ifdef _WIN32
+	if (get_t_state(&resource->worker) != RUNNING) {		
+		drbd_msg_put_info(adm_ctx.reply_skb, "resource already down");
+		retcode = SS_NOTHING_TO_DO;
+		goto out;
+	}
+#endif
+	
 	/* demote */
 #ifdef _WIN32_MVFL
     // continue to dismount volume after drbdadm down is done.
@@ -6678,7 +6721,7 @@ int drbd_adm_down_from_shutdown(struct drbd_resource *resource)
 	//retcode = adm_del_resource(resource); // we don't need to delete resource while shudown. detour access freed resource DV issue.
 
 	// step 3 : release worker thread
-	drbd_flush_workqueue_timeout(&resource->work);
+	drbd_flush_workqueue_timeout(resource, &resource->work);
 	mutex_lock(&resources_mutex);
 	drbd_thread_stop_nowait(&resource->worker);
 	mutex_unlock(&resources_mutex);
