@@ -3151,6 +3151,17 @@ static int process_one_request(struct drbd_connection *connection)
 
 			err = drbd_send_dblock(peer_device, req);
 			what = err ? SEND_FAILED : HANDED_OVER_TO_NETWORK;
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1237: data block has been sent(or failed), put request databuf ref.
+			if (0 == atomic_dec(&req->req_databuf_ref) &&
+				(req->rq_state[0] & RQ_LOCAL_COMPLETED))
+			{
+				kfree2(req->req_databuf);
+				atomic_sub64(req->i.size, &g_total_req_buf_bytes);
+			}
+#endif
+
 		} else {
 			/* this time, no connection->send.current_epoch_writes++;
 			 * If it was sent, it was the closing barrier for the last
