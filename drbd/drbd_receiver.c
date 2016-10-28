@@ -7855,15 +7855,24 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	 * w_make_resync_request etc. which may still be on the worker queue
 	 * to be "canceled" */
+#ifdef _WIN32
+	drbd_flush_workqueue(device->resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
+#endif
+	
 
 	drbd_finish_peer_reqs(peer_device);
 
 	/* This second workqueue flush is necessary, since drbd_finish_peer_reqs()
 	   might have issued a work again. The one before drbd_finish_peer_reqs() is
 	   necessary to reclain net_ee in drbd_finish_peer_reqs(). */
+#ifdef _WIN32
+	drbd_flush_workqueue(device->resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
-
+#endif
+	
 	/* need to do it again, drbd_finish_peer_reqs() may have populated it
 	 * again via drbd_try_clear_on_disk_bm(). */
 	drbd_rs_cancel_all(peer_device);

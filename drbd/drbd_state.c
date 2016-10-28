@@ -542,15 +542,18 @@ static void __state_change_unlock(struct drbd_resource *resource, unsigned long 
 
 	resource->state_change_flags = 0;
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
-	if (done && expect(resource, current != resource->worker.task))
+	if (get_t_state(&resource->worker) == RUNNING) {
+		if (done && expect(resource, current != resource->worker.task)) {
 #ifdef _WIN32 
-        while (wait_for_completion(done) == -DRBD_SIGKILL)
-        {
-            WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-        }
+	        while (wait_for_completion(done) == -DRBD_SIGKILL){
+	            WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+	        }
 #else
-		wait_for_completion(done);
+			wait_for_completion(done);
 #endif
+		}
+	} 
+	
 	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARE)))
 		up(&resource->state_sem);
 }
@@ -621,7 +624,7 @@ static enum drbd_state_rv __end_state_change(struct drbd_resource *resource,
 	if ((flags & CS_WAIT_COMPLETE) && !(flags & (CS_PREPARE | CS_ABORT))) {
 		done = &__done;
 		init_completion(done);
-	}
+	} 
 	rv = ___end_state_change(resource, done, rv);
 	__state_change_unlock(resource, irq_flags, rv >= SS_SUCCESS ? done : NULL);
 	return rv;

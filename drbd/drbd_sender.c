@@ -1338,7 +1338,12 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		if (current == device->resource->worker.task)
 			goto queue_on_sender_workq;
 		else
+#ifdef _WIN32
+			drbd_flush_workqueue(device->resource, &device->resource->work);
+#else
 			drbd_flush_workqueue(&device->resource->work);
+#endif
+			
 	}
 
 	/* Remove all elements from the resync LRU. Since future actions

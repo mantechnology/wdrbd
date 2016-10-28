@@ -3670,31 +3670,39 @@ void drbd_queue_work(struct drbd_work_queue *q, struct drbd_work *w)
 }
 
 #ifdef _WIN32 // DW-1103 down from kernel with timeout
-void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue)
+void drbd_flush_workqueue_timeout(struct drbd_resource* resource, struct drbd_work_queue *work_queue)
 {
 	struct completion_work completion_work;
-
+	if (get_t_state(&resource->worker) != RUNNING) {
+		return;
+	}
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
-    while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
-        WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-    }
+	while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
+    	WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+	}
 }
 #endif
 
+#ifndef _WIN32
 void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
+#else
+void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue *work_queue)
+#endif
 {
 	struct completion_work completion_work;
-
+	if (get_t_state(&resource->worker) != RUNNING) {
+		WDRBD_INFO("drbd_flush_workqueue &resource->worker != RUNNING return resource:%p\n",resource);
+		return;
+	}
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
 #ifdef _WIN32 
-    while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL)
-    {
+	while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL) {
         WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-    }
+    }	
 #else
 	wait_for_completion(&completion_work.done);
 #endif

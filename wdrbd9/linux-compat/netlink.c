@@ -31,7 +31,11 @@ extern int drbd_adm_resource_opts(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_status(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_timeout_type(struct sk_buff *skb, struct genl_info *info);
 /* .dumpit */
+#ifdef _WIN32
+extern int drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
+#else
 extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
+#endif
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
@@ -266,7 +270,9 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
         hdr->reserved = 0;
     }
 
-    drbd_adm_send_reply(skb, info);
+	if(drbd_adm_send_reply(skb, info) < 0) {
+		err = -1;
+	}
 
     WDRBD_TRACE_NETLINK("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
 
@@ -513,13 +519,16 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
             };
             
             int ret = _genl_dump(pops, skb, &ncb, pinfo);
-
-            while (ret > 0)
-            {
+			int cnt = 0;
+            while (ret > 0) {
                 RtlZeroMemory(skb, NLMSG_GOODSIZE);
                 _genlmsg_init(skb, NLMSG_GOODSIZE);
 
                 ret = _genl_dump(pops, skb, &ncb, pinfo);
+				if(cnt++ > 512) {
+					WDRBD_WARN("_genl_dump exceed process break;\n");
+					break;
+				}
             }
 
             if (pops->done)
