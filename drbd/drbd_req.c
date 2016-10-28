@@ -107,6 +107,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		return NULL;
 	}
+	// MODIFIED_BY_MANTECH DW-1237: set request data buffer ref to 1 for local I/O.
+	atomic_set(&req->req_databuf_ref, 1);
 	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
 	atomic_add64(bio_src->bi_size, &g_total_req_buf_bytes);
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
@@ -115,7 +117,7 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 #ifdef _WIN32
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
-		kfree(req->req_databuf);
+		kfree2(req->req_databuf);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		atomic_sub64(bio_src->bi_size, &g_total_req_buf_bytes);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -188,7 +190,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         if (req->req_databuf)
         {
             // DW-596: required to verify to free req_databuf at this point
-            kfree(req->req_databuf);
+            kfree2(req->req_databuf);
 			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
         }
@@ -417,7 +419,7 @@ void drbd_req_destroy(struct kref *kref)
 			{
 				if (peer_ack_req->req_databuf)
 				{
-					kfree(peer_ack_req->req_databuf);
+					kfree2(peer_ack_req->req_databuf);
 					// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 					atomic_sub64(peer_ack_req->i.size, &g_total_req_buf_bytes);
 				}
@@ -439,7 +441,7 @@ void drbd_req_destroy(struct kref *kref)
     {
     	if (req->req_databuf)
     	{
-    		kfree(req->req_databuf);
+    		kfree2(req->req_databuf);
 			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     	}
@@ -959,6 +961,18 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			++c_put;
 		list_del_init(&req->req_pending_local);
 	}
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1237: Local I/O has been completed, put request databuf ref. 
+	if (!(old_local & RQ_LOCAL_COMPLETED) && (set_local & RQ_LOCAL_COMPLETED))
+	{
+		if (0 == atomic_dec(&req->req_databuf_ref))
+		{
+			kfree2(req->req_databuf);
+			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
+		}
+	}
+#endif
 
 	if ((old_net & RQ_NET_PENDING) && (clear & RQ_NET_PENDING)) {
 		dec_ap_pending(peer_device);
@@ -1688,6 +1702,8 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 		if (remote) {
 			++count;
+			// MODIFIED_BY_MANTECH DW-1237: get request databuf ref to send data block.
+			atomic_inc(&req->req_databuf_ref);
 			_req_mod(req, TO_BE_SENT, peer_device);
 			if (!in_tree) {
 				/* Corresponding drbd_remove_request_interval is in

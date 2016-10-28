@@ -8267,7 +8267,7 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        kfree(req->req_databuf);
+        kfree2(req->req_databuf);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }
@@ -8923,7 +8923,7 @@ static void destroy_request(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        kfree(req->req_databuf);
+        kfree2(req->req_databuf);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }

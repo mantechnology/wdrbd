@@ -581,6 +581,8 @@ struct drbd_request {
 	struct bio *private_bio;
 #ifdef _WIN32
 	char*	req_databuf;
+	// DW-1237: add request buffer reference count to free earlier when no longer need buf.
+	atomic_t req_databuf_ref;
 #endif
 	struct drbd_interval i;
 
