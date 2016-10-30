@@ -572,12 +572,10 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    if (VolumeExtension->Active)
-    {
+    if (VolumeExtension->Active) {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-
-        if (device)
-        {
+		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY)) {
+        	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
 			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
 			ULONG size_sector = pisl->Parameters.Write.Length >> 9;
