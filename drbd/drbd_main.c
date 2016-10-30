@@ -235,8 +235,6 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 
 #ifdef _WIN32
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
-#else
-// DW-1229: remove netlink global lock.
 struct mutex g_genl_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
@@ -4668,6 +4666,7 @@ static int __init drbd_init(void)
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
 	
+	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
 #endif
 
