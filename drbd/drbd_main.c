@@ -2888,6 +2888,7 @@ static int try_to_promote(struct drbd_device *device)
 	do {
 		rv = drbd_set_role(resource, R_PRIMARY, false);
 		if (rv >= SS_SUCCESS || timeout == 0) {
+			resource->bPreSecondaryLock = FALSE;
 			return rv;
 		} else if (rv == SS_CW_FAILED_BY_PEER) {
 			/* Probably udev has it open read-only on one of the peers */
@@ -3889,6 +3890,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 #ifdef _WIN32
     resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
+	resource->bPreSecondaryLock = FALSE;
 #else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
 #endif

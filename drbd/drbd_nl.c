@@ -1557,8 +1557,10 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		}
 #endif
 		retcode = drbd_set_role(adm_ctx.resource, R_PRIMARY, parms.assume_uptodate);
-		if (retcode >= SS_SUCCESS)
+		if (retcode >= SS_SUCCESS) {
 			set_bit(EXPLICIT_PRIMARY, &adm_ctx.resource->flags);
+			adm_ctx.resource->bPreSecondaryLock = FALSE;
+		}
 #ifdef _WIN32
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
@@ -1604,6 +1606,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			else
 			{
 				NTSTATUS status = FsctlDismountVolume(device->minor);
+				adm_ctx.resource->bPreSecondaryLock = TRUE;
 				FsctlUnlockVolume(device->minor);
 				if (!NT_SUCCESS(status))
 				{
@@ -1615,6 +1618,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		if (retcode == SS_SUCCESS) {
 			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
 		}
+		adm_ctx.resource->bPreSecondaryLock = FALSE;
 #else
         int vnr;
         struct drbd_device * device;
@@ -1631,6 +1635,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                     goto fail;
                 }
                 NTSTATUS status = FsctlDismountVolume(device->minor);
+				adm_ctx.resource->bPreSecondaryLock = TRUE;
                 FsctlUnlockVolume(device->minor);
 
                 if (!NT_SUCCESS(status)) {
@@ -1638,6 +1643,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                     goto fail;
                 }
 				retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+				adm_ctx.resource->bPreSecondaryLock = FALSE;
             }
 			else
             {
@@ -6519,15 +6525,6 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
-	if (retcode == SS_SUCCESS)			
-	{
-		retcode = drbd_set_role(resource, R_SECONDARY, false);
-		if (retcode < SS_SUCCESS)
-		{
-			drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
-		}
-	}
-	
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 	{
 		if (device->disk_state[NOW] == D_DISKLESS)
@@ -6541,6 +6538,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		else
 		{
 			NTSTATUS status = FsctlDismountVolume(device->minor);
+			resource->bPreSecondaryLock = TRUE;
 			FsctlUnlockVolume(device->minor);
 			if (!NT_SUCCESS(status))
 			{
@@ -6556,7 +6554,15 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 			}
 		}
 	}
-
+				
+	if (retcode == SS_SUCCESS) {
+		retcode = drbd_set_role(resource, R_SECONDARY, false);
+		if (retcode < SS_SUCCESS)
+		{
+			drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
+		}
+	}
+	resource->bPreSecondaryLock = FALSE;
 	if(retcode < SS_SUCCESS)
 	{
 		goto out;
@@ -6570,15 +6576,10 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
         }
         else if (NT_SUCCESS(FsctlLockVolume(device->minor)))
         {
-            retcode = drbd_set_role(resource, R_SECONDARY, false);
-            if (retcode < SS_SUCCESS)
-            {
-                drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
-                FsctlUnlockVolume(device->minor);
-                goto out;
-            }
+            
 
             NTSTATUS status = FsctlDismountVolume(device->minor);
+			resource->bPreSecondaryLock = TRUE;
             FsctlUnlockVolume(device->minor);
 
             if (!NT_SUCCESS(status))
@@ -6587,6 +6588,15 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
                 goto out;
             }
 
+			retcode = drbd_set_role(resource, R_SECONDARY, false);
+			resource->bPreSecondaryLock = FALSE;
+			if (retcode < SS_SUCCESS)
+            {
+                drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
+                FsctlUnlockVolume(device->minor);
+                goto out;
+            }
+			
             PVOLUME_EXTENSION pvolext = get_targetdev_by_minor(device->minor);
             if (pvolext && pvolext->WorkThreadInfo.Active)
             {
