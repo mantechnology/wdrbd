@@ -1591,11 +1591,6 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 		}
 
-		if (retcode == SS_SUCCESS)			
-		{
-			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
-		}
-
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
 			if (device->disk_state[NOW] == D_DISKLESS)
@@ -1617,6 +1612,9 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 		}
 
+		if (retcode == SS_SUCCESS) {
+			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+		}
 #else
         int vnr;
         struct drbd_device * device;
@@ -1628,25 +1626,24 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
             }
             else if (NT_SUCCESS(FsctlLockVolume(device->minor)))
             {
-                retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
-                if (retcode < SS_SUCCESS)
-                {
+                if (retcode < SS_SUCCESS) {
                     FsctlUnlockVolume(device->minor);
                     goto fail;
                 }
                 NTSTATUS status = FsctlDismountVolume(device->minor);
                 FsctlUnlockVolume(device->minor);
 
-                if (!NT_SUCCESS(status))
-                {
+                if (!NT_SUCCESS(status)) {
                     retcode = SS_UNKNOWN_ERROR;
                     goto fail;
                 }
+				retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
             }
-            else
+			else
             {
                 retcode = SS_DEVICE_IN_USE;
             }
+			
         }
 #endif
 #else
