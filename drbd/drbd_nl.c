@@ -1605,7 +1605,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 			else
 			{
-				NTSTATUS status = FsctlDismountVolume(device->minor);
+				NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 				adm_ctx.resource->bPreSecondaryLock = TRUE;
 				FsctlUnlockVolume(device->minor);
 				if (!NT_SUCCESS(status))
@@ -1634,7 +1634,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                     FsctlUnlockVolume(device->minor);
                     goto fail;
                 }
-                NTSTATUS status = FsctlDismountVolume(device->minor);
+                NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 				adm_ctx.resource->bPreSecondaryLock = TRUE;
                 FsctlUnlockVolume(device->minor);
 
@@ -3049,7 +3049,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			if (NT_SUCCESS(status)) {
 				if (NT_SUCCESS(FsctlLockVolume(dh->minor))) {
 					pvext->Active = TRUE;
-					status = FsctlDismountVolume(dh->minor);
+					status = FsctlFlushDismountVolume(dh->minor);
 					FsctlUnlockVolume(dh->minor);
 
 					if (!NT_SUCCESS(status)) {
@@ -6537,7 +6537,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		}
 		else
 		{
-			NTSTATUS status = FsctlDismountVolume(device->minor);
+			NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 			resource->bPreSecondaryLock = TRUE;
 			FsctlUnlockVolume(device->minor);
 			if (!NT_SUCCESS(status))
@@ -6578,7 +6578,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
         {
             
 
-            NTSTATUS status = FsctlDismountVolume(device->minor);
+            NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 			resource->bPreSecondaryLock = TRUE;
             FsctlUnlockVolume(device->minor);
 
