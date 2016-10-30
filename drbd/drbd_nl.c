@@ -2779,21 +2779,6 @@ static int open_backing_devices(struct drbd_device *device,
 	bdev = open_backing_dev(device, new_disk_conf->backing_dev, device, true);
 	if (IS_ERR(bdev))
 		return ERR_OPEN_DISK;
-
-#ifdef _WIN32 	
-	// MODIFIED_BY_MANTECH DW-1202 If FsctlLockVolume() failed, device is referenced by somewhere.
-	PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
-	if (pvext) {
-		if (!NT_SUCCESS(FsctlLockVolume(device->minor)))
-		{
-			return SS_DEVICE_IN_USE;
-		}
-		else
-		{
-			FsctlUnlockVolume(device->minor);
-		}
-	}
-#endif
 	
 	nbc->backing_bdev = bdev;
 
@@ -3049,18 +3034,15 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		if (pvext) {
 			status = mvolInitializeThread(pvext, &pvext->WorkThreadInfo, mvolWorkThread);
 			if (NT_SUCCESS(status)) {
-				if (NT_SUCCESS(FsctlLockVolume(dh->minor))) {
-					pvext->Active = TRUE;
-					status = FsctlFlushDismountVolume(dh->minor);
-					FsctlUnlockVolume(dh->minor);
+				FsctlLockVolume(dh->minor);
 
-					if (!NT_SUCCESS(status)) {
-						retcode = ERR_RES_NOT_KNOWN;
-						goto force_diskless_dec;
-					}
-				}
-				else {
-					retcode = SS_DEVICE_IN_USE;
+				pvext->Active = TRUE;
+				status = FsctlFlushDismountVolume(dh->minor);
+
+				FsctlUnlockVolume(dh->minor);
+
+				if (!NT_SUCCESS(status)) {
+					retcode = ERR_RES_NOT_KNOWN;
 					goto force_diskless_dec;
 				}
 			}
