@@ -1588,8 +1588,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 			if (!NT_SUCCESS(FsctlLockVolume(device->minor)))
 			{
-				retcode = SS_DEVICE_IN_USE;
-				break;
+				continue;
 			}
 		}
 
@@ -1598,27 +1597,30 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			if (device->disk_state[NOW] == D_DISKLESS)
 			{
 				continue;
-			}
-			if (retcode < SS_SUCCESS)
+			}			
+
+			NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
+			if (!NT_SUCCESS(status))
 			{
-				FsctlUnlockVolume(device->minor);
-			}
-			else
-			{
-				NTSTATUS status = FsctlFlushDismountVolume(device->minor);
-				adm_ctx.resource->bPreSecondaryLock = TRUE;
-				FsctlUnlockVolume(device->minor);
-				if (!NT_SUCCESS(status))
-				{
-					retcode = SS_UNKNOWN_ERROR;
-				}
-			}
+				retcode = SS_UNKNOWN_ERROR;
+				break;
+			}			
+		}
+		
+		if (retcode == SS_SUCCESS) {
+			adm_ctx.resource->bPreSecondaryLock = TRUE;
+			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+			adm_ctx.resource->bPreSecondaryLock = FALSE;
 		}
 
-		if (retcode == SS_SUCCESS) {
-			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			if (device->disk_state[NOW] == D_DISKLESS)
+			{
+				continue;
+			}
+			FsctlUnlockVolume(device->minor);
 		}
-		adm_ctx.resource->bPreSecondaryLock = FALSE;
 #else
         int vnr;
         struct drbd_device * device;
@@ -6520,8 +6522,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		}
 		if (!NT_SUCCESS(FsctlLockVolume(device->minor)))
 		{
-			retcode = SS_DEVICE_IN_USE;
-			break;
+			continue;
 		}
 	}
 
@@ -6531,30 +6532,35 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		{
 			continue;
 		}
-		if (retcode < SS_SUCCESS)
+		
+		NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
+		if (!NT_SUCCESS(status))
 		{
-			FsctlUnlockVolume(device->minor);
-		}
-		else
-		{
-			NTSTATUS status = FsctlFlushDismountVolume(device->minor);
-			resource->bPreSecondaryLock = TRUE;
-			FsctlUnlockVolume(device->minor);
-			if (!NT_SUCCESS(status))
-			{
-				retcode = SS_UNKNOWN_ERROR;
-			}
-		}
+			retcode = SS_UNKNOWN_ERROR;
+			break;
+		}		
 	}
 				
 	if (retcode == SS_SUCCESS) {
+		resource->bPreSecondaryLock = TRUE;
 		retcode = drbd_set_role(resource, R_SECONDARY, false);
 		if (retcode < SS_SUCCESS)
 		{
 			drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
 		}
+		resource->bPreSecondaryLock = FALSE;
 	}
-	resource->bPreSecondaryLock = FALSE;
+
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+	{
+		if (device->disk_state[NOW] == D_DISKLESS)
+		{
+			continue;
+		}
+		FsctlUnlockVolume(device->minor);
+	}
+
+	
 	if(retcode < SS_SUCCESS)
 	{
 		goto out;

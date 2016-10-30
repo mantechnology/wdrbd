@@ -114,7 +114,7 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
                 NULL);
 
             status = ZwCreateFile(&hFile,
-                SYNCHRONIZE | FILE_READ_DATA,
+                GENERIC_READ | GENERIC_WRITE,
                 &ObjectAttributes,
                 &StatusBlock,
                 NULL,
