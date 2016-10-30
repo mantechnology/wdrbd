@@ -584,8 +584,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			// if io offset is larger than volume size oacassionally,
 			// then allow to lower device, so not try to send to peer
 			if (offset_sector + size_sector > vol_size_sector) {
-				WDRBD_INFO("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
-					&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
+				//WDRBD_INFO("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
+				//	&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 				goto skip;
 			}
 
@@ -617,8 +617,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
         else
         {
-        	WDRBD_INFO("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
-					&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
+        	//WDRBD_INFO("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
+			//		&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 			
             Irp->IoStatus.Information = 0;
             Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
