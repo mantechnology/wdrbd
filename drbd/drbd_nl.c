@@ -6544,14 +6544,6 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 			{
 				retcode = SS_UNKNOWN_ERROR;
 			}
-			else
-			{
-				PVOLUME_EXTENSION pvolext = get_targetdev_by_minor(device->minor);
-				if (pvolext && pvolext->WorkThreadInfo.Active)
-				{
-					mvolTerminateThread(&pvolext->WorkThreadInfo);
-				}
-			}
 		}
 	}
 				
@@ -6595,12 +6587,6 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
                 drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
                 FsctlUnlockVolume(device->minor);
                 goto out;
-            }
-			
-            PVOLUME_EXTENSION pvolext = get_targetdev_by_minor(device->minor);
-            if (pvolext && pvolext->WorkThreadInfo.Active)
-            {
-                mvolTerminateThread(&pvolext->WorkThreadInfo);
             }
         }
         else

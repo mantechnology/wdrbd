@@ -7,20 +7,6 @@
 DWORD MVOL_GetVolumeInfo( CHAR DriveLetter, PMVOL_VOLUME_INFO pVolumeInfo );
 extern DWORD MVOL_GetVolumesInfo(BOOLEAN verbose);
 
-DWORD MVOL_InitThread( PWCHAR PhysicalVolume );
-/**
- *      @brief  Create a thread processing a volume I/O
- *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
- */
-DWORD MVOL_InitThread( CHAR DriveLetter );
-DWORD MVOL_CloseThread( PWCHAR PhysicalVolume );
-/**
- *      @brief  close a thread processing a volume I/O
- *      @param  DriveLetter [in]    Local drive letter(ex C, D, E, ...)
- *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
- */
-DWORD MVOL_CloseThread( CHAR DriveLetter );
 DWORD MVOL_StartVolume( PWCHAR PhysicalVolume );
 /**
  *      @brief  enable a volume
