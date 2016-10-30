@@ -408,10 +408,10 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 
 		return STATUS_SUCCESS;
 	}
-	//else
-	//{
-	//	status = STATUS_INVALID_DEVICE_REQUEST;
-	//}
+	else
+	{
+		status = STATUS_INVALID_DEVICE_REQUEST;
+	}
 
 fail:
 	WDRBD_ERROR("failed. status=0x%x\n", status);
