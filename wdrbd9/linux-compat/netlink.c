@@ -5,7 +5,7 @@
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
 
-extern int drbd_tla_parse(struct nlmsghdr *nlh);
+extern int drbd_tla_parse(struct nlmsghdr *nlh, struct nlattr **attr);
 
 extern int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_del_resource(struct sk_buff *skb, struct genl_info *info);
@@ -94,8 +94,6 @@ static struct genl_family drbd_genl_family  = {
 #define cli_info(_minor, _fmt, ...)
 
 // globals
-
-struct nlattr *global_attrs[128];
 
 extern struct mutex g_genl_mutex;
 
@@ -310,7 +308,8 @@ typedef struct _NETLINK_WORK_ITEM{
     PWSK_SOCKET Socket;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
 
-struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
+// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket, struct nlattr **attrs)
 {
     struct genl_info * pinfo = ExAllocateFromNPagedLookasideList(&genl_info_mempool);
 
@@ -327,7 +326,7 @@ struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
     pinfo->nlhdr = nlh;
     pinfo->genlhdr = nlmsg_data(nlh);
     pinfo->userhdr = genlmsg_data(nlmsg_data(nlh));
-    pinfo->attrs = global_attrs;
+    pinfo->attrs = attrs;
     pinfo->snd_seq = nlh->nlmsg_seq;
     pinfo->snd_portid = nlh->nlmsg_pid;
     pinfo->NetlinkSock = socket;
@@ -604,14 +603,17 @@ NetlinkWorkThread(PVOID context)
         if (pinfo)
             ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
 		
-        pinfo = genl_info_new(nlh, socket);
+		// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+		struct nlattr *local_attrs[128];
+
+		pinfo = genl_info_new(nlh, socket, local_attrs);
         if (!pinfo)
         {
             WDRBD_ERROR("Failed to allocate (struct genl_info) memory. size(%d)\n", sizeof(struct genl_info));
             goto cleanup;
         }
 
-        drbd_tla_parse(nlh);
+        drbd_tla_parse(nlh, local_attrs);
         if (!nlmsg_ok(nlh, readcount))
         {
             WDRBD_ERROR("rx message(%d) crashed!\n", readcount);

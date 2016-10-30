@@ -7309,12 +7309,12 @@ out_no_adm:
 
 }
 #ifdef _WIN32
-int drbd_tla_parse(struct nlmsghdr *nlh)
+// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+int drbd_tla_parse(struct nlmsghdr *nlh, struct nlattr **attr)
 {
-	extern struct nlattr *global_attrs[];
     drbd_genl_family.id = nlh->nlmsg_type;
 
-	return nla_parse(global_attrs, ARRAY_SIZE(drbd_tla_nl_policy) - 1,
+	return nla_parse(attr, ARRAY_SIZE(drbd_tla_nl_policy) - 1,
         nlmsg_attrdata(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),
         nlmsg_attrlen(nlh, GENL_HDRLEN + drbd_genl_family.hdrsize),
         drbd_tla_nl_policy);
