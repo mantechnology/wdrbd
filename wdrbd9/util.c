@@ -149,14 +149,11 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
         }
 #endif
 		status = ZwFlushBuffersFile(hFile, &StatusBlock);
-		if (!NT_SUCCESS(status))
-        {
+		if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
-            __leave;
         }
         status = ZwFsControlFile(hFile, 0, 0, 0, &StatusBlock, FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0);
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
             __leave;
         }
