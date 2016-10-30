@@ -650,7 +650,7 @@ NetlinkWorkThread(PVOID context)
             WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
 			
-			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_LONG_DEF * 1000);
+			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
 
 			if (STATUS_SUCCESS == status)
 			{
