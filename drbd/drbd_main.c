@@ -235,8 +235,6 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 
 #ifdef _WIN32
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
-#else
-// DW-1229: remove netlink global lock.
 struct mutex g_genl_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
@@ -2888,6 +2886,7 @@ static int try_to_promote(struct drbd_device *device)
 	do {
 		rv = drbd_set_role(resource, R_PRIMARY, false);
 		if (rv >= SS_SUCCESS || timeout == 0) {
+			resource->bPreSecondaryLock = FALSE;
 			return rv;
 		} else if (rv == SS_CW_FAILED_BY_PEER) {
 			/* Probably udev has it open read-only on one of the peers */
@@ -3889,6 +3888,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 #ifdef _WIN32
     resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
+	resource->bPreSecondaryLock = FALSE;
 #else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
 #endif
@@ -4666,6 +4666,7 @@ static int __init drbd_init(void)
 	nl_policy_init_by_manual();
 	g_rcuLock = 0; // init RCU lock
 	
+	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
 #endif
 
