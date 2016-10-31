@@ -504,8 +504,14 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
+	{
 		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
 			is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1239 : If pp_in_use is negative, set to 0.
+		atomic_set(&connection->pp_in_use, 0);
+#endif
+	}
 
 	wake_up(&drbd_pp_wait);
 }
