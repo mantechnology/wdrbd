@@ -134,7 +134,7 @@ enum
 #define SECONDS(seconds) \
 (((signed __int64)(seconds)) * MILLISECONDS(1000L))
 
-#define CMD_TIMEOUT_LONG_DEF		600		/* should be synchronized with defined value in shared_main.h */
+#define CMD_TIMEOUT_SHORT_DEF		5		/* should be synchronized with defined value in shared_main.h */
 
 // from bio.h
 #define BIO_RW					    0       /* Must match RW in req flags (blkdev.h) */
@@ -1276,7 +1276,7 @@ extern void ResolveDriveLetters(void);
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
 #ifdef _WIN32_MVFL
-extern NTSTATUS FsctlDismountVolume(unsigned int minor);
+extern NTSTATUS FsctlFlushDismountVolume(unsigned int minor);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
 extern NTSTATUS FsctlFlushVolume(unsigned int minor);
