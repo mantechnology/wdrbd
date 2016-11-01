@@ -1584,6 +1584,8 @@ static void sanitize_state(struct drbd_resource *resource)
 					drbd_print_uuids(peer_device, "cleared bitmap UUID");
 				}
 				else if ((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND) &&
+					// MODIFIED_BY_MANTECH DW-1248: need to initial sync when I've never updated uuid and resync aborted. no update uuid here.
+					((drbd_current_uuid(device) & ~UUID_PRIMARY) != UUID_JUST_CREATED) &&
 					((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) && peer_device->uuids_received)				
 				{
 					_drbd_uuid_set_current(device, peer_device->current_uuid);
