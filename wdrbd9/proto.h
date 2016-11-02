@@ -82,10 +82,6 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength );
 NTSTATUS
 IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength );
 NTSTATUS
-IOCTL_InitVolumeThread( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
-IOCTL_CloseVolumeThread( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
 IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp );
 NTSTATUS
 IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp );

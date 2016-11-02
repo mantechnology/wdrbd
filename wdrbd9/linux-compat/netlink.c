@@ -5,7 +5,7 @@
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
 
-extern int drbd_tla_parse(struct nlmsghdr *nlh);
+extern int drbd_tla_parse(struct nlmsghdr *nlh, struct nlattr **attr);
 
 extern int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_del_resource(struct sk_buff *skb, struct genl_info *info);
@@ -31,7 +31,11 @@ extern int drbd_adm_resource_opts(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_status(struct sk_buff *skb, struct genl_info *info);
 extern int drbd_adm_get_timeout_type(struct sk_buff *skb, struct genl_info *info);
 /* .dumpit */
+#ifdef _WIN32
+extern int drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
+#else
 extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
+#endif
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
@@ -90,8 +94,6 @@ static struct genl_family drbd_genl_family  = {
 #define cli_info(_minor, _fmt, ...)
 
 // globals
-
-struct nlattr *global_attrs[128];
 
 extern struct mutex g_genl_mutex;
 
@@ -267,7 +269,9 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
         hdr->reserved = 0;
     }
 
-    drbd_adm_send_reply(skb, info);
+	if(drbd_adm_send_reply(skb, info) < 0) {
+		err = -1;
+	}
 
     WDRBD_TRACE_NETLINK("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
 
@@ -304,7 +308,8 @@ typedef struct _NETLINK_WORK_ITEM{
     PWSK_SOCKET Socket;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
 
-struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
+// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket, struct nlattr **attrs)
 {
     struct genl_info * pinfo = ExAllocateFromNPagedLookasideList(&genl_info_mempool);
 
@@ -321,7 +326,7 @@ struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket)
     pinfo->nlhdr = nlh;
     pinfo->genlhdr = nlmsg_data(nlh);
     pinfo->userhdr = genlmsg_data(nlmsg_data(nlh));
-    pinfo->attrs = global_attrs;
+    pinfo->attrs = attrs;
     pinfo->snd_seq = nlh->nlmsg_seq;
     pinfo->snd_portid = nlh->nlmsg_pid;
     pinfo->NetlinkSock = socket;
@@ -513,13 +518,16 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
             };
             
             int ret = _genl_dump(pops, skb, &ncb, pinfo);
-
-            while (ret > 0)
-            {
+			int cnt = 0;
+            while (ret > 0) {
                 RtlZeroMemory(skb, NLMSG_GOODSIZE);
                 _genlmsg_init(skb, NLMSG_GOODSIZE);
 
                 ret = _genl_dump(pops, skb, &ncb, pinfo);
+				if(cnt++ > 512) {
+					WDRBD_WARN("_genl_dump exceed process break;\n");
+					break;
+				}
             }
 
             if (pops->done)
@@ -594,15 +602,18 @@ NetlinkWorkThread(PVOID context)
 
         if (pinfo)
             ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
+		
+		// DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
+		struct nlattr *local_attrs[128];
 
-        pinfo = genl_info_new(nlh, socket);
+		pinfo = genl_info_new(nlh, socket, local_attrs);
         if (!pinfo)
         {
             WDRBD_ERROR("Failed to allocate (struct genl_info) memory. size(%d)\n", sizeof(struct genl_info));
             goto cleanup;
         }
 
-        drbd_tla_parse(nlh);
+        drbd_tla_parse(nlh, local_attrs);
         if (!nlmsg_ok(nlh, readcount))
         {
             WDRBD_ERROR("rx message(%d) crashed!\n", readcount);
@@ -640,23 +651,24 @@ NetlinkWorkThread(PVOID context)
 
             WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
-
-			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_LONG_DEF * 1000);
+			
+			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
 
 			if (STATUS_SUCCESS == status)
-            {	
+			{
 				err = _genl_ops(pops, pinfo);
-                mutex_unlock(&g_genl_mutex);
+				mutex_unlock(&g_genl_mutex);
 				if (err)
 				{
 					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
 					errcnt++;
 				}
-            }
-            else
-            {
-                WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
-            }
+			}
+			else
+			{
+				WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
+			}
+
         }
         else
         {
@@ -743,12 +755,11 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 
     netlinkWorkItem->Socket = AcceptSocket;
 
-    ExInitializeWorkItem(&netlinkWorkItem->Item,
-        NetlinkWorkThread,
-        netlinkWorkItem);
+	ExInitializeWorkItem(&netlinkWorkItem->Item,
+		NetlinkWorkThread,
+		netlinkWorkItem);
 
-    ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
-
+	ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
     return STATUS_SUCCESS;
 }
 

@@ -54,12 +54,7 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
-#ifdef _WIN32
-// DW-915 
-#define DRBD_TIMEOUT_DEF 30       /* 3 seconds */
-#else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
-#endif
 #define DRBD_TIMEOUT_SCALE '1'
 
  /* If backing disk takes longer than disk_timeout, mark the disk as failed */
@@ -138,8 +133,8 @@
    * 200 should be more than enough even for very short timeouts */
 #define DRBD_KO_COUNT_MIN  0
 #define DRBD_KO_COUNT_MAX  200
-#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase.
-#define DRBD_KO_COUNT_DEF  3
+#ifdef _WIN32 // DW-988 adjust default ko_count value, because connection timeout is so long for somecase. 
+#define DRBD_KO_COUNT_DEF  5 // DW-1208 3 -> 5 
 #else
 #define DRBD_KO_COUNT_DEF  7
 #endif
@@ -278,6 +273,14 @@
 #define DRBD_MAX_BIO_SIZE_MIN	(1 << 9)
 #define DRBD_MAX_BIO_SIZE_MAX	DRBD_MAX_BIO_SIZE
 #define DRBD_MAX_BIO_SIZE_SCALE '1'
+
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size, 512mb ~ 10gb, default : 1gb
+#define DRBD_REQ_BUF_SIZE_MIN        (512 << 10)
+#define DRBD_REQ_BUF_SIZE_DEF        (1024 << 10)
+#define DRBD_REQ_BUF_SIZE_MAX        (10240 << 10)
+#define DRBD_REQ_BUF_SIZE_SCALE        'k'
+#endif
 
 #define DRBD_NODE_ID_DEF		0
 #define DRBD_NODE_ID_MIN		0

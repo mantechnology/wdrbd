@@ -447,6 +447,14 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 
     StartRegistryCleaner();
 
+	TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
+	_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStart.log"));
+	ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+	if (ret) {
+		_stprintf_s(tmp, _T("service start drbdlog fail:%d\n"), ret);
+		WriteLog(tmp);
+	}
+
     while (g_bProcessStarted)
     {
         Sleep(3000);
@@ -517,7 +525,27 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         case SERVICE_CONTROL_STOP:
         case SERVICE_CONTROL_SHUTDOWN:
         case SERVICE_CONTROL_PRESHUTDOWN:
-
+			
+			if (SERVICE_CONTROL_STOP == fdwControl) {
+				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
+				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
+				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+				if (ret) {
+					_stprintf_s(tmp, _T("service stop drbdlog fail:%d\n"), ret);
+					WriteLog(tmp);
+				}
+			}
+			else {
+				
+				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
+				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\PreShutdown.log"));
+				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+				if (ret) {
+					_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
+					WriteLog(tmp);
+				}
+			}
+			
             RcDrbdStop();
             StopRegistryCleaner();
 
