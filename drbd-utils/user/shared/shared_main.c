@@ -52,10 +52,19 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1249
+#include <netdb.h>
+#endif
 
 #include "drbd_endian.h"
 #include "shared_main.h"
 #include "shared_tool.h"
+
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1249
+extern int h_errno;
+#endif
 
 extern struct ifreq *ifreq_list;
 
@@ -147,10 +156,56 @@ struct ifreq *get_ifreq(void)
 	return ifc.ifc_req;
 }
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1249: enumerate all ip address of this host and compare.
+#define MAX_IP_COUNT 256
+int match_local_ip(const char *ip)
+{
+	char szHostName[128] = "";
+	struct sockaddr_in socketAddr;
+	struct hostent *host = 0;
+	char ipAddress[MAX_IP_COUNT][16];
+	int index = 0;
+	int ret = 0;
+
+	if (gethostname(szHostName, 128))
+	{
+		perror(szHostName);
+		return 1;
+	}
+
+	host = gethostbyname(szHostName);
+	if (!host)
+	{
+		fprintf(stderr, "can not resolve the hostname: gethostbyname(%s): %d\n",
+			szHostName, h_errno);
+		return 1;
+	}
+
+	for (index = 0; ((host->h_addr_list[index]) && (index < MAX_IP_COUNT)); ++index)
+	{
+		memcpy(&socketAddr.sin_addr, host->h_addr_list[index], host->h_length);
+		strcpy(ipAddress[index], inet_ntoa(socketAddr.sin_addr));
+		if (!strcmp(ipAddress[index], ip))
+			ret = 1;
+	}
+
+	return ret;
+}
+#endif
+
 int have_ip_ipv4(const char *ip)
 {
 	struct ifreq *ifr;
 	struct in_addr query_addr;
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1249: ret false if could not find matched local ip address.
+	if (!match_local_ip(ip))
+	{
+		return 0;
+	}
+#endif
 
 	query_addr.s_addr = inet_addr(ip);
 
