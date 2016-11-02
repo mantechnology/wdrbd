@@ -108,7 +108,6 @@ main(int argc, char* argv [])
 	DWORD	res = ERROR_SUCCESS;
 	int  	argIndex = 0;
 	UCHAR	Letter = 'C';
-	char	InitThreadFlag = 0, CloseThreadFlag = 0;
 	char	StartFlag = 0, StopFlag = 0;
 	char	GetVolumeSizeFlag = 0;
 	char	ProcDrbdFlag = 0;
@@ -149,14 +148,6 @@ main(int argc, char* argv [])
 		else if (strcmp(argv[argIndex], "/stop_volume") == 0)
 		{
 			StopFlag++;
-		}
-		else if (strcmp(argv[argIndex], "/init_thread") == 0)
-		{
-			InitThreadFlag++;
-		}
-		else if (strcmp(argv[argIndex], "/close_thread") == 0)
-		{
-			CloseThreadFlag++;
 		}
 		else if (strcmp(argv[argIndex], "/get_volume_size") == 0)
 		{
@@ -255,6 +246,7 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		/*
 		else if (!_stricmp(argv[argIndex], "/fd") || !_stricmp(argv[argIndex], "/df"))
         {
             Force = 1;
@@ -266,6 +258,7 @@ main(int argc, char* argv [])
             else
                 usage();
         }
+		*/
         else if (!_stricmp(argv[argIndex], "/m"))
         {
             MountFlag++;
@@ -342,28 +335,6 @@ main(int argc, char* argv [])
 		{
 			printf("Please check undefined arg[%d]=(%s)\n", argIndex, argv[argIndex]);
 		}
-	}
-
-	 if (InitThreadFlag)
-	{
-		res = MVOL_InitThread( Letter );
-		if( res != ERROR_SUCCESS )
-		{
-			fprintf( stderr, "Failed MVOL_InitThread. Err=%u\n", res );
-		}
-
-		return res;
-	}
-
-	if (CloseThreadFlag)
-	{
-		res = MVOL_CloseThread( Letter );
-		if( res != ERROR_SUCCESS )
-		{
-			fprintf( stderr, "Failed MVOL_CloseThread. Err=%u\n", res );
-		}
-
-		return res;
 	}
 
 	if (StartFlag)
@@ -527,7 +498,7 @@ main(int argc, char* argv [])
 	if (GetLog)
 	{
 		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
-		res = MVOL_GetDrbdLog((LPCTSTR)ProviderName, OosTrace);
+		res = MVOL_GetDrbdLog(ProviderName, OosTrace);
 	}
 
 	if (WriteLog)

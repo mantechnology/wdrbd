@@ -667,6 +667,11 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
 {
 	struct bio *bio;
+
+	if(nr_iovecs == 0) { // DW-1242 fix nr_iovecs is zero case.
+		return 0;
+	}
+	
 	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask, Tag);
 	if (!bio)
 	{
@@ -1627,11 +1632,6 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
 {
     struct task_struct *t;
 
-    if (++ct_thread_num > CT_MAX_THREAD_LIST)
-    {
-        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
-    }
-
     if ((t = kzalloc(sizeof(*t), GFP_KERNEL, Tag)) == NULL)
     {
         return NULL;
@@ -1645,7 +1645,10 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
     }
     strcpy(t->comm, name);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
-    list_add(&t->list, &ct_thread_list);
+	list_add(&t->list, &ct_thread_list);
+	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
+        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
+    }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
 }

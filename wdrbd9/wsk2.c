@@ -63,7 +63,8 @@ NTSTATUS
 InitWskBuffer(
 	__in  PVOID		Buffer,
 	__in  ULONG		BufferSize,
-	__out PWSK_BUF	WskBuffer
+	__out PWSK_BUF	WskBuffer,
+	__in  BOOLEAN	bWriteAccess
 )
 {
 	NTSTATUS Status = STATUS_SUCCESS;
@@ -81,7 +82,9 @@ InitWskBuffer(
 	}
 
     try {
-	    MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, IoWriteAccess);
+		// DW-1223: Locking with 'IoWriteAccess' affects buffer, which causes infinite I/O from ntfs when the buffer is from mdl of write IRP.
+		// we need write access for receiver, since buffer will be filled.
+		MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, bWriteAccess?IoWriteAccess:IoReadAccess);
     } except(EXCEPTION_EXECUTE_HANDLER) {
         if (WskBuffer->Mdl != NULL) {
             IoFreeMdl(WskBuffer->Mdl);
@@ -459,7 +462,7 @@ __in KEVENT			*send_buf_kill_event
 		return SOCKET_ERROR;
 		
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -573,7 +576,7 @@ Send(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -714,7 +717,7 @@ SendAsync(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -836,7 +839,7 @@ SendLocal(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
 		return SOCKET_ERROR;
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -957,7 +960,7 @@ SendTo(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -1014,7 +1017,7 @@ LONG NTAPI ReceiveLocal(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -1148,7 +1151,7 @@ LONG NTAPI Receive(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -1268,7 +1271,7 @@ ReceiveFrom(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer);
+	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}

@@ -542,15 +542,18 @@ static void __state_change_unlock(struct drbd_resource *resource, unsigned long 
 
 	resource->state_change_flags = 0;
 	spin_unlock_irqrestore(&resource->req_lock, *irq_flags);
-	if (done && expect(resource, current != resource->worker.task))
+	if (get_t_state(&resource->worker) == RUNNING) {
+		if (done && expect(resource, current != resource->worker.task)) {
 #ifdef _WIN32 
-        while (wait_for_completion(done) == -DRBD_SIGKILL)
-        {
-            WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-        }
+	        while (wait_for_completion(done) == -DRBD_SIGKILL){
+	            WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+	        }
 #else
-		wait_for_completion(done);
+			wait_for_completion(done);
 #endif
+		}
+	} 
+	
 	if ((flags & CS_SERIALIZE) && !(flags & (CS_ALREADY_SERIALIZED | CS_PREPARE)))
 		up(&resource->state_sem);
 }
@@ -621,7 +624,7 @@ static enum drbd_state_rv __end_state_change(struct drbd_resource *resource,
 	if ((flags & CS_WAIT_COMPLETE) && !(flags & (CS_PREPARE | CS_ABORT))) {
 		done = &__done;
 		init_completion(done);
-	}
+	} 
 	rv = ___end_state_change(resource, done, rv);
 	__state_change_unlock(resource, irq_flags, rv >= SS_SUCCESS ? done : NULL);
 	return rv;
@@ -1581,6 +1584,8 @@ static void sanitize_state(struct drbd_resource *resource)
 					drbd_print_uuids(peer_device, "cleared bitmap UUID");
 				}
 				else if ((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_BEHIND) &&
+					// MODIFIED_BY_MANTECH DW-1248: need to initial sync when I've never updated uuid and resync aborted. no update uuid here.
+					((drbd_current_uuid(device) & ~UUID_PRIMARY) != UUID_JUST_CREATED) &&
 					((drbd_current_uuid(device) & ~UUID_PRIMARY) != (peer_device->current_uuid & ~UUID_PRIMARY)) && peer_device->uuids_received)				
 				{
 					_drbd_uuid_set_current(device, peer_device->current_uuid);
@@ -2160,6 +2165,18 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 					}
 				}
 
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+				// MODIFIED_BY_MANTECH DW-1255: if my disk goes uptodate from inconsistent and pdisk is inconsistent, initial sync will be started. Otherwise, start resync after promotion.
+				if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
+					cstate[NOW] >= C_CONNECTED &&					
+					device->disk_state[NEW] >= D_OUTDATED)
+				{
+					if (disk_state[OLD] != D_INCONSISTENT ||
+						disk_state[NEW] != D_UP_TO_DATE ||
+						peer_disk_state[OLD] != D_INCONSISTENT)
+						set_bit(PROMOTED_RESYNC, &peer_device->flags);
+				}
+#endif
 				/* Peer was forced D_UP_TO_DATE & R_PRIMARY, consider to resync */
 				if (disk_state[OLD] == D_INCONSISTENT &&
 				    peer_disk_state[OLD] == D_INCONSISTENT && peer_disk_state[NEW] == D_UP_TO_DATE &&
@@ -2178,7 +2195,12 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 				wake_up(&connection->sender_work.q_wait);
 			}
 
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
+			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW]) || (peer_disk_state[NEW] == D_INCONSISTENT)) {
+#else
 			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
+#endif
 				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
 #ifdef _WIN32
 					// MODIFIED_BY_MANTECH DW-892: Bumping uuid during starting resync seems to be inadequate, this is a stopgap work as long as the purpose of 'lost_contact_to_peer_data' is unclear.
@@ -3065,12 +3087,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			}
 #endif
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
-			// MODIFIED_BY_MANTECH DW-1148: resync after promotion.
-			if (role[OLD] != R_PRIMARY && role[NEW] == R_PRIMARY &&
-				// MODIFIED_BY_MANTECH DW-1151: must not trigger resync after promotion when initial full sync.
-				drbd_current_uuid(device) != UUID_JUST_CREATED &&
-				device->disk_state[NOW] >= D_OUTDATED)
-				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);
+			// MODIFIED_BY_MANTECH DW-1255: I am promoted, and there will be no initial sync. start resync after promotion.
+			if (test_bit(PROMOTED_RESYNC, &peer_device->flags))
+			{
+				clear_bit(PROMOTED_RESYNC, &peer_device->flags);
+				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED, 0);				
+			}
 #endif
 
 			if (peer_disk_state[OLD] == D_UP_TO_DATE &&
@@ -3778,6 +3800,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	rcu_read_unlock();
 
     retry:
+	if (current == resource->worker.task && resource->remote_state_change)
+	{
+		return __end_state_change(resource, &irq_flags, SS_CONCURRENT_ST_CHG);
+	}
+
 	complete_remote_state_change(resource, &irq_flags);
 	start_time = jiffies;
 
@@ -3911,6 +3938,23 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 				(context->mask.conn == conn_MASK && context->val.conn == C_CONNECTED))
 				rv = check_primaries_distances(resource);
 
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1231 : not allowed multiple primaries.
+			if (reply->primary_nodes & NODE_MASK(context->target_node_id))
+			{			
+				rcu_read_lock();
+				for_each_connection_rcu(connection, resource) {
+					if (connection->peer_node_id != context->target_node_id) {
+						if (connection->peer_role[NOW] == R_PRIMARY)
+						{
+							rv = SS_TWO_PRIMARIES;
+							break;
+						}
+					}
+				}
+				rcu_read_unlock();
+			}
+#endif
 			if (!(context->mask.conn == conn_MASK && context->val.conn == C_DISCONNECTING) ||
 			    (reply->reachable_nodes & reply->target_reachable_nodes)) {
 				/* The cluster is still connected after this
@@ -4488,9 +4532,14 @@ static enum outdate_what outdate_on_disconnect(struct drbd_connection *connectio
 
 	if (connection->fencing_policy >= FP_RESOURCE &&
 	    resource->role[NOW] != connection->peer_role[NOW]) {
+		/* primary politely disconnects from secondary,
+		 * tells peer to please outdate itself */
+
 		if (resource->role[NOW] == R_PRIMARY)
 			return OUTDATE_PEER_DISKS;
-		if (connection->peer_role[NOW] != R_PRIMARY)
+		/* secondary politely disconnect from primary,
+    	 * proposes to outdate itself. */
+		if (connection->peer_role[NOW] == R_PRIMARY)
 			return OUTDATE_DISKS;
 	}
 	return OUTDATE_NOTHING;

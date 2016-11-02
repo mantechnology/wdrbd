@@ -138,7 +138,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	else
 	{
 		printf("================================\n");
-		printf(" PhysicalDeviceName Minor Lock\n");
+		printf(" PhysicalDeviceName Minor Replication Volume\n");
 		printf("================================\n");
 	}
 	
@@ -181,176 +181,6 @@ out:
 	}
 
 	return res;
-}
-
-DWORD
-MVOL_InitThread( PWCHAR PhysicalVolume )
-{
-    HANDLE			rootHandle = INVALID_HANDLE_VALUE;
-    DWORD			res = ERROR_SUCCESS;
-    ULONG			iolen;
-    ULONG			len;
-    MVOL_VOLUME_INFO	volumeInfo = {0,};
-
-    if( PhysicalVolume == NULL )
-    {
-        printf("LOG_ERROR: MVOL_InitThread: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    if( wcslen(PhysicalVolume) > MAXDEVICENAME )
-    {
-        printf("LOG_ERROR: MVOL_InitThread: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    rootHandle = OpenDevice( MVOL_DEVICE );
-    if( rootHandle == INVALID_HANDLE_VALUE )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_InitThread: cannot open root device, err=%u\n", res);
-        return res;
-    }
-
-    wcscpy_s( volumeInfo.PhysicalDeviceName, PhysicalVolume );
-    len = sizeof(MVOL_VOLUME_INFO);
-    if( !DeviceIoControl(rootHandle, IOCTL_MVOL_INIT_VOLUME_THREAD,
-        &volumeInfo, len, NULL, 0, &iolen, NULL) )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_InitThread: ioctl err=%d\n", res);
-        goto out;
-    }
-
-    res = ERROR_SUCCESS;
-out:
-    if( rootHandle != INVALID_HANDLE_VALUE )
-        CloseHandle(rootHandle);
-
-    return res;
-}
-
-DWORD
-MVOL_InitThread( CHAR DriveLetter )
-{
-    HANDLE			hDrive = INVALID_HANDLE_VALUE;
-    CHAR            letter[] = "\\\\.\\ :";
-    DWORD			retVal = ERROR_SUCCESS;
-    DWORD           dwReturned = 0;
-    BOOL            ret = FALSE;
-
-    letter[4] = DriveLetter;
-    hDrive = CreateFileA( letter, GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-        OPEN_EXISTING, 0, NULL );
-    if( hDrive == INVALID_HANDLE_VALUE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed open %c: drive. Err=%u\n",
-            __FUNCTION__, DriveLetter, retVal );
-        return retVal;
-    }
-
-    ret = DeviceIoControl( hDrive, IOCTL_MVOL_INIT_VOLUME_THREAD,
-        NULL, 0, NULL, 0, &dwReturned, NULL );
-    if( ret == FALSE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_INIT_VOLUME_THREAD. Err=%u\n",
-            __FUNCTION__, retVal );
-        goto out;
-    }
-
-    retVal = ERROR_SUCCESS;
-out:
-    if( hDrive != INVALID_HANDLE_VALUE )    CloseHandle( hDrive );
-
-    return retVal;
-}
-
-DWORD
-MVOL_CloseThread( PWCHAR PhysicalVolume )
-{
-    HANDLE			rootHandle=INVALID_HANDLE_VALUE;
-    DWORD			res = ERROR_SUCCESS;
-    ULONG			iolen;
-    ULONG			len;
-    MVOL_VOLUME_INFO	volumeInfo = {0,};
-
-    if( PhysicalVolume == NULL )
-    {
-        printf("LOG_ERROR: MVOL_CloseThread: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    if( wcslen(PhysicalVolume) > MAXDEVICENAME )
-    {
-        printf("LOG_ERROR: MVOL_CloseThread: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    rootHandle = OpenDevice( MVOL_DEVICE );
-    if( rootHandle == INVALID_HANDLE_VALUE )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_CloseThread: cannot open root device, err=%u\n", res);
-        return res;
-    }
-
-    wcscpy_s( volumeInfo.PhysicalDeviceName, PhysicalVolume );
-    len = sizeof(MVOL_VOLUME_INFO);
-    if( !DeviceIoControl(rootHandle, IOCTL_MVOL_CLOSE_VOLUME_THREAD,
-        &volumeInfo, len, NULL, 0, &iolen, NULL) )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_CloseThread: ioctl err=%d\n", res);
-        goto out;
-    }
-
-    res = ERROR_SUCCESS;
-out:
-    if( rootHandle != INVALID_HANDLE_VALUE )
-        CloseHandle(rootHandle);
-
-    return res;
-}
-
-DWORD
-MVOL_CloseThread( CHAR DriveLetter )
-{
-    HANDLE			hDrive = INVALID_HANDLE_VALUE;
-    CHAR            letter[] = "\\\\.\\ :";
-    DWORD			retVal = ERROR_SUCCESS;
-    DWORD           dwReturned = 0;
-    BOOL            ret = FALSE;
-
-    letter[4] = DriveLetter;
-    hDrive = CreateFileA( letter, GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-        OPEN_EXISTING, 0, NULL );
-    if( hDrive == INVALID_HANDLE_VALUE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed open %c: drive. Err=%u\n",
-            __FUNCTION__, DriveLetter, retVal );
-        return retVal;
-    }
-
-    ret = DeviceIoControl( hDrive, IOCTL_MVOL_CLOSE_VOLUME_THREAD,
-        NULL, 0, NULL, 0, &dwReturned, NULL );
-    if( ret == FALSE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_CLOSE_VOLUME_THREAD. Err=%u\n",
-            __FUNCTION__, retVal );
-        goto out;
-    }
-
-    retVal = ERROR_SUCCESS;
-out:
-    if( hDrive != INVALID_HANDLE_VALUE )    CloseHandle( hDrive );
-
-    return retVal;
 }
 
 DWORD
@@ -836,6 +666,7 @@ DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force)
             CloseHandle(handle);
         }
     }
+	printf("%c: Volume Dismount Success\n", DriveLetter);
     return ERROR_SUCCESS;
 }
 
@@ -1555,7 +1386,7 @@ VOID CleanupOosTrace()
 }
 #endif	// _WIN32_DEBUG_OOS
 
-DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
+DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 {
 	HANDLE      hDevice = INVALID_HANDLE_VALUE;
 	DWORD       retVal = ERROR_SUCCESS;
@@ -1593,7 +1424,7 @@ DWORD MVOL_GetDrbdLog(LPCTSTR pszProviderName, BOOLEAN oosTrace)
 	}
 	else {
 		HANDLE hLogFile = INVALID_HANDLE_VALUE;
-		hLogFile = CreateFile(L"drbdService.log", GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		hLogFile = CreateFileA(pszProviderName, GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hLogFile != INVALID_HANDLE_VALUE) {
 			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);

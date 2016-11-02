@@ -22,40 +22,94 @@ extern void list_del_init(struct list_head *entry);
 #define LIST_HEAD_INIT(name)			{ &(name), &(name) }
 #define LIST_HEAD(name)				struct list_head name = LIST_HEAD_INIT(name)
 
+#ifdef _WIN32
+static void INIT_LIST_HEAD(struct list_head *list)
+#else
 static __inline void INIT_LIST_HEAD(struct list_head *list)
+#endif
 {
+#ifdef _WIN32
+	if(list == 0) {
+		return;
+	}
+#endif
 	list->next = list;
 	list->prev = list;
 }
 
+#ifdef _WIN32
+static void __list_add(struct list_head *new, struct list_head *prev, struct list_head *next)
+#else
 static __inline void __list_add(struct list_head *new, struct list_head *prev, struct list_head *next)
+#endif
 {
+#ifdef _WIN32
+	if(new == 0 || prev == 0 || next == 0) {
+		return;
+	}
+#endif
 	next->prev = new;
 	new->next = next;
 	new->prev = prev;
 	prev->next = new;
 }
 
+#ifdef _WIN32
+static void list_add(struct list_head *new, struct list_head *head)
+#else
 static __inline void list_add(struct list_head *new, struct list_head *head)
+#endif
 {
+#ifdef _WIN32
+	if(new == 0 || head == 0) {
+		return;
+	}
+#endif
 	__list_add(new, head, head->next);
 }
 
+#ifdef _WIN32
+static void __list_del(struct list_head * prev, struct list_head * next)
+#else
 static __inline void __list_del(struct list_head * prev, struct list_head * next)
+#endif
 {
+#ifdef _WIN32
+	if(prev == 0 || next == 0) {
+		return;
+	}
+#endif
 	next->prev = prev;
 	prev->next = next;
 }
 
+#ifdef _WIN32
+static void list_del(struct list_head *entry)
+#else
 static __inline void list_del(struct list_head *entry)
+#endif
 {
+#ifdef _WIN32
+	if(entry == 0 || entry->prev == 0 || entry->next == 0) {
+		return;
+	} 
+#endif
 	__list_del(entry->prev, entry->next);
 	entry->next = LIST_POISON1;
 	entry->prev = LIST_POISON2;
 }
 
+#ifdef _WIN32
+static int list_empty(const struct list_head *head)
+#else
 static __inline int list_empty(const struct list_head *head)
+#endif
 {
+#ifdef _WIN32
+	if(head == 0) {
+		return 1;
+	} 
+#endif
 	return head->next == head;
 }
 

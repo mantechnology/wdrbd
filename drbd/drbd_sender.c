@@ -1338,7 +1338,12 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		if (current == device->resource->worker.task)
 			goto queue_on_sender_workq;
 		else
+#ifdef _WIN32
+			drbd_flush_workqueue(device->resource, &device->resource->work);
+#else
 			drbd_flush_workqueue(&device->resource->work);
+#endif
+			
 	}
 
 	/* Remove all elements from the resync LRU. Since future actions
@@ -1486,6 +1491,17 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 #endif
 			    peer_device->uuids_received) {
 				u64 newer = drbd_uuid_resync_finished(peer_device);
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1216: no downgrade if uuid flags contains belows because
+				// 1. receiver updates newly created uuid unless it is being gotten sync, downgrading shouldn't(or might not) affect.
+				if (peer_device->uuid_flags & UUID_FLAG_NEW_DATAGEN
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+				// 2. one node goes primary and resync will be started for all secondaries. no downgrading is necessary.
+					|| peer_device->uuid_flags & UUID_FLAG_PROMOTED
+#endif
+					)
+					newer = 0;
+#endif
 				__outdate_peer_disk_by_mask(device, newer);
 			} else {
 				if (!peer_device->uuids_received)
@@ -3135,6 +3151,17 @@ static int process_one_request(struct drbd_connection *connection)
 
 			err = drbd_send_dblock(peer_device, req);
 			what = err ? SEND_FAILED : HANDED_OVER_TO_NETWORK;
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1237: data block has been sent(or failed), put request databuf ref.
+			if (0 == atomic_dec(&req->req_databuf_ref) &&
+				(req->rq_state[0] & RQ_LOCAL_COMPLETED))
+			{
+				kfree2(req->req_databuf);
+				atomic_sub64(req->i.size, &g_total_req_buf_bytes);
+			}
+#endif
+
 		} else {
 			/* this time, no connection->send.current_epoch_writes++;
 			 * If it was sent, it was the closing barrier for the last

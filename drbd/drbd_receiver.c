@@ -79,6 +79,11 @@ enum resync_reason {
 	DISKLESS_PRIMARY,
 };
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
+extern atomic_t64 g_total_req_buf_bytes;
+#endif
+
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 static int drbd_disconnected(struct drbd_peer_device *);
@@ -499,8 +504,14 @@ void drbd_free_pages(struct drbd_transport *transport, struct page *page, int is
 #endif
 	i = atomic_sub_return(i, a);
 	if (i < 0)
+	{
 		drbd_warn(connection, "ASSERTION FAILED: %s: %d < 0\n",
 			is_net ? "pp_in_use_by_net" : "pp_in_use", i);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1239 : If pp_in_use is negative, set to 0.
+		atomic_set(&connection->pp_in_use, 0);
+#endif
+	}
 
 	wake_up(&drbd_pp_wait);
 }
@@ -4199,7 +4210,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
 
 		// DW-1172 If DISCARD_MY_DATA bit is set, to change the disk_state as Inconsistent.
-		if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+		if (hg < 0 && test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		{
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			if (device->disk_state[NOW] > D_INCONSISTENT)
@@ -4423,6 +4434,15 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	}
 
 	if (hg == -100) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1221 : If DISCARD_MY_DATA bit is set on both nodes, dropping connection.
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
+			(peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA)) {
+			drbd_err(connection, "incompatible %s settings\n", "discard-my-data");
+			rcu_read_unlock();
+			return -1;
+		}
+#endif
 		if (test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
 		    !(peer_device->uuid_flags & UUID_FLAG_DISCARD_MY_DATA))
 			hg = -2;
@@ -4435,6 +4455,14 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 			     "Sync from %s node\n",
 			     (hg < 0) ? "peer" : "this");
 	}
+#ifdef _WIN32 
+	//MODIFIED_BY_MANTECH DW-1221 : If Split-Brain not detected, clearing DISCARD_MY_DATA bit.
+	else
+	{
+		if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
+			clear_bit(DISCARD_MY_DATA, &peer_device->flags);
+	}
+#endif
 	rr_conflict = nc->rr_conflict;
 	rcu_read_unlock();
 
@@ -4554,10 +4582,13 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 			goto disconnect_rcu_unlock;
 		}
 
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1221 : move to drbd_sync_handshake()
 		if (p_discard_my_data && test_bit(CONN_DISCARD_MY_DATA, &connection->flags)) {
 			drbd_err(connection, "incompatible %s settings\n", "discard-my-data");
 			goto disconnect_rcu_unlock;
 		}
+#endif
 
 		if (p_two_primaries != nc->two_primaries) {
 			drbd_err(connection, "incompatible %s settings\n", "allow-two-primaries");
@@ -5332,6 +5363,20 @@ static void drbd_resync_after_promotion(struct drbd_peer_device *peer_device, en
 	}
 
 	drbd_info(peer_device, "Becoming %s after one node promoted\n", drbd_repl_str(new_repl_state));
+	
+	// DW-1228: sync as much as set out-of-sync isn't enough for some cases, do initial sync instead.
+	if (new_repl_state == L_WF_BITMAP_S)
+	{
+		int hg, rule_nr, peer_node_id = 0;
+		hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, false);
+
+		if (abs(hg) >= 100 ||
+			abs(hg) == 3)
+		{
+			hg = 3;
+			bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
+		}
+	}
 
 	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
 	if (rv == SS_NOTHING_TO_DO || rv == SS_RESYNC_RUNNING) {
@@ -7816,15 +7861,24 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	 * w_make_resync_request etc. which may still be on the worker queue
 	 * to be "canceled" */
+#ifdef _WIN32
+	drbd_flush_workqueue(device->resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
+#endif
+	
 
 	drbd_finish_peer_reqs(peer_device);
 
 	/* This second workqueue flush is necessary, since drbd_finish_peer_reqs()
 	   might have issued a work again. The one before drbd_finish_peer_reqs() is
 	   necessary to reclain net_ee in drbd_finish_peer_reqs(). */
+#ifdef _WIN32
+	drbd_flush_workqueue(device->resource, &peer_device->connection->sender_work);
+#else
 	drbd_flush_workqueue(&peer_device->connection->sender_work);
-
+#endif
+	
 	/* need to do it again, drbd_finish_peer_reqs() may have populated it
 	 * again via drbd_try_clear_on_disk_bm(). */
 	drbd_rs_cancel_all(peer_device);
@@ -8223,7 +8277,9 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        //kfree(req->req_databuf);
+        kfree2(req->req_databuf);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
@@ -8877,7 +8933,9 @@ static void destroy_request(struct kref *kref)
 #ifdef _WIN32
     if (req->req_databuf)
     {
-        //kfree(req->req_databuf);
+        kfree2(req->req_databuf);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);

@@ -313,12 +313,15 @@ static inline void drbd_alloc_page_chain(struct drbd_transport *t,
 static inline void drbd_free_page_chain(struct drbd_transport *transport, struct drbd_page_chain_head *chain, int is_net)
 {
 #ifdef _WIN32 
-	drbd_free_pages(transport, chain->nr_pages, is_net);
+	// MODIFIED_BY_MANTECH DW-1239 : decrease nr_pages before drbd_free_pages().
+	int page_count = atomic_xchg((atomic_t *)&chain->nr_pages, 0);
+	drbd_free_pages(transport, page_count, is_net);
+	chain->head = NULL;
 #else
 	drbd_free_pages(transport, chain->head, is_net);
-#endif
 	chain->head = NULL;
 	chain->nr_pages = 0;
+#endif
 }
 
 /*
