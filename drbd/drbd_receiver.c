@@ -6397,6 +6397,9 @@ static int process_twopc(struct drbd_connection *connection,
 	}
 	csc_rv = check_concurrent_transactions(resource, reply);
 
+#ifdef _WIN32_TWOPC
+	drbd_info(resource, "[TWOPC:%u] csc_rv (%d) pi->cmd (%s)\n", reply->tid, csc_rv, drbd_packet_name(pi->cmd));
+#endif
 	if (csc_rv == CSC_CLEAR) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
 			/* We have committed or aborted this transaction already. */
@@ -6583,6 +6586,21 @@ static int process_twopc(struct drbd_connection *connection,
 		break;
 	}
 
+
+#ifdef _WIN32_TWOPC
+	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n",
+				reply->tid,
+				reply->target_node_id,
+				mask.conn == conn_MASK ? drbd_conn_str(val.conn) : "-",
+				mask.disk == disk_MASK ? drbd_disk_str(val.disk) : "-",
+				mask.pdsk == pdsk_MASK ? drbd_disk_str(val.pdsk) : "-",
+				mask.role == role_MASK ? drbd_role_str(val.role) : "-",
+				mask.peer == peer_MASK ? drbd_role_str(val.peer) : "-",
+				flags);
+#endif
+
+
+	
 	if (peer_device)
 		rv = change_peer_device_state(peer_device, mask, val, flags);
 	else if (affected_connection)

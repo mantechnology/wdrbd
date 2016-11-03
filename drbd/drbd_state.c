@@ -3868,6 +3868,19 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		  	context->mask.i,
 		  	context->val.i);
 #endif
+
+#ifdef _WIN32_TWOPC
+	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n", 
+				be32_to_cpu(request.tid),
+				context->target_node_id,
+				context->mask.conn == conn_MASK ? drbd_conn_str(context->val.conn) : "-",
+				context->mask.disk == disk_MASK ? drbd_disk_str(context->val.disk) : "-",
+				context->mask.pdsk == pdsk_MASK ? drbd_disk_str(context->val.pdsk) : "-",
+				context->mask.role == role_MASK ? drbd_role_str(context->val.role) : "-",
+				context->mask.peer == peer_MASK ? drbd_role_str(context->val.peer) : "-",
+				context->flags);
+#endif
+
 		  
 	resource->remote_state_change = true;
 	reply->initiator_node_id = resource->res_opts.node_id;
@@ -4008,8 +4021,14 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
 		long timeout = twopc_retry_timeout(resource, retries++);
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d \n",
+			  reply->tid, jiffies_to_msecs(timeout), rv);
+#else
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
+#endif
+
 		if (have_peers)
 			twopc_phase2(resource, context->vnr, 0, &request, reach_immediately);
 		if (target_connection) {
