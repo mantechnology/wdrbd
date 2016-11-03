@@ -3921,7 +3921,15 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 				       cluster_wide_reply_ready(resource),
 				       twopc_timeout(resource)))
 #endif
+		{
 			rv = get_cluster_wide_reply(resource);
+#ifdef _WIN32_TWOPC
+			drbd_info(resource, "[TWOPC:%u] target_node_id(%d) get_cluster_wide_reply (%d) \n", 
+						reply->tid,
+						context->target_node_id, 
+						rv);
+#endif
+		}
 		else
 			rv = SS_TIMEOUT;
 

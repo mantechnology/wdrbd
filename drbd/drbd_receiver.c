@@ -6102,14 +6102,37 @@ check_concurrent_transactions(struct drbd_resource *resource, struct twopc_reply
 
 	if (new_r->initiator_node_id < ongoing->initiator_node_id) {
 		if (ongoing->initiator_node_id == resource->res_opts.node_id)
+		{
+#ifdef _WIN32_TWOPC
+			drbd_info(resource, "[TWOPC] CSC_ABORT_LOCAL! new_r->initiator_node_id (%d) ongoing->initiator_node_id (%d)\n",
+					new_r->initiator_node_id, ongoing->initiator_node_id);
+#endif
 			return CSC_ABORT_LOCAL;
+		}
 		else
+		{
+#ifdef _WIN32_TWOPC
+			drbd_info(resource, "[TWOPC] CSC_QUEUE! new_r->initiator_node_id (%d) ongoing->initiator_node_id (%d)\n",
+					new_r->initiator_node_id, ongoing->initiator_node_id);
+#endif
 			return CSC_QUEUE;
+		}
 	} else if (new_r->initiator_node_id > ongoing->initiator_node_id) {
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "[TWOPC] CSC_REJECT! new_r->initiator_node_id (%d) ongoing->initiator_node_id (%d)\n",
+					new_r->initiator_node_id, ongoing->initiator_node_id);
+#endif	
+
 		return CSC_REJECT;
 	}
 	if (new_r->tid != ongoing->tid)
+	{
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "[TWOPC] CSC_TID_MISS! new_r->tid (%u) ongoing->tid (%u)\n",
+					new_r->tid, ongoing->tid);
+#endif	
 		return CSC_TID_MISS;
+	}
 
 	return CSC_MATCH;
 }
@@ -6398,7 +6421,8 @@ static int process_twopc(struct drbd_connection *connection,
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
-	drbd_info(resource, "[TWOPC:%u] csc_rv (%d) pi->cmd (%s)\n", reply->tid, csc_rv, drbd_packet_name(pi->cmd));
+	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) pi->cmd (%s)\n", 
+					reply->tid, reply->target_node_id, csc_rv, drbd_packet_name(pi->cmd));
 #endif
 	if (csc_rv == CSC_CLEAR) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
@@ -6455,6 +6479,10 @@ static int process_twopc(struct drbd_connection *connection,
 					  reply->tid);
 		}
 
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "[TWOPC:%u] target_node_id (%d) abort_starting_twopc \n", 
+					reply->tid, reply->target_node_id);
+#endif
 		nested_twopc_abort(resource, pi->vnr, pi->cmd, p);
 		return 0;
 	} else {
@@ -6612,7 +6640,15 @@ static int process_twopc(struct drbd_connection *connection,
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed.
 	if (rv == SS_NOTHING_TO_DO)
+	{	
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "[TWOPC:%u] target_node_id(%d) noStateChange! flags (%d) \n",
+				reply->tid,
+				reply->target_node_id,
+				flags);
+#endif
 		noStateChange = true;
+	}
 #endif
 
 	if (flags & CS_PREPARE) {
