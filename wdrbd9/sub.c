@@ -287,7 +287,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 	PVOID						buffer;
 	LARGE_INTEGER				offset;
 	ULONG						length;
-	struct drbd_device			*mdev = NULL;
+	struct drbd_device*			device = NULL;
 
 	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	if (Irp->MdlAddress)
@@ -314,9 +314,8 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 		length = irpSp->Parameters.Read.Length;
 	}
 
-	mdev = minor_to_device(VolumeExtension->VolIndex);
-	if (mdev/* && (mdev->state.role == R_PRIMARY)*/)
-	{
+	device = minor_to_device(VolumeExtension->VolIndex);
+	if (device/* && (mdev->state.role == R_PRIMARY)*/) {
 		struct splitInfo *splitInfo = 0;
 		ULONG io_id = 0;
 		ULONG rest, slice, loop;
@@ -368,9 +367,9 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 				newbuf = buffer;
 			}
 
-			if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, mdev, newbuf, offset, slice)) != 0)
+			if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, newbuf, offset, slice)) != 0)
 #else
-            if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, mdev, buffer, offset, slice)))
+            if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, buffer, offset, slice)))
 #endif
 			{
 				goto fail;
@@ -398,9 +397,9 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 				newbuf = buffer;
 			}
 
-			if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, mdev, newbuf, offset, rest)) != 0)
+			if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, newbuf, offset, rest)) != 0)
 #else
-            if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, mdev, buffer, offset, rest)))
+            if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, buffer, offset, rest)))
 #endif
 			{
 				goto fail;

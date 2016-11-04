@@ -572,12 +572,10 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    if (VolumeExtension->Active)
-    {
+    if (VolumeExtension->Active) {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-
-        if (device)
-        {
+		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE)) {
+        	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
 			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
 			ULONG size_sector = pisl->Parameters.Write.Length >> 9;
@@ -585,8 +583,9 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 			// if io offset is larger than volume size oacassionally,
 			// then allow to lower device, so not try to send to peer
-			if (offset_sector + size_sector > vol_size_sector)
-			{
+			if (offset_sector + size_sector > vol_size_sector) {
+				//WDRBD_INFO("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
+				//	&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 				goto skip;
 			}
 
@@ -618,6 +617,9 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
         else
         {
+        	//WDRBD_INFO("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
+			//		&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
+			
             Irp->IoStatus.Information = 0;
             Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -695,18 +697,6 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
             status = IOCTL_GetVolumeInfo(DeviceObject, Irp, &size);
             MVOL_IOCOMPLETE_REQ(Irp, status, size);
-        }
-
-        case IOCTL_MVOL_INIT_VOLUME_THREAD:
-        {
-            status = IOCTL_InitVolumeThread(DeviceObject, Irp);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
-        }
-
-        case IOCTL_MVOL_CLOSE_VOLUME_THREAD:
-        {
-            status = IOCTL_CloseVolumeThread(DeviceObject, Irp);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
         }
 
         case IOCTL_MVOL_VOLUME_START:

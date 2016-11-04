@@ -112,6 +112,11 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
+extern atomic_t64 g_total_req_buf_bytes;
+#endif
+
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -576,6 +581,8 @@ struct drbd_request {
 	struct bio *private_bio;
 #ifdef _WIN32
 	char*	req_databuf;
+	// DW-1237: add request buffer reference count to free earlier when no longer need buf.
+	atomic_t req_databuf_ref;
 #endif
 	struct drbd_interval i;
 
@@ -893,6 +900,9 @@ enum {
 	AHEAD_TO_SYNC_SOURCE,   /* Ahead -> SyncSource queued */
 	// MODIFIED_BY_MANTECH DW-955: add resync aborted flag to resume it later.
 	RESYNC_ABORTED,			/* Resync has been aborted due to unsyncable (peer)disk state, need to resume it when it goes syncable. */
+#ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+	PROMOTED_RESYNC,		/* MODIFIED_BY_MANTECH DW-1225: I'm promoted, and there will be no initial sync. Do trigger resync after promotion */
+#endif
 #endif
 };
 
@@ -1230,6 +1240,10 @@ struct drbd_resource {
 	unsigned int w_cb_nr; /* keeps counting up */
 	struct drbd_thread_timing_details w_timing_details[DRBD_THREAD_DETAILS_HIST];
 	wait_queue_head_t barrier_wait;  /* upon each state change. */
+#ifdef _WIN32
+	bool bPreSecondaryLock;
+#endif
+
 };
 
 struct drbd_connection {
@@ -2922,9 +2936,12 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 	}
 }
 
-extern void drbd_flush_workqueue(struct drbd_work_queue *work_queue);
+
 #ifdef _WIN32
-extern void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue);
+extern void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue *work_queue);
+extern void drbd_flush_workqueue_timeout(struct drbd_resource* resource, struct drbd_work_queue *work_queue);
+#else
+extern void drbd_flush_workqueue(struct drbd_work_queue *work_queue);
 #endif
 
 /* To get the ack_receiver out of the blocking network stack,
@@ -3266,10 +3283,32 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 {
 	bool rv = false;
 	unsigned int nr_requests;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
+	LONGLONG req_buf_size_max;
+#endif
 
 	spin_lock_irq(&device->resource->req_lock);
 	nr_requests = device->resource->res_opts.nr_requests;
 	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
+	req_buf_size_max = ((LONGLONG)device->resource->res_opts.req_buf_size << 10);    // convert to byte
+	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
+		req_buf_size_max >((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
+	{
+		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
+		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
+	}
+
+	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
+	{
+		if (drbd_ratelimit())
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+		rv = false;
+	}
+#endif
 
 	if (rv)
 		atomic_inc(&device->ap_bio_cnt[rw]);

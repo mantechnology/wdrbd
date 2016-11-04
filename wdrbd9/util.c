@@ -29,7 +29,7 @@
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
 #ifdef _WIN32_MVFL
-#pragma alloc_text(PAGE, FsctlDismountVolume)
+//#pragma alloc_text(PAGE, FsctlFlsuhDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
 #pragma alloc_text(PAGE, FsctlCreateVolume)
@@ -78,11 +78,11 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 *			lock - dismount - unlock
 *			because this function can process regardless of using volume
 *           reference to http://msdn.microsoft.com/en-us/library/windows/desktop/aa364562(v=vs.85).aspx 
-*           using sequence is FsctlLockVolume() - FsctlDismountVolume() - FsctlUnlockVolume() 
+*           using sequence is FsctlLockVolume() - FsctlFlushDismountVolume() - FsctlUnlockVolume() 
 *           Opened volume's HANDLE value is in VOLUME_EXTENSION.
 *           if you need, can be used Independently. 
 */
-NTSTATUS FsctlDismountVolume(unsigned int minor)
+NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
 {
     NTSTATUS status = STATUS_SUCCESS;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -114,7 +114,7 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
                 NULL);
 
             status = ZwCreateFile(&hFile,
-                SYNCHRONIZE | FILE_READ_DATA,
+                GENERIC_READ | GENERIC_WRITE,
                 &ObjectAttributes,
                 &StatusBlock,
                 NULL,
@@ -148,10 +148,13 @@ NTSTATUS FsctlDismountVolume(unsigned int minor)
             __leave;
         }
 #endif
+		status = ZwFlushBuffersFile(hFile, &StatusBlock);
+		if (!NT_SUCCESS(status)) {
+            WDRBD_ERROR("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
+        }
         status = ZwFsControlFile(hFile, 0, 0, 0, &StatusBlock, FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0);
-        if (!NT_SUCCESS(status))
-        {
-            WDRBD_ERROR("ZwFsControlFile Failed. status(0x%x)\n", status);
+        if (!NT_SUCCESS(status)) {
+            WDRBD_ERROR("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
             __leave;
         }
 
@@ -1334,6 +1337,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 
 	// set read_filter
+#if 0	
 	status = GetRegistryValue(L"read_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_read_filter = *(int*) aucTemp;
@@ -1342,6 +1346,8 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		g_read_filter = 0;
 	}
+#endif
+	g_read_filter = 0;
 
 	//set g_mj_flush_buffers_filter
 	status = GetRegistryValue(L"flush_filter", &ulLength, (UCHAR*)&aucTemp, RegPath_unicode);

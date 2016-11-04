@@ -47,6 +47,7 @@
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
       <mountPoint id="866" root="" location="etc" mode="755" />
+      <mountPoint id="2061" root="" location="log" mode="755" />
       <mountPoint id="867" root="584" location="bin" mode="755" />
       <mountPoint id="868" root="581" location="bin" mode="755" />
       <mountPoint id="613" root="586" location="" mode="755" />

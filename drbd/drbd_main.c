@@ -2886,6 +2886,7 @@ static int try_to_promote(struct drbd_device *device)
 	do {
 		rv = drbd_set_role(resource, R_PRIMARY, false);
 		if (rv >= SS_SUCCESS || timeout == 0) {
+			resource->bPreSecondaryLock = FALSE;
 			return rv;
 		} else if (rv == SS_CW_FAILED_BY_PEER) {
 			/* Probably udev has it open read-only on one of the peers */
@@ -3668,31 +3669,39 @@ void drbd_queue_work(struct drbd_work_queue *q, struct drbd_work *w)
 }
 
 #ifdef _WIN32 // DW-1103 down from kernel with timeout
-void drbd_flush_workqueue_timeout(struct drbd_work_queue *work_queue)
+void drbd_flush_workqueue_timeout(struct drbd_resource* resource, struct drbd_work_queue *work_queue)
 {
 	struct completion_work completion_work;
-
+	if (get_t_state(&resource->worker) != RUNNING) {
+		return;
+	}
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
-    while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
-        WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-    }
+	while (wait_for_completion_timeout(&completion_work.done, 100 ) == -DRBD_SIGKILL) {
+    	WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
+	}
 }
 #endif
 
+#ifndef _WIN32
 void drbd_flush_workqueue(struct drbd_work_queue *work_queue)
+#else
+void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue *work_queue)
+#endif
 {
 	struct completion_work completion_work;
-
+	if (get_t_state(&resource->worker) != RUNNING) {
+		WDRBD_INFO("drbd_flush_workqueue &resource->worker != RUNNING return resource:%p\n",resource);
+		return;
+	}
 	completion_work.w.cb = w_complete;
 	init_completion(&completion_work.done);
 	drbd_queue_work(work_queue, &completion_work.w);
 #ifdef _WIN32 
-    while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL)
-    {
+	while (wait_for_completion(&completion_work.done) == -DRBD_SIGKILL) {
         WDRBD_INFO("DRBD_SIGKILL occurs. Ignore and wait for real event\n");
-    }
+    }	
 #else
 	wait_for_completion(&completion_work.done);
 #endif
@@ -3879,6 +3888,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 #ifdef _WIN32
     resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
+	resource->bPreSecondaryLock = FALSE;
 #else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
 #endif
@@ -4332,6 +4342,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
 	if (!pvext) {
 		err = ERR_NO_DISK;
+		drbd_err(device, "%d: Device has no disk.\n", err);
 		goto out_no_disk;
 	}
 
@@ -5245,6 +5256,10 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
 			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED;
 			do_it = do_it || NODE_MASK(node_id) & weak_nodes;
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
+			do_it = do_it || ((peer_device->connection->cstate[NEW] < C_CONNECTED) && (pdsk == D_INCONSISTENT));
+#endif
 		} else {
 			do_it = true;
 		}
