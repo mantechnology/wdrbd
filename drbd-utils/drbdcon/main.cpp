@@ -42,7 +42,7 @@ usage()
         "drbdcon /d F \n"
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService \n"
-		"drbdcon /minlog_lv svc 6 \n"
+		"drbdcon /minlog_lv dbg 6 \n"
 		"drbdcon /write_log drbdService \"Logging start\" \n"
 		"drbdcon /handler_use 1 \n"
 	);
@@ -120,6 +120,10 @@ main(int argc, char* argv [])
     char    *ResourceName = NULL;
 	char	GetLog = 0;
 	char	OosTrace = 0;
+#ifdef _WIN32_DEBUG_OOS
+	char	ConvertOosLog = 0;
+	char	*pSrcFilePath = NULL;	
+#endif
 	char	WriteLog = 0;
 	char	SetMinLogLv = 0;
 	char	*ProviderName = NULL;
@@ -191,6 +195,19 @@ main(int argc, char* argv [])
 			}
 #endif
 		}
+#ifdef _WIN32_DEBUG_OOS
+		else if (strcmp(argv[argIndex], "/convert_oos_log") == 0)
+		{
+			argIndex++;
+			ConvertOosLog++;
+
+			// Get oos log path
+			if (argIndex < argc)
+				pSrcFilePath = argv[argIndex];
+			else
+				usage();
+		}
+#endif
 		else if (strcmp(argv[argIndex], "/write_log") == 0)
 		{
 			argIndex++;
@@ -500,6 +517,12 @@ main(int argc, char* argv [])
 		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
 		res = MVOL_GetDrbdLog(ProviderName, OosTrace);
 	}
+#ifdef _WIN32_DEBUG_OOS
+	if (ConvertOosLog)
+	{
+		res = MVOL_ConvertOosLog((LPCTSTR)pSrcFilePath);
+	}
+#endif
 
 	if (WriteLog)
 	{

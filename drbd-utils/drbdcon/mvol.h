@@ -77,4 +77,8 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace);
 
 DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler);
 
+#ifdef _WIN32_DEBUG_OOS
+DWORD MVOL_ConvertOosLog(LPCTSTR pSrcFilePath);
+#endif
+
 #endif __MVOL_H__

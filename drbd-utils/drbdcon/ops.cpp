@@ -1505,6 +1505,124 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 	return retVal;
 }
 
+#ifdef _WIN32_DEBUG_OOS
+DWORD MVOL_ConvertOosLog(LPCTSTR pSrcFilePath)
+{
+	DWORD dwRet = ERROR_SUCCESS;
+	BOOLEAN bRet = FALSE;
+	DWORD dwRead = 0;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	HANDLE hConverted = INVALID_HANDLE_VALUE;
+	TCHAR ptSrcFilePath[MAX_PATH] = _T("");
+	TCHAR ptOrgRenamedFilePath[MAX_PATH] = _T("");
+	char *buff = NULL;
+	
+#ifdef _UNICODE
+	if (0 == MultiByteToWideChar(CP_ACP, 0, (LPSTR)pSrcFilePath, -1, ptSrcFilePath, MAX_PATH))
+	{
+		dwRet = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwRet);
+		return dwRet;
+	}
+#else
+	strcpy(ptSrcFilePath, pSrcFilePath);
+#endif
+
+	do
+	{
+		bRet = InitOosTrace();
+		if (!bRet)
+		{
+			_tprintf(_T("InitOosTrace failed, %d \n"), GetLastError());
+			break;
+		}
+
+		_tcscpy_s(ptOrgRenamedFilePath, ptSrcFilePath);
+		_tcscat_s(ptOrgRenamedFilePath, _T("_org"));
+
+		if (!MoveFile(ptSrcFilePath, ptOrgRenamedFilePath))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("MoveFile for (%s -> %s) failed, %d \n"), ptSrcFilePath, ptOrgRenamedFilePath, dwRet);
+			break;
+		}
+
+		hFile = CreateFile(ptOrgRenamedFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptSrcFilePath, dwRet);
+			break;
+		}
+
+		LARGE_INTEGER liFileSize = { 0, };
+
+		if (!GetFileSizeEx(hFile, &liFileSize) ||
+			!liFileSize.QuadPart)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("GetFileSizeEx failed, %d \n"), dwRet);
+			break;
+		}
+
+		buff = new char[liFileSize.QuadPart];
+		if (!buff)
+		{
+			dwRet = ERROR_NOT_ENOUGH_MEMORY;
+			printf("failed to alloc buff\n");
+			break;
+		}
+
+		if (!ReadFile(hFile, buff, liFileSize.QuadPart, &dwRead, NULL))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("ReadFile failed, %d \n"), dwRet);
+			break;
+		}
+
+		hConverted = CreateFile(ptSrcFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptSrcFilePath, dwRet);
+			break;
+		}
+
+		char *pLine = buff, *pTemp = buff;
+		while (pTemp = strstr(pLine, "\r\n"))
+		{
+			CHAR szLineBuf[1024] = "";
+			*pTemp = '\0';
+			strcpy_s(szLineBuf, pLine);
+			// convert callstack by line
+			ConvertCallStack(szLineBuf);
+			WriteFile(hConverted, szLineBuf, strlen(szLineBuf) + 2, &dwRead, NULL);
+			WriteFile(hConverted, "\r\n", 2, &dwRead, NULL);
+
+			// go next
+			pLine = pTemp+2;
+		}
+
+		_tprintf(_T("Converted Log Path : %s\n"), ptSrcFilePath);
+
+	} while (false);
+
+	
+	if (buff)
+		delete(buff);
+
+	if (hFile != INVALID_HANDLE_VALUE)
+		CloseHandle(hFile);
+
+	if (hConverted != INVALID_HANDLE_VALUE)
+		CloseHandle(hConverted);
+
+	if (bRet)
+		CleanupOosTrace();
+
+	return dwRet;
+}
+#endif
 
 DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler)
 {

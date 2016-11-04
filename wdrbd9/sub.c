@@ -1007,6 +1007,8 @@ VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount,
 		sprintf(temp, FRAME_DELIMITER"%p", stackFrames[i]);
 		strcat(buf, temp);
 	}
+
+	strcat(buf, "\n");
 	
 	printk(buf);
 
