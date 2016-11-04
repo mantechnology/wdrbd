@@ -4030,8 +4030,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	    !(context->flags & CS_DONT_RETRY)) {
 		long timeout = twopc_retry_timeout(resource, retries++);
 #ifdef _WIN32_TWOPC
-		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d \n",
-			  reply->tid, jiffies_to_msecs(timeout), rv);
+		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d (%u->%d)\n",
+			  reply->tid, jiffies_to_msecs(timeout), rv, 
+			  resource->res_opts.node_id,
+			  context->target_node_id);
 #else
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
@@ -4058,14 +4060,32 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #endif
 
 	if (rv >= SS_SUCCESS)
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Committing cluster-wide state change %u (%ums) (%u->%d)\n",
+			  be32_to_cpu(request.tid),
+			  jiffies_to_msecs(jiffies - start_time),
+			  resource->res_opts.node_id,
+			  context->target_node_id);
+
+#else
 		drbd_info(resource, "Committing cluster-wide state change %u (%ums)\n",
 			  be32_to_cpu(request.tid),
 			  jiffies_to_msecs(jiffies - start_time));
+#endif
 	else
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Aborting cluster-wide state change %u (%ums) rv = %d (%u->%d)\n",
+			  be32_to_cpu(request.tid),
+			  jiffies_to_msecs(jiffies - start_time),
+			  rv,
+			  resource->res_opts.node_id,
+			  context->target_node_id);
+#else
 		drbd_info(resource, "Aborting cluster-wide state change %u (%ums) rv = %d\n",
 			  be32_to_cpu(request.tid),
 			  jiffies_to_msecs(jiffies - start_time),
 			  rv);
+#endif
 
 	if (have_peers && context->change_local_state_last)
 		twopc_phase2(resource, context->vnr, rv >= SS_SUCCESS, &request, reach_immediately);
