@@ -753,7 +753,7 @@ void _printk(const char * func, const char * format, ...)
 		save_to_system_event(buf, length, level_index);
 	}
 	
-	if (bDbgLog)
+	if (bDbgLog || bOosLog)
 		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
 
 #endif
@@ -983,13 +983,13 @@ static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 }
 
 // DW-1153: Write Out-of-sync trace specific log. it includes stack frame.
-VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
+VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
 {
 	PVOID* stackFrames = NULL;
 	USHORT frameCount = STACK_FRAME_CAPTURE_COUNT;
 	CHAR buf[MAX_DRBDLOG_BUF] = { 0, };
 
-	sprintf(buf, "%s["OOS_TRACE_STRING"] % s %Iu bits for pos(%Iu), sector(%Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, startBit, BM_BIT_TO_SECT(startBit));
+	sprintf(buf, "%s["OOS_TRACE_STRING"] % s %Iu bits for pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePool(NonPagedPool, sizeof(PVOID) * frameCount);
 
