@@ -123,6 +123,8 @@ main(int argc, char* argv [])
 #ifdef _WIN32_DEBUG_OOS
 	char	ConvertOosLog = 0;
 	char	*pSrcFilePath = NULL;	
+	char	SearchOosLog = 0;
+	char	*sector = NULL;
 #endif
 	char	WriteLog = 0;
 	char	SetMinLogLv = 0;
@@ -204,6 +206,24 @@ main(int argc, char* argv [])
 			// Get oos log path
 			if (argIndex < argc)
 				pSrcFilePath = argv[argIndex];
+			else
+				usage();
+		}
+		else if (strcmp(argv[argIndex], "/search_oos_log") == 0)
+		{
+			argIndex++;
+			SearchOosLog++;
+
+			// Get oos log path
+			if (argIndex < argc)
+				pSrcFilePath = argv[argIndex];
+			else
+				usage();
+
+			// Get oos search sector
+			argIndex++;
+			if (argIndex < argc)
+				sector = argv[argIndex];
 			else
 				usage();
 		}
@@ -521,6 +541,11 @@ main(int argc, char* argv [])
 	if (ConvertOosLog)
 	{
 		res = MVOL_ConvertOosLog((LPCTSTR)pSrcFilePath);
+	}
+
+	if (SearchOosLog)
+	{
+		res = MVOL_SearchOosLog((LPCTSTR)pSrcFilePath, (LPCTSTR)sector);
 	}
 #endif
 
