@@ -868,6 +868,8 @@ struct context_def resource_options_ctx = {
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
 		{ "req-buf-size", NUMERIC(req_buf_size, REQ_BUF_SIZE), .unit = "bytes" },
+		// DW-1249: auto-start by svc
+		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },
 #endif
 		{ } },
 };
