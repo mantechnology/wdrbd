@@ -494,4 +494,5 @@ enum drbd_peer_state {
 
 #define _WIN32_MVFL
 #define _WIN32_MULTI_VOLUME
+#define _WIN32_TWOPC
 #endif
