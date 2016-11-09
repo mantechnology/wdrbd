@@ -4431,6 +4431,13 @@ static bool device_has_peer_devices_with_disk(struct drbd_device *device)
 			   To avoid a race in receive_state, "clear" uuids while
 			   holding req_lock. I.e. atomic with the state change */
 			peer_device->uuids_received = false;
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1263: the peers that has disk state lower than D_NEGOTIATING can't be negotiated with, skip this peer.
+			if (peer_device->disk_state[NOW] < D_NEGOTIATING)
+				continue;
+#endif
+
 			if (peer_device->disk_state[NOW] != D_UNKNOWN ||
 			    peer_device->repl_state[NOW] != L_OFF)
 				rv = true;
