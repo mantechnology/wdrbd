@@ -983,13 +983,19 @@ static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 }
 
 // DW-1153: Write Out-of-sync trace specific log. it includes stack frame.
-VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
+VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
 {
 	PVOID* stackFrames = NULL;
 	USHORT frameCount = STACK_FRAME_CAPTURE_COUNT;
 	CHAR buf[MAX_DRBDLOG_BUF] = { 0, };
 
-	sprintf(buf, "%s["OOS_TRACE_STRING"] % s %Iu bits for pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	// getting stack frames may overload with frequent bitmap operation, just return if oos trace is disabled.
+	if (FALSE == atomic_read(&g_oos_trace))
+	{
+		return;
+	}
+
+	sprintf(buf, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePool(NonPagedPool, sizeof(PVOID) * frameCount);
 
