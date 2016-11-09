@@ -4127,8 +4127,10 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	spin_unlock_irq(&resource->req_lock);
 
 	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
+#ifdef _WIN32_TWOPC
 		drbd_info(resource, "!twopc_reply.tid = %u result: %s\n",
 			twopc_reply.tid, drbd_packet_name(cmd));
+#endif
 		return;
 	}
 #ifdef _WIN32
