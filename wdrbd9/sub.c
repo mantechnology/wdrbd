@@ -178,6 +178,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 			//drbd_bm_free(device->bitmap);
 			//device->bitmap = NULL;
+			WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
 		}
 		else {
 			// meta case
