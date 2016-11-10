@@ -6842,6 +6842,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				if (drbd_bm_total_weight(peer_device) > peer_device->rs_failed)
 #ifdef _WIN32_DEBUG_OOS
 				{
+					// DW-1199: print log for remaining out-of-sync to recogsize which sector has to be traced
 					drbd_warn(peer_device, "SyncSource still sees bits set!! FIXME\n");
 					if(TRUE == atomic_read(&g_oos_trace))
 					{
