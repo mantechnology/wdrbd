@@ -108,6 +108,8 @@ static int adm_proxy_down(const struct cfg_ctx *);
 static int sh_nop(const struct cfg_ctx *);
 #ifdef _WIN32
 static int sh_resources_list(const struct cfg_ctx *);
+// DW-1249: auto-start by svc
+static int sh_resource_option(const struct cfg_ctx *);
 #endif
 static int sh_resources(const struct cfg_ctx *);
 static int sh_resource(const struct cfg_ctx *);
@@ -372,6 +374,8 @@ static struct adm_cmd hidden_cmd = {"hidden-commands", hidden_cmds,.show_in_usag
 static struct adm_cmd sh_nop_cmd = {"sh-nop", sh_nop, ACF2_GEN_SHELL .uc_dialog = 1, .test_config = 1};
 #ifdef _WIN32
 static struct adm_cmd sh_resources_list_cmd = { "sh-resources-list", sh_resources_list, ACF2_GEN_SHELL };
+// DW-1249: auto-start by svc
+static struct adm_cmd sh_resource_option_cmd = { "sh-resource-option", sh_resource_option, ACF1_RESNAME };
 #endif
 static struct adm_cmd sh_resources_cmd = {"sh-resources", sh_resources, ACF2_GEN_SHELL};
 static struct adm_cmd sh_resource_cmd = {"sh-resource", sh_resource, ACF2_SH_RESNAME};
@@ -470,6 +474,8 @@ struct adm_cmd *cmds[] = {
 	&sh_nop_cmd,
 #ifdef _WIN32
     &sh_resources_list_cmd,
+	// DW-1249: auto-start by svc
+	&sh_resource_option_cmd,
 #endif
 	&sh_resources_cmd,
 	&sh_resource_cmd,
@@ -824,6 +830,39 @@ static int sh_resources_list(const struct cfg_ctx *ctx)
 	}
 	return 0;
 }
+
+// DW-1249: get specified option value from resource.
+static int sh_resource_option(const struct cfg_ctx *ctx)
+{
+	struct d_resource *res = ctx->res;
+	char optionName[64] = "";
+	
+	if (sh_varname)
+	{
+		int len = 0;
+		strcpy(optionName, sh_varname);
+		len = strlen(optionName);
+
+		while (len--)
+		{
+			if (optionName[len] == '_')
+				optionName[len] = '-';
+		}
+
+		struct d_option* opt = find_opt(&res->res_options, optionName);
+		if (opt)
+		{
+			printf("%s\n\n", esc(opt->value));
+		}
+		else
+		{			
+			printf("%s\n", esc("NULL"));
+		}
+	}
+
+	return 0;
+}
+
 #endif
 static int sh_resources(const struct cfg_ctx *ctx)
 {
