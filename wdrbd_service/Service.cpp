@@ -524,6 +524,8 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         case SERVICE_CONTROL_SHUTDOWN:
         case SERVICE_CONTROL_PRESHUTDOWN:
 			
+			RcDrbdStop();
+
 			if (SERVICE_CONTROL_STOP == fdwControl) {
 				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
@@ -544,9 +546,6 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				}
 			}
 			
-            RcDrbdStop();
-            StopRegistryCleaner();
-
 #ifdef _WIN32_LOGLINK
 			extern int g_loglink_usage;
 			if (g_loglink_usage != LOGLINK_NOT_USED)
