@@ -1389,7 +1389,7 @@ drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 	const int max_tries = 1;
 	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
 	int try = 0;
-	bool with_force = false;
+	bool with_force = true;
 	long time_out = 1000;
 
 
