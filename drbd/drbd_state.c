@@ -3874,6 +3874,19 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		  	context->mask.i,
 		  	context->val.i);
 #endif
+
+#ifdef _WIN32_TWOPC
+	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n", 
+				be32_to_cpu(request.tid),
+				context->target_node_id,
+				context->mask.conn == conn_MASK ? drbd_conn_str(context->val.conn) : "-",
+				context->mask.disk == disk_MASK ? drbd_disk_str(context->val.disk) : "-",
+				context->mask.pdsk == pdsk_MASK ? drbd_disk_str(context->val.pdsk) : "-",
+				context->mask.role == role_MASK ? drbd_role_str(context->val.role) : "-",
+				context->mask.peer == peer_MASK ? drbd_role_str(context->val.peer) : "-",
+				context->flags);
+#endif
+
 		  
 	resource->remote_state_change = true;
 	reply->initiator_node_id = resource->res_opts.node_id;
@@ -3914,7 +3927,15 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 				       cluster_wide_reply_ready(resource),
 				       twopc_timeout(resource)))
 #endif
+		{
 			rv = get_cluster_wide_reply(resource);
+#ifdef _WIN32_TWOPC
+			drbd_info(resource, "[TWOPC:%u] target_node_id(%d) get_cluster_wide_reply (%d) \n", 
+						reply->tid,
+						context->target_node_id, 
+						rv);
+#endif
+		}
 		else
 			rv = SS_TIMEOUT;
 
@@ -4014,8 +4035,16 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
 		long timeout = twopc_retry_timeout(resource, retries++);
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d (%u->%d)\n",
+			  reply->tid, jiffies_to_msecs(timeout), rv, 
+			  resource->res_opts.node_id,
+			  context->target_node_id);
+#else
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
+#endif
+
 		if (have_peers)
 			twopc_phase2(resource, context->vnr, 0, &request, reach_immediately);
 		if (target_connection) {
@@ -4037,14 +4066,32 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #endif
 
 	if (rv >= SS_SUCCESS)
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Committing cluster-wide state change %u (%ums) (%u->%d)\n",
+			  be32_to_cpu(request.tid),
+			  jiffies_to_msecs(jiffies - start_time),
+			  resource->res_opts.node_id,
+			  context->target_node_id);
+
+#else
 		drbd_info(resource, "Committing cluster-wide state change %u (%ums)\n",
 			  be32_to_cpu(request.tid),
 			  jiffies_to_msecs(jiffies - start_time));
+#endif
 	else
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "Aborting cluster-wide state change %u (%ums) rv = %d (%u->%d)\n",
+			  be32_to_cpu(request.tid),
+			  jiffies_to_msecs(jiffies - start_time),
+			  rv,
+			  resource->res_opts.node_id,
+			  context->target_node_id);
+#else
 		drbd_info(resource, "Aborting cluster-wide state change %u (%ums) rv = %d\n",
 			  be32_to_cpu(request.tid),
 			  jiffies_to_msecs(jiffies - start_time),
 			  rv);
+#endif
 
 	if (have_peers && context->change_local_state_last)
 		twopc_phase2(resource, context->vnr, rv >= SS_SUCCESS, &request, reach_immediately);
@@ -4085,8 +4132,13 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
-	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents)))
+	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
+#ifdef _WIN32_TWOPC
+		drbd_info(resource, "!twopc_reply.tid = %u result: %s\n",
+			twopc_reply.tid, drbd_packet_name(cmd));
+#endif
 		return;
+	}
 #ifdef _WIN32
     drbd_debug(resource, "Nested state change %u result: %s\n",
         twopc_reply.tid, drbd_packet_name(cmd));
@@ -4385,6 +4437,13 @@ static bool device_has_peer_devices_with_disk(struct drbd_device *device)
 			   To avoid a race in receive_state, "clear" uuids while
 			   holding req_lock. I.e. atomic with the state change */
 			peer_device->uuids_received = false;
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1263: the peers that has disk state lower than D_NEGOTIATING can't be negotiated with, skip this peer.
+			if (peer_device->disk_state[NOW] < D_NEGOTIATING)
+				continue;
+#endif
+
 			if (peer_device->disk_state[NOW] != D_UNKNOWN ||
 			    peer_device->repl_state[NOW] != L_OFF)
 				rv = true;
