@@ -1716,6 +1716,24 @@ DWORD MVOL_SearchOosLog(LPCTSTR pSrcFilePath, LPCTSTR szSector)
 
 	} while (false);
 
+	if (buff)
+	{
+		delete(buff);
+		buff = NULL;
+	}
+
+	if (INVALID_HANDLE_VALUE != hSearchedResFile)
+	{
+		CloseHandle(hSearchedResFile);
+		hSearchedResFile = INVALID_HANDLE_VALUE;
+	}
+
+	if (INVALID_HANDLE_VALUE != hSrcFile)
+	{
+		CloseHandle(hSrcFile);
+		hSrcFile = INVALID_HANDLE_VALUE;
+	}
+
 	return dwRet;
 }
 
