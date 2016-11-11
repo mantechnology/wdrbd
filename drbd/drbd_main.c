@@ -3527,13 +3527,9 @@ static void drbd_cleanup(void)
 }
 
 #ifdef _WIN32
-
-int drbd_adm_down_from_shutdown(struct drbd_resource *resource);
-
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
     int i;
-    struct drbd_device *device = NULL;
 
     struct device_list {
         struct drbd_device *device;
@@ -3548,11 +3544,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
         destroy_workqueue(retry.wq);
     retry.wq = NULL;
 
-	device = minor_to_device(VolumeExtension->VolIndex);
-	if(device && device->resource) {
-		// DW-1103 drbdadm down while IRP_MJ_SHUTDOWN 
-		drbd_adm_down_from_shutdown(device->resource);
-	}
 	gbShutdown = TRUE;
 }
 #endif
