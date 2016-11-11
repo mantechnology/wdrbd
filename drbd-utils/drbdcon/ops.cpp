@@ -1505,6 +1505,355 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 	return retVal;
 }
 
+#ifdef _WIN32_DEBUG_OOS
+DWORD WriteSearchLogIfMatch(HANDLE hResFile, PCHAR pszLine, unsigned long long ullSearchSector)
+{
+	DWORD dwRet = ERROR_SUCCESS;
+	DWORD dwRead = 0;
+
+	unsigned long long startSector = -1, endSector = -1;
+	CHAR szSector[1024] = "";
+	char *pSector = NULL;
+	
+	do
+	{
+		pSector = strstr(pszLine, "sector(") + strlen("sector(");
+		if (NULL == pSector)
+		{
+			dwRet = ERROR_INVALID_DATA;
+			_tprintf(_T("could not find sector string\n"));
+			break;
+		}
+		
+		strcpy_s(szSector, pSector);
+		
+		char *pSectorEnd = strchr(szSector, ')');
+		if (NULL == pSectorEnd)
+		{
+			dwRet = ERROR_INVALID_DATA;
+			_tprintf(_T("could not find sector string2\n"));
+			break;
+		}
+		
+		*pSectorEnd = '\0';
+		
+#define SECTOR_DELIMITER " ~ "
+
+		pSectorEnd = strstr(szSector, SECTOR_DELIMITER);
+		if (NULL == pSectorEnd)
+		{
+			dwRet = ERROR_INVALID_DATA;
+			_tprintf(_T("could not find sector delimiter\n"));
+			break;
+		}
+		
+		pSector = szSector;
+		*pSectorEnd = '\0';
+
+		startSector = atoll(pSector);
+		pSector = pSectorEnd + strlen(SECTOR_DELIMITER);
+		endSector = atoll(pSector);
+
+		if (startSector < 0 || endSector < 0)
+		{
+			dwRet = ERROR_INVALID_DATA;
+			_tprintf(_T("we got invalid sector(%llu ~ %llu)\n"), startSector, endSector);
+			break;
+		}
+		
+		// check if ullSearchSector is between startSector and endSector
+		if (ullSearchSector < startSector ||
+			ullSearchSector > endSector)
+		{
+			// we are not interested in this sector, just return success.
+			dwRet = ERROR_SUCCESS;
+			break;
+		}
+		
+		// write res file.
+		if (!WriteFile(hResFile, pszLine, strlen(pszLine), &dwRead, NULL))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("WriteFile1 failed, err : %d\n"), dwRet);
+			break;
+		}
+
+		if (!WriteFile(hResFile, "\r\n", 2, &dwRead, NULL))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("WriteFile1 failed, err : %d\n"), dwRet);
+			break;
+		}
+
+		dwRet = ERROR_SUCCESS;
+	} while (false);
+
+	
+
+	return dwRet;
+}
+
+DWORD MVOL_SearchOosLog(LPCTSTR pSrcFilePath, LPCTSTR szSector)
+{
+	DWORD dwRet = ERROR_SUCCESS;
+	DWORD dwRead = 0;
+	HANDLE hSrcFile = INVALID_HANDLE_VALUE;
+	HANDLE hSearchedResFile = INVALID_HANDLE_VALUE;
+	TCHAR ptSrcFilePath[MAX_PATH] = _T("");
+	TCHAR ptResFilePath[MAX_PATH] = _T("");
+	TCHAR ptSector[128] = _T("");
+	unsigned long long ullSector = atoll((const char*)szSector);
+
+	char *buff = NULL;
+
+#ifdef _UNICODE
+	if (0 == MultiByteToWideChar(CP_ACP, 0, (LPSTR)pSrcFilePath, -1, ptSrcFilePath, MAX_PATH))
+	{
+		dwRet = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwRet);
+		return dwRet;
+	}
+	if (0 == MultiByteToWideChar(CP_ACP, 0, (LPSTR)szSector, -1, ptSector, 128))
+	{
+		dwRet = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwRet);
+		return dwRet;
+}
+#else
+	strcpy(ptSrcFilePath, pSrcFilePath);
+	strcpy(ptSector, szSector);
+#endif
+
+	do
+	{
+		hSrcFile = CreateFile(ptSrcFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+		if (hSrcFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptSrcFilePath, dwRet);
+			break;
+		}
+
+		LARGE_INTEGER liFileSize = { 0, };
+
+		if (!GetFileSizeEx(hSrcFile, &liFileSize) ||
+			!liFileSize.QuadPart)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("GetFileSizeEx failed, %d \n"), dwRet);
+			break;
+		}
+		
+		buff = new char[liFileSize.QuadPart];
+		if (!buff)
+		{
+			dwRet = ERROR_NOT_ENOUGH_MEMORY;
+			printf("failed to alloc buff\n");
+			break;
+		}
+
+		if (!ReadFile(hSrcFile, buff, liFileSize.QuadPart, &dwRead, NULL))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("ReadFile failed, %d \n"), dwRet);
+			break;
+		}
+		
+		_stprintf_s(ptResFilePath, _T("%s_sector%s"), ptSrcFilePath, ptSector);
+		_tprintf(_T("resfile : %s\n"), ptResFilePath);
+				
+		hSearchedResFile = CreateFile(ptResFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hSearchedResFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptResFilePath, dwRet);
+			break;
+		}
+		
+		char *pLine = buff, *pTemp = buff;
+		pTemp = strstr(pLine, "\0");		
+		while (pTemp = strstr(pLine, "\r\n"))
+		{
+			CHAR szLineBuf[1024] = "";
+			*pTemp = '\0';
+			strcpy_s(szLineBuf, pLine);	
+
+			// skip unless it's oos log.
+			if (strstr(szLineBuf, OOS_TRACE_STRING) == NULL)
+			{
+				pLine = pTemp + 2;
+				continue;
+			}
+			
+			// write log if given sector is accessed
+			dwRet = WriteSearchLogIfMatch(hSearchedResFile, szLineBuf, ullSector);
+			if (ERROR_SUCCESS != dwRet)
+			{
+				break;
+			}
+			
+			// go next
+			pLine = pTemp + 2;
+		}
+
+		if (ERROR_SUCCESS != dwRet)
+		{
+			break;
+		}
+				
+		if (strchr(pLine, '\0') != NULL)
+		{
+			CHAR szLineBuf[1024] = "";			
+			strcpy_s(szLineBuf, pLine);
+			
+			// skip unless it's oos log.
+			if (strstr(szLineBuf, OOS_TRACE_STRING) != NULL)
+			{
+				// check if given sector is accessed
+				WriteSearchLogIfMatch(hSearchedResFile, szLineBuf, ullSector);
+			}
+		}
+
+	} while (false);
+
+	if (buff)
+	{
+		delete(buff);
+		buff = NULL;
+	}
+
+	if (INVALID_HANDLE_VALUE != hSearchedResFile)
+	{
+		CloseHandle(hSearchedResFile);
+		hSearchedResFile = INVALID_HANDLE_VALUE;
+	}
+
+	if (INVALID_HANDLE_VALUE != hSrcFile)
+	{
+		CloseHandle(hSrcFile);
+		hSrcFile = INVALID_HANDLE_VALUE;
+	}
+
+	return dwRet;
+}
+
+DWORD MVOL_ConvertOosLog(LPCTSTR pSrcFilePath)
+{
+	DWORD dwRet = ERROR_SUCCESS;
+	BOOLEAN bRet = FALSE;
+	DWORD dwRead = 0;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	HANDLE hConverted = INVALID_HANDLE_VALUE;
+	TCHAR ptSrcFilePath[MAX_PATH] = _T("");
+	TCHAR ptOrgRenamedFilePath[MAX_PATH] = _T("");
+	char *buff = NULL;
+	
+#ifdef _UNICODE
+	if (0 == MultiByteToWideChar(CP_ACP, 0, (LPSTR)pSrcFilePath, -1, ptSrcFilePath, MAX_PATH))
+	{
+		dwRet = GetLastError();
+		_tprintf(_T("MultiByteToWideChar failed, err : %d\n"), dwRet);
+		return dwRet;
+	}
+#else
+	strcpy(ptSrcFilePath, pSrcFilePath);
+#endif
+
+	do
+	{
+		bRet = InitOosTrace();
+		if (!bRet)
+		{
+			_tprintf(_T("InitOosTrace failed, %d \n"), GetLastError());
+			break;
+		}
+
+		_tcscpy_s(ptOrgRenamedFilePath, ptSrcFilePath);
+		_tcscat_s(ptOrgRenamedFilePath, _T("_org"));
+
+		if (!MoveFile(ptSrcFilePath, ptOrgRenamedFilePath))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("MoveFile for (%s -> %s) failed, %d \n"), ptSrcFilePath, ptOrgRenamedFilePath, dwRet);
+			break;
+		}
+
+		hFile = CreateFile(ptOrgRenamedFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptSrcFilePath, dwRet);
+			break;
+		}
+
+		LARGE_INTEGER liFileSize = { 0, };
+
+		if (!GetFileSizeEx(hFile, &liFileSize) ||
+			!liFileSize.QuadPart)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("GetFileSizeEx failed, %d \n"), dwRet);
+			break;
+		}
+
+		buff = new char[liFileSize.QuadPart];
+		if (!buff)
+		{
+			dwRet = ERROR_NOT_ENOUGH_MEMORY;
+			printf("failed to alloc buff\n");
+			break;
+		}
+
+		if (!ReadFile(hFile, buff, liFileSize.QuadPart, &dwRead, NULL))
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("ReadFile failed, %d \n"), dwRet);
+			break;
+		}
+
+		hConverted = CreateFile(ptSrcFilePath, GENERIC_ALL, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			dwRet = GetLastError();
+			_tprintf(_T("CreateFile for %s failed, %d \n"), ptSrcFilePath, dwRet);
+			break;
+		}
+
+		char *pLine = buff, *pTemp = buff;
+		while (pTemp = strstr(pLine, "\r\n"))
+		{
+			CHAR szLineBuf[1024] = "";
+			*pTemp = '\0';
+			strcpy_s(szLineBuf, pLine);
+			// convert callstack by line
+			ConvertCallStack(szLineBuf);
+			WriteFile(hConverted, szLineBuf, strlen(szLineBuf), &dwRead, NULL);
+			WriteFile(hConverted, "\r\n", 2, &dwRead, NULL);
+
+			// go next
+			pLine = pTemp+2;
+		}
+
+		_tprintf(_T("Converted Log Path : %s\n"), ptSrcFilePath);
+
+	} while (false);
+
+	
+	if (buff)
+		delete(buff);
+
+	if (hFile != INVALID_HANDLE_VALUE)
+		CloseHandle(hFile);
+
+	if (hConverted != INVALID_HANDLE_VALUE)
+		CloseHandle(hConverted);
+
+	if (bRet)
+		CleanupOosTrace();
+
+	return dwRet;
+}
+#endif
 
 DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler)
 {

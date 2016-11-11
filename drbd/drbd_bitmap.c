@@ -795,7 +795,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 		{
 			bitmap->bm_set[bitmap_index] -= total;
 			// DW-1153: Write log when clear bit.
-			WriteOOSTraceLog(init_start, total, SET_IN_SYNC);
+			WriteOOSTraceLog(bitmap_index, init_start, end, total, SET_IN_SYNC);
 		}
 #else
 			bitmap->bm_set[bitmap_index] -= total;
@@ -808,7 +808,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 		{
 			bitmap->bm_set[bitmap_index] += total;
 			// DW-1153: Write log when set bit.
-			WriteOOSTraceLog(init_start, total, SET_OUT_OF_SYNC);
+			WriteOOSTraceLog(bitmap_index, init_start, end, total, SET_OUT_OF_SYNC);
 		}
 #else
 			bitmap->bm_set[bitmap_index] += total;
