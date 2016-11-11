@@ -371,7 +371,7 @@ extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
 #ifdef _WIN32_DEBUG_OOS
-extern VOID WriteOOSTraceLog(ULONG_PTR startBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
 #endif
 
 #ifdef _WIN32_EVENTLOG
