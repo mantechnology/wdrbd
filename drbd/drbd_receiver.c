@@ -6840,7 +6840,38 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				/* TODO: Since DRBD9 we experience that SyncSource still has
 				   bits set... NEED TO UNDERSTAND AND FIX! */
 				if (drbd_bm_total_weight(peer_device) > peer_device->rs_failed)
+#ifdef _WIN32_DEBUG_OOS
+				{
+					// DW-1199: print log for remaining out-of-sync to recogsize which sector has to be traced
 					drbd_warn(peer_device, "SyncSource still sees bits set!! FIXME\n");
+					if(TRUE == atomic_read(&g_oos_trace))
+					{
+						ULONG_PTR bit = 0;
+						sector_t sector = 0;
+						ULONG_PTR bm_resync_fo = 0;
+						int size = BM_BLOCK_SIZE;
+
+						do
+						{
+							bit = drbd_bm_find_next(peer_device, bm_resync_fo);
+							if (bit == DRBD_END_OF_BITMAP)
+							{
+								break;
+							}
+
+							sector = BM_BIT_TO_SECT(bit);
+
+							printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d), out-of-sync for sector(%llu) is remaining\n", KERN_DEBUG_OOS,
+								peer_device->node_id, peer_device->bitmap_index, sector);
+
+							bm_resync_fo = bit + 1;
+
+						} while (TRUE);
+					}
+				}
+#else
+					drbd_warn(peer_device, "SyncSource still sees bits set!! FIXME\n");
+#endif
 
 				drbd_resync_finished(peer_device, peer_state.disk);
 				peer_device->last_repl_state = peer_state.conn;
