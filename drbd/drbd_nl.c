@@ -1335,6 +1335,14 @@ retry:
 				drbd_uuid_new_current(device, true);
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1154 : set UUID_PRIMARY when promote a resource to primary role.
+			if (get_ldev(device)) {
+				device->ldev->md.current_uuid |= UUID_PRIMARY;
+				put_ldev(device);
+			}
+#endif
 		}
 	}
 
