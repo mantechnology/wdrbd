@@ -4209,11 +4209,11 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	{
 		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
 
-		// DW-1172 If DISCARD_MY_DATA bit is set, to change the disk_state as Inconsistent.
-		if (hg < 0 && test_bit(DISCARD_MY_DATA, &peer_device->flags))
+		// DW-1172, DW-1154 If sync is required from peer node, change the disk state to Inconsistent.
+		if (hg < 0)
 		{
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-			if (device->disk_state[NOW] > D_INCONSISTENT)
+			if (device->disk_state[NOW] > D_OUTDATED)
 				__change_disk_state(device, D_INCONSISTENT);
 			end_state_change(device->resource, &irq_flags);
 
