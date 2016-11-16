@@ -162,6 +162,11 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	if (VolumeExtension->dev) {
 		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
+
+		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
+		// deleting block device can be defered if drbd device is using.
+		blkdev_put(VolumeExtension->dev, 0);
+		VolumeExtension->dev = NULL;
 		if (device)
 		{
 			if (get_disk_state2(device) >= D_INCONSISTENT)
@@ -181,21 +186,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
 		}
 		else {
-			// meta case
-			struct block_device * bd = VolumeExtension->dev;
-			if (bd->bd_disk) {
-				blk_cleanup_queue(bd->bd_disk->queue);
-				bd->bd_disk->queue = NULL;
-				if (bd->bd_disk->private_data) {
-					// if drbd_backing_dev's instance is existed...
-					struct drbd_backing_dev * pdbd = (struct drbd_backing_dev *)bd->bd_disk->private_data;
-					pdbd->md_bdev = NULL;
-				}
-				put_disk(bd->bd_disk);
-				bd->bd_disk = NULL;
-			}
-			ExFreePool(VolumeExtension->dev);
-			VolumeExtension->dev = NULL;
+			// meta case						
 			WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
 		}
 	}

@@ -2756,6 +2756,9 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 		return bdev;
 	}
 
+	// DW-1109: inc ref when open it.
+	kref_get(&bdev->kref);
+
 	if (!do_bd_link)
 		return bdev;
 
@@ -2840,10 +2843,11 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 		struct block_device * bd = ldev->md_bdev;
 		bd->bd_disk->private_data = NULL;
 	}
-#else
+#endif
+
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
 	close_backing_dev(device, ldev->backing_bdev, true);
-#endif
+
 	kfree(ldev->disk_conf);
 	kfree(ldev);
 }

@@ -351,6 +351,10 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         VolumeExtension->Active = TRUE;
     }
 #endif
+
+	// DW-1109: create block device in add device routine, it won't be destroyed at least we put ref in remove device routine.
+	VolumeExtension->dev = create_drbd_block_device(VolumeExtension);
+
     WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
         VolumeExtension->PhysicalDeviceName,

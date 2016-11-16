@@ -615,9 +615,11 @@ struct block_device {
 	// Otherwise, if the block device descriptor refers to a whole disk
 	// the bd_contains field points to the block device descriptor itself ...
 	// FROM Understanding the Linux Kernel, 3rd Edition
+	struct block_device *	bd_parent;			// DW-1109: it points the block device whose bd_contains points me.
 	struct block_device *	bd_contains;
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
+	struct kref kref;
 };
 
 typedef struct kmem_cache {
@@ -1317,6 +1319,7 @@ extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNI
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
+extern void delete_drbd_block_device(struct kref *kref);
 extern BOOLEAN do_add_minor(unsigned int minor);
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void query_targetdev(PVOLUME_EXTENSION pvext);
