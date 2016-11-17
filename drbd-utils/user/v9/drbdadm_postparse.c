@@ -329,6 +329,23 @@ void set_me_in_resource(struct d_resource* res, int match_on_proxy)
 			res->stacked = 1;
 	}
 
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-889: The host is invalid, find the host in running_config.
+	if (!res->me) {
+		struct d_resource* running;
+		running = running_res_by_name(res->name, false);
+		if(running && running->me)
+		{
+			res->me = running->me;
+			res->me->used_as_me = 1;
+			if (res->me->lower)
+			{
+				res->stacked = 1;
+			}
+		}
+	}
+#endif
+
 	/* If there is no me, implicitly ignore that resource */
 	if (!res->me) {
 		res->ignore = 1;
