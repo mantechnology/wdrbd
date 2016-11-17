@@ -639,7 +639,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		
 	if (!NT_SUCCESS(status)) {
 		err = status;
-		WDRBD_INFO("dtt_try_connect: SocketConnect fail status:%x\n",status);
+		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x\n",status);
 		switch (status) {
 		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
 #ifdef _WIN32
