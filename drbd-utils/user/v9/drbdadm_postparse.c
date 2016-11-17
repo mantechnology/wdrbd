@@ -330,7 +330,7 @@ void set_me_in_resource(struct d_resource* res, int match_on_proxy)
 	}
 
 #ifdef _WIN32 
-	// MODIFIED_BY_MANTECH DW-889: The host is invalid, find the host in running_config.
+	// MODIFIED_BY_MANTECH DW-889: The host is invalid, find it in running_config.
 	if (!res->me) {
 		struct d_resource* running;
 		running = running_res_by_name(res->name, false);

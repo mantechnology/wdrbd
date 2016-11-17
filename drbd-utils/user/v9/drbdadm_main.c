@@ -3514,7 +3514,7 @@ int main(int argc, char **argv)
 						err("'%s' not defined in your config (for this host).\n", resource_names[i]);
 					}
 #else
-                    err("'%s' not defined in your config (for this host).\n", resource_names[i]);
+					err("'%s' not defined in your config (for this host).\n", resource_names[i]);
 #endif
 					exit(E_USAGE);
 				}
