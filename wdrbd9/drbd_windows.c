@@ -2316,6 +2316,9 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
     struct block_device * dev;
 
+	// DW-1109: need to increase reference count of device object to guarantee not to be freed while we're using.
+	ObReferenceObject(pvext->DeviceObject);
+
     dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
     if (!dev) {
         WDRBD_ERROR("Failed to allocate block_device NonPagedMemory\n");
@@ -2368,6 +2371,10 @@ gendisk_failed:
 void delete_drbd_block_device(struct kref *kref)
 {
 	struct block_device *bdev = container_of(kref, struct block_device, kref);
+
+	// DW-1109: reference count has been increased when we create block device, decrease here.
+	ObDereferenceObject(bdev->bd_disk->pDeviceExtension->DeviceObject);
+	bdev->bd_disk->pDeviceExtension->DeviceObject = NULL;
 
 	blk_cleanup_queue(bdev->bd_disk->queue);
 
