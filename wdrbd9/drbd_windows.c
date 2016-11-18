@@ -1729,18 +1729,17 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
-	bio->pVolExt = q->backing_dev_info.pvext;
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
-		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
-			WDRBD_ERROR("IoAcquireRemoveLock bio->pVolExt:%p fail. status(0x%x)\n", bio->pVolExt, status);
-			bio->pVolExt = NULL;
+			WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
+			bio->bi_bdev->bd_disk->pDeviceExtension = NULL;
 			return -EIO;
 		}
 	}
 	else {
-		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
-		bio->pVolExt = NULL;
+		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->bi_bdev->bd_disk->pDeviceExtension);
+		bio->bi_bdev->bd_disk->pDeviceExtension = NULL;
 		return -EIO;
 	}
 
@@ -1774,7 +1773,7 @@ int generic_make_request(struct bio *bio)
 
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
-				q->backing_dev_info.pvext->TargetDeviceObject,
+				bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject,
 				buffer,
 				bio->bi_size,
 				&offset,
@@ -1783,7 +1782,7 @@ int generic_make_request(struct bio *bio)
 
 	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		return -ENOMEM;
 	}
 
@@ -1794,7 +1793,7 @@ int generic_make_request(struct bio *bio)
 			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
 		} else { 
 			//apply meta I/O's write_ordering
-			struct drbd_device* device = minor_to_device( bio->pVolExt->VolIndex);	
+			struct drbd_device* device = minor_to_device(bio->bi_bdev->bd_disk->pDeviceExtension->VolIndex);
 			if(device && device->resource->write_ordering >= WO_BDEV_FLUSH) {
 				pIoNextStackLocation->Flags |= (SL_WRITE_THROUGH | SL_FT_SEQUENTIAL_WRITE);
 			}
@@ -1808,7 +1807,7 @@ int generic_make_request(struct bio *bio)
 	//
 	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
 		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
-		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
 		// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
 		// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
@@ -1825,7 +1824,7 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(bio->pVolExt->TargetDeviceObject, newIrp);
+	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
 
 	return 0;
 }
@@ -2353,7 +2352,6 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
 	dev->bd_disk->pDeviceExtension = pvext;
 
-	dev->bd_disk->queue->backing_dev_info.pvext = pvext;
 	dev->bd_disk->queue->logical_block_size = 512;
 
     return dev;

@@ -686,7 +686,6 @@ struct bio {
 	void*					bi_private; 
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
-	PVOLUME_EXTENSION		pVolExt; // for release removelock
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
 };
 
@@ -884,7 +883,6 @@ struct backing_dev_info {
 	unsigned long ra_pages; /* max readahead in PAGE_CACHE_SIZE units */ 
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;   /* Pointer to aux data for congested func */
-	PVOLUME_EXTENSION pvext;
 };
 
 #ifdef _WIN32

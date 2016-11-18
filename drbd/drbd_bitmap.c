@@ -1291,8 +1291,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 4

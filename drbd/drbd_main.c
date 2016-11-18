@@ -4368,7 +4368,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #ifdef _WIN32
 	kref_get(&pvext->dev->kref);
 	device->this_bdev = pvext->dev;
-	q->backing_dev_info.pvext = pvext;
 	q->logical_block_size = 512;
 	q->max_hw_sectors = get_targetdev_volsize(pvext);
 #endif
