@@ -468,7 +468,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9
-        if (device && (R_PRIMARY != device->resource->role[NOW]))   // V9
+        if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE)))   // V9
         {
             //PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
             //WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
@@ -506,7 +506,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-        if (device && (R_PRIMARY == device->resource->role[0]))
+        if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE)))
         {
             if (g_read_filter)
             {
