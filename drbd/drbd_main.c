@@ -3881,6 +3881,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #ifdef _WIN32
     resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
 	resource->bPreSecondaryLock = FALSE;
+	resource->bPreDismountLock = FALSE;
 #else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
 #endif
