@@ -361,6 +361,7 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 		switch (flags & SLEEPS_MASK) {
 		case SLEEPS_SHORT:
 			timeout = global_options.cmd_timeout_short;
+			timeout = timeout * 2; // DW-1280 adjust alarm timeout.
 			break;
 		case SLEEPS_LONG:
 			timeout = global_options.cmd_timeout_medium;

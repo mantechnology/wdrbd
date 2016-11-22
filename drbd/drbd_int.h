@@ -1242,6 +1242,7 @@ struct drbd_resource {
 	wait_queue_head_t barrier_wait;  /* upon each state change. */
 #ifdef _WIN32
 	bool bPreSecondaryLock;
+	bool bPreDismountLock; // DW-1286
 #endif
 
 };
