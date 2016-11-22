@@ -1733,13 +1733,11 @@ int generic_make_request(struct bio *bio)
 		status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
-			bio->bi_bdev->bd_disk->pDeviceExtension = NULL;
 			return -EIO;
 		}
 	}
 	else {
 		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->bi_bdev->bd_disk->pDeviceExtension);
-		bio->bi_bdev->bd_disk->pDeviceExtension = NULL;
 		return -EIO;
 	}
 
