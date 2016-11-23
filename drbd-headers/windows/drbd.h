@@ -400,7 +400,7 @@ enum mdf_flag {
 	MDF_AL_CLEAN =		1 << 7,
 	MDF_AL_DISABLED =       1 << 8,
 #ifdef _WIN32
-	MDF_SYNC_SOURCE =       1 << 16,
+	MDF_LAST_PRIMARY = 1 << 16,
 #endif
 };
 

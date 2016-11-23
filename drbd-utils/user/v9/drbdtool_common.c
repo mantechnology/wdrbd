@@ -79,13 +79,13 @@ void dt_print_v9_uuids(const uint64_t* uuid, unsigned int mdf_flags, unsigned in
 	       mdf_flags & MDF_CRASHED_PRIMARY ? 1 : 0,
 	       mdf_flags & MDF_AL_CLEAN ? 1 : 0,
 	       mdf_flags & MDF_AL_DISABLED ? 1 : 0);	
-#ifdef _WIN32 // DW-1291 provide SyncSource Information.
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information.
 	printf(":%d:%d:%d:%d:%d\n",
 	       mdf_peer_flags & MDF_PEER_CONNECTED ? 1 : 0,
 	       mdf_peer_flags & MDF_PEER_OUTDATED ? 1 : 0,
 	       mdf_peer_flags & MDF_PEER_FENCING ? 1 : 0,
 	       mdf_peer_flags & MDF_PEER_FULL_SYNC ? 1 : 0,
-		   mdf_flags & MDF_SYNC_SOURCE ? 1 : 0 // DW-1291 provide SyncSource Information.
+		   mdf_flags & MDF_LAST_PRIMARY ? 1 : 0 // DW-1291 provide LastPrimary Information.
 		   );
 #else
 	printf(":%d:%d:%d:%d:%d\n",
@@ -119,7 +119,7 @@ void dt_pretty_print_v9_uuids(const uint64_t* uuid, unsigned int mdf_flags, unsi
 		"                            -<  The peer's disk was out-dated or inconsistent  >--+ | | |\n"
 		"                               -<   A fence policy other the dont-care was used  >--+ | |\n"
 		"                -<  Node was in the progress of marking all blocks as out of sync  >--+ |\n"
-		"                                                       -<  Node was/is a Sync Source >--+\n"
+		"                                                      -<  Node was/is a Last Primary >--+\n"
 		"\n");
 #else
 	printf(
