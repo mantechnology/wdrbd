@@ -98,6 +98,7 @@ mvolStartDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return status;
 }
 
+static
 enum drbd_disk_state get_disk_state2(struct drbd_device *device)
 {
 	struct drbd_resource *resource = device->resource;
