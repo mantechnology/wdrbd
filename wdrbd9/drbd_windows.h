@@ -1290,6 +1290,9 @@ extern BOOLEAN isFastInitialSync();
 extern
 void InitWskNetlink(void * pctx);
 
+extern void monitor_mnt_change(PVOID pParam);
+extern NTSTATUS start_mnt_monitor();
+
 extern
 NTSTATUS ReleaseWskNetlink();
 
