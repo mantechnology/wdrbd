@@ -506,7 +506,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-		if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE)))
+        if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE)))
         {
             if (g_read_filter)
             {
