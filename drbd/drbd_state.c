@@ -2856,7 +2856,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if( (role[OLD] == R_SECONDARY) && (role[NEW] == R_PRIMARY)  ) {
 				drbd_md_set_flag (device, MDF_LAST_PRIMARY );
 			}
-			if( (peer_role[OLD] == R_SECONDARY) && (peer_role[NEW] == R_PRIMARY) ) {
+			if( ( (peer_role[OLD] == R_SECONDARY) || (peer_role[OLD] == R_UNKNOWN) ) && (peer_role[NEW] == R_PRIMARY) ) {
 				drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
 			}
 #endif
