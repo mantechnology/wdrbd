@@ -339,7 +339,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex) && !minor_to_device(VolumeExtension->VolIndex))
+    if (do_add_minor(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
         if (!NT_SUCCESS(status))
@@ -574,7 +574,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active) {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE)) {
+		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] != D_DISKLESS)) {
         	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
 			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
