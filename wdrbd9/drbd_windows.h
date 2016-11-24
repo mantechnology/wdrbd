@@ -371,6 +371,8 @@ extern void printk_init(void);
 extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
+extern enum drbd_disk_state get_disk_state2(struct drbd_device *device);
+
 #ifdef _WIN32_DEBUG_OOS
 extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
 #endif
@@ -1289,6 +1291,9 @@ extern BOOLEAN isFastInitialSync();
 
 extern
 void InitWskNetlink(void * pctx);
+
+extern void monitor_mnt_change(PVOID pParam);
+extern NTSTATUS start_mnt_monitor();
 
 extern
 NTSTATUS ReleaseWskNetlink();

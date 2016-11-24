@@ -4739,6 +4739,15 @@ static int __init drbd_init(void)
 	INIT_WORK(&retry.worker, do_retry);
 	spin_lock_init(&retry.lock);
 	INIT_LIST_HEAD(&retry.writes);
+
+#ifdef _WIN32
+	// DW-1105: need to detect changing volume letter and adjust it to VOLUME_EXTENSION.	
+	if (!NT_SUCCESS(start_mnt_monitor()))
+	{
+		WDRBD_ERROR("could not start mount monitor\n");
+		goto fail;
+	}
+#endif
 #ifndef _WIN32
 	if (drbd_debugfs_init())
 		pr_notice("failed to initialize debugfs -- will not be available\n");
