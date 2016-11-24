@@ -2240,11 +2240,12 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	{
 		struct drbd_device *device = minor_to_device(pvext->VolIndex);
 		if (device &&
-			get_disk_state2(device) >= D_INCONSISTENT)
+			get_ldev_if_state(device, D_NEGOTIATING))
 		{
 			WDRBD_WARN("replicating volume letter is changed, detaching\n");
 			set_bit(FORCE_DETACH, &device->flags);
 			change_disk_state(device, D_DETACHING, CS_HARD);						
+			put_ldev(device);
 		}
 	}
 
