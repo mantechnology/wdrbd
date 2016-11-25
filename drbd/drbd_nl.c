@@ -4332,7 +4332,9 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 
 	cstate = adm_ctx.connection->cstate[NOW];
 	if (cstate != C_STANDALONE) {
+#ifndef _WIN32	// MODIFIED_BY_MANTECH DW-1292 : skip if cstate is not StandAlone
 		retcode = ERR_NET_CONFIGURED;
+#endif
 		goto out;
 	}
 

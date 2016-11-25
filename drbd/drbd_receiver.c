@@ -4396,7 +4396,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
-	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);
+	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);	
 #endif
 
 	if (abs(hg) == 100)

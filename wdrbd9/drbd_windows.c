@@ -70,6 +70,9 @@ WCHAR g_ver[64];
 
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 
+// DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)
+atomic_t g_monitor_mnt_working = FALSE;
+
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
 {
@@ -2228,6 +2231,21 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		return;
 	}
 
+	// DW-1105: detach volume when replicating volume letter is changed.
+	if (pvext->Active &&
+		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
+	{
+		struct drbd_device *device = minor_to_device(pvext->VolIndex);
+		if (device &&
+			get_ldev_if_state(device, D_NEGOTIATING))
+		{
+			WDRBD_WARN("replicating volume letter is changed, detaching\n");
+			set_bit(FORCE_DETACH, &device->flags);
+			change_disk_state(device, D_DETACHING, CS_HARD);						
+			put_ldev(device);
+		}
+	}
+
 	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
 		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
@@ -2248,6 +2266,129 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		pvext->dev->bd_disk->queue->max_hw_sectors =
 			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
+}
+
+// DW-1105: refresh all volumes and handle changes.
+void adjust_changes_to_volume(PVOID pParam)
+{
+	refresh_targetdev_list();
+}
+
+// DW-1105: request mount manager to notify us whenever there is a change in the mount manager's persistent symbolic link name database.
+void monitor_mnt_change(PVOID pParam)
+{
+	OBJECT_ATTRIBUTES oaMntMgr = { 0, };
+	UNICODE_STRING usMntMgr = { 0, };
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	HANDLE hMntMgr = NULL;
+	HANDLE hEvent = NULL;
+	IO_STATUS_BLOCK iosb = { 0, };
+	
+	RtlInitUnicodeString(&usMntMgr, MOUNTMGR_DEVICE_NAME);
+	InitializeObjectAttributes(&oaMntMgr, &usMntMgr, OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+	do
+	{
+		status = ZwCreateFile(&hMntMgr,
+			FILE_READ_DATA | FILE_WRITE_DATA,
+			&oaMntMgr,
+			&iosb,
+			NULL,
+			0,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			FILE_OPEN,
+			FILE_NON_DIRECTORY_FILE,
+			NULL,
+			0);
+
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("could not open mount manager, status : 0x%x\n", status);
+			break;
+		}
+
+		status = ZwCreateEvent(&hEvent, GENERIC_ALL, 0, NotificationEvent, FALSE);
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_ERROR("could not create event, status : 0x%x\n", status);
+			break;
+		}
+
+		// DW-1105: set state as 'working', this can be set as 'not working' by stop_mnt_monitor.
+		atomic_set(&g_monitor_mnt_working, TRUE);
+
+		MOUNTMGR_CHANGE_NOTIFY_INFO mcni1 = { 0, }, mcni2 = { 0, };
+		while (TRUE == atomic_read(&g_monitor_mnt_working))
+		{
+			status = ZwDeviceIoControlFile(hMntMgr, hEvent, NULL, NULL, &iosb, IOCTL_MOUNTMGR_CHANGE_NOTIFY,
+				&mcni1, sizeof(mcni1), &mcni2, sizeof(mcni2));
+
+			if (!NT_SUCCESS(status))
+			{
+				WDRBD_ERROR("ZwDeviceIoControl with IOCTL_MOUNTMGR_CHANGE_NOTIFY has been failed, status : 0x%x\n", status);
+				break;
+			}
+			else if (STATUS_PENDING == status)
+			{
+				status = ZwWaitForSingleObject(hEvent, TRUE, NULL);
+			}
+
+			// we've got notification, refresh all volume and adjust changes if necessary.
+			HANDLE hVolRefresher = NULL;
+			status = PsCreateSystemThread(&hVolRefresher, THREAD_ALL_ACCESS, NULL, NULL, NULL, adjust_changes_to_volume, NULL);
+			if (!NT_SUCCESS(status))
+			{
+				WDRBD_ERROR("PsCreateSystemThread for adjust_changes_to_volume failed, status : 0x%x\n", status);
+				break;
+			}
+
+			if (NULL != hVolRefresher)
+			{
+				ZwClose(hVolRefresher);
+				hVolRefresher = NULL;
+			}
+			
+			// prepare for next change.
+			mcni1.EpicNumber = mcni2.EpicNumber;
+		}
+
+	} while (false);
+
+	atomic_set(&g_monitor_mnt_working, FALSE);
+
+	if (NULL != hMntMgr)
+	{
+		ZwClose(hMntMgr);
+		hMntMgr = NULL;
+	}
+}
+
+// DW-1105: start monitoring mount change thread.
+NTSTATUS start_mnt_monitor()
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	HANDLE	hVolMonitor = NULL;
+
+	status = PsCreateSystemThread(&hVolMonitor, THREAD_ALL_ACCESS, NULL, NULL, NULL, monitor_mnt_change, NULL);
+	if (!NT_SUCCESS(status))
+	{
+		WDRBD_ERROR("PsCreateSystemThread for monitor_mnt_change failed with status 0x%08X\n", status);
+		return status;
+	}
+
+	if (NULL != hVolMonitor)
+	{
+		ZwClose(hVolMonitor);
+		hVolMonitor = NULL;
+	}
+
+	return status;
+}
+
+// DW-1105: stop monitoring mount change thread.
+void stop_mnt_monitor()
+{
+	atomic_set(&g_monitor_mnt_working, FALSE);
 }
 
 /**

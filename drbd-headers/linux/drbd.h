@@ -344,6 +344,9 @@ enum mdf_flag {
 	MDF_CRASHED_PRIMARY =	1 << 6,
 	MDF_AL_CLEAN =		1 << 7,
 	MDF_AL_DISABLED =       1 << 8,
+#ifdef _WIN32
+	MDF_LAST_PRIMARY = 1 << 16,
+#endif
 };
 
 enum mdf_peer_flag {
