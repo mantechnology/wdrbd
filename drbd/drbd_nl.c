@@ -2797,6 +2797,12 @@ static int open_backing_devices(struct drbd_device *device,
 		return ERR_OPEN_DISK;
 	
 	nbc->backing_bdev = bdev;
+#ifdef _WIN32
+	// DW-1300: set drbd device to access from volume extention
+	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock);
+	bdev->bd_disk->drbd_device = device;
+	ExReleaseSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+#endif
 
 	/*
 	 * meta_dev_idx >= 0: external fixed size, possibly multiple

@@ -161,12 +161,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 	if (VolumeExtension->dev) {
-		struct drbd_device *device = minor_to_device(VolumeExtension->VolIndex);
-
-		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
-		// deleting block device can be defered if drbd device is using.
-		blkdev_put(VolumeExtension->dev, 0);
-		VolumeExtension->dev = NULL;
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
 		if (device)
 		{
 			if (get_disk_state2(device) >= D_INCONSISTENT)
@@ -177,17 +173,19 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				wait_event_interruptible_timeout(timeo, device->misc_wait,
 							 get_disk_state2(device) != D_FAILED, timeo);
 			}
-
-			device->vdisk->pDeviceExtension = NULL;
-
-			//drbd_bm_free(device->bitmap);
-			//device->bitmap = NULL;
 			WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
 		}
 		else {
 			// meta case						
 			WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
 		}
+		
+		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
+		// deleting block device can be defered if drbd device is using.		
+		blkdev_put(VolumeExtension->dev, 0);
+		VolumeExtension->dev = NULL;
 	}
 
 	FreeUnicodeString(&VolumeExtension->MountPoint);
@@ -305,7 +303,8 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 		length = irpSp->Parameters.Read.Length;
 	}
 
-	device = minor_to_device(VolumeExtension->VolIndex);
+	// DW-1300: get device and get reference.
+	device = get_device_with_vol_ext(VolumeExtension);
 	if (device/* && (mdev->state.role == R_PRIMARY)*/) {
 		struct splitInfo *splitInfo = 0;
 		ULONG io_id = 0;
@@ -334,7 +333,8 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 			splitInfo = kzalloc(sizeof(struct splitInfo), 0, '95DW');
 			if (!splitInfo)
 			{
-				goto fail;
+				status = STATUS_NO_MEMORY;
+				goto fail_put_dev;
 			}
 			splitInfo->finished = 0;
 			splitInfo->LastError = STATUS_SUCCESS; 
@@ -349,8 +349,9 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 				newbuf = kzalloc(slice, 0, 'A5DW');
 				if (!newbuf)
 				{
+					status = STATUS_NO_MEMORY;
 					WDRBD_ERROR("HOOKER malloc fail!!!\n");
-					goto fail;
+					goto fail_put_dev;
 				}
 			}
 			else
@@ -363,7 +364,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
             if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, buffer, offset, slice)))
 #endif
 			{
-				goto fail;
+				goto fail_put_dev;
 			}
 
 			offset.QuadPart = offset.QuadPart + slice;
@@ -379,8 +380,9 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 				newbuf = kzalloc(rest, 0, 'B5DW');
 				if (!newbuf)
 				{
+					status = STATUS_NO_MEMORY;
 					WDRBD_ERROR("HOOKER rest malloc fail!!\n");
-					goto fail;
+					goto fail_put_dev;
 				}
 			}
 			else
@@ -393,7 +395,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
             if ((status = DoSplitIo(VolumeExtension, Io, Irp, splitInfo, io_id, splitted_io_count, length, device, buffer, offset, rest)))
 #endif
 			{
-				goto fail;
+				goto fail_put_dev;
 			}
 		}
 
@@ -402,7 +404,13 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 	else
 	{
 		status = STATUS_INVALID_DEVICE_REQUEST;
+		goto fail;
 	}
+
+fail_put_dev:
+	// DW-1300: failed to go through drbd engine, the irp will be completed with failed status and complete_master_bio won't be called, put reference here.
+	if (device)
+		kref_put(&device->kref, drbd_destroy_device);
 
 fail:
 	WDRBD_ERROR("failed. status=0x%x\n", status);
