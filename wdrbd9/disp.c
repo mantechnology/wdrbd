@@ -430,7 +430,8 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 	 
 	if (g_mj_flush_buffers_filter && VolumeExtension->Active) {
-        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
         if (device) {
 			PMVOL_THREAD				pThreadInfo;
 			pThreadInfo = &VolumeExtension->WorkThreadInfo;
@@ -438,6 +439,8 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             ExInterlockedInsertTailList(&pThreadInfo->ListHead,
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
 			return STATUS_PENDING;
         } else {
         	Irp->IoStatus.Information = 0;
@@ -471,17 +474,24 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #ifdef _WIN32_MVFL
     if (VolumeExtension->Active)
     {
-        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9
-        if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE)))   // V9
-        {
-            //PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
-            //WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		// DW-1300: prevent mounting volume when device went diskless.
+		if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] == D_DISKLESS))   // V9
+		{
+			//PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+			//WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
 
-            Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-            return STATUS_INVALID_DEVICE_REQUEST;
-        }
+			return STATUS_INVALID_DEVICE_REQUEST;
+		}
+		// DW-1300: put device reference count when no longer use.
+		else if (device)
+			kref_put(&device->kref, drbd_destroy_device);
     }
 #endif
     IoSkipCurrentIrpStackLocation(Irp);
@@ -509,9 +519,13 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active)
     {
-        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-        if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE)))
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		// DW-1300: prevent mounting volume when device went diskless.
+        if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE) && device->disk_state[NOW] != D_DISKLESS))
         {
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
             if (g_read_filter)
             {
                 goto async_read_filter;
@@ -519,6 +533,9 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         }
         else
         {
+			// DW-1300: put device reference count when no longer use.
+			if (device)
+				kref_put(&device->kref, drbd_destroy_device);
             goto invalid_device;
         }
     }
@@ -577,7 +594,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
 
     if (VolumeExtension->Active) {
-        struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
 		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] != D_DISKLESS)) {
         	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
@@ -590,6 +608,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			if (offset_sector + size_sector > vol_size_sector) {
 				WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
+				// DW-1300: put device reference count when no longer use.
+				kref_put(&device->kref, drbd_destroy_device);
 				goto skip;
 			}
 
@@ -617,10 +637,16 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
 #endif
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
             return STATUS_PENDING;
         }
         else
         {
+			// DW-1300: put device reference count when no longer use.
+			if (device)
+				kref_put(&device->kref, drbd_destroy_device);
+
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 			

@@ -3296,6 +3296,16 @@ void drbd_destroy_device(struct kref *kref)
 #ifdef _WIN32
 		// DW-1109: put bdev when device is being destroyed.
 	{
+		// DW-1300: nullify drbd_device of volume extention when destroy drbd device.
+		PVOLUME_EXTENSION pvext = device->this_bdev->bd_disk->pDeviceExtension;
+		if (pvext &&
+			pvext->dev)
+		{
+			unsigned char oldIRQL = ExAcquireSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock);
+			pvext->dev->bd_disk->drbd_device = NULL;
+			ExReleaseSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+		}
+
 		blkdev_put(device->this_bdev, 0);
 		device->this_bdev = NULL;
 	}

@@ -1794,7 +1794,8 @@ int generic_make_request(struct bio *bio)
 			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
 		} else { 
 			//apply meta I/O's write_ordering
-			struct drbd_device* device = minor_to_device(bio->bi_bdev->bd_disk->pDeviceExtension->VolIndex);
+			// DW-1300: get drbd device from gendisk.
+			struct drbd_device* device = bio->bi_bdev->bd_disk->drbd_device;
 			if(device && device->resource->write_ordering >= WO_BDEV_FLUSH) {
 				pIoNextStackLocation->Flags |= (SL_WRITE_THROUGH | SL_FT_SEQUENTIAL_WRITE);
 			}
@@ -2235,7 +2236,8 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	if (pvext->Active &&
 		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
 	{
-		struct drbd_device *device = minor_to_device(pvext->VolIndex);
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(pvext);
 		if (device &&
 			get_ldev_if_state(device, D_NEGOTIATING))
 		{
@@ -2244,6 +2246,9 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 			change_disk_state(device, D_DETACHING, CS_HARD);						
 			put_ldev(device);
 		}
+		// DW-1300: put device reference count when no longer use.
+		if (device)
+			kref_put(&device->kref, drbd_destroy_device);
 	}
 
 	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
@@ -2519,6 +2524,31 @@ void delete_drbd_block_device(struct kref *kref)
 
 	kfree2(bdev->bd_contains);
 	kfree2(bdev);
+}
+
+// get device with volume extension in safe, user should put ref when no longer use device.
+struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext)
+{
+	unsigned char oldIRQL = 0;
+	struct drbd_device *device = NULL;
+
+	if (KeGetCurrentIrql() > DISPATCH_LEVEL)
+		return NULL;
+
+	oldIRQL = ExAcquireSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock);
+	device = pvext->dev->bd_disk->drbd_device;
+	if (device)
+	{
+		if (kref_get(&device->kref))
+		{
+			// already destroyed.
+			atomic_dec(&device->kref);			
+			device = NULL;
+		}
+	}
+	ExReleaseSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock, oldIRQL);
+
+	return device;
 }
 
 /**
