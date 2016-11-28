@@ -2854,19 +2854,19 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_khelper(device, connection, "pri-on-incon-degr");
 
 #ifdef _WIN32 // DW-1291 provide LastPrimary Information for Local Primary
-			if(disk_state[NEW] >= D_NEGOTIATING) { 
-				if( (role[OLD] == R_SECONDARY) && (role[NEW] == R_PRIMARY) ) {
-					get_ldev(device);
+			if( (role[OLD] == R_SECONDARY) && (role[NEW] == R_PRIMARY) ) {
+				if(get_ldev_if_state(device, D_NEGOTIATING)) {
 					drbd_md_set_flag (device, MDF_LAST_PRIMARY );
 					put_ldev(device);
-				} 
-				// this MDF_LAST_PRIMARY clear logic perform at process_twopc for daisy-chain connection case
-				//else if( peer_role[NEW] == R_PRIMARY ) { 
-				//	get_ldev(device);
-				//	drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
-				//	put_ldev(device);
-				//}
-			}
+				}
+			} 
+			// this MDF_LAST_PRIMARY clear logic perform at process_twopc for daisy-chain connection case
+			//else if( peer_role[NEW] == R_PRIMARY ) { 
+			//	get_ldev(device);
+			//	drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+			//	put_ldev(device);
+			//}
+		
 #endif
 
 			if (susp_nod[NEW]) {

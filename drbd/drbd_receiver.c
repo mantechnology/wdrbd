@@ -6438,9 +6438,8 @@ static int process_twopc(struct drbd_connection *connection,
 				drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
 					reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
 				idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-					if(device->disk_state[NEW] >= D_NEGOTIATING) {
-						get_ldev(device);
-	        			drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+					if(get_ldev_if_state(device, D_NEGOTIATING)) {
+						drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
 						put_ldev(device);		
 						drbd_md_sync_if_dirty(device);
 					} else {
@@ -6711,9 +6710,8 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] after clear_remote_state_change target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
 				reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
 			idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-				if(device->disk_state[NEW] >= D_NEGOTIATING) {
-					get_ldev(device);
-        			drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+				if(get_ldev_if_state(device, D_NEGOTIATING)) {
+					drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
 					put_ldev(device);
 					drbd_md_sync_if_dirty(device);
 				} else {
