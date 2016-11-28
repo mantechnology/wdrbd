@@ -6421,8 +6421,8 @@ static int process_twopc(struct drbd_connection *connection,
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
-	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) pi->cmd (%s)\n", 
-					reply->tid, reply->target_node_id, csc_rv, drbd_packet_name(pi->cmd));
+	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
 	if (csc_rv == CSC_CLEAR) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
@@ -6431,6 +6431,24 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_debug(connection, "Ignoring %s packet %u\n",
 				   drbd_packet_name(pi->cmd),
 				   reply->tid);
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
+			if(resource->role[NEW] == R_SECONDARY && reply->primary_nodes != 0 ) {
+				struct drbd_device *device;
+				int vnr;
+				drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+					reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
+				idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+					if(device->disk_state[NEW] >= D_NEGOTIATING) {
+						get_ldev(device);
+	        			drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+						put_ldev(device);		
+						drbd_md_sync_if_dirty(device);
+					} else {
+						drbd_info(resource, "LastPrimary got it! But disk state is diskless or failed device->disk_state:%d\n",device->disk_state[NEW]);
+					}
+				} 
+			}
+#endif			
 			return 0;
 		}
 		resource->remote_state_change = true;
@@ -6686,6 +6704,24 @@ static int process_twopc(struct drbd_connection *connection,
 #endif
 		clear_remote_state_change(resource);
 
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
+		if( (resource->role[NEW] != R_PRIMARY) && (reply->primary_nodes != 0) ) {
+			struct drbd_device *device;
+			int vnr;
+			drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] after clear_remote_state_change target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+				reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
+			idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+				if(device->disk_state[NEW] >= D_NEGOTIATING) {
+					get_ldev(device);
+        			drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+					put_ldev(device);
+					drbd_md_sync_if_dirty(device);
+				} else {
+					drbd_info(resource, "LastPrimary got it! But disk state is diskless or failed device->disk_state:%d\n", device->disk_state[NEW]);
+				}
+			}
+		}
+#endif
 		if (peer_device && rv >= SS_SUCCESS && !(flags & CS_ABORT))
 			drbd_md_sync_if_dirty(peer_device->device);
 
