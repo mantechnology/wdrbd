@@ -172,14 +172,9 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				long timeo = 3 * HZ;
 				wait_event_interruptible_timeout(timeo, device->misc_wait,
 							 get_disk_state2(device) != D_FAILED, timeo);
-			}
-			WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
+			}			
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
-		}
-		else {
-			// meta case						
-			WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
 		}
 		
 		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
@@ -188,6 +183,24 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		VolumeExtension->dev = NULL;
 	}
 
+	// DW-1277: check volume type we marked when drbd attaches.
+	// for normal volume.
+	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) &&
+		!test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
+	{
+		WDRBD_INFO("Volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	}
+	// for replication volume.
+	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag))
+	{
+		WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	}
+	// for meta volume.
+	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
+	{
+		WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	}
+	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
 	FreeUnicodeString(&VolumeExtension->VolumeGuid);
 

@@ -2802,6 +2802,8 @@ static int open_backing_devices(struct drbd_device *device,
 	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock);
 	bdev->bd_disk->drbd_device = device;
 	ExReleaseSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+	// DW-1277: mark that this will be using as replication volume.
+	set_bit(VOLUME_TYPE_REPL, &bdev->bd_disk->pDeviceExtension->Flag);
 #endif
 
 	/*
@@ -2824,6 +2826,8 @@ static int open_backing_devices(struct drbd_device *device,
 		return ERR_OPEN_MD_DISK;
 	nbc->md_bdev = bdev;
 #ifdef _WIN32
+	// DW-1277: mark that this will be using as meta volume.
+	set_bit(VOLUME_TYPE_META, &bdev->bd_disk->pDeviceExtension->Flag);
 	bdev->bd_disk->private_data = nbc;		// for removing
 #endif
 	return NO_ERROR;
