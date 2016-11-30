@@ -3119,7 +3119,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		list_add_tail(&peer_req->recv_order, &connection->peer_requests);
 	spin_unlock_irq(&device->resource->req_lock);
 
-	if (peer_device->repl_state[NOW] == L_SYNC_TARGET)
+	// DW-1250: wait until there's no resync on same sector, to prevent overlapped write.
+	if (peer_device->repl_state[NOW] >= L_SYNC_TARGET)
 		wait_event(device->ee_wait, !overlapping_resync_write(device, peer_req));
 
 	/* In protocol < 110 (which is compat mode 8.4 <-> 9.0),
@@ -4209,11 +4210,11 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	{
 		drbd_info(peer_device, "both nodes are secondary, no resync, but %lu bits in bitmap\n", drbd_bm_total_weight(peer_device));
 
-		// DW-1172 If DISCARD_MY_DATA bit is set, to change the disk_state as Inconsistent.
-		if (hg < 0 && test_bit(DISCARD_MY_DATA, &peer_device->flags))
+		// DW-1172, DW-1154 If sync is required from peer node, change the disk state to Inconsistent.
+		if (hg < 0)
 		{
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-			if (device->disk_state[NOW] > D_INCONSISTENT)
+			if (device->disk_state[NOW] > D_OUTDATED)
 				__change_disk_state(device, D_INCONSISTENT);
 			end_state_change(device->resource, &irq_flags);
 
@@ -4396,7 +4397,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
-	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);
+	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);	
 #endif
 
 	if (abs(hg) == 100)
@@ -6421,8 +6422,8 @@ static int process_twopc(struct drbd_connection *connection,
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
-	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) pi->cmd (%s)\n", 
-					reply->tid, reply->target_node_id, csc_rv, drbd_packet_name(pi->cmd));
+	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
 	if (csc_rv == CSC_CLEAR) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
@@ -6431,6 +6432,23 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_debug(connection, "Ignoring %s packet %u\n",
 				   drbd_packet_name(pi->cmd),
 				   reply->tid);
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
+			if(resource->role[NEW] == R_SECONDARY && reply->primary_nodes != 0 ) {
+				struct drbd_device *device;
+				int vnr;
+				drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+					reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
+				idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+					if(get_ldev_if_state(device, D_NEGOTIATING)) {
+						drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+						put_ldev(device);		
+						drbd_md_sync_if_dirty(device);
+					} else {
+						drbd_info(resource, "LastPrimary got it! But disk state is diskless or failed device->disk_state:%d\n",device->disk_state[NEW]);
+					}
+				} 
+			}
+#endif			
 			return 0;
 		}
 		resource->remote_state_change = true;
@@ -6686,6 +6704,23 @@ static int process_twopc(struct drbd_connection *connection,
 #endif
 		clear_remote_state_change(resource);
 
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
+		if( (resource->role[NEW] != R_PRIMARY) && (reply->primary_nodes != 0) ) {
+			struct drbd_device *device;
+			int vnr;
+			drbd_info(resource, "Peer node is Primary. LastPrimary flag set [TWOPC:%u] after clear_remote_state_change target_node_id (%d) primary_nodes (%d) pi->cmd (%s)\n", 
+				reply->tid, reply->target_node_id, reply->primary_nodes, drbd_packet_name(pi->cmd));
+			idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+				if(get_ldev_if_state(device, D_NEGOTIATING)) {
+					drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+					put_ldev(device);
+					drbd_md_sync_if_dirty(device);
+				} else {
+					drbd_info(resource, "LastPrimary got it! But disk state is diskless or failed device->disk_state:%d\n", device->disk_state[NEW]);
+				}
+			}
+		}
+#endif
 		if (peer_device && rv >= SS_SUCCESS && !(flags & CS_ABORT))
 			drbd_md_sync_if_dirty(peer_device->device);
 

@@ -2853,6 +2853,21 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			    !test_bit(UNREGISTERED, &device->flags))
 				drbd_khelper(device, connection, "pri-on-incon-degr");
 
+#ifdef _WIN32 // DW-1291 provide LastPrimary Information for Local Primary
+			if( (role[OLD] == R_SECONDARY) && (role[NEW] == R_PRIMARY) ) {
+				if(get_ldev_if_state(device, D_NEGOTIATING)) {
+					drbd_md_set_flag (device, MDF_LAST_PRIMARY );
+					put_ldev(device);
+				}
+			} else if( (peer_role[NEW] == R_PRIMARY) 
+			|| ((role[NOW] == R_SECONDARY) && (resource->twopc_reply.primary_nodes != 0)) ) { // disk detach case || detach & reconnect daisy chain case
+				if(get_ldev_if_state(device, D_NEGOTIATING)) {
+					drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
+					put_ldev(device);
+				}
+			} 
+#endif
+
 			if (susp_nod[NEW]) {
 				enum drbd_req_event what = NOTHING;
 
@@ -4276,6 +4291,10 @@ enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
 			.val = { { .role = role } },
 			.target_node_id = -1,
 			.flags = flags | CS_SERIALIZE | CS_DONT_RETRY,
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1233: send TWOPC packets to other nodes before updating the local state 
+			.change_local_state_last = true,
+#endif
 		},
 		.force = force,
 	};
@@ -4322,6 +4341,10 @@ enum drbd_state_rv change_role(struct drbd_resource *resource,
 			.val = { { .role = role } },
 			.target_node_id = -1,
 			.flags = flags | CS_SERIALIZE,
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1233: send TWOPC packets to other nodes before updating the local state
+			.change_local_state_last = true,
+#endif
 		},
 		.force = force,
 	};

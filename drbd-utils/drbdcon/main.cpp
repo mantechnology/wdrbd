@@ -19,9 +19,9 @@ usage()
         "   /nagle_disable \n"
         "   /nagle_enable \n"
         "   /m [letter] : mount\n"
-        "   /d[f] : dismount[force] \n"
+        /*"   /d[f] : dismount[force] \n"*/
 		"   /get_log [ProviderName] \n"
-		"   /minlog_lv [LoggingType : sys, dbg] [Level : 0~7] \n"
+		"   /minlog_lv dbg [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
 		"   /info\n"
@@ -39,7 +39,7 @@ usage()
 /*		"drbdcon /letter F /start_volume \n"*/
 /*		"drbdcon /letter F /init_thread \n"*/
         "drbdcon /nagle_disable r0 \n"
-        "drbdcon /d F \n"
+        /*"drbdcon /d F \n"*/
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService \n"
 		"drbdcon /minlog_lv dbg 6 \n"

@@ -302,6 +302,9 @@ enum {
 	
 };
 extern int _adm_adjust(const struct cfg_ctx *ctx, int flags);
+#ifdef _WIN32
+extern struct d_resource *running_res_by_name(const char *name, bool parse);
+#endif
 
 extern struct adm_cmd new_minor_cmd;
 extern struct adm_cmd new_resource_cmd;

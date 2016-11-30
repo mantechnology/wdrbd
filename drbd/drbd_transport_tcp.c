@@ -639,12 +639,12 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		
 	if (!NT_SUCCESS(status)) {
 		err = status;
-		WDRBD_INFO("dtt_try_connect: SocketConnect fail status:%x\n",status);
+		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x\n",status);
 		switch (status) {
 		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
 #ifdef _WIN32
-		// DW-1272 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
-		case STATUS_INVALID_ADDRESS_COMPONENT: break;
+		// DW-1272, DW-1290 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
+		case STATUS_INVALID_ADDRESS_COMPONENT: err = -EAGAIN; break;
 #endif
 		case STATUS_INVALID_DEVICE_STATE: err = -EAGAIN; break;
 		case STATUS_NETWORK_UNREACHABLE: err = -ENETUNREACH; break;
@@ -796,7 +796,7 @@ out:
 			sock_release(socket);
 #ifdef _WIN32
 		// DW-1272 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
-		if (err != -EAGAIN && err != STATUS_INVALID_ADDRESS_COMPONENT)
+		if (err != -EAGAIN && err != -EINVALADDR)
 #else
 		if (err != -EAGAIN)
 #endif
@@ -1682,29 +1682,12 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 	mutex_unlock(&tcp_transport->paths_mutex);
 
-#ifdef _WIN32
-	// DW-1272 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
-	int retry_count =0;
-#endif
-
 	do {
 		struct socket *s = NULL;
 
 		err = dtt_try_connect(connect_to_path, &s);
-#ifdef _WIN32
-		// DW-1272 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
-		if (err == STATUS_INVALID_ADDRESS_COMPONENT)
-		{
-			if (++retry_count > 3)
-			{
-				goto out;
-			}
-			tr_err(transport, "create-connect retry (%d)\n", retry_count);
-		}
-		else if (err < 0 && err != -EAGAIN)
-#else
+
 		if (err < 0 && err != -EAGAIN)
-#endif
 			goto out;
 
 		if (s) {
