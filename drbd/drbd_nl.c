@@ -1335,6 +1335,14 @@ retry:
 				drbd_uuid_new_current(device, true);
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
+
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1154 : set UUID_PRIMARY when promote a resource to primary role.
+			if (get_ldev(device)) {
+				device->ldev->md.current_uuid |= UUID_PRIMARY;
+				put_ldev(device);
+			}
+#endif
 		}
 	}
 
@@ -1598,11 +1606,12 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			{
 				continue;
 			}			
-
+			adm_ctx.resource->bPreDismountLock = TRUE;
 			NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
 			if (!NT_SUCCESS(status))
 			{
 				retcode = SS_UNKNOWN_ERROR;
+				adm_ctx.resource->bPreDismountLock = FALSE;
 				break;
 			}			
 		}
@@ -1611,6 +1620,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			adm_ctx.resource->bPreSecondaryLock = TRUE;
 			retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
 			adm_ctx.resource->bPreSecondaryLock = FALSE;
+			adm_ctx.resource->bPreDismountLock = FALSE;
 		}
 
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
@@ -1636,16 +1646,19 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                     FsctlUnlockVolume(device->minor);
                     goto fail;
                 }
+				adm_ctx.resource->bPreDismountLock = TRUE;
                 NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 				adm_ctx.resource->bPreSecondaryLock = TRUE;
                 FsctlUnlockVolume(device->minor);
 
                 if (!NT_SUCCESS(status)) {
                     retcode = SS_UNKNOWN_ERROR;
+					adm_ctx.resource->bPreDismountLock = FALSE;
                     goto fail;
                 }
 				retcode = drbd_set_role(adm_ctx.resource, R_SECONDARY, false);
 				adm_ctx.resource->bPreSecondaryLock = FALSE;
+				adm_ctx.resource->bPreDismountLock = FALSE;
             }
 			else
             {
@@ -4315,7 +4328,9 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 
 	cstate = adm_ctx.connection->cstate[NOW];
 	if (cstate != C_STANDALONE) {
+#ifndef _WIN32	// MODIFIED_BY_MANTECH DW-1292 : skip if cstate is not StandAlone
 		retcode = ERR_NET_CONFIGURED;
+#endif
 		goto out;
 	}
 
@@ -6514,11 +6529,13 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		{
 			continue;
 		}
-		
+
+		resource->bPreDismountLock = TRUE;
 		NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
 		if (!NT_SUCCESS(status))
 		{
 			retcode = SS_UNKNOWN_ERROR;
+			resource->bPreDismountLock = FALSE;
 			break;
 		}		
 	}
@@ -6531,6 +6548,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 			drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");
 		}
 		resource->bPreSecondaryLock = FALSE;
+		resource->bPreDismountLock = FALSE;
 	}
 
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
@@ -6557,7 +6575,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
         else if (NT_SUCCESS(FsctlLockVolume(device->minor)))
         {
             
-
+			resource->bPreDismountLock = TRUE;
             NTSTATUS status = FsctlFlushDismountVolume(device->minor);
 			resource->bPreSecondaryLock = TRUE;
             FsctlUnlockVolume(device->minor);
@@ -6565,11 +6583,13 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
             if (!NT_SUCCESS(status))
             {
                 retcode = ERR_RES_NOT_KNOWN;
+				resource->bPreDismountLock = FALSE;
                 goto out;
             }
 
 			retcode = drbd_set_role(resource, R_SECONDARY, false);
 			resource->bPreSecondaryLock = FALSE;
+			resource->bPreDismountLock = FALSE;
 			if (retcode < SS_SUCCESS)
             {
                 drbd_msg_put_info(adm_ctx.reply_skb, "failed to demote");

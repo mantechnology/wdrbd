@@ -3398,6 +3398,13 @@ int main(int argc, char **argv)
 	if (!config_valid)
 		exit(E_CONFIG_INVALID);
 
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
+	if (cmd != &connect_cmd)
+	{
+		parse_drbdsetup_show();
+	}
+#endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);
 
 	if (!is_dump || dry_run || verbose)
@@ -3496,7 +3503,19 @@ int main(int argc, char **argv)
 					r = 0;
 				}
 				if (!ctx.res) {
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
+					ctx.res = res_by_name(resource_names[i]);
+					if(ctx.res && ctx.res->ignore)
+					{
+						err("'%s' ignored, invalid host.\n", resource_names[i]);
+					}
+					else
+					{
+						err("'%s' not defined in your config (for this host).\n", resource_names[i]);
+					}
+#else
 					err("'%s' not defined in your config (for this host).\n", resource_names[i]);
+#endif
 					exit(E_USAGE);
 				}
 				if (r)

@@ -339,7 +339,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex) && !minor_to_device(VolumeExtension->VolIndex))
+    if (do_add_minor(VolumeExtension->VolIndex))
     {
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
         if (!NT_SUCCESS(status))
@@ -468,7 +468,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);   // V9
-        if (device && (R_PRIMARY != device->resource->role[NOW]))   // V9
+        if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE)))   // V9
         {
             //PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
             //WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
@@ -506,7 +506,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-        if (device && (R_PRIMARY == device->resource->role[0]))
+        if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE)))
         {
             if (g_read_filter)
             {
@@ -574,7 +574,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active) {
         struct drbd_device * device = minor_to_device(VolumeExtension->VolIndex);
-		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE)) {
+		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] != D_DISKLESS)) {
         	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
 			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
