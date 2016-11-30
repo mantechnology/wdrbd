@@ -3119,7 +3119,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		list_add_tail(&peer_req->recv_order, &connection->peer_requests);
 	spin_unlock_irq(&device->resource->req_lock);
 
-	if (peer_device->repl_state[NOW] == L_SYNC_TARGET)
+	// DW-1250: wait until there's no resync on same sector, to prevent overlapped write.
+	if (peer_device->repl_state[NOW] >= L_SYNC_TARGET)
 		wait_event(device->ee_wait, !overlapping_resync_write(device, peer_req));
 
 	/* In protocol < 110 (which is compat mode 8.4 <-> 9.0),
