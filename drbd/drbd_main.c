@@ -4362,9 +4362,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	set_disk_ro(disk, true);
 	disk->queue = q;
-#ifdef _WIN32
-	disk->pDeviceExtension = pvext;
-#else
+#ifndef _WIN32
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
 #endif
