@@ -3292,15 +3292,24 @@ void drbd_destroy_device(struct kref *kref)
 
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
+	if (device->this_bdev)
 #ifdef _WIN32
-	kfree2(device->this_bdev->bd_contains);
-	kfree2(device->this_bdev);
-	if (device->vdisk->pDeviceExtension) {
-		// just in case existing a VolumeExtension
-		device->vdisk->pDeviceExtension->dev = NULL;
+		// DW-1109: put bdev when device is being destroyed.
+	{
+		// DW-1300: nullify drbd_device of volume extention when destroy drbd device.
+		PVOLUME_EXTENSION pvext = device->this_bdev->bd_disk->pDeviceExtension;
+		if (pvext &&
+			pvext->dev)
+		{
+			unsigned char oldIRQL = ExAcquireSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock);
+			pvext->dev->bd_disk->drbd_device = NULL;
+			ExReleaseSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+		}
+
+		blkdev_put(device->this_bdev, 0);
+		device->this_bdev = NULL;
 	}
 #else
-	if (device->this_bdev)
 		bdput(device->this_bdev);
 #endif
 
@@ -4338,29 +4347,22 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 		drbd_err(device, "%d: Device has no disk.\n", err);
 		goto out_no_disk;
 	}
-
-	device->this_bdev = pvext->dev;
-    q = pvext->dev->bd_disk->queue;
-#else
-	q = blk_alloc_queue(GFP_KERNEL);
 #endif
+	// DW-1109: don't get request queue and gendisk from volume extension, allocate new one. it will be destroyed in drbd_destroy_device.
+	q = blk_alloc_queue(GFP_KERNEL);
 	if (!q)
 		goto out_no_q;
 	device->rq_queue = q;
 	q->queuedata   = device;
-#ifdef _WIN32
-    disk = pvext->dev->bd_disk;
-#else
 	disk = alloc_disk(1);
-#endif
 	if (!disk)
 		goto out_no_disk;
 
 	device->vdisk = disk;
-#ifndef _WIN32
-	set_disk_ro(disk, true);
 
+	set_disk_ro(disk, true);
 	disk->queue = q;
+#ifndef _WIN32
 	disk->major = DRBD_MAJOR;
 	disk->first_minor = minor;
 #endif
@@ -4371,6 +4373,12 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
+#endif
+#ifdef _WIN32
+	kref_get(&pvext->dev->kref);
+	device->this_bdev = pvext->dev;
+	q->logical_block_size = 512;
+	q->max_hw_sectors = get_targetdev_volsize(pvext);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;

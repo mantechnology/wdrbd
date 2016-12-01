@@ -85,8 +85,8 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 3
@@ -288,8 +288,8 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		Irp = p2;
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)p3;
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 2
@@ -388,8 +388,8 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		Irp = p2;
 		bio = (struct bio *)p3;
 		error = Irp->IoStatus.Status;
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 1

@@ -550,6 +550,10 @@ void complete_master_bio(struct drbd_device *device,
 	        }
 #endif
 			IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+#ifdef _WIN32
+			// DW-1300: put reference when completing master irp.
+			kref_put(&device->kref, drbd_destroy_device);
+#endif
 
 	    } else {
 
@@ -587,6 +591,10 @@ void complete_master_bio(struct drbd_device *device,
 				IoCompleteRequest(master_bio->pMasterIrp, NT_SUCCESS(master_bio->pMasterIrp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
 				kfree(master_bio->splitInfo);
+#ifdef _WIN32
+				// DW-1300: put reference when completing master irp.
+				kref_put(&device->kref, drbd_destroy_device);
+#endif
 	        } 
 	    }	    
 
