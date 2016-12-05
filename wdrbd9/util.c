@@ -100,15 +100,16 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
         return STATUS_UNSUCCESSFUL;
     }
 
+	RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
+	
 	// DW-1303 No dismount for already dismounted volume
 	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
 		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
+			WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
 			return STATUS_SUCCESS;
 		}
 	}
 	
-    RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
-
     __try
     {
         if (!pvext->LockHandle)
@@ -207,6 +208,14 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
+	// DW-1303 No lock for already dismounted volume
+	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
+			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
+			return STATUS_UNSUCCESSFUL;
+		}
+	}
+	
     __try
     {
         InitializeObjectAttributes(&ObjectAttributes,

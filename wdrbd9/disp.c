@@ -399,12 +399,56 @@ mvolSendToNextDriver(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
+
+    if (DeviceObject == mvolRootDeviceObject) {
+        WDRBD_TRACE("mvolRootDevice Request\n");
+
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+
+#ifdef _WIN32_MVFL
+    if (VolumeExtension->Active) 
+	{
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		// DW-1300: prevent mounting volume when device went diskless.
+		if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] == D_DISKLESS))   // V9
+		{
+			//PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+			//WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
+			// DW-1300: put device reference count when no longer use.
+			kref_put(&device->kref, drbd_destroy_device);
+
+			Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+			return STATUS_INVALID_DEVICE_REQUEST;
+		}
+		// DW-1300: put device reference count when no longer use.
+		else if (device)
+			kref_put(&device->kref, drbd_destroy_device);
+    }
+#endif
+
     return mvolSendToNextDriver(DeviceObject, Irp);
 }
 
 NTSTATUS
 mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
+
+    if (DeviceObject == mvolRootDeviceObject) {
+        WDRBD_TRACE("mvolRootDevice Request\n");
+
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+
     return mvolSendToNextDriver(DeviceObject, Irp);
 }
 
