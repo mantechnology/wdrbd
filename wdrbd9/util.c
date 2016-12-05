@@ -96,11 +96,17 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
     PAGED_CODE();
 
     PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-    if (!pvext)
-    {
+    if (!pvext) {
         return STATUS_UNSUCCESSFUL;
     }
 
+	// DW-1303 No dismount for already dismounted volume
+	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
+			return STATUS_SUCCESS;
+		}
+	}
+	
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
     __try
