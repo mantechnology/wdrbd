@@ -1429,7 +1429,7 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
 			if (pDrbdLog->totalcnt <= LOGBUF_MAXCNT) {
-				for (unsigned int i = 0; i < (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
+				for (unsigned int i = 0; i <= (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
 					DWORD dwWritten;
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
