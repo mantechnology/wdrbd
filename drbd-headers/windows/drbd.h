@@ -93,7 +93,7 @@
 
 #ifdef _WIN32
 // MODIFIED_BY_MANTECH DW-1142
-#define _WIN32_DISABLE_RESYNC_FROM_SECONDARY
+//#define _WIN32_DISABLE_RESYNC_FROM_SECONDARY // DW-1306 changed to stable syncsource.
 #endif
 
 enum drbd_io_error_p {
