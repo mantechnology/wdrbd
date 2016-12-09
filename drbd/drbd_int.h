@@ -1965,7 +1965,7 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 #ifdef _WIN32
 // DW-844
-extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side) __must_hold(local);
 #endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
@@ -2346,6 +2346,10 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int o_min
 void drbd_resync_after_changed(struct drbd_device *device);
 extern bool drbd_stable_sync_source_present(struct drbd_peer_device *, enum which_state);
 extern void drbd_start_resync(struct drbd_peer_device *, enum drbd_repl_state);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1314
+extern bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state side);
+#endif
 extern void resume_next_sg(struct drbd_device *device);
 extern void suspend_other_sg(struct drbd_device *device);
 extern int drbd_resync_finished(struct drbd_peer_device *, enum drbd_disk_state);

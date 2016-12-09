@@ -5935,7 +5935,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 }
 
 // set out-of-sync for allocated clusters.
-bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device)
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side)
 {
 	bool bRet = false;
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
@@ -5943,9 +5943,10 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	ULONG_PTR count = 0;
 
 	if (NULL == device ||
-		NULL == peer_device)
+		NULL == peer_device ||
+		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
 	{
-		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p)\n", device, peer_device);
+		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
 		return false;
 	}
 
@@ -5958,8 +5959,17 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// on the side of secondary, just wait for primary's bitmap.
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
-		WDRBD_INFO("I am a secondary, wait to receive primary's bitmap\n");
-		return true;
+		// DW-1314: what we do for fast sync is getting allocated clusters from mounted file system, which can't be done on the role of secondary.
+		if (side == L_SYNC_SOURCE)
+		{
+			WDRBD_INFO("I am a sync source, but not able to get allocated clusters since I am a secondary\n");
+			return false;
+		}
+		if (side == L_SYNC_TARGET)
+		{
+			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
+			return true;
+		}
 	}
 
 	drbd_info(peer_device, "Writing the bitmap for allocated clusters.\n");

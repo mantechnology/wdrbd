@@ -1570,6 +1570,19 @@ static void sanitize_state(struct drbd_resource *resource)
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1314: restrict to be sync side when it is not able to.
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
+				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW]))
+				{					
+					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
+					repl_state[NEW] = L_ESTABLISHED;
+				}
+			}
+#endif
+
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: Abort resync since SyncSource goes secondary.
 			// DW-1159: aboring resync on behind is necessary, behind need to receive primary's state transition to go synctarget.
