@@ -1374,7 +1374,12 @@ retry:
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
+#ifdef _WIN32 
+		// MODIFIED_BY_MANTECH DW-1154 : After changing role, writes the meta data.
+		drbd_md_sync(device);
+#else
 		drbd_md_sync_if_dirty(device);
+#endif
 		set_disk_ro(device->vdisk, role == R_SECONDARY);
 		if (!resource->res_opts.auto_promote && role == R_PRIMARY)
 			drbd_kobject_uevent(device);
