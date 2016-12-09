@@ -2374,8 +2374,6 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 			drbd_warn(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s\n", drbd_repl_str(replState));
 			return false;
 		}
-
-		DbgPrint("[Hyunjun]"__func__" - stability(%d), authoritative(%llx), repl(%d->%d)\n", drbd_device_stable(device, &authoritative), authoritative, peer_device->repl_state[NOW], peer_device->repl_state[NEW]);
 	}
 	else if (side == L_SYNC_SOURCE)
 	{
