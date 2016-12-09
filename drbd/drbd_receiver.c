@@ -4150,7 +4150,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		// DW-844: check if fast sync is enalbed every time we do initial sync.
 		// set out-of-sync for allocated clusters.			
 		if (!isFastInitialSync() ||
-			!SetOOSAllocatedCluster(device, peer_device))
+			!SetOOSAllocatedCluster(device, peer_device, hg>0?L_SYNC_SOURCE:L_SYNC_TARGET))
 		{			
 			drbd_info(peer_device, "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");			
 			if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
