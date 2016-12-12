@@ -10,16 +10,16 @@ if "%IP%" == "" (
 )
 
 rem get nic info
-SET cmd="wmic nicconfig get ipaddress,settingid /format:csv |findstr %IP%"
-FOR /F %%i IN (' %cmd% ') DO SET INFO=%%i
+SET cmd="wmic nicconfig get ipaddress,settingid |findstr %IP%"
+FOR /F "delims=\n" %%i IN (' %cmd% ') DO SET INFO=%%i
 if "%INFO%" == "" (
 	echo %IP% not found.
 	goto error
 )
 
 rem parsing GUID
-rem WDRBDBLD,{10.10.100.167},{F63F7A21-6354-419F-9320-5EEEBA25C3C8}
-FOR /F "tokens=3 delims=," %%a in ('ECHO %INFO:,=^,%') DO SET ID=%%a
+rem {"10.10.100.167"} {F63F7A21-6354-419F-9320-5EEEBA25C3C8}
+FOR /F "tokens=3 delims={}" %%a in ('ECHO %INFO%') DO SET ID={%%a}
 
 rem edit registry values
 set regpath="HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%ID%"
