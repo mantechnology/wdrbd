@@ -2727,6 +2727,59 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 	return true;
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+/* DW-1315: This function is supposed to have the same semantics as calc_device_stable which doesn't return authoritative node.
+   We need to notify peer when keeping unstable device and authoritative node's changed as long as it is the criterion of operating resync. */
+static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_device, enum which_state which, u64* authoritative)
+{
+	int n_connection;
+		
+	if (state_change->resource->role[which] == R_PRIMARY)
+		return true;
+
+	// try to find primary node first, which has the first priority of becoming authoritative node.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
+		struct drbd_connection_state_change *connection_state_change =
+			&state_change->connections[n_connection];
+		enum drbd_role *peer_role = connection_state_change->peer_role;
+
+		if (peer_role[which] == R_PRIMARY)
+		{
+			if (authoritative)
+			{
+				struct drbd_peer_device_state_change *peer_device_state_change = &state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}
+			return false;
+		}
+	}
+
+	// no primary exists at least we have connected, try to find node of resync source side.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {		
+		struct drbd_peer_device_state_change *peer_device_state_change =
+			&state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+		enum drbd_repl_state *repl_state = peer_device_state_change->repl_state;
+		
+		switch (repl_state[which]) {
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			if (authoritative)
+			{
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}			
+			return false;
+		default:
+			continue;
+		}
+	}
+
+	return true;
+}
+#endif
+
 /* takes old and new peer disk state */
 static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
 {
@@ -2785,9 +2838,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #endif
 		bool device_stable[2];
 		enum which_state which;
+#ifdef _WIN32_STABLE_SYNCSOURCE
+		// DW-1315
+		u64 authoritative[2] = { 0, };
+#endif
 
 		for (which = OLD; which <= NEW; which++)
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: need changes of authoritative node to notify peers.
+			device_stable[which] = calc_device_stable_ex(state_change, n_device, which, &authoritative[which]);
+#else
 			device_stable[which] = calc_device_stable(state_change, n_device, which);
+#endif
 
 		if (disk_state[NEW] == D_UP_TO_DATE)
 			effective_disk_size_determined = true;
@@ -3119,6 +3181,17 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, UUID_FLAG_GOT_STABLE, 0);
 				put_ldev(device);
 			}
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: I am still unstable but authoritative node's changed, need to notify peers.
+			if(!device_stable[OLD] && !device_stable[OLD] &&
+				authoritative[OLD] != authoritative[NEW] &&
+				get_ldev(device))
+			{	
+				drbd_send_uuids(peer_device, 0, 0);
+				put_ldev(device);
+			}
+#endif
+
 #endif
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1225: I am promoted, and there will be no initial sync. start resync after promotion.

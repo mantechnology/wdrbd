@@ -2386,7 +2386,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
 			!(NODE_MASK(device->resource->res_opts.node_id) & peer_device->uuid_authoritative_nodes))
 		{
-			drbd_warn(peer_device, "Sync target is unstable and I am not it's authoritative node, can not be %s\n", drbd_repl_str(replState));
+			drbd_warn(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s\n", drbd_repl_str(replState));
 			return false;			
 		}
 	}
