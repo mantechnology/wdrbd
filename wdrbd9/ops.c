@@ -252,6 +252,8 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	PVOLUME_EXTENSION pvext = DeviceObject->DeviceExtension;
 	CHAR Message[128] = { 0, };
 	*ReturnLength = 0;
+	// DW-1300
+	struct drbd_device *device = NULL;
 
     COUNT_LOCK(pvext);
 
@@ -264,7 +266,9 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
         goto out;
     }
 
-    if (pvext->WorkThreadInfo.Active && minor_to_device(pvext->VolIndex))
+	// DW-1300: get device and get reference.
+	device = get_device_with_vol_ext(pvext);
+    if (pvext->WorkThreadInfo.Active && device)
     {
     	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
@@ -279,6 +283,10 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 
 out:
     COUNT_UNLOCK(pvext);
+
+	// DW-1300: put device reference count when no longer use.
+	if (device)
+		kref_put(&device->kref, drbd_destroy_device);
 
 	if (*ReturnLength)
 	{

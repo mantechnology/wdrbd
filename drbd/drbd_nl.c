@@ -1374,7 +1374,12 @@ retry:
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
+#ifdef _WIN32 
+		// MODIFIED_BY_MANTECH DW-1154 : After changing role, writes the meta data.
+		drbd_md_sync(device);
+#else
 		drbd_md_sync_if_dirty(device);
+#endif
 		set_disk_ro(device->vdisk, role == R_SECONDARY);
 		if (!resource->res_opts.auto_promote && role == R_PRIMARY)
 			drbd_kobject_uevent(device);
@@ -2761,6 +2766,9 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 		return bdev;
 	}
 
+	// DW-1109: inc ref when open it.
+	kref_get(&bdev->kref);
+
 	if (!do_bd_link)
 		return bdev;
 
@@ -2794,6 +2802,14 @@ static int open_backing_devices(struct drbd_device *device,
 		return ERR_OPEN_DISK;
 	
 	nbc->backing_bdev = bdev;
+#ifdef _WIN32
+	// DW-1300: set drbd device to access from volume extention
+	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock);
+	bdev->bd_disk->drbd_device = device;
+	ExReleaseSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+	// DW-1277: mark that this will be using as replication volume.
+	set_bit(VOLUME_TYPE_REPL, &bdev->bd_disk->pDeviceExtension->Flag);
+#endif
 
 	/*
 	 * meta_dev_idx >= 0: external fixed size, possibly multiple
@@ -2815,6 +2831,8 @@ static int open_backing_devices(struct drbd_device *device,
 		return ERR_OPEN_MD_DISK;
 	nbc->md_bdev = bdev;
 #ifdef _WIN32
+	// DW-1277: mark that this will be using as meta volume.
+	set_bit(VOLUME_TYPE_META, &bdev->bd_disk->pDeviceExtension->Flag);
 	bdev->bd_disk->private_data = nbc;		// for removing
 #endif
 	return NO_ERROR;
@@ -2845,10 +2863,11 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 		struct block_device * bd = ldev->md_bdev;
 		bd->bd_disk->private_data = NULL;
 	}
-#else
+#endif
+
 	close_backing_dev(device, ldev->md_bdev, ldev->md_bdev != ldev->backing_bdev);
 	close_backing_dev(device, ldev->backing_bdev, true);
-#endif
+
 	kfree(ldev->disk_conf);
 	kfree(ldev);
 }

@@ -55,6 +55,13 @@ typedef struct _MVOL_THREAD
 #define	MVOL_READ_OFF			0x01
 #define	MVOL_WRITE_OFF			0x02
 
+/* flag bits per volume extension 
+	DW-1277: volume type is marked when drbd attaches */
+enum {
+	VOLUME_TYPE_REPL,		// for replicating volume.
+	VOLUME_TYPE_META,		// for meta volume.
+};
+
 typedef struct _VOLUME_EXTENSION
 {
 	struct _VOLUME_EXTENSION	*Next;
@@ -65,7 +72,7 @@ typedef struct _VOLUME_EXTENSION
 #ifdef _WIN32_MVFL
     HANDLE              LockHandle;
 #endif
-	ULONG				Flag;
+	ULONG_PTR			Flag;
 	ULONG				Magic;
 	BOOLEAN				Active;
 

@@ -2945,7 +2945,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					put_ldev(device);
 				}
 			} else if( (peer_role[NEW] == R_PRIMARY) 
-			|| ((role[NOW] == R_SECONDARY) && (resource->twopc_reply.primary_nodes != 0)) ) { // disk detach case || detach & reconnect daisy chain case
+			|| ((role[NOW] == R_SECONDARY) && (resource->twopc_reply.primary_nodes != 0) // disk detach case || detach & reconnect daisy chain case
+			// DW-1312: no clearing MDF_LAST_PRIMARY when primary_nodes of twopc_reply involves my node id.
+			&& !(resource->twopc_reply.primary_nodes & NODE_MASK(resource->res_opts.node_id)))) { 
 				if(get_ldev_if_state(device, D_NEGOTIATING)) {
 					drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
 					put_ldev(device);
