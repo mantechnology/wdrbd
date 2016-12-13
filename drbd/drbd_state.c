@@ -3192,8 +3192,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				put_ldev(device);
 			}
 #ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: notify peer that I got stable, no resync available in this case.
+			else if (!device_stable[OLD] && device_stable[NEW] &&
+				repl_state[NEW] >= L_ESTABLISHED &&
+				get_ldev(device))
+			{
+				drbd_send_uuids(peer_device, 0, 0);
+				put_ldev(device);
+			}
+#endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
 			// DW-1315: I am still unstable but authoritative node's changed, need to notify peers.
-			if(!device_stable[OLD] && !device_stable[OLD] &&
+			if(!device_stable[OLD] && !device_stable[NEW] &&
 				authoritative[OLD] != authoritative[NEW] &&
 				get_ldev(device))
 			{	
