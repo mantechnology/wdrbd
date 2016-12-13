@@ -26,7 +26,8 @@ InitWskBuffer(
 NTSTATUS
 InitWskData(
 	__out PIRP*		pIrp,
-	__out PKEVENT	CompletionEvent
+	__out PKEVENT	CompletionEvent,
+	__in  BOOLEAN	bRawIrp
 	);
 
 VOID

@@ -25,18 +25,26 @@ NTAPI CompletionRoutine(
 NTSTATUS
 InitWskData(
 	__out PIRP*		pIrp,
-	__out PKEVENT	CompletionEvent
+	__out PKEVENT	CompletionEvent,
+	__in  BOOLEAN	bRawIrp
 )
 {
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
 
-	*pIrp = IoAllocateIrp(1, FALSE);
-	if (!*pIrp)
-	{
-		return STATUS_INSUFFICIENT_RESOURCES;
+	// DW-1316 use raw irp.
+	if (bRawIrp) {
+		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
+	}
+	else {
+		*pIrp = IoAllocateIrp(1, FALSE);
 	}
 
+	if (!*pIrp) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	
 	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
 
@@ -186,7 +194,7 @@ CreateSocket(
 		return NULL;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return NULL;
 	}
@@ -228,7 +236,7 @@ CloseSocketLocal(
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
@@ -255,18 +263,24 @@ CloseSocket(
 	KEVENT		CompletionEvent = { 0 };
 	PIRP		Irp = NULL;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+	LARGE_INTEGER	nWaitTime;
+	nWaitTime.QuadPart = (-1 * 1000 * 10000);   // wait 1000ms relative 
 
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
-
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
+		if (STATUS_TIMEOUT == Status) { // DW-1316 detour WskCloseSocket hang in Win7/x86.
+			WDRBD_WARN("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel\n", WskSocket);
+			IoCancelIrp(Irp);
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
+		}
 		Status = Irp->IoStatus.Status;
 	}
 	IoFreeIrp(Irp);
@@ -287,7 +301,7 @@ Connect(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !RemoteAddress)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
@@ -331,11 +345,11 @@ Disconnect(
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
-
+	
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskDisconnect(
 		WskSocket,
 		NULL,
@@ -375,7 +389,7 @@ SocketConnect(
 	if (g_SocketsState != INITIALIZED || !RemoteAddress || !LocalAddress || !pStatus)
 		return NULL;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return NULL;
 	}
@@ -581,7 +595,7 @@ Send(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
@@ -722,7 +736,7 @@ SendAsync(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
@@ -844,7 +858,7 @@ SendLocal(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
@@ -965,7 +979,7 @@ SendTo(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
@@ -1022,7 +1036,7 @@ LONG NTAPI ReceiveLocal(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
@@ -1156,7 +1170,7 @@ LONG NTAPI Receive(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
@@ -1276,7 +1290,7 @@ ReceiveFrom(
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
@@ -1317,7 +1331,7 @@ Bind(
 	if (g_SocketsState != INITIALIZED || !WskSocket || !LocalAddress)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
@@ -1360,7 +1374,7 @@ AcceptLocal(
 		return NULL;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		*RetStaus = Status;
 		return NULL;
@@ -1464,7 +1478,7 @@ Accept(
 		return NULL;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		*RetStaus = Status;
 		return NULL;
@@ -1559,7 +1573,7 @@ ControlSocket(
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return SOCKET_ERROR;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		WDRBD_ERROR("InitWskData() failed with status 0x%08X\n", Status);
 		return SOCKET_ERROR;
@@ -1598,7 +1612,7 @@ GetRemoteAddress(
 	PIRP		Irp = NULL;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	Status = InitWskData(&Irp, &CompletionEvent);
+	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
 	}
@@ -1683,7 +1697,7 @@ __in ULONG			Flags
     PWSK_SOCKET		socket = NULL;
     NTSTATUS		status;
 
-    status = InitWskData(&irp, &CompletionEvent);
+    status = InitWskData(&irp, &CompletionEvent, FALSE);
     if (!NT_SUCCESS(status))
     {
         return NULL;
@@ -1753,7 +1767,7 @@ CloseWskEventSocket()
     KEVENT		CompletionEvent = {0};
     PIRP		irp = NULL;
 
-    NTSTATUS status = InitWskData(&irp, &CompletionEvent);
+    NTSTATUS status = InitWskData(&irp, &CompletionEvent,FALSE);
     if (!NT_SUCCESS(status))
     {
         return status;
@@ -1797,7 +1811,7 @@ __in LONG			mask
         return Status;
     }
 
-    Status = InitWskData(&Irp, &CompletionEvent);
+    Status = InitWskData(&Irp, &CompletionEvent,FALSE);
     if (!NT_SUCCESS(Status)) {
         return Status;
     }
