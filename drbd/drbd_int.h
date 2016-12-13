@@ -1970,6 +1970,10 @@ extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315
+extern bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which);
+#endif
 extern void drbd_flush_peer_acks(struct drbd_resource *resource);
 extern void drbd_drop_unsent(struct drbd_connection* connection);
 extern void drbd_cork(struct drbd_connection *connection, enum drbd_stream stream);
@@ -2347,8 +2351,8 @@ void drbd_resync_after_changed(struct drbd_device *device);
 extern bool drbd_stable_sync_source_present(struct drbd_peer_device *, enum which_state);
 extern void drbd_start_resync(struct drbd_peer_device *, enum drbd_repl_state);
 #ifdef _WIN32_STABLE_SYNCSOURCE
-// DW-1314
-extern bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state side);
+// DW-1314, DW-1315
+extern bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state side, enum which_state which);
 #endif
 extern void resume_next_sg(struct drbd_device *device);
 extern void suspend_other_sg(struct drbd_device *device);

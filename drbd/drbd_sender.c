@@ -2327,8 +2327,9 @@ static bool use_checksum_based_resync(struct drbd_connection *connection, struct
 /**	DW-1314
 * drbd_inspect_resync_side() - Check stability if resync can be started.
 * rule for resync - Sync source must be stable and authoritative of sync target if sync target is unstable.
+* DW-1315: need to also inspect if I will be able to be resync side. (state[NEW])
 */
-bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state replState)
+bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state replState, enum which_state which)
 {
 	struct drbd_device *device = peer_device->device;
 	enum drbd_repl_state side = 0;
@@ -2368,7 +2369,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 			return false;
 		}
 
-		if (!drbd_device_stable(device, &authoritative) &&
+		if (!drbd_device_stable_ex(device, &authoritative, which) &&
 			!(NODE_MASK(peer_device->node_id) & authoritative))
 		{
 			drbd_warn(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s\n", drbd_repl_str(replState));
@@ -2377,7 +2378,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 	}
 	else if (side == L_SYNC_SOURCE)
 	{
-		if (!drbd_device_stable(device, &authoritative))
+		if (!drbd_device_stable_ex(device, &authoritative, which))
 		{
 			drbd_warn(peer_device, "I am unstable, can not be %s\n", drbd_repl_str(replState));
 			return false;
@@ -2386,7 +2387,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
 			!(NODE_MASK(device->resource->res_opts.node_id) & peer_device->uuid_authoritative_nodes))
 		{
-			drbd_warn(peer_device, "Sync target is unstable and I am not it's authoritative node, can not be %s\n", drbd_repl_str(replState));
+			drbd_warn(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s\n", drbd_repl_str(replState));
 			return false;			
 		}
 	}
@@ -2498,7 +2499,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1314: check stable sync source rules.
-	if (!drbd_inspect_resync_side(peer_device, side))
+	if (!drbd_inspect_resync_side(peer_device, side, NOW))
 	{
 		drbd_warn(peer_device, "could not start resync.\n");
 

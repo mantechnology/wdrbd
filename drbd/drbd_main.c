@@ -1044,6 +1044,69 @@ out:
 	return device_stable;
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315: check if I have primary neighbor, it has same semantics as drbd_all_neighbor_secondary and is also able to check the role to be changed.
+static bool drbd_all_neighbor_secondary_ex(struct drbd_resource *resource, u64 *authoritative, enum which_state which)
+{
+	struct drbd_connection *connection;
+	bool all_secondary = true;
+	int id;
+
+	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		if (connection->cstate[which] >= C_CONNECTED &&
+			connection->peer_role[which] == R_PRIMARY) {
+			all_secondary = false;
+			if (authoritative) {
+				id = connection->peer_node_id;
+				*authoritative |= NODE_MASK(id);
+			}
+			else {
+				break;
+			}
+		}
+	}
+	rcu_read_unlock();
+
+	return all_secondary;
+}
+
+// DW-1315: check the stability and authoritative node(if unstable), it has same semantics as drbd_device_stable and is also able to check the state to be changed.
+bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which)
+{
+	struct drbd_resource *resource = device->resource;
+	struct drbd_connection *connection;
+	struct drbd_peer_device *peer_device;
+	bool device_stable = true;
+
+	if (resource->role[which] == R_PRIMARY)
+		return true;
+
+	if (!drbd_all_neighbor_secondary_ex(resource, authoritative, which))
+		return false;
+
+	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		peer_device = conn_peer_device(connection, device->vnr);
+		switch (peer_device->repl_state[which]) {
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			device_stable = false;
+			if (authoritative)
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			goto out;
+		default:
+			continue;
+		}
+	}
+
+out:
+	rcu_read_unlock();
+	return device_stable;
+}
+#endif
+
 #ifdef _WIN32
 // MODIFIED_BY_MANTECH DW-1145: it returns true if my disk is consistent with primary's
 bool is_consistent_with_primary(struct drbd_device *device)
