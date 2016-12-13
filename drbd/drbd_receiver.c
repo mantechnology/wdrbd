@@ -5679,6 +5679,23 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	}
 #endif
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1315: abort resync if peer gets unsyncable state.
+	if ((peer_device->repl_state[NOW] >= L_STARTING_SYNC_S && peer_device->repl_state[NOW] <= L_WF_BITMAP_T) ||
+		(peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T))
+	{
+		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
+		{
+			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
+
+			unsigned long irq_flags;
+			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+			__change_repl_state(peer_device, L_ESTABLISHED);
+			end_state_change(device->resource, &irq_flags);
+		}
+	}
+#endif
+
 	return err;
 }
 

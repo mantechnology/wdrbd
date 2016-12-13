@@ -1575,7 +1575,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
 				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
 			{
-				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW]))
+				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
 					repl_state[NEW] = L_ESTABLISHED;
@@ -2072,6 +2072,16 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (repl_state[OLD] <= L_ESTABLISHED && repl_state[NEW] == L_WF_BITMAP_S)
 				starting_resync = true;
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: check resync availability as state changes, set RESYNC_ABORTED flag by going unsyncable, actual aborting will be occured in w_after_state_change().
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
+				(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
+					set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+#endif
 
 			/* Aborted verify run, or we reached the stop sector.
 			 * Log the last position, unless end-of-device. */
@@ -3189,6 +3199,17 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			{	
 				drbd_send_uuids(peer_device, 0, 0);
 				put_ldev(device);
+			}
+
+			// DW-1315: resync availability has been checked in finish_state_change(), abort resync here by changing replication state to L_ESTABLISHED.
+			if (test_and_clear_bit(RESYNC_ABORTED, &peer_device->flags))
+			{
+				drbd_info(peer_device, "Resync will be aborted due to change of state.\n");
+
+				unsigned long irq_flags;
+				begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+				__change_repl_state(peer_device, L_ESTABLISHED);
+				end_state_change(device->resource, &irq_flags);
 			}
 #endif
 
