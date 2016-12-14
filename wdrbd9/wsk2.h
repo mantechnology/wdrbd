@@ -30,6 +30,12 @@ InitWskData(
 	__in  BOOLEAN	bRawIrp
 	);
 
+NTSTATUS 
+InitWskDataAsync(
+	__out PIRP*		pIrp,
+	__in  BOOLEAN	bRawIrp
+	);
+
 VOID
 ReInitWskData(
 	__out PIRP*		pIrp,

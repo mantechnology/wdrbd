@@ -9,6 +9,8 @@ static WSK_PROVIDER_NPI		g_WskProvider;
 static WSK_CLIENT_DISPATCH	g_WskDispatch = { MAKE_WSK_VERSION(1, 0), 0, NULL };
 LONG						g_SocketsState = DEINITIALIZED;
 
+#define WSK_ASYNCCOMPL	1
+
 NTSTATUS
 NTAPI CompletionRoutine(
 	__in PDEVICE_OBJECT	DeviceObject,
@@ -21,6 +23,26 @@ NTAPI CompletionRoutine(
 	
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
+#if WSK_ASYNCCOMPL
+NTSTATUS
+NTAPI CompletionRoutineAsync(
+	__in PDEVICE_OBJECT	DeviceObject,
+	__in PIRP			Irp,
+	__in PVOID			Context
+)
+{
+	if (Irp->IoStatus.Status == STATUS_SUCCESS) {
+		// Get the pointer to the socket context
+		// Perform any cleanup and/or deallocation of the socket context
+	} else { // Error status
+		// Handle error
+	}
+	// Free the IRP
+	IoFreeIrp(Irp);
+
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+#endif
 
 NTSTATUS
 InitWskData(
@@ -47,6 +69,35 @@ InitWskData(
 	
 	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+
+	return STATUS_SUCCESS;
+}
+
+
+
+NTSTATUS
+InitWskDataAsync(
+	__out PIRP*		pIrp,
+	__in  BOOLEAN	bRawIrp
+	)
+{
+	ASSERT(pIrp);
+	ASSERT(CompletionEvent);
+
+	if (bRawIrp) {
+		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
+	}
+	else {
+		*pIrp = IoAllocateIrp(1, FALSE);
+	}
+
+	if (!*pIrp) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	//KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(*pIrp, CompletionRoutineAsync, NULL, TRUE, TRUE, TRUE);
 
 	return STATUS_SUCCESS;
 }
@@ -268,12 +319,18 @@ CloseSocket(
 
 	if (g_SocketsState != INITIALIZED || !WskSocket)
 		return STATUS_INVALID_PARAMETER;
-
+#if WSK_ASYNCCOMPL
+	Status = InitWskDataAsync(&Irp, TRUE);
+#else
 	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
+#endif
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
+#if WSK_ASYNCCOMPL	
+	// DW-1316 replace Waiting-WskCloseSocket method with Async-completion method
+#else
 	if (Status == STATUS_PENDING) {
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
 		if (STATUS_TIMEOUT == Status) { // DW-1316 detour WskCloseSocket hang in Win7/x86.
@@ -284,6 +341,7 @@ CloseSocket(
 		Status = Irp->IoStatus.Status;
 	}
 	IoFreeIrp(Irp);
+#endif
 	return Status;
 }
 
@@ -410,7 +468,7 @@ SocketConnect(
 
 	if (Status == STATUS_PENDING) {
 		LARGE_INTEGER nWaitTime = { 0, };
-		nWaitTime = RtlConvertLongToLargeInteger(-1 * 1000 * 1000 * 10);	// 1s
+		nWaitTime = RtlConvertLongToLargeInteger(-3 * 1000 * 1000 * 10);	// 3s
 		if ((Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime)) == STATUS_TIMEOUT)
 		{
 			IoCancelIrp(Irp);
@@ -1674,13 +1732,14 @@ InitWskEvent()
 
     status = WskCaptureProviderNPI(&gWskEventRegistration,
         WSK_INFINITE_WAIT, &gWskEventProviderNPI);
-    if (!NT_SUCCESS(status))
+	
+	if (!NT_SUCCESS(status))
     {
         WDRBD_ERROR("Failed to WskCaptureProviderNPI(). status(0x%x)\n", status);
         WskDeregister(&gWskEventRegistration);
         return status;
     }
-
+	//WDRBD_INFO("WskProvider Version Major:%d Minor:%d\n",WSK_MAJOR_VERSION(gWskEventProviderNPI.Dispatch->Version),WSK_MINOR_VERSION(gWskEventProviderNPI.Dispatch->Version));
     return status;
 }
 
