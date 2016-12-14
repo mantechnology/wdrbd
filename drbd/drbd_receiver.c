@@ -5590,6 +5590,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	peer_device->current_uuid = be64_to_cpu(p->current_uuid);
 	peer_device->dirty_bits = be64_to_cpu(p->dirty_bits);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1315: need to update authoritative nodes earlier than uuid flag.
+	peer_device->uuid_authoritative_nodes = (p->uuid_flags & UUID_FLAG_STABLE) ? 0 : be64_to_cpu(p->node_mask);
+#endif
 	peer_device->uuid_flags = be64_to_cpu(p->uuid_flags);
 	bitmap_uuids_mask = be64_to_cpu(p->bitmap_uuids_mask);
 	if (bitmap_uuids_mask & ~(NODE_MASK(DRBD_PEERS_MAX) - 1))
