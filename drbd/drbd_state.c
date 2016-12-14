@@ -1575,7 +1575,8 @@ static void sanitize_state(struct drbd_resource *resource)
 			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
 				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
 			{
-				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
+				if (repl_state[NOW] >= L_ESTABLISHED &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
 					repl_state[NEW] = L_ESTABLISHED;
@@ -2078,7 +2079,8 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
 				(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
 			{
-				if (!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
+				if (repl_state[NOW] >= L_ESTABLISHED &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
 					set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
 #endif
@@ -3220,10 +3222,13 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			{
 				drbd_info(peer_device, "Resync will be aborted due to change of state.\n");
 
-				unsigned long irq_flags;
-				begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-				__change_repl_state(peer_device, L_ESTABLISHED);
-				end_state_change(device->resource, &irq_flags);
+				if (repl_state[NOW] > L_ESTABLISHED)
+				{
+					unsigned long irq_flags;
+					begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+					__change_repl_state(peer_device, L_ESTABLISHED);
+					end_state_change(device->resource, &irq_flags);
+				}
 			}
 #endif
 
