@@ -9,7 +9,7 @@ static WSK_PROVIDER_NPI		g_WskProvider;
 static WSK_CLIENT_DISPATCH	g_WskDispatch = { MAKE_WSK_VERSION(1, 0), 0, NULL };
 LONG						g_SocketsState = DEINITIALIZED;
 
-#define WSK_ASYNCCOMPL	1
+//#define WSK_ASYNCCOMPL	1
 
 NTSTATUS
 NTAPI CompletionRoutine(
@@ -74,7 +74,7 @@ InitWskData(
 }
 
 
-
+#if WSK_ASYNCCOMPL
 NTSTATUS
 InitWskDataAsync(
 	__out PIRP*		pIrp,
@@ -101,6 +101,7 @@ InitWskDataAsync(
 
 	return STATUS_SUCCESS;
 }
+#endif
 
 VOID
 ReInitWskData(
