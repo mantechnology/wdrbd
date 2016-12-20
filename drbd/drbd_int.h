@@ -1243,6 +1243,7 @@ struct drbd_resource {
 #ifdef _WIN32
 	bool bPreSecondaryLock;
 	bool bPreDismountLock; // DW-1286
+	bool bTempAllowMount;  // DW-1317
 #endif
 
 };

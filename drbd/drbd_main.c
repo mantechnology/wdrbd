@@ -6012,6 +6012,8 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
 	ULONG ulBitmapSize = 0;
 	ULONG_PTR count = 0;
+	// DW-1317: to support fast sync from secondary sync source whose volume is NOT mounted.
+	bool bSecondary = false;
 
 	if (NULL == device ||
 		NULL == peer_device ||
@@ -6027,6 +6029,9 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	drbd_bm_write(device, NULL);
 	drbd_bm_slot_unlock(peer_device);
 
+	// DW-1317: prevent from transitioning both role and replication state.
+	down(&device->resource->state_sem);
+
 	// on the side of secondary, just wait for primary's bitmap.
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
@@ -6034,12 +6039,13 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		if (side == L_SYNC_SOURCE)
 		{
 			WDRBD_INFO("I am a sync source, but not able to get allocated clusters since I am a secondary\n");
-			return false;
+			bSecondary = true;
 		}
 		if (side == L_SYNC_TARGET)
 		{
 			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
-			return true;
+			bRet = true;
+			goto out;			
 		}
 	}
 
@@ -6047,6 +6053,19 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	do
 	{
+		if (bSecondary)
+		{			
+			// set readonly attribute.
+			if (!ChangeVolumeReadonly(device->minor, true))
+			{
+				WDRBD_ERROR("Could not change volume read-only attribute\n");
+				bSecondary = false;
+				break;
+			}
+			// allow mount within getting volume bitmap.
+			device->resource->bTempAllowMount = TRUE;			
+		}
+
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
 		if (NULL == pBitmap)
@@ -6071,11 +6090,36 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	} while (false);
 
+	if (bSecondary)
+	{
+		// prevent from mounting volume.
+		device->resource->bTempAllowMount = FALSE;
+
+		// dismount volume.
+		FsctlFlushDismountVolume(device->minor, false);
+
+		// clear readonly attribute
+		if (!ChangeVolumeReadonly(device->minor, false))
+		{
+			WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
+			if (device &&
+				get_ldev_if_state(device, D_NEGOTIATING))
+			{
+				set_bit(FORCE_DETACH, &device->flags);
+				change_disk_state(device, D_DETACHING, CS_HARD);
+				put_ldev(device);
+			}
+		}
+	}
+
 	if (pBitmap)
 	{
 		ExFreePool(pBitmap);
 		pBitmap = NULL;
 	}
+
+out:
+	up(&device->resource->state_sem);
 
 	return bRet;
 }
