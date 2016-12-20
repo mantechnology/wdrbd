@@ -1575,7 +1575,8 @@ static void sanitize_state(struct drbd_resource *resource)
 			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
 				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
 			{
-				if (repl_state[NOW] >= L_ESTABLISHED &&
+				if (((repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_STARTING_SYNC_T) ||
+					repl_state[NOW] >= L_ESTABLISHED) &&
 					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
