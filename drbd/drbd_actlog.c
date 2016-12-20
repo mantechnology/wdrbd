@@ -881,20 +881,6 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
 				return true;
 		}
-
-		// MODIFIED_BY_MANTECH DW-955: peer was sync source, and has gone down. simply in-sync resync done sector so that peer might also clear it.
-		if (peer_device->connection->cstate[NOW] < C_CONNECTED)
-		{
-			if (peer_device->last_repl_state == L_SYNC_SOURCE ||
-				peer_device->last_repl_state == L_PAUSED_SYNC_S)
-			{
-				struct drbd_device *device = peer_device->device;
-				sector_t sector = BM_EXT_TO_SECT(rs_enr);
-				int size_sect = min(BM_SECT_PER_EXT, drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
-				
-				drbd_set_in_sync(peer_device, sector, size_sect << 9);
-			}
-		}
 #endif
 
 	return false;
