@@ -1555,6 +1555,10 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 	mutex_lock(&adm_ctx.resource->adm_mutex);
+#ifdef _WIN32
+	// DW-1317: acquire volume control mutex, not to conflict to (dis)mount volume.
+	mutex_lock(&adm_ctx.resource->vol_ctl_mutex);
+#endif
 
 	if (info->genlhdr->cmd == DRBD_ADM_PRIMARY) {
 #ifdef _WIN32 // DW-839 not support diskless Primary
@@ -1612,7 +1616,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 				continue;
 			}			
 			adm_ctx.resource->bPreDismountLock = TRUE;
-			NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
+			NTSTATUS status = FsctlFlushDismountVolume(device->minor, true);			
 			if (!NT_SUCCESS(status))
 			{
 				retcode = SS_UNKNOWN_ERROR;
@@ -1652,7 +1656,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
                     goto fail;
                 }
 				adm_ctx.resource->bPreDismountLock = TRUE;
-                NTSTATUS status = FsctlFlushDismountVolume(device->minor);
+                NTSTATUS status = FsctlFlushDismountVolume(device->minor, true);
 				adm_ctx.resource->bPreSecondaryLock = TRUE;
                 FsctlUnlockVolume(device->minor);
 
@@ -1681,6 +1685,8 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 
 #ifdef _WIN32
 fail:
+	// DW-1317
+	mutex_unlock(&adm_ctx.resource->vol_ctl_mutex);
 #endif
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 out:
@@ -3069,7 +3075,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 				FsctlLockVolume(dh->minor);
 
 				pvext->Active = TRUE;
-				status = FsctlFlushDismountVolume(dh->minor);
+				status = FsctlFlushDismountVolume(dh->minor, true);
 
 				FsctlUnlockVolume(dh->minor);
 
@@ -6516,6 +6522,11 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 
 	mutex_lock(&resource->adm_mutex);
 #ifdef _WIN32
+	// DW-1317: acquire volume control mutex, not to conflict to (dis)mount volume.
+	mutex_lock(&adm_ctx.resource->vol_ctl_mutex);
+#endif
+
+#ifdef _WIN32
 	if (get_t_state(&resource->worker) != RUNNING) {		
 		drbd_msg_put_info(adm_ctx.reply_skb, "resource already down");
 		retcode = SS_NOTHING_TO_DO;
@@ -6550,7 +6561,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		}
 
 		resource->bPreDismountLock = TRUE;
-		NTSTATUS status = FsctlFlushDismountVolume(device->minor);			
+		NTSTATUS status = FsctlFlushDismountVolume(device->minor, true);			
 		if (!NT_SUCCESS(status))
 		{
 			retcode = SS_UNKNOWN_ERROR;
@@ -6595,7 +6606,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
         {
             
 			resource->bPreDismountLock = TRUE;
-            NTSTATUS status = FsctlFlushDismountVolume(device->minor);
+            NTSTATUS status = FsctlFlushDismountVolume(device->minor, true);
 			resource->bPreSecondaryLock = TRUE;
             FsctlUnlockVolume(device->minor);
 
@@ -6674,6 +6685,10 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 unlock_out:
 	mutex_unlock(&resource->conf_update);
 out:
+#ifdef _WIN32
+	// DW-1317
+	mutex_unlock(&adm_ctx.resource->vol_ctl_mutex);
+#endif
 	mutex_unlock(&resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;

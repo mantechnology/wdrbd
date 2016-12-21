@@ -692,7 +692,19 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 		make_ov_request(peer_device, cancel);
 		break;
 	case L_SYNC_TARGET:
+#ifdef _WIN32
+		// DW-1317: try to get volume control mutex, reset timer if failed.
+		if (mutex_trylock(&device->resource->vol_ctl_mutex))
+		{
+			mutex_unlock(&device->resource->vol_ctl_mutex);
+			make_resync_request(peer_device, cancel);
+		}
+		else		
+			mod_timer(&peer_device->resync_timer, jiffies);
+		
+#else
 		make_resync_request(peer_device, cancel);
+#endif		
 		break;
 	default:
 		break;

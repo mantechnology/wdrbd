@@ -21,6 +21,8 @@
 #include <ntddk.h>
 #include <stdlib.h>
 #include <Mountmgr.h> 
+#include <ntddvol.h>
+
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"
 #include "proto.h"
@@ -82,7 +84,7 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 *           Opened volume's HANDLE value is in VOLUME_EXTENSION.
 *           if you need, can be used Independently. 
 */
-NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
+NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 {
     NTSTATUS status = STATUS_SUCCESS;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -155,10 +157,14 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor)
             __leave;
         }
 #endif
-		status = ZwFlushBuffersFile(hFile, &StatusBlock);
-		if (!NT_SUCCESS(status)) {
-            WDRBD_ERROR("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
-        }
+		if (bFlush)
+		{
+			status = ZwFlushBuffersFile(hFile, &StatusBlock);
+			if (!NT_SUCCESS(status)) {
+				WDRBD_ERROR("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
+			}
+		}
+		
         status = ZwFsControlFile(hFile, 0, 0, 0, &StatusBlock, FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0);
         if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
@@ -609,6 +615,98 @@ BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalClust
 		hEvent = NULL;
 	}
 	
+	return bRet;
+}
+
+/* DW-1317
+   makes volume to be read-only. there will be no write at all when mounted, also any write operation to this volume will be failed. (0xC00000A2 : STATUS_MEDIA_WRITE_PROTECTED)
+   be sure that drbd must not go sync target before clearing read-only attribute.
+   for mounted read-only volume, write operation would come up as soon as read-only attribute is cleared.
+*/
+#define GPT_BASIC_DATA_ATTRIBUTE_READ_ONLY          (0x1000000000000000)
+bool ChangeVolumeReadonly(unsigned int minor, bool set)
+{
+	HANDLE hVolume = NULL;
+	bool bRet = FALSE;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	IO_STATUS_BLOCK iosb = { 0, };
+
+	do
+	{
+		hVolume = GetVolumeHandleFromDeviceMinor(minor);
+		if (NULL == hVolume)
+		{
+			WDRBD_ERROR("Could not get volume handle from minor(%u)\n", minor);
+			break;
+		}
+		
+		//VOLUME_GET_GPT_ATTRIBUTES_INFORMATION IOCTL_VOLUME_GET_GPT_ATTRIBUTES
+		VOLUME_GET_GPT_ATTRIBUTES_INFORMATION vggai = { 0, };		
+
+		status = ZwDeviceIoControlFile(hVolume, NULL, NULL, NULL, &iosb, IOCTL_VOLUME_GET_GPT_ATTRIBUTES, NULL, 0, &vggai, sizeof(vggai));
+		if (status != STATUS_SUCCESS)
+		{
+			WDRBD_ERROR("ZwDeviceIoControlFile with IOCTL_VOLUME_GET_GPT_ATTRIBUTES failed, status(0x%x)\n", status);
+			break;
+		}
+
+		if (vggai.GptAttributes & GPT_BASIC_DATA_ATTRIBUTE_READ_ONLY)
+		{
+			if (set)
+			{
+				// No additional setting attribute is required.
+				WDRBD_INFO("specified volume is read-only already.\n");				
+				bRet = true;
+				break;
+			}
+			else
+			{
+				// clear read-only attribute.
+				vggai.GptAttributes &= ~GPT_BASIC_DATA_ATTRIBUTE_READ_ONLY;
+			}
+		}
+		else
+		{
+			if (!set)
+			{
+				// No additional setting attribute is required.
+				WDRBD_INFO("specified volume is writable already\n");
+				bRet = true;
+				break;
+			}
+			else
+			{
+				// set read-only attribute.
+				vggai.GptAttributes |= GPT_BASIC_DATA_ATTRIBUTE_READ_ONLY;
+			}
+		}
+
+		VOLUME_SET_GPT_ATTRIBUTES_INFORMATION vsgai = { 0, };
+		vsgai.GptAttributes = vggai.GptAttributes;
+		// documentation says that ApplyToAllConnectedVolumes is required to support MBR disk.
+		vsgai.ApplyToAllConnectedVolumes = TRUE;
+
+		status = ZwDeviceIoControlFile(hVolume, NULL, NULL, NULL, &iosb, IOCTL_VOLUME_SET_GPT_ATTRIBUTES, &vsgai, sizeof(vsgai), NULL, 0);
+		if (status != STATUS_SUCCESS)
+		{
+			WDRBD_ERROR("ZwDeviceIoControlFile with IOCTL_VOLUME_SET_GPT_ATTRIBUTES failed, status(0x%x)\n", status);
+			break;
+		}
+		else
+		{
+			WDRBD_INFO("Read-only attribute for volume(minor: %d) has been %s\n", minor, set ? "set" : "cleared");
+		}
+		
+		bRet = true;
+
+	} while (false);
+	
+	if (hVolume != NULL)
+	{
+		ZwClose(hVolume);
+		hVolume = NULL;
+	}
+
 	return bRet;
 }
 
