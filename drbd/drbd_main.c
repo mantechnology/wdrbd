@@ -3985,6 +3985,10 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	resource->twopc_reply.initiator_node_id = -1;
 	mutex_init(&resource->conf_update);
 	mutex_init(&resource->adm_mutex);
+#ifdef _WIN32
+	// DW-1317
+	mutex_init(&resource->vol_ctl_mutex);
+#endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
 	spin_lock_init(&resource->listeners_lock);
@@ -6023,22 +6027,30 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		return false;
 	}
 
+	// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
+	mutex_lock(&device->resource->vol_ctl_mutex);
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1317: inspect resync side first, before get the allocated bitmap.
+	if (!drbd_inspect_resync_side(peer_device, side, NOW))
+	{
+		WDRBD_WARN("can't be %s\n", drbd_repl_str(side));
+		goto out;
+	}
+#endif
+
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
 	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 	drbd_bm_write(device, NULL);
 	drbd_bm_slot_unlock(peer_device);
-
-	// DW-1317: prevent from transitioning both role and replication state.
-	down(&device->resource->state_sem);
-
-	// on the side of secondary, just wait for primary's bitmap.
+	
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
-		// DW-1314: what we do for fast sync is getting allocated clusters from mounted file system, which can't be done on the role of secondary.
+		// DW-1317: set read-only attribute and mount for temporary.
 		if (side == L_SYNC_SOURCE)
 		{
-			WDRBD_INFO("I am a sync source, but not able to get allocated clusters since I am a secondary\n");
+			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
 			bSecondary = true;
 		}
 		if (side == L_SYNC_TARGET)
@@ -6119,7 +6131,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	}
 
 out:
-	up(&device->resource->state_sem);
+	mutex_unlock(&device->resource->vol_ctl_mutex);
 
 	return bRet;
 }
