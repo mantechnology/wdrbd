@@ -1044,6 +1044,69 @@ out:
 	return device_stable;
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315: check if I have primary neighbor, it has same semantics as drbd_all_neighbor_secondary and is also able to check the role to be changed.
+static bool drbd_all_neighbor_secondary_ex(struct drbd_resource *resource, u64 *authoritative, enum which_state which)
+{
+	struct drbd_connection *connection;
+	bool all_secondary = true;
+	int id;
+
+	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		if (connection->cstate[which] >= C_CONNECTED &&
+			connection->peer_role[which] == R_PRIMARY) {
+			all_secondary = false;
+			if (authoritative) {
+				id = connection->peer_node_id;
+				*authoritative |= NODE_MASK(id);
+			}
+			else {
+				break;
+			}
+		}
+	}
+	rcu_read_unlock();
+
+	return all_secondary;
+}
+
+// DW-1315: check the stability and authoritative node(if unstable), it has same semantics as drbd_device_stable and is also able to check the state to be changed.
+bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which)
+{
+	struct drbd_resource *resource = device->resource;
+	struct drbd_connection *connection;
+	struct drbd_peer_device *peer_device;
+	bool device_stable = true;
+
+	if (resource->role[which] == R_PRIMARY)
+		return true;
+
+	if (!drbd_all_neighbor_secondary_ex(resource, authoritative, which))
+		return false;
+
+	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		peer_device = conn_peer_device(connection, device->vnr);
+		switch (peer_device->repl_state[which]) {
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			device_stable = false;
+			if (authoritative)
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			goto out;
+		default:
+			continue;
+		}
+	}
+
+out:
+	rcu_read_unlock();
+	return device_stable;
+}
+#endif
+
 #ifdef _WIN32
 // MODIFIED_BY_MANTECH DW-1145: it returns true if my disk is consistent with primary's
 bool is_consistent_with_primary(struct drbd_device *device)
@@ -3922,6 +3985,10 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	resource->twopc_reply.initiator_node_id = -1;
 	mutex_init(&resource->conf_update);
 	mutex_init(&resource->adm_mutex);
+#ifdef _WIN32
+	// DW-1317
+	mutex_init(&resource->vol_ctl_mutex);
+#endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
 	spin_lock_init(&resource->listeners_lock);
@@ -5943,37 +6010,74 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 }
 
 // set out-of-sync for allocated clusters.
-bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device)
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side)
 {
 	bool bRet = false;
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
 	ULONG ulBitmapSize = 0;
 	ULONG_PTR count = 0;
+	// DW-1317: to support fast sync from secondary sync source whose volume is NOT mounted.
+	bool bSecondary = false;
 
 	if (NULL == device ||
-		NULL == peer_device)
+		NULL == peer_device ||
+		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
 	{
-		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p)\n", device, peer_device);
+		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
 		return false;
 	}
+
+	// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
+	mutex_lock(&device->resource->vol_ctl_mutex);
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1317: inspect resync side first, before get the allocated bitmap.
+	if (!drbd_inspect_resync_side(peer_device, side, NOW))
+	{
+		WDRBD_WARN("can't be %s\n", drbd_repl_str(side));
+		goto out;
+	}
+#endif
 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
 	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 	drbd_bm_write(device, NULL);
 	drbd_bm_slot_unlock(peer_device);
-
-	// on the side of secondary, just wait for primary's bitmap.
+	
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
-		WDRBD_INFO("I am a secondary, wait to receive primary's bitmap\n");
-		return true;
+		// DW-1317: set read-only attribute and mount for temporary.
+		if (side == L_SYNC_SOURCE)
+		{
+			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
+			bSecondary = true;
+		}
+		if (side == L_SYNC_TARGET)
+		{
+			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
+			bRet = true;
+			goto out;			
+		}
 	}
 
 	drbd_info(peer_device, "Writing the bitmap for allocated clusters.\n");
 
 	do
 	{
+		if (bSecondary)
+		{			
+			// set readonly attribute.
+			if (!ChangeVolumeReadonly(device->minor, true))
+			{
+				WDRBD_ERROR("Could not change volume read-only attribute\n");
+				bSecondary = false;
+				break;
+			}
+			// allow mount within getting volume bitmap.
+			device->resource->bTempAllowMount = TRUE;			
+		}
+
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
 		if (NULL == pBitmap)
@@ -5998,11 +6102,36 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	} while (false);
 
+	if (bSecondary)
+	{
+		// prevent from mounting volume.
+		device->resource->bTempAllowMount = FALSE;
+
+		// dismount volume.
+		FsctlFlushDismountVolume(device->minor, false);
+
+		// clear readonly attribute
+		if (!ChangeVolumeReadonly(device->minor, false))
+		{
+			WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
+			if (device &&
+				get_ldev_if_state(device, D_NEGOTIATING))
+			{
+				set_bit(FORCE_DETACH, &device->flags);
+				change_disk_state(device, D_DETACHING, CS_HARD);
+				put_ldev(device);
+			}
+		}
+	}
+
 	if (pBitmap)
 	{
 		ExFreePool(pBitmap);
 		pBitmap = NULL;
 	}
+
+out:
+	mutex_unlock(&device->resource->vol_ctl_mutex);
 
 	return bRet;
 }

@@ -1576,6 +1576,21 @@ static void sanitize_state(struct drbd_resource *resource)
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1314: restrict to be sync side when it is not able to.
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
+				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (((repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_STARTING_SYNC_T) ||
+					repl_state[NOW] >= L_ESTABLISHED) &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
+				{					
+					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
+					repl_state[NEW] = L_ESTABLISHED;
+				}
+			}
+#endif
+
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: Abort resync since SyncSource goes secondary.
 			// DW-1159: aboring resync on behind is necessary, behind need to receive primary's state transition to go synctarget.
@@ -2065,6 +2080,17 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (repl_state[OLD] <= L_ESTABLISHED && repl_state[NEW] == L_WF_BITMAP_S)
 				starting_resync = true;
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: check resync availability as state changes, set RESYNC_ABORTED flag by going unsyncable, actual aborting will be occured in w_after_state_change().
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
+				(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (repl_state[NOW] >= L_ESTABLISHED &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
+					set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+#endif
 
 			/* Aborted verify run, or we reached the stop sector.
 			 * Log the last position, unless end-of-device. */
@@ -2720,6 +2746,59 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 	return true;
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+/* DW-1315: This function is supposed to have the same semantics as calc_device_stable which doesn't return authoritative node.
+   We need to notify peer when keeping unstable device and authoritative node's changed as long as it is the criterion of operating resync. */
+static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_device, enum which_state which, u64* authoritative)
+{
+	int n_connection;
+		
+	if (state_change->resource->role[which] == R_PRIMARY)
+		return true;
+
+	// try to find primary node first, which has the first priority of becoming authoritative node.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
+		struct drbd_connection_state_change *connection_state_change =
+			&state_change->connections[n_connection];
+		enum drbd_role *peer_role = connection_state_change->peer_role;
+
+		if (peer_role[which] == R_PRIMARY)
+		{
+			if (authoritative)
+			{
+				struct drbd_peer_device_state_change *peer_device_state_change = &state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}
+			return false;
+		}
+	}
+
+	// no primary exists at least we have connected, try to find node of resync source side.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {		
+		struct drbd_peer_device_state_change *peer_device_state_change =
+			&state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+		enum drbd_repl_state *repl_state = peer_device_state_change->repl_state;
+		
+		switch (repl_state[which]) {
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			if (authoritative)
+			{
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}			
+			return false;
+		default:
+			continue;
+		}
+	}
+
+	return true;
+}
+#endif
+
 /* takes old and new peer disk state */
 static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
 {
@@ -2778,9 +2857,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #endif
 		bool device_stable[2];
 		enum which_state which;
+#ifdef _WIN32_STABLE_SYNCSOURCE
+		// DW-1315
+		u64 authoritative[2] = { 0, };
+#endif
 
 		for (which = OLD; which <= NEW; which++)
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: need changes of authoritative node to notify peers.
+			device_stable[which] = calc_device_stable_ex(state_change, n_device, which, &authoritative[which]);
+#else
 			device_stable[which] = calc_device_stable(state_change, n_device, which);
+#endif
 
 		if (disk_state[NEW] == D_UP_TO_DATE)
 			effective_disk_size_determined = true;
@@ -3114,6 +3202,43 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, UUID_FLAG_GOT_STABLE, 0);
 				put_ldev(device);
 			}
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: notify peer that I got stable, no resync available in this case.
+			else if (!device_stable[OLD] && device_stable[NEW] &&
+				repl_state[NEW] >= L_ESTABLISHED &&
+				get_ldev(device))
+			{
+				drbd_send_uuids(peer_device, 0, 0);
+				put_ldev(device);
+			}
+#endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: I am still unstable but authoritative node's changed, need to notify peers.
+			if(!device_stable[OLD] && !device_stable[NEW] &&
+				authoritative[OLD] != authoritative[NEW] &&
+				get_ldev(device))
+			{	
+				/* DW-1315: peer checks resync availability as soon as it gets UUID_FLAG_AUTHORITATIVE,
+							and replies by sending uuid with both flags UUID_FLAG_AUTHORITATIVE and UUID_FLAG_RESYNC */
+				drbd_send_uuids(peer_device, (NODE_MASK(peer_device->node_id)&authoritative[NEW]) ? UUID_FLAG_AUTHORITATIVE : 0, 0);
+				put_ldev(device);
+			}
+
+			// DW-1315: resync availability has been checked in finish_state_change(), abort resync here by changing replication state to L_ESTABLISHED.
+			if (test_and_clear_bit(RESYNC_ABORTED, &peer_device->flags))
+			{
+				drbd_info(peer_device, "Resync will be aborted due to change of state.\n");
+
+				if (repl_state[NOW] > L_ESTABLISHED)
+				{
+					unsigned long irq_flags;
+					begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+					__change_repl_state(peer_device, L_ESTABLISHED);
+					end_state_change(device->resource, &irq_flags);
+				}
+			}
+#endif
+
 #endif
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1225: I am promoted, and there will be no initial sync. start resync after promotion.

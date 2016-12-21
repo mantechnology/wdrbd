@@ -692,7 +692,19 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 		make_ov_request(peer_device, cancel);
 		break;
 	case L_SYNC_TARGET:
+#ifdef _WIN32
+		// DW-1317: try to get volume control mutex, reset timer if failed.
+		if (mutex_trylock(&device->resource->vol_ctl_mutex))
+		{
+			mutex_unlock(&device->resource->vol_ctl_mutex);
+			make_resync_request(peer_device, cancel);
+		}
+		else		
+			mod_timer(&peer_device->resync_timer, jiffies);
+		
+#else
 		make_resync_request(peer_device, cancel);
+#endif		
 		break;
 	default:
 		break;
@@ -2323,6 +2335,82 @@ static bool use_checksum_based_resync(struct drbd_connection *connection, struct
 		 || test_bit(CRASHED_PRIMARY, &device->flags));	/* or only after Primary crash? */
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+/**	DW-1314
+* drbd_inspect_resync_side() - Check stability if resync can be started.
+* rule for resync - Sync source must be stable and authoritative of sync target if sync target is unstable.
+* DW-1315: need to also inspect if I will be able to be resync side. (state[NEW])
+*/
+bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state replState, enum which_state which)
+{
+	struct drbd_device *device = peer_device->device;
+	enum drbd_repl_state side = 0;
+	u64 authoritative = 0;
+
+	// no start resync if I haven't received uuid from peer.	
+	if (!peer_device->uuids_received)
+	{
+		drbd_warn(peer_device, "I have not yet received uuid from peer, can not be %s\n", drbd_repl_str(replState));
+		return false;
+	}
+
+	switch (replState)
+	{
+		case L_STARTING_SYNC_T:
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			side = L_SYNC_TARGET;
+			break;
+		case L_STARTING_SYNC_S:
+		case L_WF_BITMAP_S:
+		case L_SYNC_SOURCE:
+		case L_PAUSED_SYNC_S:
+			side = L_SYNC_SOURCE;
+			break;
+		default:
+			drbd_warn(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
+			return false;
+	}
+	
+	if (side == L_SYNC_TARGET)
+	{
+		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE))
+		{
+			drbd_warn(peer_device, "Sync source is unstable, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
+			return false;
+		}
+
+		if (!drbd_device_stable_ex(device, &authoritative, which) &&
+			!(NODE_MASK(peer_device->node_id) & authoritative))
+		{
+			drbd_warn(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s, authoritative(%llx)\n",
+				drbd_repl_str(replState), authoritative);
+			return false;
+		}
+	}
+	else if (side == L_SYNC_SOURCE)
+	{
+		if (!drbd_device_stable_ex(device, &authoritative, which))
+		{
+			drbd_warn(peer_device, "I am unstable, can not be %s, authoritative(%llx)\n", drbd_repl_str(replState), authoritative);
+			return false;
+		}
+
+		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
+			!(NODE_MASK(device->resource->res_opts.node_id) & peer_device->uuid_authoritative_nodes))
+		{
+			drbd_warn(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
+			return false;			
+		}
+	}
+
+	return true;
+}
+#endif
+
 /**
  * drbd_start_resync() - Start the resync process
  * @side:	Either L_SYNC_SOURCE or L_SYNC_TARGET
@@ -2423,6 +2511,24 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		unlock_all_resources();
 		goto out;
 	}
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1314: check stable sync source rules.
+	if (!drbd_inspect_resync_side(peer_device, side, NOW))
+	{
+		drbd_warn(peer_device, "could not start resync.\n");
+
+		// turn back the replication state to L_ESTABLISHED
+		if (peer_device->repl_state[NOW] > L_ESTABLISHED)
+		{
+			begin_state_change_locked(device->resource, CS_VERBOSE);
+			__change_repl_state(peer_device, L_ESTABLISHED);
+			end_state_change_locked(device->resource);
+		}
+		unlock_all_resources();
+		goto out;
+	}
+#endif
 
 	begin_state_change_locked(device->resource, CS_VERBOSE);
 #ifdef _WIN32 // DW-900 to avoid the recursive lock

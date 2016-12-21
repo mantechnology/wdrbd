@@ -1279,7 +1279,7 @@ extern void ResolveDriveLetters(void);
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
 #ifdef _WIN32_MVFL
-extern NTSTATUS FsctlFlushDismountVolume(unsigned int minor);
+extern NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
 extern NTSTATUS FsctlFlushVolume(unsigned int minor);
@@ -1287,6 +1287,8 @@ extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 // DW-844
 extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
 extern BOOLEAN isFastInitialSync();
+// DW-1317
+extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
 extern
