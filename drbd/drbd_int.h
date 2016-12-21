@@ -169,12 +169,12 @@ struct drbd_connection;
     } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
-	printk(level "drbd %s, r(%s), f(0x%x), csf(0x%x): " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags,(resource)->state_change_flags, __VA_ARGS__)
+	printk(level "drbd %s, r(%s), f(0x%x), scf(0x%x): " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags,(resource)->state_change_flags, __VA_ARGS__)
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32 // DW- */ \
-        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x), csf(0x%x): " fmt, (connection)->resource->name,  \
+        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x), scf(0x%x): " fmt, (connection)->resource->name,  \
         (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags,(connection)->resource->state_change_flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)
