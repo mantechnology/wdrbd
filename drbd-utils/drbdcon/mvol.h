@@ -35,7 +35,7 @@ DWORD MVOL_set_ioctl(PWCHAR PhysicalVolume, DWORD code, MVOL_VOLUME_INFO *volume
  *      @param  arg [in]            disable or enable
  *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
  */
-DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg);
+DWORD MVOL_SetDelayedAck(CHAR *addr, CHAR *arg);
 
 
 /**

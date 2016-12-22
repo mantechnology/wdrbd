@@ -435,7 +435,7 @@ DWORD MVOL_GetStatus( PMVOL_VOLUME_INFO VolumeInfo )
     return retVal;
 }
 
-DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg)
+DWORD MVOL_SetDelayedAck(CHAR *addr, CHAR *arg)
 {   
     DWORD       retVal = ERROR_SUCCESS;
     STARTUPINFO si = { 0 };
@@ -447,7 +447,7 @@ DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg)
 
     GetSystemDirectory(systemDirPath, sizeof(systemDirPath) / sizeof(WCHAR));
     swprintf_s(appName, MAX_PATH, L"%s\\cmd.exe", systemDirPath);
-    swprintf_s(cmd, MAX_PATH, L"/C nagle.bat %hs %hs", arg, ResourceName);
+    swprintf_s(cmd, MAX_PATH, L"/C delayedack.bat %hs %hs %hs", arg, addr, "1");
 
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
