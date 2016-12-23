@@ -5671,9 +5671,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	err = __receive_uuids(peer_device, be64_to_cpu(p->node_mask));
 
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
-	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE &&
-		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-1306: to avoid race with removing flag in sanitize_state(Linux drbd commit:7d60f61). with got stable flag, need resync after unstable to be triggered.
+	if (be64_to_cpu(p->uuid_flags) & UUID_FLAG_GOT_STABLE &&
+		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {	// MODIFIED_BY_MANTECH DW-891
 #else
 	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE) { 
 #endif
