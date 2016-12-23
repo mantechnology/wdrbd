@@ -1,13 +1,13 @@
 @echo off
 
-rem %1 - enable or disable
-rem %2 - resource name
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+:: %1 - enable or disable
+:: %2 - IP address or GUID
+:: %3 - network interface restart flag. 1 or 0 (default = 1)
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-rem get mirror ip
-FOR /F %%i IN ('drbdadm sh-ip %2') DO SET IP=%%i
-if "%IP%" == "" (
-	goto error
-)
+
+SET IP=%2
 
 rem get nic info
 SET cmd="wmic nicconfig get ipaddress,settingid |findstr %IP%"
@@ -16,6 +16,8 @@ if "%INFO%" == "" (
 	echo %IP% not found.
 	goto error
 )
+
+
 
 rem parsing GUID
 rem {"10.10.100.167"} {F63F7A21-6354-419F-9320-5EEEBA25C3C8}
@@ -40,19 +42,23 @@ if %errorlevel% gtr 0 (
 	goto error
 )
 
-rem nic disable
-echo network interface '%IP%' disable...
-wmic path win32_networkadapter where GUID="%ID%" call disable |findstr /C:"ReturnValue = 0" >nul
-if %errorlevel% gtr 0 (
-	goto error
+if "%3" == "1" (
+	rem nic disable
+	echo network interface '%IP%' disable...
+	wmic path win32_networkadapter where GUID="%ID%" call disable |findstr /C:"ReturnValue = 0" >nul
+	if %errorlevel% gtr 0 (
+		goto error
+	)
+
+	rem nic enable
+	echo network interface '%IP%' enable...
+	wmic path win32_networkadapter where GUID="%ID%" call enable |findstr /C:"ReturnValue = 0" >nul
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 )
 
-rem nic enable
-echo network interface '%IP%' enable...
-wmic path win32_networkadapter where GUID="%ID%" call enable |findstr /C:"ReturnValue = 0" >nul
-if %errorlevel% gtr 0 (
-	goto error
-)
+
 
 :end
 echo SUCCESS

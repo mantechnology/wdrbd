@@ -3507,7 +3507,8 @@ int drbd_worker(struct drbd_thread *thi)
 		if (get_t_state(thi) != RUNNING)
 			break;
 
-
+		
+		int i = 0; 
 		while (!list_empty(&work_list)) {
 			w = list_first_entry(&work_list, struct drbd_work, list);
 			list_del_init(&w->list);
@@ -3516,7 +3517,12 @@ int drbd_worker(struct drbd_thread *thi)
 			if (w->cb != NULL) {
 				w->cb(w, 0);
 			} else {
-				drbd_warn(resource, "Worker got an NULL-callback list. (%s)->twopc_work.cb may be NULL(0x%x) !!!\n", resource->name, resource->twopc_work.cb);
+				// DW-1257 exit the loop when looped around 100 times
+				if (i >= 100){
+					drbd_warn(resource, "Worker got an NULL-callback list. (%s)->twopc_work.cb may be NULL(0x%x) !!!\n", resource->name, resource->twopc_work.cb);
+					break; 
+				}
+				i++; 
 			}
 #else
 			w->cb(w, 0);

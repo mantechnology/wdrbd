@@ -16,8 +16,8 @@ usage()
 /*		"   /start_volume \n"*/
 /*		"   /stop_volume\n"*/
 /*		"   /get_volume_size \n"*/
-        "   /nagle_disable \n"
-        "   /nagle_enable \n"
+		"   /nodelayedack [ip|guid]\n"
+        "   /delayedack_enable [ip|guid]\n"
         "   /m [letter] : mount\n"
         /*"   /d[f] : dismount[force] \n"*/
 		"   /get_log [ProviderName] \n"
@@ -25,6 +25,7 @@ usage()
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
 		"   /info\n"
+		"   /status : drbd version\n"
 
 		"\n\n"
 
@@ -38,7 +39,7 @@ usage()
 /*		"drbdcon /s\n"*/
 /*		"drbdcon /letter F /start_volume \n"*/
 /*		"drbdcon /letter F /init_thread \n"*/
-        "drbdcon /nagle_disable r0 \n"
+        "drbdcon /nodelayedack 10.10.0.1 \n"
         /*"drbdcon /d F \n"*/
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService \n"
@@ -112,12 +113,12 @@ main(int argc, char* argv [])
 	char	GetVolumeSizeFlag = 0;
 	char	ProcDrbdFlag = 0;
 	char	ProcDrbdFlagWithLetter = 0;
-    char    NagleEnableFlag = 0;
-    char    NagleDisableFlag = 0;
+    char    DelayedAckEnableFlag = 0;
+    char    DelayedAckDisableFlag = 0;
 	char	HandlerUseFlag = 0;
     char    MountFlag = 0, DismountFlag = 0;
 	char	SimulDiskIoErrorFlag = 0;
-    char    *ResourceName = NULL;
+    char    *addr = NULL;
 	char	GetLog = 0;
 	char	OosTrace = 0;
 #ifdef _WIN32_DEBUG_OOS
@@ -159,23 +160,23 @@ main(int argc, char* argv [])
 		{
 			GetVolumeSizeFlag++;
 		}
-        else if (strcmp(argv[argIndex], "/nagle_enable") == 0)
+        else if (strcmp(argv[argIndex], "/delayedack_enable") == 0)
         {
-            NagleEnableFlag++;
+            DelayedAckEnableFlag++;
             argIndex++;
 
-            if (argIndex < argc)
-                ResourceName = argv[argIndex];
+			if (argIndex < argc)
+				addr = argv[argIndex];
             else
                 usage();
         }
-        else if (strcmp(argv[argIndex], "/nagle_disable") == 0)
+        else if (strcmp(argv[argIndex], "/nodelayedack") == 0)
         {
-            NagleDisableFlag++;
+            DelayedAckDisableFlag++;
             argIndex++;
 
             if (argIndex < argc)
-                ResourceName = argv[argIndex];
+                addr = argv[argIndex];
             else
                 usage();
         }
@@ -483,23 +484,23 @@ main(int argc, char* argv [])
 		return res;
 	}
 
-    if (NagleEnableFlag)
-    {
-        res = MVOL_SetNagle(ResourceName, "enable");
+    if (DelayedAckEnableFlag)
+    {	
+		res = MVOL_SetDelayedAck(addr, "enable");
         if (res != ERROR_SUCCESS)
         {
-            fprintf(stderr, "Cannot enable nagle. Err=%u\n", res);
+            fprintf(stderr, "Cannot enable DelayedAck. Err=%u\n", res);
         }
 
         return res;
     }
 
-    if (NagleDisableFlag)
+    if (DelayedAckDisableFlag)
     {
-        res = MVOL_SetNagle(ResourceName, "disable");
+        res = MVOL_SetDelayedAck(addr, "disable");
         if (res != ERROR_SUCCESS)
         {
-            fprintf(stderr, "Cannot disable nagle. Err=%u\n", res);
+            fprintf(stderr, "Cannot disable DelayedAck. Err=%u\n", res);
         }
 
         return res;

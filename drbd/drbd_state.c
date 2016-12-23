@@ -1551,8 +1551,14 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			if (repl_state[NEW] < L_ESTABLISHED) {
 				peer_device->resync_susp_peer[NEW] = false;
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1031: Changes the peer disk state to D_UNKNOWN when peer is disconnected, even if it is D_INCONSISTENT.
+				if (peer_disk_state[NEW] > D_UNKNOWN ||
+					peer_disk_state[NEW] < D_OUTDATED)
+#else
 				if (peer_disk_state[NEW] > D_UNKNOWN ||
 				    peer_disk_state[NEW] < D_INCONSISTENT)
+#endif
 					peer_disk_state[NEW] = D_UNKNOWN;
 			}
 			if (repl_state[OLD] >= L_ESTABLISHED && repl_state[NEW] < L_ESTABLISHED)
@@ -3549,7 +3555,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 			else
 			{
 				__clear_remote_state_change(resource);
-				twopc_end_nested(resource, P_TWOPC_NO);
+				twopc_end_nested(resource, P_TWOPC_NO, false);
 			}
 #endif			
 			if (when_done_lock(resource, irq_flags)) {
@@ -4261,17 +4267,21 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	return rv;
 }
 
-static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cmd)
+static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cmd, bool as_work)
 {
 	struct drbd_connection *twopc_parent, *tmp;
 	struct twopc_reply twopc_reply;
 	LIST_HEAD(parents);
 
 	spin_lock_irq(&resource->req_lock);
-	resource->twopc_prepare_reply_cmd = cmd;
-	list_splice_init(&resource->twopc_parents, &parents);
+	//DW-1257 infinite loop when twopc_work.cb = NULL, resolve linbit patching 04f979d3
 	twopc_reply = resource->twopc_reply;
-	resource->twopc_work.cb = NULL;
+	if (twopc_reply.tid){
+		resource->twopc_prepare_reply_cmd = cmd;
+		list_splice_init(&resource->twopc_parents, &parents);
+	}
+	if (as_work)
+		resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
 	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
@@ -4313,7 +4323,7 @@ int nested_twopc_work(struct drbd_work *work, int cancel)
 		cmd = P_TWOPC_RETRY;
 	else
 		cmd = P_TWOPC_NO;
-	twopc_end_nested(resource, cmd);
+	twopc_end_nested(resource, cmd, true);
 	return 0;
 }
 
@@ -4335,7 +4345,7 @@ nested_twopc_request(struct drbd_resource *resource, int vnr, enum drbd_packet c
 	if (cmd == P_TWOPC_PREPARE) {
 		if (rv <= SS_SUCCESS) {
 			cmd = (rv == SS_SUCCESS) ? P_TWOPC_YES : P_TWOPC_NO;
-			twopc_end_nested(resource, cmd);
+			twopc_end_nested(resource, cmd, false);
 		}
 	}
 	return rv;

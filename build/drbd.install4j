@@ -653,7 +653,7 @@ else
                 </serializedBean>
                 <condition>return context.getBooleanVariable("checkSendInfo");</condition>
               </action>
-              <action name="" id="10" customizedId="" beanClass="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+              <action name="" id="10" customizedId="" beanClass="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction" enabled="false" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction">
@@ -911,29 +911,47 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="" id="2153" customizedId="" beanClass="com.install4j.runtime.beans.actions.services.InstallServiceAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
+              <action name="Install drbdService" id="2016" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
-                    <object class="com.install4j.runtime.beans.actions.services.InstallServiceAction">
-                      <void property="description">
-                        <string>Windows DRBD service</string>
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="1">
+                          <void index="0">
+                            <string>/i</string>
+                          </void>
+                        </array>
                       </void>
                       <void property="executable">
                         <object class="java.io.File">
                           <string>bin/drbdService.exe</string>
                         </object>
                       </void>
-                      <void property="interactive">
-                        <boolean>true</boolean>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
                       </void>
-                      <void property="launcherId">
-                        <null />
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="" id="2017" customizedId="" beanClass="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction">
+                      <void property="keyName">
+                        <string>SYSTEM\CurrentControlSet\Services\drbdService</string>
                       </void>
-                      <void property="serviceName">
-                        <string>drbdService</string>
+                      <void property="registryRoot">
+                        <object class="com.install4j.api.windows.RegistryRoot" field="HKEY_LOCAL_MACHINE" />
                       </void>
-                      <void property="windowsDependencies">
+                      <void property="value">
                         <string>Tcpip</string>
+                      </void>
+                      <void property="valueName">
+                        <string>DependOnService</string>
                       </void>
                     </object>
                   </java>
@@ -973,6 +991,48 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                       <void property="workingDirectory">
                         <object class="java.io.File">
                           <string>bin</string>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="TcpAckFrequency registry setting" id="2152" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="failure!!!!">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>String[] cmd = new String[]{"cmd.exe","/c","wmic nic where netenabled=true get guid /value"};		 
+String str=null;
+
+try {
+	Process proc = Runtime.getRuntime().exec(cmd);
+	BufferedReader stdOut = new BufferedReader( new InputStreamReader(proc.getInputStream()) );
+	while( (str = stdOut.readLine()) != null ) 
+	{
+		 
+		 if(str.contains("GUID") &amp;&amp; (str.split("=").length &gt; 1))
+		 {    
+			String[] drbdCmd = new String[]{
+			             "cmd.exe",
+			             "/c",
+			             (String)context.getVariable("sys.installationDir")+File.separator+"bin"+File.separator+"delayedack.bat",
+			             "disable",
+			             str.split("=")[1], 
+			             "0"};
+			Runtime.getRuntime().exec(drbdCmd);
+		}
+	}
+	 
+} catch (Exception e) {
+	e.printStackTrace();
+ 
+}
+return true; </string>
+                          </void>
                         </object>
                       </void>
                     </object>
