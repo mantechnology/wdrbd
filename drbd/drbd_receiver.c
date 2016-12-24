@@ -5314,6 +5314,15 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	enum drbd_state_rv rv;
 
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, reason == DISKLESS_PRIMARY);
+
+#ifdef _WIN32
+	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
+	if (!hg && reason == AFTER_UNSTABLE)
+	{
+		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
+		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
+	}
+#endif
 	new_repl_state = hg < -4 || hg > 4 ? -1 : goodness_to_repl_state(peer_device, peer_role, hg);
 
 	if (new_repl_state == -1) {
@@ -5662,9 +5671,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	err = __receive_uuids(peer_device, be64_to_cpu(p->node_mask));
 
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
-	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE &&
-		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-1306: to avoid race with removing flag in sanitize_state(Linux drbd commit:7d60f61). with got stable flag, need resync after unstable to be triggered.
+	if (be64_to_cpu(p->uuid_flags) & UUID_FLAG_GOT_STABLE &&
+		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {	// MODIFIED_BY_MANTECH DW-891
 #else
 	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE) { 
 #endif

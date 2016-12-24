@@ -2368,6 +2368,9 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		case L_PAUSED_SYNC_S:
 			side = L_SYNC_SOURCE;
 			break;
+		case L_VERIFY_S:    // need to deal with verification state.
+		case L_VERIFY_T:
+			return true;
 		default:
 			drbd_warn(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
 			return false;
