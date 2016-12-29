@@ -7168,6 +7168,9 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	// DW-1341 if UNSTABLE_TRIGGER bit is set , send uuids(unstable node triggering).
 	if(test_and_clear_bit(UNSTABLE_TRIGGER, &peer_device->flags)) {
 		drbd_send_uuids(peer_device, 0, 0);
+		for_each_peer_device(peer_device, device) {
+			drbd_send_current_state(peer_device);
+		}
 	}
 #endif
 	
