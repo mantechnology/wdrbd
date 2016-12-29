@@ -1587,6 +1587,7 @@ static void sanitize_state(struct drbd_resource *resource)
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
 					repl_state[NEW] = L_ESTABLISHED;
+					set_bit(UNSTABLE_TRIGGER, &peer_device->flags); // DW-1341
 				}
 			}
 #endif

@@ -7164,6 +7164,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	set_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	spin_unlock_irq(&resource->req_lock);
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1341 if UNSTABLE_TRIGGER bit is set , send uuids(unstable node triggering).
+	if(test_and_clear_bit(UNSTABLE_TRIGGER, &peer_device->flags)) {
+		drbd_send_uuids(peer_device, 0, 0);
+	}
+#endif
+	
 	if (rv < SS_SUCCESS)
 		goto fail;
 
