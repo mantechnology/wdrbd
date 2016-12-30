@@ -169,13 +169,13 @@ struct drbd_connection;
     } while (0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
-	printk(level "drbd %s, r(%s), f(0x%x) : " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags, __VA_ARGS__)
+	printk(level "drbd %s, r(%s), f(0x%x), scf(0x%x): " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags,(resource)->state_change_flags, __VA_ARGS__)
 
 #define __drbd_printk_connection(level, connection, fmt, ...) \
     do {	                    \
         /*rcu_read_lock();	_WIN32 // DW- */ \
-        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x): " fmt, (connection)->resource->name,  \
-        (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags, __VA_ARGS__); \
+        printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x), scf(0x%x): " fmt, (connection)->resource->name,  \
+        (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags,(connection)->resource->state_change_flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
     } while(0)
 
@@ -903,6 +903,9 @@ enum {
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 	PROMOTED_RESYNC,		/* MODIFIED_BY_MANTECH DW-1225: I'm promoted, and there will be no initial sync. Do trigger resync after promotion */
 #endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	UNSTABLE_TRIGGER,	/* MODIFIED_BY_MANTECH DW-1341: Do Trigger when my stability is unstable */
+#endif
 #endif
 };
 
@@ -1182,6 +1185,9 @@ struct drbd_resource {
 	struct mutex conf_update;	/* for ready-copy-update of net_conf and disk_conf
 					   and devices, connection and peer_devices lists */
 	struct mutex adm_mutex;		/* mutex to serialize administrative requests */
+#ifdef _WIN32
+	struct mutex vol_ctl_mutex;	/* DW-1317: chaning role involves the volume for device is (dis)mounted, use this when the role change needs to be waited. */
+#endif
 	spinlock_t req_lock;
 	u64 dagtag_sector;		/* Protected by req_lock.
 					 * See also dagtag_sector in
@@ -1243,6 +1249,7 @@ struct drbd_resource {
 #ifdef _WIN32
 	bool bPreSecondaryLock;
 	bool bPreDismountLock; // DW-1286
+	bool bTempAllowMount;  // DW-1317
 #endif
 
 };
@@ -1965,11 +1972,15 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 #ifdef _WIN32
 // DW-844
-extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side) __must_hold(local);
 #endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315
+extern bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which);
+#endif
 extern void drbd_flush_peer_acks(struct drbd_resource *resource);
 extern void drbd_drop_unsent(struct drbd_connection* connection);
 extern void drbd_cork(struct drbd_connection *connection, enum drbd_stream stream);
@@ -2346,6 +2357,10 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int o_min
 void drbd_resync_after_changed(struct drbd_device *device);
 extern bool drbd_stable_sync_source_present(struct drbd_peer_device *, enum which_state);
 extern void drbd_start_resync(struct drbd_peer_device *, enum drbd_repl_state);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1314, DW-1315
+extern bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_repl_state side, enum which_state which);
+#endif
 extern void resume_next_sg(struct drbd_device *device);
 extern void suspend_other_sg(struct drbd_device *device);
 extern int drbd_resync_finished(struct drbd_peer_device *, enum drbd_disk_state);

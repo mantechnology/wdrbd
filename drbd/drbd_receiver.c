@@ -1220,8 +1220,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		Irp = p2;
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)p3;
-		if (bio->pVolExt != NULL) {
-			IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 	}
 	else {
@@ -4150,7 +4150,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		// DW-844: check if fast sync is enalbed every time we do initial sync.
 		// set out-of-sync for allocated clusters.			
 		if (!isFastInitialSync() ||
-			!SetOOSAllocatedCluster(device, peer_device))
+			!SetOOSAllocatedCluster(device, peer_device, hg>0?L_SYNC_SOURCE:L_SYNC_TARGET))
 		{			
 			drbd_info(peer_device, "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");			
 			if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
@@ -5314,6 +5314,15 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	enum drbd_state_rv rv;
 
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, reason == DISKLESS_PRIMARY);
+
+#ifdef _WIN32
+	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
+	if (!hg && reason == AFTER_UNSTABLE)
+	{
+		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
+		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
+	}
+#endif
 	new_repl_state = hg < -4 || hg > 4 ? -1 : goodness_to_repl_state(peer_device, peer_role, hg);
 
 	if (new_repl_state == -1) {
@@ -5366,6 +5375,44 @@ static void drbd_resync_after_promotion(struct drbd_peer_device *peer_device, en
 	drbd_info(peer_device, "Becoming %s after one node promoted\n", drbd_repl_str(new_repl_state));
 	
 	// DW-1228: sync as much as set out-of-sync isn't enough for some cases, do initial sync instead.
+	if (new_repl_state == L_WF_BITMAP_S)
+	{
+		int hg, rule_nr, peer_node_id = 0;
+		hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, false);
+
+		if (abs(hg) >= 100 ||
+			abs(hg) == 3)
+		{
+			hg = 3;
+			bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
+		}
+	}
+
+	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
+	if (rv == SS_NOTHING_TO_DO || rv == SS_RESYNC_RUNNING) {
+		peer_device->resync_again++;
+		drbd_info(peer_device, "...postponing this until current resync finished\n");
+	}
+}
+#endif
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315: we got new authoritative node, compare bitmap and start resync.
+static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum drbd_repl_state side)
+{
+	enum drbd_repl_state new_repl_state;
+	enum drbd_state_rv rv;
+
+	new_repl_state = side == L_SYNC_SOURCE ? L_WF_BITMAP_S : side == L_SYNC_TARGET ? L_WF_BITMAP_T : -1;
+
+	if (new_repl_state == -1)
+	{
+		drbd_info(peer_device, "Invalid resync side %s\n", drbd_repl_str(side));
+		return;
+	}
+
+	drbd_info(peer_device, "Becoming %s due to authoritative node changed\n", drbd_repl_str(new_repl_state));
+
 	if (new_repl_state == L_WF_BITMAP_S)
 	{
 		int hg, rule_nr, peer_node_id = 0;
@@ -5552,6 +5599,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	peer_device->current_uuid = be64_to_cpu(p->current_uuid);
 	peer_device->dirty_bits = be64_to_cpu(p->dirty_bits);
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1315: need to update authoritative nodes earlier than uuid flag.
+	peer_device->uuid_authoritative_nodes = (p->uuid_flags & UUID_FLAG_STABLE) ? 0 : be64_to_cpu(p->node_mask);
+#endif
 	peer_device->uuid_flags = be64_to_cpu(p->uuid_flags);
 	bitmap_uuids_mask = be64_to_cpu(p->bitmap_uuids_mask);
 	if (bitmap_uuids_mask & ~(NODE_MASK(DRBD_PEERS_MAX) - 1))
@@ -5620,9 +5671,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 	err = __receive_uuids(peer_device, be64_to_cpu(p->node_mask));
 
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-891
-	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE &&
-		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
+#ifdef _WIN32 
+	// MODIFIED_BY_MANTECH DW-1306: to avoid race with removing flag in sanitize_state(Linux drbd commit:7d60f61). with got stable flag, need resync after unstable to be triggered.
+	if (be64_to_cpu(p->uuid_flags) & UUID_FLAG_GOT_STABLE &&
+		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {	// MODIFIED_BY_MANTECH DW-891
 #else
 	if (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE) { 
 #endif
@@ -5641,6 +5693,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 		// MODIFIED_BY_MANTECH DW-1148: added checking flag to segregate resync reason.
 		!(peer_device->uuid_flags & UUID_FLAG_PROMOTED) &&
+#endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+		// DW-1315: UUID_FLAG_RESYNC is also used to start resync when authoritative node is changed, do not trigger resync here.
+		!(peer_device->uuid_flags & UUID_FLAG_AUTHORITATIVE) &&
 #endif
 		!test_bit(RECONCILIATION_RESYNC, &peer_device->flags)) {
 #else
@@ -5673,6 +5729,47 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 			{
 				drbd_send_uuids(peer_device, UUID_FLAG_PROMOTED | UUID_FLAG_RESYNC, 0);
 				drbd_resync_after_promotion(peer_device, L_SYNC_TARGET);
+				put_ldev(device);
+			}
+		}
+	}
+#endif
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1315: abort resync if peer gets unsyncable state.
+	if ((peer_device->repl_state[NOW] >= L_STARTING_SYNC_S && peer_device->repl_state[NOW] <= L_WF_BITMAP_T) ||
+		(peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T))
+	{
+		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
+		{
+			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
+
+			unsigned long irq_flags;
+			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+			__change_repl_state(peer_device, L_ESTABLISHED);
+			end_state_change(device->resource, &irq_flags);
+		}
+	}
+
+	// DW-1315: resume resync when one node became peer's authoritative node.
+	if ((peer_device->uuid_flags & UUID_FLAG_AUTHORITATIVE))
+	{	
+		if (peer_device->uuid_flags & UUID_FLAG_RESYNC)
+		{
+			if (get_ldev(device))
+			{
+				drbd_resync_authoritative(peer_device, L_SYNC_TARGET);
+				put_ldev(device);
+			}
+		}
+		else
+		{
+			if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
+				drbd_inspect_resync_side(peer_device, L_SYNC_SOURCE, NOW) &&
+				get_ldev(device))
+			{
+				drbd_send_uuids(peer_device, UUID_FLAG_AUTHORITATIVE | UUID_FLAG_RESYNC, 0);
+				drbd_resync_authoritative(peer_device, L_SYNC_SOURCE);
 				put_ldev(device);
 			}
 		}
@@ -7067,6 +7164,16 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	set_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	spin_unlock_irq(&resource->req_lock);
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	// DW-1341 if UNSTABLE_TRIGGER bit is set , send uuids(unstable node triggering).
+	if(test_and_clear_bit(UNSTABLE_TRIGGER, &peer_device->flags)) {
+		drbd_send_uuids(peer_device, 0, 0);
+		for_each_peer_device(peer_device, device) {
+			drbd_send_current_state(peer_device);
+		}
+	}
+#endif
+	
 	if (rv < SS_SUCCESS)
 		goto fail;
 
@@ -9386,8 +9493,14 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 	struct drbd_connection *connection =
 		container_of(ws, struct drbd_connection, peer_ack_work);
 
-	if (process_peer_ack_list(connection))
+	if (process_peer_ack_list(connection)){
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1301: avoid a connection to go Standalone.  	
+		drbd_debug(connection, "change the connection state to C_UNCONNECTED\n");
+		__change_cstate(connection, C_UNCONNECTED);
+#else 
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+#endif 
+	}
 }
 
 #ifdef _WIN32

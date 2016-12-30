@@ -435,7 +435,7 @@ DWORD MVOL_GetStatus( PMVOL_VOLUME_INFO VolumeInfo )
     return retVal;
 }
 
-DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg)
+DWORD MVOL_SetDelayedAck(CHAR *addr, CHAR *arg)
 {   
     DWORD       retVal = ERROR_SUCCESS;
     STARTUPINFO si = { 0 };
@@ -447,7 +447,7 @@ DWORD MVOL_SetNagle(CHAR *ResourceName, CHAR *arg)
 
     GetSystemDirectory(systemDirPath, sizeof(systemDirPath) / sizeof(WCHAR));
     swprintf_s(appName, MAX_PATH, L"%s\\cmd.exe", systemDirPath);
-    swprintf_s(cmd, MAX_PATH, L"/C nagle.bat %hs %hs", arg, ResourceName);
+    swprintf_s(cmd, MAX_PATH, L"/C delayedack.bat %hs %hs %hs", arg, addr, "1");
 
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
@@ -1429,7 +1429,7 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
 			if (pDrbdLog->totalcnt <= LOGBUF_MAXCNT) {
-				for (unsigned int i = 0; i < (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
+				for (unsigned int i = 0; i <= (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
 					DWORD dwWritten;
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)

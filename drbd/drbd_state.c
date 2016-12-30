@@ -1551,8 +1551,14 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			if (repl_state[NEW] < L_ESTABLISHED) {
 				peer_device->resync_susp_peer[NEW] = false;
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1031: Changes the peer disk state to D_UNKNOWN when peer is disconnected, even if it is D_INCONSISTENT.
+				if (peer_disk_state[NEW] > D_UNKNOWN ||
+					peer_disk_state[NEW] < D_OUTDATED)
+#else
 				if (peer_disk_state[NEW] > D_UNKNOWN ||
 				    peer_disk_state[NEW] < D_INCONSISTENT)
+#endif
 					peer_disk_state[NEW] = D_UNKNOWN;
 			}
 			if (repl_state[OLD] >= L_ESTABLISHED && repl_state[NEW] < L_ESTABLISHED)
@@ -1569,6 +1575,22 @@ static void sanitize_state(struct drbd_resource *resource)
 			    (disk_state[NEW] <= D_FAILED ||
 			     peer_disk_state[NEW] <= D_FAILED))
 				repl_state[NEW] = L_ESTABLISHED;
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1314: restrict to be sync side when it is not able to.
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_SYNC_TARGET) ||
+				(repl_state[NEW] >= L_PAUSED_SYNC_S && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (((repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_STARTING_SYNC_T) ||
+					repl_state[NOW] >= L_ESTABLISHED) &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
+				{					
+					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
+					repl_state[NEW] = L_ESTABLISHED;
+					set_bit(UNSTABLE_TRIGGER, &peer_device->flags); // DW-1341
+				}
+			}
+#endif
 
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: Abort resync since SyncSource goes secondary.
@@ -2059,6 +2081,17 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 			if (repl_state[OLD] <= L_ESTABLISHED && repl_state[NEW] == L_WF_BITMAP_S)
 				starting_resync = true;
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: check resync availability as state changes, set RESYNC_ABORTED flag by going unsyncable, actual aborting will be occured in w_after_state_change().
+			if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
+				(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
+			{
+				if (repl_state[NOW] >= L_ESTABLISHED &&
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
+					set_bit(RESYNC_ABORTED, &peer_device->flags);
+			}
+#endif
 
 			/* Aborted verify run, or we reached the stop sector.
 			 * Log the last position, unless end-of-device. */
@@ -2714,6 +2747,59 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
 	return true;
 }
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+/* DW-1315: This function is supposed to have the same semantics as calc_device_stable which doesn't return authoritative node.
+   We need to notify peer when keeping unstable device and authoritative node's changed as long as it is the criterion of operating resync. */
+static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_device, enum which_state which, u64* authoritative)
+{
+	int n_connection;
+		
+	if (state_change->resource->role[which] == R_PRIMARY)
+		return true;
+
+	// try to find primary node first, which has the first priority of becoming authoritative node.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
+		struct drbd_connection_state_change *connection_state_change =
+			&state_change->connections[n_connection];
+		enum drbd_role *peer_role = connection_state_change->peer_role;
+
+		if (peer_role[which] == R_PRIMARY)
+		{
+			if (authoritative)
+			{
+				struct drbd_peer_device_state_change *peer_device_state_change = &state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}
+			return false;
+		}
+	}
+
+	// no primary exists at least we have connected, try to find node of resync source side.
+	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {		
+		struct drbd_peer_device_state_change *peer_device_state_change =
+			&state_change->peer_devices[n_device * state_change->n_connections + n_connection];
+		enum drbd_repl_state *repl_state = peer_device_state_change->repl_state;
+		
+		switch (repl_state[which]) {
+		case L_WF_BITMAP_T:
+		case L_SYNC_TARGET:
+		case L_PAUSED_SYNC_T:
+			if (authoritative)
+			{
+				struct drbd_peer_device *peer_device = peer_device_state_change->peer_device;
+				*authoritative |= NODE_MASK(peer_device->node_id);
+			}			
+			return false;
+		default:
+			continue;
+		}
+	}
+
+	return true;
+}
+#endif
+
 /* takes old and new peer disk state */
 static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
 {
@@ -2772,9 +2858,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #endif
 		bool device_stable[2];
 		enum which_state which;
+#ifdef _WIN32_STABLE_SYNCSOURCE
+		// DW-1315
+		u64 authoritative[2] = { 0, };
+#endif
 
 		for (which = OLD; which <= NEW; which++)
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: need changes of authoritative node to notify peers.
+			device_stable[which] = calc_device_stable_ex(state_change, n_device, which, &authoritative[which]);
+#else
 			device_stable[which] = calc_device_stable(state_change, n_device, which);
+#endif
 
 		if (disk_state[NEW] == D_UP_TO_DATE)
 			effective_disk_size_determined = true;
@@ -2800,6 +2895,14 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				peer_disk_state[OLD] == D_INCONSISTENT && peer_disk_state[NEW] == D_UP_TO_DATE)	
 				send_state_others = peer_device;
 
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
+			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
+				clear_bit(CRASHED_PRIMARY, &device->flags);
+				if (peer_device->uuids_received)
+					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
+			}
+#endif
 		}
 
 		for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
@@ -2838,16 +2941,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
 			}
-
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
-			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
-				clear_bit(CRASHED_PRIMARY, &device->flags);
-				if (peer_device->uuids_received)
-					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
-			}
-#endif
-
+			
 			if (!(role[OLD] == R_PRIMARY && disk_state[OLD] < D_UP_TO_DATE && !one_peer_disk_up_to_date[OLD]) &&
 			     (role[NEW] == R_PRIMARY && disk_state[NEW] < D_UP_TO_DATE && !one_peer_disk_up_to_date[NEW]) &&
 			    !test_bit(UNREGISTERED, &device->flags))
@@ -2860,7 +2954,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					put_ldev(device);
 				}
 			} else if( (peer_role[NEW] == R_PRIMARY) 
-			|| ((role[NOW] == R_SECONDARY) && (resource->twopc_reply.primary_nodes != 0)) ) { // disk detach case || detach & reconnect daisy chain case
+			|| ((role[NOW] == R_SECONDARY) && (resource->twopc_reply.primary_nodes != 0) // disk detach case || detach & reconnect daisy chain case
+			// DW-1312: no clearing MDF_LAST_PRIMARY when primary_nodes of twopc_reply involves my node id.
+			&& !(resource->twopc_reply.primary_nodes & NODE_MASK(resource->res_opts.node_id)))) { 
 				if(get_ldev_if_state(device, D_NEGOTIATING)) {
 					drbd_md_clear_flag (device, MDF_LAST_PRIMARY );
 					put_ldev(device);
@@ -3106,6 +3202,43 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, UUID_FLAG_GOT_STABLE, 0);
 				put_ldev(device);
 			}
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: notify peer that I got stable, no resync available in this case.
+			else if (!device_stable[OLD] && device_stable[NEW] &&
+				repl_state[NEW] >= L_ESTABLISHED &&
+				get_ldev(device))
+			{
+				drbd_send_uuids(peer_device, 0, 0);
+				put_ldev(device);
+			}
+#endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1315: I am still unstable but authoritative node's changed, need to notify peers.
+			if(!device_stable[OLD] && !device_stable[NEW] &&
+				authoritative[OLD] != authoritative[NEW] &&
+				get_ldev(device))
+			{	
+				/* DW-1315: peer checks resync availability as soon as it gets UUID_FLAG_AUTHORITATIVE,
+							and replies by sending uuid with both flags UUID_FLAG_AUTHORITATIVE and UUID_FLAG_RESYNC */
+				drbd_send_uuids(peer_device, (NODE_MASK(peer_device->node_id)&authoritative[NEW]) ? UUID_FLAG_AUTHORITATIVE : 0, 0);
+				put_ldev(device);
+			}
+
+			// DW-1315: resync availability has been checked in finish_state_change(), abort resync here by changing replication state to L_ESTABLISHED.
+			if (test_and_clear_bit(RESYNC_ABORTED, &peer_device->flags))
+			{
+				drbd_info(peer_device, "Resync will be aborted due to change of state.\n");
+
+				if (repl_state[NOW] > L_ESTABLISHED)
+				{
+					unsigned long irq_flags;
+					begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
+					__change_repl_state(peer_device, L_ESTABLISHED);
+					end_state_change(device->resource, &irq_flags);
+				}
+			}
+#endif
+
 #endif
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1225: I am promoted, and there will be no initial sync. start resync after promotion.
@@ -3422,7 +3555,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 			else
 			{
 				__clear_remote_state_change(resource);
-				twopc_end_nested(resource, P_TWOPC_NO);
+				twopc_end_nested(resource, P_TWOPC_NO, false);
 			}
 #endif			
 			if (when_done_lock(resource, irq_flags)) {
@@ -4134,17 +4267,21 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	return rv;
 }
 
-static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cmd)
+static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cmd, bool as_work)
 {
 	struct drbd_connection *twopc_parent, *tmp;
 	struct twopc_reply twopc_reply;
 	LIST_HEAD(parents);
 
 	spin_lock_irq(&resource->req_lock);
-	resource->twopc_prepare_reply_cmd = cmd;
-	list_splice_init(&resource->twopc_parents, &parents);
+	//DW-1257 infinite loop when twopc_work.cb = NULL, resolve linbit patching 04f979d3
 	twopc_reply = resource->twopc_reply;
-	resource->twopc_work.cb = NULL;
+	if (twopc_reply.tid){
+		resource->twopc_prepare_reply_cmd = cmd;
+		list_splice_init(&resource->twopc_parents, &parents);
+	}
+	if (as_work)
+		resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
 	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
@@ -4186,7 +4323,7 @@ int nested_twopc_work(struct drbd_work *work, int cancel)
 		cmd = P_TWOPC_RETRY;
 	else
 		cmd = P_TWOPC_NO;
-	twopc_end_nested(resource, cmd);
+	twopc_end_nested(resource, cmd, true);
 	return 0;
 }
 
@@ -4208,7 +4345,7 @@ nested_twopc_request(struct drbd_resource *resource, int vnr, enum drbd_packet c
 	if (cmd == P_TWOPC_PREPARE) {
 		if (rv <= SS_SUCCESS) {
 			cmd = (rv == SS_SUCCESS) ? P_TWOPC_YES : P_TWOPC_NO;
-			twopc_end_nested(resource, cmd);
+			twopc_end_nested(resource, cmd, false);
 		}
 	}
 	return rv;

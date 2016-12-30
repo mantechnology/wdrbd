@@ -315,6 +315,10 @@ struct p_protocol {
 // MODIFIED_BY_MANTECH DW-1148
 #define UUID_FLAG_PROMOTED	2048		/* one of node has been promoted, about to start resync */
 #endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+// DW-1315
+#define UUID_FLAG_AUTHORITATIVE	2048	/* the authoritative node is changed while I am unstable, this flag is for resuming resync */
+#endif
 
 struct p_uuids {
 	uint64_t current_uuid;
