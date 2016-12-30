@@ -7167,9 +7167,14 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1341 if UNSTABLE_TRIGGER bit is set , send uuids(unstable node triggering).
 	if(test_and_clear_bit(UNSTABLE_TRIGGER, &peer_device->flags)) {
+		struct drbd_device *device2 = peer_device->device;
+		struct drbd_peer_device *peer_device2;
+		u64 im;
 		drbd_send_uuids(peer_device, 0, 0);
-		for_each_peer_device(peer_device, device) {
-			drbd_send_current_state(peer_device);
+		for_each_peer_device_ref(peer_device2, im, device2) {
+			if (peer_device2->connection->cstate[NOW] == C_CONNECTED) {
+				drbd_send_current_state(peer_device2);
+			}
 		}
 	}
 #endif
