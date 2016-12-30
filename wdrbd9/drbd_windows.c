@@ -1732,18 +1732,15 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
-	bio->pVolExt = q->backing_dev_info.pvext;
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
-		status = IoAcquireRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		if (!NT_SUCCESS(status)) {
-			WDRBD_ERROR("IoAcquireRemoveLock bio->pVolExt:%p fail. status(0x%x)\n", bio->pVolExt, status);
-			bio->pVolExt = NULL;
+			WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
 			return -EIO;
 		}
 	}
 	else {
-		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->pVolExt);
-		bio->pVolExt = NULL;
+		WDRBD_WARN("IoAcquireRemoveLock IRQL(%d) is too high, bio->pVolExt:%p fail\n", KeGetCurrentIrql(), bio->bi_bdev->bd_disk->pDeviceExtension);
 		return -EIO;
 	}
 
@@ -1777,7 +1774,7 @@ int generic_make_request(struct bio *bio)
 
 	newIrp = IoBuildAsynchronousFsdRequest(
 				io,
-				q->backing_dev_info.pvext->TargetDeviceObject,
+				bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject,
 				buffer,
 				bio->bi_size,
 				&offset,
@@ -1786,7 +1783,7 @@ int generic_make_request(struct bio *bio)
 
 	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		return -ENOMEM;
 	}
 
@@ -1797,7 +1794,8 @@ int generic_make_request(struct bio *bio)
 			pIoNextStackLocation->Flags = bio->MasterIrpStackFlags;
 		} else { 
 			//apply meta I/O's write_ordering
-			struct drbd_device* device = minor_to_device( bio->pVolExt->VolIndex);	
+			// DW-1300: get drbd device from gendisk.
+			struct drbd_device* device = bio->bi_bdev->bd_disk->drbd_device;
 			if(device && device->resource->write_ordering >= WO_BDEV_FLUSH) {
 				pIoNextStackLocation->Flags |= (SL_WRITE_THROUGH | SL_FT_SEQUENTIAL_WRITE);
 			}
@@ -1811,7 +1809,7 @@ int generic_make_request(struct bio *bio)
 	//
 	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
 		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
-		IoReleaseRemoveLock(&bio->pVolExt->RemoveLock, NULL);
+		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
 		// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
 		// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
@@ -1828,7 +1826,7 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(bio->pVolExt->TargetDeviceObject, newIrp);
+	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
 
 	return 0;
 }
@@ -1988,7 +1986,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 
 void blk_cleanup_queue(struct request_queue *q)
 {
-	kfree(q);
+	kfree2(q);
 }
 
 struct gendisk *alloc_disk(int minors)
@@ -1999,7 +1997,7 @@ struct gendisk *alloc_disk(int minors)
 
 void put_disk(struct gendisk *disk)
 {
-	kfree(disk);
+	kfree2(disk);
 }
 
 void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn)
@@ -2238,7 +2236,8 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	if (pvext->Active &&
 		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
 	{
-		struct drbd_device *device = minor_to_device(pvext->VolIndex);
+		// DW-1300: get device and get reference.
+		struct drbd_device *device = get_device_with_vol_ext(pvext);
 		if (device &&
 			get_ldev_if_state(device, D_NEGOTIATING))
 		{
@@ -2247,6 +2246,9 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 			change_disk_state(device, D_DETACHING, CS_HARD);						
 			put_ldev(device);
 		}
+		// DW-1300: put device reference count when no longer use.
+		if (device)
+			kref_put(&device->kref, drbd_destroy_device);
 	}
 
 	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
@@ -2260,19 +2262,14 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		}
 	}
 
-	if (!pvext->dev) {
-
-		struct drbd_device * device = minor_to_device(pvext->VolIndex);
-		if (device && device->this_bdev) {
-			// link and some values are reassigned
-			pvext->dev = device->this_bdev;
-			device->vdisk->pDeviceExtension = pvext;
-			device->rq_queue->backing_dev_info.pvext = pvext;
-			pvext->dev->bd_contains->d_size = get_targetdev_volsize(pvext);
-		}
-		else {
-			pvext->dev = create_drbd_block_device(pvext);
-		}
+	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
+	if (pvext->dev->bd_contains &&
+		pvext->dev->bd_contains->d_size == 0)
+	{
+		unsigned long long d_size = get_targetdev_volsize(pvext);
+		pvext->dev->bd_contains->d_size = d_size;
+		pvext->dev->bd_disk->queue->max_hw_sectors =
+			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
 }
 
@@ -2462,6 +2459,9 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 {
     struct block_device * dev;
 
+	// DW-1109: need to increase reference count of device object to guarantee not to be freed while we're using.
+	ObReferenceObject(pvext->DeviceObject);
+
     dev = kmalloc(sizeof(struct block_device), 0, 'C5DW');
     if (!dev) {
         WDRBD_ERROR("Failed to allocate block_device NonPagedMemory\n");
@@ -2487,18 +2487,16 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 		WDRBD_ERROR("Failed to allocate request_queue NonPagedMemory\n");
 		goto request_queue_failed;
 	}
+		
+	kref_init(&dev->kref);
 
-	unsigned long long d_size = get_targetdev_volsize(pvext);
-	dev->bd_contains->d_size = d_size;
 	dev->bd_contains->bd_disk = dev->bd_disk;
+	dev->bd_contains->bd_parent = dev;
 
 	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
 	dev->bd_disk->pDeviceExtension = pvext;
 
-	dev->bd_disk->queue->backing_dev_info.pvext = pvext;
 	dev->bd_disk->queue->logical_block_size = 512;
-	dev->bd_disk->queue->max_hw_sectors =
-		d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 
     return dev;
 
@@ -2509,6 +2507,48 @@ gendisk_failed:
     kfree(dev);
 
 	return NULL;
+}
+
+// DW-1109: delete drbd bdev when ref cnt gets 0, clean up all resources that has been created in create_drbd_block_device.
+void delete_drbd_block_device(struct kref *kref)
+{
+	struct block_device *bdev = container_of(kref, struct block_device, kref);
+
+	// DW-1109: reference count has been increased when we create block device, decrease here.
+	ObDereferenceObject(bdev->bd_disk->pDeviceExtension->DeviceObject);
+	bdev->bd_disk->pDeviceExtension->DeviceObject = NULL;
+
+	blk_cleanup_queue(bdev->bd_disk->queue);
+
+	put_disk(bdev->bd_disk);
+
+	kfree2(bdev->bd_contains);
+	kfree2(bdev);
+}
+
+// get device with volume extension in safe, user should put ref when no longer use device.
+struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext)
+{
+	unsigned char oldIRQL = 0;
+	struct drbd_device *device = NULL;
+
+	if (KeGetCurrentIrql() > DISPATCH_LEVEL)
+		return NULL;
+
+	oldIRQL = ExAcquireSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock);
+	device = pvext->dev->bd_disk->drbd_device;
+	if (device)
+	{
+		if (kref_get(&device->kref))
+		{
+			// already destroyed.
+			atomic_dec(&device->kref);			
+			device = NULL;
+		}
+	}
+	ExReleaseSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock, oldIRQL);
+
+	return device;
 }
 
 /**

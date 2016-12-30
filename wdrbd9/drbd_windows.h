@@ -602,6 +602,8 @@ struct gendisk
 #ifdef _WIN32
     const struct block_device_operations *fops;
     void *private_data;
+	struct drbd_device*		drbd_device;			// DW-1300: the only point to access drbd device from volume extension.
+	EX_SPIN_LOCK			drbd_device_ref_lock;	// DW-1300: to synchronously access drbd_device. this lock is used when both referencing(shared) and deleting(exclusive) drbd device.
 #endif
 	PVOLUME_EXTENSION pDeviceExtension;
 #ifdef _WIN32
@@ -616,9 +618,11 @@ struct block_device {
 	// Otherwise, if the block device descriptor refers to a whole disk
 	// the bd_contains field points to the block device descriptor itself ...
 	// FROM Understanding the Linux Kernel, 3rd Edition
+	struct block_device *	bd_parent;			// DW-1109: it points the block device whose bd_contains points me.
 	struct block_device *	bd_contains;
 	struct gendisk * bd_disk;
 	unsigned long long d_size;
+	struct kref kref;
 };
 
 typedef struct kmem_cache {
@@ -685,7 +689,6 @@ struct bio {
 	void*					bi_private; 
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
-	PVOLUME_EXTENSION		pVolExt; // for release removelock
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
 };
 
@@ -883,7 +886,6 @@ struct backing_dev_info {
 	unsigned long ra_pages; /* max readahead in PAGE_CACHE_SIZE units */ 
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;   /* Pointer to aux data for congested func */
-	PVOLUME_EXTENSION pvext;
 };
 
 #ifdef _WIN32
@@ -1277,7 +1279,7 @@ extern void ResolveDriveLetters(void);
 extern VOID MVOL_LOCK();
 extern VOID MVOL_UNLOCK();
 #ifdef _WIN32_MVFL
-extern NTSTATUS FsctlFlushDismountVolume(unsigned int minor);
+extern NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush);
 extern NTSTATUS FsctlLockVolume(unsigned int minor);
 extern NTSTATUS FsctlUnlockVolume(unsigned int minor);
 extern NTSTATUS FsctlFlushVolume(unsigned int minor);
@@ -1285,6 +1287,8 @@ extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 // DW-844
 extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
 extern BOOLEAN isFastInitialSync();
+// DW-1317
+extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
 extern
@@ -1321,6 +1325,9 @@ extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNI
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
+extern void delete_drbd_block_device(struct kref *kref);
+// DW-1300
+extern struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext);
 extern BOOLEAN do_add_minor(unsigned int minor);
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void query_targetdev(PVOLUME_EXTENSION pvext);

@@ -547,6 +547,7 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
+#ifndef _WIN32 // MODIFIED_BY_MANTECH DW-1297
 static bool dtt_path_cmp_addr(struct dtt_path *path)
 {
 	struct drbd_path *drbd_path = &path->path;
@@ -555,6 +556,7 @@ static bool dtt_path_cmp_addr(struct dtt_path *path)
 	addr_size = min(drbd_path->my_addr_len, drbd_path->peer_addr_len);
 	return memcmp(&drbd_path->my_addr, &drbd_path->peer_addr, addr_size) > 0;
 }
+#endif
 
 static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 {
@@ -1702,7 +1704,10 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 			}
 #endif
+
+#ifndef _WIN32 // MODIFIED_BY_MANTECH DW-1297
 			bool use_for_data;
+#endif
 
 			if (!first_path) {
 				first_path = connect_to_path;
@@ -1714,6 +1719,31 @@ static int dtt_connect(struct drbd_transport *transport)
 				continue;
 			}
 
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1297 : rollback 'Avoid initial packet S crossed' because a feature packet timeout occurs.
+			if (!dsocket) {
+				dsocket = s;
+                sprintf(dsocket->name, "data_sock\0");
+                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0) {
+                    sock_release(s);
+                    dsocket = 0;
+                    goto retry;
+                }
+			} else if (!csocket) {
+				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
+				csocket = s;
+                sprintf(csocket->name, "meta_sock\0");
+                if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
+                {
+                    sock_release(s);
+                    csocket = 0;
+                    goto retry;
+                }
+			} else {
+				tr_err(transport, "Logic error in conn_connect()\n");
+				goto out_eagain;
+			}
+#else
 			if (!dsocket && !csocket) {
 		       use_for_data = dtt_path_cmp_addr(first_path);
 			} else if (!dsocket) {
@@ -1727,33 +1757,14 @@ static int dtt_connect(struct drbd_transport *transport)
 			}
 
 			if (use_for_data) {
-
 				dsocket = s;
-#ifdef _WIN32 // DW-154 
-                sprintf(dsocket->name, "data_sock\0");
-                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0) {
-                    sock_release(s);
-                    dsocket = 0;
-                    goto retry;
-                }
-#else
 				dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM);
-#endif
 			} else {
 				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
 				csocket = s;
-#ifdef _WIN32 // DW-154 
-                sprintf(csocket->name, "meta_sock\0");
-                if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
-                {
-                    sock_release(s);
-                    csocket = 0;
-                    goto retry;
-                }
-#else
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
-#endif
 			}
+#endif
 		} else if (!first_path)
 			connect_to_path = dtt_next_path(tcp_transport, connect_to_path);
 
