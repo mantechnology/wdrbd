@@ -5027,6 +5027,20 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		goto out_no_ldev;
 	}
 
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	struct drbd_peer_device *peer_device;
+	for_each_peer_device(peer_device, device) {
+		enum drbd_repl_state *repl_state = peer_device->repl_state;
+		if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
+			(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
+		{
+			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))
+				retcode = ERR_CODE_BASE;
+				goto out_no_ldev;
+		}
+	}
+#endif
+
 	resource = device->resource;
 
 	mutex_lock(&resource->adm_mutex);
@@ -5151,7 +5165,20 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 #endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	struct drbd_peer_device *temp_peer_device;
+	for_each_peer_device(temp_peer_device, device) {
+		enum drbd_role *role = resource->role;
+		enum drbd_repl_state *repl_state = temp_peer_device->repl_state;
 
+		if (role[NOW] == R_SECONDARY && (repl_state[NOW] == L_STARTING_SYNC_T || repl_state[NOW] == L_WF_BITMAP_T) ||
+			(repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T || repl_state[NOW] == L_VERIFY_T))
+		{
+			retcode = ERR_CODE_BASE;
+			goto out;
+		}
+	}
+#endif
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
 		goto out;
