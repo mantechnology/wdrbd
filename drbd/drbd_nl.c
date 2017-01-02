@@ -5014,6 +5014,7 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_peer_device *sync_from_peer_device = NULL;
 	struct drbd_resource *resource;
 	struct drbd_device *device;
+
 	int retcode = 0; /* enum drbd_ret_code rsp. enum drbd_state_rv */
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
@@ -5026,6 +5027,20 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		retcode = ERR_NO_DISK;
 		goto out_no_ldev;
 	}
+
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	struct drbd_peer_device *peer_device;
+	for_each_peer_device(peer_device, device) {
+		enum drbd_repl_state *repl_state = peer_device->repl_state;
+		if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
+			(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
+		{
+			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))
+				retcode = ERR_CODE_BASE;
+				goto out_no_ldev;
+		}
+	}
+#endif
 
 	resource = device->resource;
 
@@ -5142,7 +5157,6 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	peer_device = adm_ctx.peer_device;
 	device = peer_device->device;
 	resource = device->resource;
-
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 	// MODIFIED_BY_MANTECH DW-1142: don't start 'invalidate peer' if I'm not primary.
 	if (resource->role[NOW] != R_PRIMARY)
@@ -5151,7 +5165,20 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 #endif
+#ifdef _WIN32_STABLE_SYNCSOURCE
+	struct drbd_peer_device *temp_peer_device;
+	for_each_peer_device(temp_peer_device, device) {
+		enum drbd_role *role = resource->role;
+		enum drbd_repl_state *repl_state = temp_peer_device->repl_state;
 
+		if (role[NOW] == R_SECONDARY && (repl_state[NOW] == L_STARTING_SYNC_T || repl_state[NOW] == L_WF_BITMAP_T) ||
+			(repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T || repl_state[NOW] == L_VERIFY_T))
+		{
+			retcode = ERR_CODE_BASE;
+			goto out;
+		}
+	}
+#endif
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
 		goto out;
