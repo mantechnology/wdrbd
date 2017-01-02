@@ -5014,7 +5014,6 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_peer_device *sync_from_peer_device = NULL;
 	struct drbd_resource *resource;
 	struct drbd_device *device;
-
 	int retcode = 0; /* enum drbd_ret_code rsp. enum drbd_state_rv */
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
@@ -5157,6 +5156,7 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	peer_device = adm_ctx.peer_device;
 	device = peer_device->device;
 	resource = device->resource;
+
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 	// MODIFIED_BY_MANTECH DW-1142: don't start 'invalidate peer' if I'm not primary.
 	if (resource->role[NOW] != R_PRIMARY)
