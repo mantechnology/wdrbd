@@ -904,7 +904,7 @@ enum {
 	PROMOTED_RESYNC,		/* MODIFIED_BY_MANTECH DW-1225: I'm promoted, and there will be no initial sync. Do trigger resync after promotion */
 #endif
 #ifdef _WIN32_STABLE_SYNCSOURCE
-	UNSTABLE_TRIGGER,	/* MODIFIED_BY_MANTECH DW-1341: Do Trigger when my stability is unstable */
+	UNSTABLE_TRIGGER_CP,	/* MODIFIED_BY_MANTECH DW-1341: Do Trigger when my stability is unstable for Crashed Primay wiered case*/
 #endif
 #endif
 };
