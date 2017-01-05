@@ -7740,7 +7740,13 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
+		{	
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
+			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT)
+#endif
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+		}
 	}
 
 out:
