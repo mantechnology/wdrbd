@@ -5402,6 +5402,7 @@ static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum
 {
 	enum drbd_repl_state new_repl_state;
 	enum drbd_state_rv rv;
+	int hg, rule_nr, peer_node_id = 0;
 
 	new_repl_state = side == L_SYNC_SOURCE ? L_WF_BITMAP_S : side == L_SYNC_TARGET ? L_WF_BITMAP_T : -1;
 
@@ -5411,15 +5412,19 @@ static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum
 		return;
 	}
 
+	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, false);
+
+	if (abs(hg) >= 100)
+	{
+		drbd_err(peer_device, "Can not start resync due to unexpected handshake result(%d)\n", hg);
+		return;
+	}
+
 	drbd_info(peer_device, "Becoming %s due to authoritative node changed\n", drbd_repl_str(new_repl_state));
 
 	if (new_repl_state == L_WF_BITMAP_S)
 	{
-		int hg, rule_nr, peer_node_id = 0;
-		hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, false);
-
-		if (abs(hg) >= 100 ||
-			abs(hg) == 3)
+		if (abs(hg) == 3)
 		{
 			hg = 3;
 			bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
@@ -7059,7 +7064,9 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		/* if we have both been inconsistent, and the peer has been
 		 * forced to be UpToDate with --force */
 #ifdef _WIN32 // DW-778 
-		if (device->disk_state[NOW] == D_INCONSISTENT || peer_state.disk == D_INCONSISTENT)
+		if (device->disk_state[NOW] == D_INCONSISTENT || peer_state.disk == D_INCONSISTENT &&
+			// DW-1359: to avoid start resync when it's already running.
+			(peer_state.conn < L_SYNC_SOURCE || peer_state.conn > L_PAUSED_SYNC_T))
 #endif
 			consider_resync |= test_bit(CONSIDER_RESYNC, &peer_device->flags);
 		/* if we had been plain connected, and the admin requested to
@@ -7740,7 +7747,13 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
+		{	
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
+			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT)
+#endif
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+		}
 	}
 
 out:
