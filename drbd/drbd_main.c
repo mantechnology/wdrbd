@@ -1734,7 +1734,13 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	p->dirty_bits = cpu_to_be64(peer_device->comm_bm_set);
 	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1357: do not send UUID_FLAG_CRASHED_PRIMARY if I don't need to get synced from this peer.
+	if (test_bit(CRASHED_PRIMARY, &device->flags) &&
+		!drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
+#else
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
+#endif
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
 	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
