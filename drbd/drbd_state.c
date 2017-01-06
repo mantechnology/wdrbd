@@ -1235,7 +1235,14 @@ static enum drbd_state_rv __is_valid_soft_transition(struct drbd_resource *resou
 
 			if (nr_negotiating > 1)
 				return SS_IN_TRANSIENT_STATE;
-
+#ifdef _WIN32
+			// MODIFIED_BY_MANTECH DW-1340 
+			// do not change the repl_state to L_WF_BITMAP_T when peer disk state is lower than outdated.
+			if (repl_state[NEW] == L_WF_BITMAP_T && peer_disk_state[NEW] == D_OUTDATED && peer_disk_state[OLD] < D_OUTDATED && 
+				peer_disk_state[OLD] != D_ATTACHING) {				
+				return SS_LOWER_THAN_OUTDATED_PEER; 
+			}
+#endif
 			if (peer_device->connection->fencing_policy >= FP_RESOURCE &&
 			    !(role[OLD] == R_PRIMARY && repl_state[OLD] < L_ESTABLISHED && !(peer_disk_state[OLD] <= D_OUTDATED)) &&
 			     (role[NEW] == R_PRIMARY && repl_state[NEW] < L_ESTABLISHED && !(peer_disk_state[NEW] <= D_OUTDATED)))
@@ -3181,7 +3188,25 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				/* Inform peers about being unstable...
 				   Maybe it would be a better idea to have the stable bit as
 				   part of the state (and being sent with the state) */
+#ifdef _WIN32_STABLE_SYNCSOURCE
+				// DW-1359: I got unstable since one of my peer goes primary, start resync if need.
+				bool bConsiderResync = false;
+
+				if (peer_role[OLD] != R_PRIMARY && peer_role[NEW] == R_PRIMARY &&
+					cstate[OLD] >= C_CONNECTED &&
+					peer_disk_state[NEW] >= D_OUTDATED)
+				{
+					// DW-1359: initial sync will be started if both nodes are inconsistent and peer goes uptodate.
+					if (peer_disk_state[OLD] != D_INCONSISTENT ||
+						peer_disk_state[NEW] != D_UP_TO_DATE ||
+						disk_state[OLD] != D_INCONSISTENT)
+						bConsiderResync = true;
+				}
+				
+				drbd_send_uuids(peer_device, bConsiderResync ? UUID_FLAG_AUTHORITATIVE : 0, 0);
+#else
 				drbd_send_uuids(peer_device, 0, 0);
+#endif
 				put_ldev(device);
 			}
 

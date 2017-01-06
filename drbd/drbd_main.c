@@ -5502,6 +5502,12 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 		}
 	}
 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1340: do not update current uuid if my disk is outdated. the node sent uuid has my current uuid as bitmap uuid, and will start resync as soon as we do handshake.
+	if (device->disk_state[NOW] == D_OUTDATED)
+		set_current = false;
+#endif
+
 	if (set_current) {
 #ifndef _WIN32
 		// MODIFIED_BY_MANTECH DW-1034: split-brain could be caused since old one's been extinguished, always preserve old one when setting new one.
