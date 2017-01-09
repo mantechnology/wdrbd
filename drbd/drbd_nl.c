@@ -5287,6 +5287,14 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	resource = adm_ctx.device->resource;
+
+#ifdef _WIN32
+	// DW-1361 disable drbd_adm_suspend_io
+	drbd_err(resource, "cmd(%u) error: drbd_adm_suspend_io not support.\n", info->genlhdr->cmd);
+	drbd_adm_finish(&adm_ctx, info, -ENOMSG);
+	return -ENOMSG;
+#endif
+	
 	mutex_lock(&resource->adm_mutex);
 
 	retcode = stable_state_change(resource,
@@ -5309,6 +5317,14 @@ int drbd_adm_resume_io(struct sk_buff *skb, struct genl_info *info)
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
 		return retcode;
+
+#ifdef _WIN32
+	// DW-1361 disable drbd_adm_resume_io
+	resource = adm_ctx.device->resource;
+	drbd_err(resource, "cmd(%u) error: drbd_adm_resume_io not support.\n", info->genlhdr->cmd);
+	drbd_adm_finish(&adm_ctx, info, -ENOMSG);
+	return -ENOMSG;
+#endif
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	device = adm_ctx.device;
