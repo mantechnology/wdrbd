@@ -3263,6 +3263,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++)
 			md->peers[node_id].flags &= ~MDF_PEER_IGNORE_CRASHED_PRIMARY;
+
+		// it will change to outdate.
+		md->flags &= ~MDF_WAS_UP_TO_DATE;
+		
 		drbd_md_mark_dirty(device);
 	}
 #else
