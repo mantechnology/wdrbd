@@ -7750,9 +7750,15 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		{	
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
-			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT)
-#endif
+			// DW-1365 fixup secondary's diskless case for crashed primary.
+			if (peer_device->device->disk_state[NOW] > D_INCONSISTENT) {
+				drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+			} else {
+				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d\n",peer_device->device->disk_state[NOW]);
+			}
+#else		
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+#endif
 		}
 	}
 
