@@ -5867,7 +5867,7 @@ clear_flag:
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
 		device->disk_state[NOW] >= D_OUTDATED &&
-		(device->disk_state[NOW] == peer_device->disk_state[NOW]) && // DW-1357 do not clear bitmap when the disk state is same.
+		(device->disk_state[NOW] == peer_device->disk_state[NOW]) && // DW-1357 clear bitmap when the disk state is same.
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 		// MODIFIED_BY_MANTECH DW-1162: clear bitmap only when peer stays secondary.
