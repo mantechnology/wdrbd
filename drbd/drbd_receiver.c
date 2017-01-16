@@ -4004,9 +4004,12 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			continue;
 		if (i == device->ldev->md.node_id)
 			continue;
+#ifndef _WIN32
+		// DW-1360: need to see bitmap uuid of node which are not assigned to a peer, some of those peers drive me to create new uuid while rotating uuid into their bitmap uuid.
 		/* Skip bitmap indexes which are not assigned to a peer. */
 		if (device->ldev->md.peers[i].bitmap_index == -1)
 			continue;
+#endif
 		self = device->ldev->md.peers[i].bitmap_uuid & ~UUID_PRIMARY;
 		if (self == peer) {
 			*peer_node_id = i;
