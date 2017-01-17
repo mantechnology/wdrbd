@@ -4664,7 +4664,11 @@ static bool device_has_connected_peer_devices(struct drbd_device *device)
 	return false;
 }
 
-static bool device_has_peer_devices_with_disk(struct drbd_device *device)
+#ifdef _WIN32 
+static bool device_has_peer_devices_with_disk(struct drbd_device *device, enum change_phase phase)
+#else
+static bool device_has_peer_devices_with_disk(struct drbd_device *device) 
+#endif 
 {
 	struct drbd_peer_device *peer_device;
 	bool rv = false;
@@ -4674,7 +4678,12 @@ static bool device_has_peer_devices_with_disk(struct drbd_device *device)
 			/* We expect to receive up-to-date UUIDs soon.
 			   To avoid a race in receive_state, "clear" uuids while
 			   holding req_lock. I.e. atomic with the state change */
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1321 : just clear uuids once, not twice because sometimes peer uuid comes eariler than local state change
+			if (phase == PH_PREPARE)
+				peer_device->uuids_received = false;
+#else
 			peer_device->uuids_received = false;
+#endif
 
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1263: the peers that has disk state lower than D_NEGOTIATING can't be negotiated with, skip this peer.
@@ -4754,7 +4763,11 @@ static bool do_change_disk_state(struct change_context *context, enum change_pha
 
 	if (device->disk_state[NOW] == D_ATTACHING &&
 	    context->val.disk == D_NEGOTIATING) {
+#ifdef _WIN32
+		if (device_has_peer_devices_with_disk(device, phase)) {
+#else
 		if (device_has_peer_devices_with_disk(device)) {
+#endif 
 			struct drbd_connection *connection =
 				first_connection(device->resource);
 			cluster_wide_state_change =
