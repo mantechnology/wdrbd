@@ -226,7 +226,11 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 	if (repl_state < L_ESTABLISHED ||
 		repl_state == L_SYNC_SOURCE ||
 		repl_state == L_AHEAD ||
-		repl_state == L_WF_BITMAP_S)
+		repl_state == L_WF_BITMAP_S ||
+		// DW-1369 do not clear bitmap when STARTING_SYNC_X state.
+		repl_state == L_STARTING_SYNC_S ||
+		repl_state == L_STARTING_SYNC_T
+		)
 		return false;
 
 	return true;
