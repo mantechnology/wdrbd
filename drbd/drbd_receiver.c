@@ -5699,7 +5699,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 #endif
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
-#ifdef _WIN32 // DW-
+#if 0  // DW-593, DW-1321 : cause twopc timeout, roll back
     struct drbd_resource *resource = device->resource;
     down(&resource->state_sem);
     peer_device->uuids_received = true;
