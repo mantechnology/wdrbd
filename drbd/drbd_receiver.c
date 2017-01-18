@@ -7636,6 +7636,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct p_block_desc *p = pi->data;
 	sector_t sector; 
 	unsigned long bit; 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1354
+	bool bResetTimer = false;
+#endif
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -7651,6 +7655,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	// DW-1205 SyncSource 100% stuck at low bandwith, resolve linbit patching b2bfb5c
 	case L_SYNC_TARGET: 
 		mutex_lock(&device->bm_resync_fo_mutex);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1354: I am a sync target and find offset points the end, does mean no more requeueing resync timer.
+		bResetTimer = (device->bm_resync_fo == drbd_bm_bits(device));
+#endif
 		bit = BM_SECT_TO_BIT(sector);
 		if (bit < device->bm_resync_fo)
 			device->bm_resync_fo = bit; 
@@ -7661,6 +7669,15 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				drbd_repl_str(peer_device->repl_state[NOW]));
 	}
 	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize)); 
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
+	if (bResetTimer)
+	{
+		drbd_warn(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
+		mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
+	}
+#endif
 
 	return 0;
 }
