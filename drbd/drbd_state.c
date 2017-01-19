@@ -281,7 +281,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 	int vnr;
 
 
-#ifdef _WIN32
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 		struct drbd_peer_device *peer_device;
 		for_each_peer_device(peer_device, device) {
@@ -305,7 +305,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 			return true;
 	}
 
-#ifdef _WIN32
+#ifdef _WIN32  
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -325,7 +325,13 @@ static bool state_has_changed(struct drbd_resource *resource)
 			    peer_device->resync_susp_dependency[OLD] !=
 				peer_device->resync_susp_dependency[NEW] ||
 			    peer_device->resync_susp_other_c[OLD] !=
-				peer_device->resync_susp_other_c[NEW] )
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+				peer_device->resync_susp_other_c[NEW])
+#else
+				peer_device->resync_susp_other_c[NEW] ||
+				peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)
+#endif
+
 				return true;
 		}
 	}
