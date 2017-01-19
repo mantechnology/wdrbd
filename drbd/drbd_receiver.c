@@ -6827,8 +6827,11 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 	} else {
 		if (flags & CS_PREPARED)
+		{
 			del_timer(&resource->twopc_timer);
-
+			if (noStateChange)
+				resource->remote_state_change = false;
+		}
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1252: clear TWOPC_EXECUTED if change_state result is SS_NOTHING_TO_DO
