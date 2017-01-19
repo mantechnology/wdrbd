@@ -1753,7 +1753,11 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 	default:
 		/* v07 style fixed size indexed meta data */
 		/* FIXME we should drop support for this! */
+#ifdef _WIN32 // DW-1335
+		bdev->md.md_size_sect = (256 << 20 >> 9);
+#else
 		bdev->md.md_size_sect = (128 << 20 >> 9);
+#endif
 		bdev->md.al_offset = (4096 >> 9);
 		bdev->md.bm_offset = (4096 >> 9) + al_size_sect;
 		break;
@@ -3015,7 +3019,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		min_md_device_sectors = (2<<10);
 	} else {
 		max_possible_sectors = DRBD_MAX_SECTORS;
+#ifdef _WIN32 // DW-1335
+		min_md_device_sectors = (256 << 20 >> 9) * (new_disk_conf->meta_dev_idx + 1);
+#else
 		min_md_device_sectors = (128 << 20 >> 9) * (new_disk_conf->meta_dev_idx + 1);
+#endif
 	}
 
 	if (drbd_get_capacity(nbc->md_bdev) < min_md_device_sectors) {
