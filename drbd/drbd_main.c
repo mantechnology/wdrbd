@@ -5038,7 +5038,11 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 
 	/* old fixed size meta data is exactly that: fixed. */
 	if (in_core->meta_dev_idx >= 0) {
+#ifdef _WIN32 // DW-1335
+		if (in_core->md_size_sect != (256 << 20 >> 9)
+#else
 		if (in_core->md_size_sect != (128 << 20 >> 9)
+#endif
 		||  in_core->al_offset != (4096 >> 9)
 		||  in_core->bm_offset != (4096 >> 9) + (32768 >> 9)
 		||  in_core->al_stripes != 1
