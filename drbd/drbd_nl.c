@@ -2818,10 +2818,6 @@ static int open_backing_devices(struct drbd_device *device,
 	
 	nbc->backing_bdev = bdev;
 #ifdef _WIN32
-	// DW-1300: set drbd device to access from volume extention
-	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock);
-	bdev->bd_disk->drbd_device = device;
-	ExReleaseSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
 	// DW-1277: mark that this will be using as replication volume.
 	set_bit(VOLUME_TYPE_REPL, &bdev->bd_disk->pDeviceExtension->Flag);
 #endif
@@ -3214,6 +3210,23 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	nbc = NULL;
 	new_disk_conf = NULL;
 
+#ifdef _WIN32
+	// DW-1376: this_bdev indicates block device of replication volume, which can be removed anytime. need to get newly created block device.
+	if (device->this_bdev->bd_disk->pDeviceExtension != device->ldev->backing_bdev->bd_disk->pDeviceExtension)
+	{
+		// DW-1376: put old one.
+		blkdev_put(device->this_bdev, 0);
+
+		// DW-1376: get new one.
+		device->this_bdev = device->ldev->backing_bdev->bd_parent?device->ldev->backing_bdev->bd_parent : device->ldev->backing_bdev;
+		kref_get(&device->this_bdev->kref);
+	}
+
+	// DW-1300: set drbd device to access from volume extention
+	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock);	
+	device->this_bdev->bd_disk->drbd_device = device;
+	ExReleaseSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+#endif
 	for_each_peer_device(peer_device, device) {
 		err = drbd_attach_peer_device(peer_device);
 		if (err) {
