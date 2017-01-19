@@ -6829,8 +6829,10 @@ static int process_twopc(struct drbd_connection *connection,
 		if (flags & CS_PREPARED)
 		{
 			del_timer(&resource->twopc_timer);
+#ifdef _WIN32			
 			if (noStateChange)
 				resource->remote_state_change = false;
+#endif
 		}
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
 #ifdef _WIN32
