@@ -280,6 +280,16 @@ static bool state_has_changed(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
+
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		struct drbd_peer_device *peer_device;
+		for_each_peer_device(peer_device, device) {
+			peer_device->uuid_flags &= ~UUID_FLAG_GOT_STABLE;
+		}
+	}
+#endif
+	
 	if (test_and_clear_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags))
 		return true;
 
@@ -295,7 +305,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 			return true;
 	}
 
-#ifdef _WIN32
+#ifdef _WIN32  
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -315,8 +325,13 @@ static bool state_has_changed(struct drbd_resource *resource)
 			    peer_device->resync_susp_dependency[OLD] !=
 				peer_device->resync_susp_dependency[NEW] ||
 			    peer_device->resync_susp_other_c[OLD] !=
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+				peer_device->resync_susp_other_c[NEW])
+#else
 				peer_device->resync_susp_other_c[NEW] ||
-			    peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)
+				peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)
+#endif
+
 				return true;
 		}
 	}
@@ -4362,7 +4377,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
-	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
+	if (!twopc_reply.tid){
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "!twopc_reply.tid = %u result: %s\n",
 			twopc_reply.tid, drbd_packet_name(cmd));
