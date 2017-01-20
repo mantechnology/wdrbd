@@ -1753,7 +1753,11 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 	default:
 		/* v07 style fixed size indexed meta data */
 		/* FIXME we should drop support for this! */
+#ifdef _WIN32 // DW-1335
+		bdev->md.md_size_sect = (256 << 20 >> 9);
+#else
 		bdev->md.md_size_sect = (128 << 20 >> 9);
+#endif
 		bdev->md.al_offset = (4096 >> 9);
 		bdev->md.bm_offset = (4096 >> 9) + al_size_sect;
 		break;
@@ -2814,10 +2818,6 @@ static int open_backing_devices(struct drbd_device *device,
 	
 	nbc->backing_bdev = bdev;
 #ifdef _WIN32
-	// DW-1300: set drbd device to access from volume extention
-	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock);
-	bdev->bd_disk->drbd_device = device;
-	ExReleaseSpinLockExclusive(&bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
 	// DW-1277: mark that this will be using as replication volume.
 	set_bit(VOLUME_TYPE_REPL, &bdev->bd_disk->pDeviceExtension->Flag);
 #endif
@@ -3015,7 +3015,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		min_md_device_sectors = (2<<10);
 	} else {
 		max_possible_sectors = DRBD_MAX_SECTORS;
+#ifdef _WIN32 // DW-1335
+		min_md_device_sectors = (256 << 20 >> 9) * (new_disk_conf->meta_dev_idx + 1);
+#else
 		min_md_device_sectors = (128 << 20 >> 9) * (new_disk_conf->meta_dev_idx + 1);
+#endif
 	}
 
 	if (drbd_get_capacity(nbc->md_bdev) < min_md_device_sectors) {
@@ -3206,6 +3210,23 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	nbc = NULL;
 	new_disk_conf = NULL;
 
+#ifdef _WIN32
+	// DW-1376: this_bdev indicates block device of replication volume, which can be removed anytime. need to get newly created block device.
+	if (device->this_bdev->bd_disk->pDeviceExtension != device->ldev->backing_bdev->bd_disk->pDeviceExtension)
+	{
+		// DW-1376: put old one.
+		blkdev_put(device->this_bdev, 0);
+
+		// DW-1376: get new one.
+		device->this_bdev = device->ldev->backing_bdev->bd_parent?device->ldev->backing_bdev->bd_parent : device->ldev->backing_bdev;
+		kref_get(&device->this_bdev->kref);
+	}
+
+	// DW-1300: set drbd device to access from volume extention
+	unsigned char oldIRQL = ExAcquireSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock);	
+	device->this_bdev->bd_disk->drbd_device = device;
+	ExReleaseSpinLockExclusive(&device->this_bdev->bd_disk->drbd_device_ref_lock, oldIRQL);
+#endif
 	for_each_peer_device(peer_device, device) {
 		err = drbd_attach_peer_device(peer_device);
 		if (err) {
@@ -3253,7 +3274,25 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IND) &&
 	    !(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
 	    !device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags))
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1357: this is initialzing crashed primary. set crashed primary flag and clear all peer's ignoring flags.
+	{
 		set_bit(CRASHED_PRIMARY, &device->flags);
+
+		struct drbd_md *md = &device->ldev->md;
+		int node_id = 0;
+
+		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++)
+			md->peers[node_id].flags &= ~MDF_PEER_IGNORE_CRASHED_PRIMARY;
+
+		// it will change to outdate.
+		md->flags &= ~MDF_WAS_UP_TO_DATE;
+		
+		drbd_md_mark_dirty(device);
+	}
+#else
+		set_bit(CRASHED_PRIMARY, &device->flags);
+#endif
 
 	device->read_cnt = 0;
 	device->writ_cnt = 0;
@@ -5287,6 +5326,14 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	resource = adm_ctx.device->resource;
+
+#ifdef _WIN32
+	// DW-1361 disable drbd_adm_suspend_io
+	drbd_err(resource, "cmd(%u) error: drbd_adm_suspend_io not support.\n", info->genlhdr->cmd);
+	drbd_adm_finish(&adm_ctx, info, -ENOMSG);
+	return -ENOMSG;
+#endif
+	
 	mutex_lock(&resource->adm_mutex);
 
 	retcode = stable_state_change(resource,
@@ -5309,6 +5356,14 @@ int drbd_adm_resume_io(struct sk_buff *skb, struct genl_info *info)
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
 		return retcode;
+
+#ifdef _WIN32
+	// DW-1361 disable drbd_adm_resume_io
+	resource = adm_ctx.device->resource;
+	drbd_err(resource, "cmd(%u) error: drbd_adm_resume_io not support.\n", info->genlhdr->cmd);
+	drbd_adm_finish(&adm_ctx, info, -ENOMSG);
+	return -ENOMSG;
+#endif
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	device = adm_ctx.device;

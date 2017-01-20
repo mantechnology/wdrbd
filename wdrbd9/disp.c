@@ -520,8 +520,8 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     {
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
-		// DW-1300: prevent mounting volume when device went diskless.
-		if (device && device->resource->bTempAllowMount == FALSE && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] == D_DISKLESS))   // V9
+		// DW-1300: prevent mounting volume when device is failed or below.
+		if (device && device->resource->bTempAllowMount == FALSE && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] <= D_FAILED))   // V9
 		{
 			//PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
 			//WDRBD_TRACE("DeviceObject(0x%x), MinorFunction(0x%x) STATUS_INVALID_DEVICE_REQUEST\n", DeviceObject, irpSp->MinorFunction);
@@ -565,8 +565,8 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     {
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
-		// DW-1300: prevent mounting volume when device went diskless.
-		if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE) && device->disk_state[NOW] != D_DISKLESS || device->resource->bTempAllowMount == TRUE))
+		// DW-1363: prevent mounting volume when device is failed or below.
+		if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE) && device->disk_state[NOW] > D_FAILED || device->resource->bTempAllowMount == TRUE))
         {
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
@@ -640,7 +640,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active) {
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
-		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] != D_DISKLESS)) {
+		// DW-1363: prevent writing when device is failed or below.
+		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] > D_FAILED)) {
         	
 			PIO_STACK_LOCATION pisl = IoGetCurrentIrpStackLocation(Irp);
 			ULONGLONG offset_sector = (ULONGLONG)(pisl->Parameters.Write.ByteOffset.QuadPart) >> 9;
