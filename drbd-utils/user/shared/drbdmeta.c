@@ -199,7 +199,11 @@ static int confirmed(const char *text)
 #define MD_AL_OFFSET_07        8
 #define MD_AL_MAX_SECT_07     64
 #define MD_BM_OFFSET_07        (MD_AL_OFFSET_07 + MD_AL_MAX_SECT_07)
+#ifdef _WIN32 // DW-1335
+#define MD_RESERVED_SECT_07    ( (uint64_t)(256ULL << 11) )
+#else
 #define MD_RESERVED_SECT_07    ( (uint64_t)(128ULL << 11) )
+#endif
 #define MD_BM_MAX_BYTE_07      ( (uint64_t)(MD_RESERVED_SECT_07 - MD_BM_OFFSET_07)*512 )
 #if BITS_PER_LONG == 32
 #define MD_BM_MAX_BYTE_FLEX    ( (uint64_t)(1ULL << (32-3)) )

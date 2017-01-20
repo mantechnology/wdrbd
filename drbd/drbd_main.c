@@ -226,7 +226,11 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 	if (repl_state < L_ESTABLISHED ||
 		repl_state == L_SYNC_SOURCE ||
 		repl_state == L_AHEAD ||
-		repl_state == L_WF_BITMAP_S)
+		repl_state == L_WF_BITMAP_S ||
+		// DW-1369 do not clear bitmap when STARTING_SYNC_X state.
+		repl_state == L_STARTING_SYNC_S ||
+		repl_state == L_STARTING_SYNC_T
+		)
 		return false;
 
 	return true;
@@ -1734,7 +1738,13 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	p->dirty_bits = cpu_to_be64(peer_device->comm_bm_set);
 	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1357: do not send UUID_FLAG_CRASHED_PRIMARY if I don't need to get synced from this peer.
+	if (test_bit(CRASHED_PRIMARY, &device->flags) &&
+		!drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
+#else
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
+#endif
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
 	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
@@ -5028,7 +5038,11 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 
 	/* old fixed size meta data is exactly that: fixed. */
 	if (in_core->meta_dev_idx >= 0) {
+#ifdef _WIN32 // DW-1335
+		if (in_core->md_size_sect != (256 << 20 >> 9)
+#else
 		if (in_core->md_size_sect != (128 << 20 >> 9)
+#endif
 		||  in_core->al_offset != (4096 >> 9)
 		||  in_core->bm_offset != (4096 >> 9) + (32768 >> 9)
 		||  in_core->al_stripes != 1
@@ -5325,6 +5339,12 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		if (node_id == device->ldev->md.node_id)
 			continue;
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1360: skip considering to rotate uuid for node which doesn't exist.
+		if (peer_md[node_id].bitmap_index == -1 &&
+			!(peer_md[node_id].flags & MDF_NODE_EXISTS))
+			continue;
+#endif
 		bm_uuid = peer_md[node_id].bitmap_uuid;
 		if (bm_uuid)
 			continue;
@@ -5861,6 +5881,7 @@ clear_flag:
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
 		device->disk_state[NOW] >= D_OUTDATED &&
+		(device->disk_state[NOW] == peer_device->disk_state[NOW]) && // DW-1357 clear bitmap when the disk state is same.
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 		// MODIFIED_BY_MANTECH DW-1162: clear bitmap only when peer stays secondary.

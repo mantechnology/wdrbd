@@ -280,6 +280,16 @@ static bool state_has_changed(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
+
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		struct drbd_peer_device *peer_device;
+		for_each_peer_device(peer_device, device) {
+			peer_device->uuid_flags &= ~UUID_FLAG_GOT_STABLE;
+		}
+	}
+#endif
+	
 	if (test_and_clear_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags))
 		return true;
 
@@ -295,7 +305,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 			return true;
 	}
 
-#ifdef _WIN32
+#ifdef _WIN32  
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 	idr_for_each_entry(&resource->devices, device, vnr) {
@@ -315,8 +325,13 @@ static bool state_has_changed(struct drbd_resource *resource)
 			    peer_device->resync_susp_dependency[OLD] !=
 				peer_device->resync_susp_dependency[NEW] ||
 			    peer_device->resync_susp_other_c[OLD] !=
+#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+				peer_device->resync_susp_other_c[NEW])
+#else
 				peer_device->resync_susp_other_c[NEW] ||
-			    peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)
+				peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)
+#endif
+
 				return true;
 		}
 	}
@@ -2827,6 +2842,50 @@ static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_st
 	return false;
 }
 
+#ifdef _WIN32
+/* MODIFIED_BY_MANTECH DW-1357: it is called when we determined that crashed primary is no longer need for one of peer at least.
+	I am no longer crashed primary for all peers if..
+		1. I've done resync as a sync target from one of uptodate peer.
+		2. I've done resync as a sync source for all existing peers.
+	I am no longer crashed primary for only this peer if..
+		1. I've done resync as a sync source for this peer, but have not done resync for another peer.
+*/
+static void consider_finish_crashed_primary(struct drbd_peer_device *peer_device, bool bTargetDone)
+{
+	struct drbd_device *device = peer_device->device;
+	struct drbd_peer_device *p;
+	bool bAllPeerDone = true;
+
+	if (bTargetDone)
+	{
+		clear_bit(CRASHED_PRIMARY, &device->flags);
+
+		for_each_peer_device(p, device)
+			drbd_md_clear_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY);
+
+		return;
+	}
+
+	drbd_md_set_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY);
+
+	for_each_peer_device(p, device)
+	{
+		if (!drbd_md_test_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY))
+		{
+			bAllPeerDone = false;
+		}
+	}
+
+	if (bAllPeerDone)
+	{
+		clear_bit(CRASHED_PRIMARY, &device->flags);
+
+		for_each_peer_device(p, device)
+			drbd_md_clear_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY);
+	}	
+}
+#endif
+
 /*
  * Perform after state change actions that may sleep.
  */
@@ -2905,7 +2964,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
 			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
-				clear_bit(CRASHED_PRIMARY, &device->flags);
+				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
+				if (test_bit(CRASHED_PRIMARY, &device->flags))
+					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);				
+
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
 			}
@@ -2944,7 +3006,13 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			if ((disk_state[OLD] != D_UP_TO_DATE || peer_disk_state[OLD] != D_UP_TO_DATE) &&
 			    (disk_state[NEW] == D_UP_TO_DATE && peer_disk_state[NEW] == D_UP_TO_DATE)) {
+#ifdef _WIN32
+				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
+				if (test_bit(CRASHED_PRIMARY, &device->flags))
+					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);
+#else
 				clear_bit(CRASHED_PRIMARY, &device->flags);
+#endif
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
 			}
@@ -4309,7 +4377,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		resource->twopc_work.cb = NULL;
 	spin_unlock_irq(&resource->req_lock);
 
-	if (!twopc_reply.tid || !expect(resource, !list_empty(&parents))){
+	if (!twopc_reply.tid){
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "!twopc_reply.tid = %u result: %s\n",
 			twopc_reply.tid, drbd_packet_name(cmd));
@@ -4611,7 +4679,11 @@ static bool device_has_connected_peer_devices(struct drbd_device *device)
 	return false;
 }
 
-static bool device_has_peer_devices_with_disk(struct drbd_device *device)
+#ifdef _WIN32 
+static bool device_has_peer_devices_with_disk(struct drbd_device *device, enum change_phase phase)
+#else
+static bool device_has_peer_devices_with_disk(struct drbd_device *device) 
+#endif 
 {
 	struct drbd_peer_device *peer_device;
 	bool rv = false;
@@ -4621,7 +4693,12 @@ static bool device_has_peer_devices_with_disk(struct drbd_device *device)
 			/* We expect to receive up-to-date UUIDs soon.
 			   To avoid a race in receive_state, "clear" uuids while
 			   holding req_lock. I.e. atomic with the state change */
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1321 : just clear uuids once, not twice because sometimes peer uuid comes eariler than local state change
+			if (phase == PH_PREPARE)
+				peer_device->uuids_received = false;
+#else
 			peer_device->uuids_received = false;
+#endif
 
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1263: the peers that has disk state lower than D_NEGOTIATING can't be negotiated with, skip this peer.
@@ -4701,7 +4778,11 @@ static bool do_change_disk_state(struct change_context *context, enum change_pha
 
 	if (device->disk_state[NOW] == D_ATTACHING &&
 	    context->val.disk == D_NEGOTIATING) {
+#ifdef _WIN32
+		if (device_has_peer_devices_with_disk(device, phase)) {
+#else
 		if (device_has_peer_devices_with_disk(device)) {
+#endif 
 			struct drbd_connection *connection =
 				first_connection(device->resource);
 			cluster_wide_state_change =

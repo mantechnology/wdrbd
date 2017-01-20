@@ -4004,9 +4004,12 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			continue;
 		if (i == device->ldev->md.node_id)
 			continue;
+#ifndef _WIN32
+		// MODIFIED_BY_MANTECH DW-1360: need to see bitmap uuid of node which are not assigned to a peer, some of those peers drive me to create new uuid while rotating uuid into their bitmap uuid.
 		/* Skip bitmap indexes which are not assigned to a peer. */
 		if (device->ldev->md.peers[i].bitmap_index == -1)
 			continue;
+#endif
 		self = device->ldev->md.peers[i].bitmap_uuid & ~UUID_PRIMARY;
 		if (self == peer) {
 			*peer_node_id = i;
@@ -4245,11 +4248,28 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 }
 
 static void disk_states_to_goodness(struct drbd_device *device,
+#ifdef _WIN32
+// MODIFIED_BY_MANTECH DW-1357: need to see peer device md flags.
+					struct drbd_peer_device *peer_device,
+#endif
 				    enum drbd_disk_state peer_disk_state,
 				    int *hg, int rule_nr)
 {
 	enum drbd_disk_state disk_state = device->disk_state[NOW];
 	bool p = false;
+
+#ifdef _WIN32
+	/* MODIFIED_BY_MANTECH DW-1357: one of node is crashed primary, but need to ignore if..
+		1. crashed primary's disk state is higher than peer's, crashed primary will be sync source.
+		2. we've already done resync(by #1).
+	*/
+	if (abs(*hg) == 1)
+	{
+		if ((disk_state - peer_disk_state) * (*hg) < 0 ||
+			drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
+			*hg = 0;
+	}		
+#endif
 
 	if (*hg != 0 && rule_nr != 40)
 		return;
@@ -4360,7 +4380,11 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 		return -1;
 
 	bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
+#ifdef _WIN32
+	disk_states_to_goodness(peer_device->device, peer_device, peer_disk_state, &hg, rule_nr);
+#else
 	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg, rule_nr);
+#endif
 
 	return goodness_to_repl_state(peer_device, peer_device->connection->peer_role[NOW], hg);
 }
@@ -4393,7 +4417,11 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 		return -1;
 	}
 
+#ifdef _WIN32
+	disk_states_to_goodness(device, peer_device, peer_disk_state, &hg, rule_nr);
+#else
 	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
+#endif
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
@@ -5317,9 +5345,9 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 
 #ifdef _WIN32
 	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
-	if (!hg && reason == AFTER_UNSTABLE)
+	if (reason == AFTER_UNSTABLE)
 	{
-		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
+		disk_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], &hg, rule_nr);
 		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
 	}
 #endif
@@ -5327,6 +5355,10 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 
 	if (new_repl_state == -1) {
 		drbd_info(peer_device, "Unexpected result of handshake() %d!\n", new_repl_state);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1360: destroy connection for conflicted data.
+		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+#endif
 		return;
 	} else if (new_repl_state != L_ESTABLISHED) {
 		bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
@@ -5417,6 +5449,8 @@ static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum
 	if (abs(hg) >= 100)
 	{
 		drbd_err(peer_device, "Can not start resync due to unexpected handshake result(%d)\n", hg);
+		// MODIFIED_BY_MANTECH DW-1360: destroy connection for conflicted data.
+		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
 		return;
 	}
 
@@ -5665,7 +5699,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 #endif
 	while (i < ARRAY_SIZE(peer_device->history_uuids))
 		peer_device->history_uuids[i++] = 0;
-#ifdef _WIN32 // DW-
+#if 0  // DW-593, DW-1321 : cause twopc timeout, roll back
     struct drbd_resource *resource = device->resource;
     down(&resource->state_sem);
     peer_device->uuids_received = true;
@@ -7602,6 +7636,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct p_block_desc *p = pi->data;
 	sector_t sector; 
 	unsigned long bit; 
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1354
+	bool bResetTimer = false;
+#endif
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -7617,6 +7655,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	// DW-1205 SyncSource 100% stuck at low bandwith, resolve linbit patching b2bfb5c
 	case L_SYNC_TARGET: 
 		mutex_lock(&device->bm_resync_fo_mutex);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1354: I am a sync target and find offset points the end, does mean no more requeueing resync timer.
+		bResetTimer = (device->bm_resync_fo == drbd_bm_bits(device));
+#endif
 		bit = BM_SECT_TO_BIT(sector);
 		if (bit < device->bm_resync_fo)
 			device->bm_resync_fo = bit; 
@@ -7627,6 +7669,15 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				drbd_repl_str(peer_device->repl_state[NOW]));
 	}
 	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize)); 
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
+	if (bResetTimer)
+	{
+		drbd_warn(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
+		mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
+	}
+#endif
 
 	return 0;
 }
@@ -7750,9 +7801,16 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		{	
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
-			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT)
-#endif
+			// DW-1365 fixup secondary's diskless case for crashed primary.
+			if(get_ldev_if_state(peer_device->device, D_OUTDATED)) {
+				drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+				put_ldev (peer_device->device);
+			} else {
+				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d\n",peer_device->device->disk_state[NOW]);
+			}
+#else		
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+#endif
 		}
 	}
 
