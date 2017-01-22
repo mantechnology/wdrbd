@@ -400,7 +400,7 @@ NTSTATUS
 mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
 	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
-
+#if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
 
@@ -432,6 +432,7 @@ mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			kref_put(&device->kref, drbd_destroy_device);
     }
 #endif
+#endif
 
     return mvolSendToNextDriver(DeviceObject, Irp);
 }
@@ -440,7 +441,7 @@ NTSTATUS
 mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
 	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
-
+#if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
 
@@ -448,7 +449,7 @@ mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     }
-
+#endif
     return mvolSendToNextDriver(DeviceObject, Irp);
 }
 
