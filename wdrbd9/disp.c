@@ -413,7 +413,7 @@ mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active) 
 	{
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 		// DW-1300: prevent mounting volume when device went diskless.
 		if (device && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] == D_DISKLESS))   // V9
 		{
@@ -476,7 +476,7 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	 
 	if (g_mj_flush_buffers_filter && VolumeExtension->Active) {
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
         if (device) {
 			PMVOL_THREAD				pThreadInfo;
 			pThreadInfo = &VolumeExtension->WorkThreadInfo;
@@ -520,7 +520,7 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 		// DW-1300: prevent mounting volume when device is failed or below.
 		if (device && device->resource->bTempAllowMount == FALSE && ((R_PRIMARY != device->resource->role[NOW]) || (device->resource->bPreDismountLock == TRUE) || device->disk_state[NOW] <= D_FAILED))   // V9
 		{
@@ -565,7 +565,7 @@ mvolRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (VolumeExtension->Active)
     {
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 		// DW-1363: prevent mounting volume when device is failed or below.
 		if (device && ((R_PRIMARY == device->resource->role[0]) && (device->resource->bPreDismountLock == FALSE) && device->disk_state[NOW] > D_FAILED || device->resource->bTempAllowMount == TRUE))
         {
@@ -640,7 +640,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     if (VolumeExtension->Active) {
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 		// DW-1363: prevent writing when device is failed or below.
 		if (device && device->resource && (device->resource->role[NOW] == R_PRIMARY) && (device->resource->bPreSecondaryLock == FALSE) && (device->disk_state[NOW] > D_FAILED)) {
         	
