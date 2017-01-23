@@ -2237,7 +2237,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
 	{
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(pvext);
+		struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
 		if (device &&
 			get_ldev_if_state(device, D_NEGOTIATING))
 		{
@@ -2518,6 +2518,9 @@ void delete_drbd_block_device(struct kref *kref)
 	ObDereferenceObject(bdev->bd_disk->pDeviceExtension->DeviceObject);
 	bdev->bd_disk->pDeviceExtension->DeviceObject = NULL;
 
+	// DW-1381: set dev as NULL not to access from this volume extension since it's being deleted.
+	bdev->bd_disk->pDeviceExtension->dev = NULL;
+
 	blk_cleanup_queue(bdev->bd_disk->queue);
 
 	put_disk(bdev->bd_disk);
@@ -2527,13 +2530,31 @@ void delete_drbd_block_device(struct kref *kref)
 }
 
 // get device with volume extension in safe, user should put ref when no longer use device.
-struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext)
+struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext, bool bCheckRemoveLock)
 {
 	unsigned char oldIRQL = 0;
 	struct drbd_device *device = NULL;
 
 	if (KeGetCurrentIrql() > DISPATCH_LEVEL)
 		return NULL;
+
+	// DW-1381: dev is set as NULL when block device is destroyed.
+	if (!pvext->dev)
+	{
+		WDRBD_ERROR("failed to get drbd device since pvext->dev is NULL\n");
+		return NULL;		
+	}
+
+	// DW-1381: check if device is removed already.
+	if (bCheckRemoveLock)
+	{
+		NTSTATUS status = IoAcquireRemoveLock(&pvext->RemoveLock, NULL);
+		if (!NT_SUCCESS(status))
+		{
+			WDRBD_INFO("failed to acquire remove lock with status:0x%x, return NULL\n", status);
+			return NULL;
+		}
+	}
 
 	oldIRQL = ExAcquireSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock);
 	device = pvext->dev->bd_disk->drbd_device;
@@ -2547,6 +2568,9 @@ struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext)
 		}
 	}
 	ExReleaseSpinLockShared(&pvext->dev->bd_disk->drbd_device_ref_lock, oldIRQL);
+
+	if (bCheckRemoveLock)
+		IoReleaseRemoveLock(&pvext->RemoveLock, NULL);
 
 	return device;
 }
