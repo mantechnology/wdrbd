@@ -747,7 +747,12 @@ cleanup:
 	}
 
 	ct_delete_thread(KeGetCurrentThread());
-	
+    
+    ExDeleteNPagedLookasideList(&genl_info_mempool);
+    ExDeleteNPagedLookasideList(&genl_msg_mempool);
+
+    ExDeleteResourceLite(&genl_multi_socket_res_lock);
+
 	return;
 }
 
