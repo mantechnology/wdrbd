@@ -3735,9 +3735,8 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 	for_each_connection_rcu(connection, resource) {
 		if (!test_bit(TWOPC_PREPARED, &connection->flags))
 			continue;
-		if (!(test_bit(TWOPC_YES, &connection->flags) ||
-		      test_bit(TWOPC_NO, &connection->flags) ||
-		      test_bit(TWOPC_RETRY, &connection->flags))) {
+		if(test_bit(TWOPC_NO, &connection->flags) ||
+			test_bit(TWOPC_RETRY, &connection->flags)) {
 #ifdef _WIN32 
 			static int x = 0; // globally! TODO: delete
 			if (!(x++ % 3000))
@@ -3745,9 +3744,12 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 #else
 			drbd_debug(connection, "Reply not ready yet\n");
 #endif
-			ready = false;
+			ready = true;
 			break;
 		}
+		if (!test_bit(TWOPC_YES, &connection->flags))
+			ready = false; 
+
 	}
 	rcu_read_unlock();
 	return ready;
