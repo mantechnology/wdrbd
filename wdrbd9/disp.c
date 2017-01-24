@@ -665,24 +665,12 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
 #endif
 
-#ifdef MULTI_WRITE_HOOKER_THREADS
-            pThreadInfo = &deviceExtension->WorkThreadInfo[deviceExtension->Rr];
-            IoMarkIrpPending(Irp);
-            ExInterlockedInsertTailList(&pThreadInfo->ListHead,
-                &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
-
-            IO_THREAD_SIG(pThreadInfo);
-            if (++deviceExtension->Rr >= 5)
-            {
-                deviceExtension->Rr = 0;
-            }
-#else
             pThreadInfo = &VolumeExtension->WorkThreadInfo;
             IoMarkIrpPending(Irp);
             ExInterlockedInsertTailList(&pThreadInfo->ListHead,
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
-#endif
+
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
             return STATUS_PENDING;

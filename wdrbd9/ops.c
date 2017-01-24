@@ -158,20 +158,7 @@ IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 		return STATUS_INVALID_DEVICE_REQUEST;
 	}
 
-#ifdef MULTI_WRITE_HOOKER_THREADS
-	{
-		int i = 0;
-		for (i = 0; i < 5; i++) 
-		{
-			if (deviceExtension->WorkThreadInfo[i].Active == FALSE)
-			{
-				mvolLogError(deviceExtension->DeviceObject, 267,
-					MSG_INVALID_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST);
-				return STATUS_INVALID_DEVICE_REQUEST;
-			}
-		}
-	}
-#else
+
 	if( VolumeExtension->WorkThreadInfo.Active == FALSE )
 	{
 		mvolLogError( VolumeExtension->DeviceObject, 267,
@@ -179,7 +166,7 @@ IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 		WDRBD_ERROR("not initialized Volume Thread\n");
 		return STATUS_INVALID_DEVICE_REQUEST;
 	}
-#endif
+
 	VolumeExtension->Active = TRUE;
 	return STATUS_SUCCESS;
 }

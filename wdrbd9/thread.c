@@ -114,14 +114,12 @@ mvolWorkThread(PVOID arg)
 	PIRP						irp;
 	PIO_STACK_LOCATION			irpSp;
 	pThreadInfo = (PMVOL_THREAD) arg;
-	ULONG						id;
 	int							high = 0;
 	
 	DeviceObject = pThreadInfo->DeviceObject;
 	VolumeExtension = DeviceObject->DeviceExtension;
 	
-	id = pThreadInfo->Id;
-    WDRBD_TRACE("WorkThread [%ws]:id %d handle 0x%x start\n", VolumeExtension->PhysicalDeviceName, id, KeGetCurrentThread());
+    WDRBD_TRACE("WorkThread [%ws]: handle 0x%x start\n", VolumeExtension->PhysicalDeviceName, KeGetCurrentThread());
 
 	for (;;)
 	{
@@ -189,8 +187,8 @@ mvolWorkThread(PVOID arg)
 			if (high < loop)
 			{
 				high = loop;
-				WDRBD_INFO("hooker[%ws] thread id %d: irp processing peek(%d)\n",
-					VolumeExtension->PhysicalDeviceName, id, high);
+				WDRBD_INFO("hooker[%ws]: irp processing peek(%d)\n",
+					VolumeExtension->PhysicalDeviceName, high);
 			}
 		}		
 		loop = 0;

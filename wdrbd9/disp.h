@@ -46,7 +46,6 @@ typedef struct _MVOL_THREAD
 	MVOL_SECURITY_CLIENT_CONTEXT	se_client_context;
 	KEVENT						RequestEvent;
 	PVOID						pThread;
-	ULONG						Id;                 // MULTI_WRITE_HOOKER_THREADS
 	KEVENT						SplitIoDoneEvent;
 } MVOL_THREAD, *PMVOL_THREAD;
 
@@ -88,12 +87,7 @@ typedef struct _VOLUME_EXTENSION
 	UNICODE_STRING		MountPoint;	// IoVolumeDeviceToDosName()
 	UNICODE_STRING		VolumeGuid;
 
-#ifdef MULTI_WRITE_HOOKER_THREADS
-	ULONG				Rr; // MULTI_WRITE_HOOKER_THREADS
-	MVOL_THREAD			WorkThreadInfo[5]; 
-#else
 	MVOL_THREAD			WorkThreadInfo;
-#endif
 	struct block_device	*dev;
 } VOLUME_EXTENSION, *PVOLUME_EXTENSION;
 
