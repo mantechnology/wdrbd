@@ -6599,7 +6599,7 @@ static int process_twopc(struct drbd_connection *connection,
 	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) primary_nodes (%d) pi->cmd (%s)\n", 
 					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
-	if (csc_rv == CSC_CLEAR) {
+	if (csc_rv == CSC_CLEAR && pi->cmd != P_TWOPC_ABORT) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
 			/* We have committed or aborted this transaction already. */
 			spin_unlock_irq(&resource->req_lock);
