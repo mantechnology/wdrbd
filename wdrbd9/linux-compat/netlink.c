@@ -553,8 +553,36 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 VOID
 NetlinkWorkThread(PVOID context)
 {
+	NTSTATUS 		status;
+	PWSK_SOCKET 	netlink_socket = NULL;
+	SOCKADDR_IN 	LocalAddress = { 0, };
+	SOCKADDR_IN 	RemoteAddress = { 0, };
 	// InitWskNetlink
+	// Init WSK
+$InitRetry:	
+    status = SocketsInit();
+    if (!NT_SUCCESS(status)) {
+        WDRBD_WARN("Failed to init. status(0x%x)\n", status);
+		goto $InitRetry;
+    }
+$CreateRetry:	
+	// Create Socket
+	netlink_socket = CreateSocket (AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_LISTEN_SOCKET);
+	if(netlink_socket = NULL) {
+		WDRBD_WARN("CreateSocket() returned NULL\n");
+		goto $CreateRetry;
+	}
 	// Bind
+$BindRetry:	
+	LocalAddress.sin_family = AF_INET;
+    LocalAddress.sin_addr.s_addr = INADDR_ANY;
+    LocalAddress.sin_port = HTONS(g_netlink_tcp_port);
+	status = Bind(netlink_socket, (PSOCKADDR)&LocalAddress);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_WARN("Bind() failed with status 0x%08X\n", status);
+		goto $BindRetry;
+	}
+	netlink_server_socket = netlink_socket;
 	// Accept loop
 	// original NetlinkWorkThread logic
 	return;
