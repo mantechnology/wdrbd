@@ -375,6 +375,8 @@ __inline void nlmsg_free(struct sk_buff *skb)
     ExFreeToNPagedLookasideList(&genl_msg_mempool, skb);
 }
 
+#ifndef _WIN32_NETLINK_EX
+
 void
 InitWskNetlink(void * pctx)
 {
@@ -438,6 +440,9 @@ end:
 
     PsTerminateSystemThread(status);
 }
+
+#endif
+
 
 NTSTATUS
 ReleaseWskNetlink()
@@ -543,6 +548,19 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 
 	return 0;
 }
+
+#ifdef _WIN32_NETLINK_EX
+VOID
+NetlinkWorkThread(PVOID context)
+{
+	// InitWskNetlink
+	// Bind
+	// Accept loop
+	// original NetlinkWorkThread logic
+	return;
+}
+
+#else
 
 VOID
 NetlinkWorkThread(PVOID context)
@@ -696,6 +714,9 @@ cleanup:
         WDRBD_INFO("done\n");
     }
 }
+
+#endif
+
 
 // Listening socket callback which is invoked whenever a new connection arrives.
 NTSTATUS
