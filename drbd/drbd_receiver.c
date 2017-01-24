@@ -6588,11 +6588,7 @@ static int process_twopc(struct drbd_connection *connection,
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
-	resource->starting_queued_twopc = NULL;
-	if (reply->is_aborted) {
-		spin_unlock_irq(&resource->req_lock);
-		return 0;
-	}
+
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
@@ -6625,6 +6621,11 @@ static int process_twopc(struct drbd_connection *connection,
 #endif			
 			return 0;
 		}
+		if (reply->is_aborted) {
+			spin_unlock_irq(&resource->req_lock);
+			return 0;
+		}
+		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
