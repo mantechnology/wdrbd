@@ -6274,30 +6274,41 @@ check_concurrent_transactions(struct drbd_resource *resource, struct twopc_reply
 	return CSC_MATCH;
 }
 
+enum alt_rv {
+	ALT_LOCKED,
+	ALT_MATCH,
+	ALT_TIMEOUT,
+};
 
-static bool when_done_lock(struct drbd_resource *resource)
+
+static enum alt_rv when_done_lock(struct drbd_resource *resource, unsigned int for_tid)
 {
 	spin_lock_irq(&resource->req_lock);
 	if (!resource->remote_state_change)
-		return true;
+		return ALT_LOCKED;
 	spin_unlock_irq(&resource->req_lock);
-	return false;
+	if (resource->twopc_reply.tid == for_tid)
+		return ALT_MATCH;
+
+	return ALT_TIMEOUT;
 }
 
-static int abort_local_transaction(struct drbd_resource *resource)
+static enum alt_rv abort_local_transaction(struct drbd_resource *resource, unsigned int for_tid)
 {
 	long t = twopc_timeout(resource);
+	enum alt_rv rv;
 
 	set_bit(TWOPC_ABORT_LOCAL, &resource->flags);
 	spin_unlock_irq(&resource->req_lock);
 	wake_up(&resource->state_wait);
 #ifdef _WIN32
-	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
+	wait_event_timeout(t, resource->twopc_wait, 
+		(rv = when_done_lock(resource, for_tid)) != ALT_TIMEOUT, t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
 #endif
 	clear_bit(TWOPC_ABORT_LOCAL, &resource->flags);
-	return t ? 0 : -ETIMEDOUT;
+	return rv;
 }
 
 static void arm_queue_twopc_timer(struct drbd_resource *resource)
@@ -6600,15 +6611,18 @@ static int process_twopc(struct drbd_connection *connection,
 			return 0;
 		}
 	} else if (csc_rv == CSC_ABORT_LOCAL && pi->cmd == P_TWOPC_PREPARE) {
-		int err;
+		enum alt_rv alt_rv;
 
 		drbd_info(connection, "Aborting local state change %u to yield to remote "
 			  "state change %u.\n",
 			  resource->twopc_reply.tid,
 			  reply->tid);
-		err = abort_local_transaction(resource);
-		if (err) {
-			/* abort_local_transaction() comes back unlocked if it fails... */
+		alt_rv = abort_local_transaction(resource, reply->tid);
+		if (alt_rv == ALT_MATCH) {
+			/* abort_local_transaction() comes back unlocked in this case ... */
+			goto match; 
+		} else if (alt_rv == ALT_TIMEOUT){
+			/* abort_local_transaction() comes back unlocked in this case ... */
 			drbd_info(connection, "Aborting local state change %u "
 				  "failed. Rejecting remote state change %u.\n",
 				  resource->twopc_reply.tid,
@@ -6616,6 +6630,7 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_send_twopc_reply(connection, P_TWOPC_RETRY, reply);
 			return 0;
 		}
+		/*abort_local_transaction() returned with the req_lock */
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
@@ -6664,6 +6679,7 @@ static int process_twopc(struct drbd_connection *connection,
 				/* We have prepared this transaction already. */
 				enum drbd_packet reply_cmd;
 
+			match: 
 				spin_lock_irq(&resource->req_lock);
 				reply_cmd = resource->twopc_prepare_reply_cmd;
 				if (!reply_cmd) {
