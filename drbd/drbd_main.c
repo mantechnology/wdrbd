@@ -5951,7 +5951,7 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 		if (!update_sync_bits(p, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
-			drbd_bm_set_many_bits(peer_device, 0, -1UL);
+			drbd_bm_set_many_bits(p, 0, -1UL);
 		}
 	}
 #else
