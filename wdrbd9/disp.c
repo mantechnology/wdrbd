@@ -763,18 +763,6 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             MVOL_IOCOMPLETE_REQ(Irp, status, size);
         }
 
-        case IOCTL_MVOL_VOLUME_START:
-        {
-            status = IOCTL_VolumeStart(DeviceObject, Irp);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
-        }
-
-        case IOCTL_MVOL_VOLUME_STOP:
-        {
-            status = IOCTL_VolumeStop(DeviceObject, Irp);
-            MVOL_IOCOMPLETE_REQ(Irp, status, 0);
-        }
-
         case IOCTL_MVOL_GET_VOLUME_SIZE:
         {
             status = IOCTL_GetVolumeSize(DeviceObject, Irp);

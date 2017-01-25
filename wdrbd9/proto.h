@@ -82,10 +82,6 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength );
 NTSTATUS
 IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength );
 NTSTATUS
-IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
-IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
 IOCTL_GetVolumeSize( PDEVICE_OBJECT DeviceObject, PIRP Irp );
 NTSTATUS
 IOCTL_VolumeReadOff( PDEVICE_OBJECT DeviceObject, PIRP Irp, BOOLEAN ReadEnable );
