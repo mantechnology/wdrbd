@@ -146,6 +146,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WPP_CLEANUP(DriverObject);
 #endif
 	wdrbd_logger_cleanup();
+	SocketsDeinit ();
 }
 
 static
