@@ -337,7 +337,8 @@ CloseSocket(
 		if (STATUS_TIMEOUT == Status) { // DW-1316 detour WskCloseSocket hang in Win7/x86.
 			WDRBD_WARN("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel\n", WskSocket);
 			IoCancelIrp(Irp);
-			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
+			// DW-1388: canceling must be completed before freeing the irp.
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 		}
 		Status = Irp->IoStatus.Status;
 	}
