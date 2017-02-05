@@ -1705,9 +1705,11 @@ GetRemoteAddress(
 	return Status;
 }
 
+PWSK_SOCKET         netlink_server_socket = NULL;
+#ifndef _WIN32_NETLINK_EX
 WSK_REGISTRATION    gWskEventRegistration;
 WSK_PROVIDER_NPI    gWskEventProviderNPI;
-PWSK_SOCKET         netlink_server_socket = NULL;
+
 
 // Socket-level callback table for listening sockets
 const WSK_CLIENT_LISTEN_DISPATCH ClientListenDispatch = {
@@ -1848,12 +1850,13 @@ CloseWskEventSocket()
     return status;
 }
 
+
 void
 ReleaseProviderNPI()
 {
     WskReleaseProviderNPI(&gWskEventRegistration);
 }
-
+#endif
 
 NTSTATUS
 NTAPI

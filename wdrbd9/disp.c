@@ -146,6 +146,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WPP_CLEANUP(DriverObject);
 #endif
 	wdrbd_logger_cleanup();
+	SocketsDeinit ();
 }
 
 static
@@ -266,7 +267,11 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
+#ifdef _WIN32_NETLINK_EX
+		Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, NetlinkWorkThread, NULL);
+#else
 		Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, InitWskNetlink, NULL);
+#endif
         if (!NT_SUCCESS(Status))
         {
             WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
