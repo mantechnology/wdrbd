@@ -33,14 +33,23 @@ if %errorlevel% gtr 0 (
 
 if "%1" == "disable" (
 	reg.exe add %regpath% /t "REG_DWORD" /v "TcpAckFrequency" /d "1" /f
+	
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 	reg.exe add %regpath% /t "REG_DWORD" /v "TcpNoDelay" /d "1" /f
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 ) else if "%1" == "enable" (
 	reg.exe delete %regpath% /v "TcpAckFrequency" /f
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 	reg.exe delete %regpath% /v "TcpNoDelay" /f
-)
-
-if %errorlevel% gtr 0 (
-	goto error
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 )
 
 SetLocal enabledelayedexpansion
