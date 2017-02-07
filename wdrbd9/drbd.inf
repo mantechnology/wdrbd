@@ -75,7 +75,7 @@ HKR,,"daemon_tcp_port",0x00010001,5679
 HKR,,"handler_use",0x00010001,0
 HKR,,"handler_timeout",0x00010001,1
 HKR,,"handler_retry",0x00010001,0
-HKR,,"ver",0x00000000, "va.9"
+HKR,,"ver",0x00000000, "1.4"
 
 [DRBD.DelRegistry]
 HKLM, System\CurrentControlSet\Control\Class\{71A27CDD-812A-11D0-BEC7-08002BE2092F}, UpperFilters, 0x00018002, drbd

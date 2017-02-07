@@ -32,15 +32,55 @@ if %errorlevel% gtr 0 (
 )
 
 if "%1" == "disable" (
-	set regcmd=add %regpath% /t "REG_DWORD" /v "TcpAckFrequency" /d "1" /f
+	reg.exe add %regpath% /t "REG_DWORD" /v "TcpAckFrequency" /d "1" /f
+	
+	if %errorlevel% gtr 0 (
+		goto error
+	)
+	reg.exe add %regpath% /t "REG_DWORD" /v "TcpNoDelay" /d "1" /f
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 ) else if "%1" == "enable" (
-	set regcmd=delete %regpath% /v "TcpAckFrequency" /f
+	reg.exe delete %regpath% /v "TcpAckFrequency" /f
+	if %errorlevel% gtr 0 (
+		goto error
+	)
+	reg.exe delete %regpath% /v "TcpNoDelay" /f
+	if %errorlevel% gtr 0 (
+		goto error
+	)
 )
 
-reg.exe %regcmd% >nul
-if %errorlevel% gtr 0 (
-	goto error
+SetLocal enabledelayedexpansion
+for /f "tokens=2*" %%a in ('REG QUERY "HKLM\Software\Microsoft\Windows NT\CurrentVersion" /v InstallationType') do set "OsType=%%~b"
+for /f "tokens=2*" %%c in ('REG QUERY "HKLM\Software\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion') do set "WinVer=%%~d"
+
+if /i "%OsType%" == "Server" (
+
+  for /f "delims=. tokens=1-2" %%e in ("%WinVer%") do (
+    set /a WinVer.Major=%%~e+0
+    set /a WinVer.Minor=%%~f+0
+  )
+
+  if !WinVer.Major! GTR 6 (    
+    set PsDaf=true
+  )
+  if !WinVer.Major! EQU 6 (
+    if !WinVer.Minor! GEQ 3 (
+      set PsDaf=true
+    )
+  )
+
+  if "!PsDaf!" == "true" (
+	if "%1" == "disable" (
+		Powershell Set-NetTcpSetting -SettingName *Custom* -DelayedAckFrequency 1
+	) else if "%1" == "enable" (
+		Powershell Set-NetTcpSetting -SettingName *Custom* -DelayedAckFrequency 2
+	)
+  )
 )
+EndLocal
 
 if "%3" == "1" (
 	rem nic disable
