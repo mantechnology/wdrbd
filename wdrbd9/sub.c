@@ -139,12 +139,18 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	IoDetachDevice(VolumeExtension->TargetDeviceObject);
 	IoDeleteDevice(DeviceObject);
 
-
+#ifdef _WIN32_MULTIVOL_THREAD
+	if (VolumeExtension->WorkThreadInfo)
+	{
+		VolumeExtension->WorkThreadInfo = NULL;		
+	}
+#else
 	if (VolumeExtension->WorkThreadInfo.Active)
 	{
 		mvolTerminateThread(&VolumeExtension->WorkThreadInfo);
 		WDRBD_TRACE("[%ws]: WorkThread Terminate Completely\n",	VolumeExtension->PhysicalDeviceName);
 	}
+#endif
 
 	if (VolumeExtension->dev) {
 		// DW-1300: get device and get reference.

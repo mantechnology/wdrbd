@@ -341,13 +341,14 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 #ifdef _WIN32_MVFL
     if (do_add_minor(VolumeExtension->VolIndex))
     {
+#ifndef _WIN32_MULTIVOL_THREAD
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
         if (!NT_SUCCESS(status))
         {
             WDRBD_ERROR("Failed to initialize WorkThread. status(0x%x)\n", status);
             //return status;
         }
-
+#endif
         VolumeExtension->Active = TRUE;
     }
 #endif
@@ -478,12 +479,17 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
         if (device) {
+#ifdef _WIN32_MULTIVOL_THREAD
+			IoMarkIrpPending(Irp);
+			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+#else
 			PMVOL_THREAD				pThreadInfo;
 			pThreadInfo = &VolumeExtension->WorkThreadInfo;
             IoMarkIrpPending(Irp);
             ExInterlockedInsertTailList(&pThreadInfo->ListHead,
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
+#endif
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
 			return STATUS_PENDING;
@@ -609,11 +615,18 @@ async_read_filter:
         WDRBD_TRACE("\n\nupper driver READ request start! vol:%c: sect:0x%llx sz:%d --------------------------------!\n",
             VolumeExtension->Letter, (readIrpSp->Parameters.Read.ByteOffset.QuadPart / 512), readIrpSp->Parameters.Read.Length);
 #endif
+
+#ifdef _WIN32_MULTIVOL_THREAD
+		IoMarkIrpPending(Irp);
+		mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+#else
         PMVOL_THREAD pThreadInfo = &VolumeExtension->WorkThreadInfo;
 
         IoMarkIrpPending(Irp);
+
         ExInterlockedInsertTailList(&pThreadInfo->ListHead, &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
         IO_THREAD_SIG(pThreadInfo);
+#endif
     }
     return STATUS_PENDING;
 
@@ -659,17 +672,24 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				goto skip;
 			}
 
-            PMVOL_THREAD				pThreadInfo;
+
 #ifdef DRBD_TRACE
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) ................Queuing(%d)!\n",
 				&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount);
 #endif
 
-            pThreadInfo = &VolumeExtension->WorkThreadInfo;
+#ifdef _WIN32_MULTIVOL_THREAD
+			IoMarkIrpPending(Irp);
+			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+#else
+			PMVOL_THREAD	pThreadInfo = &VolumeExtension->WorkThreadInfo;
+
             IoMarkIrpPending(Irp);
+
             ExInterlockedInsertTailList(&pThreadInfo->ListHead,
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
+#endif
 
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);

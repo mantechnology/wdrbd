@@ -1251,6 +1251,9 @@ struct drbd_resource {
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
 #endif
+#ifdef _WIN32_MULTIVOL_THREAD
+	MVOL_THREAD			WorkThreadInfo;
+#endif
 
 };
 

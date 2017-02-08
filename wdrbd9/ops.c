@@ -60,8 +60,10 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
 		pventry->ExtensionActive = pvext->Active;
 		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+#ifndef _WIN32_MULTIVOL_THREAD
 		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
 		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
+#endif
 		if (pvext->dev)
 		{
 			pventry->AgreedSize = pvext->dev->d_size;
@@ -148,7 +150,11 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 
 	// DW-1300: get device and get reference.
 	device = get_device_with_vol_ext(pvext);
-    if (pvext->WorkThreadInfo.Active && device)
+#ifdef _WIN32_MULTIVOL_THREAD
+    if (device)
+#else
+	if (pvext->WorkThreadInfo.Active && device)
+#endif
     {
     	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
@@ -159,7 +165,11 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     }
 
     pvext->Active = FALSE;
+#ifdef _WIN32_MULTIVOL_THREAD
+	pvext->WorkThreadInfo = NULL;
+#else
 	mvolTerminateThread(&pvext->WorkThreadInfo);
+#endif
 
 out:
     COUNT_UNLOCK(pvext);
