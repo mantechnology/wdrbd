@@ -154,7 +154,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	if (VolumeExtension->dev) {
 		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension);
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, FALSE);
 		if (device)
 		{
 			if (get_disk_state2(device) >= D_INCONSISTENT)
@@ -172,7 +172,6 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
 		// deleting block device can be defered if drbd device is using.		
 		blkdev_put(VolumeExtension->dev, 0);
-		VolumeExtension->dev = NULL;
 	}
 
 	// DW-1277: check volume type we marked when drbd attaches.
@@ -309,7 +308,7 @@ mvolReadWriteDevice(PVOLUME_EXTENSION VolumeExtension, PIRP Irp, ULONG Io)
 	}
 
 	// DW-1300: get device and get reference.
-	device = get_device_with_vol_ext(VolumeExtension);
+	device = get_device_with_vol_ext(VolumeExtension, TRUE);
 	if (device/* && (mdev->state.role == R_PRIMARY)*/) {
 		struct splitInfo *splitInfo = 0;
 		ULONG io_id = 0;

@@ -149,7 +149,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     }
 
 	// DW-1300: get device and get reference.
-	device = get_device_with_vol_ext(pvext);
+	device = get_device_with_vol_ext(pvext, TRUE);
 #ifdef _WIN32_MULTIVOL_THREAD
     if (device)
 #else
