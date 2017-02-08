@@ -247,7 +247,8 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #ifdef _WIN32
     if(err == STATUS_NO_SUCH_DEVICE)
     {
-        drbd_err(device, "cannot find volume, PD=%ws\n", bio->bi_bdev->bd_disk->pDeviceExtension->PhysicalDeviceName);
+		// DW-1396: referencing bio causes BSOD as long as bio has already been freed once it's been submitted, we don't need volume device name which is already removed also.
+        drbd_err(device, "cannot find meta volume\n");
         return err;
     }
 #endif
