@@ -81,6 +81,7 @@ typedef struct _MVOL_SYNC_REQ
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
 
+#define _WIN32_MULTIVOL_THREAD
 typedef struct _WDRBD_VOLUME_ENTRY
 {
 	WCHAR		PhysicalDeviceName[MAXDEVICENAME];
@@ -92,8 +93,10 @@ typedef struct _WDRBD_VOLUME_ENTRY
 
 	UCHAR		VolIndex;
 	BOOLEAN		ExtensionActive;
+#ifndef _WIN32_MULTIVOL_THREAD
 	BOOLEAN		ThreadActive;
 	BOOLEAN		ThreadExit;
+#endif
 } WDRBD_VOLUME_ENTRY, *PWDRBD_VOLUME_ENTRY;
 
 #define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail

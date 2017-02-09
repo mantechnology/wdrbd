@@ -6401,7 +6401,11 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		mutex_unlock(&notification_mutex);
 
 #ifdef _WIN32_MULTIVOL_THREAD
-		mvolInitializeThread(&resource->WorkThreadInfo, mvolWorkThread);
+		NTSTATUS status;
+		status = mvolInitializeThread(&resource->WorkThreadInfo, mvolWorkThread);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+		}
 #endif
 		
 	} else {
