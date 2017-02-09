@@ -197,6 +197,14 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <Link>
@@ -227,31 +235,79 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
