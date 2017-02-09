@@ -3080,10 +3080,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
 		if (pvext) {
 #ifdef _WIN32_MULTIVOL_THREAD
-			if (!pvext->WorkThreadInfo || (pvext->WorkThreadInfo != &resource->WorkThreadInfo))
-			{
-				pvext->WorkThreadInfo = &resource->WorkThreadInfo;
-			}
+			pvext->WorkThreadInfo = &resource->WorkThreadInfo;
 
 			FsctlLockVolume(dh->minor);
 
