@@ -1596,6 +1596,35 @@ BOOLEAN isFastInitialSync()
 	return bRet;
 }
 
+NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	OBJECT_ATTRIBUTES cboa = { 0, };
+	UNICODE_STRING usCbName;
+	PCALLBACK_OBJECT g_pCallbackObj;
+	PVOID g_pCallbackReg;
+
+	if (pszCallbackName == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+	
+	RtlInitUnicodeString(&usCbName, pszCallbackName);
+	InitializeObjectAttributes(&cboa, &usCbName, OBJ_CASE_INSENSITIVE, 0, 0);
+
+	status = ExCreateCallback(&g_pCallbackObj, &cboa, FALSE, TRUE);
+
+	if (NT_SUCCESS(status))
+	{
+		ExNotifyCallback(g_pCallbackObj, NULL, NULL);
+		ObDereferenceObject(g_pCallbackObj);
+	}
+	else
+		WDRBD_ERROR("Failed to open callback object for %ws, status : 0x%x\n", pszCallbackName, status);
+
+	return status;
+}
+
 /**
  * @brief
  *	caller should release unicode's buffer(in bytes)

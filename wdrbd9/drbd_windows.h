@@ -1287,6 +1287,8 @@ extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 // DW-844
 extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
 extern BOOLEAN isFastInitialSync();
+// DW-1327
+extern NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName);
 // DW-1317
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
