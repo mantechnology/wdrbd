@@ -29,6 +29,8 @@ drbdlockCreateControlDeviceObject(
 	for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
 		pDrvObj->MajorFunction[i] = DefaultIrpDispatch;		
 
+	pDrvObj->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceIoControlDispatch;
+
 	return status;
 }
 
@@ -57,4 +59,31 @@ DefaultIrpDispatch(
 	IoCompleteRequest(pIrp, IO_NO_INCREMENT);
 
 	return STATUS_SUCCESS;
+}
+
+NTSTATUS
+DeviceIoControlDispatch(
+	IN PDEVICE_OBJECT pDeviceObject,
+	IN PIRP pIrp
+	)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION pIrpStack = NULL;
+
+	pIrpStack = IoGetCurrentIrpStackLocation(pIrp);
+
+	switch (pIrpStack->Parameters.DeviceIoControl.IoControlCode)
+	{	
+		default:
+		{
+			break;
+		}
+	}
+
+	pIrp->IoStatus.Status = STATUS_SUCCESS;
+	IoCompleteRequest(pIrp, IO_NO_INCREMENT);
+
+	UNREFERENCED_PARAMETER(pDeviceObject);
+
+	return status;
 }
