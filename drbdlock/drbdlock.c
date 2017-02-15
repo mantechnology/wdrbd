@@ -541,6 +541,8 @@ Return Value:
 		return status;
 	}			
 
+	drbdlockStartupCallback();
+
     //
     //  Start filtering i/o
     //
@@ -584,6 +586,8 @@ Return Value:
                   ("drbdlock!drbdlockUnload: Entered\n") );
 
     FltUnregisterFilter( gFilterHandle );
+
+	drbdlockCleanupCallback();
 
 	drbdlockDeleteControlDeviceObject();
 
