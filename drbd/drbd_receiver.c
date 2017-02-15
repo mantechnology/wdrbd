@@ -8062,6 +8062,11 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 
+#ifdef _WIN32
+	// DW-1398: closing listening socket busts accepted socket, put those sockets here instead.
+	dtt_put_listeners(&connection->transport);
+#endif
+
 	del_connect_timer(connection);
 
 	/* ack_receiver does not clean up anything. it must not interfere, either */
