@@ -905,6 +905,11 @@ start:
 	/* Assume that the peer only understands protocol 80 until we know better.  */
 	connection->agreed_pro_version = 80;
 
+#ifdef _WIN32
+	// DW-1398: initialize.
+	atomic_set(&transport->listening_done, false);
+#endif
+
 	err = transport->ops->connect(transport);
 	if (err == -EAGAIN) {
 		if (connection->cstate[NOW] == C_DISCONNECTING)

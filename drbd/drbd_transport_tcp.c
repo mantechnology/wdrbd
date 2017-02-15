@@ -1530,8 +1530,6 @@ static int dtt_create_listener(struct drbd_transport *transport,
     	err = -1;
         goto out;
     }
-	// DW-1398: initialize.
-	atomic_set(&transport->listening_done, false);
 #endif		
 	return 0;
 out:
