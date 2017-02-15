@@ -51,6 +51,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="drbdlock_ops.c" />
     <ResourceCompile Include="drbdlock.rc" />
     <ClCompile Include="drbdlock.c" />
     <Inf Include="drbdlock.inf" />
@@ -205,31 +206,49 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <Link>
@@ -243,6 +262,9 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <Link>
@@ -256,6 +278,9 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <Link>
@@ -269,6 +294,9 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <Link>
@@ -282,6 +310,9 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <Link>
@@ -295,6 +326,9 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <Link>
@@ -308,10 +342,18 @@ copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
     <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="drbdlock_proc.h" />
+    <ClInclude Include="drbdlock_struct.h" />
+    <ClInclude Include="pch.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

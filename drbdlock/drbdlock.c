@@ -14,12 +14,7 @@ Environment:
 
 --*/
 
-#include <fltKernel.h>
-#include <dontuse.h>
-#include <suppress.h>
-
-#pragma prefast(disable:__WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
-
+#include "pch.h"
 
 PFLT_FILTER gFilterHandle;
 ULONG_PTR OperationStatusCtx = 1;
@@ -31,9 +26,7 @@ ULONG gTraceFlags = 0;
 
 
 #define PT_DBG_PRINT( _dbgLevel, _string )          \
-    (FlagOn(gTraceFlags,(_dbgLevel)) ?              \
-        DbgPrint _string :                          \
-        ((int)0))
+        KdPrint _string
 
 /*************************************************************************
     Prototypes
@@ -100,18 +93,32 @@ drbdlockPreOperationNoPostOperation (
     );
 
 //
-//  Assign text sections for each routine.
-//
-
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(INIT, DriverEntry)
-#endif
-
-//
 //  operation registration
 //
 
 CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
+
+		{ IRP_MJ_CREATE,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
+
+		{ IRP_MJ_CLOSE,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
+
+		{ IRP_MJ_READ,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
+
+		{ IRP_MJ_WRITE,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
+
+
 
 #if 0 // TODO - List all of the requests to filter.
     { IRP_MJ_CREATE,
@@ -377,10 +384,7 @@ Return Value:
     UNREFERENCED_PARAMETER( Flags );
     UNREFERENCED_PARAMETER( VolumeDeviceType );
     UNREFERENCED_PARAMETER( VolumeFilesystemType );
-
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockInstanceSetup: Entered\n") );
-
+	
     return STATUS_SUCCESS;
 }
 
@@ -418,9 +422,6 @@ Return Value:
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( Flags );
 
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockInstanceQueryTeardown: Entered\n") );
-
     return STATUS_SUCCESS;
 }
 
@@ -451,9 +452,6 @@ Return Value:
 {
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( Flags );
-
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockInstanceTeardownStart: Entered\n") );
 }
 
 
@@ -483,9 +481,6 @@ Return Value:
 {
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( Flags );
-
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockInstanceTeardownComplete: Entered\n") );
 }
 
 
@@ -525,7 +520,7 @@ Return Value:
 
     PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
                   ("drbdlock!DriverEntry: Entered\n") );
-
+	
     //
     //  Register with FltMgr to tell it our callback routines
     //
@@ -534,21 +529,28 @@ Return Value:
                                 &FilterRegistration,
                                 &gFilterHandle );
 
-    FLT_ASSERT( NT_SUCCESS( status ) );
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
 
-    if (NT_SUCCESS( status )) {
+	status = drbdlockCreateControlDeviceObject(DriverObject);
+	if (!NT_SUCCESS(status))
+	{
+		FltUnregisterFilter(gFilterHandle);
+		return status;
+	}			
 
-        //
-        //  Start filtering i/o
-        //
+    //
+    //  Start filtering i/o
+    //
+    status = FltStartFiltering( gFilterHandle );
 
-        status = FltStartFiltering( gFilterHandle );
+    if (!NT_SUCCESS( status )) {
 
-        if (!NT_SUCCESS( status )) {
-
-            FltUnregisterFilter( gFilterHandle );
-        }
+        FltUnregisterFilter( gFilterHandle );
     }
+   
 
     return status;
 }
@@ -582,6 +584,8 @@ Return Value:
                   ("drbdlock!drbdlockUnload: Entered\n") );
 
     FltUnregisterFilter( gFilterHandle );
+
+	drbdlockDeleteControlDeviceObject();
 
     return STATUS_SUCCESS;
 }
@@ -625,9 +629,6 @@ Return Value:
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
 
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockPreOperation: Entered\n") );
-	  
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
 
@@ -669,10 +670,7 @@ Return Value:
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
     UNREFERENCED_PARAMETER( Flags );
-
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockPostOperation: Entered\n") );
-
+	    
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
@@ -711,9 +709,6 @@ Return Value:
     UNREFERENCED_PARAMETER( Data );
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
-
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockPreOperationNoPostOperation: Entered\n") );
 
     // This template code does not do anything with the callbackData, but
     // rather returns FLT_PREOP_SUCCESS_NO_CALLBACK.
