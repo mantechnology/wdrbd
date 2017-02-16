@@ -44,6 +44,18 @@ NTAPI CompletionRoutineAsync(
 }
 #endif
 
+// DW-1398: Implementing a cancel routine.
+VOID CancelRoutine(
+	IN PDEVICE_OBJECT pDeviceObject,
+	IN PIRP Irp)
+{
+	IoReleaseCancelSpinLock(Irp->CancelIrql);
+	Irp->IoStatus.Status = STATUS_CANCELLED;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+}
+
 NTSTATUS
 InitWskData(
 	__out PIRP*		pIrp,
@@ -51,6 +63,8 @@ InitWskData(
 	__in  BOOLEAN	bRawIrp
 )
 {
+	KIRQL irql;
+
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
 
@@ -69,6 +83,11 @@ InitWskData(
 	
 	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+	
+	// DW-1398: set cancel routine
+	IoAcquireCancelSpinLock(&irql);
+	IoSetCancelRoutine(*pIrp, CancelRoutine);
+	IoReleaseCancelSpinLock(irql);
 
 	return STATUS_SUCCESS;
 }
@@ -81,6 +100,8 @@ InitWskDataAsync(
 	__in  BOOLEAN	bRawIrp
 	)
 {
+	KIRQL irql;
+
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
 
@@ -99,6 +120,11 @@ InitWskDataAsync(
 	//KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutineAsync, NULL, TRUE, TRUE, TRUE);
 
+	// DW-1398: set cancel routine
+	IoAcquireCancelSpinLock(&irql);
+	IoSetCancelRoutine(*pIrp, CancelRoutine);
+	IoReleaseCancelSpinLock(irql);
+
 	return STATUS_SUCCESS;
 }
 #endif
@@ -109,12 +135,19 @@ __out PIRP*		pIrp,
 __out PKEVENT	CompletionEvent
 )
 {
+	KIRQL irql;
+
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
 
 	KeResetEvent(CompletionEvent);
 	IoReuseIrp(*pIrp, STATUS_UNSUCCESSFUL);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+
+	// DW-1398: set cancel routine
+	IoAcquireCancelSpinLock(&irql);
+	IoSetCancelRoutine(*pIrp, CancelRoutine);
+	IoReleaseCancelSpinLock(irql);
 
 	return;
 }

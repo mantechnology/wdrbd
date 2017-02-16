@@ -1238,6 +1238,19 @@ static void dtt_incoming_connection(struct sock *sock)
 		spin_unlock(&listener->listener.waiters_lock);
         return STATUS_REQUEST_NOT_ACCEPTED;
 	}
+
+#ifdef _WIN32
+	// DW-1398: do not accept if already connected.
+	if (atomic_read(&waiter->transport->listening_done))
+	{
+		WDRBD_WARN("listening is done for this transport, request won't be accepted\n");
+		kfree(s_estab->sk_linux_attr);
+		kfree(s_estab);
+		spin_unlock(&listener->listener.waiters_lock);
+		return STATUS_REQUEST_NOT_ACCEPTED;
+	}
+#endif
+
     struct dtt_path * path = container_of(waiter, struct dtt_path, waiter);
 
     if (path)
@@ -1547,7 +1560,12 @@ static void dtt_cleanup_accepted_sockets(struct dtt_path *path)
 }
 #endif
 
+#ifdef _WIN32
+// DW-1398
+void dtt_put_listeners(struct drbd_transport *transport)
+#else
 static void dtt_put_listeners(struct drbd_transport *transport)
+#endif
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
@@ -1852,7 +1870,8 @@ randomize:
 	connect_to_path->path.established = true;
 	drbd_path_event(transport, &connect_to_path->path);
 #ifdef _WIN32
-	dtt_put_listeners(transport);
+	// DW-1398: closing listening socket here makes accepted socket be unavailable, putting listeners is moved to conn_disconnect()
+	atomic_set(&transport->listening_done, true);
 #else
 	dtt_put_listeners(transport);
 #endif
