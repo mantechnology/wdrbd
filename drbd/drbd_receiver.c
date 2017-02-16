@@ -905,6 +905,11 @@ start:
 	/* Assume that the peer only understands protocol 80 until we know better.  */
 	connection->agreed_pro_version = 80;
 
+#ifdef _WIN32
+	// DW-1398: initialize.
+	atomic_set(&transport->listening_done, false);
+#endif
+
 	err = transport->ops->connect(transport);
 	if (err == -EAGAIN) {
 		if (connection->cstate[NOW] == C_DISCONNECTING)
@@ -8061,6 +8066,11 @@ void conn_disconnect(struct drbd_connection *connection)
 	 */	
 
 	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+
+#ifdef _WIN32
+	// DW-1398: closing listening socket busts accepted socket, put those sockets here instead.
+	dtt_put_listeners(&connection->transport);
+#endif
 
 	del_connect_timer(connection);
 
