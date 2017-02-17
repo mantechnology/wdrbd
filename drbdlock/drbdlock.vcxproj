@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="drbdlock_ops.c" />
+    <ClCompile Include="volBlock.c" />
     <ResourceCompile Include="drbdlock.rc" />
     <ClCompile Include="drbdlock.c" />
     <Inf Include="drbdlock.inf" />
@@ -354,6 +355,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClInclude Include="drbdlock_proc.h" />
     <ClInclude Include="drbdlock_struct.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="volBlock.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

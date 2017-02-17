@@ -9,5 +9,6 @@
 #include <suppress.h>
 #include "drbdlock_struct.h"
 #include "drbdlock_proc.h"
+#include "volBlock.h"
 
 #endif

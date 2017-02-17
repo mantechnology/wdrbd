@@ -30,6 +30,9 @@
     <ClCompile Include="drbdlock_ops.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="volBlock.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="drbdlock.rc">
@@ -44,6 +47,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="volBlock.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

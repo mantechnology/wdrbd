@@ -543,6 +543,8 @@ Return Value:
 
 	drbdlockStartupCallback();
 
+	InitVolBlock();
+
     //
     //  Start filtering i/o
     //
@@ -586,6 +588,8 @@ Return Value:
                   ("drbdlock!drbdlockUnload: Entered\n") );
 
     FltUnregisterFilter( gFilterHandle );
+
+	CleanupVolBlock();
 
 	drbdlockCleanupCallback();
 
@@ -632,6 +636,18 @@ Return Value:
 	UNREFERENCED_PARAMETER(Data);
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
+
+	switch (Data->Iopb->MajorFunction)
+	{
+		case IRP_MJ_READ:
+		case IRP_MJ_WRITE:
+		{			
+			if (isProtectedVolume(FltObjects->Volume))
+			{
+				// protect volume
+			}
+		}
+	}
 
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
