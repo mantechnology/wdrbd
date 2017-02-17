@@ -645,6 +645,10 @@ Return Value:
 			if (isProtectedVolume(FltObjects->Volume))
 			{
 				// protect volume
+				Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+				Data->IoStatus.Information = 0;
+
+				return FLT_PREOP_COMPLETE;
 			}
 		}
 	}
