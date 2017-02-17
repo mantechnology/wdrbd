@@ -1,6 +1,7 @@
 #include "pch.h"
 
 RTL_GENERIC_TABLE g_GenericTable;
+extern PFLT_FILTER gFilterHandle;
 
 static RTL_GENERIC_COMPARE_RESULTS
 TableCompareRoutine(
@@ -88,4 +89,37 @@ isProtectedVolume(
 	)
 {
 	return RtlLookupElementGenericTable(&g_GenericTable, &pVolume) != NULL ? TRUE : FALSE;
+}
+
+NTSTATUS
+ConvertVolume(
+	IN PDRBDLOCK_VOLUME pVolumeInfo,
+	OUT PFLT_VOLUME *pConverted
+	)
+{
+	PFLT_VOLUME pVolume = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	UNICODE_STRING usVolName = { 0, };
+
+	if (pVolumeInfo == NULL ||
+		pConverted == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeName);
+
+	status = FltGetVolumeFromName(gFilterHandle, &usVolName, &pVolume);
+
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
+
+	if (pVolume)
+		FltObjectDereference(pVolume);
+
+	*pConverted = pVolume;
+
+	return status;	
 }
