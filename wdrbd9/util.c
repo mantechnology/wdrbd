@@ -1596,7 +1596,8 @@ BOOLEAN isFastInitialSync()
 	return bRet;
 }
 
-NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName)
+// DW-1327: notifies callback object with given name and parameter.
+NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	OBJECT_ATTRIBUTES cboa = { 0, };
@@ -1616,11 +1617,31 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName)
 
 	if (NT_SUCCESS(status))
 	{
-		ExNotifyCallback(g_pCallbackObj, NULL, NULL);
+		ExNotifyCallback(g_pCallbackObj, pParam, NULL);
 		ObDereferenceObject(g_pCallbackObj);
 	}
 	else
 		WDRBD_ERROR("Failed to open callback object for %ws, status : 0x%x\n", pszCallbackName, status);
+
+	return status;
+}
+
+// DW-1327: notifies callback object of drbdlock, this routine is used to block or allow I/O by drbdlock.
+NTSTATUS SetDrbdlockIoBlock(PWCHAR pszVolume, ULONG ulVolumeLen, bool bBlock)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DRBDLOCK_VOLUME_CONTROL volumeControl = { 0, };
+
+	volumeControl.volume.volumeType = VOLUME_TYPE_LETTER;
+	wcsncpy_s(volumeControl.volume.volumeName, DRBDLOCK_VOLUMENAME_MAX_LEN, pszVolume, ulVolumeLen);
+	volumeControl.bBlock = bBlock;
+
+	status = NotifyCallbackObject(DRBDLOCK_CALLBACK_NAME, &volumeControl);
+
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
 
 	return status;
 }

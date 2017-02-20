@@ -1,10 +1,11 @@
 
 
-#define DRBDLOCK_DEVICE_OBJECT_NAME	L"\\Device\\DrbdLock"
-#define DRBDLOCK_SYMLINK_NAME		L"\\DosDevices\\DrbdLock"
-#define DRBDLOCK_CALLBACK_NAME		L"\\Callback\\DrbdLock"
+
 
 #define DRBDLOCK_VOLUMENAME_MAX_LEN	260
+
+#ifndef _DRBDLOCK_STRUCT_
+#define _DRBDLOCK_STRUCT_
 
 enum VOLUME_NAME_TYPE
 {
@@ -16,3 +17,5 @@ typedef struct _DRBDLOCK_VOLUME {
 	enum VOLUME_NAME_TYPE volumeType;
 	WCHAR volumeName[DRBDLOCK_VOLUMENAME_MAX_LEN];
 }DRBDLOCK_VOLUME, *PDRBDLOCK_VOLUME;
+
+#endif

@@ -56,8 +56,15 @@ drbdlockCallbackFunc(
 	)
 {
 	UNREFERENCED_PARAMETER(Context);
-	UNREFERENCED_PARAMETER(Argument1);
 	UNREFERENCED_PARAMETER(Argument2);
+
+	PDRBDLOCK_VOLUME_CONTROL pVolumeControl = (PDRBDLOCK_VOLUME_CONTROL)Argument1;
+
+	if (pVolumeControl == NULL)
+	{
+		// invalid parameter.
+		return;
+	}
 }
 
 NTSTATUS

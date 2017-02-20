@@ -29,6 +29,7 @@
 #include "linux-compat/drbd_endian.h"
 #include "windows/types.h"
 #include "mvolmsg.h"
+#include "../drbdlock/drbdlock_comm.h"
 
 #include "disp.h"
 
@@ -1288,7 +1289,8 @@ extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
 extern BOOLEAN isFastInitialSync();
 // DW-1327
-extern NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName);
+extern NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam);
+extern NTSTATUS SetDrbdlockIoBlock(PWCHAR pszVolume, ULONG ulVolumeLen, bool bBlock);
 // DW-1317
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
