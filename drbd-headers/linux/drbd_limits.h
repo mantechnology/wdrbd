@@ -104,8 +104,15 @@
   /* I don't think that a tcp send buffer of more than 10M is useful */
 #define DRBD_SNDBUF_SIZE_MIN  0
 #if _WIN32
+
+#ifdef _WIN64 // DW-1403 max sndbuf-size on x64 platform is 64 Giga BYTE
+#define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*64)
+#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+#else
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+#endif
+
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (10<<20)
 #define DRBD_SNDBUF_SIZE_DEF  0
