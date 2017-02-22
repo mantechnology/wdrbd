@@ -163,12 +163,13 @@ static inline sector_t bdev_logical_block_size(struct block_device *bdev)
 	return queue_logical_block_size(bdev_get_queue(bdev));
 }
 
-static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
+// DW-1406: max_hw_sectors must be 64bit variable since it can be bigger than 4gb.
+static inline unsigned long long queue_max_hw_sectors(struct request_queue *q)
 {
 	return q->max_hw_sectors;
 }
 
-static inline unsigned int queue_max_sectors(struct request_queue *q)
+static inline unsigned long long queue_max_sectors(struct request_queue *q)
 {
 	return q->max_hw_sectors;
 }
