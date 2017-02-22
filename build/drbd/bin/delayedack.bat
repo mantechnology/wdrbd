@@ -6,10 +6,15 @@
 :: %3 - network interface restart flag. 1 or 0 (default = 1)
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
+SetLocal enabledelayedexpansion
 
 SET IP=%2
 
 rem get nic info
+if "%IP%" == "all" (
+	goto query
+)
+
 SET cmd="wmic nicconfig get ipaddress,settingid |findstr %IP%"
 FOR /F "delims=\n" %%i IN (' %cmd% ') DO SET INFO=%%i
 if "%INFO%" == "" (
@@ -17,42 +22,44 @@ if "%INFO%" == "" (
 	goto error
 )
 
-
-
 rem parsing GUID
 rem {"10.10.100.167"} {F63F7A21-6354-419F-9320-5EEEBA25C3C8}
 FOR /F "tokens=3 delims={}" %%a in ('ECHO %INFO%') DO SET ID={%%a}
 
 rem edit registry values
 set regpath="HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\%ID%"
+goto add_value
 
-reg.exe query %regpath% >nul
-if %errorlevel% gtr 0 (
-	goto error
+
+:query
+for /f "tokens=1" %%x in ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"') do (
+	set regpath=%%x
+	:add_value
+	if "%1" == "disable" (
+		reg.exe add !regpath! /t "REG_DWORD" /v "TcpAckFrequency" /d "1" /f
+		if %errorlevel% gtr 0 (
+			echo Failed to add TcpAckFrequency.
+		)
+		reg.exe add !regpath! /t "REG_DWORD" /v "TcpNoDelay" /d "1" /f
+		if %errorlevel% gtr 0 (
+			echo Failed to add TcpNoDelay.
+		)
+	) else if "%1" == "enable" (
+		reg.exe delete !regpath! /v "TcpAckFrequency" /f
+		if %errorlevel% gtr 0 (
+			echo Failed to delete TcpAckFrequency.
+		)
+		reg.exe delete !regpath! /v "TcpNoDelay" /f
+		if %errorlevel% gtr 0 (
+			echo Failed to delete TcpNoDelay.
+		)
+	)
+	if not "%IP%" == "all" (
+		goto break
+	)
 )
+:break
 
-if "%1" == "disable" (
-	reg.exe add %regpath% /t "REG_DWORD" /v "TcpAckFrequency" /d "1" /f
-	
-	if %errorlevel% gtr 0 (
-		goto error
-	)
-	reg.exe add %regpath% /t "REG_DWORD" /v "TcpNoDelay" /d "1" /f
-	if %errorlevel% gtr 0 (
-		goto error
-	)
-) else if "%1" == "enable" (
-	reg.exe delete %regpath% /v "TcpAckFrequency" /f
-	if %errorlevel% gtr 0 (
-		goto error
-	)
-	reg.exe delete %regpath% /v "TcpNoDelay" /f
-	if %errorlevel% gtr 0 (
-		goto error
-	)
-)
-
-SetLocal enabledelayedexpansion
 for /f "tokens=2*" %%a in ('REG QUERY "HKLM\Software\Microsoft\Windows NT\CurrentVersion" /v InstallationType') do set "OsType=%%~b"
 for /f "tokens=2*" %%c in ('REG QUERY "HKLM\Software\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion') do set "WinVer=%%~d"
 
@@ -80,7 +87,7 @@ if /i "%OsType%" == "Server" (
 	)
   )
 )
-EndLocal
+
 
 if "%3" == "1" (
 	rem nic disable
@@ -98,6 +105,7 @@ if "%3" == "1" (
 	)
 )
 
+EndLocal
 
 
 :end
