@@ -3,7 +3,7 @@
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: %1 - enable or disable
 :: %2 - IP address or GUID
-:: %3 - network interface restart flag. 1 or 0 (default = 1)
+:: %3 - network interface restart flag. 1 or 0
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 SetLocal enabledelayedexpansion
