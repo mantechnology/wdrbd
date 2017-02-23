@@ -109,12 +109,12 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 		drbdlockPostOperation },
 
 		{ IRP_MJ_READ,
-		0,
+		FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO | FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO,
 		drbdlockPreOperation,
 		drbdlockPostOperation },
 
 		{ IRP_MJ_WRITE,
-		0,
+		FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO | FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO,
 		drbdlockPreOperation,
 		drbdlockPostOperation },
 
