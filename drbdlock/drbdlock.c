@@ -642,7 +642,13 @@ Return Value:
 		case IRP_MJ_READ:
 		case IRP_MJ_WRITE:
 		{			
-			if (isProtectedVolume(FltObjects->Volume))
+			NTSTATUS status = STATUS_UNSUCCESSFUL;
+			PDEVICE_OBJECT pDiskDev = NULL;
+
+			status = FltGetDiskDeviceObject(FltObjects->Volume, &pDiskDev);
+						
+			if (NT_SUCCESS(status) &&
+				isProtectedVolume(pDiskDev))
 			{
 				// protect volume
 				Data->IoStatus.Status = STATUS_ACCESS_DENIED;

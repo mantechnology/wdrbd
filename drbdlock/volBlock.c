@@ -65,7 +65,7 @@ CleanupVolBlock(
 
 BOOLEAN
 AddProtectedVolume(
-	PFLT_VOLUME pFltVolume
+	PVOID pFltVolume
 )
 {
 	BOOLEAN bRet = FALSE;
@@ -77,7 +77,7 @@ AddProtectedVolume(
 
 BOOLEAN
 DeleteProtectedVolume(
-	PFLT_VOLUME pFltVolume
+	PVOID pFltVolume
 )
 {
 	return RtlDeleteElementGenericTable(&g_GenericTable, &pFltVolume);
@@ -85,7 +85,7 @@ DeleteProtectedVolume(
 
 BOOLEAN
 isProtectedVolume(
-	IN PFLT_VOLUME pVolume
+	IN PDEVICE_OBJECT pVolume
 	)
 {
 	return RtlLookupElementGenericTable(&g_GenericTable, &pVolume) != NULL ? TRUE : FALSE;
@@ -94,10 +94,11 @@ isProtectedVolume(
 NTSTATUS
 ConvertVolume(
 	IN PDRBDLOCK_VOLUME pVolumeInfo,
-	OUT PFLT_VOLUME *pConverted
+	OUT PDEVICE_OBJECT *pConverted
 	)
 {
 	PFLT_VOLUME pVolume = NULL;
+	PDEVICE_OBJECT pDiskDeviceObject = NULL;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	UNICODE_STRING usVolName = { 0, };
 
@@ -107,19 +108,40 @@ ConvertVolume(
 		return STATUS_INVALID_PARAMETER;
 	}
 
-	RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeName);
-
-	status = FltGetVolumeFromName(gFilterHandle, &usVolName, &pVolume);
-
-	if (!NT_SUCCESS(status))
+	do
 	{
-		return status;
-	}
+		RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeName);
+
+		status = FltGetVolumeFromName(gFilterHandle, &usVolName, &pVolume);
+
+		if (!NT_SUCCESS(status))
+		{
+			DbgPrint("FltGetVolumeFromName failed : %x\n", status);
+			break;
+		}
+
+		status = FltGetDiskDeviceObject(pVolume, &pDiskDeviceObject);
+
+		if (!NT_SUCCESS(status))
+		{
+			DbgPrint("FltGetDiskDeviceObject failed : %x\n", status);
+			break;
+		}
+
+	} while (FALSE);
+
+	*pConverted = pDiskDeviceObject;
 
 	if (pVolume)
+	{
 		FltObjectDereference(pVolume);
+		pVolume = NULL;
+	}
 
-	*pConverted = pVolume;
-
+	if (pDiskDeviceObject)
+	{
+		ObDereferenceObject(pDiskDeviceObject);
+		pDiskDeviceObject = NULL;
+	}
 	return status;	
 }

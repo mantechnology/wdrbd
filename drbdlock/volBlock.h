@@ -12,21 +12,21 @@ CleanupVolBlock(
 
 BOOLEAN
 AddProtectedVolume(
-	PFLT_VOLUME pFltVolume
+	PVOID pFltVolume
 	);
 
 BOOLEAN
 DeleteProtectedVolume(
-	PFLT_VOLUME pFltVolume
+	PVOID pFltVolume
 	);
 
 BOOLEAN
 isProtectedVolume(
-	IN PFLT_VOLUME pVolume
+	IN PVOID pVolume
 	);
 
 NTSTATUS
 ConvertVolume(
 	IN PDRBDLOCK_VOLUME pVolumeInfo,
-	OUT PFLT_VOLUME *pConverted
+	OUT PDEVICE_OBJECT *pConverted
 	);

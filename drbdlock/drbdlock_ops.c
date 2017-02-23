@@ -59,12 +59,48 @@ drbdlockCallbackFunc(
 	UNREFERENCED_PARAMETER(Argument2);
 
 	PDRBDLOCK_VOLUME_CONTROL pVolumeControl = (PDRBDLOCK_VOLUME_CONTROL)Argument1;
+	PDEVICE_OBJECT pVolObj = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+
 
 	if (pVolumeControl == NULL)
 	{
 		// invalid parameter.
 		return;
 	}
+
+
+	status = ConvertVolume(&pVolumeControl->volume, &pVolObj);
+
+	if (!NT_SUCCESS(status))
+	{
+		return;
+	}	
+
+	if (pVolumeControl->bBlock)
+	{
+		if (AddProtectedVolume(pVolObj))
+		{
+			DbgPrint("volume has been added as protected\n");
+		}
+		else
+		{
+			DbgPrint("volume add failed!!\n");
+		}
+	}
+	else
+	{
+		if (DeleteProtectedVolume(pVolObj))
+		{
+			DbgPrint("volume has been deleted as protected\n");
+		}
+		else
+		{
+			DbgPrint("volume delete failed!!\n");
+		}
+	}
+
+
 }
 
 NTSTATUS

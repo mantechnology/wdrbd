@@ -3,6 +3,7 @@
 #define __DRBDLOCK_PCH_H_
 
 #pragma prefast(disable:__WARNING_ENCODE_MEMBER_FUNCTION_POINTER, "Not valid for kernel mode drivers")
+#pragma warning(disable: 4127)
 
 #include <FltKernel.h>
 #include <dontuse.h>

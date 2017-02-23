@@ -1606,6 +1606,17 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		int vnr;
 		retcode = SS_SUCCESS;
 		struct drbd_device * device;
+
+		// DW-1327: 
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			if (pvext)
+			{
+				SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, TRUE);
+			}
+		}
+
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
 			if (device->disk_state[NOW] == D_DISKLESS)
@@ -1650,15 +1661,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			FsctlUnlockVolume(device->minor);
 		}
 
-		// DW-1327: 
-		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
-		{
-			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
-			if (pvext)
-			{
-				SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, TRUE);
-			}
-		}
+		
 #else
         int vnr;
         struct drbd_device * device;
