@@ -108,9 +108,16 @@ ConvertVolume(
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	if (pVolumeInfo->volumeType == VOLUME_TYPE_DEVICE_OBJECT)
+	{
+		*pConverted = pVolumeInfo->volumeID.pVolumeObject;
+
+		return STATUS_SUCCESS;
+	}
+
 	do
 	{
-		RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeName);
+		RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeID.volumeName);
 
 		status = FltGetVolumeFromName(gFilterHandle, &usVolName, &pVolume);
 

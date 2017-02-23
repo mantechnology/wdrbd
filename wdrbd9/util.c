@@ -1627,13 +1627,13 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 }
 
 // DW-1327: notifies callback object of drbdlock, this routine is used to block or allow I/O by drbdlock.
-NTSTATUS SetDrbdlockIoBlock(PWCHAR pszVolume, ULONG ulVolumeLen, bool bBlock)
+NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlock)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	DRBDLOCK_VOLUME_CONTROL volumeControl = { 0, };
-
-	volumeControl.volume.volumeType = VOLUME_TYPE_LETTER;
-	wcsncpy_s(volumeControl.volume.volumeName, DRBDLOCK_VOLUMENAME_MAX_LEN, pszVolume, ulVolumeLen);
+	
+	volumeControl.volume.volumeType = VOLUME_TYPE_DEVICE_OBJECT;
+	volumeControl.volume.volumeID.pVolumeObject = pVolumeExtension->PhysicalDeviceObject;
 	volumeControl.bBlock = bBlock;
 
 	status = NotifyCallbackObject(DRBDLOCK_CALLBACK_NAME, &volumeControl);

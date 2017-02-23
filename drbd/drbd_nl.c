@@ -1587,7 +1587,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
 			if (pvext)
 			{
-				SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, FALSE);
+				SetDrbdlockIoBlock(pvext, FALSE);
 			}
 		}
 #endif
@@ -1613,7 +1613,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
 			if (pvext)
 			{
-				SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, TRUE);
+				SetDrbdlockIoBlock(pvext, TRUE);
 			}
 		}
 
@@ -3108,7 +3108,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 				pvext->Active = TRUE;
 
 				// DW-1327: to block I/O by drbdlock.
-				SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, TRUE);
+				SetDrbdlockIoBlock(pvext, TRUE);
 
 				status = FsctlFlushDismountVolume(dh->minor, true);
 

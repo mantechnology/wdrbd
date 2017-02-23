@@ -182,7 +182,7 @@ IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 #endif
 	VolumeExtension->Active = TRUE;
 	// DW-1327: to block I/O by drbdlock.
-	SetDrbdlockIoBlock(VolumeExtension->MountPoint.Buffer, VolumeExtension->MountPoint.Length / 2, TRUE);
+	SetDrbdlockIoBlock(VolumeExtension, TRUE);
 	return STATUS_SUCCESS;
 }
 
@@ -233,7 +233,7 @@ IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 
 	VolumeExtension->Active = FALSE;
 	// DW-1327: to allow I/O by drbdlock.
-	SetDrbdlockIoBlock(VolumeExtension->MountPoint.Buffer, VolumeExtension->MountPoint.Length / 2, FALSE);
+	SetDrbdlockIoBlock(VolumeExtension, FALSE);
 	return STATUS_SUCCESS;
 }
 
@@ -284,7 +284,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 
     pvext->Active = FALSE;
 	// DW-1327: to allow I/O by drbdlock.
-	SetDrbdlockIoBlock(pvext->MountPoint.Buffer, pvext->MountPoint.Length / 2, FALSE);
+	SetDrbdlockIoBlock(pvext, FALSE);
 	mvolTerminateThread(&pvext->WorkThreadInfo);
 
 out:

@@ -350,7 +350,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 
         VolumeExtension->Active = TRUE;
 		// DW-1327: to block I/O by drbdlock.
-		SetDrbdlockIoBlock(VolumeExtension->MountPoint.Buffer, VolumeExtension->MountPoint.Length / 2, TRUE);
+		SetDrbdlockIoBlock(VolumeExtension, TRUE);
     }
 #endif
 
