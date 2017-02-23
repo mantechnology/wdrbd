@@ -901,7 +901,8 @@ struct request_queue {
 	struct backing_dev_info backing_dev_info;
 	spinlock_t *queue_lock; // _WIN32: unused.
 	unsigned short logical_block_size;
-	long max_hw_sectors;
+	// DW-1406: max_hw_sectors must be 64bit variable since it can be bigger than 4gb.
+	unsigned long long max_hw_sectors;
 #ifdef _WIN32
     struct queue_limits limits; 
 #endif
