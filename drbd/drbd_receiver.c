@@ -6279,30 +6279,41 @@ check_concurrent_transactions(struct drbd_resource *resource, struct twopc_reply
 	return CSC_MATCH;
 }
 
+enum alt_rv {
+	ALT_LOCKED,
+	ALT_MATCH,
+	ALT_TIMEOUT,
+};
 
-static bool when_done_lock(struct drbd_resource *resource)
+
+static enum alt_rv when_done_lock(struct drbd_resource *resource, unsigned int for_tid)
 {
 	spin_lock_irq(&resource->req_lock);
 	if (!resource->remote_state_change)
-		return true;
+		return ALT_LOCKED;
 	spin_unlock_irq(&resource->req_lock);
-	return false;
+	if (resource->twopc_reply.tid == for_tid)
+		return ALT_MATCH;
+
+	return ALT_TIMEOUT;
 }
 
-static int abort_local_transaction(struct drbd_resource *resource)
+static enum alt_rv abort_local_transaction(struct drbd_resource *resource, unsigned int for_tid)
 {
-	long t = twopc_timeout(resource);
+	long t = twopc_timeout(resource) / 8;
+	enum alt_rv rv;
 
 	set_bit(TWOPC_ABORT_LOCAL, &resource->flags);
 	spin_unlock_irq(&resource->req_lock);
 	wake_up(&resource->state_wait);
 #ifdef _WIN32
-	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
+	wait_event_timeout(t, resource->twopc_wait, 
+		(rv = when_done_lock(resource, for_tid)) != ALT_TIMEOUT, t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
 #endif
 	clear_bit(TWOPC_ABORT_LOCAL, &resource->flags);
-	return t ? 0 : -ETIMEDOUT;
+	return rv;
 }
 
 static void arm_queue_twopc_timer(struct drbd_resource *resource)
@@ -6331,7 +6342,8 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
 #endif
 		if (q->reply.tid == twopc->tid &&
-		    q->reply.initiator_node_id == twopc->initiator_node_id)
+		    q->reply.initiator_node_id == twopc->initiator_node_id &&
+			q->connection == connection)
 			already_queued = true;
 	}
 	spin_unlock_irq(&resource->queued_twopc_lock);
@@ -6367,25 +6379,51 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 
 static int queued_twopc_work(struct drbd_work *w, int cancel)
 {
-	struct queued_twopc *q = container_of(w, struct queued_twopc, w);
+	struct queued_twopc *q = container_of(w, struct queued_twopc, w), *q2, *tmp;
 	struct drbd_connection *connection = q->connection;
+	struct drbd_resource *resource = connection->resource; 
 	unsigned long t = twopc_timeout(connection->resource) / 4;
+	LIST_HEAD(work_list); 
 
-	if (jiffies - q->start_jif >= t || cancel) {
-		if (!cancel)
-			drbd_info(connection, "Rejecting concurrent "
-				  "remote state change %u because of "
-				  "state change %u takes too long\n",
-				  q->reply.tid,
-				  connection->resource->twopc_reply.tid);
-		drbd_send_twopc_reply(connection, P_TWOPC_RETRY, &q->reply);
-	} else {
-		process_twopc(connection, &q->reply, &q->packet_info, q->start_jif);
+	/* Look for more for the same TID... */
+	spin_lock_irq(&resource->queued_twopc_lock); 
+#ifdef _WIN32
+	list_for_each_entry_safe(struct queued_twopc, q2, tmp, &resource->queued_twopc, w.list){
+#else
+	list_for_each_entry_safe(q2, tmp, &resource->queued_twopc, w.list){
+#endif 
+		if (q2->reply.tid == q->reply.tid &&
+			q2->reply.initiator_node_id == q->reply.initiator_node_id)
+			list_move_tail(&q2->w.list, &work_list); 
 	}
+	spin_unlock_irq(&resource->queued_twopc_lock); 
 
-	kref_put(&connection->kref, drbd_destroy_connection);
-	kfree(q);
 
+	while (true){
+		if (jiffies - q->start_jif >= t || cancel) {
+			if (!cancel)
+				drbd_info(connection, "Rejecting concurrent "
+				"remote state change %u because of "
+				"state change %u takes too long\n",
+				q->reply.tid,
+				connection->resource->twopc_reply.tid);
+			drbd_send_twopc_reply(connection, P_TWOPC_RETRY, &q->reply);
+		}
+		else {
+			process_twopc(connection, &q->reply, &q->packet_info, q->start_jif);
+		}
+
+		kref_put(&connection->kref, drbd_destroy_connection);
+		kfree(q);
+
+		q = list_first_entry_or_null(&work_list, struct queued_twopc, w.list); 
+		if (q) {
+			list_del(&q->w.list); 
+			connection = q->connection; 
+		}
+		else
+			break; 
+	}
 	return 0;
 }
 #ifdef _WIN32
@@ -6402,10 +6440,10 @@ void queued_twopc_timer_fn(unsigned long data)
 	spin_lock_irqsave(&resource->queued_twopc_lock, irq_flags);
 	q = list_first_entry_or_null(&resource->queued_twopc, struct queued_twopc, w.list);
 	if (q) {
-		if (jiffies - q->start_jif >= t)
+		if (jiffies - q->start_jif >= t){
+			resource->starting_queued_twopc = q; 
 			list_del(&q->w.list);
-		else
-			q = NULL;
+		}
 	}
 	spin_unlock_irqrestore(&resource->queued_twopc_lock, irq_flags);
 
@@ -6555,18 +6593,14 @@ static int process_twopc(struct drbd_connection *connection,
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
-	resource->starting_queued_twopc = NULL;
-	if (reply->is_aborted) {
-		spin_unlock_irq(&resource->req_lock);
-		return 0;
-	}
+
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
 	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) primary_nodes (%d) pi->cmd (%s)\n", 
 					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
-	if (csc_rv == CSC_CLEAR) {
+	if (csc_rv == CSC_CLEAR && pi->cmd != P_TWOPC_ABORT) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
 			/* We have committed or aborted this transaction already. */
 			spin_unlock_irq(&resource->req_lock);
@@ -6592,6 +6626,11 @@ static int process_twopc(struct drbd_connection *connection,
 #endif			
 			return 0;
 		}
+		if (reply->is_aborted) {
+			spin_unlock_irq(&resource->req_lock);
+			return 0;
+		}
+		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
@@ -6605,15 +6644,18 @@ static int process_twopc(struct drbd_connection *connection,
 			return 0;
 		}
 	} else if (csc_rv == CSC_ABORT_LOCAL && pi->cmd == P_TWOPC_PREPARE) {
-		int err;
+		enum alt_rv alt_rv;
 
 		drbd_info(connection, "Aborting local state change %u to yield to remote "
 			  "state change %u.\n",
 			  resource->twopc_reply.tid,
 			  reply->tid);
-		err = abort_local_transaction(resource);
-		if (err) {
-			/* abort_local_transaction() comes back unlocked if it fails... */
+		alt_rv = abort_local_transaction(resource, reply->tid);
+		if (alt_rv == ALT_MATCH) {
+			/* abort_local_transaction() comes back unlocked in this case ... */
+			goto match; 
+		} else if (alt_rv == ALT_TIMEOUT){
+			/* abort_local_transaction() comes back unlocked in this case ... */
 			drbd_info(connection, "Aborting local state change %u "
 				  "failed. Rejecting remote state change %u.\n",
 				  resource->twopc_reply.tid,
@@ -6621,6 +6663,7 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_send_twopc_reply(connection, P_TWOPC_RETRY, reply);
 			return 0;
 		}
+		/*abort_local_transaction() returned with the req_lock */
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
@@ -6669,6 +6712,7 @@ static int process_twopc(struct drbd_connection *connection,
 				/* We have prepared this transaction already. */
 				enum drbd_packet reply_cmd;
 
+			match: 
 				spin_lock_irq(&resource->req_lock);
 				reply_cmd = resource->twopc_prepare_reply_cmd;
 				if (!reply_cmd) {
@@ -6679,10 +6723,22 @@ static int process_twopc(struct drbd_connection *connection,
 					}
 					spin_unlock_irq(&resource->req_lock);
 
-					if (reply_cmd)
+					if (reply_cmd){
 						drbd_send_twopc_reply(connection, reply_cmd,
-										&resource->twopc_reply);
-			}
+							&resource->twopc_reply);
+					}else {
+						/* if a node sends us a prepare, that means he has
+						prepared this himsilf successfully. */
+						set_bit(TWOPC_YES, &connection->flags);
+
+						if (cluster_wide_reply_ready(resource)) {
+							if (resource->twopc_work.cb == NULL) {
+								resource->twopc_work.cb = nested_twopc_work;
+								drbd_queue_work(&resource->work, &resource->twopc_work);
+							}
+						}
+					}
+				}
 		} else {
 			drbd_info(connection, "Ignoring %s packet %u "
 				  "current processing state change %u\n",
