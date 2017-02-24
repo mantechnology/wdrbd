@@ -1291,13 +1291,13 @@ BOOLEAN spin_trylock(spinlock_t *lock)
 
 ULONG get_random_ulong(PULONG seed)
 {
-	LARGE_INTEGER Tick;
+	LARGE_INTEGER Hpts;
 	if (!seed) {
 		return 0;
 	}
-	KeQueryTickCount(&Tick);
-
-	return (Tick.LowPart + *seed);
+	Hpts = KeQueryPerformanceCounter(NULL);
+	
+	return (Hpts.LowPart + *seed);
 }
 
 void get_random_bytes(void *buf, int nbytes)
