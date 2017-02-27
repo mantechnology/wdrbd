@@ -138,7 +138,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	else
 	{
 		printf("================================\n");
-		printf(" PhysicalDeviceName Minor Replication Volume\n");
+		printf(" PhysicalDeviceName Minor MountPoint Replication Volume\n");
 		printf("================================\n");
 	}
 	
@@ -162,9 +162,10 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 		}
 		else
 		{
-			printf("%ws, %2d, %d\n",
+			printf("%ws, %2d, %3ws, %d\n",
 				pEntry->PhysicalDeviceName,
 				pEntry->VolIndex,
+				pEntry->MountPoint,
 				pEntry->ExtensionActive
 			);
 		}

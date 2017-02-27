@@ -1,0 +1,38 @@
+Latest:
+------
+ For even more detail, use "git log" or visit https://github.com/mantechnology/wdrbd.
+
+1.4
+
+After 1.4, we change a sync policy, that is, stable sync.
+only stable node can be a syncsource (a concept about stable node is from original drbd9),
+and then secondary can sync from secondary.
+
+Patch on Pre-release (1.4-A1 ~ 1.4-7)
+------
+
+New Feature
+
+[DW-1359] - add auto resync after primary, fix OOS remaining
+
+Bug
+
+[DW-1398] - fix hang up while drbdadm up, and resolve WDRBD's 2 known issues. (We remove 2 known issues in WDRBD user's guide)
+[DW-1396] - fix BSOD that drbd references freed bio.
+[DW-1388] - fix crash when I/O is canceled in low-latency network
+[DW-1389] - fix invalidate crash after Split-brain
+[DW-1380] - fix to allow mountvol info on secondary
+[DW-1381] - fix BSOD when volume is removed during IO.
+[DW-1321] - fix twopc timeout when down-lock is acquired.
+[DW-1354] - fix sync stop (doesn't change resync done 100%)
+[DW-1361] - disable suspend-io command
+[DW-1362] - fix twopc process when connecting is broken on one peer node.
+[DW-1365] - fix system crash when primary crash is happened on secondary diskless
+[DW-1340] - fix data inconsistency after primary crash
+[DW-1341] - fix stop WFBitmapS status after primary crash on peer
+[DW-1345] - fix different disk state after primary crash
+
+Improvement
+
+[DW-1390] - additional disable delayed ack
+

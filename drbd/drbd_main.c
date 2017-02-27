@@ -4455,7 +4455,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	kref_get(&pvext->dev->kref);
 	device->this_bdev = pvext->dev;
 	q->logical_block_size = 512;
-	q->max_hw_sectors = get_targetdev_volsize(pvext);
+	// DW-1406: max_hw_sectors must be valued as number of maximum sectors.
+	q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
