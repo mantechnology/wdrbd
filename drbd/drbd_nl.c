@@ -1206,10 +1206,14 @@ retry:
                         (l_size > p_size))
                     {
                         rv = SS_TARGET_DISK_TOO_SMALL;
-                        goto out;
                     }
                 }
             }
+			
+			if (rv == SS_TARGET_DISK_TOO_SMALL)
+			{
+                        goto out;
+			}
 #endif
 			with_force = true;
 			forced = 1;
