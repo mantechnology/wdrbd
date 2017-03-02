@@ -6586,10 +6586,7 @@ static int process_twopc(struct drbd_connection *connection,
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1127
-	bool noStateChange = false;
-#endif
+
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
@@ -6852,26 +6849,8 @@ static int process_twopc(struct drbd_connection *connection,
 	else
 		rv = far_away_change(connection, mask, val, reply, flags);
 
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed.
-	if (rv == SS_NOTHING_TO_DO)
-	{	
-#ifdef _WIN32_TWOPC
-		drbd_info(resource, "[TWOPC:%u] target_node_id(%d) noStateChange! flags (%d) \n",
-				reply->tid,
-				reply->target_node_id,
-				flags);
-#endif
-		noStateChange = true;
-	}
-#endif
 
 	if (flags & CS_PREPARE) {
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed, no need remote state change.
-		if (noStateChange)
-			resource->remote_state_change = false;
-#endif
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
@@ -6891,14 +6870,7 @@ static int process_twopc(struct drbd_connection *connection,
 			del_timer(&resource->twopc_timer);
 
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1252: clear TWOPC_EXECUTED if change_state result is SS_NOTHING_TO_DO
-		if (noStateChange)
-			test_and_clear_bit(TWOPC_EXECUTED, &resource->flags);
-		// MODIFIED_BY_MANTECH DW-1127: don't clear remote state change if I haven't set.
-		// DW-1160: 'noStateChange' could be different if received packet is 'P_TWOPC_ABORT', clear it no matter what the state change result is.
-		if (!noStateChange || (flags & CS_ABORT))
-#endif
+
 		clear_remote_state_change(resource);
 
 #ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
