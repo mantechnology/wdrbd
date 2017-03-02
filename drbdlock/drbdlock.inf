@@ -52,7 +52,7 @@ StartType        = 3                            ;it's set as SERVICE_DEMAND_STAR
 ErrorControl     = 1                            ;SERVICE_ERROR_NORMAL
 ; TODO - Change the Load Order Group value, see http://connect.microsoft.com/site221/content/content.aspx?ContentID=2512
 ; LoadOrderGroup = "FSFilter Activity Monitor"
-LoadOrderGroup = "_TODO_Change_LoadOrderGroup_appropriately_"
+LoadOrderGroup = "FSFilter Replication"
 AddReg           = MiniFilter.AddRegistry
 
 ;

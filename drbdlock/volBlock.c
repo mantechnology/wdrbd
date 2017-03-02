@@ -92,34 +92,18 @@ isProtectedVolume(
 }
 
 NTSTATUS
-ConvertVolume(
-	IN PDRBDLOCK_VOLUME pVolumeInfo,
-	OUT PDEVICE_OBJECT *pConverted
+GetDeviceObjectFlt(
+	IN PUNICODE_STRING pusDevName,
+	OUT PDEVICE_OBJECT *pDeviceObject
 	)
 {
-	PFLT_VOLUME pVolume = NULL;
-	PDEVICE_OBJECT pDiskDeviceObject = NULL;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	UNICODE_STRING usVolName = { 0, };
-
-	if (pVolumeInfo == NULL ||
-		pConverted == NULL)
-	{
-		return STATUS_INVALID_PARAMETER;
-	}
-
-	if (pVolumeInfo->volumeType == VOLUME_TYPE_DEVICE_OBJECT)
-	{
-		*pConverted = pVolumeInfo->volumeID.pVolumeObject;
-
-		return STATUS_SUCCESS;
-	}
+	PDEVICE_OBJECT pDiskDeviceObject = NULL;
+	PFLT_VOLUME pVolume = NULL;
 
 	do
 	{
-		RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeID.volumeName);
-
-		status = FltGetVolumeFromName(gFilterHandle, &usVolName, &pVolume);
+		status = FltGetVolumeFromName(gFilterHandle, pusDevName, &pVolume);
 
 		if (!NT_SUCCESS(status))
 		{
@@ -136,9 +120,7 @@ ConvertVolume(
 		}
 
 	} while (FALSE);
-
-	*pConverted = pDiskDeviceObject;
-
+	
 	if (pVolume)
 	{
 		FltObjectDereference(pVolume);
@@ -150,5 +132,83 @@ ConvertVolume(
 		ObDereferenceObject(pDiskDeviceObject);
 		pDiskDeviceObject = NULL;
 	}
+
+	*pDeviceObject = pDiskDeviceObject;
+
+	return status;
+}
+
+NTSTATUS
+GetDeviceObjectNonFlt(
+	IN PUNICODE_STRING pusDevName,
+	OUT PDEVICE_OBJECT *pDeviceObject
+	)
+{
+	PFILE_OBJECT pFileObject = NULL;
+	PDEVICE_OBJECT pDev = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;	
+	
+	do
+	{
+		status = IoGetDeviceObjectPointer(pusDevName, FILE_READ_DATA, &pFileObject, &pDev);
+		if (!NT_SUCCESS(status))
+		{
+			DbgPrint("IoGetDeviceObjectPointer failed : %x\n", status);
+			break;
+		}
+
+	} while (FALSE);
+
+	if (NT_SUCCESS(status) &&
+		pFileObject)
+	{
+		*pDeviceObject = pFileObject->DeviceObject;
+		ObDereferenceObject(pFileObject);
+		pFileObject = NULL;
+	}
+	else
+	{
+		*pDeviceObject = NULL;
+	}
+
+	return status;
+}
+
+NTSTATUS
+ConvertVolume(
+	IN PDRBDLOCK_VOLUME pVolumeInfo,
+	OUT PDEVICE_OBJECT *pConverted
+	)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	UNICODE_STRING usVolName = { 0, };
+
+	if (pVolumeInfo == NULL ||
+		pConverted == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	if (pVolumeInfo->volumeType == VOLUME_TYPE_DEVICE_OBJECT)
+	{
+		*pConverted = pVolumeInfo->volumeID.pVolumeObject;
+
+		return STATUS_SUCCESS;
+	}
+
+	RtlInitUnicodeString(&usVolName, pVolumeInfo->volumeID.volumeName);
+
+	status = GetDeviceObjectFlt(&usVolName, pConverted);
+
+	if (status == STATUS_FLT_VOLUME_NOT_FOUND)
+	{
+		status = GetDeviceObjectNonFlt(&usVolName, pConverted);
+	}
+
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("could not get device object for volume(%ws)\n", pVolumeInfo->volumeID.volumeName);
+	}
+
 	return status;	
 }

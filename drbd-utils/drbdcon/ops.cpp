@@ -1935,7 +1935,7 @@ VOID getVolumeDrbdlockInfo(HANDLE hDrbdlock, PWCHAR pszVolumeName)
 		if (!DeviceIoControl(hDrbdlock, IOCTL_DRBDLOCK_GET_STATUS, szDevName, (wcslen(szDevName) + 1) * sizeof(WCHAR), &bProtected, sizeof(bProtected), &dwRet, NULL))
 		{
 			dwErr = GetLastError();
-			printf("DeviceIoControl Failed, err(%d)\n", dwErr);
+			printf("DeviceIoControl Failed for device(%ws), err(%d)\n", szDevName, dwErr);
 			return;
 		}
 
