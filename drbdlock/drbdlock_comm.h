@@ -1,11 +1,14 @@
-#include <wdm.h>
 #include "drbdlock_struct.h"
 
 #define DRBDLOCK_DEVICE_OBJECT_NAME	L"\\Device\\DrbdLock"
 #define DRBDLOCK_SYMLINK_NAME		L"\\DosDevices\\DrbdLock"
 #define DRBDLOCK_CALLBACK_NAME		L"\\Callback\\DrbdLock"
 
+#define DRBDLOCK_DEVICE_NAME_USER	"\\\\.\\DrbdLock"
+
 #define	DRBDLOCK_TYPE		0x9801
+
+#define IOCTL_DRBDLOCK_GET_STATUS CTL_CODE(DRBDLOCK_TYPE, 1, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 typedef struct _DRBDLOCK_VOLUME_CONTROL
 {

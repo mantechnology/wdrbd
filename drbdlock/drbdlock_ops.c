@@ -155,6 +155,42 @@ DefaultIrpDispatch(
 }
 
 NTSTATUS
+IOCTL_GetStatus(
+	PIRP pIrp, 
+	PULONG pulSize
+	)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PIO_STACK_LOCATION pIrpStack = IoGetCurrentIrpStackLocation(pIrp);	
+	PDEVICE_OBJECT pDevice = NULL;
+	DRBDLOCK_VOLUME Vol = { 0, };
+	PVOID pBuf = pIrp->AssociatedIrp.SystemBuffer;
+
+	if (pBuf == NULL ||
+		pIrpStack->Parameters.DeviceIoControl.InputBufferLength < (2 * sizeof(WCHAR)) ||
+		pIrpStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(BOOLEAN))
+	{		
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	Vol.volumeType = VOLUME_TYPE_DEVICE_NAME;
+	wcscpy_s(Vol.volumeID.volumeName, DRBDLOCK_VOLUMENAME_MAX_LEN, pBuf);
+
+	status = ConvertVolume(&Vol, &pDevice);
+
+	if (NT_SUCCESS(status))
+	{
+		BOOLEAN r = isProtectedVolume(pDevice);
+
+		RtlCopyMemory(pBuf, &r, sizeof(BOOLEAN));
+
+		*pulSize = sizeof(BOOLEAN);
+	}
+
+	return status;
+}
+
+NTSTATUS
 DeviceIoControlDispatch(
 	IN PDEVICE_OBJECT pDeviceObject,
 	IN PIRP pIrp
@@ -162,18 +198,27 @@ DeviceIoControlDispatch(
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION pIrpStack = NULL;
+	ULONG ulSize = 0;
 
 	pIrpStack = IoGetCurrentIrpStackLocation(pIrp);
 
 	switch (pIrpStack->Parameters.DeviceIoControl.IoControlCode)
 	{	
+		case IOCTL_DRBDLOCK_GET_STATUS:
+		{
+			status = IOCTL_GetStatus(pIrp, &ulSize);
+
+			break;
+		}
+
 		default:
 		{
 			break;
 		}
 	}
 
-	pIrp->IoStatus.Status = STATUS_SUCCESS;
+	pIrp->IoStatus.Status = status;
+	pIrp->IoStatus.Information = ulSize;
 	IoCompleteRequest(pIrp, IO_NO_INCREMENT);
 
 	UNREFERENCED_PARAMETER(pDeviceObject);

@@ -24,6 +24,7 @@ usage()
 		"   /minlog_lv dbg [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
+		"	/drbdlock_status\n"
 		"   /info\n"
 		"   /status : drbd version\n"
 
@@ -132,6 +133,7 @@ main(int argc, char* argv [])
 	char	*ProviderName = NULL;
 	char	*LoggingData = NULL;
 	char	VolumesInfoFlag = 0;
+	char	Drbdlock_status = 0;
 	char	Verbose = 0;
 
     int     Force = 0;
@@ -361,6 +363,10 @@ main(int argc, char* argv [])
 			else
 				usage();
 		}
+		else if (!strcmp(argv[argIndex], "/drbdlock_status"))
+		{
+			Drbdlock_status++;
+		}
 		else if (!strcmp(argv[argIndex], "/info"))
 		{
 			VolumesInfoFlag++;
@@ -564,6 +570,11 @@ main(int argc, char* argv [])
 		}
 
 		return res;
+	}
+
+	if (Drbdlock_status)
+	{
+		res = GetDrbdlockStatus();
 	}
 
 	if (HandlerUseFlag)
