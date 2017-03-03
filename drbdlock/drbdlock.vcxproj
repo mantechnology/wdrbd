@@ -352,6 +352,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="drbdlock.h" />
     <ClInclude Include="drbdlock_comm.h" />
     <ClInclude Include="drbdlock_proc.h" />
     <ClInclude Include="drbdlock_struct.h" />

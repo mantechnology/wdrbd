@@ -6,8 +6,10 @@
 #pragma warning(disable: 4127)
 
 #include <FltKernel.h>
+#include <ntstrsafe.h>
 #include <dontuse.h>
 #include <suppress.h>
+#include "drbdlock.h"
 #include "drbdlock_struct.h"
 #include "drbdlock_comm.h"
 #include "drbdlock_proc.h"

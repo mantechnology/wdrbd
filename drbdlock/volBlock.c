@@ -107,7 +107,7 @@ GetDeviceObjectFlt(
 
 		if (!NT_SUCCESS(status))
 		{
-			DbgPrint("FltGetVolumeFromName failed : %x\n", status);
+			drbdlock_print_log("FltGetVolumeFromName failed, status : 0x%x\n", status);
 			break;
 		}
 
@@ -115,7 +115,7 @@ GetDeviceObjectFlt(
 
 		if (!NT_SUCCESS(status))
 		{
-			DbgPrint("FltGetDiskDeviceObject failed : %x\n", status);
+			drbdlock_print_log("FltGetDiskDeviceObject failed, status : 0x%x\n", status);
 			break;
 		}
 
@@ -153,7 +153,7 @@ GetDeviceObjectNonFlt(
 		status = IoGetDeviceObjectPointer(pusDevName, FILE_READ_DATA, &pFileObject, &pDev);
 		if (!NT_SUCCESS(status))
 		{
-			DbgPrint("IoGetDeviceObjectPointer failed : %x\n", status);
+			drbdlock_print_log("IoGetDeviceObjectPointer failed, status : 0x%x\n", status);
 			break;
 		}
 
@@ -207,7 +207,7 @@ ConvertVolume(
 
 	if (!NT_SUCCESS(status))
 	{
-		DbgPrint("could not get device object for volume(%ws)\n", pVolumeInfo->volumeID.volumeName);
+		drbdlock_print_log("could not get device object for volume(%ws)\n", pVolumeInfo->volumeID.volumeName);
 	}
 
 	return status;	

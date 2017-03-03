@@ -19,14 +19,7 @@ Environment:
 PFLT_FILTER gFilterHandle;
 ULONG_PTR OperationStatusCtx = 1;
 
-#define PTDBG_TRACE_ROUTINES            0x00000001
-#define PTDBG_TRACE_OPERATION_STATUS    0x00000002
 
-ULONG gTraceFlags = 0;
-
-
-#define PT_DBG_PRINT( _dbgLevel, _string )          \
-        KdPrint _string
 
 /*************************************************************************
     Prototypes
@@ -518,8 +511,7 @@ Return Value:
 
     UNREFERENCED_PARAMETER( RegistryPath );
 
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!DriverEntry: Entered\n") );
+	drbdlock_print_log("DriverEntry\n");
 	
     //
     //  Register with FltMgr to tell it our callback routines
@@ -531,12 +523,14 @@ Return Value:
 
 	if (!NT_SUCCESS(status))
 	{
+		drbdlock_print_log("FltRegisterFilter failed, status : 0x%x\n", status);
 		return status;
 	}
 
 	status = drbdlockCreateControlDeviceObject(DriverObject);
 	if (!NT_SUCCESS(status))
 	{
+		drbdlock_print_log("drbdlockCreateControlDeviceObject failed, status : 0x%x\n", status);
 		FltUnregisterFilter(gFilterHandle);
 		return status;
 	}			
@@ -551,10 +545,9 @@ Return Value:
     status = FltStartFiltering( gFilterHandle );
 
     if (!NT_SUCCESS( status )) {
-
+		drbdlock_print_log("FltStartFiltering failed, status : 0x%x\n", status);
         FltUnregisterFilter( gFilterHandle );
-    }
-   
+    }   
 
     return status;
 }
@@ -584,8 +577,7 @@ Return Value:
 {
     UNREFERENCED_PARAMETER( Flags );
 	
-    PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,
-                  ("drbdlock!drbdlockUnload: Entered\n") );
+	drbdlock_print_log("Unloading\n");
 
     FltUnregisterFilter( gFilterHandle );
 
@@ -745,4 +737,16 @@ Return Value:
     // This passes the request down to the next miniFilter in the chain.
 
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+
+void drbdlock_print_log(const char * format, ...)
+{
+	char szTest[DRBDLOCK_LOG_MAXLEN] = DRBDLOCK_LOG_PREFIX;
+
+	va_list args;
+	va_start(args, format);
+	vsprintf_s(szTest + strlen(DRBDLOCK_LOG_PREFIX), DRBDLOCK_LOG_MAXLEN, format, args);
+	va_end(args);
+
+	DbgPrint(szTest);
 }

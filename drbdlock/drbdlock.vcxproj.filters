@@ -55,5 +55,8 @@
     <ClInclude Include="drbdlock_comm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="drbdlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -19,6 +19,7 @@ drbdlockCreateControlDeviceObject(
 	status = IoCreateDevice(pDrvObj, 0, &g_usDeviceName, FILE_DEVICE_UNKNOWN, 0, FALSE, &g_DeviceObject);
 	if (!NT_SUCCESS(status))
 	{
+		drbdlock_print_log("IoCreateDevice Failed, status : 0x%x\n", status);
 		return status;
 	}
 
@@ -26,6 +27,7 @@ drbdlockCreateControlDeviceObject(
 	status = IoCreateSymbolicLink(&g_usSymlinkName, &g_usDeviceName);
 	if (!NT_SUCCESS(status))
 	{
+		drbdlock_print_log("IoCreateSymbolicLink Failed, status : 0x%x\n", status);
 		return status;
 	}
 
@@ -61,42 +63,56 @@ drbdlockCallbackFunc(
 	PDRBDLOCK_VOLUME_CONTROL pVolumeControl = (PDRBDLOCK_VOLUME_CONTROL)Argument1;
 	PDEVICE_OBJECT pVolObj = NULL;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-
+	ULONG ulSize = 0;
+	POBJECT_NAME_INFORMATION pNameInfo = NULL;
 
 	if (pVolumeControl == NULL)
 	{
 		// invalid parameter.
+		drbdlock_print_log("pVolumeControl is NULL\n");
+		return;
+	}
+	
+	status = ConvertVolume(&pVolumeControl->volume, &pVolObj);
+	if (!NT_SUCCESS(status))
+	{
+		drbdlock_print_log("ConvertVolume failed, status : 0x%x\n", status);
 		return;
 	}
 
-
-	status = ConvertVolume(&pVolumeControl->volume, &pVolObj);
-
-	if (!NT_SUCCESS(status))
+	if (STATUS_INFO_LENGTH_MISMATCH == ObQueryNameString(pVolObj, NULL, 0, &ulSize))
 	{
-		return;
+		pNameInfo = (POBJECT_NAME_INFORMATION)ExAllocatePool(NonPagedPool, ulSize);		
+		if (pNameInfo)
+		{
+			status = ObQueryNameString(pVolObj, pNameInfo, ulSize, &ulSize);
+			if (!NT_SUCCESS(status))
+			{
+				ulSize = 0;
+			}
+		}
 	}	
 
 	if (pVolumeControl->bBlock)
 	{
 		if (AddProtectedVolume(pVolObj))
-		{
-			DbgPrint("volume has been added as protected\n");
+		{			
+			drbdlock_print_log("volume(%ws) has been added as protected\n", ulSize? pNameInfo->Name.Buffer : L"NULL");
 		}
 		else
 		{
-			DbgPrint("volume add failed!!\n");
+			drbdlock_print_log("volume(%ws) add failed\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
 		}
 	}
 	else
 	{
 		if (DeleteProtectedVolume(pVolObj))
 		{
-			DbgPrint("volume has been deleted as protected\n");
+			drbdlock_print_log("volume(%ws) has been deleted from protected volume list\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
 		}
 		else
 		{
-			DbgPrint("volume delete failed!!\n");
+			drbdlock_print_log("volume(%ws) delete failed\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
 		}
 	}
 
@@ -118,6 +134,7 @@ drbdlockStartupCallback(
 	status = ExCreateCallback(&g_pCallbackObj, &oa, TRUE, TRUE);
 	if (!NT_SUCCESS(status))
 	{
+		drbdlock_print_log("ExCreateCallback failed, status : 0x%x\n", status);
 		return status;
 	}
 
@@ -169,7 +186,10 @@ IOCTL_GetStatus(
 	if (pBuf == NULL ||
 		pIrpStack->Parameters.DeviceIoControl.InputBufferLength < (2 * sizeof(WCHAR)) ||
 		pIrpStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(BOOLEAN))
-	{		
+	{
+		drbdlock_print_log("invalid buffer length, input(%u), output(%u)\n",
+			pIrpStack->Parameters.DeviceIoControl.InputBufferLength,
+			pIrpStack->Parameters.DeviceIoControl.OutputBufferLength);
 		return STATUS_INVALID_PARAMETER;
 	}
 
