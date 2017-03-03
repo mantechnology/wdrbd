@@ -1,3 +1,19 @@
+/*++
+
+Module Name:
+
+	drbdlock.c
+
+Abstract:
+
+	This is the device operations module of the drbdlock miniFilter driver.
+
+Environment:
+
+	Kernel mode
+
+--*/
+
 #include "pch.h"
 
 PDEVICE_OBJECT g_DeviceObject;
@@ -11,6 +27,21 @@ NTSTATUS
 drbdlockCreateControlDeviceObject(
 	IN PDRIVER_OBJECT pDrvObj
 	)
+/*++
+
+Routine Description:
+
+	Creates control device object to communicate.
+
+Arguments:
+
+	pDrvObj - drbdlock driver object.
+
+Return Value:
+
+	NtStatus value.
+
+--*/
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	ULONG i;
@@ -43,6 +74,21 @@ VOID
 drbdlockDeleteControlDeviceObject(
 	VOID
 	)
+/*++
+
+Routine Description:
+
+	Deletes control device object.
+
+Arguments:
+
+	None.
+
+Return Value:
+
+	None.
+
+--*/
 {
 	IoDeleteSymbolicLink(&g_usSymlinkName);
 
@@ -56,6 +102,23 @@ drbdlockCallbackFunc(
 	IN PVOID Argument1,
 	IN PVOID Argument2
 	)
+/*++
+
+Routine Description:
+
+	This routine is called whenever other driver notifies drbdlock's callback object.
+
+Arguments:
+
+	Context - not used.
+	Argument1 - Pointer to the DRBDLOCK_VOLUME_CONTROL data structure containing volume information to be (un)blocked.
+	Argument2 - not used.
+
+Return Value:
+
+	None.
+
+--*/
 {
 	UNREFERENCED_PARAMETER(Context);
 	UNREFERENCED_PARAMETER(Argument2);
@@ -123,6 +186,21 @@ NTSTATUS
 drbdlockStartupCallback(
 	VOID
 	)
+/*++
+
+Routine Description:
+
+	Initializes callback object to be notified.
+
+Arguments:
+
+	None.
+
+Return Value:
+
+	NtStatus values.
+
+--*/
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	OBJECT_ATTRIBUTES oa = { 0, };
@@ -147,6 +225,21 @@ VOID
 drbdlockCleanupCallback(
 	VOID
 	)
+/*++
+
+Routine Description:
+
+	Cleans up callback object.
+
+Arguments:
+
+	None.
+
+Return Value:
+
+	None.
+
+--*/
 {
 	if (g_pCallbackReg)
 		ExUnregisterCallback(g_pCallbackReg);
@@ -160,6 +253,22 @@ DefaultIrpDispatch(
 	IN PDEVICE_OBJECT pDeviceObject,
 	IN PIRP pIrp
 	)
+/*++
+
+Routine Description:
+
+	This dispatch routine only completes specified irp with success.
+
+Arguments:
+
+	pDeviceObject - Pointer to the device object that received specified irp.
+	pIrp - Pointer to the irp.
+
+Return Value:
+
+	NtStatus value.
+
+--*/
 {
 	UNREFERENCED_PARAMETER(pDeviceObject);
 
@@ -176,6 +285,22 @@ IOCTL_GetStatus(
 	PIRP pIrp, 
 	PULONG pulSize
 	)
+/*++
+
+Routine Description:
+
+	This routine is called when received IOCTL_DRBDLOCK_GET_STATUS and returns status of drbdlock.
+
+Arguments:
+
+	pIrp - Pointer to the irp of device control.
+	pulSize - The size to be retrieved to caller.
+
+Return Value:
+
+	NtStatus values.
+
+--*/
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PIO_STACK_LOCATION pIrpStack = IoGetCurrentIrpStackLocation(pIrp);	
@@ -215,6 +340,22 @@ DeviceIoControlDispatch(
 	IN PDEVICE_OBJECT pDeviceObject,
 	IN PIRP pIrp
 	)
+/*++
+
+Routine Description:
+
+	Device io control dispatch routine.
+
+Arguments:
+
+	pDeviceObject - Pointer to the device object that received specified irp.
+	pIrp - Pointer to the irp.
+
+Return Value:
+
+	NtStatus values.
+
+--*/
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION pIrpStack = NULL;

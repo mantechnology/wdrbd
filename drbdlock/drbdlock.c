@@ -740,6 +740,21 @@ Return Value:
 }
 
 void drbdlock_print_log(const char * format, ...)
+/*++
+
+Routine Description:
+
+	appends drbdlock prefix and print log.
+
+Arguments:
+
+	format - print format for log.
+
+Return Value:
+
+	None
+
+--*/
 {
 	char szTest[DRBDLOCK_LOG_MAXLEN] = DRBDLOCK_LOG_PREFIX;
 
