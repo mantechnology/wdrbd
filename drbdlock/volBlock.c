@@ -283,6 +283,8 @@ Return Value:
 		}
 
 	} while (FALSE);
+
+	*pDeviceObject = pDiskDeviceObject;
 	
 	if (pVolume)
 	{
@@ -295,8 +297,6 @@ Return Value:
 		ObDereferenceObject(pDiskDeviceObject);
 		pDiskDeviceObject = NULL;
 	}
-
-	*pDeviceObject = pDiskDeviceObject;
 
 	return status;
 }
