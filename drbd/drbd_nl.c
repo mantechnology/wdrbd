@@ -1585,6 +1585,15 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
+
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			if (pvext)
+			{
+				SetDrbdlockIoBlock(pvext, FALSE);
+			}
+		}
 #endif
 #if 0 // _WIN32 // DW-778
         int vnr;
@@ -1601,6 +1610,17 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		int vnr;
 		retcode = SS_SUCCESS;
 		struct drbd_device * device;
+
+		// DW-1327: 
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			if (pvext)
+			{
+				SetDrbdlockIoBlock(pvext, TRUE);
+			}
+		}
+
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
 			if (device->disk_state[NOW] == D_DISKLESS)
@@ -1644,6 +1664,8 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 			FsctlUnlockVolume(device->minor);
 		}
+
+		
 #else
         int vnr;
         struct drbd_device * device;
@@ -3104,6 +3126,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 				FsctlLockVolume(dh->minor);
 
 				pvext->Active = TRUE;
+
+				// DW-1327: to block I/O by drbdlock.
+				SetDrbdlockIoBlock(pvext, TRUE);
+
 				status = FsctlFlushDismountVolume(dh->minor, true);
 
 				FsctlUnlockVolume(dh->minor);

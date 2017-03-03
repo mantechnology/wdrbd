@@ -165,6 +165,8 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     }
 
     pvext->Active = FALSE;
+	// DW-1327: to allow I/O by drbdlock.
+	SetDrbdlockIoBlock(pvext, FALSE);
 #ifdef _WIN32_MULTIVOL_THREAD
 	pvext->WorkThreadInfo = NULL;
 #else

@@ -355,6 +355,8 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         }
 #endif
         VolumeExtension->Active = TRUE;
+		// DW-1327: to block I/O by drbdlock.
+		SetDrbdlockIoBlock(VolumeExtension, TRUE);
     }
 #endif
 
