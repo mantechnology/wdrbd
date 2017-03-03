@@ -6726,8 +6726,17 @@ static int process_twopc(struct drbd_connection *connection,
 					}else {
 						/* if a node sends us a prepare, that means he has
 						prepared this himsilf successfully. */
+						
+#ifdef _WIN32 // DW-1411 : Not supported dual primaries, set TWOPC_NO bit when local node is Primary. 
+						if (resource->role[NOW] == R_PRIMARY && val.role == R_PRIMARY){
+							set_bit(TWOPC_NO, &connection->flags);
+						}
+						else{
+							set_bit(TWOPC_YES, &connection->flags);
+						}
+#else
 						set_bit(TWOPC_YES, &connection->flags);
-
+#endif
 						if (cluster_wide_reply_ready(resource)) {
 							if (resource->twopc_work.cb == NULL) {
 								resource->twopc_work.cb = nested_twopc_work;
@@ -6863,6 +6872,10 @@ static int process_twopc(struct drbd_connection *connection,
 		} else {
 			enum drbd_packet cmd = (rv == SS_IN_TRANSIENT_STATE) ?
 				P_TWOPC_RETRY : P_TWOPC_NO;
+#ifdef _WIN32 // DW-1411 : when we get the prepare packet mutiple times, miss set twopc_prepare_reply_cmd. 
+			if (cmd == P_TWOPC_NO)
+				resource->twopc_prepare_reply_cmd = cmd;
+#endif 
 			drbd_send_twopc_reply(connection, cmd, reply);
 		}
 	} else {
