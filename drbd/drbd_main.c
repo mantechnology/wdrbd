@@ -76,6 +76,10 @@
 #include <linux/swab.h>
 #endif
 #endif
+#ifdef _WIN32_MULTIVOL_THREAD
+#include "Proto.h"
+#endif
+
 
 #ifdef COMPAT_DRBD_RELEASE_RETURNS_VOID
 #define DRBD_RELEASE_RETURN void
@@ -3453,6 +3457,10 @@ void drbd_free_resource(struct drbd_resource *resource)
 	spin_unlock_irq(&resource->queued_twopc_lock);
 
 	drbd_thread_stop(&resource->worker);
+
+#ifdef _WIN32_MULTIVOL_THREAD
+	mvolTerminateThread(&resource->WorkThreadInfo);
+#endif
 
 #ifdef _WIN32
 	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {

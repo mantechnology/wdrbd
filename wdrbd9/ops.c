@@ -60,8 +60,10 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
 		pventry->ExtensionActive = pvext->Active;
 		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+#ifndef _WIN32_MULTIVOL_THREAD
 		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
 		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
+#endif
 		if (pvext->dev)
 		{
 			pventry->AgreedSize = pvext->dev->d_size;
@@ -114,130 +116,6 @@ IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength 
 }
 
 NTSTATUS
-IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp )
-{
-	ULONG			inlen;
-	PIO_STACK_LOCATION	irpSp=IoGetCurrentIrpStackLocation(Irp);
-	PVOLUME_EXTENSION	VolumeExtension = NULL;
-	PMVOL_VOLUME_INFO	pVolumeInfo = NULL;
-	
-	if( DeviceObject == mvolRootDeviceObject )
-	{
-		inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
-		if( inlen < sizeof(MVOL_VOLUME_INFO) )
-		{
-			mvolLogError( DeviceObject, 261, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
-			WDRBD_ERROR("buffer too small\n");
-			return STATUS_BUFFER_TOO_SMALL;
-		}
-
-		pVolumeInfo = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
-		WDRBD_TRACE("Root Device IOCTL\n");
-
-		MVOL_LOCK();
-		VolumeExtension = mvolSearchDevice( pVolumeInfo->PhysicalDeviceName );
-		MVOL_UNLOCK();
-
-		if( VolumeExtension == NULL )
-		{
-			mvolLogError( DeviceObject, 263, MSG_NO_DEVICE, STATUS_NO_SUCH_DEVICE );
-			WDRBD_ERROR("cannot find volume, PD=%ws\n", pVolumeInfo->PhysicalDeviceName);
-			return STATUS_NO_SUCH_DEVICE;
-		}
-	}
-	else
-	{
-		VolumeExtension = DeviceObject->DeviceExtension;
-	}
-	
-	if( VolumeExtension->Active == TRUE )
-	{
-		mvolLogError( VolumeExtension->DeviceObject, 264,
-			MSG_INVALID_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST );
-		WDRBD_ERROR("already Volume Started\n");
-		return STATUS_INVALID_DEVICE_REQUEST;
-	}
-
-#ifdef MULTI_WRITE_HOOKER_THREADS
-	{
-		int i = 0;
-		for (i = 0; i < 5; i++) 
-		{
-			if (deviceExtension->WorkThreadInfo[i].Active == FALSE)
-			{
-				mvolLogError(deviceExtension->DeviceObject, 267,
-					MSG_INVALID_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST);
-				return STATUS_INVALID_DEVICE_REQUEST;
-			}
-		}
-	}
-#else
-	if( VolumeExtension->WorkThreadInfo.Active == FALSE )
-	{
-		mvolLogError( VolumeExtension->DeviceObject, 267,
-			MSG_INVALID_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST );
-		WDRBD_ERROR("not initialized Volume Thread\n");
-		return STATUS_INVALID_DEVICE_REQUEST;
-	}
-#endif
-	VolumeExtension->Active = TRUE;
-	// DW-1327: to block I/O by drbdlock.
-	SetDrbdlockIoBlock(VolumeExtension, TRUE);
-	return STATUS_SUCCESS;
-}
-
-NTSTATUS
-IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp )
-{
-	ULONG			inlen;
-	PIO_STACK_LOCATION	irpSp=IoGetCurrentIrpStackLocation(Irp);
-	PVOLUME_EXTENSION	VolumeExtension = NULL;
-	PMVOL_VOLUME_INFO	pVolumeInfo = NULL;
-
-	if( DeviceObject == mvolRootDeviceObject )
-	{
-		inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
-		if( inlen < sizeof(MVOL_VOLUME_INFO) )
-		{
-			mvolLogError( DeviceObject, 271, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
-			WDRBD_ERROR("buffer too small\n");
-			return STATUS_BUFFER_TOO_SMALL;
-		}
-
-		pVolumeInfo = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
-		WDRBD_TRACE("Root Device IOCTL\n");
-
-		MVOL_LOCK();
-		VolumeExtension = mvolSearchDevice( pVolumeInfo->PhysicalDeviceName );
-		MVOL_UNLOCK();
-
-		if( VolumeExtension == NULL )
-		{
-			mvolLogError( DeviceObject, 272, MSG_NO_DEVICE, STATUS_NO_SUCH_DEVICE );
-			WDRBD_ERROR("cannot find volume, PD=%ws\n", pVolumeInfo->PhysicalDeviceName);
-			return STATUS_NO_SUCH_DEVICE;
-		}
-	}
-	else
-	{
-		VolumeExtension = DeviceObject->DeviceExtension;
-	}
-
-	if( VolumeExtension->Active == FALSE )
-	{
-		mvolLogError( VolumeExtension->DeviceObject, 273,
-			MSG_INVALID_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST );
-		WDRBD_ERROR("Not Volume Started\n");
-		return STATUS_INVALID_DEVICE_REQUEST;
-	}
-
-	VolumeExtension->Active = FALSE;
-	// DW-1327: to allow I/O by drbdlock.
-	SetDrbdlockIoBlock(VolumeExtension, FALSE);
-	return STATUS_SUCCESS;
-}
-
-NTSTATUS
 IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 {
 	if (DeviceObject == mvolRootDeviceObject)
@@ -272,7 +150,11 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 
 	// DW-1300: get device and get reference.
 	device = get_device_with_vol_ext(pvext, TRUE);
-    if (pvext->WorkThreadInfo.Active && device)
+#ifdef _WIN32_MULTIVOL_THREAD
+    if (device)
+#else
+	if (pvext->WorkThreadInfo.Active && device)
+#endif
     {
     	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
@@ -285,7 +167,11 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     pvext->Active = FALSE;
 	// DW-1327: to allow I/O by drbdlock.
 	SetDrbdlockIoBlock(pvext, FALSE);
+#ifdef _WIN32_MULTIVOL_THREAD
+	pvext->WorkThreadInfo = NULL;
+#else
 	mvolTerminateThread(&pvext->WorkThreadInfo);
+#endif
 
 out:
     COUNT_UNLOCK(pvext);

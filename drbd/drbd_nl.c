@@ -1206,10 +1206,14 @@ retry:
                         (l_size > p_size))
                     {
                         rv = SS_TARGET_DISK_TOO_SMALL;
-                        goto out;
                     }
                 }
             }
+			
+			if (rv == SS_TARGET_DISK_TOO_SMALL)
+			{
+                        goto out;
+			}
 #endif
 			with_force = true;
 			forced = 1;
@@ -3101,6 +3105,22 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		NTSTATUS status = STATUS_UNSUCCESSFUL;
 		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
 		if (pvext) {
+#ifdef _WIN32_MULTIVOL_THREAD
+			pvext->WorkThreadInfo = &resource->WorkThreadInfo;
+
+			FsctlLockVolume(dh->minor);
+
+			pvext->Active = TRUE;
+			status = FsctlFlushDismountVolume(dh->minor, true);
+
+			FsctlUnlockVolume(dh->minor);
+
+			if (!NT_SUCCESS(status)) {
+				retcode = ERR_RES_NOT_KNOWN;
+				goto force_diskless_dec;
+			}
+			
+#else
 			status = mvolInitializeThread(pvext, &pvext->WorkThreadInfo, mvolWorkThread);
 			if (NT_SUCCESS(status)) {
 				FsctlLockVolume(dh->minor);
@@ -3130,6 +3150,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			else {
 				WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
 			}
+#endif
 		}
 	}
 #endif
@@ -6405,6 +6426,15 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		resource_to_info(&resource_info, resource);
 		notify_resource_state(NULL, 0, resource, &resource_info, NOTIFY_CREATE);
 		mutex_unlock(&notification_mutex);
+
+#ifdef _WIN32_MULTIVOL_THREAD
+		NTSTATUS status;
+		status = mvolInitializeThread(&resource->WorkThreadInfo, mvolWorkThread);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+		}
+#endif
+		
 	} else {
 #ifndef _WIN32
 		module_put(THIS_MODULE);
