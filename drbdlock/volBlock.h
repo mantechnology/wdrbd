@@ -12,12 +12,12 @@ CleanupVolBlock(
 
 BOOLEAN
 AddProtectedVolume(
-	PVOID pFltVolume
+	PVOID pVolumeObject
 	);
 
 BOOLEAN
 DeleteProtectedVolume(
-	PVOID pFltVolume
+	PVOID pVolumeObject
 	);
 
 BOOLEAN

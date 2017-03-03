@@ -2,7 +2,7 @@
 
 Module Name:
 
-	drbdlock.c
+	drbdlock_ops.c
 
 Abstract:
 

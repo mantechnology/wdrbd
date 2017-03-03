@@ -756,12 +756,12 @@ Return Value:
 
 --*/
 {
-	char szTest[DRBDLOCK_LOG_MAXLEN] = DRBDLOCK_LOG_PREFIX;
+	char szTemp[DRBDLOCK_LOG_MAXLEN] = DRBDLOCK_LOG_PREFIX;
 
 	va_list args;
 	va_start(args, format);
-	vsprintf_s(szTest + strlen(DRBDLOCK_LOG_PREFIX), DRBDLOCK_LOG_MAXLEN, format, args);
+	vsprintf_s(szTemp + strlen(DRBDLOCK_LOG_PREFIX), DRBDLOCK_LOG_MAXLEN, format, args);
 	va_end(args);
 
-	DbgPrint(szTest);
+	KdPrint((szTemp));
 }
