@@ -331,14 +331,28 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 			char path[256];
 			char *temp = strdup(argv[0]);
 			char *ptr, *name;
+			/* DW-1425: it's supposed to run any application that belongs to the paths have been set in 'path' env var as long as this is able to parse env vars.
+						since cygwin is NOT, preferentially search full path that is gotton from env var of drbd and drx. */
+#define DRBDADM_MAX_ENV_LEN		64	
+			char envs[][DRBDADM_MAX_ENV_LEN] = { "DRBD_PATH", "DRX_PATH", "" };
+			int i = 0;
 			// remove /usr/bin/
 			name = ptr = strtok(temp, "/");
 			while (ptr = strtok(NULL, "/"))
 			{
 				name = ptr;
 			}
-			sprintf(path, "%s\\%s", getenv("DRBD_PATH"), name);
-			execvp(path, argv);
+			
+			for (i = 0; i < sizeof(envs) / DRBDADM_MAX_ENV_LEN; i++)
+			{
+				if (i == (sizeof(envs) / DRBDADM_MAX_ENV_LEN) - 1)
+					strcpy(path, name);
+				else
+					sprintf(path, "%s\\%s", getenv(envs[i]), name);
+
+				if (!execvp(path, argv))
+					break;
+			}
 #else
 			execvp(argv[0], argv);
 #endif
