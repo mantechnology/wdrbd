@@ -310,7 +310,8 @@ typedef struct _NETLINK_WORK_ITEM{
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
 
 typedef struct _NETLINK_CTX{
-    PWSK_SOCKET Socket;
+	PETHREAD		NetlinkEThread;
+    PWSK_SOCKET 	Socket;
 } NETLINK_CTX, *PNETLINK_CTX;
 
 // DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
@@ -767,8 +768,8 @@ VOID
 NetlinkWorkThread(PVOID context)
 {
     ASSERT(context);
-
-    PWSK_SOCKET socket = ((PNETLINK_CTX)context)->Socket;
+	PNETLINK_CTX	pNetlinkCtx = (PNETLINK_CTX)context;
+    PWSK_SOCKET 	socket = pNetlinkCtx->Socket;
     LONG readcount, minor = 0;
     int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
@@ -883,7 +884,9 @@ cleanup:
     Disconnect(socket);
     CloseSocket(socket);
     ct_delete_thread(KeGetCurrentThread());
-    ExFreeToNPagedLookasideList(&netlink_ctx_mempool, context);
+
+	ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
+    ExFreeToNPagedLookasideList(&netlink_ctx_mempool, pNetlinkCtx);
     if (pinfo)
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
     if (psock_buf)
@@ -964,7 +967,6 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 	ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
 #else
 	HANDLE 			hNetLinkThread = NULL;
-	PETHREAD		NetlinkServerThread;
 	NTSTATUS		Status = STATUS_SUCCESS;
 	PNETLINK_CTX	pNetLinkCtx = ExAllocateFromNPagedLookasideList(&netlink_ctx_mempool);
 
@@ -975,7 +977,7 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
         return Status;
     }
-	Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &NetlinkServerThread, NULL);
+	Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &pNetLinkCtx->NetlinkEThread, NULL);
 	ZwClose(hNetLinkThread);
     if (!NT_SUCCESS(Status)) {
         WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
