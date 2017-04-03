@@ -1868,6 +1868,15 @@ void free_opt(struct d_option *item)
 int _proxy_connect_name_len(const struct d_resource *res, const struct connection *conn)
 {
 	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
+	if (!path ||
+		!path->peer_proxy ||
+		!path->my_proxy)
+		return 0;
+#endif
+
 	return (conn->name ? strlen(conn->name) : strlen(res->name)) +
 		strlen(names_to_str_c(&path->peer_proxy->on_hosts, '_')) +
 		strlen(names_to_str_c(&path->my_proxy->on_hosts, '_')) +
@@ -1877,6 +1886,15 @@ int _proxy_connect_name_len(const struct d_resource *res, const struct connectio
 char *_proxy_connection_name(char *conn_name, const struct d_resource *res, const struct connection *conn)
 {
 	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
+	if (!path ||
+		!path->peer_proxy ||
+		!path->my_proxy)
+		return (char*)0;
+#endif
+
 	sprintf(conn_name, "%s-%s-%s",
 		conn->name ?: res->name,
 		names_to_str_c(&path->peer_proxy->on_hosts, '_'),
@@ -1896,6 +1914,11 @@ int do_proxy_conn_up(const struct cfg_ctx *ctx)
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 		conn_name = proxy_connection_name(ctx->res, conn);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
+		if (conn_name == (char*)0)
+			continue;
+#endif
 
 		argv[2] = ssprintf(
 				"add connection %s %s:%s %s:%s %s:%s %s:%s",
@@ -1931,6 +1954,12 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 		conn_name = proxy_connection_name(ctx->res, conn);
+
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
+		if (conn_name == (char*)0)
+			continue;
+#endif
 
 		argc = 0;
 		argv[NA(argc)] = drbd_proxy_ctl;
@@ -1975,6 +2004,12 @@ int do_proxy_conn_down(const struct cfg_ctx *ctx)
 	rv = 0;
 	for_each_connection(conn, &res->connections) {
 		conn_name = proxy_connection_name(ctx->res, conn);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
+		if (conn_name == (char*)0)
+			continue;
+#endif
+
 		argv[2] = ssprintf("del connection %s", conn_name);
 
 		rv = m_system_ex(argv, SLEEPS_SHORT, res->name);
