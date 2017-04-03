@@ -39,7 +39,7 @@
 
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
 //#define _WSK_IRP_REUSE				// WSK IRP reuse. // DW-1078 disable reuse Irp 
-#define _WIN32_NETLINK_EX
+//#define _WIN32_NETLINK_EX
 #define _WSK_SOCKETCONNECT
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
