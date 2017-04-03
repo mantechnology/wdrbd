@@ -970,16 +970,23 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 	NTSTATUS		Status = STATUS_SUCCESS;
 	PNETLINK_CTX	pNetLinkCtx = ExAllocateFromNPagedLookasideList(&netlink_ctx_mempool);
 
+	if(!pNetLinkCtx) {
+		WDRBD_ERROR("netlink_ctx_mempool failed with status 0x%08X\n", Status);
+        return STATUS_UNSUCCESSFUL;
+	}
+	
 	pNetLinkCtx->Socket = AcceptSocket;
 	
 	Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, NetlinkWorkThread, pNetLinkCtx);
     if (!NT_SUCCESS(Status)) {
+		ExFreeToNPagedLookasideList (&netlink_ctx_mempool, pNetLinkCtx);
         WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
         return Status;
     }
 	Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &pNetLinkCtx->NetlinkEThread, NULL);
 	ZwClose(hNetLinkThread);
     if (!NT_SUCCESS(Status)) {
+		ExFreeToNPagedLookasideList (&netlink_ctx_mempool, pNetLinkCtx);
         WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
         return Status;
     }
