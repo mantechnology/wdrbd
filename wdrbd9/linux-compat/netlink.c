@@ -299,7 +299,8 @@ int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
     }
 }
 
-NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
+//NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
+NPAGED_LOOKASIDE_LIST netlink_ctx_mempool;
 NPAGED_LOOKASIDE_LIST genl_info_mempool;
 NPAGED_LOOKASIDE_LIST genl_msg_mempool;
 
@@ -307,6 +308,10 @@ typedef struct _NETLINK_WORK_ITEM{
     WORK_QUEUE_ITEM Item;
     PWSK_SOCKET Socket;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
+
+typedef struct _NETLINK_CTX{
+    PWSK_SOCKET Socket;
+} NETLINK_CTX, *PNETLINK_CTX;
 
 // DW-1229: using global attr may cause BSOD when we receive plural netlink requests. use local attr.
 struct genl_info * genl_info_new(struct nlmsghdr * nlh, PWSK_SOCKET socket, struct nlattr **attrs)
@@ -426,8 +431,8 @@ InitWskNetlink(void * pctx)
 
     netlink_server_socket = netlink_socket;
 
-    ExInitializeNPagedLookasideList(&drbd_workitem_mempool, NULL, NULL,
-        0, sizeof(struct _NETLINK_WORK_ITEM), '27DW', 0);
+    ExInitializeNPagedLookasideList(&netlink_ctx_mempool, NULL, NULL,
+        0, sizeof(struct _NETLINK_CTX), '27DW', 0);
     ExInitializeNPagedLookasideList(&genl_info_mempool, NULL, NULL,
         0, sizeof(struct genl_info), '37DW', 0);
     ExInitializeNPagedLookasideList(&genl_msg_mempool, NULL, NULL,
@@ -447,7 +452,7 @@ end:
 NTSTATUS
 ReleaseWskNetlink()
 {
-    ExDeleteNPagedLookasideList(&drbd_workitem_mempool);
+    ExDeleteNPagedLookasideList(&netlink_ctx_mempool);
     ExDeleteNPagedLookasideList(&genl_info_mempool);
     ExDeleteNPagedLookasideList(&genl_msg_mempool);
 
@@ -569,7 +574,7 @@ NetlinkWorkThread(PVOID context)
 	ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
 	
 	// allocate memory pool
-	ExInitializeNPagedLookasideList(&drbd_workitem_mempool, NULL, NULL,
+	ExInitializeNPagedLookasideList(&netlink_ctx_mempool, NULL, NULL,
         0, sizeof(struct _NETLINK_WORK_ITEM), '27DW', 0);
     ExInitializeNPagedLookasideList(&genl_info_mempool, NULL, NULL,
         0, sizeof(struct genl_info), '37DW', 0);
@@ -763,53 +768,46 @@ NetlinkWorkThread(PVOID context)
 {
     ASSERT(context);
 
-    PWSK_SOCKET socket = ((PNETLINK_WORK_ITEM)context)->Socket;
+    PWSK_SOCKET socket = ((PNETLINK_CTX)context)->Socket;
     LONG readcount, minor = 0;
     int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
+
+	// set thread priority
+	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
     //WDRBD_INFO("Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), pctx);
 
     void * psock_buf = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
-
-    if (!psock_buf)
-    {
+    if (!psock_buf){
         WDRBD_ERROR("Failed to allocate NP memory. size(%d)\n", NLMSG_GOODSIZE);
         goto cleanup;
     }
 
-    while (TRUE)
-    {
+    while (TRUE) {
         readcount = Receive(socket, psock_buf, NLMSG_GOODSIZE, 0, 0);
 
-        if (readcount == 0)
-        {
+        if (readcount == 0) {
             //WDRBD_INFO("peer closed\n"); // disconenct 명령??
             goto cleanup;
-        }
-        else if(readcount < 0)
-        {
+        } else if(readcount < 0) {
             WDRBD_ERROR("Receive error = 0x%x\n", readcount);
             goto cleanup;
         }
 
 		struct nlmsghdr *nlh = (struct nlmsghdr *)psock_buf;
 
-        if (strstr(psock_buf, DRBD_EVENT_SOCKET_STRING))
-        {
+        if (strstr(psock_buf, DRBD_EVENT_SOCKET_STRING)) {
 			WDRBD_TRACE("DRBD_EVENT_SOCKET_STRING received. socket(0x%p)\n", socket);
 			if (!push_msocket_entry(socket)) {
 				goto cleanup;
 			}
 
-			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount)
-			{
+			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount) {
 				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
 				readcount -= strlen(DRBD_EVENT_SOCKET_STRING);
-			}
-			else
-			{
+			} else {
 				continue;
 			}
         }
@@ -821,15 +819,13 @@ NetlinkWorkThread(PVOID context)
 		struct nlattr *local_attrs[128];
 
 		pinfo = genl_info_new(nlh, socket, local_attrs);
-        if (!pinfo)
-        {
+        if (!pinfo) {
             WDRBD_ERROR("Failed to allocate (struct genl_info) memory. size(%d)\n", sizeof(struct genl_info));
             goto cleanup;
         }
 
         drbd_tla_parse(nlh, local_attrs);
-        if (!nlmsg_ok(nlh, readcount))
-        {
+        if (!nlmsg_ok(nlh, readcount)) {
             WDRBD_ERROR("rx message(%d) crashed!\n", readcount);
             goto cleanup;
         }
@@ -839,8 +835,7 @@ NetlinkWorkThread(PVOID context)
 
         // check whether resource suspended
         struct drbd_genlmsghdr * gmh = pinfo->userhdr;
-        if (gmh)
-        {
+        if (gmh) {
             minor = gmh->minor;
             struct drbd_conf * mdev = minor_to_device(minor);
 #ifdef _WIN32
@@ -859,8 +854,7 @@ NetlinkWorkThread(PVOID context)
         u8 cmd = pinfo->genlhdr->cmd;
         struct genl_ops * pops = get_drbd_genl_ops(cmd);
 
-        if (pops)
-        {
+        if (pops) {
 			NTSTATUS status = STATUS_UNSUCCESSFUL;
 
             WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
@@ -868,24 +862,18 @@ NetlinkWorkThread(PVOID context)
 			
 			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
 
-			if (STATUS_SUCCESS == status)
-			{
+			if (STATUS_SUCCESS == status) {
 				err = _genl_ops(pops, pinfo);
 				mutex_unlock(&g_genl_mutex);
-				if (err)
-				{
+				if (err) {
 					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
 					errcnt++;
 				}
-			}
-			else
-			{
+			} else {
 				WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
 			}
 
-        }
-        else
-        {
+        } else {
             WDRBD_WARN("Not validated cmd(%d)\n", cmd);
         }
     }
@@ -895,18 +883,15 @@ cleanup:
     Disconnect(socket);
     CloseSocket(socket);
     ct_delete_thread(KeGetCurrentThread());
-    ExFreeToNPagedLookasideList(&drbd_workitem_mempool, context);
+    ExFreeToNPagedLookasideList(&netlink_ctx_mempool, context);
     if (pinfo)
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
     if (psock_buf)
         ExFreeToNPagedLookasideList(&genl_msg_mempool, psock_buf);
 
-    if (errcnt)
-    {
+    if (errcnt) {
         WDRBD_ERROR("done. error occured %d times\n", errcnt);
-    }
-    else
-    {
+    } else {
         WDRBD_INFO("done\n");
     }
 }
@@ -961,7 +946,7 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         plocal->sin_addr.S_un.S_un_b.s_b3,
         plocal->sin_addr.S_un.S_un_b.s_b4,
         HTON_SHORT(plocal->sin_port));
-
+#if 0
     PNETLINK_WORK_ITEM netlinkWorkItem = ExAllocateFromNPagedLookasideList(&drbd_workitem_mempool);
 
     if (!netlinkWorkItem)
@@ -977,6 +962,26 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 		netlinkWorkItem);
 
 	ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
+#else
+	HANDLE 			hNetLinkThread = NULL;
+	PETHREAD		NetlinkServerThread;
+	NTSTATUS		Status = STATUS_SUCCESS;
+	PNETLINK_CTX	pNetLinkCtx = ExAllocateFromNPagedLookasideList(&netlink_ctx_mempool);
+
+	pNetLinkCtx->Socket = AcceptSocket;
+	
+	Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, NetlinkWorkThread, pNetLinkCtx);
+    if (!NT_SUCCESS(Status)) {
+        WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
+        return Status;
+    }
+	Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &NetlinkServerThread, NULL);
+	ZwClose(hNetLinkThread);
+    if (!NT_SUCCESS(Status)) {
+        WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
+        return Status;
+    }
+#endif
     return STATUS_SUCCESS;
 }
 #endif
