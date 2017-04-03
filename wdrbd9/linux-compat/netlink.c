@@ -885,7 +885,7 @@ cleanup:
     CloseSocket(socket);
     ct_delete_thread(KeGetCurrentThread());
 
-	ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
+	//ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
     ExFreeToNPagedLookasideList(&netlink_ctx_mempool, pNetlinkCtx);
     if (pinfo)
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
@@ -983,13 +983,12 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         WDRBD_ERROR("PsCreateSystemThread failed with status 0x%08X\n", Status);
         return Status;
     }
-	Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &pNetLinkCtx->NetlinkEThread, NULL);
+	//Status = ObReferenceObjectByHandle(hNetLinkThread, THREAD_ALL_ACCESS, NULL, KernelMode, &pNetLinkCtx->NetlinkEThread, NULL);
 	ZwClose(hNetLinkThread);
-    if (!NT_SUCCESS(Status)) {
-		ExFreeToNPagedLookasideList (&netlink_ctx_mempool, pNetLinkCtx);
-        WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
-        return Status;
-    }
+    //if (!NT_SUCCESS(Status)) {
+    //    WDRBD_ERROR("ObReferenceObjectByHandle() failed with status 0x%08X\n", Status);
+    //    return Status;
+    //}
 #endif
     return STATUS_SUCCESS;
 }
