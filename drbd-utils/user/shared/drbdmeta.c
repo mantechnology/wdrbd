@@ -2622,7 +2622,7 @@ static int _create_vhd_script(char * vhd_path, uint64_t size_mb, char * mount_po
 		"create vdisk file=\"%s\" maximum=%llu\n"
 		"attach vdisk\n"
 		"create partition primary\n"
-		"assign %s=%s",
+		"assign %s=\"%s\"",			// DW-1423: need quotation to get path with blank.
 		vhd_path, size_mb, assign_type, mount_point);
 
 	fputs(buf, fp);
@@ -2693,6 +2693,7 @@ static uint64_t _get_bdev_size_by_letter(const char letter)
 * @brief
 *	To return a proper win32 device namespace
 *	ex) "\\.\x:" or
+*		"\\.\x:\test\"
 *		"\\.\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" without a trailing backslash
 *	This function returns the allocated buffer, in which the caller should free
 */
@@ -2738,6 +2739,11 @@ static char * _get_win32_device_ns(const char * device_name)
 					//fprintf(stderr, "GetVolumeNameForVolumeMountPoint() failed err(%d)\n", err);
 					return NULL;
 			}
+			// DW-1423: retrieve path.
+			wdn = (char*)malloc(strlen(temp) + 5);
+			strcpy(wdn, "\\\\.\\");
+			strcat(wdn, temp);
+			return wdn;
 		}
 	}
 
@@ -2793,7 +2799,7 @@ int v07_style_md_open(struct format *cfg)
 				fprintf(stderr, "Attaching %s for meta data\n", cfg->vhd_dev_path);
 				if (_call_script(_argv)) {
 					remove("./"ATTACH_VHD_SCRIPT);
-					fprintf(stderr, "diskpart failed.\n");
+					fprintf(stderr, "diskpart attach failed.\n");
 					exit(20);
 				}
 				remove("./"ATTACH_VHD_SCRIPT);
@@ -4792,10 +4798,15 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 	}
 #ifdef FEATURE_VHD_META_SUPPORT
 	char * meta_volume = _get_win32_device_ns(cfg->md_device_name);
+	// DW-1423: directory has been created while opening, it must exist. need to see if this's still directory.
+	int access_ret = access(meta_volume, R_OK);
+	int opendir_ret = opendir(meta_volume);
 
+	if (opendir_ret)
+		closedir(meta_volume);
 	// whether to need vhd type
-	if (cfg->vhd_dev_path && (F_OK != access(meta_volume, R_OK))) {
-
+	if (cfg->vhd_dev_path && (F_OK != access_ret || opendir_ret)) {
+		
 		uint64_t evsm;		// Estimated Vhd Size per MiB
 		evsm = _get_bdev_size_by_letter('C' + cfg->minor); // per bytes
 		evsm = ((evsm >> 20) / 32768) * max_peers
@@ -4821,7 +4832,7 @@ int meta_create_md(struct format *cfg, char **argv __attribute((unused)), int ar
 			fprintf(stderr, "Creating %s for meta data...\n", cfg->vhd_dev_path);
 			if (_call_script(_argv)) {
 				remove("./"CREATE_VHD_SCRIPT);
-				fprintf(stderr, "diskpart failed.\n");
+				fprintf(stderr, "diskpart create failed.\n");
 				exit(20);
 			}
 			remove("./"CREATE_VHD_SCRIPT);
