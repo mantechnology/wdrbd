@@ -584,6 +584,8 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		return -EIO;
 	}
 
+#if 0
+	// DW-1427: adjust send buffer size
 #ifdef _WIN32_SEND_BUFFING
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
 	{
@@ -592,6 +594,15 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
 			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF; 
 		}
+	}
+#endif
+#endif
+#ifdef _WIN32_SEND_BUFFING
+	// DW-1427: resize send buffer when it over.
+	if (nc->sndbuf_size > DRBD_SNDBUF_SIZE_MAX)
+	{
+		tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_MAX);
+		nc->sndbuf_size = DRBD_SNDBUF_SIZE_MAX;		
 	}
 #endif
 
@@ -1039,6 +1050,8 @@ retry:
 				kfree(s_estab);
 				return -ENOMEM;
 			}
+#if 0
+			// DW-1427: adjust send buffer size
 #ifdef _WIN32_SEND_BUFFING
 			if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
 			{
@@ -1050,6 +1063,18 @@ retry:
 			}
 			dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
 #endif
+#endif
+#ifdef _WIN32_SEND_BUFFING
+			// DW-1427: resize send buffer when it over.
+			if (nc->sndbuf_size > DRBD_SNDBUF_SIZE_MAX)
+			{
+				tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_MAX);
+				nc->sndbuf_size = DRBD_SNDBUF_SIZE_MAX;
+				
+			}
+			dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
+#endif
+
             s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
 		}
 		else {

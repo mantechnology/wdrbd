@@ -105,6 +105,8 @@
 #define DRBD_SNDBUF_SIZE_MIN  0
 #if _WIN32
 
+// DW-1427: adjust send buffer size
+#if 0
 #ifdef _WIN64 /* DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
 				to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. */ 
 #define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFF)
@@ -112,6 +114,10 @@
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+#endif
+#else
+#define DRBD_SNDBUF_SIZE_MAX  (20<<20)
+#define DRBD_SNDBUF_SIZE_DEF  0
 #endif
 
 #else
