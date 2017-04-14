@@ -4538,12 +4538,7 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 		/* Transport modules might use RCU on the path list.
 		   We do the synchronize_rcu() here in the generic code */
 		INIT_LIST_HEAD(&path->list);
-#ifdef _WIN32
-		if(connection != NULL && path != NULL) 
-			notify_path(connection, path, NOTIFY_DESTROY);	
-#else
 		notify_path(connection, path, NOTIFY_DESTROY);
-#endif
 		kref_put(&path->kref, drbd_destroy_path);
 		return NO_ERROR;
 	}
