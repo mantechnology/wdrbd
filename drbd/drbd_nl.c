@@ -4517,6 +4517,8 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 				  "Can not delete last path, use disconnect first!");
 		return ERR_INVALID_REQUEST;
 	}
+	
+	err = -ENOENT;
 #ifdef _WIN32
     list_for_each_entry(struct drbd_path, path, &transport->paths, list) {
 #else
@@ -4528,30 +4530,23 @@ adm_del_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 			continue;
 
 		err = transport->ops->remove_path(transport, path);
-		if (!err) {
+		if (err)
+			break;
 #ifndef _WIN32
-			synchronize_rcu();
+		synchronize_rcu();
 #endif
-			/* Transport modules might use RCU on the path list.
-			   We do the synchronize_rcu() here in the generic code */
-			INIT_LIST_HEAD(&path->list);
-			kref_put(&path->kref, drbd_destroy_path);
-		}
-		break;
+		/* Transport modules might use RCU on the path list.
+		   We do the synchronize_rcu() here in the generic code */
+		INIT_LIST_HEAD(&path->list);
+		notify_path(connection, path, NOTIFY_DESTROY);
+		kref_put(&path->kref, drbd_destroy_path);
+		return NO_ERROR;
 	}
-	if (err) {
-		drbd_err(connection, "del_path() failed with %d\n", err);
-		drbd_msg_put_info(adm_ctx->reply_skb, "del_path on transport failed");
-		return ERR_INVALID_REQUEST;
-	}
-#ifdef _WIN32
-	if(connection != NULL && path != NULL) 
-		notify_path(connection, path, NOTIFY_DESTROY);	
-#else
-	notify_path(connection, path, NOTIFY_DESTROY);
-#endif
 
-	return NO_ERROR;
+	drbd_err(connection, "del_path() failed with %d\n", err);
+	drbd_msg_put_info(adm_ctx->reply_skb,
+			  err == -ENOENT ? "no such path" : "del_path on transport failed");
+	return ERR_INVALID_REQUEST;
 }
 
 int drbd_adm_del_path(struct sk_buff *skb, struct genl_info *info)
