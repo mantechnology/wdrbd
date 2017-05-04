@@ -1201,9 +1201,7 @@ retry:
                 for_each_peer_device_ref(peer_device, im, device) {
                     sector_t p_size = peer_device->max_size << 9;
                     sector_t l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension);
-                    if ((device->disk_state[NOW] == D_INCONSISTENT) &&
-                        (peer_device->disk_state[NOW] == D_INCONSISTENT) &&
-                        (l_size > p_size))
+                    if (drbd_current_uuid(device) == UUID_JUST_CREATED && (l_size > p_size))
                     {
                         rv = SS_TARGET_DISK_TOO_SMALL;
                     }
