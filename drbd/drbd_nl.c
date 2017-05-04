@@ -1202,7 +1202,9 @@ retry:
                     sector_t p_size = peer_device->max_size << 9;
                     sector_t l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension);
 					// DW-1323: abort initial full sync when target disk is smaller than source
-                    if (drbd_current_uuid(device) == UUID_JUST_CREATED && (l_size > p_size))
+                    if ((drbd_current_uuid(device) == UUID_JUST_CREATED) && 
+						(peer_device->connection->cstate[NOW] == C_CONNECTED) && 
+						(l_size > p_size))
                     {
                         rv = SS_TARGET_DISK_TOO_SMALL;
                     }
