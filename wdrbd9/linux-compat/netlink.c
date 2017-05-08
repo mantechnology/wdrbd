@@ -988,7 +988,8 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 	}
 	
 	pNetLinkCtx->Socket = AcceptSocket;
-	
+
+	// DW-1437 It is not allowed to call PsCreateSystemThread from DISPATCH_LEVEL
 	Status = PsCreateSystemThread(&hNetLinkThread, THREAD_ALL_ACCESS, NULL, NULL, NULL, NetlinkWorkThread, pNetLinkCtx);
     if (!NT_SUCCESS(Status)) {
 		ExFreeToNPagedLookasideList (&netlink_ctx_mempool, pNetLinkCtx);
