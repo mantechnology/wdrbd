@@ -8798,7 +8798,7 @@ void twopc_connection_down(struct drbd_connection *connection)
 #endif
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
-#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
 		set_bit(TWOPC_NO, &connection->flags);
 #else
 		set_bit(TWOPC_RETRY, &connection->flags);

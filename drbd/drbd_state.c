@@ -3988,10 +3988,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	struct drbd_connection *connection, *target_connection = NULL;
 	enum drbd_state_rv rv;
 	u64 reach_immediately;
+
 #ifndef _WIN32_SIMPLE_TWOPC // DW-1408
-#else
 	int retries = 1;
 #endif
+
 #ifdef _WIN32
     ULONG_PTR start_time;
 	// MODIFIED_BY_MANTECH DW-1204: twopc is for disconnecting.
@@ -4051,8 +4052,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	}
 	rcu_read_unlock();
 
-#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
-#else
+#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
 	retry:
 #endif
 
@@ -4270,7 +4270,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #endif
 		 )
 	{
-		drbd_warn(resource, "twopc timeout, no more retry(retry count: %d)\n", retries);
+		drbd_warn(resource, "twopc timeout, no more retry\n");
 		
 		if (target_connection) {
 			kref_debug_put(&target_connection->kref_debug, 8);
@@ -4287,6 +4287,8 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #endif
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+#else
 		long timeout = twopc_retry_timeout(resource, retries++);
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d (%u->%d)\n",
@@ -4297,7 +4299,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
 #endif
-
+#endif
 		if (have_peers)
 			twopc_phase2(resource, context->vnr, 0, &request, reach_immediately);
 		if (target_connection) {
