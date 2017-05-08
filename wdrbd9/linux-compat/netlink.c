@@ -299,7 +299,7 @@ int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
     }
 }
 
-//NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
+NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
 NPAGED_LOOKASIDE_LIST netlink_ctx_mempool;
 NPAGED_LOOKASIDE_LIST genl_info_mempool;
 NPAGED_LOOKASIDE_LIST genl_msg_mempool;
@@ -432,6 +432,8 @@ InitWskNetlink(void * pctx)
 
     netlink_server_socket = netlink_socket;
 
+	ExInitializeNPagedLookasideList(&drbd_workitem_mempool, NULL, NULL,
+        0, sizeof(struct _NETLINK_WORK_ITEM), '27DW', 0);
     ExInitializeNPagedLookasideList(&netlink_ctx_mempool, NULL, NULL,
         0, sizeof(struct _NETLINK_CTX), '27DW', 0);
     ExInitializeNPagedLookasideList(&genl_info_mempool, NULL, NULL,
@@ -453,6 +455,7 @@ end:
 NTSTATUS
 ReleaseWskNetlink()
 {
+	ExDeleteNPagedLookasideList(&drbd_workitem_mempool);
     ExDeleteNPagedLookasideList(&netlink_ctx_mempool);
     ExDeleteNPagedLookasideList(&genl_info_mempool);
     ExDeleteNPagedLookasideList(&genl_msg_mempool);
@@ -768,8 +771,13 @@ VOID
 NetlinkWorkThread(PVOID context)
 {
     ASSERT(context);
+#if 1
+	PWSK_SOCKET socket = ((PNETLINK_WORK_ITEM)context)->Socket;
+#else
 	PNETLINK_CTX	pNetlinkCtx = (PNETLINK_CTX)context;
     PWSK_SOCKET 	socket = pNetlinkCtx->Socket;
+#endif
+	
     LONG readcount, minor = 0;
     int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
@@ -886,7 +894,12 @@ cleanup:
     ct_delete_thread(KeGetCurrentThread());
 
 	//ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
+#if 1
+	ExFreeToNPagedLookasideList(&drbd_workitem_mempool, context);
+#else	
     ExFreeToNPagedLookasideList(&netlink_ctx_mempool, pNetlinkCtx);
+#endif
+
     if (pinfo)
         ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
     if (psock_buf)
@@ -949,17 +962,16 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         plocal->sin_addr.S_un.S_un_b.s_b3,
         plocal->sin_addr.S_un.S_un_b.s_b4,
         HTON_SHORT(plocal->sin_port));
-#if 0
+#if 1
     PNETLINK_WORK_ITEM netlinkWorkItem = ExAllocateFromNPagedLookasideList(&drbd_workitem_mempool);
 
-    if (!netlinkWorkItem)
-    {
+    if (!netlinkWorkItem) {
         WDRBD_ERROR("Failed to allocate NP memory. size(%d)\n", sizeof(NETLINK_WORK_ITEM));
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
     netlinkWorkItem->Socket = AcceptSocket;
-
+    
 	ExInitializeWorkItem(&netlinkWorkItem->Item,
 		NetlinkWorkThread,
 		netlinkWorkItem);
