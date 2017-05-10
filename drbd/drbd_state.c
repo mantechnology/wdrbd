@@ -4266,6 +4266,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #ifdef _WIN32_SIMPLE_TWOPC // DW-1408
 		 && rv == SS_TIMEOUT 
 #else
+		 && rv == SS_TIMEOUT 
 		 && retries >= TWOPC_TIMEOUT_RETRY_COUNT
 #endif
 		 )
