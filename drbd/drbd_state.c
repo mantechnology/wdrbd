@@ -2423,8 +2423,16 @@ static void abw_start_sync(struct drbd_device *device,
 			initialize_resync(pd);
 		rcu_read_unlock();
 
+#ifdef _WIN32
+		// DW-1293: peer's bitmap will be reflected on local device's bitmap to perform fast invalidate(remote).
+		if (peer_device->connection->agreed_pro_version >= 112)
+			stable_change_repl_state(peer_device, L_WF_BITMAP_T, CS_VERBOSE);
+		else if (peer_device->connection->agreed_pro_version < 110)
+			stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
+#else
 		if (peer_device->connection->agreed_pro_version < 110)
 			stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
+#endif
 		else
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		break;
@@ -2432,7 +2440,15 @@ static void abw_start_sync(struct drbd_device *device,
 	}
 #endif
 	case L_STARTING_SYNC_S:
+#ifdef _WIN32
+		// DW-1293: peer's bitmap will be reflected on local device's bitmap to perform fast invalidate(remote).
+		if (peer_device->connection->agreed_pro_version >= 112)
+			stable_change_repl_state(peer_device, L_WF_BITMAP_S, CS_VERBOSE);
+		else
+			drbd_start_resync(peer_device, L_SYNC_SOURCE);
+#else
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
+#endif
 		break;
 	default:
 		break;
@@ -3170,7 +3186,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			/* We are in the progress to start a full sync. SyncTarget sets all slots. */
 			if (repl_state[OLD] != L_STARTING_SYNC_T && repl_state[NEW] == L_STARTING_SYNC_T)
 				drbd_queue_bitmap_io(device,
+#ifdef _WIN32
+				// DW-1293
+					&drbd_bmio_set_all_or_fast, &abw_start_sync,
+#else
 					&drbd_bmio_set_all_n_write, &abw_start_sync,
+#endif
 					"set_n_write from StartingSync",
 					BM_LOCK_CLEAR | BM_LOCK_BULK,
 					peer_device);
@@ -3178,7 +3199,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			/* We are in the progress to start a full sync. SyncSource one slot. */
 			if (repl_state[OLD] != L_STARTING_SYNC_S && repl_state[NEW] == L_STARTING_SYNC_S)
 				drbd_queue_bitmap_io(device,
+#ifdef _WIN32
+				// DW-1293
+					&drbd_bmio_set_all_or_fast, &abw_start_sync,
+#else
 					&drbd_bmio_set_n_write, &abw_start_sync,
+#endif
 					"set_n_write from StartingSync",
 					BM_LOCK_CLEAR | BM_LOCK_BULK,
 					peer_device);
