@@ -584,17 +584,6 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		return -EIO;
 	}
 
-#ifdef _WIN32_SEND_BUFFING
-	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
-	{
-		if (nc->sndbuf_size > 0)
-		{
-			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
-			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF; 
-		}
-	}
-#endif
-
 	sndbuf_size = nc->sndbuf_size;
 	rcvbuf_size = nc->rcvbuf_size;
 	connect_int = nc->connect_int;
@@ -1039,17 +1028,6 @@ retry:
 				kfree(s_estab);
 				return -ENOMEM;
 			}
-#ifdef _WIN32_SEND_BUFFING
-			if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
-			{
-				if (nc->sndbuf_size > 0)
-				{
-					tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
-					nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
-				}
-			}
-			dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
-#endif
             s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
 		}
 		else {

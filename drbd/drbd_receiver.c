@@ -982,8 +982,10 @@ start:
 	}
 	rcu_read_unlock();
 
+
 #ifdef _WIN32_SEND_BUFFING
-	if ((nc->wire_protocol == DRBD_PROT_A) && (nc->sndbuf_size > 0) )
+	// DW-1436 removing the protocol dependency of the send buffer thread
+	if (nc->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN)
 	{
 		bool send_buffring = FALSE;
 
@@ -993,7 +995,7 @@ start:
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
 	}
-	else
+	else 
 	{
 		drbd_warn(connection, "send-buffering disabled\n");
 	}
