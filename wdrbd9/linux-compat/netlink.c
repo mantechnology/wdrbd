@@ -553,6 +553,10 @@ NetlinkWorkThread(PVOID context)
     LONG readcount, minor = 0;
     int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
+	const char *first_cmd = NULL;
+	bool is_first_cmd = true;
+	bool is_dumpit_cmd = false;
+	
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
     //WDRBD_INFO("Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), pctx);
@@ -649,7 +653,20 @@ NetlinkWorkThread(PVOID context)
         {
 			NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-            WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
+			if (is_first_cmd)
+			{
+				first_cmd = pops->str;
+				is_first_cmd = false;
+			}
+
+			if (pops->dumpit && cmd == DRBD_ADM_GET_RESOURCES)
+			{
+				is_dumpit_cmd = true;
+				WDRBD_TRACE("drbd cmd(%s:%u)\n", pops->str, cmd);
+			}
+			else if (!pops->dumpit)
+				WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
+
             cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
 			
 			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
@@ -693,7 +710,10 @@ cleanup:
     }
     else
     {
-        WDRBD_INFO("done\n");
+		if (is_dumpit_cmd)
+			WDRBD_TRACE("done : %s\n", first_cmd);
+		else
+			WDRBD_INFO("done : %s\n", first_cmd);
     }
 }
 
