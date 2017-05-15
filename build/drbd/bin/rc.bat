@@ -125,6 +125,7 @@ goto :eof
 		del _check_volume
 		set /a retry=retry+1
 
+		REM Retry 10 times. If it fails more than 10 times, it may become diskless state.
 		if %retry% gtr 10 (
 			echo [%date%_%time%] Failed to attach the %1 >> %log%
 			goto :eof
