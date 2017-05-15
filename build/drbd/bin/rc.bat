@@ -14,8 +14,17 @@ goto :eof
 REM ------------------------------------------------------------------------
 :start
 
+set log="%DRBD_PATH%\..\log\rc_start.log"
+echo [%date%_%time%] rc.bat start. > %log%
+
 :wdrbd_attach_vhd
-for /f "usebackq tokens=*" %%a in (`drbdadm sh-md-idx all`) do (call :sub_attach_vhd %%a)
+
+
+for /f "usebackq tokens=*" %%a in (`drbdadm sh-md-idx all ^| findstr /C:".vhd"`) do (
+	if %errorlevel% == 0 (
+		call :sub_attach_vhd "%%a"
+	)
+)
 
 REM for /f "usebackq tokens=*" %%a in (`drbdadm sh-resources-list`) do (
 REM	drbdadm sh-dev %%a > tmp_vol.txt
@@ -45,9 +54,10 @@ for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
 	)
 	
 	if !ADJUST! == 1 (
-	drbdadm -c /etc/drbd.conf adjust %%a
-		if %errorlevel% gtr 0 (
-			echo Failed to drbdadm adjust %%a
+		echo [!date!_!time!] drbdadm adjust %%a >> %log%
+		drbdadm -c /etc/drbd.conf adjust %%a
+		if !errorlevel! gtr 0 (
+			echo [!date!_!time!] Failed to drbdadm adjust %%a. >> %log%
 		)
 		timeout /t 3 /NOBREAK > nul
 	)
@@ -105,6 +115,28 @@ REM	del tmp_vol.txt
 goto :eof
 
 :sub_attach_vhd
-	if exist %1 (echo select vdisk file="%~f1"& echo attach vdisk) > _temp_attach
-	if exist _temp_attach (diskpart /s _temp_attach  > nul & del _temp_attach & echo %1 is mounted.)
+	if exist %1 (echo select vdisk file="%~f1" & echo attach vdisk) > _temp_attach
+	if exist _temp_attach (diskpart /s _temp_attach  > nul & del _temp_attach )
+	set /a retry=0
+:check_vhd_status
+	(echo select vdisk file="%~f1" & echo detail disk) > _check_volume	
+	diskpart /s _check_volume | findstr /C:" ### " > nul
+	if %errorlevel% gtr 0 (
+		del _check_volume
+		set /a retry=retry+1
+
+		if %retry% gtr 10 (
+			echo [%date%_%time%] Failed to attach the %1 >> %log%
+			goto :eof
+		)
+
+		echo [%date%_%time%] Waiting for %1 to attach... retry = %retry% >> %log%
+
+		timeout /t 3 /NOBREAK > nul
+		goto check_vhd_status
+	)
+
+	del _check_volume
+	echo [%date%_%time%] %1 is mounted. >> %log%
+
 	goto :eof
