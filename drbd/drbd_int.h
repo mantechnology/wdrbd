@@ -3220,10 +3220,7 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 
 			/* Allow IO in BM exchange states with new protocols */
 		case L_WF_BITMAP_S:
-#ifndef _WIN32
-			// MODIFIED_BY_MANTECH DW-1121: sending out-of-sync when repl state is WFBitmapS possibly causes stopping resync, by setting new out-of-sync sector which bm_resync_fo has been already swept.
 			if (peer_device->connection->agreed_pro_version < 96)
-#endif
 				stable = false;
 			break;
 
