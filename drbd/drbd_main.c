@@ -1678,7 +1678,10 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 #ifdef _WIN32
 	{
 		// MODIFIED_BY_MANTECH DW-978: Set MDF_PEER_DIFF_CUR_UUID flag so that we're able to recognize -1 is sent.
-		peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
+		// MODIFIED_BY_MANTECH DW-1415 Set MDF_PEER_DIFF_CUR_UUID flag when only peer is in connected state to avoid exchanging uuid unlimitedly on the ring topology with flawed connection.
+		if (peer_device->connection->cstate[NOW] == C_CONNECTED)
+			peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
+
 		bitmap_uuid = -1;
 	}
 #else
