@@ -101,17 +101,20 @@
 #define DRBD_MAX_EPOCH_SIZE_DEF 2048
 #define DRBD_MAX_EPOCH_SIZE_SCALE '1'
 
-  /* I don't think that a tcp send buffer of more than 10M is useful */
-#define DRBD_SNDBUF_SIZE_MIN  0
+
 #if _WIN32
 
 #ifdef _WIN64 /* DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
 				to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. */ 
 #define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFF)
-#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+/* DW-1436 sndbuf-size default value is set to 0, minimum value is set to 1M when used */
+#define DRBD_SNDBUF_SIZE_DEF	0 
+#define DRBD_SNDBUF_SIZE_MIN  (1024*1024*1)
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
 #define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+/* I don't think that a tcp send buffer of more than 10M is useful */
+#define DRBD_SNDBUF_SIZE_MIN  0
 #endif
 
 #else

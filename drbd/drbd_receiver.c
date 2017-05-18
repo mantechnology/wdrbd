@@ -982,8 +982,10 @@ start:
 	}
 	rcu_read_unlock();
 
+
 #ifdef _WIN32_SEND_BUFFING
-	if ((nc->wire_protocol == DRBD_PROT_A) && (nc->sndbuf_size > 0) )
+	// DW-1436 removing the protocol dependency of the send buffer thread
+	if (nc->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN)
 	{
 		bool send_buffring = FALSE;
 
@@ -993,7 +995,7 @@ start:
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
 	}
-	else
+	else 
 	{
 		drbd_warn(connection, "send-buffering disabled\n");
 	}
@@ -8798,7 +8800,11 @@ void twopc_connection_down(struct drbd_connection *connection)
 #endif
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		set_bit(TWOPC_NO, &connection->flags);
+#else
 		set_bit(TWOPC_RETRY, &connection->flags);
+#endif
 		if (cluster_wide_reply_ready(resource)) {
 			int my_node_id = resource->res_opts.node_id;
 			if (resource->twopc_reply.initiator_node_id == my_node_id) {

@@ -424,6 +424,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 			kref_debug_get(&adm_ctx->resource->kref_debug, 2);
 		}
 	}
+
 	return NO_ERROR;
 
 fail:
@@ -3639,6 +3640,12 @@ _check_net_options(struct drbd_connection *connection, struct net_conf *old_net_
 	    new_net_conf->wire_protocol != DRBD_PROT_A)
 		return ERR_CONG_NOT_PROTO_A;
 
+#ifdef _WIN32 // DW-1436 sndbuf-size must be at least 1M 
+	if (new_net_conf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN && new_net_conf->sndbuf_size > 0){
+		return ERR_CONG_SNDBUF_SIZE;
+	}
+#endif 
+
 	return NO_ERROR;
 }
 
@@ -3796,27 +3803,12 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32 // DW-730
-	// if all peer_device's replication state is L_OFF, net options can be changed.  
 
-	if (new_net_conf->wire_protocol != old_net_conf->wire_protocol)
-	{
-		if (connection) {
-			struct drbd_peer_device* peer_device = NULL;
-			int i = 0;
-			idr_for_each_entry(struct drbd_peer_device*, &connection->peer_devices, peer_device, i) {
-				if (peer_device->repl_state[NOW] > L_OFF) {
-					drbd_msg_put_info(adm_ctx.reply_skb, "if all peer_device's replication state is L_OFF, net options can be changed. maybe you should drbdadm down.");
-					retcode = ERR_INVALID_REQUEST;
-					goto fail;
-				}
-			}
-		}
-		else {
-			drbd_msg_put_info(adm_ctx.reply_skb, "drbd_adm_net_opts's internal error, connection is null.");
-			retcode = ERR_INVALID_REQUEST;
-			goto fail;
-		}
+#ifdef _WIN32 
+	// DW-1436 unable to change send buffer size dynamically
+	if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+		retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+		goto fail;
 	}	
 #endif
 

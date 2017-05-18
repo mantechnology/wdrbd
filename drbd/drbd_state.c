@@ -4014,7 +4014,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	struct drbd_connection *connection, *target_connection = NULL;
 	enum drbd_state_rv rv;
 	u64 reach_immediately;
+
+#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
 	int retries = 1;
+#endif
+
 #ifdef _WIN32
     ULONG_PTR start_time;
 	// MODIFIED_BY_MANTECH DW-1204: twopc is for disconnecting.
@@ -4074,7 +4078,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	}
 	rcu_read_unlock();
 
-    retry:
+#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
+	retry:
+#endif
+
 	if (current == resource->worker.task && resource->remote_state_change)
 	{
 		return __end_state_change(resource, &irq_flags, SS_CONCURRENT_ST_CHG);
@@ -4281,11 +4288,16 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1204: sending twopc prepare needs to wait crowded send buffer, takes too much time. no more retry.
-	if (bDisconnecting &&
-		rv == SS_TIMEOUT &&
-		retries >= TWOPC_TIMEOUT_RETRY_COUNT)
+	if (bDisconnecting 
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		 && rv == SS_TIMEOUT 
+#else
+		 && rv == SS_TIMEOUT 
+		 && retries >= TWOPC_TIMEOUT_RETRY_COUNT
+#endif
+		 )
 	{
-		drbd_warn(resource, "twopc timeout, no more retry(retry count: %d)\n", retries);
+		drbd_warn(resource, "twopc timeout, no more retry\n");
 		
 		if (target_connection) {
 			kref_debug_put(&target_connection->kref_debug, 8);
@@ -4300,9 +4312,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		return end_state_change(resource, &irq_flags);
 	}
 #endif
-
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+#else
 		long timeout = twopc_retry_timeout(resource, retries++);
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d (%u->%d)\n",
@@ -4313,7 +4326,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
 #endif
-
+#endif
 		if (have_peers)
 			twopc_phase2(resource, context->vnr, 0, &request, reach_immediately);
 		if (target_connection) {
@@ -4321,11 +4334,20 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			kref_put(&target_connection->kref, drbd_destroy_connection);
 			target_connection = NULL;
 		}
+
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		clear_remote_state_change(resource);
+		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
+		abort_state_change(resource, &irq_flags);
+		return rv;
+#else
 		clear_remote_state_change(resource);
 		schedule_timeout_interruptible(timeout);
 		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
 		goto retry;
+#endif
 	}
+
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1204: twopc prepare has been sent, I must send twopc commit also, need to flush send buffer.
