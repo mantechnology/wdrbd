@@ -6147,7 +6147,6 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
 	mutex_lock(&device->resource->vol_ctl_mutex);
-	mutex_lock(&device->resource->att_mod_mutex);
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1317: inspect resync side first, before get the allocated bitmap.
@@ -6174,7 +6173,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
 			bSecondary = true;
 		}
-		if (side == L_SYNC_TARGET)
+		else if (side == L_SYNC_TARGET)
 		{
 			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
 			bRet = true;
@@ -6188,10 +6187,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	{
 		if (bSecondary)
 		{			
+			mutex_lock(&device->resource->att_mod_mutex);
 			// set readonly attribute.
 			if (!ChangeVolumeReadonly(device->minor, true))
 			{
 				WDRBD_ERROR("Could not change volume read-only attribute\n");
+				mutex_unlock(&device->resource->att_mod_mutex);
 				bSecondary = false;
 				break;
 			}
@@ -6245,6 +6246,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 				put_ldev(device);
 			}
 		}
+		mutex_unlock(&device->resource->att_mod_mutex);
 	}
 
 	if (pBitmap)
@@ -6254,7 +6256,6 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	}
 
 out:
-	mutex_unlock(&device->resource->att_mod_mutex);
 	mutex_unlock(&device->resource->vol_ctl_mutex);
 
 	return bRet;
