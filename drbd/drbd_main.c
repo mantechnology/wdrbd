@@ -4006,6 +4006,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #ifdef _WIN32
 	// DW-1317
 	mutex_init(&resource->vol_ctl_mutex);
+	mutex_init(&resource->att_mod_mutex);
 #endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
@@ -5951,6 +5952,65 @@ clear_flag:
 	}
 }
 
+#ifdef _WIN32
+// DW-1293: it performs fast invalidate(remote) when agreed protocol version is 112 or above, and fast sync options is enabled.
+int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_device *peer_device) __must_hold(local)
+{
+	int nRet = 0;
+	// DW-1293: queued bitmap work increases work count which may prevents io that we need to mount volume.
+	bool dec_bm_work_n = false;
+
+	if (atomic_read(&device->pending_bitmap_work.n))
+	{
+		dec_bm_work_n = true;
+		atomic_dec(&device->pending_bitmap_work.n);
+	}
+
+	if (peer_device->repl_state[NOW] == L_STARTING_SYNC_S)
+	{
+		if (peer_device->connection->agreed_pro_version < 112 ||
+			!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_SOURCE, false))
+		{
+			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			if (dec_bm_work_n)
+			{
+				atomic_inc(&device->pending_bitmap_work.n);
+				dec_bm_work_n = false;
+			}
+			nRet = drbd_bmio_set_n_write(device, peer_device);
+		}
+	}
+	else if (peer_device->repl_state[NOW] == L_STARTING_SYNC_T)
+	{
+		if (peer_device->connection->agreed_pro_version < 112 ||
+			!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_TARGET, false))
+		{
+			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			if (dec_bm_work_n)
+			{
+				atomic_inc(&device->pending_bitmap_work.n);
+				dec_bm_work_n = false;
+			}
+			nRet = drbd_bmio_set_all_n_write(device, peer_device);
+		}
+	}
+	else
+	{
+		WDRBD_WARN("unexpected repl state: %s\n", drbd_repl_str(peer_device->repl_state[NOW]));
+	}
+
+	if (dec_bm_work_n)
+	{
+		atomic_inc(&device->pending_bitmap_work.n);
+		dec_bm_work_n = false;
+	}
+
+	return nRet;
+}
+#endif
+
 int drbd_bmio_set_all_n_write(struct drbd_device *device,
 			      struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -6068,7 +6128,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 }
 
 // set out-of-sync for allocated clusters.
-bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side)
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side, bool bitmap_lock)
 {
 	bool bRet = false;
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
@@ -6087,6 +6147,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
 	mutex_lock(&device->resource->vol_ctl_mutex);
+	mutex_lock(&device->resource->att_mod_mutex);
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1317: inspect resync side first, before get the allocated bitmap.
@@ -6098,10 +6159,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 #endif
 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
-	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
+	if (bitmap_lock)
+		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
 	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 	drbd_bm_write(device, NULL);
-	drbd_bm_slot_unlock(peer_device);
+	if (bitmap_lock)
+		drbd_bm_slot_unlock(peer_device);
 	
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
@@ -6145,9 +6208,11 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		}
 
 		// Set out-of-sync for allocated cluster.
-		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
+		if (bitmap_lock)
+			drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
 		count = SetOOSFromBitmap(pBitmap, peer_device);		
-		drbd_bm_unlock(device);
+		if (bitmap_lock)
+			drbd_bm_unlock(device);
 
 		if (count == -1)
 		{
@@ -6189,6 +6254,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	}
 
 out:
+	mutex_unlock(&device->resource->att_mod_mutex);
 	mutex_unlock(&device->resource->vol_ctl_mutex);
 
 	return bRet;

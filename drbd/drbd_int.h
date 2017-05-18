@@ -1187,6 +1187,7 @@ struct drbd_resource {
 	struct mutex adm_mutex;		/* mutex to serialize administrative requests */
 #ifdef _WIN32
 	struct mutex vol_ctl_mutex;	/* DW-1317: chaning role involves the volume for device is (dis)mounted, use this when the role change needs to be waited. */
+	struct mutex att_mod_mutex; /* DW-1293: no write is allowed to meta while volume attritubte is being changed. */
 #endif
 	spinlock_t req_lock;
 	u64 dagtag_sector;		/* Protected by req_lock.
@@ -1975,10 +1976,14 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 #ifdef _WIN32
 // DW-844
-extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side) __must_hold(local);
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side, bool bitmap_lock) __must_hold(local);
 #endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#ifdef _WIN32
+// DW-1293
+extern int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_device *peer_device) __must_hold(local);
+#endif
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
 #ifdef _WIN32_STABLE_SYNCSOURCE
 // DW-1315
