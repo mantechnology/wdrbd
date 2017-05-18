@@ -6173,7 +6173,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
 			bSecondary = true;
 		}
-		if (side == L_SYNC_TARGET)
+		else if (side == L_SYNC_TARGET)
 		{
 			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
 			bRet = true;
