@@ -163,8 +163,8 @@ struct drbd_connection;
         __c = (peer_device)->connection;			\
         __r = __d->resource;					\
         __cn = __c->peer_node_id;	\
-        printk(level "drbd %s/%u minor %u pnode-id:%d, pdsk(%s), prpl(%s), pdvflag(0x%x): " fmt,		\
-            __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
+        printk(level "drbd %s/%u minor %u pnode-id:%d, pdsk(%s), prpl(%s), pdvflag(0x%x): pdvuuidflag(0x%x):" fmt,		\
+            __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, (peer_device)->uuid_flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32 // DW-	*/		\
     } while (0)
 
