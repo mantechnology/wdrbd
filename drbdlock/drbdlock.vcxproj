@@ -218,6 +218,14 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <Link>
@@ -226,6 +234,14 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <Link>
@@ -234,6 +250,14 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <Link>
@@ -242,6 +266,14 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <Link>
@@ -250,6 +282,14 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <Link>
