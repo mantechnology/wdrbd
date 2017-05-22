@@ -4153,7 +4153,12 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 	} else if (abs(hg) >= 3) {
 		if (hg == -3 &&
 		    drbd_current_uuid(device) == UUID_JUST_CREATED &&
-		    is_resync_running(device))
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1449 check stable sync source policy first, returning here is supposed to mean other resync is going to be started. (or violates stable sync source policy)
+			(is_resync_running(device) || !drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW)))
+#else
+			is_resync_running(device)
+#endif
 			return 0;
 
 #ifdef _WIN32
