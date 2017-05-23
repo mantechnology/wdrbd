@@ -255,7 +255,7 @@ return false;
                         <object class="com.install4j.api.beans.ScriptProperty">
                           <void property="value">
                             <string>Float osVer = (Float)context.getVariable("os.floatver");
-if (osVer &lt; 6.1f)
+if (osVer &lt; 6.0f)
 {
     return false;
 }
