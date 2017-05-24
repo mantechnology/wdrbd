@@ -271,6 +271,16 @@ if (osVer &lt; 6.0f)
 {
     return false;
 }
+else if( osVer == 6.0f)
+{
+    String ServicePackStr = "Service Pack";
+    String CSDVersion = System.getProperty("sun.os.patch.level");
+    if( CSDVersion.length() &lt; ServicePackStr.length() ||
+        !CSDVersion.substring(0, ServicePackStr.length()).equals(ServicePackStr))
+    {
+            return false;
+    }
+}
 return true;</string>
                           </void>
                         </object>
