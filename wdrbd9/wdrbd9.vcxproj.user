@@ -6,16 +6,31 @@
     </TestCertificate>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'">
+    <SignMode>ProductionSign</SignMode>
+    <TestCertificate />
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <SignMode>ProductionSign</SignMode>
     <TestCertificate>
     </TestCertificate>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'">
+    <SignMode>ProductionSign</SignMode>
+    <TestCertificate />
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
     <SignMode>ProductionSign</SignMode>
     <TestCertificate>
     </TestCertificate>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'">
+    <SignMode>ProductionSign</SignMode>
+    <TestCertificate />
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
@@ -43,6 +58,11 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <TestCertificate>
     </TestCertificate>
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
+    <TestCertificate />
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 9915BB4EA12B4F139A207218BC319ECF2645B6B2</ProductionCertificate>
   </PropertyGroup>

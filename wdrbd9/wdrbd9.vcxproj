@@ -1,6 +1,22 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Server2008 Debug|Win32">
+      <Configuration>Server2008 Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Debug|x64">
+      <Configuration>Server2008 Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Release|Win32">
+      <Configuration>Server2008 Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Release|x64">
+      <Configuration>Server2008 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Win8.1 Debug|Win32">
       <Configuration>Win8.1 Debug</Configuration>
       <Platform>Win32</Platform>
@@ -97,7 +113,22 @@
     <ConfigurationType>Driver</ConfigurationType>
     <DriverType>WDM</DriverType>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+    <ALLOW_DATE_TIME>1</ALLOW_DATE_TIME>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'" Label="Configuration">
     <TargetVersion>Windows7</TargetVersion>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
@@ -142,6 +173,13 @@
     <ConfigurationType>Driver</ConfigurationType>
     <DriverType>WDM</DriverType>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'" Label="Configuration">
     <TargetVersion>Windows7</TargetVersion>
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -149,6 +187,15 @@
     <ConfigurationType>Driver</ConfigurationType>
     <DriverType>WDM</DriverType>
     <ALLOW_DATE_TIME>1</ALLOW_DATE_TIME>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+    <ALLOW_DATE_TIME>1</ALLOW_DATE_TIME>
+    <CLRSupport>false</CLRSupport>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -198,6 +245,15 @@
     <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
     <DiagnosticMode>true</DiagnosticMode>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WDK80HOME)\Include\km\crt;$(WDK80HOME)\Include\km;$(WDK80HOME)\Include\shared;$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(VC_IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
+    <DiagnosticMode>true</DiagnosticMode>
+    <LibraryPath>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86)</LibraryPath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
@@ -205,6 +261,15 @@
     <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
     <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
     <DiagnosticMode>true</DiagnosticMode>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WDK80HOME)\Include\km\crt;$(WDK80HOME)\Include\km;$(WDK80HOME)\Include\shared;$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(VC_IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <IntDir>$(Platform)\$(ConfigurationName)\</IntDir>
+    <DiagnosticMode>true</DiagnosticMode>
+    <LibraryPath>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -241,12 +306,28 @@
     <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
     <DiagnosticMode>true</DiagnosticMode>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WDK80HOME)\Include\km\crt;$(WDK80HOME)\Include\km;$(WDK80HOME)\Include\shared;$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(VC_IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <DiagnosticMode>true</DiagnosticMode>
+    <LibraryPath>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <IncludePath>$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(WDM_INC_PATH);$(VC_IncludePath);$(IncludePath)</IncludePath>
     <TargetName>drbd</TargetName>
     <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
     <DiagnosticMode>true</DiagnosticMode>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WDK80HOME)\Include\km\crt;$(WDK80HOME)\Include\km;$(WDK80HOME)\Include\shared;$(SolutionDir)\drbd;$(SolutionDir)\drbd-headers;$(VC_IncludePath)</IncludePath>
+    <TargetName>drbd</TargetName>
+    <OutDir>$(ProjectDir)$(Platform)\$(ConfigurationName)\</OutDir>
+    <DiagnosticMode>true</DiagnosticMode>
+    <LibraryPath>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
     <ClCompile>
@@ -270,6 +351,31 @@ copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
+    <ClCompile>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_WIN64;_AMD64_;AMD64;__KERNEL__</PreprocessorDefinitions>
+      <PreprocessToFile>false</PreprocessToFile>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <WppEnabled>true</WppEnabled>
+      <WppKernelMode>true</WppKernelMode>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\BufferOverflowK.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\ntoskrnl.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\hal.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wmilib.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\netio.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wdm.lib;$(SDK_LIB_PATH)\uuid.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <AdditionalLibraryDirectories>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
@@ -283,6 +389,34 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <DriverSign />
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'">
+    <ClCompile>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_WIN64;_AMD64_;AMD64;__KERNEL__</PreprocessorDefinitions>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <WppEnabled>true</WppEnabled>
+      <WppKernelMode>true</WppKernelMode>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\BufferOverflowK.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\ntoskrnl.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\hal.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wmilib.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\netio.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wdm.lib;$(SDK_LIB_PATH)\uuid.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+      <AdditionalLibraryDirectories>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
     </Link>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -335,6 +469,29 @@ copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
 copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'">
+    <ClCompile>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_X86_=1;i386=1;STD_CALL;__KERNEL__</PreprocessorDefinitions>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <WppEnabled>true</WppEnabled>
+      <WppKernelMode>true</WppKernelMode>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\memcmp.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\BufferOverflowK.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\ntoskrnl.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\hal.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wmilib.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\netio.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wdm.lib;$(SDK_LIB_PATH)\uuid.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <AdditionalLibraryDirectories>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
@@ -348,6 +505,32 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\netio.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbd.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbd.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'">
+    <ClCompile>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_X86_=1;i386=1;STD_CALL;__KERNEL__</PreprocessorDefinitions>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WppEnabled>true</WppEnabled>
+      <WppKernelMode>true</WppKernelMode>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\memcmp.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\BufferOverflowK.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\ntoskrnl.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\hal.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wmilib.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\netio.lib;$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform)\wdm.lib;$(SDK_LIB_PATH)\uuid.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <AdditionalLibraryDirectories>$(WDK80HOME)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
     </Link>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -520,6 +703,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
     <ClCompile Include="..\drbd-headers\drbd_strings.c" />
     <ClCompile Include="..\drbd\drbd_actlog.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\drbd\drbd_bitmap.c" />
     <ClCompile Include="..\drbd\drbd_buildtag.c" />

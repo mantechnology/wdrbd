@@ -855,6 +855,12 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define atomic_inc64(_v)		atomic_inc_return64(_v)
 #define atomic_dec64(_v)		atomic_dec_return64(_v)
 
+#if ( (NTDDI_VERSION < NTDDI_WIN7))
+#define _vsnprintf_s(buf, size, cnt, fmt, args) _vsnprintf(buf, size, fmt, args)
+#define swprintf_s _snwprintf
+#define _itoa_s(val, buf, size, radix) _itoa(val, buf, radix)
+#endif
+
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
 extern void atomic_add(int i, atomic_t *v);
