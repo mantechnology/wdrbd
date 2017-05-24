@@ -33,6 +33,8 @@
       <fileset name="Windows 8 x64" id="559" customizedId="" />
       <fileset name="Windows 8.1 x86" id="1496" customizedId="" />
       <fileset name="Windows 8.1 x64" id="1498" customizedId="" />
+      <fileset name="Windows Server 2008 x86" id="2241" customizedId="" />
+      <fileset name="Windows Server 2008 x64" id="2243" customizedId="" />
     </filesets>
     <roots>
       <root id="584" fileset="583" location="" />
@@ -43,6 +45,8 @@
       <root id="560" fileset="559" location="" />
       <root id="1497" fileset="1496" location="" />
       <root id="1499" fileset="1498" location="" />
+      <root id="2242" fileset="2241" location="" />
+      <root id="2244" fileset="2243" location="" />
     </roots>
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
@@ -56,6 +60,8 @@
       <mountPoint id="562" root="560" location="" mode="755" />
       <mountPoint id="1500" root="1497" location="" mode="755" />
       <mountPoint id="1501" root="1499" location="" mode="755" />
+      <mountPoint id="2245" root="2242" location="" mode="755" />
+      <mountPoint id="2246" root="2244" location="" mode="755" />
     </mountPoints>
     <entries>
       <dirEntry mountPoint="865" file="drbd/bin" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
@@ -86,6 +92,12 @@
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="1501" file="drbd/x64/Win8.1Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win8.1Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2245" file="drbd/x86/Server2008Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Server2008Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2246" file="drbd/x64/Server2008Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Server2008Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
         <exclude />
       </dirEntry>
     </entries>
@@ -595,9 +607,13 @@ if(filesetName.startsWith("Windows"))
     {
         osName = "Windows 8 ";
     }
-    else
+    else if (osVer == 6.1f)
     {
         osName = "Windows 7 ";
+    }
+    else
+    {
+        osName = "Windows Server 2008 ";
     }
     
     if(filesetName.contains(osName))
