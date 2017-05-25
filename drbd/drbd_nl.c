@@ -5298,15 +5298,15 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	wait_event_interruptible_timeout(retcode, resource->state_wait, 
 			peer_device->repl_state[NOW] != L_STARTING_SYNC_S,
 			timeo);
-	if (-DRBD_SIGKILL == retcode) 
+	if (-DRBD_SIGKILL == retcode)
 	{ 
 		retcode = SS_INTERRUPTED;
-	} 
+	}
 	else if (-ETIMEDOUT == retcode)
 	{
 		retcode = SS_TIMEOUT;
-    } 
-	else 
+	}
+	else
 	{
 		retcode = SS_SUCCESS;
 	}
