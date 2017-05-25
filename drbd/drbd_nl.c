@@ -5289,6 +5289,12 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	}
 	drbd_resume_io(device);
 
+#ifdef _WIN32
+	// DW-1391 : wait for bm_io_work to complete, then run the next invalidate peer. 
+    wait_event_interruptible(int t, resource->state_wait,
+        peer_device->repl_state[NOW] != L_STARTING_SYNC_S);
+#endif
+	
 	mutex_unlock(&resource->adm_mutex);
 	put_ldev(device);
 out:
