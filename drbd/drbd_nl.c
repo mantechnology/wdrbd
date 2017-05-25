@@ -5303,13 +5303,13 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 		retcode = SS_INTERRUPTED;
 	} 
 	else if (-ETIMEDOUT == retcode)
-    {
-    	retcode = SS_TIMEOUT;
+	{
+		retcode = SS_TIMEOUT;
     } 
 	else 
 	{
-    	retcode = SS_SUCCESS;
-    }
+		retcode = SS_SUCCESS;
+	}
 		
 #endif
 	
