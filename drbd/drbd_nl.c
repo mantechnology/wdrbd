@@ -5223,6 +5223,10 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_resource *resource;
 	struct drbd_device *device;
 	int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+#ifdef _WIN32
+	// DW-1391
+	long timeo = 5*HZ;
+#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_PEER_DEVICE);
 	if (!adm_ctx.reply_skb)
@@ -5289,6 +5293,26 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	}
 	drbd_resume_io(device);
 
+#ifdef _WIN32
+	// DW-1391 : wait for bm_io_work to complete, then run the next invalidate peer. 
+	wait_event_interruptible_timeout(retcode, resource->state_wait, 
+			peer_device->repl_state[NOW] != L_STARTING_SYNC_S,
+			timeo);
+	if (-DRBD_SIGKILL == retcode)
+	{ 
+		retcode = SS_INTERRUPTED;
+	}
+	else if (-ETIMEDOUT == retcode)
+	{
+		retcode = SS_TIMEOUT;
+	}
+	else
+	{
+		retcode = SS_SUCCESS;
+	}
+		
+#endif
+	
 	mutex_unlock(&resource->adm_mutex);
 	put_ldev(device);
 out:
