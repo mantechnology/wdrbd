@@ -757,11 +757,13 @@ Return Value:
 --*/
 {
 	char szTemp[DRBDLOCK_LOG_MAXLEN] = DRBDLOCK_LOG_PREFIX;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
 
 	va_list args;
 	va_start(args, format);
-	vsprintf_s(szTemp + strlen(DRBDLOCK_LOG_PREFIX), DRBDLOCK_LOG_MAXLEN, format, args);
+	status = RtlStringCchVPrintfA(szTemp + strlen(DRBDLOCK_LOG_PREFIX), DRBDLOCK_LOG_MAXLEN, format, args);
 	va_end(args);
 
-	KdPrint((szTemp));
+	if (NT_SUCCESS(status))
+		KdPrint((szTemp));
 }

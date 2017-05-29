@@ -319,7 +319,10 @@ Return Value:
 	}
 
 	Vol.volumeType = VOLUME_TYPE_DEVICE_NAME;
-	wcscpy_s(Vol.volumeID.volumeName, DRBDLOCK_VOLUMENAME_MAX_LEN, pBuf);
+	status = RtlStringCchCopyW(Vol.volumeID.volumeName, DRBDLOCK_VOLUMENAME_MAX_LEN, pBuf);
+
+	if (!NT_SUCCESS(status))
+		return status;
 
 	status = ConvertVolume(&Vol, &pDevice);
 

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.30501.0
+VisualStudioVersion = 12.0.40629.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "wdrbd9", "wdrbd9\wdrbd9.vcxproj", "{70F1BDDC-DA75-42A0-B844-0955E3D3AAA1}"
 EndProject
@@ -243,6 +243,15 @@ Global
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Release|x64.ActiveCfg = Win8.1 Release|x64
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Release|x64.Build.0 = Win8.1 Release|x64
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Release|x64.Deploy.0 = Win8.1 Release|x64
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Debug|Win32.ActiveCfg = Server2008 Debug|Win32
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Debug|Win32.Build.0 = Server2008 Debug|Win32
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Debug|x64.ActiveCfg = Server2008 Debug|x64
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Debug|x64.Build.0 = Server2008 Debug|x64
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Release|Win32.ActiveCfg = Server2008 Release|Win32
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Release|Win32.Build.0 = Server2008 Release|Win32
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Release|x64.ActiveCfg = Server2008 Release|x64
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Release|x64.Build.0 = Server2008 Release|x64
+		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Server2008 Release|x64.Deploy.0 = Server2008 Release|x64
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Win7 Debug|Win32.ActiveCfg = Win7 Debug|Win32
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Win7 Debug|Win32.Build.0 = Win7 Debug|Win32
 		{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}.Win7 Debug|Win32.Deploy.0 = Win7 Debug|Win32
