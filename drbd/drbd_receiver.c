@@ -214,16 +214,16 @@ static void * __drbd_alloc_pages(unsigned int number)
 {
 	/* Yes, testing drbd_pp_vacant outside the lock is racy.
 	* So what. It saves a spin_lock. */
-	if (drbd_pp_vacant >= (int)number) {
-		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
-		if (mem)
-		{
-			spin_lock(&drbd_pp_lock);
-			drbd_pp_vacant -= (int)number;
-			spin_unlock(&drbd_pp_lock);
-			return mem;
-		}
-	}
+	
+	// DW-1457: checking drbd_pp_vacant has been removed, WDRBD has no allocated memory pool but allocates as it needs.
+	void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
+	if (mem)
+	{
+		spin_lock(&drbd_pp_lock);
+		drbd_pp_vacant -= (int)number;
+		spin_unlock(&drbd_pp_lock);
+		return mem;
+	}	
 
 	return NULL;
 }
@@ -394,6 +394,11 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 			drbd_warn(connection, "drbd_alloc_pages interrupted!\n");
 			break;
 		}
+
+		// DW-1457: resync can be stuck with small max buffer beside resync rate, recover it "gracefully"(quoting Linux drbd commit 'facf4555')
+		if (schedule_timeout(HZ / 10) == 0)
+			mxb = UINT_MAX;
+
 #ifdef _WIN32
 		schedule(&drbd_pp_wait, HZ, __FUNCTION__, __LINE__);
 #else
