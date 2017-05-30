@@ -214,16 +214,16 @@ static void * __drbd_alloc_pages(unsigned int number)
 {
 	/* Yes, testing drbd_pp_vacant outside the lock is racy.
 	* So what. It saves a spin_lock. */
-	if (drbd_pp_vacant >= (int)number) {
-		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
-		if (mem)
-		{
-			spin_lock(&drbd_pp_lock);
-			drbd_pp_vacant -= (int)number;
-			spin_unlock(&drbd_pp_lock);
-			return mem;
-		}
-	}
+	
+	// DW-1457: checking drbd_pp_vacant has been removed, WDRBD has no allocated memory pool but allocates as it needs.
+	void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
+	if (mem)
+	{
+		spin_lock(&drbd_pp_lock);
+		drbd_pp_vacant -= (int)number;
+		spin_unlock(&drbd_pp_lock);
+		return mem;
+	}	
 
 	return NULL;
 }
