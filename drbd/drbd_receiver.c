@@ -394,6 +394,11 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 			drbd_warn(connection, "drbd_alloc_pages interrupted!\n");
 			break;
 		}
+
+		// DW-1457: resync can be stuck with small max buffer beside resync rate, recover it "gracefully"(quoting Linux drbd commit 'facf4555')
+		if (schedule_timeout(HZ / 10) == 0)
+			mxb = UINT_MAX;
+
 #ifdef _WIN32
 		schedule(&drbd_pp_wait, HZ, __FUNCTION__, __LINE__);
 #else
