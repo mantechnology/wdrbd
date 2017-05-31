@@ -17,6 +17,7 @@ Environment:
 #include "pch.h"
 
 RTL_GENERIC_TABLE g_GenericTable;
+FAST_MUTEX g_GenericTableFMutex;
 extern PFLT_FILTER gFilterHandle;
 
 static RTL_GENERIC_COMPARE_RESULTS
@@ -133,6 +134,7 @@ Return Value:
 
 --*/
 {
+	ExInitializeFastMutex(&g_GenericTableFMutex);
 	RtlInitializeGenericTable(&g_GenericTable, TableCompareRoutine, TableAllocateRoutine, TableFreeRoutine, NULL);
 }
 
@@ -156,8 +158,10 @@ Return Value:
 
 --*/
 {
+	ExAcquireFastMutex(&g_GenericTableFMutex);
 	for (PVOID p = RtlEnumerateGenericTable(&g_GenericTable, TRUE); p != NULL; p = RtlEnumerateGenericTable(&g_GenericTable, TRUE))
 		RtlDeleteElementGenericTable(&g_GenericTable, p);
+	ExReleaseFastMutex(&g_GenericTableFMutex);
 }
 
 BOOLEAN
@@ -183,7 +187,9 @@ Return Value:
 {
 	BOOLEAN bRet = FALSE;
 	
+	ExAcquireFastMutex(&g_GenericTableFMutex);
 	RtlInsertElementGenericTable(&g_GenericTable, &pVolumeObject, sizeof(PFLT_VOLUME), &bRet);
+	ExReleaseFastMutex(&g_GenericTableFMutex);
 
 	return bRet;
 }
@@ -209,7 +215,13 @@ Return Value:
 
 --*/
 {
-	return RtlDeleteElementGenericTable(&g_GenericTable, &pVolumeObject);
+	BOOLEAN bRet = FALSE;
+
+	ExAcquireFastMutex(&g_GenericTableFMutex);
+	bRet = RtlDeleteElementGenericTable(&g_GenericTable, &pVolumeObject);
+	ExReleaseFastMutex(&g_GenericTableFMutex);
+
+	return bRet;
 }
 
 BOOLEAN
@@ -233,7 +245,13 @@ Return Value:
 
 --*/
 {
-	return RtlLookupElementGenericTable(&g_GenericTable, &pVolume) != NULL ? TRUE : FALSE;
+	BOOLEAN bRet = FALSE;
+
+	ExAcquireFastMutex(&g_GenericTableFMutex);
+	bRet =  RtlLookupElementGenericTable(&g_GenericTable, &pVolume) != NULL ? TRUE : FALSE;
+	ExReleaseFastMutex(&g_GenericTableFMutex);
+	
+	return bRet;
 }
 
 NTSTATUS

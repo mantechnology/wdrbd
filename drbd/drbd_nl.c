@@ -3108,6 +3108,8 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		NTSTATUS status = STATUS_UNSUCCESSFUL;
 		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
 		if (pvext) {
+			// DW-1461: set volume protection when attaching.
+			SetDrbdlockIoBlock(pvext, resource->role[NOW] == R_PRIMARY ? FALSE : TRUE);
 #ifdef _WIN32_MULTIVOL_THREAD
 			pvext->WorkThreadInfo = &resource->WorkThreadInfo;
 
@@ -3129,10 +3131,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 				FsctlLockVolume(dh->minor);
 
 				pvext->Active = TRUE;
-
-				// DW-1327: to block I/O by drbdlock.
-				SetDrbdlockIoBlock(pvext, TRUE);
-
 				status = FsctlFlushDismountVolume(dh->minor, true);
 
 				FsctlUnlockVolume(dh->minor);
@@ -6697,6 +6695,17 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32_MULTI_VOLUME    
 	int vnr;
 	retcode = SS_SUCCESS;
+
+	// DW-1461: set volume protection when going down. 
+	idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+	{
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		if (pvext)
+		{
+			SetDrbdlockIoBlock(pvext, TRUE);
+		}
+	}
+
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 	{
 		if (device->disk_state[NOW] == D_DISKLESS)
@@ -6754,6 +6763,12 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #else
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i)
     {
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		if (pvext)
+		{
+			SetDrbdlockIoBlock(pvext, TRUE);
+		}
+
         if (D_DISKLESS == device->disk_state[NOW])
         {
             retcode = drbd_set_role(resource, R_SECONDARY, false);
