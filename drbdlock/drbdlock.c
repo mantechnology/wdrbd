@@ -625,9 +625,11 @@ Return Value:
 
 --*/
 {
-	UNREFERENCED_PARAMETER(Data);
-    UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
+
+	// DW-1461: fsctl lock requested by drbd may fail due to drbdlock. make bypass operation executed in kernel mode.
+	if (Data->RequestorMode == KernelMode)
+		return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 
 	switch (Data->Iopb->MajorFunction)
 	{
