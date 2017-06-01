@@ -1497,6 +1497,8 @@ struct drbd_peer_device {
     ULONG_PTR rs_paused;
     /* skipped because csum was equal [unit BM_BLOCK_SIZE] */
     ULONG_PTR rs_same_csum;
+	// DW-1454: bits to be resynced when it's about to start.
+	ULONG_PTR rs_start_total;
 #else
 	/* blocks to resync in this run [unit BM_BLOCK_SIZE] */
 	unsigned long rs_total;
