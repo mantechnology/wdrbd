@@ -5953,6 +5953,8 @@ static void peer_device_to_statistics(struct peer_device_statistics *s,
 	else
 	{
 		s->peer_dev_out_of_sync = drbd_bm_total_weight(peer_device) << (BM_BLOCK_SHIFT - 9);
+		// DW-1454: this value indicates the total size of resync bits when starts.
+		s->peer_dev_resync_start_oos = peer_device->rs_start_total << (BM_BLOCK_SHIFT - 9);
 	}
 #else
 	s->peer_dev_out_of_sync = drbd_bm_total_weight(peer_device) << (BM_BLOCK_SHIFT - 9);
