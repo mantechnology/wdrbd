@@ -906,6 +906,8 @@ enum {
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	UNSTABLE_TRIGGER_CP,	/* MODIFIED_BY_MANTECH DW-1341: Do Trigger when my stability is unstable for Crashed Primay wiered case*/
 #endif
+	SEND_BITMAP_WORK_PENDING, /* DW-1447 : Do not queue send_bitmap() until the peer's repl_state changes to WFBitmapT.
+										Used when invalidate-remote/invalidate.*/
 #endif
 };
 

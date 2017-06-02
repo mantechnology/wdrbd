@@ -3009,6 +3009,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				state_change_word(state_change, n_device, n_connection, NEW);
 			bool send_state = false;
 
+#ifdef _WIN32 // DW-1447
+			bool send_bitmap = false;
+#endif
+
 			/* In case we finished a resync as resync-target update all neighbors
 			   about having a bitmap_uuid of 0 towards the previous sync-source.
 			   That needs to go out before sending the new disk state
@@ -3110,15 +3114,56 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, 0, 0);
 				drbd_send_state(peer_device, new_state);
 			}
+
 			/* No point in queuing send_bitmap if we don't have a connection
 			 * anymore, so check also the _current_ state, not only the new state
 			 * at the time this work was queued. */
-			if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S &&
-			    peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+#ifdef _WIN32 // DW-1447
+			// If the SEND_BITMAP_WORK_PENDING flag is set, also check the peer's repl_state. if L_WF_BITMAP_T, queuing send_bitmap().
+			if (test_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags))
+			{
+				if (repl_state[NEW] == L_WF_BITMAP_S && peer_device->repl_state[NOW] == L_WF_BITMAP_S && 
+					peer_device->last_repl_state == L_WF_BITMAP_T)
+				{
+					send_bitmap = true;
+					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+				} 
+				else if (repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_WF_BITMAP_S)
+				{
+					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+				}
+			}
+			else if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
+				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+			{
+				send_bitmap = true;
+			}
+#endif
+
+#ifdef _WIN32 // DW-1447
+			if (send_bitmap)
+			{
+
+#else
+			if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
+				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+			{
+#endif
 				drbd_queue_bitmap_io(device, &drbd_send_bitmap, NULL,
 						"send_bitmap (WFBitMapS)",
 						BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT,
 						peer_device);
+			}
+
+
+#ifdef _WIN32 // DW-1447
+			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T 
+				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
+			{
+				send_state = true;
+			}			
+
+#endif
 
 			if (peer_disk_state[NEW] < D_INCONSISTENT && get_ldev(device)) {
 				/* D_DISKLESS Peer becomes secondary */
@@ -3198,6 +3243,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			/* We are in the progress to start a full sync. SyncSource one slot. */
 			if (repl_state[OLD] != L_STARTING_SYNC_S && repl_state[NEW] == L_STARTING_SYNC_S)
+			{
 				drbd_queue_bitmap_io(device,
 #ifdef _WIN32
 				// DW-1293
@@ -3208,6 +3254,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					"set_n_write from StartingSync",
 					BM_LOCK_CLEAR | BM_LOCK_BULK,
 					peer_device);
+#ifdef _WIN32
+				// DW-1447
+                set_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+#endif
+			}
+
 
 			/* Disks got bigger while they were detached */
 			if (disk_state[NEW] > D_NEGOTIATING && peer_disk_state[NEW] > D_NEGOTIATING &&
