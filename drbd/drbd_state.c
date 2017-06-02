@@ -3256,7 +3256,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					peer_device);
 #ifdef _WIN32
 				// DW-1447
-                set_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+				set_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
 #endif
 			}
 
