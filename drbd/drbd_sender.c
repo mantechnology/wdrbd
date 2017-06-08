@@ -2575,6 +2575,10 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     drbd_repl_str(repl_state),
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
+#ifdef _WIN32
+		// DW-1454: this value indicates the total resync bits when starts.
+		peer_device->rs_start_total = peer_device->rs_total;
+#endif
 		if (side == L_SYNC_TARGET) {
 			device->bm_resync_fo = 0;
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
