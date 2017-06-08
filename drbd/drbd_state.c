@@ -3691,7 +3691,10 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 			// MODIFIED_BY_MANTECH DW-1073: The condition evaluated to false after the timeout elapsed, stop waiting for remote state change.
 			else
 			{
+				// MODIFIED_BY_MANTECH DW-1414: need to acquire req_lock while accessing twopc_parents list.
+				spin_lock_irq(&resource->req_lock);
 				__clear_remote_state_change(resource);
+				spin_unlock_irq(&resource->req_lock);
 				twopc_end_nested(resource, P_TWOPC_NO, false);
 			}
 #endif			
@@ -4419,19 +4422,64 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	}
 	if (as_work)
 		resource->twopc_work.cb = NULL;
+#ifndef _WIN32
+	// MODIFIED_BY_MANTECH DW-1414: postpone releasing req_lock until get all connections to send twopc reply.
 	spin_unlock_irq(&resource->req_lock);
+#endif
 
 	if (!twopc_reply.tid){
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "!twopc_reply.tid = %u result: %s\n",
 			twopc_reply.tid, drbd_packet_name(cmd));
+		// MODIFIED_BY_MANTECH DW-1414
+		spin_unlock_irq(&resource->req_lock);
 #endif
 		return;
 	}
 #ifdef _WIN32
+	// MODIFIED_BY_MANTECH DW-1414: postpone releasing req_lock until get all connections to send twopc reply.
+	struct drbd_connection **connections = NULL;
+	int connectionCount = 0;
+
+	// get connection count from twopc_parent_list.
+	list_for_each_entry_safe(struct drbd_connection, twopc_parent, tmp, &parents, twopc_parent_list) {
+		if (&twopc_parent->twopc_parent_list == twopc_parent->twopc_parent_list.next)
+		{
+			drbd_err(resource, "twopc_parent_list is invalid\n");
+			spin_unlock_irq(&resource->req_lock);
+			return;
+		}
+		connectionCount += 1;
+	}
+
+	// no connection in list.
+	if (connectionCount == 0) {
+		spin_unlock_irq(&resource->req_lock);
+		return;
+	}
+
+	// allocate memory for connection pointers.
+	connections = (struct drbd_connection**)ExAllocatePool(NonPagedPool, sizeof(struct drbd_connection*) * connectionCount);
+	if (connections == NULL) {
+		spin_unlock_irq(&resource->req_lock);
+		drbd_err(resource, "failed to allocate memory for connections, size : %u\n", sizeof(struct drbd_connection*) * connectionCount);
+		return;
+	}
+
+	// store connection object address.
+	connectionCount = 0;
+	list_for_each_entry_safe(struct drbd_connection, twopc_parent, tmp, &parents, twopc_parent_list) {
+		connections[connectionCount++] = twopc_parent;
+	}
+	
+	// release req_lock.
+	spin_unlock_irq(&resource->req_lock);
+
     drbd_debug(resource, "Nested state change %u result: %s\n",
         twopc_reply.tid, drbd_packet_name(cmd));
-	list_for_each_entry_safe(struct drbd_connection, twopc_parent, tmp, &parents, twopc_parent_list) {
+
+	for (int i = 0; i < connectionCount; i++) {
+		twopc_parent = connections[i];	
 #else
 	drbd_debug(twopc_parent, "Nested state change %u result: %s\n",
 		   twopc_reply.tid, drbd_packet_name(cmd));
@@ -4443,6 +4491,13 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		kref_debug_put(&twopc_parent->kref_debug, 9);
 		kref_put(&twopc_parent->kref, drbd_destroy_connection);
 	}
+
+#ifdef _WIN32
+	if (connections) {
+		ExFreePool(connections);
+		connections = NULL;
+	}
+#endif
 	wake_up(&resource->twopc_wait);
 }
 
