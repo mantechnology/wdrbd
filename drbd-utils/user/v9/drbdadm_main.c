@@ -680,9 +680,19 @@ int call_cmd(const struct adm_cmd *cmd, const struct cfg_ctx *ctx,
 			}
 		}
 	} else if (iterate_vols) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1459 : Set KEEP_RUNNING to run attach_cmd on all volumes.
+		bool is_attach = (cmd == &attach_cmd);
+		if (is_attach)
+			on_error = KEEP_RUNNING;
+#endif		
 		for_each_volume(vol, &res->me->volumes) {
 			tmp_ctx.vol = vol;
 			ret = __call_cmd_fn(&tmp_ctx, on_error);
+#ifdef _WIN32 // DW-1459 : attach_cmd runs on all volumes, regardless of return value.
+			if (is_attach)
+				continue;
+#endif
 			if (ret)
 				break;
 		}
