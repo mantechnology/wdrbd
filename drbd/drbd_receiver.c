@@ -6426,6 +6426,13 @@ static int queued_twopc_work(struct drbd_work *w, int cancel)
 		}
 
 		kref_put(&connection->kref, drbd_destroy_connection);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1466: need to clear starting_queued_twopc when it is being freed.
+		spin_lock_irq(&resource->req_lock);
+		if (resource->starting_queued_twopc == q)
+			resource->starting_queued_twopc = NULL;
+		spin_unlock_irq(&resource->req_lock);
+#endif
 		kfree(q);
 
 		q = list_first_entry_or_null(&work_list, struct queued_twopc, w.list); 
@@ -6673,6 +6680,11 @@ static int process_twopc(struct drbd_connection *connection,
 			return 0;
 		}
 		/*abort_local_transaction() returned with the req_lock */
+		if (reply->is_aborted) {
+			spin_unlock_irq(&resource->req_lock);
+			return 0;
+		}
+		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
