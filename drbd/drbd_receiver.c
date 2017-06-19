@@ -6463,6 +6463,13 @@ void queued_twopc_timer_fn(unsigned long data)
 			resource->starting_queued_twopc = q; 
 			list_del(&q->w.list);
 		}
+#ifdef _WIN32 
+		// DW-1467 : If you add q not deleted from queued_twopc list to work list, queued_twopc list will be broken.
+		else
+		{
+			q = NULL;
+		}
+#endif
 	}
 	spin_unlock_irqrestore(&resource->queued_twopc_lock, irq_flags);
 
