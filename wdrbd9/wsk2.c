@@ -351,14 +351,17 @@ CloseSocket(
 	LARGE_INTEGER	nWaitTime;
 	nWaitTime.QuadPart = (-1 * 1000 * 10000);   // wait 1000ms relative 
 
-	if (g_SocketsState != INITIALIZED || !WskSocket)
+	if (g_SocketsState != INITIALIZED || !WskSocket){
+		WDRBD_TRACE("fail g_SocketState != INITIALIZED\n"); 
 		return STATUS_INVALID_PARAMETER;
+	}
 #if WSK_ASYNCCOMPL
 	Status = InitWskDataAsync(&Irp, TRUE);
 #else
 	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
 #endif
 	if (!NT_SUCCESS(Status)) {
+		WDRBD_TRACE("fail InitWskData\n");
 		return Status;
 	}
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
@@ -680,16 +683,20 @@ Send(
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0)){
+		WDRBD_TRACE("fail g_SocketState != INITIALIZED return SOCKET_ERROR\n"); 
 		return SOCKET_ERROR;
+	}
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
+		WDRBD_TRACE("fail InitWskBuffer return SOCKET_ERROR \n");
 		return SOCKET_ERROR;
 	}
 
 	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
+		WDRBD_TRACE("fail InitWskData and return SOCKET_ERROR\n");
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
 	}
@@ -730,6 +737,7 @@ Send(
 #else
 
 #endif
+			WDRBD_TRACE("Send: timeout = %lu\n", Timeout);
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
 			{
@@ -737,6 +745,7 @@ Send(
 
 				// DW-988 refactoring about retry_count. retry_count is removed.
 				if (transport != NULL) {
+					WDRBD_TRACE("STATUS_TIMEOUT, transport != NULL\n"); 
 					if (!drbd_stream_send_timed_out(transport, stream)) {
 						goto retry;
 					}
