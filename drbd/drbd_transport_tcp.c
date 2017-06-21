@@ -160,6 +160,25 @@ static struct drbd_transport_ops dtt_ops = {
 };
 
 
+#ifdef _WSK_DISCONNECT_EVENT 
+NTSTATUS WskDisconnectEvent(
+	_In_opt_ PVOID SocketContext,
+	_In_     ULONG Flags
+	)
+{
+	UNREFERENCED_PARAMETER(SocketContext);
+	UNREFERENCED_PARAMETER(Flags);
+	
+	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
+	struct socket *sock = (struct socket *)SocketContext; 
+	WDRBD_CONN_TRACE("socket->sk = %p\n", sock->sk);
+	sock->sk_state = false;
+	return STATUS_SUCCESS;
+}
+
+WSK_CLIENT_CONNECTION_DISPATCH dispatchDisco = { NULL, WskDisconnectEvent, NULL };
+#endif
+
 static void dtt_nodelay(struct socket *socket)
 {
 	int val = 1;
@@ -643,9 +662,12 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip6(sbuf, (struct sockaddr_in6*)&my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&peer_addr));
 	} else {
 		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&my_addr), get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
-	}			
+	}
+#ifdef _WSK_DISCONNECT_EVENT
+	socket->sk = SocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
+#else
 	socket->sk = SocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status);
-		
+#endif 
 	if (!NT_SUCCESS(status)) {
 		err = status;
 		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x\n",status);
@@ -676,6 +698,16 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 			}
 		}
 	}
+
+#ifdef _WSK_DISCONNECT_EVENT
+	status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
+		err = -1;
+		goto out;
+	}
+#endif 
+
 	// _WSK_SOCKETCONNECT
 #else 
 
@@ -811,6 +843,9 @@ out:
 #endif
 			tr_err(transport, "%s failed, err = %d\n", what, err);
 	} else {
+#ifdef _WSK_DISCONNECT_EVENT
+		socket->sk_state = true;
+#endif 
 		*ret_socket = socket;
 	}
 
@@ -855,6 +890,18 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
         *socket = NULL;
         return false;
 	}
+
+#ifdef _WSK_DISCONNECT_EVENT
+	if ((*socket)->sk_state == false){
+		WDRBD_CONN_TRACE("socket->sk_state == false wsk = %p\n", (*socket)->sk);
+		kernel_sock_shutdown(*socket, SHUT_RDWR);
+		sock_release(*socket);
+		*socket = NULL;
+		return false;
+	}else{
+		WDRBD_CONN_TRACE("socket->sk_state == true wsk = %p\n", (*socket)->sk);
+	}
+#endif
 
     WDRBD_TRACE_SK("socket(0x%p) wsk(0x%p) ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->sk, (*socket)->name, out); // _WIN32
     return true;
@@ -1048,6 +1095,9 @@ retry:
 				return -ENOMEM;
 			}
 			s_estab->sk = listener->paccept_socket;
+#ifdef _WSK_DISCONNECT_EVENT
+			s_estab->sk_state = true;
+#endif 
 			WDRBD_TRACE("create estab_sock s_estab = listener->paccept_socket(%p)\n", s_estab->sk);
 			sprintf(s_estab->name, "estab_sock");
 			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'B6DW');
@@ -1234,6 +1284,9 @@ static void dtt_incoming_connection(struct sock *sock)
     }
 
     s_estab->sk = AcceptSocket;
+#ifdef _WSK_DISCONNECT_EVENT
+	s_estab->sk_state = true;
+#endif
     sprintf(s_estab->name, "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
 
@@ -1386,6 +1439,8 @@ WSK_CLIENT_LISTEN_DISPATCH dispatch = {
     dtt_abort_inspect_incoming  // WskAbortEvent is required only if conditional-accept is used.
 };
 #endif
+
+
 
 
 static int dtt_create_listener(struct drbd_transport *transport,
@@ -1705,8 +1760,9 @@ static int dtt_connect(struct drbd_transport *transport)
 		path->first = &waiter;
 		err = drbd_get_listener(&path->waiter, (struct sockaddr *)&drbd_path->my_addr,
 					dtt_create_listener);
+
 		if (err)
-			goto out_unlock;
+			goto out_unlock;	
 	}
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);

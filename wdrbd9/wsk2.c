@@ -177,6 +177,7 @@ InitWskBuffer(
     try {
 		// DW-1223: Locking with 'IoWriteAccess' affects buffer, which causes infinite I/O from ntfs when the buffer is from mdl of write IRP.
 		// we need write access for receiver, since buffer will be filled.
+		
 		MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, bWriteAccess?IoWriteAccess:IoReadAccess);
     } except(EXCEPTION_EXECUTE_HANDLER) {
         if (WskBuffer->Mdl != NULL) {
@@ -467,6 +468,7 @@ Disconnect(
 	return Status;
 }
 
+#ifdef _WSK_DISCONNECT_EVENT
 PWSK_SOCKET
 NTAPI
 SocketConnect(
@@ -474,8 +476,21 @@ SocketConnect(
 	__in ULONG		Protocol,
 	__in PSOCKADDR	LocalAddress, // address family desc. required
 	__in PSOCKADDR	RemoteAddress, // address family desc. required
-	__inout  NTSTATUS* pStatus
+	__inout  NTSTATUS* pStatus,
+	__in PWSK_CLIENT_CONNECTION_DISPATCH dispatch,
+	__in PVOID socketContext
+	)
+#else 
+PWSK_SOCKET
+NTAPI
+SocketConnect(
+__in USHORT		SocketType,
+__in ULONG		Protocol,
+__in PSOCKADDR	LocalAddress, // address family desc. required
+__in PSOCKADDR	RemoteAddress, // address family desc. required
+__inout  NTSTATUS* pStatus
 )
+#endif
 {
 	KEVENT			CompletionEvent = { 0 };
 	PIRP			Irp = NULL;
@@ -489,7 +504,7 @@ SocketConnect(
 	if (!NT_SUCCESS(Status)) {
 		return NULL;
 	}
-
+#ifdef _WSK_DISCONNECT_EVENT
 	Status = g_WskProvider.Dispatch->WskSocketConnect(
 				g_WskProvider.Client,
 				SocketType,
@@ -497,13 +512,27 @@ SocketConnect(
 				LocalAddress,
 				RemoteAddress,
 				0,
-				NULL,
-				NULL,
+				socketContext,
+				dispatch,
 				NULL,
 				NULL,
 				NULL,
 				Irp);
-
+#else 
+	Status = g_WskProvider.Dispatch->WskSocketConnect(
+		g_WskProvider.Client,
+		SocketType,
+		Protocol,
+		LocalAddress,
+		RemoteAddress,
+		0,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		Irp);
+#endif 
 	if (Status == STATUS_PENDING) {
 		LARGE_INTEGER nWaitTime = { 0, };
 		nWaitTime = RtlConvertLongToLargeInteger(-3 * 1000 * 1000 * 10);	// 3s
@@ -737,12 +766,11 @@ Send(
 #else
 
 #endif
-			WDRBD_TRACE("Send: timeout = %lu\n", Timeout);
+			
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
 			{
 			case STATUS_TIMEOUT:
-
 				// DW-988 refactoring about retry_count. retry_count is removed.
 				if (transport != NULL) {
 					WDRBD_TRACE("STATUS_TIMEOUT, transport != NULL\n"); 

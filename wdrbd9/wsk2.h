@@ -88,15 +88,30 @@ Disconnect(
 	__in PWSK_SOCKET	WskSocket
 	);
 
+#ifdef _WSK_DISCONNECT_EVENT
 PWSK_SOCKET
 NTAPI
 SocketConnect(
-	__in USHORT		SocketType,
-	__in ULONG		Protocol,
-	__in PSOCKADDR	LocalAddress, // address family desc. required
-	__in PSOCKADDR	RemoteAddress, // address family desc. required
-	__inout  NTSTATUS* pStatus
+__in USHORT		SocketType,
+__in ULONG		Protocol,
+__in PSOCKADDR	LocalAddress, // address family desc. required
+__in PSOCKADDR	RemoteAddress, // address family desc. required
+__inout  NTSTATUS* pStatus,
+__in PWSK_CLIENT_CONNECTION_DISPATCH dispatch,
+__in PVOID socketContext
 );
+#else
+PWSK_SOCKET
+NTAPI
+SocketConnect(
+__in USHORT		SocketType,
+__in ULONG		Protocol,
+__in PSOCKADDR	LocalAddress, // address family desc. required
+__in PSOCKADDR	RemoteAddress, // address family desc. required
+__inout  NTSTATUS* pStatus
+);
+#endif 
+
 
 #ifdef _WSK_IRP_REUSE
 LONG
