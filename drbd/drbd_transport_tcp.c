@@ -699,14 +699,6 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		}
 	}
 
-#ifdef _WSK_DISCONNECT_EVENT
-	status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
-	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
-		err = -1;
-		goto out;
-	}
-#endif 
 
 	// _WSK_SOCKETCONNECT
 #else 
@@ -845,6 +837,15 @@ out:
 	} else {
 #ifdef _WSK_DISCONNECT_EVENT
 		socket->sk_state = true;
+
+		status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
+			err = -1;
+			goto out;
+		}
+
+
 #endif 
 		*ret_socket = socket;
 	}
@@ -1277,6 +1278,12 @@ static void dtt_incoming_connection(struct sock *sock)
 #ifdef _WIN32
     struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
 
+#ifdef _WSK_DISCONNECT_EVENT	
+	*AcceptSocketDispatch = &dispatchDisco;
+	SetEventCallbacks(AcceptSocket, WSK_EVENT_DISCONNECT);
+#endif
+	
+
     if (!s_estab)
     {
 		WDRBD_TRACE("!s_estab return STATUS_REQUEST_NOT_ACCEPTED\n"); 
@@ -1285,7 +1292,10 @@ static void dtt_incoming_connection(struct sock *sock)
 
     s_estab->sk = AcceptSocket;
 #ifdef _WSK_DISCONNECT_EVENT
+	
+	*AcceptSocketContext = s_estab;
 	s_estab->sk_state = true;
+	
 #endif
     sprintf(s_estab->name, "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
