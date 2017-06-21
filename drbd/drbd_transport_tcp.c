@@ -240,15 +240,13 @@ static void dtt_free_one_sock(struct socket *socket)
 
 #ifdef _WIN32_SEND_BUFFING
 		// MODIFIED_BY_MANTECH DW-1204: flushing send buffer takes too long when network is slow, just shut it down if possible.
-		if (!bFlush){
-			WDRBD_TRACE("!bFlush kernel_sock_shutdown\n"); 
+		if (!bFlush)
 			kernel_sock_shutdown(socket, SHUT_RDWR);
-		}
+		
 
         struct _buffering_attr *attr = &socket->buffering_attr;
         if (attr->send_buf_thread_handle)
         {
-			WDRBD_TRACE("attr->send_buf_thread_handle\n"); 
             KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
             KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
             attr->send_buf_thread_handle = NULL;
@@ -256,11 +254,9 @@ static void dtt_free_one_sock(struct socket *socket)
 #endif		
 #ifdef _WIN32_SEND_BUFFING
 		// DW-1173: shut the socket down after send buf thread goes down.
-		if (bFlush){
+		if (bFlush)
 #endif
-			WDRBD_TRACE("bFlush and kernel_sock_shutdown\n"); 
 			kernel_sock_shutdown(socket, SHUT_RDWR);
-		}
 		sock_release(socket);
 	}
 }
@@ -274,7 +270,6 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 	/* free the socket specific stuff,
 	 * mutexes are handled by caller */
 
-	WDRBD_TRACE("dtt_free\n"); 
 
 	for (i = DATA_STREAM; i <= CONTROL_STREAM; i++) {
 		if (tcp_transport->stream[i]) {
@@ -698,16 +693,6 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 			}
 		}
 	}
-
-#ifdef _WSK_DISCONNECT_EVENT
-	status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
-	if (!NT_SUCCESS(status)) {
-		WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
-		err = -1;
-		goto out;
-	}
-#endif 
-
 	// _WSK_SOCKETCONNECT
 #else 
 
@@ -844,6 +829,12 @@ out:
 			tr_err(transport, "%s failed, err = %d\n", what, err);
 	} else {
 #ifdef _WSK_DISCONNECT_EVENT
+		status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
+			err = -1;
+			goto out;
+		}
 		socket->sk_state = true;
 #endif 
 		*ret_socket = socket;
@@ -925,7 +916,7 @@ static bool dtt_connection_established(struct drbd_transport *transport,
 	int timeout, good = 0;
 
 	if (!*socket1 || !*socket2){
-		WDRBD_TRACE("!*socket || !*socket2 and return false\n"); 
+		WDRBD_CONN_TRACE("!*socket || !*socket2 and return false\n"); 
 		return false;
 	}
 
@@ -987,7 +978,7 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 	}
 	mutex_unlock(&tcp_transport->paths_mutex);
 
-	WDRBD_TRACE("rv = %d? path : NULL\n", rv); 
+	WDRBD_CONN_TRACE("rv = %d? path : NULL\n", rv); 
 
 	return rv ? path : NULL;
 }
@@ -1051,7 +1042,7 @@ retry:
 #ifdef _WIN32
 	if (-DRBD_SIGKILL == timeo)
 	{
-		WDRBD_TRACE("-DRBD_SIGKILL == timeo return -DRBD_SIGKILL\n");
+		WDRBD_CONN_TRACE("-DRBD_SIGKILL == timeo return -DRBD_SIGKILL\n");
 		return -DRBD_SIGKILL;
 	}
 #endif
@@ -1060,7 +1051,7 @@ retry:
 #else
 	if (timeo <= 0)
 #endif
-		WDRBD_TRACE("-ETIMEOUT == timeout return -EAGAIN\n");
+		WDRBD_CONN_TRACE("-ETIMEOUT == timeout return -EAGAIN\n");
 		return -EAGAIN;
 	}
 
@@ -1068,7 +1059,7 @@ retry:
 	spin_lock_bh(&listener->listener.waiters_lock);
 #ifdef _WIN32
 	if (path->socket) {
-		WDRBD_TRACE("path->socket s_estab = path->socket(%p)\n", path->socket->sk);
+		WDRBD_CONN_TRACE("path->socket s_estab = path->socket(%p)\n", path->socket->sk);
 		s_estab = path->socket;
 		path->socket = NULL;
 #else
@@ -1098,7 +1089,7 @@ retry:
 #ifdef _WSK_DISCONNECT_EVENT
 			s_estab->sk_state = true;
 #endif 
-			WDRBD_TRACE("create estab_sock s_estab = listener->paccept_socket(%p)\n", s_estab->sk);
+			WDRBD_CONN_TRACE("create estab_sock s_estab = listener->paccept_socket(%p)\n", s_estab->sk);
 			sprintf(s_estab->name, "estab_sock");
 			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'B6DW');
 			if (!s_estab->sk_linux_attr) {
@@ -1120,11 +1111,11 @@ retry:
 		}
 		else {
 			if (status == STATUS_TIMEOUT) {
-				WDRBD_TRACE("status == timeout err = -EAGAIN\n");
+				WDRBD_CONN_TRACE("status == timeout err = -EAGAIN\n");
 				err = -EAGAIN;
 			}
 			else {
-				WDRBD_TRACE("status else and err = -1 \n");
+				WDRBD_CONN_TRACE("status else and err = -1 \n");
 				err = -1;
 			}
 		}
@@ -1145,7 +1136,7 @@ retry:
 			return -1;
 		}
 		char dbuf[128];
-		WDRBD_TRACE("GetRemoteAddress : peer_addr %s\n", get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
+		WDRBD_CONN_TRACE("GetRemoteAddress : peer_addr %s\n", get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
 
 #else
 		unregister_state_change(s_estab->sk, listener);
@@ -1211,7 +1202,6 @@ retry:
 	return 0;
 
 retry_locked:
-	WDRBD_TRACE("retry_locekd : \n"); 
 	spin_unlock_bh(&listener->listener.waiters_lock);
 	if (s_estab) {
 		kernel_sock_shutdown(s_estab, SHUT_RDWR);
@@ -1279,7 +1269,6 @@ static void dtt_incoming_connection(struct sock *sock)
 
     if (!s_estab)
     {
-		WDRBD_TRACE("!s_estab return STATUS_REQUEST_NOT_ACCEPTED\n"); 
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
@@ -1331,12 +1320,12 @@ static void dtt_incoming_connection(struct sock *sock)
 
     if (path)
     {
-		WDRBD_TRACE("if(path) path->socket = s_estab\n"); 
+		WDRBD_CONN_TRACE("if(path) path->socket = s_estab\n"); 
         path->socket = s_estab;
     }
     else
     {
-		WDRBD_TRACE("else listener->paccept_socket = AccceptSocket\n");
+		WDRBD_CONN_TRACE("else listener->paccept_socket = AccceptSocket\n");
         listener->listener.pending_accepts++;
         listener->paccept_socket = AcceptSocket;
     }
@@ -1408,9 +1397,9 @@ dtt_inspect_incoming(
     }
 
 	if (action == WskInspectReject)
-		WDRBD_TRACE("return WskInspectReject\n"); 
+		WDRBD_CONN_TRACE("return WskInspectReject\n"); 
 	if (action == WskInspectAccept)
-		WDRBD_TRACE("return WskInspecAccept\n");
+		WDRBD_CONN_TRACE("return WskInspecAccept\n");
 
     atomic_set(&waiter->transport->listening, 0);
 out:
@@ -1656,7 +1645,7 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_path *drbd_path;
 
-	WDRBD_TRACE("dtt_put_listeners\n"); 
+	WDRBD_CONN_TRACE("dtt_put_listeners\n"); 
 
 	mutex_lock(&tcp_transport->paths_mutex);
 	clear_bit(DTT_CONNECTING, &tcp_transport->flags);
@@ -1830,9 +1819,9 @@ static int dtt_connect(struct drbd_transport *transport)
 			if (!dsocket) { 
 				dsocket = s;
                 sprintf(dsocket->name, "data_sock\0");
-				WDRBD_TRACE("dsockek was created\n"); 
+				WDRBD_CONN_TRACE("dsockek was created\n"); 
                 if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0) {
-					WDRBD_TRACE("fail to send dtt_send_first_packet, dsocket (%p)\n", dsocket->sk);
+					WDRBD_CONN_TRACE("fail to send dtt_send_first_packet, dsocket (%p)\n", dsocket->sk);
 					sock_release(s);
                     dsocket = 0;
                     goto retry;
@@ -1841,10 +1830,10 @@ static int dtt_connect(struct drbd_transport *transport)
 				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
 				csocket = s;
                 sprintf(csocket->name, "meta_sock\0");
-				WDRBD_TRACE("csocket was created, csocket (%p)\n", csocket->sk);
+				WDRBD_CONN_TRACE("csocket was created, csocket (%p)\n", csocket->sk);
                 if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
                 {
-					WDRBD_TRACE("fail to send dtt_send_first_packet, csocket\n");
+					WDRBD_CONN_TRACE("fail to send dtt_send_first_packet, csocket\n");
                     sock_release(s);
                     csocket = 0;
                     goto retry;
@@ -1879,7 +1868,7 @@ static int dtt_connect(struct drbd_transport *transport)
 			connect_to_path = dtt_next_path(tcp_transport, connect_to_path);
 
 		if (dtt_connection_established(transport, &dsocket, &csocket, &first_path)){
-			WDRBD_TRACE("1. success dtt_connection_established break the loop\n"); 
+			WDRBD_CONN_TRACE("success dtt_connection_established break the loop\n"); 
 			break;
 		}
 
@@ -1887,7 +1876,7 @@ retry:
 		s = NULL;
 		err = dtt_wait_for_connect(&waiter, &s, &connect_to_path);
 		if (err < 0 && err != -EAGAIN){
-			WDRBD_TRACE("dtt_wait_for_connect fail err = %d goto out\n", err); 
+			WDRBD_CONN_TRACE("dtt_wait_for_connect fail err = %d goto out\n", err); 
 			goto out;
 		}
 
@@ -1914,9 +1903,9 @@ retry:
 				connect_to_path = first_path;
 				goto randomize;
 			}
-			WDRBD_TRACE("dtt_socket_ok_or_free(&dsocket)\n"); 
+			WDRBD_CONN_TRACE("dtt_socket_ok_or_free(&dsocket)\n"); 
 			dtt_socket_ok_or_free(&dsocket);
-			WDRBD_TRACE("dtt_socket_ok_or_free(&csocket)\n");
+			WDRBD_CONN_TRACE("dtt_socket_ok_or_free(&csocket)\n");
 			dtt_socket_ok_or_free(&csocket);
 			switch (fp) {
 			case P_INITIAL_DATA:
@@ -1946,20 +1935,20 @@ retry:
 				sock_release(s);
 randomize:
 				if (prandom_u32() & 1){
-					WDRBD_TRACE("goto retry:"); 
+					WDRBD_CONN_TRACE("goto retry:"); 
 					goto retry;
 				}
 			}
 		}
 
 		if (drbd_should_abort_listening(transport)){
-			WDRBD_TRACE("fail drbd_should_abort_listening and goto out_eagain\n"); 
+			WDRBD_CONN_TRACE("fail drbd_should_abort_listening and goto out_eagain\n"); 
 			goto out_eagain;
 		}
 
 		ok = dtt_connection_established(transport, &dsocket, &csocket, &first_path);
 		if (ok){
-			WDRBD_TRACE("2. dtt_connection_established break the loop\n"); 
+			WDRBD_CONN_TRACE("dtt_connection_established break the loop\n"); 
 		}
 	} while (!ok);
 #if 0   // No need to event disable because it will be released socket.
@@ -2015,7 +2004,7 @@ randomize:
 	dtt_nodelay(dsocket);
 	dtt_nodelay(csocket);
 
-	WDRBD_TRACE("tcp_transport->[STREAMS] <= dsocket, csocket\n");
+	WDRBD_CONN_TRACE("tcp_transport->[STREAMS] <= dsocket, csocket\n");
 	tcp_transport->stream[DATA_STREAM] = dsocket;
 	tcp_transport->stream[CONTROL_STREAM] = csocket;
 
@@ -2036,7 +2025,6 @@ randomize:
 	return 0;
 
 out_eagain:
-	WDRBD_TRACE("out_eagain: \n"); 
 	err = -EAGAIN;
 
 	if (0) {

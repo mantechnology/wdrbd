@@ -353,7 +353,6 @@ CloseSocket(
 	nWaitTime.QuadPart = (-1 * 1000 * 10000);   // wait 1000ms relative 
 
 	if (g_SocketsState != INITIALIZED || !WskSocket){
-		WDRBD_TRACE("fail g_SocketState != INITIALIZED\n"); 
 		return STATUS_INVALID_PARAMETER;
 	}
 #if WSK_ASYNCCOMPL
@@ -362,7 +361,6 @@ CloseSocket(
 	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
 #endif
 	if (!NT_SUCCESS(Status)) {
-		WDRBD_TRACE("fail InitWskData\n");
 		return Status;
 	}
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
@@ -713,19 +711,16 @@ Send(
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
 	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0)){
-		WDRBD_TRACE("fail g_SocketState != INITIALIZED return SOCKET_ERROR\n"); 
 		return SOCKET_ERROR;
 	}
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
-		WDRBD_TRACE("fail InitWskBuffer return SOCKET_ERROR \n");
 		return SOCKET_ERROR;
 	}
 
 	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
-		WDRBD_TRACE("fail InitWskData and return SOCKET_ERROR\n");
 		FreeWskBuffer(&WskBuffer);
 		return SOCKET_ERROR;
 	}
@@ -773,7 +768,6 @@ Send(
 			case STATUS_TIMEOUT:
 				// DW-988 refactoring about retry_count. retry_count is removed.
 				if (transport != NULL) {
-					WDRBD_TRACE("STATUS_TIMEOUT, transport != NULL\n"); 
 					if (!drbd_stream_send_timed_out(transport, stream)) {
 						goto retry;
 					}
