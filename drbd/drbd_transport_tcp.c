@@ -837,15 +837,6 @@ out:
 			goto out;
 		}
 		socket->sk_state = true;
-
-		status = SetEventCallbacks(socket->sk, WSK_EVENT_DISCONNECT);
-		if (!NT_SUCCESS(status)) {
-			WDRBD_ERROR("Failed to set WSK_EVENT_DISCONNECT. err(0x%x)\n", status);
-			err = -1;
-			goto out;
-		}
-
-
 #endif 
 		*ret_socket = socket;
 	}
