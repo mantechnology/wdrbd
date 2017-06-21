@@ -420,12 +420,12 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_TR		
 #define WDRBD_TRACE_WQ
 #define WDRBD_TRACE_RS
-#define WDRBD_TRACE_SK		WDRBD_TRACE				// about socket
+#define WDRBD_TRACE_SK					// about socket
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4					
 #define WDRBD_TRACE_SB
-#define WDRBD_TRACE_CO		WDRBD_TRACE
-#define WDRBD_CONN_TRACE 
+#define WDRBD_TRACE_CO		
+#define WDRBD_CONN_TRACE	
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
