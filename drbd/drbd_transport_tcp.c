@@ -568,16 +568,32 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
 #endif
 }
 
-#ifndef _WIN32 // MODIFIED_BY_MANTECH DW-1297
+#ifdef _WSK_DISCONNECT_EVENT
+static bool dtt_path_cmp_addr(struct dtt_path *path, struct drbd_connection *connection)
+#else
 static bool dtt_path_cmp_addr(struct dtt_path *path)
+#endif 
 {
 	struct drbd_path *drbd_path = &path->path;
 	int addr_size;
 
 	addr_size = min(drbd_path->my_addr_len, drbd_path->peer_addr_len);
+
+#ifdef _WSK_DISCONNECT_EVENT
+	if (drbd_path->my_addr_len == drbd_path->peer_addr_len){
+		int my_node_id, peer_node_id; 
+		WDRBD_CONN_TRACE("my_addr_len == peer_addr_len compare node_ids\n"); 
+		
+		my_node_id = connection->resource->res_opts.node_id; 
+		peer_node_id = connection->peer_node_id; 
+
+		WDRBD_CONN_TRACE("my_node_id = %d, peer_node_id = %d\n", my_node_id, peer_node_id);
+		return my_node_id > peer_node_id; 		 
+	}
+#endif 
 	return memcmp(&drbd_path->my_addr, &drbd_path->peer_addr, addr_size) > 0;
 }
-#endif
+
 
 static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 {
@@ -1716,7 +1732,6 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32
 	NTSTATUS status;
 #endif
-
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_path *drbd_path;
@@ -1817,9 +1832,7 @@ static int dtt_connect(struct drbd_transport *transport)
 			}
 #endif
 
-#ifndef _WIN32 // MODIFIED_BY_MANTECH DW-1297
 			bool use_for_data;
-#endif
 
 			if (!first_path) {
 				first_path = connect_to_path;
@@ -1831,37 +1844,16 @@ static int dtt_connect(struct drbd_transport *transport)
 				continue;
 			}
 
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1297 : rollback 'Avoid initial packet S crossed' because a feature packet timeout occurs.
-			if (!dsocket) { 
-				dsocket = s;
-                sprintf(dsocket->name, "data_sock\0");
-				WDRBD_CONN_TRACE("dsockek was created\n"); 
-                if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0) {
-					WDRBD_CONN_TRACE("fail to send dtt_send_first_packet, dsocket (%p)\n", dsocket->sk);
-					sock_release(s);
-                    dsocket = 0;
-                    goto retry;
-                }
-			} else if (!csocket) {
-				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
-				csocket = s;
-                sprintf(csocket->name, "meta_sock\0");
-				WDRBD_CONN_TRACE("csocket was created, csocket (%p)\n", csocket->sk);
-                if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
-                {
-					WDRBD_CONN_TRACE("fail to send dtt_send_first_packet, csocket\n");
-                    sock_release(s);
-                    csocket = 0;
-                    goto retry;
-                }
-			} else {
-				tr_err(transport, "Logic error in conn_connect()\n");
-				goto out_eagain;
-			}
-#else
+	
 			if (!dsocket && !csocket) {
+#ifdef _WSK_DISCONNECT_EVENT // DW-1452: remove DW-1297 and apply path comparison
+				struct drbd_connection *connection =
+					container_of(transport, struct drbd_connection, transport);
+				use_for_data = dtt_path_cmp_addr(first_path, connection);
+				WDRBD_CONN_TRACE("use_for_date = %d\n", use_for_data); 
+#else
 		       use_for_data = dtt_path_cmp_addr(first_path);
+#endif 
 			} else if (!dsocket) {
            		use_for_data = true;
 			} else {
@@ -1880,7 +1872,6 @@ static int dtt_connect(struct drbd_transport *transport)
 				csocket = s;
 				dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM);
 			}
-#endif
 		} else if (!first_path)
 			connect_to_path = dtt_next_path(tcp_transport, connect_to_path);
 
@@ -2027,7 +2018,6 @@ randomize:
 
 	rcu_read_lock();
 	nc = rcu_dereference(transport->net_conf);
-
 	timeout = nc->timeout * HZ / 10;
 	rcu_read_unlock();
 
