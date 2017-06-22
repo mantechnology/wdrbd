@@ -643,6 +643,9 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	socket->sk_linux_attr = 0;
 	err = 0;
 
+#ifdef _WSK_DISCONNECT_EVENT
+	socket->sk_state = false; 
+#endif 
 	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
 	if (!socket->sk_linux_attr) {
 		err = -ENOMEM;
@@ -1086,6 +1089,9 @@ retry:
 			if (!s_estab) {
 				return -ENOMEM;
 			}
+#ifdef _WSK_DISCONNECT_EVENT
+			s_estab->sk_state = false;
+#endif 
 			s_estab->sk = listener->paccept_socket;
 #ifdef _WSK_DISCONNECT_EVENT
 			s_estab->sk_state = true;
@@ -1272,19 +1278,16 @@ static void dtt_incoming_connection(struct sock *sock)
 	*AcceptSocketDispatch = &dispatchDisco;
 	SetEventCallbacks(AcceptSocket, WSK_EVENT_DISCONNECT);
 #endif
-	
-
     if (!s_estab)
     {
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
     s_estab->sk = AcceptSocket;
+
 #ifdef _WSK_DISCONNECT_EVENT
-	
 	*AcceptSocketContext = s_estab;
 	s_estab->sk_state = true;
-	
 #endif
     sprintf(s_estab->name, "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
@@ -1614,7 +1617,11 @@ static int dtt_create_listener(struct drbd_transport *transport,
     	err = -1;
         goto out;
     }
-#endif		
+#endif	
+
+#ifdef _WSK_DISCONNECT_EVENT
+	s_listen->sk_state = false; 
+#endif
 	return 0;
 out:
 	if (s_listen)
