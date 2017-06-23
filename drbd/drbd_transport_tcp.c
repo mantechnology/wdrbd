@@ -649,7 +649,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	err = 0;
 
 #ifdef _WSK_DISCONNECT_EVENT
-	socket->sk_state = TCP_DiSCONNECTED; 
+	socket->sk_state = TCP_DISCONNECTED; 
 #endif 
 	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
 	if (!socket->sk_linux_attr) {
@@ -892,7 +892,7 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 	}
 
 #ifdef _WSK_DISCONNECT_EVENT
-	if ((*socket)->sk_state == TCP_DiSCONNECTED){
+	if ((*socket)->sk_state == TCP_DISCONNECTED){
 		WDRBD_CONN_TRACE("socket->sk_state == TCP_DISCONNECTED wsk = %p\n", (*socket)->sk);
 		kernel_sock_shutdown(*socket, SHUT_RDWR);
 		sock_release(*socket);
@@ -1632,7 +1632,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #endif	
 
 #ifdef _WSK_DISCONNECT_EVENT
-	s_listen->sk_state = TCP_DiSCONNECTED; 
+	s_listen->sk_state = TCP_DISCONNECTED; 
 #endif
 	return 0;
 out:

@@ -514,7 +514,7 @@ struct sock {
 #endif
 
 #ifdef _WSK_DISCONNECT_EVENT
-#define	TCP_DiSCONNECTED	0
+#define	TCP_DISCONNECTED	0
 #define	TCP_ESTABLISHED	1
 #endif 
 

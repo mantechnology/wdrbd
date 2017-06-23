@@ -2050,7 +2050,7 @@ NTSTATUS WskDisconnectEvent(
 	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
 	struct socket *sock = (struct socket *)SocketContext; 
 	WDRBD_CONN_TRACE("socket->sk = %p\n", sock->sk);
-	sock->sk_state = TCP_DiSCONNECTED;
+	sock->sk_state = TCP_DISCONNECTED;
 	return STATUS_SUCCESS;
 }
 #endif
