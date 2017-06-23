@@ -424,7 +424,8 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4					
 #define WDRBD_TRACE_SB
-#define WDRBD_TRACE_CO
+#define WDRBD_TRACE_CO		
+#define WDRBD_CONN_TRACE	
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -511,6 +512,12 @@ struct sock {
 #ifdef _WIN32_SEND_BUFFING
 #include <send_buf.h>
 #endif
+
+#ifdef _WSK_DISCONNECT_EVENT
+#define	TCP_DISCONNECTED	0
+#define	TCP_ESTABLISHED	1
+#endif 
+
 struct socket {
 	struct sock *sk_linux_attr;
 	PWSK_SOCKET sk;
@@ -518,6 +525,9 @@ struct socket {
 #ifdef _WIN32_SEND_BUFFING
 	struct _buffering_attr buffering_attr;
 #endif
+#ifdef _WSK_DISCONNECT_EVENT
+	int sk_state; 
+#endif 
 };
 
 char * get_ip4(char *buf, struct sockaddr_in *sockaddr);

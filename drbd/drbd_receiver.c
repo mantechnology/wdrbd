@@ -901,6 +901,8 @@ static bool conn_connect(struct drbd_connection *connection)
 	struct net_conf *nc;
 
 start:
+	WDRBD_CONN_TRACE("conn_connect\n"); 
+
 	clear_bit(DISCONNECT_EXPECTED, &connection->flags);
 	if (change_cstate(connection, C_CONNECTING, CS_VERBOSE) < SS_SUCCESS) {
 		/* We do not have a network config. */
@@ -8064,6 +8066,8 @@ void conn_disconnect(struct drbd_connection *connection)
 	unsigned long irq_flags;
 	int vnr, i;
 
+	WDRBD_CONN_TRACE("conn_disconnect\n"); 
+
 	clear_bit(CONN_DRY_RUN, &connection->flags);
 	clear_bit(CONN_DISCARD_MY_DATA, &connection->flags);
 
@@ -8285,15 +8289,20 @@ int drbd_do_features(struct drbd_connection *connection)
 	int err;
 
 	err = drbd_send_features(connection);
-	if (err)
+	if (err){
+		WDRBD_CONN_TRACE("fail drbd_send_feature err = %d\n", err); 
 		return 0;
+	}
+	WDRBD_CONN_TRACE("success drbd_send_feature\n");
 
 	err = drbd_recv_header(connection, &pi);
 	if (err) {
+		WDRBD_CONN_TRACE("fail drbd_recv_header \n");
 		if (err == -EAGAIN)
 			drbd_err(connection, "timeout while waiting for feature packet\n");
 		return 0;
 	}
+	WDRBD_CONN_TRACE("success drbd_recv_header\n");
 
 	if (pi.cmd != P_CONNECTION_FEATURES) {
 		drbd_err(connection, "expected ConnectionFeatures packet, received: %s (0x%04x)\n",
