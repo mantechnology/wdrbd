@@ -568,6 +568,7 @@ static bool dtt_path_cmp_addr(struct dtt_path *path)
 	addr_size = min(drbd_path->my_addr_len, drbd_path->peer_addr_len);
 
 #ifdef _WSK_DISCONNECT_EVENT
+	// DW-1452: Consider interworking with DRX 
 	if (drbd_path->my_addr_len == drbd_path->peer_addr_len){
 		int my_node_id, peer_node_id; 
 		WDRBD_CONN_TRACE("my_addr_len == peer_addr_len compare node_ids\n"); 
@@ -648,7 +649,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 	err = 0;
 
 #ifdef _WSK_DISCONNECT_EVENT
-	socket->sk_state = false; 
+	socket->sk_state = TCP_DiSCONNECTED; 
 #endif 
 	socket->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '52DW');
 	if (!socket->sk_linux_attr) {
@@ -843,7 +844,7 @@ out:
 			err = -1;
 			goto out;
 		}
-		socket->sk_state = true;
+		socket->sk_state = TCP_ESTABLISHED;
 #endif 
 		*ret_socket = socket;
 	}
@@ -891,14 +892,14 @@ static bool dtt_socket_ok_or_free(struct socket **socket)
 	}
 
 #ifdef _WSK_DISCONNECT_EVENT
-	if ((*socket)->sk_state == false){
-		WDRBD_CONN_TRACE("socket->sk_state == false wsk = %p\n", (*socket)->sk);
+	if ((*socket)->sk_state == TCP_DiSCONNECTED){
+		WDRBD_CONN_TRACE("socket->sk_state == TCP_DISCONNECTED wsk = %p\n", (*socket)->sk);
 		kernel_sock_shutdown(*socket, SHUT_RDWR);
 		sock_release(*socket);
 		*socket = NULL;
 		return false;
 	}else{
-		WDRBD_CONN_TRACE("socket->sk_state == true wsk = %p\n", (*socket)->sk);
+		WDRBD_CONN_TRACE("socket->sk_state == TCP_ESTABLISHED wsk = %p\n", (*socket)->sk);
 	}
 #endif
 
@@ -1056,10 +1057,10 @@ retry:
 #endif
 #ifdef _WIN32
 	if (-ETIMEDOUT == timeo){
+		WDRBD_CONN_TRACE("-ETIMEOUT == timeout return -EAGAIN\n");
 #else
 	if (timeo <= 0)
 #endif
-		WDRBD_CONN_TRACE("-ETIMEOUT == timeout return -EAGAIN\n");
 		return -EAGAIN;
 	}
 
@@ -1292,7 +1293,7 @@ static void dtt_incoming_connection(struct sock *sock)
 #ifdef _WSK_DISCONNECT_EVENT
 	*AcceptSocketDispatch = &dispatchDisco;
 	*AcceptSocketContext = s_estab;
-	s_estab->sk_state = true;
+	s_estab->sk_state = TCP_ESTABLISHED;
 	SetEventCallbacks(s_estab->sk, WSK_EVENT_DISCONNECT);		
 #endif
 
@@ -1631,7 +1632,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
 #endif	
 
 #ifdef _WSK_DISCONNECT_EVENT
-	s_listen->sk_state = false; 
+	s_listen->sk_state = TCP_DiSCONNECTED; 
 #endif
 	return 0;
 out:

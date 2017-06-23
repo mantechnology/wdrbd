@@ -512,6 +512,12 @@ struct sock {
 #ifdef _WIN32_SEND_BUFFING
 #include <send_buf.h>
 #endif
+
+#ifdef _WSK_DISCONNECT_EVENT
+#define	TCP_DiSCONNECTED	0
+#define	TCP_ESTABLISHED	1
+#endif 
+
 struct socket {
 	struct sock *sk_linux_attr;
 	PWSK_SOCKET sk;
@@ -520,7 +526,7 @@ struct socket {
 	struct _buffering_attr buffering_attr;
 #endif
 #ifdef _WSK_DISCONNECT_EVENT
-	BOOLEAN sk_state; 
+	int sk_state; 
 #endif 
 };
 
