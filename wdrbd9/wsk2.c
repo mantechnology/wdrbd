@@ -2037,3 +2037,21 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 }
+
+
+#ifdef _WSK_DISCONNECT_EVENT 
+NTSTATUS WskDisconnectEvent(
+	_In_opt_ PVOID SocketContext,
+	_In_     ULONG Flags
+	)
+{
+	UNREFERENCED_PARAMETER(Flags);
+	
+	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
+	struct socket *sock = (struct socket *)SocketContext; 
+	WDRBD_CONN_TRACE("socket->sk = %p\n", sock->sk);
+	sock->sk_state = false;
+	return STATUS_SUCCESS;
+}
+#endif
+

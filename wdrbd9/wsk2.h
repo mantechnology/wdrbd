@@ -307,3 +307,13 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 );
 
 char *GetSockErrorString(NTSTATUS status);
+
+
+#ifdef _WSK_DISCONNECT_EVENT 
+
+NTSTATUS WskDisconnectEvent(
+	_In_opt_ PVOID SocketContext,
+	_In_     ULONG Flags
+	);
+#endif
+

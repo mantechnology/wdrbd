@@ -77,7 +77,11 @@ struct dtt_listener {
 	void (*original_sk_state_change)(struct sock *sk);
 	struct socket *s_listen;
 #ifdef _WIN32
+#ifdef _WSK_DISCONNECT_EVENT
+	struct socket * paccept_socket;
+#else
 	WSK_SOCKET* paccept_socket;
+#endif
 #endif
 };
 
@@ -159,23 +163,7 @@ static struct drbd_transport_ops dtt_ops = {
 #endif
 };
 
-
 #ifdef _WSK_DISCONNECT_EVENT 
-NTSTATUS WskDisconnectEvent(
-	_In_opt_ PVOID SocketContext,
-	_In_     ULONG Flags
-	)
-{
-	UNREFERENCED_PARAMETER(SocketContext);
-	UNREFERENCED_PARAMETER(Flags);
-	
-	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
-	struct socket *sock = (struct socket *)SocketContext; 
-	WDRBD_CONN_TRACE("socket->sk = %p\n", sock->sk);
-	sock->sk_state = false;
-	return STATUS_SUCCESS;
-}
-
 WSK_CLIENT_CONNECTION_DISPATCH dispatchDisco = { NULL, WskDisconnectEvent, NULL };
 #endif
 
@@ -1101,17 +1089,17 @@ retry:
 		// paccept_socket = Accept(listener->s_listen->sk, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, status, timeo / HZ);
 		// 
 		if (listener->paccept_socket) {
+#ifdef _WSK_DISCONNECT_EVENT
+			s_estab = listener->paccept_socket;
+			WDRBD_CONN_TRACE("create estab_sock s_estab = listener->paccept_socket(%p)\n", s_estab);
+			
+#else
 			s_estab = kzalloc(sizeof(struct socket), 0, 'D6DW');
 			if (!s_estab) {
 				return -ENOMEM;
 			}
-#ifdef _WSK_DISCONNECT_EVENT
-			s_estab->sk_state = false;
-#endif 
 			s_estab->sk = listener->paccept_socket;
-#ifdef _WSK_DISCONNECT_EVENT
-			s_estab->sk_state = true;
-#endif 
+
 			WDRBD_CONN_TRACE("create estab_sock s_estab = listener->paccept_socket(%p)\n", s_estab->sk);
 			sprintf(s_estab->name, "estab_sock");
 			s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'B6DW');
@@ -1119,18 +1107,8 @@ retry:
 				kfree(s_estab);
 				return -ENOMEM;
 			}
-#ifdef _WIN32_SEND_BUFFING
-			if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
-			{
-				if (nc->sndbuf_size > 0)
-				{
-					tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
-					nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
-				}
-			}
-			dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
-#endif
             s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
+#endif 
 		}
 		else {
 			if (status == STATUS_TIMEOUT) {
@@ -1216,6 +1194,20 @@ retry:
 			goto retry_locked;
 		}
 	}
+
+#ifdef _WIN32_SEND_BUFFING
+	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
+	{
+		if (nc->sndbuf_size > 0)
+		{
+			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
+			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
+		}
+	}
+	dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
+#endif
+
+		
 #ifdef _WIN32
 	WDRBD_TRACE_CO("%p dtt_wait_for_connect ok done.\n", KeGetCurrentThread());
 #endif
@@ -1290,10 +1282,6 @@ static void dtt_incoming_connection(struct sock *sock)
 #ifdef _WIN32
     struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
 
-#ifdef _WSK_DISCONNECT_EVENT	
-	*AcceptSocketDispatch = &dispatchDisco;
-	SetEventCallbacks(AcceptSocket, WSK_EVENT_DISCONNECT);
-#endif
     if (!s_estab)
     {
         return STATUS_REQUEST_NOT_ACCEPTED;
@@ -1302,9 +1290,12 @@ static void dtt_incoming_connection(struct sock *sock)
     s_estab->sk = AcceptSocket;
 
 #ifdef _WSK_DISCONNECT_EVENT
+	*AcceptSocketDispatch = &dispatchDisco;
 	*AcceptSocketContext = s_estab;
 	s_estab->sk_state = true;
+	SetEventCallbacks(s_estab->sk, WSK_EVENT_DISCONNECT);		
 #endif
+
     sprintf(s_estab->name, "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
 
@@ -1356,7 +1347,11 @@ static void dtt_incoming_connection(struct sock *sock)
     {
 		WDRBD_CONN_TRACE("else listener->paccept_socket = AccceptSocket\n");
         listener->listener.pending_accepts++;
-        listener->paccept_socket = AcceptSocket;
+#ifdef _WSK_DISCONNECT_EVENT
+		listener->paccept_socket = s_estab;
+#else
+        listener->paccept_socket = AcceptSocket;		
+#endif
     }
     wake_up(&waiter->wait);
 	spin_unlock(&listener->listener.waiters_lock);
