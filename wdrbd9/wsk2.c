@@ -177,6 +177,7 @@ InitWskBuffer(
     try {
 		// DW-1223: Locking with 'IoWriteAccess' affects buffer, which causes infinite I/O from ntfs when the buffer is from mdl of write IRP.
 		// we need write access for receiver, since buffer will be filled.
+		
 		MmProbeAndLockPages(WskBuffer->Mdl, KernelMode, bWriteAccess?IoWriteAccess:IoReadAccess);
     } except(EXCEPTION_EXECUTE_HANDLER) {
         if (WskBuffer->Mdl != NULL) {
@@ -351,8 +352,9 @@ CloseSocket(
 	LARGE_INTEGER	nWaitTime;
 	nWaitTime.QuadPart = (-1 * 1000 * 10000);   // wait 1000ms relative 
 
-	if (g_SocketsState != INITIALIZED || !WskSocket)
+	if (g_SocketsState != INITIALIZED || !WskSocket){
 		return STATUS_INVALID_PARAMETER;
+	}
 #if WSK_ASYNCCOMPL
 	Status = InitWskDataAsync(&Irp, TRUE);
 #else
@@ -464,6 +466,7 @@ Disconnect(
 	return Status;
 }
 
+#ifdef _WSK_DISCONNECT_EVENT
 PWSK_SOCKET
 NTAPI
 SocketConnect(
@@ -471,8 +474,21 @@ SocketConnect(
 	__in ULONG		Protocol,
 	__in PSOCKADDR	LocalAddress, // address family desc. required
 	__in PSOCKADDR	RemoteAddress, // address family desc. required
-	__inout  NTSTATUS* pStatus
+	__inout  NTSTATUS* pStatus,
+	__in PWSK_CLIENT_CONNECTION_DISPATCH dispatch,
+	__in PVOID socketContext
+	)
+#else 
+PWSK_SOCKET
+NTAPI
+SocketConnect(
+__in USHORT		SocketType,
+__in ULONG		Protocol,
+__in PSOCKADDR	LocalAddress, // address family desc. required
+__in PSOCKADDR	RemoteAddress, // address family desc. required
+__inout  NTSTATUS* pStatus
 )
+#endif
 {
 	KEVENT			CompletionEvent = { 0 };
 	PIRP			Irp = NULL;
@@ -486,7 +502,7 @@ SocketConnect(
 	if (!NT_SUCCESS(Status)) {
 		return NULL;
 	}
-
+#ifdef _WSK_DISCONNECT_EVENT
 	Status = g_WskProvider.Dispatch->WskSocketConnect(
 				g_WskProvider.Client,
 				SocketType,
@@ -494,13 +510,27 @@ SocketConnect(
 				LocalAddress,
 				RemoteAddress,
 				0,
-				NULL,
-				NULL,
+				socketContext,
+				dispatch,
 				NULL,
 				NULL,
 				NULL,
 				Irp);
-
+#else 
+	Status = g_WskProvider.Dispatch->WskSocketConnect(
+		g_WskProvider.Client,
+		SocketType,
+		Protocol,
+		LocalAddress,
+		RemoteAddress,
+		0,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		Irp);
+#endif 
 	if (Status == STATUS_PENDING) {
 		LARGE_INTEGER nWaitTime = { 0, };
 		nWaitTime = RtlConvertLongToLargeInteger(-3 * 1000 * 1000 * 10);	// 3s
@@ -680,8 +710,9 @@ Send(
 	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
-	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0))
+	if (g_SocketsState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0)){
 		return SOCKET_ERROR;
+	}
 
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
@@ -730,11 +761,11 @@ Send(
 #else
 
 #endif
+			
 			Status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 			switch (Status)
 			{
 			case STATUS_TIMEOUT:
-
 				// DW-988 refactoring about retry_count. retry_count is removed.
 				if (transport != NULL) {
 					if (!drbd_stream_send_timed_out(transport, stream)) {
@@ -2009,3 +2040,21 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 }
+
+
+#ifdef _WSK_DISCONNECT_EVENT 
+NTSTATUS WskDisconnectEvent(
+	_In_opt_ PVOID SocketContext,
+	_In_     ULONG Flags
+	)
+{
+	UNREFERENCED_PARAMETER(Flags);
+	
+	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
+	struct socket *sock = (struct socket *)SocketContext; 
+	WDRBD_CONN_TRACE("socket->sk = %p\n", sock->sk);
+	sock->sk_state = TCP_DISCONNECTED;
+	return STATUS_SUCCESS;
+}
+#endif
+
