@@ -1401,6 +1401,21 @@ extern EX_SPIN_LOCK g_rcuLock;
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
+#define rcu_read_lock_check(locked) \
+    unsigned char oldIrql_rLock = 0;\
+    if (locked) {\
+		WDRBD_TRACE_RCU("rcu_read_lock_check : already locked. currentIrql(%d)\n", KeGetCurrentIrql());\
+    } else {\
+    	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
+    	WDRBD_TRACE_RCU("rcu_read_lock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+    }\
+    
+#define rcu_read_unlock_check(locked) \
+	if (!locked) {\
+    	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
+    	WDRBD_TRACE_RCU("rcu_read_unlock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+	}\
+	
 extern void local_irq_disable();
 extern void local_irq_enable();
 extern void ct_init_thread_list();
