@@ -2931,7 +2931,11 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 				if (err) {
                     			begin_state_change_locked(connection->resource, CS_HARD);
 					__change_cstate(connection, C_TIMEOUT);
+#ifdef _WIN32_RCU_LOCKED
+					end_state_change_locked(connection->resource, false);
+#else
 					end_state_change_locked(connection->resource);
+#endif
 					fail_postponed_requests(peer_req);
 					goto out;
 				}
@@ -4160,7 +4164,12 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		    drbd_current_uuid(device) == UUID_JUST_CREATED &&
 #ifdef _WIN32_STABLE_SYNCSOURCE
 			// DW-1449 check stable sync source policy first, returning here is supposed to mean other resync is going to be started. (or violates stable sync source policy)
-			(is_resync_running(device) || !drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW)))
+			(is_resync_running(device) || 
+#ifdef _WIN32_RCU_LOCKED
+			!drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW, false)))
+#else
+			!drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW)))
+#endif
 #else
 			is_resync_running(device)
 #endif
@@ -5796,7 +5805,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	if ((peer_device->repl_state[NOW] >= L_STARTING_SYNC_S && peer_device->repl_state[NOW] <= L_WF_BITMAP_T) ||
 		(peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T))
 	{
+#ifdef _WIN32_RCU_LOCKED
+		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW, false))
+#else
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
+#endif
 		{
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
@@ -5821,7 +5834,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		else
 		{
 			if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
+#ifdef _WIN32_RCU_LOCKED
+				drbd_inspect_resync_side(peer_device, L_SYNC_SOURCE, NOW, false) &&
+#else
 				drbd_inspect_resync_side(peer_device, L_SYNC_SOURCE, NOW) &&
+#endif
 				get_ldev(device))
 			{
 				drbd_send_uuids(peer_device, UUID_FLAG_AUTHORITATIVE | UUID_FLAG_RESYNC, 0);
@@ -7181,7 +7198,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	begin_state_change_locked(resource, CS_VERBOSE);
 	if (old_peer_state.i != drbd_get_peer_device_state(peer_device, NOW).i) {
 		old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
+#ifdef _WIN32_RCU_LOCKED
+		abort_state_change_locked(resource, false);
+#else
 		abort_state_change_locked(resource);
+#endif
 		spin_unlock_irq(&resource->req_lock);
 		goto retry;
 	}
@@ -7203,7 +7224,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 		/* Do not allow RESEND for a rebooted peer. We can only allow this
 		   for temporary network outages! */
+#ifdef _WIN32_RCU_LOCKED
+		abort_state_change_locked(resource, false);
+#else
 		abort_state_change_locked(resource);
+#endif
 		spin_unlock_irq(&resource->req_lock);
 
 		drbd_err(device, "Aborting Connect, can not thaw IO with an only Consistent peer\n");
@@ -7217,7 +7242,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		end_state_change(resource, &irq_flags);
 		return -EIO;
 	}
+#ifdef _WIN32_RCU_LOCKED
+	rv = end_state_change_locked(resource, false);
+#else
 	rv = end_state_change_locked(resource);
+#endif
 	new_repl_state = peer_device->repl_state[NOW];
 	set_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	spin_unlock_irq(&resource->req_lock);

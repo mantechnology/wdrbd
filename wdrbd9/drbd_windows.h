@@ -842,9 +842,7 @@ struct task_struct {
 	int sig; 
 
 	struct blk_plug *plug;
-	// DW-1464: added reference count and type for rcu lock.
-	int rcuLockRef;
-	int rcuLockType;
+	
     char comm[TASK_COMM_LEN];
 };
 
@@ -1378,83 +1376,46 @@ extern void list_del_rcu(struct list_head *entry);
 #define list_next_rcu(list)		(*((struct list_head **)(&(list)->next)))
 
 
-// DW-1464: reference count and type for rcu lock has been added, to avoid acquiring rcu lock recursively. it can be converted to exclusive if necessary.
-enum rcuLockType {
-	RCU_LOCK_SHARED,
-	RCU_LOCK_EXCLUSIVE,
-};
-// DW-1468: need to deal with thread that isn't associated with drbd. make temporary information for the thread that is acquiring g_rcuLock.
-#define UNKNOWN_THREAD_NAME_SPECIFIER	"$"
+
+
 extern EX_SPIN_LOCK g_rcuLock;
 
 #define rcu_read_lock() \
-	unsigned char oldIrql_rLock = KeGetCurrentIrql();\
-	struct task_struct *thread = ct_find_thread(KeGetCurrentThread());\
-	if(thread->pid == 0)\
-		thread = ct_add_thread(KeGetCurrentThread(), UNKNOWN_THREAD_NAME_SPECIFIER"unknown", FALSE, 'KUDW');\
-	if(thread->rcuLockRef == 0) {\
-		oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
-		thread->rcuLockRef = 1;\
-		thread->rcuLockType = RCU_LOCK_SHARED;\
-	}\
-	else {\
-		WDRBD_TRACE_RCU("detected recursive acquisition(shared) of rcu lock in thread(%p:%s), ref(%d)\n", KeGetCurrentThread(), thread->comm, thread->rcuLockRef);\
-		thread->rcuLockRef++;\
-	}\
-    WDRBD_TRACE_RCU("rcu_read_lock : thread(%p:%s) currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentThread(), thread->comm, KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+    unsigned char oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
+    WDRBD_TRACE_RCU("rcu_read_lock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 
 #define rcu_read_unlock() \
-	if(--thread->rcuLockRef == 0) {\
-		if(thread->rcuLockType == RCU_LOCK_SHARED)\
-			ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
-		else if(thread->rcuLockType == RCU_LOCK_EXCLUSIVE)\
-			ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_rLock);\
-		if(thread->comm[0] == UNKNOWN_THREAD_NAME_SPECIFIER[0])\
-			ct_delete_thread(KeGetCurrentThread());\
-	}\
-    WDRBD_TRACE_RCU("rcu_read_unlock : thread(%p:%s), currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentThread(), thread->comm, KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+    ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
+    WDRBD_TRACE_RCU("rcu_read_unlock : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 
 #define rcu_read_lock_w32_inner() \
-	if(thread->rcuLockRef == 0) {\
-		oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
-		thread->rcuLockRef = 1;\
-		thread->rcuLockType = RCU_LOCK_SHARED;\
-	}\
-	else {\
-		WDRBD_TRACE_RCU("detected recursive acquisition(shared) of rcu lock in thread(%p:%s), ref(%d)\n", KeGetCurrentThread(), thread->comm, thread->rcuLockRef);\
-		thread->rcuLockRef++;\
-	}\
-    WDRBD_TRACE_RCU("rcu_read_lock_w32_inner : thread(%p:%s) currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentThread(), thread->comm, KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
+	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
+    WDRBD_TRACE_RCU("rcu_read_lock_w32_inner : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock)
 
 #define synchronize_rcu_w32_wlock() \
-	unsigned char  oldIrql_wLock = KeGetCurrentIrql();\
-	struct task_struct *thread = ct_find_thread(KeGetCurrentThread());\
-	if(thread->pid == 0)\
-		thread = ct_add_thread(KeGetCurrentThread(), UNKNOWN_THREAD_NAME_SPECIFIER"unknown", FALSE, 'KUDW');\
-	if(thread->rcuLockRef == 0) {\
-		oldIrql_wLock = ExAcquireSpinLockExclusive(&g_rcuLock);\
-		thread->rcuLockRef = 1;\
-		thread->rcuLockType = RCU_LOCK_EXCLUSIVE;\
-	}\
-	else {\
-		WDRBD_TRACE_RCU("detected recursive acquisition(exclusive) of rcu lock in thread(%p:%s), ref(%d)\n", KeGetCurrentThread(), thread->comm, thread->rcuLockRef);\
-		if (thread->rcuLockType == RCU_LOCK_SHARED) {\
-			WDRBD_TRACE_RCU("converting acquired rcu lock to exclusive\n");\
-			ExTryConvertSharedSpinLockExclusive(&g_rcuLock);\
-			thread->rcuLockType = RCU_LOCK_EXCLUSIVE;\
-		}\
-		thread->rcuLockRef++;\
-	}\
-    WDRBD_TRACE_RCU("synchronize_rcu_w32_wlock : thread(%p:%s) currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentThread(), thread->comm, KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+	unsigned char  oldIrql_wLock; \
+	oldIrql_wLock = ExAcquireSpinLockExclusive(&g_rcuLock);\
+    WDRBD_TRACE_RCU("synchronize_rcu_w32_wlock : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
 #define synchronize_rcu() \
-	if(--thread->rcuLockRef == 0) {\
-		ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
-		if(thread->comm[0] == UNKNOWN_THREAD_NAME_SPECIFIER[0])\
-			ct_delete_thread(KeGetCurrentThread());\
-	}\
-    WDRBD_TRACE_RCU("synchronize_rcu : thread(%p:%s), currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentThread(), thread->comm, KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
+	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
+    WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
+#define rcu_read_lock_check(locked) \
+    unsigned char oldIrql_rLock = 0;\
+    if (locked) {\
+		WDRBD_TRACE_RCU("rcu_read_lock_check : already locked. currentIrql(%d)\n", KeGetCurrentIrql());\
+    } else {\
+    	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
+    	WDRBD_TRACE_RCU("rcu_read_lock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+    }\
+    
+#define rcu_read_unlock_check(locked) \
+	if (!locked) {\
+    	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
+    	WDRBD_TRACE_RCU("rcu_read_unlock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+	}\
+	
 extern void local_irq_disable();
 extern void local_irq_enable();
 extern void ct_init_thread_list();
