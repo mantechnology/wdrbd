@@ -894,7 +894,11 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 		 * If that was OND_IO_ERROR, fail pending requests. */
 		if (!resource_is_suspended(resource))
 			_tl_restart(connection, CONNECTION_LOST_WHILE_PENDING);
+#ifdef _WIN32_RCU_LOCKED
+		end_state_change_locked(resource, false);
+#else
 		end_state_change_locked(resource);
+#endif
 		spin_unlock_irq(&resource->req_lock);
 		return false;
 	}
@@ -5114,7 +5118,11 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 		if ((repl_state[NEW] >= L_STARTING_SYNC_S && repl_state[NEW] <= L_WF_BITMAP_T) ||
 			(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
 		{
+#ifdef _WIN32_RCU_LOCKED
+			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, false))
+#else
 			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))
+#endif
 				retcode = ERR_CODE_BASE;
 				goto out_no_ldev;
 		}

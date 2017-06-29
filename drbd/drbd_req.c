@@ -1191,10 +1191,6 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		break;
 
 	case QUEUE_FOR_NET_WRITE:
-#ifdef _WIN32
-		// DW-1464: add a pair of braces to allocate new local variable of rcu lock.
-	{
-#endif
 		/* assert something? */
 		/* from __drbd_make_request only */
 
@@ -1222,16 +1218,18 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED|RQ_EXP_BARR_ACK);
 
 		/* close the epoch, in case it outgrew the limit */
+#ifdef _WIN32
+        rcu_read_lock_w32_inner();
+#else
 		rcu_read_lock();
+#endif
 		nc = rcu_dereference(peer_device->connection->transport.net_conf);
 		p = nc->max_epoch_size;
 		rcu_read_unlock();
 		if (device->resource->current_tle_writes >= p)
 			start_new_tl_epoch(device->resource);
 		break;
-#ifdef _WIN32
-	}
-#endif
+
 	case QUEUE_FOR_SEND_OOS:
 		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED);
 		break;
@@ -1596,7 +1594,11 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 			__change_repl_state(peer_device, L_AHEAD);
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
+#ifdef _WIN32_RCU_LOCKED
+		end_state_change_locked(resource, false);
+#else
 		end_state_change_locked(resource);
+#endif
 	}
 	put_ldev(device);
 }
@@ -2632,7 +2634,11 @@ void request_timer_fn(unsigned long data)
 		if (net_timeout_reached(req, connection, now, ent, ko_count, timeout)) {
 			begin_state_change_locked(device->resource, CS_VERBOSE | CS_HARD);
 			__change_cstate(connection, C_TIMEOUT);
+#ifdef _WIN32_RCU_LOCKED
+			end_state_change_locked(device->resource, false);
+#else
 			end_state_change_locked(device->resource);
+#endif
 		}
 	}
 	spin_unlock_irq(&device->resource->req_lock);

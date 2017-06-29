@@ -1054,13 +1054,21 @@ out:
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 // DW-1315: check if I have primary neighbor, it has same semantics as drbd_all_neighbor_secondary and is also able to check the role to be changed.
+#ifdef _WIN32_RCU_LOCKED
+static bool drbd_all_neighbor_secondary_ex(struct drbd_resource *resource, u64 *authoritative, enum which_state which, bool locked)
+#else
 static bool drbd_all_neighbor_secondary_ex(struct drbd_resource *resource, u64 *authoritative, enum which_state which)
+#endif
 {
 	struct drbd_connection *connection;
 	bool all_secondary = true;
 	int id;
 
+#ifdef _WIN32_RCU_LOCKED
+	rcu_read_lock_check(locked);
+#else
 	rcu_read_lock();
+#endif
 	for_each_connection_rcu(connection, resource) {
 		if (connection->cstate[which] >= C_CONNECTED &&
 			connection->peer_role[which] == R_PRIMARY) {
@@ -1074,13 +1082,21 @@ static bool drbd_all_neighbor_secondary_ex(struct drbd_resource *resource, u64 *
 			}
 		}
 	}
+#ifdef _WIN32_RCU_LOCKED
+	rcu_read_unlock_check(locked);
+#else
 	rcu_read_unlock();
+#endif
 
 	return all_secondary;
 }
 
 // DW-1315: check the stability and authoritative node(if unstable), it has same semantics as drbd_device_stable and is also able to check the state to be changed.
+#ifdef _WIN32_RCU_LOCKED
+bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which, bool locked)
+#else
 bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum which_state which)
+#endif
 {
 	struct drbd_resource *resource = device->resource;
 	struct drbd_connection *connection;
@@ -1090,10 +1106,19 @@ bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum 
 	if (resource->role[which] == R_PRIMARY)
 		return true;
 
+#ifdef _WIN32_RCU_LOCKED
+	if (!drbd_all_neighbor_secondary_ex(resource, authoritative, which, locked))
+#else
 	if (!drbd_all_neighbor_secondary_ex(resource, authoritative, which))
+#endif
 		return false;
 
+#ifdef _WIN32_RCU_LOCKED
+	rcu_read_lock_check(locked);
+#else
 	rcu_read_lock();
+#endif
+
 	for_each_connection_rcu(connection, resource) {
 		peer_device = conn_peer_device(connection, device->vnr);
 		switch (peer_device->repl_state[which]) {
@@ -1110,7 +1135,11 @@ bool drbd_device_stable_ex(struct drbd_device *device, u64 *authoritative, enum 
 	}
 
 out:
+#ifdef _WIN32_RCU_LOCKED
+	rcu_read_unlock_check(locked);
+#else
 	rcu_read_unlock();
+#endif
 	return device_stable;
 }
 #endif
@@ -6153,7 +6182,11 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1317: inspect resync side first, before get the allocated bitmap.
+#ifdef _WIN32_RCU_LOCKED	
+	if (!drbd_inspect_resync_side(peer_device, side, NOW, false))
+#else
 	if (!drbd_inspect_resync_side(peer_device, side, NOW))
+#endif
 	{
 		WDRBD_WARN("can't be %s\n", drbd_repl_str(side));
 		goto out;
