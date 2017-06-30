@@ -30,14 +30,10 @@ NTSTATUS
 NTAPI CloseCompletionRoutine(
 	__in PDEVICE_OBJECT	DeviceObject,
 	__in PIRP			Irp,
-	__in PKEVENT		CompletionEvent
+	__in PVOID		Context
 )
 {
-	ASSERT(CompletionEvent);
-	
-	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);	
 	IoFreeIrp(Irp);
-	
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 #endif
@@ -121,12 +117,10 @@ InitWskData(
 NTSTATUS
 InitWskCloseData(
 	__out PIRP*		pIrp,
-	__out PKEVENT	CompletionEvent,
 	__in  BOOLEAN	bRawIrp
 )
 {
 	ASSERT(pIrp);
-	ASSERT(CompletionEvent);
 
 	// DW-1316 use raw irp.
 	if (bRawIrp) {
@@ -141,8 +135,7 @@ InitWskCloseData(
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	
-	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
-	IoSetCompletionRoutine(*pIrp, CloseCompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(*pIrp, CloseCompletionRoutine, NULL, TRUE, TRUE, TRUE);
 
 	return STATUS_SUCCESS;
 }
@@ -404,6 +397,30 @@ CloseSocketLocal(
 	return Status;
 }
 
+
+#ifdef _WIN32_NOWAIT_CLOSESOCKET
+NTSTATUS
+NTAPI
+CloseSocket(
+	__in PWSK_SOCKET WskSocket
+)
+{
+	PIRP		Irp = NULL;
+	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+
+	if (g_SocketsState != INITIALIZED || !WskSocket){
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	Status = InitWskCloseData(&Irp, TRUE);
+	if (!NT_SUCCESS(Status)) {
+		return Status;
+	}
+	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
+
+	return STATUS_SUCCESS;
+}
+#else
 NTSTATUS
 NTAPI
 CloseSocket(
@@ -422,13 +439,7 @@ CloseSocket(
 #if WSK_ASYNCCOMPL
 	Status = InitWskDataAsync(&Irp, TRUE);
 #else
-
-#ifdef _WIN32_NOWAIT_CLOSESOCKET
-	Status = InitWskCloseData(&Irp, &CompletionEvent, TRUE);
-#else
 	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
-#endif
-	
 #endif
 	if (!NT_SUCCESS(Status)) {
 		return Status;
@@ -436,14 +447,6 @@ CloseSocket(
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
 #if WSK_ASYNCCOMPL	
 	// DW-1316 replace Waiting-WskCloseSocket method with Async-completion method
-#else
-
-
-#ifdef _WIN32_NOWAIT_CLOSESOCKET
-	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, 0);
-		Status = STATUS_SUCCESS;
-	}
 #else
 	if (Status == STATUS_PENDING) {
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
@@ -457,9 +460,9 @@ CloseSocket(
 	}
 	IoFreeIrp(Irp);
 #endif
-#endif
 	return Status;
 }
+#endif
 
 NTSTATUS
 NTAPI
