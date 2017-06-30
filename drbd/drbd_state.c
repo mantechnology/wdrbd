@@ -266,7 +266,11 @@ void forget_state_change(struct drbd_state_change *state_change)
 }
 
 static void print_state_change(struct drbd_resource *resource, const char *prefix);
+#ifdef _WIN32_RCU_LOCKED
+static void finish_state_change(struct drbd_resource *, struct completion *, bool locked);
+#else
 static void finish_state_change(struct drbd_resource *, struct completion *);
+#endif
 static int w_after_state_change(struct drbd_work *w, int unused);
 static enum drbd_state_rv is_valid_soft_transition(struct drbd_resource *);
 static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource);
@@ -438,7 +442,11 @@ int stable_state_change(struct drbd_resource * resource, int change_state)
 }
 #endif
 static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, struct completion *done,
+#ifdef _WIN32_RCU_LOCKED
+					      enum drbd_state_rv rv, bool locked)
+#else
 					      enum drbd_state_rv rv)
+#endif
 {
 	enum chg_state_flags flags = resource->state_change_flags;
 	struct drbd_connection *connection;
@@ -459,7 +467,11 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 	if (flags & CS_PREPARE)
 		goto out;
 
+#ifdef _WIN32_RCU_LOCKED
+	finish_state_change(resource, done, locked);
+#else
 	finish_state_change(resource, done);
+#endif
 
 	/* changes to local_cnt and device flags should be visible before
 	 * changes to state, which again should be visible before anything else
@@ -596,10 +608,18 @@ void begin_state_change_locked(struct drbd_resource *resource, enum chg_state_fl
 	__begin_state_change(resource);
 }
 
+
+#ifdef _WIN32_RCU_LOCKED
+enum drbd_state_rv end_state_change_locked(struct drbd_resource *resource, bool locked)
+{
+	return ___end_state_change(resource, NULL, SS_SUCCESS, locked);
+}
+#else
 enum drbd_state_rv end_state_change_locked(struct drbd_resource *resource)
 {
 	return ___end_state_change(resource, NULL, SS_SUCCESS);
 }
+#endif
 
 void begin_state_change(struct drbd_resource *resource, unsigned long *irq_flags, enum chg_state_flags flags)
 {
@@ -640,7 +660,11 @@ static enum drbd_state_rv __end_state_change(struct drbd_resource *resource,
 		done = &__done;
 		init_completion(done);
 	} 
+#ifdef _WIN32_RCU_LOCKED
+	rv = ___end_state_change(resource, done, rv, false);
+#else
 	rv = ___end_state_change(resource, done, rv);
+#endif
 	__state_change_unlock(resource, irq_flags, rv >= SS_SUCCESS ? done : NULL);
 	return rv;
 }
@@ -656,10 +680,18 @@ void abort_state_change(struct drbd_resource *resource, unsigned long *irq_flags
 	__end_state_change(resource, irq_flags, SS_UNKNOWN_ERROR);
 }
 
+#ifdef _WIN32_RCU_LOCKED
+void abort_state_change_locked(struct drbd_resource *resource, bool locked)
+#else
 void abort_state_change_locked(struct drbd_resource *resource)
+#endif
 {
 	resource->state_change_flags &= ~CS_VERBOSE;
+#ifdef _WIN32_RCU_LOCKED
+	___end_state_change(resource, NULL, SS_UNKNOWN_ERROR, locked);
+#else
 	___end_state_change(resource, NULL, SS_UNKNOWN_ERROR);
+#endif
 }
 
 static void begin_remote_state_change(struct drbd_resource *resource, unsigned long *irq_flags)
@@ -1605,7 +1637,11 @@ static void sanitize_state(struct drbd_resource *resource)
 			{
 				if (((repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_STARTING_SYNC_T) ||
 					repl_state[NOW] >= L_ESTABLISHED) &&
+#ifdef _WIN32_RCU_LOCKED
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW, true))
+#else
 					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NOW))
+#endif
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
 					repl_state[NEW] = L_ESTABLISHED;
@@ -1997,7 +2033,11 @@ static bool primary_and_data_present(struct drbd_device *device)
 /**
  * finish_state_change  -  carry out actions triggered by a state change
  */
+#ifdef _WIN32_RCU_LOCKED
+static void finish_state_change(struct drbd_resource *resource, struct completion *done, bool locked)
+#else
 static void finish_state_change(struct drbd_resource *resource, struct completion *done)
+#endif
 {
 	enum drbd_role *role = resource->role;
 	struct drbd_device *device;
@@ -2110,7 +2150,11 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 				(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
 			{
 				if (repl_state[NOW] >= L_ESTABLISHED &&
+#ifdef _WIN32_RCU_LOCKED
+					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, locked))				
+#else
 					!drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))				
+#endif
 					set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
 #endif

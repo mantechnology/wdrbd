@@ -1578,8 +1578,11 @@ void del_gendisk(struct gendisk *disk)
 		kfree(bab);
 	}
 	
+	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);
 	status = CloseSocket(sock->sk);
+	WDRBD_CONN_TRACE("CloseSocket error(%p)\n", status);
 	if (!NT_SUCCESS(status)) {
+		WDRBD_CONN_TRACE("CloseSocket failed \n");
 		return;
 	}
 #endif

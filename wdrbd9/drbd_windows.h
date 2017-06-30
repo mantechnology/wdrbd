@@ -424,7 +424,8 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_SEM
 #define WDRBD_TRACE_IP4					
 #define WDRBD_TRACE_SB
-#define WDRBD_TRACE_CO
+#define WDRBD_TRACE_CO		
+#define WDRBD_CONN_TRACE	
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -511,6 +512,12 @@ struct sock {
 #ifdef _WIN32_SEND_BUFFING
 #include <send_buf.h>
 #endif
+
+#ifdef _WSK_DISCONNECT_EVENT
+#define	TCP_DISCONNECTED	0
+#define	TCP_ESTABLISHED	1
+#endif 
+
 struct socket {
 	struct sock *sk_linux_attr;
 	PWSK_SOCKET sk;
@@ -518,6 +525,9 @@ struct socket {
 #ifdef _WIN32_SEND_BUFFING
 	struct _buffering_attr buffering_attr;
 #endif
+#ifdef _WSK_DISCONNECT_EVENT
+	int sk_state; 
+#endif 
 };
 
 char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
@@ -854,6 +864,12 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define	atomic_dec_return64(_p)		InterlockedDecrement64((unsigned long long volatile*)(_p))
 #define atomic_inc64(_v)		atomic_inc_return64(_v)
 #define atomic_dec64(_v)		atomic_dec_return64(_v)
+
+#if ( (NTDDI_VERSION < NTDDI_WIN7))
+#define _vsnprintf_s(buf, size, cnt, fmt, args) _vsnprintf(buf, size, fmt, args)
+#define swprintf_s _snwprintf
+#define _itoa_s(val, buf, size, radix) _itoa(val, buf, radix)
+#endif
 
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
@@ -1385,6 +1401,21 @@ extern EX_SPIN_LOCK g_rcuLock;
 	ExReleaseSpinLockExclusive(&g_rcuLock, oldIrql_wLock);\
     WDRBD_TRACE_RCU("synchronize_rcu : currentIrql(%d), oldIrql_wLock(%d:%x) g_rcuLock(%lu)\n", KeGetCurrentIrql(), oldIrql_wLock, &oldIrql_wLock, g_rcuLock)
 
+#define rcu_read_lock_check(locked) \
+    unsigned char oldIrql_rLock = 0;\
+    if (locked) {\
+		WDRBD_TRACE_RCU("rcu_read_lock_check : already locked. currentIrql(%d)\n", KeGetCurrentIrql());\
+    } else {\
+    	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);\
+    	WDRBD_TRACE_RCU("rcu_read_lock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+    }\
+    
+#define rcu_read_unlock_check(locked) \
+	if (!locked) {\
+    	ExReleaseSpinLockShared(&g_rcuLock, oldIrql_rLock);\
+    	WDRBD_TRACE_RCU("rcu_read_unlock_check : currentIrql(%d), oldIrql_rLock(%d:%x) g_rcuLock(%d)\n", KeGetCurrentIrql(), oldIrql_rLock, &oldIrql_rLock, g_rcuLock);\
+	}\
+	
 extern void local_irq_disable();
 extern void local_irq_enable();
 extern void ct_init_thread_list();

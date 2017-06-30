@@ -214,16 +214,16 @@ static void * __drbd_alloc_pages(unsigned int number)
 {
 	/* Yes, testing drbd_pp_vacant outside the lock is racy.
 	* So what. It saves a spin_lock. */
-	if (drbd_pp_vacant >= (int)number) {
-		void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
-		if (mem)
-		{
-			spin_lock(&drbd_pp_lock);
-			drbd_pp_vacant -= (int)number;
-			spin_unlock(&drbd_pp_lock);
-			return mem;
-		}
-	}
+	
+	// DW-1457: checking drbd_pp_vacant has been removed, WDRBD has no allocated memory pool but allocates as it needs.
+	void * mem = kmalloc(number * PAGE_SIZE, 0, '17DW');
+	if (mem)
+	{
+		spin_lock(&drbd_pp_lock);
+		drbd_pp_vacant -= (int)number;
+		spin_unlock(&drbd_pp_lock);
+		return mem;
+	}	
 
 	return NULL;
 }
@@ -394,6 +394,11 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 			drbd_warn(connection, "drbd_alloc_pages interrupted!\n");
 			break;
 		}
+
+		// DW-1457: resync can be stuck with small max buffer beside resync rate, recover it "gracefully"(quoting Linux drbd commit 'facf4555')
+		if (schedule_timeout(HZ / 10) == 0)
+			mxb = UINT_MAX;
+
 #ifdef _WIN32
 		schedule(&drbd_pp_wait, HZ, __FUNCTION__, __LINE__);
 #else
@@ -896,6 +901,8 @@ static bool conn_connect(struct drbd_connection *connection)
 	struct net_conf *nc;
 
 start:
+	WDRBD_CONN_TRACE("conn_connect\n"); 
+
 	clear_bit(DISCONNECT_EXPECTED, &connection->flags);
 	if (change_cstate(connection, C_CONNECTING, CS_VERBOSE) < SS_SUCCESS) {
 		/* We do not have a network config. */
@@ -2924,7 +2931,11 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 				if (err) {
                     			begin_state_change_locked(connection->resource, CS_HARD);
 					__change_cstate(connection, C_TIMEOUT);
+#ifdef _WIN32_RCU_LOCKED
+					end_state_change_locked(connection->resource, false);
+#else
 					end_state_change_locked(connection->resource);
+#endif
 					fail_postponed_requests(peer_req);
 					goto out;
 				}
@@ -4151,7 +4162,17 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 	} else if (abs(hg) >= 3) {
 		if (hg == -3 &&
 		    drbd_current_uuid(device) == UUID_JUST_CREATED &&
-		    is_resync_running(device))
+#ifdef _WIN32_STABLE_SYNCSOURCE
+			// DW-1449 check stable sync source policy first, returning here is supposed to mean other resync is going to be started. (or violates stable sync source policy)
+			(is_resync_running(device) || 
+#ifdef _WIN32_RCU_LOCKED
+			!drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW, false)))
+#else
+			!drbd_inspect_resync_side(peer_device, L_SYNC_TARGET, NOW)))
+#endif
+#else
+			is_resync_running(device)
+#endif
 			return 0;
 
 #ifdef _WIN32
@@ -5784,7 +5805,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	if ((peer_device->repl_state[NOW] >= L_STARTING_SYNC_S && peer_device->repl_state[NOW] <= L_WF_BITMAP_T) ||
 		(peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T))
 	{
+#ifdef _WIN32_RCU_LOCKED
+		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW, false))
+#else
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
+#endif
 		{
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
@@ -5809,7 +5834,11 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		else
 		{
 			if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
+#ifdef _WIN32_RCU_LOCKED
+				drbd_inspect_resync_side(peer_device, L_SYNC_SOURCE, NOW, false) &&
+#else
 				drbd_inspect_resync_side(peer_device, L_SYNC_SOURCE, NOW) &&
+#endif
 				get_ldev(device))
 			{
 				drbd_send_uuids(peer_device, UUID_FLAG_AUTHORITATIVE | UUID_FLAG_RESYNC, 0);
@@ -7169,7 +7198,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	begin_state_change_locked(resource, CS_VERBOSE);
 	if (old_peer_state.i != drbd_get_peer_device_state(peer_device, NOW).i) {
 		old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
+#ifdef _WIN32_RCU_LOCKED
+		abort_state_change_locked(resource, false);
+#else
 		abort_state_change_locked(resource);
+#endif
 		spin_unlock_irq(&resource->req_lock);
 		goto retry;
 	}
@@ -7191,7 +7224,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 		/* Do not allow RESEND for a rebooted peer. We can only allow this
 		   for temporary network outages! */
+#ifdef _WIN32_RCU_LOCKED
+		abort_state_change_locked(resource, false);
+#else
 		abort_state_change_locked(resource);
+#endif
 		spin_unlock_irq(&resource->req_lock);
 
 		drbd_err(device, "Aborting Connect, can not thaw IO with an only Consistent peer\n");
@@ -7205,7 +7242,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		end_state_change(resource, &irq_flags);
 		return -EIO;
 	}
+#ifdef _WIN32_RCU_LOCKED
+	rv = end_state_change_locked(resource, false);
+#else
 	rv = end_state_change_locked(resource);
+#endif
 	new_repl_state = peer_device->repl_state[NOW];
 	set_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	spin_unlock_irq(&resource->req_lock);
@@ -8054,6 +8095,8 @@ void conn_disconnect(struct drbd_connection *connection)
 	unsigned long irq_flags;
 	int vnr, i;
 
+	WDRBD_CONN_TRACE("conn_disconnect\n"); 
+
 	clear_bit(CONN_DRY_RUN, &connection->flags);
 	clear_bit(CONN_DISCARD_MY_DATA, &connection->flags);
 
@@ -8275,15 +8318,20 @@ int drbd_do_features(struct drbd_connection *connection)
 	int err;
 
 	err = drbd_send_features(connection);
-	if (err)
+	if (err){
+		WDRBD_CONN_TRACE("fail drbd_send_feature err = %d\n", err); 
 		return 0;
+	}
+	WDRBD_CONN_TRACE("success drbd_send_feature\n");
 
 	err = drbd_recv_header(connection, &pi);
 	if (err) {
+		WDRBD_CONN_TRACE("fail drbd_recv_header \n");
 		if (err == -EAGAIN)
 			drbd_err(connection, "timeout while waiting for feature packet\n");
 		return 0;
 	}
+	WDRBD_CONN_TRACE("success drbd_recv_header\n");
 
 	if (pi.cmd != P_CONNECTION_FEATURES) {
 		drbd_err(connection, "expected ConnectionFeatures packet, received: %s (0x%04x)\n",

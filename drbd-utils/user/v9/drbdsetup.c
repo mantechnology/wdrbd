@@ -2420,6 +2420,7 @@ static void peer_device_status(struct peer_devices_list *peer_device, bool singl
 			wrap_printf(indent, " done:%.2f", 100 * (1 -
 				(double)peer_device->statistics.peer_dev_out_of_sync /
 				(double)peer_device->device->statistics.dev_size));
+
 		}
 		if (opt_verbose ||
 		    peer_device->info.peer_resync_susp_user ||

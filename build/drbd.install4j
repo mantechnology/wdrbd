@@ -3,7 +3,7 @@
   <directoryPresets config="I:/wdrbd9/build/drbd" />
   <application name="${compiler:productName}" distributionSourceDir="" applicationId="1928-3996-4668-9110" mediaDir="${compiler:target}" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" compression="6" lzmaCompression="false" pack200Compression="false" excludeSignedFromPacking="true" commonExternalFiles="false" createMd5Sums="true" shrinkRuntime="true" shortName="${compiler:shartName}" publisher="Man Technology Inc." publisherWeb="http://www.mantech.co.kr" version="${compiler:productVersion}" allPathsRelative="false" backupOnSave="false" autoSave="false" convertDotsToUnderscores="true" macSignature="????" installerName="" javaMinVersion="1.5" javaMaxVersion="" allowBetaVM="false" jdkMode="runtimeJre" jdkName="">
     <languages skipLanguageSelection="false" languageSelectionInPrincipalLanguage="false">
-      <principalLanguage id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
+      <principalLanguage id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
       <additionalLanguages>
         <language id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
         <language id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
@@ -33,6 +33,8 @@
       <fileset name="Windows 8 x64" id="559" customizedId="" />
       <fileset name="Windows 8.1 x86" id="1496" customizedId="" />
       <fileset name="Windows 8.1 x64" id="1498" customizedId="" />
+      <fileset name="Windows Server 2008 x86" id="2241" customizedId="" />
+      <fileset name="Windows Server 2008 x64" id="2243" customizedId="" />
     </filesets>
     <roots>
       <root id="584" fileset="583" location="" />
@@ -43,6 +45,8 @@
       <root id="560" fileset="559" location="" />
       <root id="1497" fileset="1496" location="" />
       <root id="1499" fileset="1498" location="" />
+      <root id="2242" fileset="2241" location="" />
+      <root id="2244" fileset="2243" location="" />
     </roots>
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
@@ -56,6 +60,8 @@
       <mountPoint id="562" root="560" location="" mode="755" />
       <mountPoint id="1500" root="1497" location="" mode="755" />
       <mountPoint id="1501" root="1499" location="" mode="755" />
+      <mountPoint id="2245" root="2242" location="" mode="755" />
+      <mountPoint id="2246" root="2244" location="" mode="755" />
     </mountPoints>
     <entries>
       <dirEntry mountPoint="865" file="drbd/bin" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
@@ -86,6 +92,12 @@
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="1501" file="drbd/x64/Win8.1Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win8.1Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2245" file="drbd/x86/Server2008Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Server2008Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2246" file="drbd/x64/Server2008Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Server2008Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
         <exclude />
       </dirEntry>
     </entries>
@@ -255,9 +267,19 @@ return false;
                         <object class="com.install4j.api.beans.ScriptProperty">
                           <void property="value">
                             <string>Float osVer = (Float)context.getVariable("os.floatver");
-if (osVer &lt; 6.1f)
+if (osVer &lt; 6.0f)
 {
     return false;
+}
+else if( osVer == 6.0f)
+{
+    String ServicePackStr = "Service Pack";
+    String CSDVersion = System.getProperty("sun.os.patch.level");
+    if( CSDVersion.length() &lt; ServicePackStr.length() ||
+        !CSDVersion.substring(0, ServicePackStr.length()).equals(ServicePackStr))
+    {
+            return false;
+    }
 }
 return true;</string>
                           </void>
@@ -595,9 +617,13 @@ if(filesetName.startsWith("Windows"))
     {
         osName = "Windows 8 ";
     }
-    else
+    else if (osVer == 6.1f)
     {
         osName = "Windows 7 ";
+    }
+    else
+    {
+        osName = "Windows Server 2008 ";
     }
     
     if(filesetName.contains(osName))
@@ -1324,6 +1350,7 @@ return true;</string>
         <entry location=".i4j_fileset_557" fileType="regular" />
         <entry location=".i4j_fileset_559" fileType="regular" />
         <entry location=".i4j_fileset_1498" fileType="regular" />
+        <entry location=".i4j_fileset_2243" fileType="regular" />
       </exclude>
       <variables />
       <autoUpdate useMinUpdatableVersion="false" minUpdatableVersion="" useMaxUpdatableVersion="false" maxUpdatableVersion="">
@@ -1342,6 +1369,7 @@ return true;</string>
         <entry location=".i4j_fileset_585" fileType="regular" />
         <entry location=".i4j_fileset_587" fileType="regular" />
         <entry location=".i4j_fileset_1496" fileType="regular" />
+        <entry location=".i4j_fileset_2241" fileType="regular" />
       </exclude>
       <variables />
       <autoUpdate useMinUpdatableVersion="false" minUpdatableVersion="" useMaxUpdatableVersion="false" maxUpdatableVersion="">
