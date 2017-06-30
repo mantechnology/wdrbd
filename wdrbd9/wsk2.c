@@ -19,10 +19,29 @@ NTAPI CompletionRoutine(
 )
 {
 	ASSERT(CompletionEvent);
+	
 	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
+
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+#ifdef _WIN32_NOWAIT_CLOSESOCKET
+NTSTATUS
+NTAPI CloseCompletionRoutine(
+	__in PDEVICE_OBJECT	DeviceObject,
+	__in PIRP			Irp,
+	__in PKEVENT		CompletionEvent
+)
+{
+	ASSERT(CompletionEvent);
+	
+	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);	
+	IoFreeIrp(Irp);
 	
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
+#endif
+
 #if WSK_ASYNCCOMPL
 NTSTATUS
 NTAPI CompletionRoutineAsync(
@@ -44,6 +63,7 @@ NTAPI CompletionRoutineAsync(
 }
 #endif
 
+#ifdef _WIN32_CANCEL_ROUTINE
 // DW-1398: Implementing a cancel routine.
 VOID CancelRoutine(
 	IN PDEVICE_OBJECT pDeviceObject,
@@ -55,6 +75,7 @@ VOID CancelRoutine(
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 }
+#endif
 
 NTSTATUS
 InitWskData(
@@ -63,7 +84,9 @@ InitWskData(
 	__in  BOOLEAN	bRawIrp
 )
 {
+#ifdef _WIN32_CANCEL_ROUTINE
 	KIRQL irql;
+#endif
 
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
@@ -83,14 +106,47 @@ InitWskData(
 	
 	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
-	
+
+#ifdef _WIN32_CANCEL_ROUTINE
 	// DW-1398: set cancel routine
 	IoAcquireCancelSpinLock(&irql);
 	IoSetCancelRoutine(*pIrp, CancelRoutine);
 	IoReleaseCancelSpinLock(irql);
+#endif
 
 	return STATUS_SUCCESS;
 }
+
+#ifdef _WIN32_NOWAIT_CLOSESOCKET
+NTSTATUS
+InitWskCloseData(
+	__out PIRP*		pIrp,
+	__out PKEVENT	CompletionEvent,
+	__in  BOOLEAN	bRawIrp
+)
+{
+	ASSERT(pIrp);
+	ASSERT(CompletionEvent);
+
+	// DW-1316 use raw irp.
+	if (bRawIrp) {
+		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
+	}
+	else {
+		*pIrp = IoAllocateIrp(1, FALSE);
+	}
+
+	if (!*pIrp) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	
+	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(*pIrp, CloseCompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
+
+	return STATUS_SUCCESS;
+}
+#endif
 
 
 #if WSK_ASYNCCOMPL
@@ -100,7 +156,9 @@ InitWskDataAsync(
 	__in  BOOLEAN	bRawIrp
 	)
 {
+#ifdef _WIN32_CANCEL_ROUTINE
 	KIRQL irql;
+#endif
 
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
@@ -120,10 +178,12 @@ InitWskDataAsync(
 	//KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutineAsync, NULL, TRUE, TRUE, TRUE);
 
+#ifdef _WIN32_CANCEL_ROUTINE
 	// DW-1398: set cancel routine
 	IoAcquireCancelSpinLock(&irql);
 	IoSetCancelRoutine(*pIrp, CancelRoutine);
 	IoReleaseCancelSpinLock(irql);
+#endif
 
 	return STATUS_SUCCESS;
 }
@@ -135,7 +195,9 @@ __out PIRP*		pIrp,
 __out PKEVENT	CompletionEvent
 )
 {
+#ifdef _WIN32_CANCEL_ROUTINE
 	KIRQL irql;
+#endif
 
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
@@ -144,10 +206,12 @@ __out PKEVENT	CompletionEvent
 	IoReuseIrp(*pIrp, STATUS_UNSUCCESSFUL);
 	IoSetCompletionRoutine(*pIrp, CompletionRoutine, CompletionEvent, TRUE, TRUE, TRUE);
 
+#ifdef _WIN32_CANCEL_ROUTINE
 	// DW-1398: set cancel routine
 	IoAcquireCancelSpinLock(&irql);
 	IoSetCancelRoutine(*pIrp, CancelRoutine);
 	IoReleaseCancelSpinLock(irql);
+#endif
 
 	return;
 }
@@ -358,7 +422,13 @@ CloseSocket(
 #if WSK_ASYNCCOMPL
 	Status = InitWskDataAsync(&Irp, TRUE);
 #else
+
+#ifdef _WIN32_NOWAIT_CLOSESOCKET
+	Status = InitWskCloseData(&Irp, &CompletionEvent, TRUE);
+#else
 	Status = InitWskData(&Irp, &CompletionEvent, TRUE);
+#endif
+	
 #endif
 	if (!NT_SUCCESS(Status)) {
 		return Status;
@@ -367,10 +437,18 @@ CloseSocket(
 #if WSK_ASYNCCOMPL	
 	// DW-1316 replace Waiting-WskCloseSocket method with Async-completion method
 #else
+
+
+#ifdef _WIN32_NOWAIT_CLOSESOCKET
+	if (Status == STATUS_PENDING) {
+		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, 0);
+		Status = STATUS_SUCCESS;
+	}
+#else
 	if (Status == STATUS_PENDING) {
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
 		if (STATUS_TIMEOUT == Status) { // DW-1316 detour WskCloseSocket hang in Win7/x86.
-			WDRBD_WARN("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel\n", WskSocket);
+			WDRBD_WARN("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel. (irp:%p)\n", WskSocket, Irp);
 			IoCancelIrp(Irp);
 			// DW-1388: canceling must be completed before freeing the irp.
 			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
@@ -378,6 +456,7 @@ CloseSocket(
 		Status = Irp->IoStatus.Status;
 	}
 	IoFreeIrp(Irp);
+#endif
 #endif
 	return Status;
 }
