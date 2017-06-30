@@ -1594,7 +1594,11 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 			__change_repl_state(peer_device, L_AHEAD);
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
+#ifdef _WIN32_RCU_LOCKED
+		end_state_change_locked(resource, false);
+#else
 		end_state_change_locked(resource);
+#endif
 	}
 	put_ldev(device);
 }
@@ -2630,7 +2634,11 @@ void request_timer_fn(unsigned long data)
 		if (net_timeout_reached(req, connection, now, ent, ko_count, timeout)) {
 			begin_state_change_locked(device->resource, CS_VERBOSE | CS_HARD);
 			__change_cstate(connection, C_TIMEOUT);
+#ifdef _WIN32_RCU_LOCKED
+			end_state_change_locked(device->resource, false);
+#else
 			end_state_change_locked(device->resource);
+#endif
 		}
 	}
 	spin_unlock_irq(&device->resource->req_lock);

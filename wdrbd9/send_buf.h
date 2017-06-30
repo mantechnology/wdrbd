@@ -32,6 +32,7 @@
 #define SENDER_IS_UNDEF			-1
 
 // #define SENDBUF_TRACE // trace send buffring 
+#define _WSK_DISCONNECT_EVENT
 
 #ifdef SENDBUF_TRACE
 struct _send_req {
