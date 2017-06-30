@@ -2419,14 +2419,8 @@ static void peer_device_status(struct peer_devices_list *peer_device, bool singl
 		    peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T) {
 			wrap_printf(indent, " done:%.2f", 100 * (1 -
 				(double)peer_device->statistics.peer_dev_out_of_sync /
-#ifdef _WIN32
-				// DW-1454: resync progress would be calculated on the basis of the size that is being synced from resync start.
-				(double)(peer_device->info.peer_repl_state >= L_VERIFY_S && peer_device->info.peer_repl_state <= L_VERIFY_T ?				
-				peer_device->device->statistics.dev_size :
-				peer_device->statistics.peer_dev_resync_start_oos)));
-#else
 				(double)peer_device->device->statistics.dev_size));
-#endif
+
 		}
 		if (opt_verbose ||
 		    peer_device->info.peer_resync_susp_user ||
