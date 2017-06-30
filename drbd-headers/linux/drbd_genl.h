@@ -276,8 +276,6 @@ GENL_struct(DRBD_NLA_PEER_DEVICE_STATISTICS, 22, peer_device_statistics,
 	__u64_field(6, 0, peer_dev_resync_failed)  /* sectors */
 	__u64_field(7, 0, peer_dev_bitmap_uuid)
 	__u32_field(9, 0, peer_dev_flags)
-	// DW-1454: this value indicates the total size of resync bits when starts.
-	__u64_field(10, 0, peer_dev_resync_start_oos)	/* sectors */
 )
 
 GENL_struct(DRBD_NLA_NOTIFICATION_HEADER, 23, drbd_notification_header,
