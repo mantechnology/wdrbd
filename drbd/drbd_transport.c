@@ -332,7 +332,7 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 
 #ifdef _WIN32
 	// DW-1481 fix listener->list's NULL dereference, sanity check 
-	if(!addr || !listener || listener->list.next == NULL) {
+	if(!addr || !listener || (listener->list.next == NULL) ) {
 		return NULL;
 	}
 	list_for_each_entry(struct drbd_waiter, waiter, &listener->waiters, list) {
