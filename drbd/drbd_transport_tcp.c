@@ -1376,11 +1376,20 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 #ifdef _WIN32
     unregister_state_change(listener->s_listen->sk_linux_attr, listener);
+	// DW-1483 : WSK_EVENT_ACCEPT disable	
+	NTSTATUS status = SetEventCallbacks(listener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
+	WDRBD_INFO("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
+	if (!NT_SUCCESS(status)) {
+		WDRBD_ERROR("WSK_EVENT_DISABLE failed (listener = 0x%p)\n", listener);
+	}
 #else
 	unregister_state_change(listener->s_listen->sk, listener);
 #endif
 	sock_release(listener->s_listen);
 	kfree(listener);
+#ifdef _WIN32 // DW-1483
+	listener = NULL;
+#endif
 }
 
 #ifdef _WIN32
@@ -1401,6 +1410,11 @@ dtt_inspect_incoming(
 
     WSK_INSPECT_ACTION action = WskInspectAccept;
     struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
+
+	// DW-1483
+	if(!listener) {
+        return WskInspectReject;
+	}
 
     spin_lock(&listener->listener.waiters_lock);
 	struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
