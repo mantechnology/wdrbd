@@ -1185,6 +1185,7 @@ retry:
 		}
 	}
 
+#if 0
 #ifdef _WIN32_SEND_BUFFING
 	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
 	{
@@ -1196,7 +1197,7 @@ retry:
 	}
 	dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
 #endif
-
+#endif
 		
 #ifdef _WIN32
 	WDRBD_TRACE_CO("%p dtt_wait_for_connect ok done.\n", KeGetCurrentThread());
