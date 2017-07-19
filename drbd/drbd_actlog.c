@@ -333,21 +333,25 @@ find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *e
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
 #ifdef _WIN32
-		if (peer_device == except_)
+		if (peer_device == except_){
 #else
 		if (peer_device == except)
 #endif
+			WDRBD_TRACE_AL("continue not find active resync extent\n"); 
 			continue;
+		}
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
 			if (test_bit(BME_NO_WRITES, &bm_ext->flags)) {
 				rcu_read_unlock();
+				WDRBD_TRACE_AL("return bm_ext\n");
 				return bm_ext;
 			}
 		}
 	}
 	rcu_read_unlock();
+	WDRBD_TRACE_AL("return NULL\n");
 	return NULL;
 }
 
@@ -397,6 +401,8 @@ struct lc_element *_al_get(struct drbd_device *device, unsigned int enr, bool no
 		al_ext = lc_try_get(device->act_log, enr);
 	else
 		al_ext = lc_get(device->act_log, enr);
+	if (al_ext != NULL)
+		WDRBD_TRACE("al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
 	spin_unlock_irq(&device->al_lock);
 	return al_ext;
 }
@@ -682,6 +688,8 @@ struct lc_element *_al_get_for_peer(struct drbd_peer_device *peer_device, unsign
 		return NULL;
 	}
 	al_ext = lc_get(device->act_log, enr);
+	if (al_ext != NULL)
+		WDRBD_TRACE_AL("called lc_get al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
 	spin_unlock_irq(&device->al_lock);
 	return al_ext;
 }
@@ -701,6 +709,7 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 			drbd_err(device, "al_complete_io() called on inactive extent %u\n", enr);
 			continue;
 		}
+		WDRBD_TRACE_AL("called lc_put extent->lc_number= %lu, extent->refcnt = %lu\n", extent->lc_number, extent->refcnt); 
 		if (lc_put(device->act_log, extent) == 0)
 			wake = true;
 	}
@@ -819,6 +828,7 @@ bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
 	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
 
+	WDRBD_TRACE_AL("first = %lu last = %lu i->size = %lu\n", first, last, i->size);
 	return put_actlog(device, first, last);
 }
 
@@ -1680,11 +1690,15 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 	}
 check_al:
 	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
-		if (lc_is_used(device->act_log, al_enr+i))
+		if (lc_is_used(device->act_log, al_enr + i)){
+			WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n",
+				sector, enr, al_enr + i); 
 			goto try_again;
+		}
 	}
 	set_bit(BME_LOCKED, &bm_ext->flags);
 proceed:
+	WDRBD_TRACE_AL("proceed sector = %lu, enr = %lu\n", sector, enr);
 	peer_device->resync_wenr = LC_FREE;
 	spin_unlock_irq(&device->al_lock);
 	return 0;
