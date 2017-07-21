@@ -3499,6 +3499,10 @@ void drbd_free_resource(struct drbd_resource *resource)
 #else
 	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #endif
+
+#ifdef _WIN32 //DW-1480
+		list_del(&connection->twopc_parent_list);
+#endif
 		kref_debug_put(&connection->kref_debug, 9);
 		kref_put(&connection->kref, drbd_destroy_connection);
 	}

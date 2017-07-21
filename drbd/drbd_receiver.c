@@ -6154,6 +6154,10 @@ int abort_nested_twopc_work(struct drbd_work *work, int cancel)
 #else
 		list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #endif
+
+#ifdef _WIN32 //DW-1480
+			list_del(&connection->twopc_parent_list);
+#endif
 			kref_debug_put(&connection->kref_debug, 9);
 			kref_put(&connection->kref, drbd_destroy_connection);
 		}
@@ -6765,36 +6769,51 @@ static int process_twopc(struct drbd_connection *connection,
 				if (!reply_cmd) {
 					kref_get(&connection->kref);
 					kref_debug_get(&connection->kref_debug, 9);
+#ifdef _WIN32	// DW-1480
+					if(__list_add_valid(&connection->twopc_parent_list,	&resource->twopc_parents))
+					{	
+						list_add(&connection->twopc_parent_list,
+							&resource->twopc_parents);
+					}
+					else
+					{
+						drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+						kref_debug_put(&connection->kref_debug, 9);
+						kref_put(&connection->kref, drbd_destroy_connection);
+					}
+#else
 					list_add(&connection->twopc_parent_list,
 						&resource->twopc_parents);
-					}
-					spin_unlock_irq(&resource->req_lock);
-
-					if (reply_cmd){
-						drbd_send_twopc_reply(connection, reply_cmd,
-							&resource->twopc_reply);
-					}else {
-						/* if a node sends us a prepare, that means he has
-						prepared this himsilf successfully. */
-						
-#ifdef _WIN32 // DW-1411 : Not supported dual primaries, set TWOPC_NO bit when local node is Primary. 
-						if (resource->role[NOW] == R_PRIMARY && val.role == R_PRIMARY){
-							set_bit(TWOPC_NO, &connection->flags);
-						}
-						else{
-							set_bit(TWOPC_YES, &connection->flags);
-						}
-#else
-						set_bit(TWOPC_YES, &connection->flags);
 #endif
-						if (cluster_wide_reply_ready(resource)) {
-							if (resource->twopc_work.cb == NULL) {
-								resource->twopc_work.cb = nested_twopc_work;
-								drbd_queue_work(&resource->work, &resource->twopc_work);
-							}
+				}
+				spin_unlock_irq(&resource->req_lock);
+
+
+				if (reply_cmd){
+					drbd_send_twopc_reply(connection, reply_cmd,
+						&resource->twopc_reply);
+				}else {
+					/* if a node sends us a prepare, that means he has
+					prepared this himsilf successfully. */
+					
+#ifdef _WIN32 // DW-1411 : Not supported dual primaries, set TWOPC_NO bit when local node is Primary. 
+					if (resource->role[NOW] == R_PRIMARY && val.role == R_PRIMARY){
+						set_bit(TWOPC_NO, &connection->flags);
+					}
+					else{
+						set_bit(TWOPC_YES, &connection->flags);
+					}
+#else
+					set_bit(TWOPC_YES, &connection->flags);
+#endif
+					if (cluster_wide_reply_ready(resource)) {
+						if (resource->twopc_work.cb == NULL) {
+							resource->twopc_work.cb = nested_twopc_work;
+							drbd_queue_work(&resource->work, &resource->twopc_work);
 						}
 					}
 				}
+			}
 		} else {
 			drbd_info(connection, "Ignoring %s packet %u "
 				  "current processing state change %u\n",
@@ -6913,7 +6932,20 @@ static int process_twopc(struct drbd_connection *connection,
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
+#ifdef _WIN32	//DW-1480
+		if (__list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
+		{						
+			list_add(&connection->twopc_parent_list, &resource->twopc_parents);
+		}
+		else
+		{
+			drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+			kref_debug_put(&connection->kref_debug, 9);
+			kref_put(&connection->kref, drbd_destroy_connection);
+		}
+#else
 		list_add(&connection->twopc_parent_list, &resource->twopc_parents);
+#endif
 		mod_timer(&resource->twopc_timer, receive_jif + twopc_timeout(resource));
 		spin_unlock_irq(&resource->req_lock);
 
