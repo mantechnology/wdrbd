@@ -320,32 +320,19 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 }
 
 static struct bm_extent*
-#ifdef _WIN32
-find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *except_,
-#else
-find_active_resync_extent(struct drbd_device *device, struct drbd_peer_device *except,
-#endif
-			  unsigned int enr)
+find_active_resync_extent(struct drbd_device *device, unsigned int enr)
 {
 	struct drbd_peer_device *peer_device;
 	struct lc_element *tmp;
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-#ifdef _WIN32
-		if (peer_device == except_){
-#else
-		if (peer_device == except)
-#endif
-			WDRBD_TRACE_AL("continue not find active resync extent\n"); 
-			continue;
-		}
 		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
 			if (test_bit(BME_NO_WRITES, &bm_ext->flags)) {
 				rcu_read_unlock();
-				WDRBD_TRACE_AL("return bm_ext\n");
+				WDRBD_TRACE_AL("return bm_ext, bm_ext->lce.lc_number = %lu, bm_ext->lce.refcnt = %lu\n", bm_ext->lce.lc_number, bm_ext->lce.refcnt);
 				return bm_ext;
 			}
 		}
@@ -382,19 +369,22 @@ set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
 }
 
 static
-struct lc_element *_al_get(struct drbd_device *device, unsigned int enr, bool nonblock)
+struct lc_element *__al_get(struct drbd_device *device,
+	unsigned int enr, bool nonblock)
 {
 	struct lc_element *al_ext;
 	struct bm_extent *bm_ext;
 	int wake;
 
 	spin_lock_irq(&device->al_lock);
-	bm_ext = find_active_resync_extent(device, NULL, enr);
+	bm_ext = find_active_resync_extent(device, enr);
 	if (bm_ext) {
 		wake = set_bme_priority(device, NULL, enr);
 		spin_unlock_irq(&device->al_lock);
-		if (wake)
+		if (wake){
+			WDRBD_TRACE_AL("wake_up(&device->al_wait)\n");
 			wake_up(&device->al_wait);
+		}
 		return NULL;
 	}
 	if (nonblock)
@@ -405,6 +395,12 @@ struct lc_element *_al_get(struct drbd_device *device, unsigned int enr, bool no
 		WDRBD_TRACE("al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
 	spin_unlock_irq(&device->al_lock);
 	return al_ext;
+}
+
+static
+struct lc_element *_al_get_nonblock(struct drbd_device *device, unsigned int enr)
+{
+	return __al_get(device, enr, true);
 }
 
 bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i)
@@ -423,7 +419,7 @@ bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval 
 	if (first != last)
 		return false;
 
-	fastpath_ok = _al_get(device, first, true);
+	fastpath_ok = _al_get_nonblock(device, first);
 	return fastpath_ok;
 }
 
@@ -448,6 +444,7 @@ bool drbd_al_begin_io_prepare(struct drbd_device *device, struct drbd_interval *
 	D_ASSERT(device, first <= last);
 	D_ASSERT(device, atomic_read(&device->local_cnt) > 0);
 
+#if 0 
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
 		wait_event(device->al_wait,
@@ -455,6 +452,7 @@ bool drbd_al_begin_io_prepare(struct drbd_device *device, struct drbd_interval *
 		if (al_ext->lc_number != enr)
 			need_transaction = true;
 	}
+#endif 
 	return need_transaction;
 }
 
@@ -671,27 +669,9 @@ void drbd_al_begin_io(struct drbd_device *device, struct drbd_interval *i)
 }
 
 static
-struct lc_element *_al_get_for_peer(struct drbd_peer_device *peer_device, unsigned int enr)
+struct lc_element *_al_get(struct drbd_device *device, unsigned int enr)
 {
-	struct drbd_device *device = peer_device->device;
-	struct lc_element *al_ext;
-	struct bm_extent *bm_ext;
-	int wake;
-
-	spin_lock_irq(&device->al_lock);
-	bm_ext = find_active_resync_extent(device, peer_device, enr);
-	if (bm_ext) {
-		wake = set_bme_priority(device, peer_device, enr);
-		spin_unlock_irq(&device->al_lock);
-		if (wake)
-			wake_up(&device->al_wait);
-		return NULL;
-	}
-	al_ext = lc_get(device->act_log, enr);
-	if (al_ext != NULL)
-		WDRBD_TRACE_AL("called lc_get al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
-	spin_unlock_irq(&device->al_lock);
-	return al_ext;
+	return __al_get(device, enr, false);
 }
 
 bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int last)
@@ -721,15 +701,14 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 }
 
 /**
- * drbd_al_begin_io_for_peer() - Gets (a) reference(s) to AL extent(s)
- * @device:	DRBD device.
- *
- * Ensures that the extents covered by the interval @i are hot in the
- * activity log. This function makes sure the area is not active by any
- * resync operation on any other connection. But it ignores local
- * resync activity to the @peer_device.
- * This is necessary to ensure progress on Pri/SyncSouce - Sec/SyncTarget
- */
+* drbd_al_begin_io_for_peer() - Gets (a) reference(s) to AL extent(s)
+* @peer_device:	DRBD peer device to be targeted
+* @i:			interval to check and register
+*
+* Ensures that the extents covered by the interval @i are hot in the
+* activity log. This function makes sure the area is not active by any
+* resync operation on any connection.
+*/
 int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i)
 {
 	/* compare with drbd_al_begin_io_prepare() */
@@ -745,7 +724,7 @@ int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
 		wait_event(device->al_wait,
-				(al_ext = _al_get_for_peer(peer_device, enr)) != NULL ||
+				(al_ext = _al_get(device, enr)) != NULL ||
 				peer_device->connection->cstate[NOW] < C_CONNECTED);
 		if (al_ext == NULL) {
 			if (enr > first)
@@ -799,7 +778,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 
 	/* Is resync active in this area? */
 	for (enr = first; enr <= last; enr++) {
-		bm_ext = find_active_resync_extent(device, NULL, enr);
+		bm_ext = find_active_resync_extent(device, enr);
 		if (unlikely(bm_ext != NULL)) {
 			if (set_bme_priority(device, NULL, enr))
 				return -EBUSY;

@@ -2188,8 +2188,10 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 			list_move_tail(&req->tl_requests, pending);
 	}
 	spin_unlock_irq(&device->al_lock);
-	if (wake)
+	if (wake){
+		WDRBD_TRACE_AL("wake_up(&device->al_wait)\n"); 
 		wake_up(&device->al_wait);
+	}
 	return !list_empty(pending);
 }
 
