@@ -1559,6 +1559,15 @@ void del_gendisk(struct gendisk *disk)
 	}
 #endif
 
+	// DW-1493 : WSK_EVENT_DISCONNECT disable
+	if (sock->sk){
+		status = SetEventCallbacks(sock->sk, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
+		WDRBD_INFO("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_ERROR("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
+		}
+	}
+
 	if (sock->sk_linux_attr)
 	{
 		kfree(sock->sk_linux_attr);
