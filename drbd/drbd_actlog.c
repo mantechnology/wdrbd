@@ -392,7 +392,7 @@ struct lc_element *__al_get(struct drbd_device *device,
 	else
 		al_ext = lc_get(device->act_log, enr);
 	if (al_ext != NULL)
-		WDRBD_TRACE("al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
+		WDRBD_TRACE_AL("al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
 	spin_unlock_irq(&device->al_lock);
 	return al_ext;
 }
