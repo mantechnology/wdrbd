@@ -417,6 +417,10 @@ static void __clear_remote_state_change(struct drbd_resource *resource) {
 #else
 	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #endif
+
+#ifdef _WIN32	// DW-1480
+		list_del(&connection->twopc_parent_list);
+#endif
 		kref_debug_put(&connection->kref_debug, 9);
 		kref_put(&connection->kref, drbd_destroy_connection);
 	}
@@ -3773,7 +3777,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 				spin_lock_irq(&resource->req_lock);
 				__clear_remote_state_change(resource);
 				spin_unlock_irq(&resource->req_lock);
-				twopc_end_nested(resource, P_TWOPC_NO, false);
+				twopc_end_nested(resource, P_TWOPC_NO, true);
 			}
 #endif			
 			if (when_done_lock(resource, irq_flags)) {
@@ -4548,6 +4552,9 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		if (&twopc_parent->twopc_parent_list == twopc_parent->twopc_parent_list.next)
 		{
 			drbd_err(resource, "twopc_parent_list is invalid\n");
+#ifdef _WIN32	// DW-1480
+			list_del(&twopc_parent->twopc_parent_list);
+#endif
 			spin_unlock_irq(&resource->req_lock);
 			return;
 		}
@@ -4590,6 +4597,9 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		if (twopc_reply.is_disconnect)
 			set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
 		drbd_send_twopc_reply(twopc_parent, cmd, &twopc_reply);
+#ifdef _WIN32	// DW-1480
+		list_del(&twopc_parent->twopc_parent_list);
+#endif
 		kref_debug_put(&twopc_parent->kref_debug, 9);
 		kref_put(&twopc_parent->kref, drbd_destroy_connection);
 	}
