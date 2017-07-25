@@ -41,26 +41,14 @@ static __inline void INIT_LIST_HEAD(struct list_head *list)
 	list->prev = list;
 }
 
-
 /*
  * Check that the data structures for the list manipulations are reasonably
  * valid. Failures here indicate memory corruption (and possibly an exploit
  * attempt).
  */
-#ifdef _WIN32 //DW-1480
-static bool __list_add_valid(struct list_head *new, struct list_head *prev)
+static bool __list_add_valid(struct list_head *new, struct list_head *prev, struct list_head *next)
 {
-	struct list_head *next;
-
-	if(prev == 0)
-		return false;
-
-	next = prev->next;
-	
-	if(new == 0 || next == 0) {
-		return false;		
-	}
-	
+#ifdef _WIN32 //DW-1480
 	if (next->prev != prev)
 	{
 		// list_add corruption.
@@ -78,15 +66,11 @@ static bool __list_add_valid(struct list_head *new, struct list_head *prev)
 	}
 	if (new->next != new->prev)
 	{
-		// already added.
+		// new is not initialized.
 		return false;
 	}
 	return true;
-}
 #else
-bool __list_add_valid(struct list_head *new, struct list_head *prev,
-		      struct list_head *next)
-{
 	if (CHECK_DATA_CORRUPTION(next->prev != prev,
 			"list_add corruption. next->prev should be prev (%p), but was %p. (next=%p).\n",
 			prev, next->prev, next) ||
@@ -99,6 +83,15 @@ bool __list_add_valid(struct list_head *new, struct list_head *prev,
 		return false;
 
 	return true;
+#endif
+}
+
+#ifdef _WIN32 //DW-1480
+static bool list_add_valid(struct list_head *new, struct list_head *prev)
+{
+	if(new == 0 || prev == 0 || prev->next == 0)
+		return false;
+	return __list_add_valid(new, prev, prev->next);
 }
 #endif
 

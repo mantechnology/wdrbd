@@ -6769,8 +6769,8 @@ static int process_twopc(struct drbd_connection *connection,
 				if (!reply_cmd) {
 					kref_get(&connection->kref);
 					kref_debug_get(&connection->kref_debug, 9);
-#ifdef _WIN32	// DW-1480
-					if(__list_add_valid(&connection->twopc_parent_list,	&resource->twopc_parents))
+#ifdef _WIN32	// DW-1480 : Do not add duplicate twopc_parent_list to twopc_parents.
+					if(list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
 					{	
 						list_add(&connection->twopc_parent_list,
 							&resource->twopc_parents);
@@ -6932,8 +6932,8 @@ static int process_twopc(struct drbd_connection *connection,
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
-#ifdef _WIN32	//DW-1480
-		if (__list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
+#ifdef _WIN32	//DW-1480 : Do not add duplicate twopc_parent_list to twopc_parents.
+		if (list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
 		{						
 			list_add(&connection->twopc_parent_list, &resource->twopc_parents);
 		}
