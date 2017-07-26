@@ -1976,6 +1976,9 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 		q_order_type = drbd_queue_order_type(device);
 #ifdef _WIN32
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
+		// DW-1497 Fix max bio size to default 1MB, because we don't need to variable max bio config on Windows.
+		// Since max_bio_size is an integer type, an overflow has occurred for the value of max_hw_sectors.
+		max_bio_size = DRBD_MAX_BIO_SIZE;
 #else
 		max_bio_size = queue_max_hw_sectors(q) << 9;
 		max_bio_size = min(max_bio_size, DRBD_MAX_BIO_SIZE);
