@@ -1109,9 +1109,9 @@ void down(struct semaphore *s)
 
 int down_trylock(struct semaphore *s)
 {
-    LARGE_INTEGER Timeout;
-    Timeout.QuadPart = 0;
-    
+	LARGE_INTEGER Timeout; 
+	Timeout.QuadPart = 0; 
+
     if (KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, &Timeout) == STATUS_SUCCESS)
     {
         WDRBD_TRACE_SEM("success! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
