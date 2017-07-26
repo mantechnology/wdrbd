@@ -1109,9 +1109,9 @@ void down(struct semaphore *s)
 
 int down_trylock(struct semaphore *s)
 {
-    LARGE_INTEGER Timeout;
-    Timeout.QuadPart = 0;
-    
+	LARGE_INTEGER Timeout; 
+	Timeout.QuadPart = 0; 
+
     if (KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, &Timeout) == STATUS_SUCCESS)
     {
         WDRBD_TRACE_SEM("success! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
@@ -1129,8 +1129,13 @@ void up(struct semaphore *s)
     if (KeReadStateSemaphore(&s->sem) < s->sem.Limit)
     {
         WDRBD_TRACE_SEM("KeReleaseSemaphore before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
-        KeReleaseSemaphore(&s->sem, IO_NO_INCREMENT, 1, FALSE);
-        WDRBD_TRACE_SEM("KeReleaseSemaphore after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+		// DW-1496 : KeReleaseSemaphore raised an exception(STATUS_SEMAPHORE_LIMIT_EXCEEDED) and handled it in try/except syntax
+		try{
+			KeReleaseSemaphore(&s->sem, IO_NO_INCREMENT, 1, FALSE);
+		} except(EXCEPTION_EXECUTE_HANDLER){
+			WDRBD_TRACE_SEM("KeReleaseSemaphore Exception occured!(ExRaiseStatus(STATUS_SEMAPHORE_LIMIT_EXCEEDED)) \n");
+		}
+		WDRBD_TRACE_SEM("KeReleaseSemaphore after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
     }
 }
 
