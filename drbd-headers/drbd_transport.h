@@ -283,7 +283,9 @@ extern void drbd_unregister_transport_class(struct drbd_transport_class *transpo
 extern struct drbd_transport_class *drbd_get_transport_class(const char *transport_name);
 extern void drbd_put_transport_class(struct drbd_transport_class *);
 extern void drbd_print_transports_loaded(struct seq_file *seq);
-
+#ifdef _WIN32 // DW-1498
+extern bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2);
+#endif
 extern int drbd_get_listener(struct drbd_waiter *waiter,
 			     const struct sockaddr *addr,
 			     int (*create_fn)(struct drbd_transport *, const struct sockaddr *, struct drbd_listener **));
