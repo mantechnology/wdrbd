@@ -1271,10 +1271,35 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32
+
+	struct drbd_resource *resource = (struct drbd_resource *)SocketContext;
+	struct drbd_listener *listener = NULL;
+	bool find_listener = false;
+	
+	if (!resource) {
+        return STATUS_REQUEST_NOT_ACCEPTED;
+	}
+	
+	spin_lock_bh(&resource->listeners_lock);	
+
+	// DW-1483 : Find the listener that matches the LocalAddress in resource-> listeners.
+	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
+			find_listener = true;
+			break;
+		}
+	}	
+
+	if (!find_listener) {
+		spin_unlock_bh(&resource->listeners_lock);
+        return STATUS_REQUEST_NOT_ACCEPTED;
+	}
+
     struct socket * s_estab = kzalloc(sizeof(struct socket), 0, 'E6DW');
 
     if (!s_estab)
     {
+    	spin_unlock_bh(&resource->listeners_lock);
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
@@ -1297,38 +1322,35 @@ static void dtt_incoming_connection(struct sock *sock)
     else
     {
         kfree(s_estab);
+		spin_unlock_bh(&resource->listeners_lock);
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
-    
-    struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
-	if(!listener) {
-		kfree(s_estab->sk_linux_attr);
-		kfree(s_estab);
-        return STATUS_REQUEST_NOT_ACCEPTED;
-	}
-    spin_lock(&listener->listener.waiters_lock);
-    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
+
+	
+    spin_lock(&listener->waiters_lock);
+    struct drbd_waiter *waiter = drbd_find_waiter_by_addr(listener, (struct sockaddr_storage_win*)RemoteAddress);
 	if(!waiter) {
 		kfree(s_estab->sk_linux_attr);
 		kfree(s_estab);
-		spin_unlock(&listener->listener.waiters_lock);
+		spin_unlock(&listener->waiters_lock);
+		spin_unlock_bh(&resource->listeners_lock);
         return STATUS_REQUEST_NOT_ACCEPTED;
 	}
 
-#ifdef _WIN32
 	// DW-1398: do not accept if already connected.
 	if (atomic_read(&waiter->transport->listening_done))
 	{
 		WDRBD_WARN("listening is done for this transport, request won't be accepted\n");
 		kfree(s_estab->sk_linux_attr);
 		kfree(s_estab);
-		spin_unlock(&listener->listener.waiters_lock);
+		spin_unlock(&listener->waiters_lock);
+		spin_unlock_bh(&resource->listeners_lock);
 		return STATUS_REQUEST_NOT_ACCEPTED;
 	}
-#endif
 
     struct dtt_path * path = container_of(waiter, struct dtt_path, waiter);
 
+	struct dtt_listener *listerner2 = container_of(listener, struct dtt_listener, listener);
     if (path)
     {
 		WDRBD_CONN_TRACE("if(path) path->socket = s_estab\n"); 
@@ -1337,15 +1359,16 @@ static void dtt_incoming_connection(struct sock *sock)
     else
     {
 		WDRBD_CONN_TRACE("else listener->paccept_socket = AccceptSocket\n");
-        listener->listener.pending_accepts++;
+        listener->pending_accepts++;
 #ifdef _WSK_DISCONNECT_EVENT
-		listener->paccept_socket = s_estab;
+		listerner2->paccept_socket = s_estab;
 #else
         listener->paccept_socket = AcceptSocket;		
 #endif
     }
     wake_up(&waiter->wait);
-	spin_unlock(&listener->listener.waiters_lock);
+	spin_unlock(&listener->waiters_lock);
+	spin_unlock_bh(&resource->listeners_lock);
     WDRBD_TRACE_SK("waiter(0x%p) s_estab(0x%p) wsk(0x%p) wake!!!!\n", waiter, s_estab, AcceptSocket);
 
 	return STATUS_SUCCESS;
@@ -1377,6 +1400,7 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 #ifdef _WIN32
     unregister_state_change(listener->s_listen->sk_linux_attr, listener);
+
 	// DW-1483 : WSK_EVENT_ACCEPT disable	
 	NTSTATUS status = SetEventCallbacks(listener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	WDRBD_INFO("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
@@ -1408,33 +1432,53 @@ dtt_inspect_incoming(
     {
         return WskInspectReject;
     }
+	
+	struct drbd_listener *listener = NULL;
+	bool find_listener = false;
 
     WSK_INSPECT_ACTION action = WskInspectAccept;
-    struct dtt_listener *listener = (struct dtt_listener *)SocketContext;
-
-	// DW-1483
-	if(!listener) {
+    struct drbd_resource *resource = (struct drbd_resource *)SocketContext;
+	
+	if (!resource) {
         return WskInspectReject;
 	}
 
-    spin_lock(&listener->listener.waiters_lock);
-	struct drbd_waiter *waiter = drbd_find_waiter_by_addr(&listener->listener, (struct sockaddr_storage_win*)RemoteAddress);
-    if (!waiter || !atomic_read(&waiter->transport->listening))
-    {
-        action = WskInspectReject;
-        goto out;
-    }
+	spin_lock_bh(&resource->listeners_lock);
 
+
+	// DW-1483 : Find the listener that matches the LocalAddress in resource-> listeners.
+	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
+			find_listener = true;
+			break;
+		}
+	}	
+
+
+	if (!find_listener) {
+		spin_unlock_bh(&resource->listeners_lock);
+        return WskInspectReject;
+	}
+	
+	spin_lock(&listener->waiters_lock);
+	struct drbd_waiter *waiter = drbd_find_waiter_by_addr(listener, (struct sockaddr_storage_win*)RemoteAddress);
+	if (!waiter || !atomic_read(&waiter->transport->listening))
+	{
+		action = WskInspectReject;
+		goto out;
+	}
+
+	atomic_set(&waiter->transport->listening, 0);
+out:
+	spin_unlock(&listener->waiters_lock);	
+	spin_unlock_bh(&resource->listeners_lock);
+	
 	if (action == WskInspectReject)
 		WDRBD_CONN_TRACE("return WskInspectReject\n"); 
 	if (action == WskInspectAccept)
 		WDRBD_CONN_TRACE("return WskInspecAccept\n");
 
-    atomic_set(&waiter->transport->listening, 0);
-out:
-    spin_unlock(&listener->listener.waiters_lock);
- 
-    return action;
+	return action;
 }
 
 // A listening socket's WskAbortEvent event callback function
@@ -1513,10 +1557,12 @@ static int dtt_create_listener(struct drbd_transport *transport,
         goto out;
     }
 
+	struct drbd_connection *connection = container_of(transport, struct drbd_connection, transport);	
+	
 	if (my_addr.ss_family == AF_INET6) {
-		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, (PVOID*)listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection->resource, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	} else {
-		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, (PVOID*)listener, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection->resource, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	}
     if (s_listen->sk == NULL) {
         err = -1;
