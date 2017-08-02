@@ -1282,7 +1282,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	
 	spin_lock_bh(&resource->listeners_lock);	
 
-	// DW-1483 : Find the listener that matches the LocalAddress in resource-> listeners.
+	// DW-1498 : Find the listener that matches the LocalAddress in resource-> listeners.
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
 		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
 			find_listener = true;
@@ -1445,7 +1445,7 @@ dtt_inspect_incoming(
 	spin_lock_bh(&resource->listeners_lock);
 
 
-	// DW-1483 
+	// DW-1498 
 	// Finds the listener that is waiting for RemoteAddress.
 	// Because LocalAddress can be null.
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
