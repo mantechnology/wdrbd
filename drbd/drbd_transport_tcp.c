@@ -1434,7 +1434,6 @@ dtt_inspect_incoming(
     }
 	
 	struct drbd_listener *listener = NULL;
-	bool find_listener = false;
 
     WSK_INSPECT_ACTION action = WskInspectAccept;
     struct drbd_resource *resource = (struct drbd_resource *)SocketContext;
@@ -1446,35 +1445,31 @@ dtt_inspect_incoming(
 	spin_lock_bh(&resource->listeners_lock);
 
 
-	// DW-1483 : Find the listener that matches the LocalAddress in resource-> listeners.
+	// DW-1483 
+	// Finds the listener that is waiting for RemoteAddress.
+	// Because LocalAddress can be null.
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
-		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
-			find_listener = true;
-			break;
+		spin_lock(&listener->waiters_lock);
+		struct drbd_waiter *waiter = drbd_find_waiter_by_addr(listener, (struct sockaddr_storage_win*)RemoteAddress);
+		if (waiter && atomic_read(&waiter->transport->listening))
+		{
+			LocalAddress = (PSOCKADDR)&listener->listen_addr;
+			atomic_set(&waiter->transport->listening, 0);
+			spin_unlock(&listener->waiters_lock);	
+			action = WskInspectAccept;
+			goto out;
 		}
-	}	
-
-
-	if (!find_listener) {
-		spin_unlock_bh(&resource->listeners_lock);
-        return WskInspectReject;
+		
+		spin_unlock(&listener->waiters_lock);	
 	}
+	// not found waiter.
+	action = WskInspectReject;
 	
-	spin_lock(&listener->waiters_lock);
-	struct drbd_waiter *waiter = drbd_find_waiter_by_addr(listener, (struct sockaddr_storage_win*)RemoteAddress);
-	if (!waiter || !atomic_read(&waiter->transport->listening))
-	{
-		action = WskInspectReject;
-		goto out;
-	}
-
-	atomic_set(&waiter->transport->listening, 0);
 out:
-	spin_unlock(&listener->waiters_lock);	
 	spin_unlock_bh(&resource->listeners_lock);
 	
 	if (action == WskInspectReject)
-		WDRBD_CONN_TRACE("return WskInspectReject\n"); 
+		WDRBD_TRACE("WskInspectReject\n"); 
 	if (action == WskInspectAccept)
 		WDRBD_CONN_TRACE("return WskInspecAccept\n");
 
