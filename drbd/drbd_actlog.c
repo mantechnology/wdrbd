@@ -113,6 +113,8 @@ struct __packed al_transaction_on_disk {
 #undef __packed
 #endif
 
+
+
 struct update_peers_work {
        struct drbd_work w;
        struct drbd_peer_device *peer_device;
@@ -230,10 +232,6 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	atomic_inc(&device->md_io.in_use); /* drbd_md_put_buffer() is in the completion handler */
 	device->md_io.submit_jif = jiffies;
 
-#ifdef _WIN32
-	// DW-1293: no write is allowed to meta while volume attritubte is being changed.
-	mutex_lock(&device->resource->att_mod_mutex);
-#endif
 	if (drbd_insert_fault(device, (rw & WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
 		bio_endio(bio, -EIO);
 #ifndef _WIN32
@@ -245,9 +243,6 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 			bio_endio(bio, -EIO);
 		}
 	}
-#endif
-#ifdef _WIN32
-	mutex_unlock(&device->resource->att_mod_mutex);
 #endif
 
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
