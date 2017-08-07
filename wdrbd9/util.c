@@ -40,7 +40,7 @@
 #endif
 #endif
 
-#define _WIN32_CHECK_PARTITION_STYLE // DW-1495
+//#define _WIN32_CHECK_PARTITION_STYLE // DW-1495
 
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )

@@ -1848,9 +1848,14 @@ int generic_make_request(struct bio *bio)
 	}
 
 	// DW-1495 : If any volume is set to read only, all writes operations are paused temporarily. 
-	mutex_lock(&att_mod_mutex);
-	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
-	mutex_unlock(&att_mod_mutex);
+	if (io = IRP_MJ_WRITE){
+		mutex_lock(&att_mod_mutex);
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+		mutex_unlock(&att_mod_mutex);
+	}
+	else{
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+	}
 
 	return 0;
 }
