@@ -244,6 +244,8 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 #ifdef _WIN32
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
 struct mutex g_genl_mutex;
+// DW-1495: change att_mod_mutex(DW-1293) to global mutex because it can be a problem if IO also occurs on othere resouces on the same disk. 
+struct mutex att_mod_mutex; 
 #endif
 static const struct block_device_operations drbd_ops = {
 #ifndef _WIN32
@@ -3402,6 +3404,7 @@ void drbd_destroy_device(struct kref *kref)
 	struct drbd_resource *resource = device->resource;
 	struct drbd_peer_device *peer_device, *tmp;
 
+
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 	if (device->this_bdev)
@@ -4045,7 +4048,6 @@ struct drbd_resource *drbd_create_resource(const char *name,
 #ifdef _WIN32
 	// DW-1317
 	mutex_init(&resource->vol_ctl_mutex);
-	mutex_init(&resource->att_mod_mutex);
 #endif
 	spin_lock_init(&resource->req_lock);
 	INIT_LIST_HEAD(&resource->listeners);
@@ -4795,6 +4797,7 @@ static int __init drbd_init(void)
 	
 	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
+	mutex_init(&att_mod_mutex); 
 #endif
 
 #ifdef _WIN32
@@ -6230,12 +6233,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	{
 		if (bSecondary)
 		{			
-			mutex_lock(&device->resource->att_mod_mutex);
+			mutex_lock(&att_mod_mutex);
 			// set readonly attribute.
 			if (!ChangeVolumeReadonly(device->minor, true))
 			{
 				WDRBD_ERROR("Could not change volume read-only attribute\n");
-				mutex_unlock(&device->resource->att_mod_mutex);
+				mutex_unlock(&att_mod_mutex);
 				bSecondary = false;
 				break;
 			}
@@ -6250,22 +6253,6 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			WDRBD_ERROR("Could not get bitmap for drbd\n");
 			break;
 		}
-
-		// Set out-of-sync for allocated cluster.
-		if (bitmap_lock)
-			drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
-		count = SetOOSFromBitmap(pBitmap, peer_device);		
-		if (bitmap_lock)
-			drbd_bm_unlock(device);
-
-		if (count == -1)
-		{
-			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
-			break;
-		}
-		
-		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT-10)));
-		bRet = true;
 
 	} while (false);
 
@@ -6289,8 +6276,28 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 				put_ldev(device);
 			}
 		}
-		mutex_unlock(&device->resource->att_mod_mutex);
+		mutex_unlock(&att_mod_mutex);
+	
+		// DW-1495: Change location due to deadlock(bm_change)
+		// Set out-of-sync for allocated cluster.
+		if (bitmap_lock)
+			drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);
+		count = SetOOSFromBitmap(pBitmap, peer_device);
+		if (bitmap_lock)
+			drbd_bm_unlock(device);
+
+		if (count == -1)
+		{
+			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+			bRet = false;
+		}
+		else{
+			drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+			bRet = true;
+		}
 	}
+
+
 
 	if (pBitmap)
 	{

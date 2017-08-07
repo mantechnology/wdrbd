@@ -1190,7 +1190,6 @@ struct drbd_resource {
 	struct mutex adm_mutex;		/* mutex to serialize administrative requests */
 #ifdef _WIN32
 	struct mutex vol_ctl_mutex;	/* DW-1317: chaning role involves the volume for device is (dis)mounted, use this when the role change needs to be waited. */
-	struct mutex att_mod_mutex; /* DW-1293: no write is allowed to meta while volume attritubte is being changed. */
 #endif
 	spinlock_t req_lock;
 	u64 dagtag_sector;		/* Protected by req_lock.

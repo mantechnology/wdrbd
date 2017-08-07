@@ -73,6 +73,8 @@ extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 // DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)
 atomic_t g_monitor_mnt_working = FALSE;
 
+extern struct mutex att_mod_mutex; 
+
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
 {
@@ -1744,6 +1746,7 @@ int generic_make_request(struct bio *bio)
 	ULONG io = 0;
 	PIO_STACK_LOCATION	pIoNextStackLocation = NULL;
 	
+	
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
 
 	if (!q) {
@@ -1843,7 +1846,16 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+
+	// DW-1495 : If any volume is set to read only, all writes operations are paused temporarily. 
+	if (io = IRP_MJ_WRITE){
+		mutex_lock(&att_mod_mutex);
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+		mutex_unlock(&att_mod_mutex);
+	}
+	else{
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+	}
 
 	return 0;
 }
