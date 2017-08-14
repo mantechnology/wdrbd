@@ -353,20 +353,18 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 {
     struct sk_buff *skb;
 
-    if (NLMSG_GOODSIZE == payload)
-    {
+    if (NLMSG_GOODSIZE == payload) {
         payload = NLMSG_GOODSIZE - sizeof(*skb);
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
-        RtlZeroMemory(skb, NLMSG_GOODSIZE);
-    }
-    else
-    {
+    } else {
         skb = kmalloc(sizeof(*skb) + payload, GFP_KERNEL, '67DW');
     }
 
     if (!skb)
         return NULL;
 
+	// DW-1501 fix failure to alloc genl_msg_mempool
+	RtlZeroMemory(skb, NLMSG_GOODSIZE);
     _genlmsg_init(skb, sizeof(*skb) + payload);
 
     return skb;

@@ -90,6 +90,9 @@ InitWskData(
 	// DW-1316 use raw irp.
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
@@ -125,6 +128,9 @@ InitWskCloseData(
 	// DW-1316 use raw irp.
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
@@ -158,6 +164,9 @@ InitWskDataAsync(
 
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
