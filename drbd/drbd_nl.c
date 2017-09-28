@@ -1051,7 +1051,7 @@ static bool wait_for_peer_disk_updates_timeout(struct drbd_resource *resource)
 	long time_out = 100;
 	int retry_count = 0;
 restart:
-	if(retry_count == 3) { // retry 3 times and if it expired, return FALSE
+	if(retry_count == 2) { // retry 2 times and if it expired, return FALSE
 		return FALSE;
 	}
 	oldIrql_rLock = ExAcquireSpinLockShared(&g_rcuLock);
@@ -1157,7 +1157,12 @@ retry:
 		wait_event(resource->barrier_wait, !barrier_pending(resource));
 		/* After waiting for pending barriers, we got any possible NEG_ACKs,
 		   and see them in wait_for_peer_disk_updates() */
+#ifdef _WIN32 // DW-1460 fixup infinate wait when network connection is disconnected.
+		wait_for_peer_disk_updates_timeout(resource);
+#else
 		wait_for_peer_disk_updates(resource);
+#endif
+		
 		
 		/* In case switching from R_PRIMARY to R_SECONDARY works
 		   out, there is no rw opener at this point. Thus, no new
