@@ -333,7 +333,7 @@ extern atomic_t g_oos_trace;
 #endif
 
 // Default values are used when log_level value doesn't exist.
-#define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
+#define LOG_LV_DEFAULT_EVENTLOG	KERN_INFO_NUM
 #define LOG_LV_DEFAULT_DBG		KERN_INFO_NUM
 #define LOG_LV_DEFAULT			(LOG_LV_DEFAULT_EVENTLOG << LOG_LV_BIT_POS_EVENTLOG) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
 
