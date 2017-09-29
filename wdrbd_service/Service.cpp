@@ -37,6 +37,7 @@ DWORD RemoveEventSource(TCHAR *caPath, TCHAR * csApp);
 DWORD RcDrbdStart();
 DWORD RcDrbdStop();
 
+
 BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
@@ -90,6 +91,45 @@ VOID WriteLog(wchar_t* pMsg)
 
     DeregisterEventSource(hEventLog);
 }
+
+// DW-1505: Return the oldest filename if the number of files 
+// with search names is NUMOFLOGS or greater  
+#define NUMOFLOGS 10
+TCHAR* GetOldestFileName(TCHAR* FileAllPath)
+{
+	HANDLE hFind;
+	WIN32_FIND_DATA FindFileData;
+	WIN32_FIND_DATA OldFindFileData;
+	int FileCount = 0;
+	TCHAR tmp[256] = { 0, };
+
+	hFind = FindFirstFile(FileAllPath, &FindFileData);
+	if (hFind == INVALID_HANDLE_VALUE){
+		_stprintf_s(tmp, _T("GetOldestFileName : hFind == INVALID_HANDLE_VALUE\n"));
+		WriteLog(tmp);
+		return NULL;
+	}
+	memcpy(&OldFindFileData, &FindFileData, sizeof(WIN32_FIND_DATA));
+
+	do{
+		FileCount++;
+		// Compared file creation date and save old file contents 
+		if (CompareFileTime(&OldFindFileData.ftCreationTime, &FindFileData.ftCreationTime) > 0){
+			memcpy(&OldFindFileData, &FindFileData, sizeof(WIN32_FIND_DATA));
+		}
+	} while (FindNextFile(hFind, &FindFileData));
+
+	FindClose(hFind);
+
+	//  Returns the oldest file name if the number of files NUMOFLOGS or greater
+	if (FileCount >= NUMOFLOGS){
+		return OldFindFileData.cFileName;
+	}
+	else{
+		return NULL;
+	}
+}
+
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -462,6 +502,8 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
 
     //DrbdSetStatus(SERVICE_STOPPED);
 }
+
+
 #ifdef SERVICE_HANDLER_EX
 DWORD WINAPI ServiceHandlerEx(_In_ DWORD  fdwControl, _In_ DWORD  dwEventType, _In_ LPVOID lpEventData, _In_ LPVOID lpContext)
 #else
@@ -536,9 +578,40 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				}
 			}
 			else {
-				
-				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
-				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\PreShutdown.log"));
+				// DW-1505 : Keep only NUMOFLOGS(10) Preshutdown logs 
+				size_t path_size; WCHAR DrbdPath[MAX_PATH] = { 0, }; WCHAR DrbdLogPath[MAX_PATH] = { 0, }; TCHAR tmp[256] = { 0, };
+				TCHAR *OldestFileName;  WCHAR FindAllLogFileName[MAX_PATH] = { 0, };
+				errno_t result = _wgetenv_s(&path_size, DrbdPath, MAX_PATH, L"DRBD_PATH");
+				if (result)
+				{
+					wcscpy_s(DrbdPath, L"c:\\Program Files\\drbd\\bin");
+				}
+				wcsncpy_s(DrbdLogPath, DrbdPath, wcslen(DrbdPath) - strlen("bin"));
+				wcscat_s(DrbdLogPath, L"log\\");
+				wcscat_s(FindAllLogFileName, DrbdLogPath);
+				wcscat_s(FindAllLogFileName, _T("Preshutdown*")); // Path to file name beginning with 'Preshutdown'
+
+
+				while ((OldestFileName = GetOldestFileName(FindAllLogFileName)) != NULL){
+					WCHAR DeleteFileName[MAX_PATH] = { 0, };
+					wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
+					wcscat_s(DeleteFileName, OldestFileName);
+					// Delete oldest file by name  
+					if (DeleteFile(DeleteFileName) == 0){
+						_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
+						WriteLog(tmp);
+						break; 
+					}
+				}
+
+				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; DWORD dwPID;
+				SYSTEMTIME sTime; TCHAR PreShutdownTime[MAX_PATH] = { 0, };
+				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\"));
+				// Change Preshutdown log name to date(eg. Preshutdown-YEAR-MONTH-DAY-HOUR-MINUTE.log)
+				GetLocalTime(&sTime);
+				_stprintf(PreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
+				_tcscat(szFullPath, PreShutdownTime);
+
 				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
 				if (ret) {
 					_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
