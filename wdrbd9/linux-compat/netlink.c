@@ -867,14 +867,12 @@ NetlinkWorkThread(PVOID context)
         if (pops) {
 			NTSTATUS status = STATUS_UNSUCCESSFUL;
 			
-			if (is_first_cmd)
-			{
+			if (is_first_cmd) {
 				first_cmd = pops->str;
 				is_first_cmd = false;
 			}
-
-			if (pops->dumpit && cmd == DRBD_ADM_GET_RESOURCES)
-			{
+			// DW-1432 Except status log
+			if (pops->dumpit && ( (cmd == DRBD_ADM_GET_RESOURCES) || (cmd == DRBD_ADM_GET_PEER_DEVICES) || (cmd == DRBD_ADM_GET_DEVICES)) ) {
 				is_dumpit_cmd = true;
 				WDRBD_TRACE("drbd cmd(%s:%u)\n", pops->str, cmd);
 			}
