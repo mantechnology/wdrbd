@@ -2159,7 +2159,9 @@ int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd_connec
 
 	p->dagtag = cpu_to_be64(lost_peer->last_dagtag_sector);
 	p->node_id = cpu_to_be32(lost_peer->peer_node_id);
-
+#ifdef _WIN32_TRACE_PEER_DAGTAG
+	WDRBD_INFO("drbd_send_peer_dagtag lost_peer:%p lost_peer->last_dagtag_sector:%llx lost_peer->peer_node_id:%d\n",lost_peer,lost_peer->last_dagtag_sector,lost_peer->peer_node_id);
+#endif	
 	return send_command(connection, -1, P_PEER_DAGTAG, DATA_STREAM);
 }
 

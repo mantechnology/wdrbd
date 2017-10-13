@@ -2774,7 +2774,11 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 	struct drbd_resource *resource = lost_peer->resource;
 	struct drbd_connection *connection;
 	u64 im;
-
+#ifdef _WIN32 // DW-1502 FIXME: Wait 1000ms until receive_data is completely processed 
+	LARGE_INTEGER	delay;
+	delay.QuadPart = (-1 * 1000 * 10000);   //// wait 1000ms relative
+	KeDelayExecutionThread(KernelMode, FALSE, &delay);
+#endif			
 	for_each_connection_ref(connection, im, resource) {
 		if (connection == lost_peer)
 			continue;
