@@ -673,7 +673,10 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 		case STATUS_NETWORK_UNREACHABLE: err = -ENETUNREACH; break;
 		case STATUS_HOST_UNREACHABLE: err = -EHOSTUNREACH; break;
 		case STATUS_IO_TIMEOUT: err = -ETIMEDOUT; break;
-		default: err = -EINVAL; break;
+		default: 
+			WDRBD_ERROR("create-connect failed with status 0x%08X \n", status);
+			err = -EINVAL; 
+			break;
 		}
 	} else {
 		if (status == STATUS_TIMEOUT) { 
