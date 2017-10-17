@@ -2836,10 +2836,12 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 				bdev_path, err);
 		bdev = ERR_PTR(err);
 	}
+#if 0 // DW-1510 The bd_contains value is not appropriate when the device size is updated. Return bdev.
 #ifdef _WIN32
 	if (bdev->bd_contains) {
 		return bdev->bd_contains;
 	}
+#endif
 #endif
 	return bdev;
 }
