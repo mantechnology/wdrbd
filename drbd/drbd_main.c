@@ -6258,50 +6258,49 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			break;
 		}
 
+		if (bSecondary)
+		{
+			// prevent from mounting volume.
+			device->resource->bTempAllowMount = FALSE;
+
+			// dismount volume.
+			FsctlFlushDismountVolume(device->minor, false);
+
+			// clear readonly attribute
+			if (!ChangeVolumeReadonly(device->minor, false))
+			{
+				WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
+				if (device &&
+					get_ldev_if_state(device, D_NEGOTIATING))
+				{
+					set_bit(FORCE_DETACH, &device->flags);
+					change_disk_state(device, D_DETACHING, CS_HARD);
+					put_ldev(device);
+				}
+			}
+			mutex_unlock(&att_mod_mutex);
+		}
+
 	} while (false);
 
-	if (bSecondary)
+	// DW-1495: Change location due to deadlock(bm_change)
+	// Set out-of-sync for allocated cluster.
+	if (bitmap_lock)
+		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);
+	count = SetOOSFromBitmap(pBitmap, peer_device);
+	if (bitmap_lock)
+		drbd_bm_unlock(device);
+
+	if (count == -1)
 	{
-		// prevent from mounting volume.
-		device->resource->bTempAllowMount = FALSE;
-
-		// dismount volume.
-		FsctlFlushDismountVolume(device->minor, false);
-
-		// clear readonly attribute
-		if (!ChangeVolumeReadonly(device->minor, false))
-		{
-			WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
-			if (device &&
-				get_ldev_if_state(device, D_NEGOTIATING))
-			{
-				set_bit(FORCE_DETACH, &device->flags);
-				change_disk_state(device, D_DETACHING, CS_HARD);
-				put_ldev(device);
-			}
-		}
-		mutex_unlock(&att_mod_mutex);
-	
-		// DW-1495: Change location due to deadlock(bm_change)
-		// Set out-of-sync for allocated cluster.
-		if (bitmap_lock)
-			drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);
-		count = SetOOSFromBitmap(pBitmap, peer_device);
-		if (bitmap_lock)
-			drbd_bm_unlock(device);
-
-		if (count == -1)
-		{
-			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
-			bRet = false;
-		}
-		else{
-			drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
-			bRet = true;
-		}
+		WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+		bRet = false;
 	}
-
-
+	else{
+		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		bRet = true;
+	}
+		
 
 	if (pBitmap)
 	{
