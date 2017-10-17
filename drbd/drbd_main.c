@@ -6252,12 +6252,8 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
-		if (NULL == pBitmap)
-		{
+		if (NULL == pBitmap) {
 			WDRBD_ERROR("Could not get bitmap for drbd\n");
-			if (bSecondary)
-				mutex_unlock(&att_mod_mutex);
-			break;
 		}
 
 		if (bSecondary)
