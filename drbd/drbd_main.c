@@ -6255,6 +6255,8 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		if (NULL == pBitmap)
 		{
 			WDRBD_ERROR("Could not get bitmap for drbd\n");
+			if (bSecondary)
+				mutex_unlock(&att_mod_mutex);
 			break;
 		}
 
