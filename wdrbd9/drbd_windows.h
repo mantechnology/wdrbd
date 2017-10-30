@@ -54,7 +54,7 @@
 
 //#define _WIN32_WPP
 #define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
-#define WIN_AL_BUG_ON // DW-1513 
+#define WIN_AL_BUG_ON // DW-1513 : Macro to print LRU
 
 #ifdef _WIN32_WPP
 #define WPP_CONTROL_GUIDS \
@@ -981,17 +981,21 @@ struct scatterlist {
     do {	\
         if(_condition) { \
             WDRBD_FATAL("BUG: failure\n"); \
-        }\
-    } while (0)
+		}\
+	} while (0)
 
 #ifdef WIN_AL_BUG_ON
-#define AL_BUG_ON(_condition, str_condition)	\
+#define AL_BUG_ON(_condition, str_condition, lc, e)	\
     do {	\
         if(_condition) { \
             WDRBD_FATAL("BUG: failure [ %s ]\n", str_condition); \
-		        }\
-	    } while (0)
+			if(lc || e){	\
+				lc_printf_stats(lc, e);	\
+							}\
+			}\
+			    } while (0)
 #endif
+
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32
 extern int queue_work(struct workqueue_struct* queue, struct work_struct* work);
