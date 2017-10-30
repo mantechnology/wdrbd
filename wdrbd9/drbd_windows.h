@@ -54,6 +54,7 @@
 
 //#define _WIN32_WPP
 #define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
+#define WIN_AL_BUG_ON // DW-1513 
 
 #ifdef _WIN32_WPP
 #define WPP_CONTROL_GUIDS \
@@ -983,7 +984,14 @@ struct scatterlist {
         }\
     } while (0)
 
-
+#ifdef WIN_AL_BUG_ON
+#define AL_BUG_ON(_condition, str_condition)	\
+    do {	\
+        if(_condition) { \
+            WDRBD_FATAL("BUG: failure [ %s ]\n", str_condition); \
+		        }\
+	    } while (0)
+#endif
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32
 extern int queue_work(struct workqueue_struct* queue, struct work_struct* work);
