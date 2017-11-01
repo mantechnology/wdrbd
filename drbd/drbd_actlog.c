@@ -753,6 +753,14 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		}
 	}
 
+
+#ifdef _WIN32 // DW-1513 : At this point, LC_STARVING flag should be cleared. Otherwise, LOGIC BUG occurs.
+	if (test_bit(__LC_STARVING, &device->act_log->flags))
+	{
+		clear_bit(__LC_STARVING, &device->act_log->flags);
+	}
+#endif
+
 	/* Checkout the refcounts.
 	 * Given that we checked for available elements and update slots above,
 	 * this has to be successful. */
