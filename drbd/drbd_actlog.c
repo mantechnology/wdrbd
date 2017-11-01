@@ -709,8 +709,22 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	D_ASSERT(device, first <= last);
 
 	nr_al_extents = 1 + last - first; /* worst case: all touched extends are cold. */
+
+#ifdef _WIN32 // DW-1513 : If the used value is greater than nr_elements, set available_update_slots to 0.
+	if (al->nr_elements < al->used)
+	{
+		available_update_slots = 0;
+		WDRBD_WARN("al->used is greater than nr_elements, set available_update_slots to 0.\n");
+	}
+	else
+	{
+		available_update_slots = min(al->nr_elements - al->used,
+					al->max_pending_changes - al->pending_changes);
+	}
+#else
 	available_update_slots = min(al->nr_elements - al->used,
 				al->max_pending_changes - al->pending_changes);
+#endif
 
 	/* We want all necessary updates for a given request within the same transaction
 	 * We could first check how many updates are *actually* needed,
@@ -746,7 +760,19 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		struct lc_element *al_ext;
 		al_ext = lc_get_cumulative(device->act_log, enr);
 		if (!al_ext)
+#ifdef _WIN32
+			drbd_err(device, "LOGIC BUG for enr=%u (LC_STARVING=%d LC_LOCKED=%d used=%u pending_changes=%u lc->free=%d lc->lru=%d)\n", 
+						enr, 
+						test_bit(__LC_STARVING, &device->act_log->flags),
+						test_bit(__LC_LOCKED, &device->act_log->flags),
+						device->act_log->used,
+						device->act_log->pending_changes,
+						!list_empty(&device->act_log->free),
+						!list_empty(&device->act_log->lru)
+			);
+#else
 			drbd_err(device, "LOGIC BUG for enr=%u\n", enr);
+#endif
 	}
 	return 0;
 }
