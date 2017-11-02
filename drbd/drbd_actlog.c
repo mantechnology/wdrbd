@@ -639,7 +639,7 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 	spin_lock_irqsave(&device->al_lock, flags);
 	for (enr = first; enr <= last; enr++) {
 		extent = lc_find(device->act_log, enr);
-		if (!extent) {
+		if (!extent || extent->refcnt == 0) {
 			drbd_err(device, "al_complete_io() called on inactive extent %u\n", enr);
 			continue;
 		}
@@ -709,8 +709,22 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	D_ASSERT(device, first <= last);
 
 	nr_al_extents = 1 + last - first; /* worst case: all touched extends are cold. */
+
+#ifdef _WIN32 // DW-1513 : If the used value is greater than nr_elements, set available_update_slots to 0.
+	if (al->nr_elements < al->used)
+	{
+		available_update_slots = 0;
+		WDRBD_WARN("al->used is greater than nr_elements, set available_update_slots to 0.\n");
+	}
+	else
+	{
+		available_update_slots = min(al->nr_elements - al->used,
+					al->max_pending_changes - al->pending_changes);
+	}
+#else
 	available_update_slots = min(al->nr_elements - al->used,
 				al->max_pending_changes - al->pending_changes);
+#endif
 
 	/* We want all necessary updates for a given request within the same transaction
 	 * We could first check how many updates are *actually* needed,
@@ -725,7 +739,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		 * stop the fast path until we made some progress,
 		 * or requests to "cold" extents could be starved. */
 		if (!al->pending_changes)
-			__set_bit(__LC_STARVING, &device->act_log->flags);
+			set_bit(__LC_STARVING, &device->act_log->flags);
 		return -ENOBUFS;
 	}
 
@@ -739,6 +753,14 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		}
 	}
 
+
+#ifdef _WIN32 // DW-1513 : At this point, LC_STARVING flag should be cleared. Otherwise, LOGIC BUG occurs.
+	if (test_bit(__LC_STARVING, &device->act_log->flags))
+	{
+		clear_bit(__LC_STARVING, &device->act_log->flags);
+	}
+#endif
+
 	/* Checkout the refcounts.
 	 * Given that we checked for available elements and update slots above,
 	 * this has to be successful. */
@@ -746,7 +768,19 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		struct lc_element *al_ext;
 		al_ext = lc_get_cumulative(device->act_log, enr);
 		if (!al_ext)
+#ifdef _WIN32
+			drbd_err(device, "LOGIC BUG for enr=%u (LC_STARVING=%d LC_LOCKED=%d used=%u pending_changes=%u lc->free=%d lc->lru=%d)\n", 
+						enr, 
+						test_bit(__LC_STARVING, &device->act_log->flags),
+						test_bit(__LC_LOCKED, &device->act_log->flags),
+						device->act_log->used,
+						device->act_log->pending_changes,
+						!list_empty(&device->act_log->free),
+						!list_empty(&device->act_log->lru)
+			);
+#else
 			drbd_err(device, "LOGIC BUG for enr=%u\n", enr);
+#endif
 	}
 	return 0;
 }
