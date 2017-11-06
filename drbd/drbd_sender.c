@@ -1410,6 +1410,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	// MODIFIED_BY_MANTECH DW-1198 : If repl_state is L_AHEAD, do not finish resync. Keep the L_AHEAD.
 	if (repl_state[NOW] == L_AHEAD)
 	{
+		drbd_info(peer_device, "I am ahead, do not finish resync.\n"); // DW-1518
 		put_ldev(device);
 		spin_unlock_irq(&device->resource->req_lock);	
 		return 1;
@@ -2278,6 +2279,7 @@ void start_resync_timer_fn(unsigned long data)
 #endif
 {
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
+	drbd_info(peer_device, "post RS_START to the peer_device work\n"); // DW-1518
 	drbd_peer_device_post_work(peer_device, RS_START);
 }
 
@@ -2340,6 +2342,7 @@ static void do_start_resync(struct drbd_peer_device *peer_device)
 		return;
 	}
 
+	drbd_info(peer_device, "starting resync ...\n"); // DW-1518
 	drbd_start_resync(peer_device, peer_device->start_resync_side);
 #ifdef _WIN32
 	clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
@@ -2471,6 +2474,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	spin_unlock_irq(&device->resource->req_lock);
 	if (repl_state < L_ESTABLISHED) {
 		/* Connection closed meanwhile. */
+		drbd_err(peer_device, "Unable to start resync since it is not connected\n"); // DW-1518
 		return;
 	}
 	if (repl_state >= L_SYNC_SOURCE && repl_state < L_AHEAD) {
@@ -2538,6 +2542,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (down_trylock(&device->resource->state_sem)) {
 		/* Retry later and let the worker make progress in the
 		 * meantime; two-phase commits depend on that.  */
+		drbd_info(peer_device, "Retry later\n"); // DW-1518
 		set_bit(B_RS_H_DONE, &peer_device->flags);
 		peer_device->start_resync_side = side;
 		peer_device->start_resync_timer.expires = jiffies + HZ/5;
@@ -2678,6 +2683,11 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 
 		drbd_md_sync_if_dirty(device);
 	}
+	else
+	{
+		drbd_err(peer_device, "Unable to start resync as %s (err = %d)\n", drbd_repl_str(repl_state), r); // DW-1518
+	}
+
 	put_ldev(device);
     out:
 	up(&device->resource->state_sem);
