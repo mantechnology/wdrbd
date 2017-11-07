@@ -7216,6 +7216,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #else
 		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
 #endif
+		drbd_info(peer_device, "peer is SyncSource. change to SyncTarget\n"); // DW-1518
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
@@ -7233,7 +7234,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		new_repl_state = L_ESTABLISHED;
 
 	if (peer_state.conn == L_AHEAD)
+	{
+		if (old_peer_state.conn != L_BEHIND)
+		{
+			drbd_info(peer_device, "peer is Ahead. change to Behind mode\n"); // DW-1518
+		}
 		new_repl_state = L_BEHIND;
+	}
 
 	if (peer_device->uuids_received &&
 	    peer_state.disk >= D_NEGOTIATING &&
