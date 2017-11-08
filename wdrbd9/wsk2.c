@@ -989,7 +989,11 @@ $retry:
 			case STATUS_TIMEOUT:
 				// DW-1095 adjust retry_count logic 
 				if (!(++retry_count % 5)) {
-					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					WDRBD_WARN("send buffering: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					IoCancelIrp(Irp);
+					KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+					BytesSent = -EAGAIN;
+					break;
 				} 
 
 				goto $retry;
