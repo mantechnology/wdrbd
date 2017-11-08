@@ -104,8 +104,9 @@
 
 #if _WIN32
 
-#ifdef _WIN64 /* DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
-				to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. */ 
+#ifdef _WIN64 
+// DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
+// to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. 
 #define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFF)
 /* DW-1436 sndbuf-size default value is set to 0, minimum value is set to 10M when used */
 #define DRBD_SNDBUF_SIZE_DEF	0 
@@ -170,7 +171,11 @@
    * If you use >= 292 kB on-disk ring buffer,
    * this is the maximum you can use: */
 #define DRBD_AL_EXTENTS_MAX  0xfffe
+#ifdef _WIN32 // DW-1513
+#define DRBD_AL_EXTENTS_DEF  6001
+#else
 #define DRBD_AL_EXTENTS_DEF  1237
+#endif
 #define DRBD_AL_EXTENTS_SCALE '1'
 
 #define DRBD_MINOR_NUMBER_MIN  -1
