@@ -54,7 +54,11 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
+#ifdef _WIN32  // DW-1524 fix infinite send retry on low-bandwith
+#define DRBD_TIMEOUT_DEF (60*2)       /* 12 seconds */
+#else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
+#endif
 #define DRBD_TIMEOUT_SCALE '1'
 
  /* If backing disk takes longer than disk_timeout, mark the disk as failed */
@@ -101,17 +105,21 @@
 #define DRBD_MAX_EPOCH_SIZE_DEF 2048
 #define DRBD_MAX_EPOCH_SIZE_SCALE '1'
 
-  /* I don't think that a tcp send buffer of more than 10M is useful */
-#define DRBD_SNDBUF_SIZE_MIN  0
+
 #if _WIN32
 
-#ifdef _WIN64 /* DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
-				to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. */ 
+#ifdef _WIN64 
+// DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
+// to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. 
 #define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFF)
-#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+/* DW-1436 sndbuf-size default value is set to 0, minimum value is set to 10M when used */
+#define DRBD_SNDBUF_SIZE_DEF	0 
+#define DRBD_SNDBUF_SIZE_MIN  (1024*1024*10)
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
-#define DRBD_SNDBUF_SIZE_DEF  (1024*1024*20)
+#define DRBD_SNDBUF_SIZE_DEF  0
+/* I don't think that a tcp send buffer of more than 10M is useful */
+#define DRBD_SNDBUF_SIZE_MIN   (1024*1024*10)
 #endif
 
 #else
@@ -167,7 +175,11 @@
    * If you use >= 292 kB on-disk ring buffer,
    * this is the maximum you can use: */
 #define DRBD_AL_EXTENTS_MAX  0xfffe
+#ifdef _WIN32 // DW-1513
+#define DRBD_AL_EXTENTS_DEF  6001
+#else
 #define DRBD_AL_EXTENTS_DEF  1237
+#endif
 #define DRBD_AL_EXTENTS_SCALE '1'
 
 #define DRBD_MINOR_NUMBER_MIN  -1

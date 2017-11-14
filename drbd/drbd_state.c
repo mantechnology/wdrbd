@@ -417,6 +417,10 @@ static void __clear_remote_state_change(struct drbd_resource *resource) {
 #else
 	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #endif
+
+#ifdef _WIN32	// DW-1480
+		list_del(&connection->twopc_parent_list);
+#endif
 		kref_debug_put(&connection->kref_debug, 9);
 		kref_put(&connection->kref, drbd_destroy_connection);
 	}
@@ -2467,8 +2471,16 @@ static void abw_start_sync(struct drbd_device *device,
 			initialize_resync(pd);
 		rcu_read_unlock();
 
+#ifdef _WIN32
+		// DW-1293: peer's bitmap will be reflected on local device's bitmap to perform fast invalidate(remote).
+		if (peer_device->connection->agreed_pro_version >= 112)
+			stable_change_repl_state(peer_device, L_WF_BITMAP_T, CS_VERBOSE);
+		else if (peer_device->connection->agreed_pro_version < 110)
+			stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
+#else
 		if (peer_device->connection->agreed_pro_version < 110)
 			stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
+#endif
 		else
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		break;
@@ -2476,7 +2488,15 @@ static void abw_start_sync(struct drbd_device *device,
 	}
 #endif
 	case L_STARTING_SYNC_S:
+#ifdef _WIN32
+		// DW-1293: peer's bitmap will be reflected on local device's bitmap to perform fast invalidate(remote).
+		if (peer_device->connection->agreed_pro_version >= 112)
+			stable_change_repl_state(peer_device, L_WF_BITMAP_S, CS_VERBOSE);
+		else
+			drbd_start_resync(peer_device, L_SYNC_SOURCE);
+#else
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
+#endif
 		break;
 	default:
 		break;
@@ -2754,7 +2774,11 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 	struct drbd_resource *resource = lost_peer->resource;
 	struct drbd_connection *connection;
 	u64 im;
-
+#ifdef _WIN32 // DW-1502 FIXME: Wait 1000ms until receive_data is completely processed 
+	LARGE_INTEGER	delay;
+	delay.QuadPart = (-1 * 1000 * 10000);   //// wait 1000ms relative
+	KeDelayExecutionThread(KernelMode, FALSE, &delay);
+#endif			
 	for_each_connection_ref(connection, im, resource) {
 		if (connection == lost_peer)
 			continue;
@@ -3037,6 +3061,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				state_change_word(state_change, n_device, n_connection, NEW);
 			bool send_state = false;
 
+#ifdef _WIN32 // DW-1447
+			bool send_bitmap = false;
+#endif
+
 			/* In case we finished a resync as resync-target update all neighbors
 			   about having a bitmap_uuid of 0 towards the previous sync-source.
 			   That needs to go out before sending the new disk state
@@ -3138,15 +3166,56 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				drbd_send_uuids(peer_device, 0, 0);
 				drbd_send_state(peer_device, new_state);
 			}
+
 			/* No point in queuing send_bitmap if we don't have a connection
 			 * anymore, so check also the _current_ state, not only the new state
 			 * at the time this work was queued. */
-			if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S &&
-			    peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+#ifdef _WIN32 // DW-1447
+			// If the SEND_BITMAP_WORK_PENDING flag is set, also check the peer's repl_state. if L_WF_BITMAP_T, queuing send_bitmap().
+			if (test_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags))
+			{
+				if (repl_state[NEW] == L_WF_BITMAP_S && peer_device->repl_state[NOW] == L_WF_BITMAP_S && 
+					peer_device->last_repl_state == L_WF_BITMAP_T)
+				{
+					send_bitmap = true;
+					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+				} 
+				else if (repl_state[NEW] != L_STARTING_SYNC_S && repl_state[NEW] != L_WF_BITMAP_S)
+				{
+					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+				}
+			}
+			else if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
+				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+			{
+				send_bitmap = true;
+			}
+#endif
+
+#ifdef _WIN32 // DW-1447
+			if (send_bitmap)
+			{
+
+#else
+			if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
+				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+			{
+#endif
 				drbd_queue_bitmap_io(device, &drbd_send_bitmap, NULL,
 						"send_bitmap (WFBitMapS)",
 						BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT,
 						peer_device);
+			}
+
+
+#ifdef _WIN32 // DW-1447
+			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T 
+				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
+			{
+				send_state = true;
+			}			
+
+#endif
 
 			if (peer_disk_state[NEW] < D_INCONSISTENT && get_ldev(device)) {
 				/* D_DISKLESS Peer becomes secondary */
@@ -3214,18 +3283,35 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			/* We are in the progress to start a full sync. SyncTarget sets all slots. */
 			if (repl_state[OLD] != L_STARTING_SYNC_T && repl_state[NEW] == L_STARTING_SYNC_T)
 				drbd_queue_bitmap_io(device,
+#ifdef _WIN32
+				// DW-1293
+					&drbd_bmio_set_all_or_fast, &abw_start_sync,
+#else
 					&drbd_bmio_set_all_n_write, &abw_start_sync,
+#endif
 					"set_n_write from StartingSync",
 					BM_LOCK_CLEAR | BM_LOCK_BULK,
 					peer_device);
 
 			/* We are in the progress to start a full sync. SyncSource one slot. */
 			if (repl_state[OLD] != L_STARTING_SYNC_S && repl_state[NEW] == L_STARTING_SYNC_S)
+			{
 				drbd_queue_bitmap_io(device,
+#ifdef _WIN32
+				// DW-1293
+					&drbd_bmio_set_all_or_fast, &abw_start_sync,
+#else
 					&drbd_bmio_set_n_write, &abw_start_sync,
+#endif
 					"set_n_write from StartingSync",
 					BM_LOCK_CLEAR | BM_LOCK_BULK,
 					peer_device);
+#ifdef _WIN32
+				// DW-1447
+				set_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
+#endif
+			}
+
 
 			/* Disks got bigger while they were detached */
 			if (disk_state[NEW] > D_NEGOTIATING && peer_disk_state[NEW] > D_NEGOTIATING &&
@@ -3695,7 +3781,7 @@ static void complete_remote_state_change(struct drbd_resource *resource,
 				spin_lock_irq(&resource->req_lock);
 				__clear_remote_state_change(resource);
 				spin_unlock_irq(&resource->req_lock);
-				twopc_end_nested(resource, P_TWOPC_NO, false);
+				twopc_end_nested(resource, P_TWOPC_NO, true);
 			}
 #endif			
 			if (when_done_lock(resource, irq_flags)) {
@@ -3782,9 +3868,8 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 	for_each_connection_rcu(connection, resource) {
 		if (!test_bit(TWOPC_PREPARED, &connection->flags))
 			continue;
-		if (!(test_bit(TWOPC_YES, &connection->flags) ||
-		      test_bit(TWOPC_NO, &connection->flags) ||
-		      test_bit(TWOPC_RETRY, &connection->flags))) {
+		if(test_bit(TWOPC_NO, &connection->flags) ||
+			test_bit(TWOPC_RETRY, &connection->flags)) {
 #ifdef _WIN32 
 			static int x = 0; // globally! TODO: delete
 			if (!(x++ % 3000))
@@ -3792,9 +3877,12 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 #else
 			drbd_debug(connection, "Reply not ready yet\n");
 #endif
-			ready = false;
+			ready = true;
 			break;
 		}
+		if (!test_bit(TWOPC_YES, &connection->flags))
+			ready = false; 
+
 	}
 	rcu_read_unlock();
 	return ready;
@@ -4033,7 +4121,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	struct drbd_connection *connection, *target_connection = NULL;
 	enum drbd_state_rv rv;
 	u64 reach_immediately;
+
+#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
 	int retries = 1;
+#endif
+
 #ifdef _WIN32
     ULONG_PTR start_time;
 	// MODIFIED_BY_MANTECH DW-1204: twopc is for disconnecting.
@@ -4093,7 +4185,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	}
 	rcu_read_unlock();
 
-    retry:
+#ifndef _WIN32_SIMPLE_TWOPC // DW-1408
+	retry:
+#endif
+
 	if (current == resource->worker.task && resource->remote_state_change)
 	{
 		return __end_state_change(resource, &irq_flags, SS_CONCURRENT_ST_CHG);
@@ -4300,11 +4395,16 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1204: sending twopc prepare needs to wait crowded send buffer, takes too much time. no more retry.
-	if (bDisconnecting &&
-		rv == SS_TIMEOUT &&
-		retries >= TWOPC_TIMEOUT_RETRY_COUNT)
+	if (bDisconnecting 
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		 && rv == SS_TIMEOUT 
+#else
+		 && rv == SS_TIMEOUT 
+		 && retries >= TWOPC_TIMEOUT_RETRY_COUNT
+#endif
+		 )
 	{
-		drbd_warn(resource, "twopc timeout, no more retry(retry count: %d)\n", retries);
+		drbd_warn(resource, "twopc timeout, no more retry\n");
 		
 		if (target_connection) {
 			kref_debug_put(&target_connection->kref_debug, 8);
@@ -4319,9 +4419,10 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		return end_state_change(resource, &irq_flags);
 	}
 #endif
-
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
 	    !(context->flags & CS_DONT_RETRY)) {
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+#else
 		long timeout = twopc_retry_timeout(resource, retries++);
 #ifdef _WIN32_TWOPC
 		drbd_info(resource, "Retrying cluster-wide state change %u after %ums rv = %d (%u->%d)\n",
@@ -4332,7 +4433,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		drbd_info(resource, "Retrying cluster-wide state change after %ums\n",
 			  jiffies_to_msecs(timeout));
 #endif
-
+#endif
 		if (have_peers)
 			twopc_phase2(resource, context->vnr, 0, &request, reach_immediately);
 		if (target_connection) {
@@ -4340,11 +4441,20 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			kref_put(&target_connection->kref, drbd_destroy_connection);
 			target_connection = NULL;
 		}
+
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		clear_remote_state_change(resource);
+		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
+		abort_state_change(resource, &irq_flags);
+		return rv;
+#else
 		clear_remote_state_change(resource);
 		schedule_timeout_interruptible(timeout);
 		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
 		goto retry;
+#endif
 	}
+
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1204: twopc prepare has been sent, I must send twopc commit also, need to flush send buffer.
@@ -4446,6 +4556,9 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		if (&twopc_parent->twopc_parent_list == twopc_parent->twopc_parent_list.next)
 		{
 			drbd_err(resource, "twopc_parent_list is invalid\n");
+#ifdef _WIN32	// DW-1480
+			list_del(&twopc_parent->twopc_parent_list);
+#endif
 			spin_unlock_irq(&resource->req_lock);
 			return;
 		}
@@ -4488,6 +4601,9 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 		if (twopc_reply.is_disconnect)
 			set_bit(DISCONNECT_EXPECTED, &twopc_parent->flags);
 		drbd_send_twopc_reply(twopc_parent, cmd, &twopc_reply);
+#ifdef _WIN32	// DW-1480
+		list_del(&twopc_parent->twopc_parent_list);
+#endif
 		kref_debug_put(&twopc_parent->kref_debug, 9);
 		kref_put(&twopc_parent->kref, drbd_destroy_connection);
 	}

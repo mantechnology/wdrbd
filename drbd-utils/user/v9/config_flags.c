@@ -719,7 +719,8 @@ const char *read_balancing_map[] = {
 	{ "ping-int", NUMERIC(ping_int, PING_INT),					\
           .unit = "seconds" },								\
 	{ "sndbuf-size", NUMERIC(sndbuf_size, SNDBUF_SIZE),				\
-          .unit = "bytes" },								\
+	/* DW-1421 : set implicit_clamp to true to avoid numeric_check */				\ 
+          .unit = "bytes", .implicit_clamp = true },								\
 	{ "rcvbuf-size", NUMERIC(rcvbuf_size, RCVBUF_SIZE),				\
           .unit = "bytes" },								\
 	{ "ko-count", NUMERIC(ko_count, KO_COUNT) },					\

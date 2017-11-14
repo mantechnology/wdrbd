@@ -7,6 +7,10 @@
 #define POISON_POINTER_DELTA		0
 #endif
 
+#ifdef _WIN32
+#include <stdbool.h>
+#endif
+
 #define LIST_POISON1			0 
 #define LIST_POISON2			0 
 
@@ -36,6 +40,61 @@ static __inline void INIT_LIST_HEAD(struct list_head *list)
 	list->next = list;
 	list->prev = list;
 }
+
+/*
+ * Check that the data structures for the list manipulations are reasonably
+ * valid. Failures here indicate memory corruption (and possibly an exploit
+ * attempt).
+ */
+static bool __list_add_valid(struct list_head *new, struct list_head *prev, struct list_head *next)
+{
+#ifdef _WIN32 //DW-1480
+	if (next->prev != prev)
+	{
+		// list_add corruption.
+		return false;
+	}
+	if (prev->next != next)
+	{
+		// list_add corruption.
+		return false;
+	}
+	if (new == prev || new == next)
+	{
+		//list_add double add.
+		return false;
+	}
+	if (new->next != new->prev)
+	{
+		// new is not initialized.
+		return false;
+	}
+	return true;
+#else
+	if (CHECK_DATA_CORRUPTION(next->prev != prev,
+			"list_add corruption. next->prev should be prev (%p), but was %p. (next=%p).\n",
+			prev, next->prev, next) ||
+	    CHECK_DATA_CORRUPTION(prev->next != next,
+			"list_add corruption. prev->next should be next (%p), but was %p. (prev=%p).\n",
+			next, prev->next, prev) ||
+	    CHECK_DATA_CORRUPTION(new == prev || new == next,
+			"list_add double add: new=%p, prev=%p, next=%p.\n",
+			new, prev, next))
+		return false;
+
+	return true;
+#endif
+}
+
+#ifdef _WIN32 //DW-1480
+static bool list_add_valid(struct list_head *new, struct list_head *prev)
+{
+	if(new == 0 || prev == 0 || prev->next == 0)
+		return false;
+	return __list_add_valid(new, prev, prev->next);
+}
+#endif
+
 
 #ifdef _WIN32
 static void __list_add(struct list_head *new, struct list_head *prev, struct list_head *next)

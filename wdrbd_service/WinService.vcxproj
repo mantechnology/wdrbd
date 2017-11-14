@@ -47,12 +47,16 @@
     <LinkIncremental>false</LinkIncremental>
     <TargetName>drbdService</TargetName>
     <TargetExt>.exe</TargetExt>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
+    <ReferencePath>$(VC_ReferencesPath_x86);</ReferencePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(ProjectDir)$(Configuration)</OutDir>
     <IntDir>$(ProjectDir)$(Configuration)</IntDir>
     <LinkIncremental>true</LinkIncremental>
     <TargetName>drbdService</TargetName>
+    <ExecutablePath>$(ExecutablePath)</ExecutablePath>
+    <ReferencePath>$(VC_ReferencesPath_x86);</ReferencePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -88,7 +92,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
+      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
+copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -128,7 +133,8 @@
       <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
+      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
+copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

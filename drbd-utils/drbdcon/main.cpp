@@ -11,10 +11,6 @@ usage()
 	printf("usage: drbdcon cmds options \n\n"
 		"cmds:\n"
 /*		"   /proc/drbd \n"*/
-/*		"   /init_thread \n"*/
-/*		"   /close_thread \n"*/
-/*		"   /start_volume \n"*/
-/*		"   /stop_volume\n"*/
 /*		"   /get_volume_size \n"*/
 		"   /nodelayedack [ip|guid]\n"
         "   /delayedack_enable [ip|guid]\n"
@@ -24,6 +20,7 @@ usage()
 		"   /minlog_lv dbg [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
+		"	/drbdlock_status\n"
 		"   /info\n"
 		"   /status : drbd version\n"
 
@@ -37,8 +34,6 @@ usage()
 /*		"drbdcon /proc/drbd\n"*/
 /*		"drbdcon /status\n"*/
 /*		"drbdcon /s\n"*/
-/*		"drbdcon /letter F /start_volume \n"*/
-/*		"drbdcon /letter F /init_thread \n"*/
         "drbdcon /nodelayedack 10.10.0.1 \n"
         /*"drbdcon /d F \n"*/
         "drbdcon /m F \n"
@@ -109,7 +104,6 @@ main(int argc, char* argv [])
 	DWORD	res = ERROR_SUCCESS;
 	int  	argIndex = 0;
 	UCHAR	Letter = 'C';
-	char	StartFlag = 0, StopFlag = 0;
 	char	GetVolumeSizeFlag = 0;
 	char	ProcDrbdFlag = 0;
 	char	ProcDrbdFlagWithLetter = 0;
@@ -132,6 +126,7 @@ main(int argc, char* argv [])
 	char	*ProviderName = NULL;
 	char	*LoggingData = NULL;
 	char	VolumesInfoFlag = 0;
+	char	Drbdlock_status = 0;
 	char	Verbose = 0;
 
     int     Force = 0;
@@ -148,15 +143,7 @@ main(int argc, char* argv [])
 
 	for (argIndex = 1; argIndex < argc; argIndex++)
 	{
-		if (strcmp(argv[argIndex], "/start_volume") == 0)
-		{
-			StartFlag++;
-		}
-		else if (strcmp(argv[argIndex], "/stop_volume") == 0)
-		{
-			StopFlag++;
-		}
-		else if (strcmp(argv[argIndex], "/get_volume_size") == 0)
+		if (strcmp(argv[argIndex], "/get_volume_size") == 0)
 		{
 			GetVolumeSizeFlag++;
 		}
@@ -361,6 +348,10 @@ main(int argc, char* argv [])
 			else
 				usage();
 		}
+		else if (!strcmp(argv[argIndex], "/drbdlock_status"))
+		{
+			Drbdlock_status++;
+		}
 		else if (!strcmp(argv[argIndex], "/info"))
 		{
 			VolumesInfoFlag++;
@@ -373,28 +364,6 @@ main(int argc, char* argv [])
 		{
 			printf("Please check undefined arg[%d]=(%s)\n", argIndex, argv[argIndex]);
 		}
-	}
-
-	if (StartFlag)
-	{
-		res = MVOL_StartVolume( Letter );
-		if( res != ERROR_SUCCESS )
-		{
-			fprintf( stderr, "Failed MVOL_StartVolume. Err=%u\n", res );
-		}
-
-		return res;
-	}
-
-	if (StopFlag)
-	{
-		res = MVOL_StopVolume( Letter );
-		if( res != ERROR_SUCCESS )
-		{
-			fprintf( stderr, "Failed MVOL_StopVolume. Err=%u\n", res );
-		}
-
-		return res;
 	}
 
 	if (GetVolumeSizeFlag)
@@ -564,6 +533,11 @@ main(int argc, char* argv [])
 		}
 
 		return res;
+	}
+
+	if (Drbdlock_status)
+	{
+		res = GetDrbdlockStatus();
 	}
 
 	if (HandlerUseFlag)

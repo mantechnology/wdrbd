@@ -1,0 +1,549 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Server2008 Debug|Win32">
+      <Configuration>Server2008 Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Debug|x64">
+      <Configuration>Server2008 Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Release|Win32">
+      <Configuration>Server2008 Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Server2008 Release|x64">
+      <Configuration>Server2008 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8.1 Debug|Win32">
+      <Configuration>Win8.1 Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8.1 Release|Win32">
+      <Configuration>Win8.1 Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8 Debug|Win32">
+      <Configuration>Win8 Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8 Release|Win32">
+      <Configuration>Win8 Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win7 Debug|Win32">
+      <Configuration>Win7 Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win7 Release|Win32">
+      <Configuration>Win7 Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8.1 Debug|x64">
+      <Configuration>Win8.1 Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8.1 Release|x64">
+      <Configuration>Win8.1 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8 Debug|x64">
+      <Configuration>Win8 Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win8 Release|x64">
+      <Configuration>Win8 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win7 Debug|x64">
+      <Configuration>Win7 Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Win7 Release|x64">
+      <Configuration>Win7 Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="drbdlock_ops.c" />
+    <ClCompile Include="volBlock.c" />
+    <ResourceCompile Include="drbdlock.rc" />
+    <ClCompile Include="drbdlock.c" />
+    <Inf Include="drbdlock.inf" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}</ProjectGuid>
+    <TemplateGuid>{f2f62967-0815-4fd7-9b86-6eedcac766eb}</TemplateGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <MinimumVisualStudioVersion>11.0</MinimumVisualStudioVersion>
+    <Configuration>Win8.1 Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">Win32</Platform>
+    <RootNamespace>drbdlock</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'" Label="Configuration">
+    <TargetVersion>WindowsV6.3</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'" Label="Configuration">
+    <TargetVersion>WindowsV6.3</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'" Label="Configuration">
+    <TargetVersion>WindowsV6.3</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'" Label="Configuration">
+    <TargetVersion>WindowsV6.3</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'" Label="Configuration">
+    <TargetVersion>Windows8</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'" Label="Configuration">
+    <TargetVersion>Windows7</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver8.1</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>WDM</DriverType>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WindowsSdkDir_80)Include\km\crt;$(WindowsSdkDir_80)Include\km;$(WindowsSdkDir_80)Include\shared</IncludePath>
+    <LibraryPath>$(WindowsSdkDir_80)lib\wlh\KM\$(DDKPlatform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WindowsSdkDir_80)Include\km\crt;$(WindowsSdkDir_80)Include\km;$(WindowsSdkDir_80)Include\shared</IncludePath>
+    <LibraryPath>$(WindowsSdkDir_80)lib\wlh\KM\$(DDKPlatform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WindowsSdkDir_80)Include\km\crt;$(WindowsSdkDir_80)Include\km;$(WindowsSdkDir_80)Include\shared</IncludePath>
+    <LibraryPath>$(WindowsSdkDir_80)lib\wlh\KM\$(DDKPlatform);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(ProjectDir);$(WindowsSdkDir_80)Include\km\crt;$(WindowsSdkDir_80)Include\km;$(WindowsSdkDir_80)Include\shared</IncludePath>
+    <LibraryPath>$(WindowsSdkDir_80)lib\wlh\KM\$(DDKPlatform);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|Win32'">
+    <Link>
+      <AdditionalDependencies>$(WindowsSdkDir_80)lib\wlh\km\x86\fltmgr.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\BufferOverflowK.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\ntoskrnl.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\hal.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\wmilib.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\ntstrsafe.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <AdditionalLibraryDirectories>$(WindowsSdkDir_80)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(WindowsSdkDir_80)lib\wlhkm\x86\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_X86_=1;i386=1;STD_CALL;WINNT=1</PreprocessorDefinitions>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|Win32'">
+    <Link>
+      <AdditionalDependencies>$(WindowsSdkDir_80)lib\wlh\km\x86\fltmgr.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\BufferOverflowK.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\ntoskrnl.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\hal.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\wmilib.lib;$(WindowsSdkDir_80)lib\wlh\km\x86\ntstrsafe.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(WindowsSdkDir_80)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Version>6.0</Version>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(WindowsSdkDir_80)lib\wlhkm\x86\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_X86_=1;i386=1;STD_CALL;WINNT=1</PreprocessorDefinitions>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
+    <Link>
+      <AdditionalDependencies>$(WindowsSdkDir_80)lib\wlh\km\x64\fltmgr.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\BufferOverflowK.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\ntoskrnl.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\hal.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\wmilib.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\ntstrsafe.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(WindowsSdkDir_80)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Version>6.0</Version>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(WindowsSdkDir_80)lib\wlh\km\x64\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_WIN64;_AMD64_;AMD64;WINNT=1</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Release|x64'">
+    <Link>
+      <AdditionalDependencies>$(WindowsSdkDir_80)lib\wlh\km\x64\fltmgr.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\BufferOverflowK.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\ntoskrnl.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\hal.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\wmilib.lib;$(WindowsSdkDir_80)lib\wlh\km\x64\ntstrsafe.lib</AdditionalDependencies>
+      <Version>6.0</Version>
+      <MinimumRequiredVersion>6.0</MinimumRequiredVersion>
+      <AdditionalLibraryDirectories>$(WindowsSdkDir_80)\Lib\wlh\km\$(DDKPlatform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(WindowsSdkDir_80)lib\wlh\km\x64\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0600;WINVER=0x0600;NTDDI_VERSION=0x06000100;_WIN64;_AMD64_;AMD64;WINNT=1</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fltmgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>cd $(ProjectDir)..\
+set destdir="build\drbd\$(PlatformTarget)\$(ConfigurationName)\bin"
+mkdir %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.sys" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.inf" %25destdir%25
+copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <FilesToPackage Include="$(TargetPath)" />
+    <FilesToPackage Include="@(Inf->'%(CopyOutput)')" Condition="'@(Inf)'!=''" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="drbdlock.h" />
+    <ClInclude Include="drbdlock_comm.h" />
+    <ClInclude Include="drbdlock_proc.h" />
+    <ClInclude Include="drbdlock_struct.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="volBlock.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

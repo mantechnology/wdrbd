@@ -38,17 +38,28 @@
 
 typedef struct _MVOL_THREAD
 {
+#ifndef _WIN32_MULTIVOL_THREAD
 	PDEVICE_OBJECT				DeviceObject;		// mvol Volume DeviceObject
 	BOOLEAN						Active;
+#endif
 	BOOLEAN						exit_thread;
 	LIST_ENTRY					ListHead;
 	KSPIN_LOCK					ListLock;
 	MVOL_SECURITY_CLIENT_CONTEXT	se_client_context;
 	KEVENT						RequestEvent;
 	PVOID						pThread;
-	ULONG						Id;                 // MULTI_WRITE_HOOKER_THREADS
 	KEVENT						SplitIoDoneEvent;
 } MVOL_THREAD, *PMVOL_THREAD;
+
+#ifdef _WIN32_MULTIVOL_THREAD
+typedef struct _MVOL_WORK_WRAPPER
+{
+    PDEVICE_OBJECT                DeviceObject;
+    PIRP                        Irp;
+    LIST_ENTRY                    ListEntry;
+} MVOL_WORK_WRAPPER, *PMVOL_WORK_WRAPPER;
+#endif
+
 
 #define	MVOL_MAGIC				0x853a2954
 
@@ -88,9 +99,8 @@ typedef struct _VOLUME_EXTENSION
 	UNICODE_STRING		MountPoint;	// IoVolumeDeviceToDosName()
 	UNICODE_STRING		VolumeGuid;
 
-#ifdef MULTI_WRITE_HOOKER_THREADS
-	ULONG				Rr; // MULTI_WRITE_HOOKER_THREADS
-	MVOL_THREAD			WorkThreadInfo[5]; 
+#ifdef _WIN32_MULTIVOL_THREAD
+	PMVOL_THREAD			WorkThreadInfo;
 #else
 	MVOL_THREAD			WorkThreadInfo;
 #endif

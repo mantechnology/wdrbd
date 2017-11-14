@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <Mountmgr.h> 
 #include <ntddvol.h>
+#include <ntdddisk.h>
+#include <ntstrsafe.h>
 
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"
@@ -37,6 +39,8 @@
 #pragma alloc_text(PAGE, FsctlCreateVolume)
 #endif
 #endif
+
+//#define _WIN32_CHECK_PARTITION_STYLE // DW-1495
 
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
@@ -683,9 +687,39 @@ bool ChangeVolumeReadonly(unsigned int minor, bool set)
 
 		VOLUME_SET_GPT_ATTRIBUTES_INFORMATION vsgai = { 0, };
 		vsgai.GptAttributes = vggai.GptAttributes;
+		
+#ifdef  _WIN32_CHECK_PARTITION_STYLE
+		/* DW-1495: Make sure the disk is the disk is MBR and GPT and specify another argument. 
+		 * If you are using only GPT disks, att_mod_mutex is not required and can be removed later. 
+		 */ 
+		PARTITION_INFORMATION_EX	partInfoEx;
+		
+		status = ZwDeviceIoControlFile(hVolume, NULL, NULL, NULL, &iosb, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfoEx, sizeof(partInfoEx));
+		if (status != STATUS_SUCCESS)
+		{
+			WDRBD_ERROR("ZwDeviceIoControlFile with IOCTL_DISK_GET_PARTITION_INFO_EX failed, status(0x%x)\n", status);
+			break;
+		}
+		else
+		{
+			WDRBD_TRACE("success to get PARTITION_FORMATION_EX for volume(minor: %d) PartitionStyle = %d\n", minor, partInfoEx.PartitionStyle);
+		}
+		
+		// documentation says that ApplyToAllConnectedVolumes is required to support MBR disk.
+		// PARTITION_STYLE_MBR = 0, PARTITION_STYLE_GPT = 1, PARTITION_STYLE_RAW = 2
+		if (partInfoEx.PartitionStyle == 0){ 
+			vsgai.ApplyToAllConnectedVolumes = TRUE;
+		}
+		else if(partInfoEx.PartitionStyle == 1){
+			vsgai.ApplyToAllConnectedVolumes = FALSE; 
+		} 
+		else {
+			WDRBD_ERROR("This PartitionStyle is Raw (minor: %d)\n", minor);
+		}
+#else
 		// documentation says that ApplyToAllConnectedVolumes is required to support MBR disk.
 		vsgai.ApplyToAllConnectedVolumes = TRUE;
-
+#endif
 		status = ZwDeviceIoControlFile(hVolume, NULL, NULL, NULL, &iosb, IOCTL_VOLUME_SET_GPT_ATTRIBUTES, &vsgai, sizeof(vsgai), NULL, 0);
 		if (status != STATUS_SUCCESS)
 		{
@@ -1594,6 +1628,56 @@ BOOLEAN isFastInitialSync()
 	WDRBD_INFO("Fast sync %s\n", bRet ? "enabled" : "disabled");
 	
 	return bRet;
+}
+
+// DW-1327: notifies callback object with given name and parameter.
+NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	OBJECT_ATTRIBUTES cboa = { 0, };
+	UNICODE_STRING usCbName;
+	PCALLBACK_OBJECT g_pCallbackObj;
+	PVOID g_pCallbackReg;
+
+	if (pszCallbackName == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+	
+	RtlInitUnicodeString(&usCbName, pszCallbackName);
+	InitializeObjectAttributes(&cboa, &usCbName, OBJ_CASE_INSENSITIVE, 0, 0);
+
+	status = ExCreateCallback(&g_pCallbackObj, &cboa, FALSE, TRUE);
+
+	if (NT_SUCCESS(status))
+	{
+		ExNotifyCallback(g_pCallbackObj, pParam, NULL);
+		ObDereferenceObject(g_pCallbackObj);
+	}
+	else
+		WDRBD_ERROR("Failed to open callback object for %ws, status : 0x%x\n", pszCallbackName, status);
+
+	return status;
+}
+
+// DW-1327: notifies callback object of drbdlock, this routine is used to block or allow I/O by drbdlock.
+NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlock)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DRBDLOCK_VOLUME_CONTROL volumeControl = { 0, };
+	
+	volumeControl.volume.volumeType = VOLUME_TYPE_DEVICE_OBJECT;
+	volumeControl.volume.volumeID.pVolumeObject = pVolumeExtension->PhysicalDeviceObject;
+	volumeControl.bBlock = bBlock;
+
+	status = NotifyCallbackObject(DRBDLOCK_CALLBACK_NAME, &volumeControl);
+
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
+
+	return status;
 }
 
 /**

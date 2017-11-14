@@ -223,8 +223,9 @@ enum drbd_ret_code {
 	ERR_IMPLICIT_SHRINK     = 170,
 	ERR_INVALID_PEER_NODE_ID = 171,
 	ERR_CREATE_TRANSPORT    = 172,
-	ERR_LOCAL_AND_PEER_ADDR = 173,
-
+	ERR_LOCAL_AND_PEER_ADDR = 173, 
+	ERR_CONG_SNDBUF_SIZE = 174,
+	ERR_CONG_CANT_CHANGE_SNDBUF_SIZE = 175, 
 	/* insert new ones above this line */
 	AFTER_LAST_ERR_CODE
 };
@@ -501,7 +502,10 @@ enum drbd_peer_state {
 
 #define _WIN32_MVFL
 #define _WIN32_MULTI_VOLUME
+
 #define _WIN32_TWOPC
+#define _WIN32_SIMPLE_TWOPC
 #define _WIN32_RCU_LOCKED // DW-1477 : Lock if not locked.
 #define _WIN32_NOWAIT_CLOSESOCKET // DW-1479 : Do not wait for WskCloseSocket to complete.
+
 #endif

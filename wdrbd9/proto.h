@@ -82,10 +82,6 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength );
 NTSTATUS
 IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength );
 NTSTATUS
-IOCTL_VolumeStart( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
-IOCTL_VolumeStop( PDEVICE_OBJECT DeviceObject, PIRP Irp );
-NTSTATUS
 IOCTL_GetVolumeSize( PDEVICE_OBJECT DeviceObject, PIRP Irp );
 NTSTATUS
 IOCTL_VolumeReadOff( PDEVICE_OBJECT DeviceObject, PIRP Irp, BOOLEAN ReadEnable );
@@ -107,12 +103,20 @@ IOCTL_SetHandlerUse(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 //
 // thread.c
 //
+#ifdef _WIN32_MULTIVOL_THREAD
+NTSTATUS
+mvolInitializeThread( PMVOL_THREAD pThreadInfo, PKSTART_ROUTINE ThreadRoutine );
+#else
 NTSTATUS
 mvolInitializeThread( PVOLUME_EXTENSION DeviceExtension,
 	PMVOL_THREAD pThreadInfo, PKSTART_ROUTINE ThreadRoutine );
+#endif
 VOID
 mvolTerminateThread( PMVOL_THREAD pThreadInfo );
 VOID
 mvolWorkThread( PVOID arg );
-
+#ifdef _WIN32_MULTIVOL_THREAD
+VOID
+mvolQueueWork(PMVOL_THREAD pThreadInfo, PDEVICE_OBJECT DeviceObject, PIRP irp);
+#endif
 #endif __PROTO_H__

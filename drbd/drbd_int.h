@@ -152,6 +152,7 @@ struct drbd_connection;
             __r->name, __d->vnr, __d->minor, drbd_disk_str(__d->disk_state[NOW]), __d->flags, __VA_ARGS__);	\
     } while (0)
 
+// DW-1494 : (peer_device)->uuid_flags has caused a problem with the 32-bit operating system and therefore removed
 #define __drbd_printk_peer_device(level, peer_device, fmt, ...)	\
     do {								\
         const struct drbd_device *__d;				\
@@ -906,6 +907,8 @@ enum {
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	UNSTABLE_TRIGGER_CP,	/* MODIFIED_BY_MANTECH DW-1341: Do Trigger when my stability is unstable for Crashed Primay wiered case*/
 #endif
+	SEND_BITMAP_WORK_PENDING, /* DW-1447 : Do not queue send_bitmap() until the peer's repl_state changes to WFBitmapT.
+										Used when invalidate-remote/invalidate.*/
 #endif
 };
 
@@ -1250,6 +1253,9 @@ struct drbd_resource {
 	bool bPreSecondaryLock;
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
+#endif
+#ifdef _WIN32_MULTIVOL_THREAD
+	MVOL_THREAD			WorkThreadInfo;
 #endif
 
 };
@@ -1972,10 +1978,14 @@ extern int drbd_bitmap_io_from_worker(struct drbd_device *,
 extern int drbd_bmio_set_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 #ifdef _WIN32
 // DW-844
-extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side) __must_hold(local);
+extern bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *, enum drbd_repl_state side, bool bitmap_lock) __must_hold(local);
 #endif
 extern int drbd_bmio_clear_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
 extern int drbd_bmio_set_all_n_write(struct drbd_device *device, struct drbd_peer_device *) __must_hold(local);
+#ifdef _WIN32
+// DW-1293
+extern int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_device *peer_device) __must_hold(local);
+#endif
 extern bool drbd_device_stable(struct drbd_device *device, u64 *authoritative);
 #ifdef _WIN32_STABLE_SYNCSOURCE
 // DW-1315
@@ -2544,24 +2554,25 @@ static __inline sector_t drbd_get_capacity(struct block_device *bdev)
 		WDRBD_WARN("Null argument\n");
 		return 0;
 	}
-
+	
 	if (bdev->d_size) {
 		return bdev->d_size >> 9;
 	}
 
+	// Maybe... need to recalculate volume size
+	PVOLUME_EXTENSION pvext = (bdev->bd_disk) ? bdev->bd_disk->pDeviceExtension : NULL;
+	if (pvext && (KeGetCurrentIrql() < 2)) {
+		bdev->d_size = get_targetdev_volsize(pvext);	// real size
+		return bdev->d_size >> 9;
+	} 
+	
 	if (bdev->bd_contains) {	// not real device
 		bdev = bdev->bd_contains;
 		if (bdev->d_size) {
 			return bdev->d_size >> 9;
 		}
 	}
-
-	// Maybe... need to recalculate volume size
-	PVOLUME_EXTENSION pvext = (bdev->bd_disk) ? bdev->bd_disk->pDeviceExtension : NULL;
-	if (!pvext && (KeGetCurrentIrql() < 2)) {
-		bdev->d_size = get_targetdev_volsize(pvext);	// real size
-	}
-
+	
 	return bdev->d_size >> 9;
 #else
 	/* return bdev ? get_capacity(bdev->bd_disk) : 0; */
@@ -2645,11 +2656,9 @@ extern const struct file_operations drbd_proc_fops;
 #endif
 
 /* drbd_actlog.c */
-extern bool drbd_al_begin_io_prepare(struct drbd_device *device, struct drbd_interval *i);
 extern int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_al_begin_io_commit(struct drbd_device *device);
 extern bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i);
-extern void drbd_al_begin_io(struct drbd_device *device, struct drbd_interval *i);
 extern int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i);
 extern bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_rs_complete_io(struct drbd_peer_device *, sector_t);
@@ -3233,10 +3242,7 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 
 			/* Allow IO in BM exchange states with new protocols */
 		case L_WF_BITMAP_S:
-#ifndef _WIN32
-			// MODIFIED_BY_MANTECH DW-1121: sending out-of-sync when repl state is WFBitmapS possibly causes stopping resync, by setting new out-of-sync sector which bm_resync_fo has been already swept.
 			if (peer_device->connection->agreed_pro_version < 96)
-#endif
 				stable = false;
 			break;
 

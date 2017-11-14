@@ -424,6 +424,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 			kref_debug_get(&adm_ctx->resource->kref_debug, 2);
 		}
 	}
+
 	return NO_ERROR;
 
 fail:
@@ -1596,6 +1597,15 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
         else if (retcode == SS_TARGET_DISK_TOO_SMALL)
             goto fail;
+
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			if (pvext)
+			{
+				SetDrbdlockIoBlock(pvext, FALSE);
+			}
+		}
 #endif
 #if 0 // _WIN32 // DW-778
         int vnr;
@@ -1612,6 +1622,17 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		int vnr;
 		retcode = SS_SUCCESS;
 		struct drbd_device * device;
+
+		// DW-1327: 
+		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+		{
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			if (pvext)
+			{
+				SetDrbdlockIoBlock(pvext, TRUE);
+			}
+		}
+
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
 			if (device->disk_state[NOW] == D_DISKLESS)
@@ -1655,6 +1676,8 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 			}
 			FsctlUnlockVolume(device->minor);
 		}
+
+		
 #else
         int vnr;
         struct drbd_device * device;
@@ -2813,10 +2836,12 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 				bdev_path, err);
 		bdev = ERR_PTR(err);
 	}
+#if 0 // DW-1510 The bd_contains value is not appropriate when the device size is updated. Return bdev.
 #ifdef _WIN32
 	if (bdev->bd_contains) {
 		return bdev->bd_contains;
 	}
+#endif
 #endif
 	return bdev;
 }
@@ -3094,6 +3119,24 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		NTSTATUS status = STATUS_UNSUCCESSFUL;
 		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
 		if (pvext) {
+			// DW-1461: set volume protection when attaching.
+			SetDrbdlockIoBlock(pvext, resource->role[NOW] == R_PRIMARY ? FALSE : TRUE);
+#ifdef _WIN32_MULTIVOL_THREAD
+			pvext->WorkThreadInfo = &resource->WorkThreadInfo;
+
+			FsctlLockVolume(dh->minor);
+
+			pvext->Active = TRUE;
+			status = FsctlFlushDismountVolume(dh->minor, true);
+
+			FsctlUnlockVolume(dh->minor);
+
+			if (!NT_SUCCESS(status)) {
+				retcode = ERR_RES_NOT_KNOWN;
+				goto force_diskless_dec;
+			}
+			
+#else
 			status = mvolInitializeThread(pvext, &pvext->WorkThreadInfo, mvolWorkThread);
 			if (NT_SUCCESS(status)) {
 				FsctlLockVolume(dh->minor);
@@ -3119,6 +3162,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			else {
 				WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
 			}
+#endif
 		}
 	}
 #endif
@@ -3605,6 +3649,12 @@ _check_net_options(struct drbd_connection *connection, struct net_conf *old_net_
 	    new_net_conf->wire_protocol != DRBD_PROT_A)
 		return ERR_CONG_NOT_PROTO_A;
 
+#ifdef _WIN32 // DW-1436 sndbuf-size must be at least 10M 
+	if (new_net_conf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN && new_net_conf->sndbuf_size > 0){
+		return ERR_CONG_SNDBUF_SIZE;
+	}
+#endif 
+
 	return NO_ERROR;
 }
 
@@ -3762,27 +3812,12 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
-#ifdef _WIN32 // DW-730
-	// if all peer_device's replication state is L_OFF, net options can be changed.  
 
-	if (new_net_conf->wire_protocol != old_net_conf->wire_protocol)
-	{
-		if (connection) {
-			struct drbd_peer_device* peer_device = NULL;
-			int i = 0;
-			idr_for_each_entry(struct drbd_peer_device*, &connection->peer_devices, peer_device, i) {
-				if (peer_device->repl_state[NOW] > L_OFF) {
-					drbd_msg_put_info(adm_ctx.reply_skb, "if all peer_device's replication state is L_OFF, net options can be changed. maybe you should drbdadm down.");
-					retcode = ERR_INVALID_REQUEST;
-					goto fail;
-				}
-			}
-		}
-		else {
-			drbd_msg_put_info(adm_ctx.reply_skb, "drbd_adm_net_opts's internal error, connection is null.");
-			retcode = ERR_INVALID_REQUEST;
-			goto fail;
-		}
+#ifdef _WIN32 
+	// DW-1436 unable to change send buffer size dynamically
+	if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+		retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+		goto fail;
 	}	
 #endif
 
@@ -5208,6 +5243,10 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_resource *resource;
 	struct drbd_device *device;
 	int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+#ifdef _WIN32
+	// DW-1391
+	long timeo = 5*HZ;
+#endif
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_PEER_DEVICE);
 	if (!adm_ctx.reply_skb)
@@ -5274,6 +5313,26 @@ int drbd_adm_invalidate_peer(struct sk_buff *skb, struct genl_info *info)
 	}
 	drbd_resume_io(device);
 
+#ifdef _WIN32
+	// DW-1391 : wait for bm_io_work to complete, then run the next invalidate peer. 
+	wait_event_interruptible_timeout(retcode, resource->state_wait, 
+			peer_device->repl_state[NOW] != L_STARTING_SYNC_S,
+			timeo);
+	if (-DRBD_SIGKILL == retcode)
+	{ 
+		retcode = SS_INTERRUPTED;
+	}
+	else if (-ETIMEDOUT == retcode)
+	{
+		retcode = SS_TIMEOUT;
+	}
+	else
+	{
+		retcode = SS_SUCCESS;
+	}
+		
+#endif
+	
 	mutex_unlock(&resource->adm_mutex);
 	put_ldev(device);
 out:
@@ -6400,6 +6459,15 @@ int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
 		resource_to_info(&resource_info, resource);
 		notify_resource_state(NULL, 0, resource, &resource_info, NOTIFY_CREATE);
 		mutex_unlock(&notification_mutex);
+
+#ifdef _WIN32_MULTIVOL_THREAD
+		NTSTATUS status;
+		status = mvolInitializeThread(&resource->WorkThreadInfo, mvolWorkThread);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_WARN("Failed to initialize WorkThread. status(0x%x)\n", status);
+		}
+#endif
+		
 	} else {
 #ifndef _WIN32
 		module_put(THIS_MODULE);
@@ -6649,6 +6717,17 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32_MULTI_VOLUME    
 	int vnr;
 	retcode = SS_SUCCESS;
+
+	// DW-1461: set volume protection when going down. 
+	idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+	{
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		if (pvext)
+		{
+			SetDrbdlockIoBlock(pvext, TRUE);
+		}
+	}
+
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
 	{
 		if (device->disk_state[NOW] == D_DISKLESS)
@@ -6706,6 +6785,12 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #else
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i)
     {
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		if (pvext)
+		{
+			SetDrbdlockIoBlock(pvext, TRUE);
+		}
+
         if (D_DISKLESS == device->disk_state[NOW])
         {
             retcode = drbd_set_role(resource, R_SECONDARY, false);

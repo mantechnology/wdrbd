@@ -680,9 +680,19 @@ int call_cmd(const struct adm_cmd *cmd, const struct cfg_ctx *ctx,
 			}
 		}
 	} else if (iterate_vols) {
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1459 : Set KEEP_RUNNING to run attach_cmd on all volumes.
+		bool is_attach = (cmd == &attach_cmd);
+		if (is_attach)
+			on_error = KEEP_RUNNING;
+#endif		
 		for_each_volume(vol, &res->me->volumes) {
 			tmp_ctx.vol = vol;
 			ret = __call_cmd_fn(&tmp_ctx, on_error);
+#ifdef _WIN32 // DW-1459 : attach_cmd runs on all volumes, regardless of return value.
+			if (is_attach)
+				continue;
+#endif
 			if (ret)
 				break;
 		}
@@ -1159,16 +1169,21 @@ DWORD del_registry_volume(char * letter)
 static bool is_valid_backend_option(const char* name, const struct context_def *context_def)
 {
 	const struct field_def *field;
-	/* options have a leading "--", while field names do not have that -> name + 2 */
-		
+	int len_to_equal_sign_or_nul; 
+
 	if (context_def == &wildcard_ctx)
 		return true;
 	
 	if (!context_def || strlen(name) <= 2)
 		return false;
 	
+	/* options have a leading "--", while field names do not have that */
+	name += 2; 
+	/* compare only until first equal sign, if any */
+	len_to_equal_sign_or_nul = strcspn(name, "="); 
+
 	for (field = context_def->fields; field->name; field++) {
-		if (!strcmp(name + 2, field->name))
+		if (!strncmp(name, field->name, len_to_equal_sign_or_nul))
 			return true;
 	}
 	return false;

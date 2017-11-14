@@ -656,6 +656,8 @@ static const char *error_messages[] = {
 	EM(ERR_INVALID_PEER_NODE_ID) = "Invalid peer-node-id\n",
 	EM(ERR_CREATE_TRANSPORT) = "Failed to create transport (drbd_transport_xxx module missing?)\n",
 	EM(ERR_LOCAL_AND_PEER_ADDR) = "Combination of local address(port) and remote address(port) already in use\n",
+	EM(ERR_CONG_SNDBUF_SIZE) = "sndbuf-size must be at least 10M to use send buffer\n",
+	EM(ERR_CONG_CANT_CHANGE_SNDBUF_SIZE) = "sndbuf-size cannot be dynamically configured\n",
 };
 #define MAX_ERROR (sizeof(error_messages)/sizeof(*error_messages))
 const char * error_to_string(int err_no)
