@@ -36,13 +36,73 @@
 #endif
 #include "./drbd-kernel-compat/drbd_wrappers.h"
 
+// MODIFIED_BY_MANTECH DW-1513 : Output LRU status like lc_seq_printf_stats function
+#ifdef WIN_AL_BUG_ON
+void private_strcat(char* buf, char* string, unsigned int string_value){
+	char tmp[256] = { 0, }; 
+	strcat(buf, string);
+	sprintf(tmp, "%u", string_value);
+	strcat(buf, tmp); 
+}
+
+void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
+	char print_lru[1024] = { 0, };
+	char print_ele[1024] = { 0, }; 
+
+	if (lc){
+		if (lc->name)
+			sprintf(print_lru, "name=%s ", lc->name);
+		if (lc->nr_elements)
+			private_strcat(print_lru, " nr_elements= ", lc->nr_elements);
+		if (lc->max_pending_changes)
+			private_strcat(print_lru, " max_pending_changes= ", lc->max_pending_changes);
+		if (lc->pending_changes)
+			private_strcat(print_lru, " pending_changes= ", lc->pending_changes);
+		if (lc->used){
+			private_strcat(print_lru, " used= ", lc->used);
+			private_strcat(print_lru, " hits= ", lc->hits);
+			private_strcat(print_lru, " misses= ", lc->misses);
+			private_strcat(print_lru, " starving= ", lc->starving);
+			private_strcat(print_lru, " locked= ", lc->locked);
+			private_strcat(print_lru, " changed= ", lc->changed);
+		}
+		if (lc->flags)
+			private_strcat(print_lru, " flags= ", lc->flags);
+		WDRBD_FATAL("lru : %s\n", print_lru);
+	}
+
+	if (e){
+		if (e->lc_index)
+			sprintf(print_ele, "lc_index=%u ", e->lc_index);
+		if (e->refcnt)
+			private_strcat(print_ele, " refcnt= ", e->refcnt);
+		if (e->lc_number)
+			private_strcat(print_ele, " lc_number= ", e->lc_number);
+		if (e->lc_new_number)
+			private_strcat(print_ele, " lc_new_number= ", e->lc_new_number);
+
+		WDRBD_FATAL("element : %s\n", print_ele);
+	}
+}
+#endif 
+
+
 /* this is developers aid only.
  * it catches concurrent access (lack of locking on the users part) */
+#ifdef WIN_AL_BUG_ON
+#define PARANOIA_ENTRY() do {		\
+	AL_BUG_ON(!lc, "!lc", NULL, NULL);			\
+	AL_BUG_ON(!lc->nr_elements, "!lc->nr_elements", lc, NULL);	\
+	AL_BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags), "test_and_set_bit(__LC_PARANOIA, &lc->flags)", lc, NULL); \
+	} while (0)
+#else 
 #define PARANOIA_ENTRY() do {		\
 	BUG_ON(!lc);			\
 	BUG_ON(!lc->nr_elements);	\
 	BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags)); \
-} while (0)
+		} while (0)
+#endif 
+
 
 #ifdef _WIN32
 #define RETURN_VOID()     do { \
@@ -60,13 +120,21 @@
 	return x ; } while (0)
 #endif
 /* BUG() if e is not one of the elements tracked by lc */
+#ifdef WIN_AL_BUG_ON
+#define PARANOIA_LC_ELEMENT(lc, e) do {	\
+	struct lru_cache *lc_ = (lc);	\
+	struct lc_element *e_ = (e);	\
+	unsigned i = e_->lc_index;	\
+	AL_BUG_ON(i >= lc_->nr_elements, "i >= lc_->nr_elements", lc, e);	\
+	AL_BUG_ON(lc_->lc_element[i] != e_, "lc_->lc_element[i] != e_", lc, e); } while (0)
+#else 
 #define PARANOIA_LC_ELEMENT(lc, e) do {	\
 	struct lru_cache *lc_ = (lc);	\
 	struct lc_element *e_ = (e);	\
 	unsigned i = e_->lc_index;	\
 	BUG_ON(i >= lc_->nr_elements);	\
 	BUG_ON(lc_->lc_element[i] != e_); } while (0)
-
+#endif 
 
 /* We need to atomically
  *  - try to grab the lock (set LC_LOCKED)
@@ -412,8 +480,11 @@ void lc_del(struct lru_cache *lc, struct lc_element *e)
 {
 	PARANOIA_ENTRY();
 	PARANOIA_LC_ELEMENT(lc, e);
+#ifdef WIN_AL_BUG_ON
+	AL_BUG_ON(e->refcnt, "e->refcnt", lc, e);
+#else 
 	BUG_ON(e->refcnt);
-
+#endif 
 	e->lc_number = e->lc_new_number = LC_FREE;
 	hlist_del_init(&e->colision);
 	list_move(&e->list, &lc->free);
@@ -469,7 +540,7 @@ static struct lc_element *__lc_get(struct lru_cache *lc, unsigned int enr, unsig
 	struct lc_element *e;
 
 	PARANOIA_ENTRY();
-	if (lc->flags & LC_STARVING) {
+	if (test_bit(__LC_STARVING, &lc->flags)) {
 		++lc->starving;
 		RETURN(NULL);
 	}
@@ -522,7 +593,7 @@ static struct lc_element *__lc_get(struct lru_cache *lc, unsigned int enr, unsig
 	 * the LRU element, we have to wait ...
 	 */
 	if (!lc_unused_element_available(lc)) {
-		__set_bit(__LC_STARVING, &lc->flags);
+		set_bit(__LC_STARVING, &lc->flags);
 		RETURN(NULL);
 	}
 
@@ -533,10 +604,17 @@ static struct lc_element *__lc_get(struct lru_cache *lc, unsigned int enr, unsig
 		RETURN(NULL);
 
 	e = lc_prepare_for_change(lc, enr);
+#ifdef WIN_AL_BUG_ON
+	AL_BUG_ON(!e, "!e", lc, e);
+#else 
 	BUG_ON(!e);
-
+#endif 
 	clear_bit(__LC_STARVING, &lc->flags);
+#ifdef WIN_AL_BUG_ON
+	AL_BUG_ON(++e->refcnt != 1, "++e->refcnt != 1", lc, e);
+#else 
 	BUG_ON(++e->refcnt != 1);
+#endif 
 	lc->used++;
 	lc->pending_changes++;
 
@@ -674,8 +752,13 @@ unsigned int lc_put(struct lru_cache *lc, struct lc_element *e)
 {
 	PARANOIA_ENTRY();
 	PARANOIA_LC_ELEMENT(lc, e);
+#ifdef WIN_AL_BUG_ON	
+	AL_BUG_ON(e->refcnt == 0, "e->refcnt == 0", lc, e);
+	AL_BUG_ON(e->lc_number != e->lc_new_number, "e->lc_number != e->lc_new_number", lc, e);
+#else 	
 	BUG_ON(e->refcnt == 0);
 	BUG_ON(e->lc_number != e->lc_new_number);
+#endif	
 	if (--e->refcnt == 0) {
 		/* move it to the front of LRU. */
 		list_move(&e->list, &lc->lru);
@@ -692,9 +775,15 @@ unsigned int lc_put(struct lru_cache *lc, struct lc_element *e)
  */
 struct lc_element *lc_element_by_index(struct lru_cache *lc, unsigned i)
 {
+#ifdef WIN_AL_BUG_ON
+	AL_BUG_ON(i >= lc->nr_elements, "i >= lc->nr_elements", lc, NULL);
+	AL_BUG_ON(lc->lc_element[i] == NULL, "lc->lc_element[i] == NULL", lc, NULL);
+	AL_BUG_ON(lc->lc_element[i]->lc_index != i, "lc->lc_element[i]->lc_index != i", lc, lc->lc_element[i]);
+#else
 	BUG_ON(i >= lc->nr_elements);
 	BUG_ON(lc->lc_element[i] == NULL);
 	BUG_ON(lc->lc_element[i]->lc_index != i);
+#endif 
 	return lc->lc_element[i];
 }
 
@@ -726,8 +815,13 @@ void lc_set(struct lru_cache *lc, unsigned int enr, int index)
 		return;
 
 	e = lc_element_by_index(lc, index);
+#ifdef WIN_AL_BUG_ON	
+	AL_BUG_ON(e->lc_number != e->lc_new_number, "e->lc_number != e->lc_new_number", lc, e);
+	AL_BUG_ON(e->refcnt != 0, "e->refcnt != 0", lc, e);
+#else
 	BUG_ON(e->lc_number != e->lc_new_number);
 	BUG_ON(e->refcnt != 0);
+#endif
 
 	e->lc_number = e->lc_new_number = enr;
 	hlist_del_init(&e->colision);

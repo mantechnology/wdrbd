@@ -29,6 +29,7 @@
 #include "linux-compat/drbd_endian.h"
 #include "windows/types.h"
 #include "mvolmsg.h"
+#include "../drbdlock/drbdlock_comm.h"
 
 #include "disp.h"
 
@@ -38,6 +39,8 @@
 
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
 //#define _WSK_IRP_REUSE				// WSK IRP reuse. // DW-1078 disable reuse Irp 
+//#define _WIN32_NETLINK_EX
+//#define _WIN32_TRACE_PEER_DAGTAG		// trace peer_dagtag, last_dagtag 
 #define _WSK_SOCKETCONNECT
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
 #define _WIN32_TMP_Win8_BUG_0x1a_61946
@@ -51,6 +54,7 @@
 
 //#define _WIN32_WPP
 #define _WIN32_HANDLER_TIMEOUT	// call_usermodehelper timeout
+#define WIN_AL_BUG_ON // DW-1513 : Macro to print LRU
 
 #ifdef _WIN32_WPP
 #define WPP_CONTROL_GUIDS \
@@ -271,6 +275,7 @@ enum rq_flag_bits {
 #endif
 #define LONG_MAX				((long)(~0UL>>1)) 
 #define MAX_SCHEDULE_TIMEOUT	LONG_MAX	
+#define AL_WAIT_TIMEOUT			100 * HZ // DW-1513
 #define SENDER_SCHEDULE_TIMEOUT	5 * HZ
 #define _RET_IP_				(unsigned long)(0)
 #define HZ					    1000
@@ -426,6 +431,7 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_SB
 #define WDRBD_TRACE_CO		
 #define WDRBD_CONN_TRACE	
+#define WDRBD_TRACE_AL	
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
@@ -976,9 +982,20 @@ struct scatterlist {
     do {	\
         if(_condition) { \
             WDRBD_FATAL("BUG: failure\n"); \
-        }\
-    } while (0)
+		}\
+	} while (0)
 
+#ifdef WIN_AL_BUG_ON
+#define AL_BUG_ON(_condition, str_condition, lc, e)	\
+    do {	\
+        if(_condition) { \
+            WDRBD_FATAL("BUG: failure [ %s ]\n", str_condition); \
+			if(lc || e){	\
+				lc_printf_stats(lc, e);	\
+							}\
+			}\
+			    } while (0)
+#endif
 
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32
@@ -1304,12 +1321,20 @@ extern NTSTATUS FsctlCreateVolume(unsigned int minor);
 // DW-844
 extern PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit);
 extern BOOLEAN isFastInitialSync();
+// DW-1327
+extern NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam);
+extern NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlock);
 // DW-1317
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
+#ifdef _WIN32_NETLINK_EX
+extern
+void NetlinkWorkThread(void * pctx);
+#else
 extern
 void InitWskNetlink(void * pctx);
+#endif
 
 extern void monitor_mnt_change(PVOID pParam);
 extern NTSTATUS start_mnt_monitor();

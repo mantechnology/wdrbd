@@ -989,8 +989,10 @@ start:
 	}
 	rcu_read_unlock();
 
+
 #ifdef _WIN32_SEND_BUFFING
-	if ((nc->wire_protocol == DRBD_PROT_A) && (nc->sndbuf_size > 0) )
+	// DW-1436 removing the protocol dependency of the send buffer thread
+	if (nc->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN)
 	{
 		bool send_buffring = FALSE;
 
@@ -1000,7 +1002,7 @@ start:
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
 	}
-	else
+	else 
 	{
 		drbd_warn(connection, "send-buffering disabled\n");
 	}
@@ -2970,6 +2972,13 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("seq=0x%x sect:0x%llx pi->size:%d\n", peer_seq, be64_to_cpu(p->sector), pi->size);
 #endif
+
+#ifdef _WIN32 // DW-1502 bump the mirrored data after the ack_receiver has terminated.
+	if(get_t_state(&connection->ack_receiver) != RUNNING) {
+		WDRBD_INFO("ack_receiver is not running... bump mirrored data\n");
+		return 0;
+	}
+#endif	
 	peer_device = conn_peer_device(connection, pi->vnr);    
 	if (!peer_device)
 		return -EIO;
@@ -3152,7 +3161,16 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	    peer_device->disk_state[NOW] < D_INCONSISTENT) {
 		err = drbd_al_begin_io_for_peer(peer_device, &peer_req->i);
 		if (err)
+		{
+#ifdef _WIN32 // DW-1499 : Decrease unacked_cnt when returning an error. 
+			drbd_err(peer_device, "disconnect during al begin io (err = %d)\n", err);
+			if (peer_req->flags & EE_SEND_WRITE_ACK)
+			{
+				dec_unacked(peer_device);
+			}
+#endif
 			goto disconnect_during_al_begin_io;
+		}
 	}
 
 	err = drbd_submit_peer_request(device, peer_req, rw, DRBD_FAULT_DT_WR);
@@ -3161,6 +3179,9 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
 	{		
 		drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+#ifdef _WIN32_TRACE_PEER_DAGTAG
+		WDRBD_INFO("receive_Data connection->last_dagtag_sector:%llx ack_receiver thread state:%d\n",connection->last_dagtag_sector, get_t_state(&connection->ack_receiver));
+#endif
 		return 0;
 	}
 #else
@@ -4179,7 +4200,7 @@ static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int 
 		// DW-844: check if fast sync is enalbed every time we do initial sync.
 		// set out-of-sync for allocated clusters.			
 		if (!isFastInitialSync() ||
-			!SetOOSAllocatedCluster(device, peer_device, hg>0?L_SYNC_SOURCE:L_SYNC_TARGET))
+			!SetOOSAllocatedCluster(device, peer_device, hg>0?L_SYNC_SOURCE:L_SYNC_TARGET, true))
 		{			
 			drbd_info(peer_device, "Writing the whole bitmap, full sync required after drbd_sync_handshake.\n");			
 			if (drbd_bitmap_io(device, &drbd_bmio_set_n_write, "set_n_write from sync_handshake",
@@ -6152,6 +6173,10 @@ int abort_nested_twopc_work(struct drbd_work *work, int cancel)
 #else
 		list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #endif
+
+#ifdef _WIN32 //DW-1480
+			list_del(&connection->twopc_parent_list);
+#endif
 			kref_debug_put(&connection->kref_debug, 9);
 			kref_put(&connection->kref, drbd_destroy_connection);
 		}
@@ -6308,30 +6333,41 @@ check_concurrent_transactions(struct drbd_resource *resource, struct twopc_reply
 	return CSC_MATCH;
 }
 
+enum alt_rv {
+	ALT_LOCKED,
+	ALT_MATCH,
+	ALT_TIMEOUT,
+};
 
-static bool when_done_lock(struct drbd_resource *resource)
+
+static enum alt_rv when_done_lock(struct drbd_resource *resource, unsigned int for_tid)
 {
 	spin_lock_irq(&resource->req_lock);
 	if (!resource->remote_state_change)
-		return true;
+		return ALT_LOCKED;
 	spin_unlock_irq(&resource->req_lock);
-	return false;
+	if (resource->twopc_reply.tid == for_tid)
+		return ALT_MATCH;
+
+	return ALT_TIMEOUT;
 }
 
-static int abort_local_transaction(struct drbd_resource *resource)
+static enum alt_rv abort_local_transaction(struct drbd_resource *resource, unsigned int for_tid)
 {
-	long t = twopc_timeout(resource);
+	long t = twopc_timeout(resource) / 8;
+	enum alt_rv rv;
 
 	set_bit(TWOPC_ABORT_LOCAL, &resource->flags);
 	spin_unlock_irq(&resource->req_lock);
 	wake_up(&resource->state_wait);
 #ifdef _WIN32
-	wait_event_timeout(t, resource->twopc_wait, when_done_lock(resource), t);
+	wait_event_timeout(t, resource->twopc_wait, 
+		(rv = when_done_lock(resource, for_tid)) != ALT_TIMEOUT, t);
 #else
 	t = wait_event_timeout(resource->twopc_wait, when_done_lock(resource), t);
 #endif
 	clear_bit(TWOPC_ABORT_LOCAL, &resource->flags);
-	return t ? 0 : -ETIMEDOUT;
+	return rv;
 }
 
 static void arm_queue_twopc_timer(struct drbd_resource *resource)
@@ -6360,7 +6396,8 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 	list_for_each_entry(q, &resource->queued_twopc, w.list) {
 #endif
 		if (q->reply.tid == twopc->tid &&
-		    q->reply.initiator_node_id == twopc->initiator_node_id)
+		    q->reply.initiator_node_id == twopc->initiator_node_id &&
+			q->connection == connection)
 			already_queued = true;
 	}
 	spin_unlock_irq(&resource->queued_twopc_lock);
@@ -6396,25 +6433,58 @@ static int queue_twopc(struct drbd_connection *connection, struct twopc_reply *t
 
 static int queued_twopc_work(struct drbd_work *w, int cancel)
 {
-	struct queued_twopc *q = container_of(w, struct queued_twopc, w);
+	struct queued_twopc *q = container_of(w, struct queued_twopc, w), *q2, *tmp;
 	struct drbd_connection *connection = q->connection;
+	struct drbd_resource *resource = connection->resource; 
 	unsigned long t = twopc_timeout(connection->resource) / 4;
+	LIST_HEAD(work_list); 
 
-	if (jiffies - q->start_jif >= t || cancel) {
-		if (!cancel)
-			drbd_info(connection, "Rejecting concurrent "
-				  "remote state change %u because of "
-				  "state change %u takes too long\n",
-				  q->reply.tid,
-				  connection->resource->twopc_reply.tid);
-		drbd_send_twopc_reply(connection, P_TWOPC_RETRY, &q->reply);
-	} else {
-		process_twopc(connection, &q->reply, &q->packet_info, q->start_jif);
+	/* Look for more for the same TID... */
+	spin_lock_irq(&resource->queued_twopc_lock); 
+#ifdef _WIN32
+	list_for_each_entry_safe(struct queued_twopc, q2, tmp, &resource->queued_twopc, w.list){
+#else
+	list_for_each_entry_safe(q2, tmp, &resource->queued_twopc, w.list){
+#endif 
+		if (q2->reply.tid == q->reply.tid &&
+			q2->reply.initiator_node_id == q->reply.initiator_node_id)
+			list_move_tail(&q2->w.list, &work_list); 
 	}
+	spin_unlock_irq(&resource->queued_twopc_lock); 
 
-	kref_put(&connection->kref, drbd_destroy_connection);
-	kfree(q);
 
+	while (true){
+		if (jiffies - q->start_jif >= t || cancel) {
+			if (!cancel)
+				drbd_info(connection, "Rejecting concurrent "
+				"remote state change %u because of "
+				"state change %u takes too long\n",
+				q->reply.tid,
+				connection->resource->twopc_reply.tid);
+			drbd_send_twopc_reply(connection, P_TWOPC_RETRY, &q->reply);
+		}
+		else {
+			process_twopc(connection, &q->reply, &q->packet_info, q->start_jif);
+		}
+
+		kref_put(&connection->kref, drbd_destroy_connection);
+#ifdef _WIN32
+		// MODIFIED_BY_MANTECH DW-1466: need to clear starting_queued_twopc when it is being freed.
+		spin_lock_irq(&resource->req_lock);
+		if (resource->starting_queued_twopc == q)
+			resource->starting_queued_twopc = NULL;
+		spin_unlock_irq(&resource->req_lock);
+#endif
+		kfree(q);
+
+		q = list_first_entry_or_null(&work_list, struct queued_twopc, w.list); 
+		if (q) {
+			list_del(&q->w.list); 
+			connection = q->connection; 
+		}
+		else
+			break; 
+	}
 	return 0;
 }
 #ifdef _WIN32
@@ -6431,10 +6501,17 @@ void queued_twopc_timer_fn(unsigned long data)
 	spin_lock_irqsave(&resource->queued_twopc_lock, irq_flags);
 	q = list_first_entry_or_null(&resource->queued_twopc, struct queued_twopc, w.list);
 	if (q) {
-		if (jiffies - q->start_jif >= t)
+		if (jiffies - q->start_jif >= t){
+			resource->starting_queued_twopc = q; 
 			list_del(&q->w.list);
+		}
+#ifdef _WIN32 
+		// DW-1467 : If you add q not deleted from queued_twopc list to work list, queued_twopc list will be broken.
 		else
+		{
 			q = NULL;
+		}
+#endif
 	}
 	spin_unlock_irqrestore(&resource->queued_twopc_lock, irq_flags);
 
@@ -6577,25 +6654,18 @@ static int process_twopc(struct drbd_connection *connection,
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
 	enum drbd_state_rv rv;
 	enum csc_rv csc_rv;
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1127
-	bool noStateChange = false;
-#endif
+
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
-	resource->starting_queued_twopc = NULL;
-	if (reply->is_aborted) {
-		spin_unlock_irq(&resource->req_lock);
-		return 0;
-	}
+
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
 	drbd_info(resource, "[TWOPC:%u] target_node_id (%d) csc_rv (%d) primary_nodes (%d) pi->cmd (%s)\n", 
 					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
-	if (csc_rv == CSC_CLEAR) {
+	if (csc_rv == CSC_CLEAR && pi->cmd != P_TWOPC_ABORT) {
 		if (pi->cmd != P_TWOPC_PREPARE) {
 			/* We have committed or aborted this transaction already. */
 			spin_unlock_irq(&resource->req_lock);
@@ -6621,6 +6691,11 @@ static int process_twopc(struct drbd_connection *connection,
 #endif			
 			return 0;
 		}
+		if (reply->is_aborted) {
+			spin_unlock_irq(&resource->req_lock);
+			return 0;
+		}
+		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
@@ -6634,15 +6709,18 @@ static int process_twopc(struct drbd_connection *connection,
 			return 0;
 		}
 	} else if (csc_rv == CSC_ABORT_LOCAL && pi->cmd == P_TWOPC_PREPARE) {
-		int err;
+		enum alt_rv alt_rv;
 
 		drbd_info(connection, "Aborting local state change %u to yield to remote "
 			  "state change %u.\n",
 			  resource->twopc_reply.tid,
 			  reply->tid);
-		err = abort_local_transaction(resource);
-		if (err) {
-			/* abort_local_transaction() comes back unlocked if it fails... */
+		alt_rv = abort_local_transaction(resource, reply->tid);
+		if (alt_rv == ALT_MATCH) {
+			/* abort_local_transaction() comes back unlocked in this case ... */
+			goto match; 
+		} else if (alt_rv == ALT_TIMEOUT){
+			/* abort_local_transaction() comes back unlocked in this case ... */
 			drbd_info(connection, "Aborting local state change %u "
 				  "failed. Rejecting remote state change %u.\n",
 				  resource->twopc_reply.tid,
@@ -6650,6 +6728,12 @@ static int process_twopc(struct drbd_connection *connection,
 			drbd_send_twopc_reply(connection, P_TWOPC_RETRY, reply);
 			return 0;
 		}
+		/*abort_local_transaction() returned with the req_lock */
+		if (reply->is_aborted) {
+			spin_unlock_irq(&resource->req_lock);
+			return 0;
+		}
+		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
@@ -6698,19 +6782,56 @@ static int process_twopc(struct drbd_connection *connection,
 				/* We have prepared this transaction already. */
 				enum drbd_packet reply_cmd;
 
+			match: 
 				spin_lock_irq(&resource->req_lock);
 				reply_cmd = resource->twopc_prepare_reply_cmd;
 				if (!reply_cmd) {
 					kref_get(&connection->kref);
 					kref_debug_get(&connection->kref_debug, 9);
+#ifdef _WIN32	// DW-1480 : Do not add duplicate twopc_parent_list to twopc_parents.
+					if(list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
+					{	
+						list_add(&connection->twopc_parent_list,
+							&resource->twopc_parents);
+					}
+					else
+					{
+						drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+						kref_debug_put(&connection->kref_debug, 9);
+						kref_put(&connection->kref, drbd_destroy_connection);
+					}
+#else
 					list_add(&connection->twopc_parent_list,
 						&resource->twopc_parents);
-					}
-					spin_unlock_irq(&resource->req_lock);
+#endif
+				}
+				spin_unlock_irq(&resource->req_lock);
 
-					if (reply_cmd)
-						drbd_send_twopc_reply(connection, reply_cmd,
-										&resource->twopc_reply);
+
+				if (reply_cmd){
+					drbd_send_twopc_reply(connection, reply_cmd,
+						&resource->twopc_reply);
+				}else {
+					/* if a node sends us a prepare, that means he has
+					prepared this himsilf successfully. */
+					
+#ifdef _WIN32 // DW-1411 : Not supported dual primaries, set TWOPC_NO bit when local node is Primary. 
+					if (resource->role[NOW] == R_PRIMARY && val.role == R_PRIMARY){
+						set_bit(TWOPC_NO, &connection->flags);
+					}
+					else{
+						set_bit(TWOPC_YES, &connection->flags);
+					}
+#else
+					set_bit(TWOPC_YES, &connection->flags);
+#endif
+					if (cluster_wide_reply_ready(resource)) {
+						if (resource->twopc_work.cb == NULL) {
+							resource->twopc_work.cb = nested_twopc_work;
+							drbd_queue_work(&resource->work, &resource->twopc_work);
+						}
+					}
+				}
 			}
 		} else {
 			drbd_info(connection, "Ignoring %s packet %u "
@@ -6825,30 +6946,25 @@ static int process_twopc(struct drbd_connection *connection,
 	else
 		rv = far_away_change(connection, mask, val, reply, flags);
 
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed.
-	if (rv == SS_NOTHING_TO_DO)
-	{	
-#ifdef _WIN32_TWOPC
-		drbd_info(resource, "[TWOPC:%u] target_node_id(%d) noStateChange! flags (%d) \n",
-				reply->tid,
-				reply->target_node_id,
-				flags);
-#endif
-		noStateChange = true;
-	}
-#endif
 
 	if (flags & CS_PREPARE) {
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1127: state isn't gonna be changed, no need remote state change.
-		if (noStateChange)
-			resource->remote_state_change = false;
-#endif
 		spin_lock_irq(&resource->req_lock);
 		kref_get(&connection->kref);
 		kref_debug_get(&connection->kref_debug, 9);
+#ifdef _WIN32	//DW-1480 : Do not add duplicate twopc_parent_list to twopc_parents.
+		if (list_add_valid(&connection->twopc_parent_list, &resource->twopc_parents))
+		{						
+			list_add(&connection->twopc_parent_list, &resource->twopc_parents);
+		}
+		else
+		{
+			drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+			kref_debug_put(&connection->kref_debug, 9);
+			kref_put(&connection->kref, drbd_destroy_connection);
+		}
+#else
 		list_add(&connection->twopc_parent_list, &resource->twopc_parents);
+#endif
 		mod_timer(&resource->twopc_timer, receive_jif + twopc_timeout(resource));
 		spin_unlock_irq(&resource->req_lock);
 
@@ -6857,6 +6973,10 @@ static int process_twopc(struct drbd_connection *connection,
 		} else {
 			enum drbd_packet cmd = (rv == SS_IN_TRANSIENT_STATE) ?
 				P_TWOPC_RETRY : P_TWOPC_NO;
+#ifdef _WIN32 // DW-1411 : when we get the prepare packet mutiple times, miss set twopc_prepare_reply_cmd. 
+			if (cmd == P_TWOPC_NO)
+				resource->twopc_prepare_reply_cmd = cmd;
+#endif 
 			drbd_send_twopc_reply(connection, cmd, reply);
 		}
 	} else {
@@ -6864,14 +6984,7 @@ static int process_twopc(struct drbd_connection *connection,
 			del_timer(&resource->twopc_timer);
 
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1252: clear TWOPC_EXECUTED if change_state result is SS_NOTHING_TO_DO
-		if (noStateChange)
-			test_and_clear_bit(TWOPC_EXECUTED, &resource->flags);
-		// MODIFIED_BY_MANTECH DW-1127: don't clear remote state change if I haven't set.
-		// DW-1160: 'noStateChange' could be different if received packet is 'P_TWOPC_ABORT', clear it no matter what the state change result is.
-		if (!noStateChange || (flags & CS_ABORT))
-#endif
+
 		clear_remote_state_change(resource);
 
 #ifdef _WIN32 // DW-1291 provide LastPrimary Information for Peer Primary P_TWOPC_COMMIT
@@ -7103,6 +7216,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #else
 		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
 #endif
+		drbd_info(peer_device, "peer is SyncSource. change to SyncTarget\n"); // DW-1518
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 		return 0;
 	}
@@ -7120,7 +7234,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		new_repl_state = L_ESTABLISHED;
 
 	if (peer_state.conn == L_AHEAD)
+	{
+		if (old_peer_state.conn != L_BEHIND)
+		{
+			drbd_info(peer_device, "peer is Ahead. change to Behind mode\n"); // DW-1518
+		}
 		new_repl_state = L_BEHIND;
+	}
 
 	if (peer_device->uuids_received &&
 	    peer_state.disk >= D_NEGOTIATING &&
@@ -7242,6 +7362,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		end_state_change(resource, &irq_flags);
 		return -EIO;
 	}
+
+#ifdef _WIN32 // DW-1447
+	peer_device->last_repl_state = peer_state.conn;
+#endif
+
+	
 #ifdef _WIN32_RCU_LOCKED
 	rv = end_state_change_locked(resource, false);
 #else
@@ -7267,7 +7393,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #endif
 	
 	if (rv < SS_SUCCESS)
+	{
+#ifdef _WIN32 // DW-1447
+        peer_device->last_repl_state = old_peer_state.conn;
+#endif
 		goto fail;
+	}
 
 	if (old_peer_state.conn > L_OFF) {
 		if (new_repl_state > L_ESTABLISHED && peer_state.conn <= L_ESTABLISHED &&
@@ -7287,7 +7418,9 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	drbd_md_sync(device); /* update connected indicator, effective_size, ... */
 
+#ifndef _WIN32 // DW-1447 : moved to before end_state_change_locked()
 	peer_device->last_repl_state = peer_state.conn;
+#endif
 	return 0;
 fail:
 	change_cstate(connection, C_DISCONNECTING, CS_HARD);
@@ -7822,8 +7955,13 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		}
 #endif		
 
+#ifdef _WIN32_TRACE_PEER_DAGTAG
+		drbd_info(connection, "Reconciliation resync because \'%s\' disappeared. (o=%d) lost_peer:%p lost_peer->last_dagtag_sector:0x%llx be64_to_cpu(p->dagtag):%llx\n",
+			  lost_peer->transport.net_conf->name, (int)dagtag_offset, lost_peer, lost_peer->last_dagtag_sector, be64_to_cpu(p->dagtag));
+#else
 		drbd_info(connection, "Reconciliation resync because \'%s\' disappeared. (o=%d)\n",
-			  lost_peer->transport.net_conf->name, (int)dagtag_offset);
+ 				lost_peer->transport.net_conf->name, (int)dagtag_offset);
+#endif
 
 		begin_state_change(resource, &irq_flags, CS_VERBOSE);
 #ifdef _WIN32
@@ -7836,8 +7974,14 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		}
 		end_state_change(resource, &irq_flags);
 	} else {
+#ifdef _WIN32_TRACE_PEER_DAGTAG	
+		drbd_info(connection, "No reconciliation resync even though \'%s\' disappeared. (o=%d) lost_peer:%p lost_peer->last_dagtag_sector:0x%llx be64_to_cpu(p->dagtag):%llx\n",
+			  lost_peer->transport.net_conf->name, (int)dagtag_offset, lost_peer, lost_peer->last_dagtag_sector, be64_to_cpu(p->dagtag));
+#else
 		drbd_info(connection, "No reconciliation resync even though \'%s\' disappeared. (o=%d)\n",
-			  lost_peer->transport.net_conf->name, (int)dagtag_offset);
+			lost_peer->transport.net_conf->name, (int)dagtag_offset);
+#endif
+
 
 #ifdef _WIN32
         idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr)
@@ -8805,7 +8949,11 @@ void twopc_connection_down(struct drbd_connection *connection)
 #endif
 	if (resource->twopc_reply.initiator_node_id != -1 &&
 	    test_bit(TWOPC_PREPARED, &connection->flags)) {
+#ifdef _WIN32_SIMPLE_TWOPC // DW-1408
+		set_bit(TWOPC_NO, &connection->flags);
+#else
 		set_bit(TWOPC_RETRY, &connection->flags);
+#endif
 		if (cluster_wide_reply_ready(resource)) {
 			int my_node_id = resource->res_opts.node_id;
 			if (resource->twopc_reply.initiator_node_id == my_node_id) {
@@ -9192,7 +9340,10 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 
 	dagtag = be64_to_cpu(p->dagtag);
 	in_sync = be64_to_cpu(p->mask);
-
+#ifdef _WIN32_TRACE_PEER_DAGTAG    
+	WDRBD_INFO("got_peer_ack dagtag:%llx in_sync:%llx\n", dagtag, in_sync);
+#endif
+	
 	spin_lock_irq(&resource->req_lock);
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->peer_requests, recv_order) {
@@ -9231,6 +9382,11 @@ found:
 			clear_bit(peer_device->bitmap_index, &set_sync_mask);
 			drbd_set_sync(device, peer_req->i.sector,
 				peer_req->i.size, ~in_sync_b, set_sync_mask);
+#ifdef _WIN32_TRACE_PEER_DAGTAG			
+			WDRBD_INFO("got_peer_ack drbd_set_sync device:%p, peer_req->i.sector:%llx, peer_req->i.size:%d, in_sync_b:%llx, set_sync_mask:%llx\n", 
+				device, peer_req->i.sector, peer_req->i.size, in_sync_b, set_sync_mask);
+#endif
+
 #else
 			drbd_set_sync(device, peer_req->i.sector,
 				      peer_req->i.size, ~in_sync_b, -1);

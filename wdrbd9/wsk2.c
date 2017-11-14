@@ -90,6 +90,9 @@ InitWskData(
 	// DW-1316 use raw irp.
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
@@ -125,6 +128,9 @@ InitWskCloseData(
 	// DW-1316 use raw irp.
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
@@ -158,6 +164,9 @@ InitWskDataAsync(
 
 	if (bRawIrp) {
 		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
 	}
 	else {
@@ -980,7 +989,12 @@ $retry:
 			case STATUS_TIMEOUT:
 				// DW-1095 adjust retry_count logic 
 				if (!(++retry_count % 5)) {
-					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					WDRBD_WARN("send buffering: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					// DW-1524 fix infinite send retry on low-bandwith
+					IoCancelIrp(Irp);
+					KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+					BytesSent = -EAGAIN;
+					break;
 				} 
 
 				goto $retry;
@@ -1851,9 +1865,11 @@ GetRemoteAddress(
 	return Status;
 }
 
+PWSK_SOCKET         netlink_server_socket = NULL;
+#ifndef _WIN32_NETLINK_EX
 WSK_REGISTRATION    gWskEventRegistration;
 WSK_PROVIDER_NPI    gWskEventProviderNPI;
-PWSK_SOCKET         netlink_server_socket = NULL;
+
 
 // Socket-level callback table for listening sockets
 const WSK_CLIENT_LISTEN_DISPATCH ClientListenDispatch = {
@@ -1994,12 +2010,13 @@ CloseWskEventSocket()
     return status;
 }
 
+
 void
 ReleaseProviderNPI()
 {
     WskReleaseProviderNPI(&gWskEventRegistration);
 }
-
+#endif
 
 NTSTATUS
 NTAPI

@@ -171,7 +171,7 @@ static bool addr_equal(const struct sockaddr_storage *addr1, const struct sockad
 }
 
 #ifdef _WIN32
-static bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
+bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2)
 #else
 static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const struct sockaddr_storage *addr2)
 #endif

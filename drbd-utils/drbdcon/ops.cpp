@@ -28,6 +28,7 @@
 #endif
 #include "LogManager.h"
 #include "../../wdrbd_service/drbdService.h"
+#include "../../drbdlock/drbdlock_comm.h"
 
 
 HANDLE
@@ -132,7 +133,11 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	if (verbose)
 	{
 		printf("=====================================================================================\n");
+#ifdef _WIN32_MULTIVOL_THREAD
+		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");
+#else
 		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
+#endif
 		printf("=====================================================================================\n");
 	}
 	else
@@ -154,8 +159,10 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 				pEntry->VolumeGuid,
 				pEntry->VolIndex,
 				pEntry->ExtensionActive,
+#ifndef _WIN32_MULTIVOL_THREAD
 				pEntry->ThreadActive,
 				pEntry->ThreadExit,
+#endif
 				pEntry->AgreedSize,
 				pEntry->Size
 			);
@@ -182,176 +189,6 @@ out:
 	}
 
 	return res;
-}
-
-DWORD
-MVOL_StartVolume( PWCHAR PhysicalVolume )
-{
-    HANDLE			rootHandle = INVALID_HANDLE_VALUE;
-    DWORD			res = ERROR_SUCCESS;
-    ULONG			iolen;
-    ULONG			len;
-    MVOL_VOLUME_INFO	volumeInfo = {0,};
-
-    if( PhysicalVolume == NULL )
-    {
-        printf("LOG_ERROR: MVOL_StartVolume: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    if( wcslen(PhysicalVolume) > MAXDEVICENAME )
-    {
-        printf("LOG_ERROR: MVOL_StartVolume: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    rootHandle = OpenDevice( MVOL_DEVICE );
-    if( rootHandle == INVALID_HANDLE_VALUE )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_StartVolume: cannot open root device, err=%u\n", res);
-        return res;
-    }
-
-    wcscpy_s( volumeInfo.PhysicalDeviceName, PhysicalVolume );
-    len = sizeof(MVOL_VOLUME_INFO);
-    if( !DeviceIoControl(rootHandle, IOCTL_MVOL_VOLUME_START,
-        &volumeInfo, len, NULL, 0, &iolen, NULL) )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_StartVolume: ioctl err=%d\n", res);
-        goto out;
-    }
-
-    res = ERROR_SUCCESS;
-out:
-    if( rootHandle != INVALID_HANDLE_VALUE )
-        CloseHandle(rootHandle);
-
-    return res;
-}
-
-DWORD
-MVOL_StartVolume( CHAR DriveLetter )
-{
-    HANDLE			hDrive = INVALID_HANDLE_VALUE;
-    CHAR            letter[] = "\\\\.\\ :";
-    DWORD			retVal = ERROR_SUCCESS;
-    DWORD           dwReturned = 0;
-    BOOL            ret = FALSE;
-
-    letter[4] = DriveLetter;
-    hDrive = CreateFileA( letter, GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-        OPEN_EXISTING, 0, NULL );
-    if( hDrive == INVALID_HANDLE_VALUE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed open %c: drive. Err=%u\n",
-            __FUNCTION__, DriveLetter, retVal );
-        return retVal;
-    }
-
-    ret = DeviceIoControl( hDrive, IOCTL_MVOL_VOLUME_START,
-        NULL, 0, NULL, 0, &dwReturned, NULL );
-    if( ret == FALSE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_VOLUME_START. Err=%u\n",
-            __FUNCTION__, retVal );
-        goto out;
-    }
-
-    retVal = ERROR_SUCCESS;
-out:
-    if( hDrive != INVALID_HANDLE_VALUE )    CloseHandle( hDrive );
-
-    return retVal;
-}
-
-DWORD
-MVOL_StopVolume( PWCHAR PhysicalVolume )
-{
-    HANDLE			rootHandle = INVALID_HANDLE_VALUE;
-    DWORD			res = ERROR_SUCCESS;
-    ULONG			iolen;
-    ULONG			len;
-    MVOL_VOLUME_INFO	volumeInfo = {0,};
-
-    if( PhysicalVolume == NULL )
-    {
-        printf("LOG_ERROR: MVOL_StopVolume: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    if( wcslen(PhysicalVolume) > MAXDEVICENAME )
-    {
-        printf("LOG_ERROR: MVOL_StopVolume: invalid paramter\n");
-        return ERROR_INVALID_PARAMETER;
-    }
-
-    rootHandle = OpenDevice( MVOL_DEVICE );
-    if( rootHandle == INVALID_HANDLE_VALUE )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_StopVolume: cannot open root device, err=%u\n", res);
-        return res;
-    }
-
-    wcscpy_s( volumeInfo.PhysicalDeviceName, PhysicalVolume );
-    len = sizeof(MVOL_VOLUME_INFO);
-    if( !DeviceIoControl(rootHandle, IOCTL_MVOL_VOLUME_STOP,
-        &volumeInfo, len, NULL, 0, &iolen, NULL) )
-    {
-        res = GetLastError();
-        printf("LOG_ERROR: MVOL_StopVolume: ioctl err=%d\n", res);
-        goto out;
-    }
-
-    res = ERROR_SUCCESS;
-out:
-    if( rootHandle != INVALID_HANDLE_VALUE )
-        CloseHandle(rootHandle);
-
-    return res;
-}
-
-DWORD
-MVOL_StopVolume( CHAR DriveLetter )
-{
-    HANDLE			hDrive = INVALID_HANDLE_VALUE;
-    CHAR            letter[] = "\\\\.\\ :";
-    DWORD			retVal = ERROR_SUCCESS;
-    DWORD           dwReturned = 0;
-    BOOL            ret = FALSE;
-
-    letter[4] = DriveLetter;
-    hDrive = CreateFileA( letter, GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-        OPEN_EXISTING, 0, NULL );
-    if( hDrive == INVALID_HANDLE_VALUE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed open %c: drive. Err=%u\n",
-            __FUNCTION__, DriveLetter, retVal );
-        return retVal;
-    }
-
-    ret = DeviceIoControl( hDrive, IOCTL_MVOL_VOLUME_STOP,
-        NULL, 0, NULL, 0, &dwReturned, NULL );
-    if( ret == FALSE )
-    {
-        retVal = GetLastError();
-        fprintf( stderr, "LOG_ERROR: %s: Failed IOCTL_MVOL_VOLUME_STOP. Err=%u\n",
-            __FUNCTION__, retVal );
-        goto out;
-    }
-
-    retVal = ERROR_SUCCESS;
-out:
-    if( hDrive != INVALID_HANDLE_VALUE )    CloseHandle( hDrive );
-
-    return retVal;
 }
 
 DWORD
@@ -1893,4 +1730,111 @@ DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler)
 		CloseHandle(hDevice);
 	}
 	return retVal;
+}
+
+VOID getVolumeDrbdlockInfo(HANDLE hDrbdlock, PWCHAR pszVolumeName)
+{
+	
+	DWORD dwErr = 0;
+	DWORD dwRet = 0;
+
+	// to be printed.
+	WCHAR szLetter[10] = L"";				// C:
+	WCHAR szDevName[MAX_PATH] = L"";		// \Device\HarddiskVolume1
+	BOOLEAN bProtected = FALSE;				// Protected, Not protected
+	PWCHAR pTemp = NULL;					// Volume{11111111-2222-3333-4444-555555555555}
+		
+	if (pszVolumeName == NULL)
+	{
+		printf("invalid paramter\n");
+		return;
+	}
+
+	GetVolumePathNamesForVolumeNameW(pszVolumeName, szLetter, 10, &dwRet);
+
+	pTemp = wcsstr(pszVolumeName, L"Volume");
+	if (pTemp == NULL)
+	{
+		printf("err2\n");
+		return;
+	}
+
+	pTemp[wcslen(pTemp) - 1] = L'\0';
+	
+	if (QueryDosDevice(pTemp, szDevName, 260))
+	{
+		if (wcsstr(szDevName, L"Floppy") ||
+			wcsstr(szDevName, L"CdRom"))
+		{
+			return;
+		}
+
+		if (!DeviceIoControl(hDrbdlock, IOCTL_DRBDLOCK_GET_STATUS, szDevName, (wcslen(szDevName) + 1) * sizeof(WCHAR), &bProtected, sizeof(bProtected), &dwRet, NULL))
+		{
+			dwErr = GetLastError();
+			printf("DeviceIoControl Failed for device(%ws), err(%d)\n", szDevName, dwErr);
+			return;
+		}
+
+		bProtected;
+	}
+	else
+	{
+		printf("err3\n");
+	}
+
+print_info:
+	printf("Mount point: %ws\n", wcslen(szLetter) >= 1 ? szLetter : L"None");
+	printf("Volume Guid: %ws\n", pTemp);
+	printf("Device Name: %ws\n", szDevName);
+	printf("Protected??: %s\n", bProtected ? "Protected" : "Not protected");
+	printf("\n");
+}
+
+DWORD GetDrbdlockStatus()
+{	
+	HANDLE hDevice = INVALID_HANDLE_VALUE;
+	PWCHAR pTemp = NULL;
+	DWORD dwErr = ERROR_SUCCESS;
+	DWORD dwRet = 0;
+	
+	do
+	{
+		hDevice = OpenDevice(DRBDLOCK_DEVICE_NAME_USER);
+
+		if (hDevice == INVALID_HANDLE_VALUE)
+		{
+			dwErr = GetLastError();
+			printf("Failed to open device(%s), err(%d)\n", DRBDLOCK_DEVICE_NAME_USER, dwErr);
+			break;
+		}
+		
+		HANDLE FindHandle = INVALID_HANDLE_VALUE;
+		WCHAR VolumeName[MAX_PATH] = L"";
+		WCHAR DevName[MAX_PATH] = L"";
+
+		FindHandle = FindFirstVolumeW(VolumeName, ARRAYSIZE(VolumeName));
+
+		if (FindHandle == INVALID_HANDLE_VALUE)
+		{
+			printf("Failed to find volume, err(%d)\n", GetLastError());
+			break;
+		}
+		
+		getVolumeDrbdlockInfo(hDevice, VolumeName);
+
+		while (FindNextVolume(FindHandle, VolumeName, ARRAYSIZE(VolumeName)))
+		{
+			getVolumeDrbdlockInfo(hDevice, VolumeName);
+		}
+
+	} while (false);	
+	
+	if (hDevice != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(hDevice);
+		hDevice = INVALID_HANDLE_VALUE;
+	}
+
+	return dwErr;
 }

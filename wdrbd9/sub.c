@@ -139,18 +139,10 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	IoDetachDevice(VolumeExtension->TargetDeviceObject);
 	IoDeleteDevice(DeviceObject);
 
-#ifdef MULTI_WRITE_HOOKER_THREADS
+#ifdef _WIN32_MULTIVOL_THREAD
+	if (VolumeExtension->WorkThreadInfo)
 	{
-		int i = 0;
-		for (i = 0; i < 5; i++) 
-		{
-			if (deviceExtension->WorkThreadInfo[i].Active)
-			{
-				mvolTerminateThread(&deviceExtension->WorkThreadInfo);
-				WDRBD_TRACE("[%ws]: WorkThread Terminate Completely\n",
-					deviceExtension->PhysicalDeviceName);
-			}
-		}
+		VolumeExtension->WorkThreadInfo = NULL;		
 	}
 #else
 	if (VolumeExtension->WorkThreadInfo.Active)

@@ -76,6 +76,10 @@
 #include <linux/swab.h>
 #endif
 #endif
+#ifdef _WIN32_MULTIVOL_THREAD
+#include "Proto.h"
+#endif
+
 
 #ifdef COMPAT_DRBD_RELEASE_RETURNS_VOID
 #define DRBD_RELEASE_RETURN void
@@ -240,6 +244,8 @@ static inline bool isForgettableReplState(enum drbd_repl_state repl_state)
 #ifdef _WIN32
 EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
 struct mutex g_genl_mutex;
+// DW-1495: change att_mod_mutex(DW-1293) to global mutex because it can be a problem if IO also occurs on othere resouces on the same disk. 
+struct mutex att_mod_mutex; 
 #endif
 static const struct block_device_operations drbd_ops = {
 #ifndef _WIN32
@@ -1703,7 +1709,10 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 #ifdef _WIN32
 	{
 		// MODIFIED_BY_MANTECH DW-978: Set MDF_PEER_DIFF_CUR_UUID flag so that we're able to recognize -1 is sent.
-		peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
+		// MODIFIED_BY_MANTECH DW-1415 Set MDF_PEER_DIFF_CUR_UUID flag when only peer is in connected state to avoid exchanging uuid unlimitedly on the ring topology with flawed connection.
+		if (peer_device->connection->cstate[NOW] == C_CONNECTED)
+			peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
+
 		bitmap_uuid = -1;
 	}
 #else
@@ -1969,6 +1978,9 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 		q_order_type = drbd_queue_order_type(device);
 #ifdef _WIN32
 		max_bio_size = queue_max_hw_sectors(device->ldev->backing_bdev->bd_disk->queue) << 9;
+		// DW-1497 Fix max bio size to default 1MB, because we don't need to variable max bio config on Windows.
+		// Since max_bio_size is an integer type, an overflow has occurred for the value of max_hw_sectors.
+		max_bio_size = DRBD_MAX_BIO_SIZE;
 #else
 		max_bio_size = queue_max_hw_sectors(q) << 9;
 		max_bio_size = min(max_bio_size, DRBD_MAX_BIO_SIZE);
@@ -2147,7 +2159,9 @@ int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd_connec
 
 	p->dagtag = cpu_to_be64(lost_peer->last_dagtag_sector);
 	p->node_id = cpu_to_be32(lost_peer->peer_node_id);
-
+#ifdef _WIN32_TRACE_PEER_DAGTAG
+	WDRBD_INFO("drbd_send_peer_dagtag lost_peer:%p lost_peer->last_dagtag_sector:%llx lost_peer->peer_node_id:%d\n",lost_peer,lost_peer->last_dagtag_sector,lost_peer->peer_node_id);
+#endif	
 	return send_command(connection, -1, P_PEER_DAGTAG, DATA_STREAM);
 }
 
@@ -3392,6 +3406,7 @@ void drbd_destroy_device(struct kref *kref)
 	struct drbd_resource *resource = device->resource;
 	struct drbd_peer_device *peer_device, *tmp;
 
+
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 	if (device->this_bdev)
@@ -3483,10 +3498,18 @@ void drbd_free_resource(struct drbd_resource *resource)
 
 	drbd_thread_stop(&resource->worker);
 
+#ifdef _WIN32_MULTIVOL_THREAD
+	mvolTerminateThread(&resource->WorkThreadInfo);
+#endif
+
 #ifdef _WIN32
 	list_for_each_entry_safe(struct drbd_connection, connection, tmp, &resource->twopc_parents, twopc_parent_list) {
 #else
 	list_for_each_entry_safe(connection, tmp, &resource->twopc_parents, twopc_parent_list) {
+#endif
+
+#ifdef _WIN32 //DW-1480
+		list_del(&connection->twopc_parent_list);
 #endif
 		kref_debug_put(&connection->kref_debug, 9);
 		kref_put(&connection->kref, drbd_destroy_connection);
@@ -4484,8 +4507,10 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	kref_get(&pvext->dev->kref);
 	device->this_bdev = pvext->dev;
 	q->logical_block_size = 512;
-	// DW-1406: max_hw_sectors must be valued as number of maximum sectors.
-	q->max_hw_sectors = get_targetdev_volsize(pvext) >> 9;
+	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
+	// DW-1510 recalculate this_bdev->d_size
+	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
+	WDRBD_INFO("device:%p q->max_hw_sectors:%x, device->this_bdev->d_size >> 9:%x\n",device ,q->max_hw_sectors,device->this_bdev->d_size >> 9);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4776,6 +4801,7 @@ static int __init drbd_init(void)
 	
 	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
+	mutex_init(&att_mod_mutex); 
 #endif
 
 #ifdef _WIN32
@@ -5972,6 +5998,65 @@ clear_flag:
 	}
 }
 
+#ifdef _WIN32
+// DW-1293: it performs fast invalidate(remote) when agreed protocol version is 112 or above, and fast sync options is enabled.
+int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_device *peer_device) __must_hold(local)
+{
+	int nRet = 0;
+	// DW-1293: queued bitmap work increases work count which may prevents io that we need to mount volume.
+	bool dec_bm_work_n = false;
+
+	if (atomic_read(&device->pending_bitmap_work.n))
+	{
+		dec_bm_work_n = true;
+		atomic_dec(&device->pending_bitmap_work.n);
+	}
+
+	if (peer_device->repl_state[NOW] == L_STARTING_SYNC_S)
+	{
+		if (peer_device->connection->agreed_pro_version < 112 ||
+			!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_SOURCE, false))
+		{
+			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			if (dec_bm_work_n)
+			{
+				atomic_inc(&device->pending_bitmap_work.n);
+				dec_bm_work_n = false;
+			}
+			nRet = drbd_bmio_set_n_write(device, peer_device);
+		}
+	}
+	else if (peer_device->repl_state[NOW] == L_STARTING_SYNC_T)
+	{
+		if (peer_device->connection->agreed_pro_version < 112 ||
+			!isFastInitialSync() ||
+			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_TARGET, false))
+		{
+			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			if (dec_bm_work_n)
+			{
+				atomic_inc(&device->pending_bitmap_work.n);
+				dec_bm_work_n = false;
+			}
+			nRet = drbd_bmio_set_all_n_write(device, peer_device);
+		}
+	}
+	else
+	{
+		WDRBD_WARN("unexpected repl state: %s\n", drbd_repl_str(peer_device->repl_state[NOW]));
+	}
+
+	if (dec_bm_work_n)
+	{
+		atomic_inc(&device->pending_bitmap_work.n);
+		dec_bm_work_n = false;
+	}
+
+	return nRet;
+}
+#endif
+
 int drbd_bmio_set_all_n_write(struct drbd_device *device,
 			      struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -6089,7 +6174,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 }
 
 // set out-of-sync for allocated clusters.
-bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side)
+bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device *peer_device, enum drbd_repl_state side, bool bitmap_lock)
 {
 	bool bRet = false;
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
@@ -6123,10 +6208,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 #endif
 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
-	drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
+	if (bitmap_lock)
+		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
 	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 	drbd_bm_write(device, NULL);
-	drbd_bm_slot_unlock(peer_device);
+	if (bitmap_lock)
+		drbd_bm_slot_unlock(peer_device);
 	
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
@@ -6136,7 +6223,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
 			bSecondary = true;
 		}
-		if (side == L_SYNC_TARGET)
+		else if (side == L_SYNC_TARGET)
 		{
 			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
 			bRet = true;
@@ -6150,10 +6237,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	{
 		if (bSecondary)
 		{			
+			mutex_lock(&att_mod_mutex);
 			// set readonly attribute.
 			if (!ChangeVolumeReadonly(device->minor, true))
 			{
 				WDRBD_ERROR("Could not change volume read-only attribute\n");
+				mutex_unlock(&att_mod_mutex);
 				bSecondary = false;
 				break;
 			}
@@ -6163,49 +6252,53 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
-		if (NULL == pBitmap)
-		{
+		if (NULL == pBitmap) {
 			WDRBD_ERROR("Could not get bitmap for drbd\n");
-			break;
 		}
 
-		// Set out-of-sync for allocated cluster.
-		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);		
-		count = SetOOSFromBitmap(pBitmap, peer_device);		
-		drbd_bm_unlock(device);
-
-		if (count == -1)
+		if (bSecondary)
 		{
-			WDRBD_ERROR("Could not set bits from gotten bitmap\n");
-			break;
+			// prevent from mounting volume.
+			device->resource->bTempAllowMount = FALSE;
+
+			// dismount volume.
+			FsctlFlushDismountVolume(device->minor, false);
+
+			// clear readonly attribute
+			if (!ChangeVolumeReadonly(device->minor, false))
+			{
+				WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
+				if (device &&
+					get_ldev_if_state(device, D_NEGOTIATING))
+				{
+					set_bit(FORCE_DETACH, &device->flags);
+					change_disk_state(device, D_DETACHING, CS_HARD);
+					put_ldev(device);
+				}
+			}
+			mutex_unlock(&att_mod_mutex);
 		}
-		
-		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT-10)));
-		bRet = true;
 
 	} while (false);
 
-	if (bSecondary)
+	// DW-1495: Change location due to deadlock(bm_change)
+	// Set out-of-sync for allocated cluster.
+	if (bitmap_lock)
+		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);
+	count = SetOOSFromBitmap(pBitmap, peer_device);
+	if (bitmap_lock)
+		drbd_bm_unlock(device);
+
+	if (count == -1)
 	{
-		// prevent from mounting volume.
-		device->resource->bTempAllowMount = FALSE;
-
-		// dismount volume.
-		FsctlFlushDismountVolume(device->minor, false);
-
-		// clear readonly attribute
-		if (!ChangeVolumeReadonly(device->minor, false))
-		{
-			WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
-			if (device &&
-				get_ldev_if_state(device, D_NEGOTIATING))
-			{
-				set_bit(FORCE_DETACH, &device->flags);
-				change_disk_state(device, D_DETACHING, CS_HARD);
-				put_ldev(device);
-			}
-		}
+		WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+		bRet = false;
 	}
+	else{
+		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		bRet = true;
+	}
+		
 
 	if (pBitmap)
 	{

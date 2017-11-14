@@ -73,6 +73,8 @@ extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 // DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)
 atomic_t g_monitor_mnt_working = FALSE;
 
+extern struct mutex att_mod_mutex; 
+
 //__ffs - find first bit in word.
 ULONG_PTR __ffs(ULONG_PTR word) 
 {
@@ -1109,9 +1111,9 @@ void down(struct semaphore *s)
 
 int down_trylock(struct semaphore *s)
 {
-    LARGE_INTEGER Timeout;
-    Timeout.QuadPart = 0;
-    
+	LARGE_INTEGER Timeout; 
+	Timeout.QuadPart = 0; 
+
     if (KeWaitForSingleObject(&s->sem, Executive, KernelMode, FALSE, &Timeout) == STATUS_SUCCESS)
     {
         WDRBD_TRACE_SEM("success! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
@@ -1129,8 +1131,13 @@ void up(struct semaphore *s)
     if (KeReadStateSemaphore(&s->sem) < s->sem.Limit)
     {
         WDRBD_TRACE_SEM("KeReleaseSemaphore before! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
-        KeReleaseSemaphore(&s->sem, IO_NO_INCREMENT, 1, FALSE);
-        WDRBD_TRACE_SEM("KeReleaseSemaphore after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
+		// DW-1496 : KeReleaseSemaphore raised an exception(STATUS_SEMAPHORE_LIMIT_EXCEEDED) and handled it in try/except syntax
+		try{
+			KeReleaseSemaphore(&s->sem, IO_NO_INCREMENT, 1, FALSE);
+		} except(EXCEPTION_EXECUTE_HANDLER){
+			WDRBD_TRACE_SEM("KeReleaseSemaphore Exception occured!(ExRaiseStatus(STATUS_SEMAPHORE_LIMIT_EXCEEDED)) \n");
+		}
+		WDRBD_TRACE_SEM("KeReleaseSemaphore after! KeReadStateSemaphore (%d)\n", KeReadStateSemaphore(&s->sem));
     }
 }
 
@@ -1559,6 +1566,15 @@ void del_gendisk(struct gendisk *disk)
 	}
 #endif
 
+	// DW-1493 : WSK_EVENT_DISCONNECT disable
+	if (sock->sk){
+		status = SetEventCallbacks(sock->sk, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
+		WDRBD_INFO("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
+		if (!NT_SUCCESS(status)) {
+			WDRBD_ERROR("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
+		}
+	}
+
 	if (sock->sk_linux_attr)
 	{
 		kfree(sock->sk_linux_attr);
@@ -1730,6 +1746,7 @@ int generic_make_request(struct bio *bio)
 	ULONG io = 0;
 	PIO_STACK_LOCATION	pIoNextStackLocation = NULL;
 	
+	
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
 
 	if (!q) {
@@ -1829,7 +1846,16 @@ int generic_make_request(struct bio *bio)
 		IoFreeIrp(newIrp);
 		return -EIO;
 	}
-	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+
+	// DW-1495 : If any volume is set to read only, all writes operations are paused temporarily. 
+	if (io = IRP_MJ_WRITE){
+		mutex_lock(&att_mod_mutex);
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+		mutex_unlock(&att_mod_mutex);
+	}
+	else{
+		IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, newIrp);
+	}
 
 	return 0;
 }
