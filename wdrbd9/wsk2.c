@@ -460,7 +460,7 @@ CloseSocket(
 	if (Status == STATUS_PENDING) {
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
 		if (STATUS_TIMEOUT == Status) { // DW-1316 detour WskCloseSocket hang in Win7/x86.
-			WDRBD_WARN("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel. (irp:%p)\n", WskSocket, Irp);
+			WDRBD_INFO("Timeout... Cancel WskCloseSocket:%p. maybe required to patch WSK Kernel. (irp:%p)\n", WskSocket, Irp);
 			IoCancelIrp(Irp);
 			// DW-1388: canceling must be completed before freeing the irp.
 			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
@@ -725,7 +725,7 @@ __in KEVENT			*send_buf_kill_event
 			case STATUS_TIMEOUT:
 				if (!(retry_count++ % 5))
 				{
-					WDRBD_WARN("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					WDRBD_INFO("sendbuffing: tx timeout(%d ms). retry.\n", Timeout);// for trace
 				}
 				// TCP session is no problem. peer does not receive this data yet. he may be busy. So, just retry forever. 
 				// the real tx timeout will be occured by upper level sender thread decreasing ko_count at drbd_stream_send_timed_out.
@@ -738,7 +738,7 @@ __in KEVENT			*send_buf_kill_event
 				}
 				else
 				{
-					WDRBD_ERROR("sendbuffing: tx error(%s) wsk(0x%p)\n", GetSockErrorString(pIrp->IoStatus.Status), WskSocket);
+					WDRBD_INFO("sendbuffing: tx error(%s) wsk(0x%p)\n", GetSockErrorString(pIrp->IoStatus.Status), WskSocket);
 					switch (pIrp->IoStatus.Status)
 					{
 					case STATUS_IO_TIMEOUT:
@@ -759,7 +759,7 @@ __in KEVENT			*send_buf_kill_event
 				break;
 
 			default:
-				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
+				WDRBD_INFO("Wait failed. status 0x%x\n", Status);
 				BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -771,7 +771,7 @@ __in KEVENT			*send_buf_kill_event
 		}
 		else
 		{
-			WDRBD_ERROR("sendbuffing: WskSend error(0x%x)\n", Status);
+			WDRBD_INFO("sendbuffing: WskSend error(0x%x)\n", Status);
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -876,7 +876,7 @@ Send(
 				}
 				else
 				{
-					WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+					WDRBD_INFO("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
 					switch (Irp->IoStatus.Status)
 					{
 						case STATUS_IO_TIMEOUT:
@@ -899,7 +899,7 @@ Send(
 			//	break;
 
 			default:
-				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
+				WDRBD_INFO("Wait failed. status 0x%x\n", Status);
 				BytesSent = SOCKET_ERROR;
 			}
 		}
@@ -909,11 +909,11 @@ Send(
 		if (Status == STATUS_SUCCESS)
 		{
 			BytesSent = (LONG) Irp->IoStatus.Information;
-			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+			WDRBD_INFO("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
 		}
 		else
 		{
-			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+			WDRBD_INFO("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -989,7 +989,7 @@ $retry:
 			case STATUS_TIMEOUT:
 				// DW-1095 adjust retry_count logic 
 				if (!(++retry_count % 5)) {
-					WDRBD_WARN("send buffering: tx timeout(%d ms). retry.\n", Timeout);// for trace
+					WDRBD_INFO("send buffering: tx timeout(%d ms). retry.\n", Timeout);// for trace
 					// DW-1524 fix infinite send retry on low-bandwith
 					IoCancelIrp(Irp);
 					KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
@@ -1011,7 +1011,7 @@ $retry:
 				}
 				else
 				{
-					WDRBD_WARN("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+					WDRBD_INFO("tx error(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
 					switch (Irp->IoStatus.Status)
 					{
 						case STATUS_IO_TIMEOUT:
@@ -1038,11 +1038,11 @@ $retry:
 		if (Status == STATUS_SUCCESS)
 		{
 			BytesSent = (LONG) Irp->IoStatus.Information;
-			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+			WDRBD_INFO("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
 		}
 		else
 		{
-			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+			WDRBD_INFO("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -1135,7 +1135,7 @@ SendLocal(
 			}
 			else
 			{
-				WDRBD_WARN("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
+				WDRBD_INFO("(%s) sent error(%s)\n", current->comm, GetSockErrorString(Irp->IoStatus.Status));
 				switch (Irp->IoStatus.Status)
 				{
 				case STATUS_IO_TIMEOUT:
@@ -1152,7 +1152,7 @@ SendLocal(
 			break;
 
 		default:
-			WDRBD_ERROR("KeWaitForSingleObject failed. status 0x%x\n", Status);
+			WDRBD_INFO("KeWaitForSingleObject failed. status 0x%x\n", Status);
 			BytesSent = SOCKET_ERROR;
 		}
 	}
@@ -1161,11 +1161,11 @@ SendLocal(
 		if (Status == STATUS_SUCCESS)
 		{
 			BytesSent = (LONG) Irp->IoStatus.Information;
-			WDRBD_WARN("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
+			WDRBD_INFO("(%s) WskSend No pending: but sent(%d)!\n", current->comm, BytesSent);
 		}
 		else
 		{
-			WDRBD_WARN("(%s) WskSend error(0x%x)\n", current->comm, Status);
+			WDRBD_INFO("(%s) WskSend error(0x%x)\n", current->comm, Status);
 			BytesSent = SOCKET_ERROR;
 		}
 	}
