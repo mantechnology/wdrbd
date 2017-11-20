@@ -1028,7 +1028,7 @@ $retry:
 				break;
 
 			default:
-				WDRBD_ERROR("Wait failed. status 0x%x\n", Status);
+				WDRBD_INFO("Wait failed. status 0x%x\n", Status);
 				BytesSent = SOCKET_ERROR;
 			}
 		}

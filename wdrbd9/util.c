@@ -247,7 +247,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
             0);
         if (!NT_SUCCESS(status))
         {
-            WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwCreateFile Failed. status(0x%x)\n", status);
             __leave;
         }
 
@@ -261,7 +261,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
         if (!NT_SUCCESS(status))
         {
             //printk(KERN_ERR "ZwFsControlFile Failed. status(0x%x)\n", status);
-            WDRBD_ERROR("ZwFsControlFile Failed. status(0x%x) &ObjectAttributes(0x%p) hFile(0x%p)\n", status, &ObjectAttributes, hFile);
+            WDRBD_INFO("ZwFsControlFile Failed. status(0x%x) &ObjectAttributes(0x%p) hFile(0x%p)\n", status, &ObjectAttributes, hFile);
             __leave;
         }
         
@@ -365,7 +365,7 @@ NTSTATUS FsctlFlushVolume(unsigned int minor)
 
         if (!NT_SUCCESS(status))
         {
-            WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwCreateFile Failed. status(0x%x)\n", status);
             __leave;
         }
 

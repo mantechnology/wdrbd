@@ -648,7 +648,7 @@ $BindRetry:
 	        if (readcount == 0) {
 	            goto cleanup;
 	        } else if(readcount < 0) {
-	            WDRBD_ERROR("Receive error = 0x%x\n", readcount);
+	            WDRBD_INFO("Receive error = 0x%x\n", readcount);
 	            goto cleanup;
 	        }
 
@@ -802,7 +802,7 @@ NetlinkWorkThread(PVOID context)
             //WDRBD_INFO("peer closed\n"); // disconenct 명령??
             goto cleanup;
         } else if(readcount < 0) {
-            WDRBD_ERROR("Receive error = 0x%x\n", readcount);
+            WDRBD_INFO("Receive error = 0x%x\n", readcount);
             goto cleanup;
         }
 

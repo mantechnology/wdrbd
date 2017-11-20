@@ -1436,14 +1436,14 @@ retry:
 	// step 2 : wait barrier pending with timeout
 	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
 	if(!time_out) {
-		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
+		WDRBD_INFO("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
 		goto out;
 	}
 	/* After waiting for pending barriers, we got any possible NEG_ACKs,
 	   and see them in wait_for_peer_disk_updates() */
 	// step 3 : wait for updating peer disk with timeout   
 	if(!wait_for_peer_disk_updates_timeout(resource)) {
-		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
+		WDRBD_INFO("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
 		goto out;
 	}
 	
