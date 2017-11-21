@@ -1343,7 +1343,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	// DW-1398: do not accept if already connected.
 	if (atomic_read(&waiter->transport->listening_done))
 	{
-		WDRBD_WARN("listening is done for this transport, request won't be accepted\n");
+		WDRBD_INFO("listening is done for this transport, request won't be accepted\n");
 		kfree(s_estab->sk_linux_attr);
 		kfree(s_estab);
 		spin_unlock(&listener->waiters_lock);

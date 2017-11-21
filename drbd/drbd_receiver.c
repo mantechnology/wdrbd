@@ -998,7 +998,7 @@ start:
 
 		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
 		if (send_buffring)
-			drbd_info(connection, "buffering s(%d) c(%d)\n", nc->sndbuf_size, (nc->cong_fill * 512));
+			drbd_info(connection, "send-buffering size(%d) cong_fill(%d)\n", nc->sndbuf_size, (nc->cong_fill * 512));
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
 	}
@@ -4396,7 +4396,7 @@ static void various_states_to_goodness(struct drbd_device *device,
 		peer_node_id = peer_device->node_id;
 		peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
 
-		drbd_warn(peer_device, "FIXME, both nodes are UpToDate, but have inconsistent bits set. clear it without resync\n");
+		drbd_info(peer_device, "FIXME, both nodes are UpToDate, but have inconsistent bits set. clear it without resync\n");
 
 		if (peer_bm_uuid)
 			_drbd_uuid_push_history(device, peer_bm_uuid);
@@ -6796,7 +6796,7 @@ static int process_twopc(struct drbd_connection *connection,
 					}
 					else
 					{
-						drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+						drbd_info(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
 						kref_debug_put(&connection->kref_debug, 9);
 						kref_put(&connection->kref, drbd_destroy_connection);
 					}
@@ -6958,7 +6958,7 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 		else
 		{
-			drbd_warn(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
+			drbd_info(connection, "twopc_parent_list(%p) already added.\n", &connection->twopc_parent_list);
 			kref_debug_put(&connection->kref_debug, 9);
 			kref_put(&connection->kref, drbd_destroy_connection);
 		}
@@ -7161,7 +7161,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #ifdef _WIN32_DEBUG_OOS
 				{
 					// DW-1199: print log for remaining out-of-sync to recogsize which sector has to be traced
-					drbd_warn(peer_device, "SyncSource still sees bits set!! FIXME\n");
+					drbd_info(peer_device, "SyncSource still sees bits set!! FIXME\n");
 					if(TRUE == atomic_read(&g_oos_trace))
 					{
 						ULONG_PTR bit = 0;
@@ -7844,8 +7844,13 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 		mutex_unlock(&device->bm_resync_fo_mutex);
 		break; 
 	default:
+#ifdef _WIN32
+		drbd_info(device, "ASSERT FAILED cstate = %s, expected: WFSyncUUID|WFBitMapT|Behind\n",
+				drbd_repl_str(peer_device->repl_state[NOW]));
+#else
 		drbd_err(device, "ASSERT FAILED cstate = %s, expected: WFSyncUUID|WFBitMapT|Behind\n",
 				drbd_repl_str(peer_device->repl_state[NOW]));
+#endif
 	}
 	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize)); 
 
@@ -7853,7 +7858,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
 	if (bResetTimer)
 	{
-		drbd_warn(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
+		drbd_info(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
 		mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 	}
 #endif

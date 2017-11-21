@@ -2382,7 +2382,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 	// no start resync if I haven't received uuid from peer.	
 	if (!peer_device->uuids_received)
 	{
-		drbd_warn(peer_device, "I have not yet received uuid from peer, can not be %s\n", drbd_repl_str(replState));
+		drbd_info(peer_device, "I have not yet received uuid from peer, can not be %s\n", drbd_repl_str(replState));
 		return false;
 	}
 
@@ -2404,7 +2404,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		case L_VERIFY_T:
 			return true;
 		default:
-			drbd_warn(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
+			drbd_info(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
 			return false;
 	}
 	
@@ -2412,7 +2412,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 	{
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE))
 		{
-			drbd_warn(peer_device, "Sync source is unstable, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+			drbd_info(peer_device, "Sync source is unstable, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
 				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
 			return false;
 		}
@@ -2424,7 +2424,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 #endif
 			!(NODE_MASK(peer_device->node_id) & authoritative))
 		{
-			drbd_warn(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s, authoritative(%llx)\n",
+			drbd_info(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s, authoritative(%llx)\n",
 				drbd_repl_str(replState), authoritative);
 			return false;
 		}
@@ -2437,14 +2437,14 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		if (!drbd_device_stable_ex(device, &authoritative, which))
 #endif
 		{
-			drbd_warn(peer_device, "I am unstable, can not be %s, authoritative(%llx)\n", drbd_repl_str(replState), authoritative);
+			drbd_info(peer_device, "I am unstable, can not be %s, authoritative(%llx)\n", drbd_repl_str(replState), authoritative);
 			return false;
 		}
 
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
 			!(NODE_MASK(device->resource->res_opts.node_id) & peer_device->uuid_authoritative_nodes))
 		{
-			drbd_warn(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+			drbd_info(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
 				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
 			return false;			
 		}
