@@ -3815,10 +3815,12 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 
 #ifdef _WIN32 
 	// DW-1436 unable to change send buffer size dynamically
-	if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
-		retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
-		goto fail;
-	}	
+	if (connection->cstate[NOW] >= C_CONNECTED){
+		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+			retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+			goto fail;
+		}
+	}
 #endif
 
 	/* re-sync running */
