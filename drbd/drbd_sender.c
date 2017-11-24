@@ -3334,7 +3334,6 @@ static int process_one_request(struct drbd_connection *connection)
 				(req->rq_state[0] & RQ_LOCAL_COMPLETED))
 			{
 				kfree2(req->req_databuf);
-				atomic_sub64(req->i.size, &g_total_req_buf_bytes);
 			}
 #endif
 
@@ -3459,13 +3458,6 @@ int drbd_sender(struct drbd_thread *thi)
 
 	while (get_t_state(thi) == RUNNING) {
 		drbd_thread_current_set_cpu(thi);
-#ifdef _WIN32
-		// DW-1539 alarm req-buf overflow and disconnect
-		if(connection->breqbuf_overflow_alarm == TRUE) {
-			change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
-			connection->breqbuf_overflow_alarm = FALSE;
-		}
-#endif
 		if (list_empty(&connection->todo.work_list) &&
 		    connection->todo.req == NULL) {
 			update_sender_timing_details(connection, wait_for_sender_todo);

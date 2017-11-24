@@ -98,6 +98,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	if (!req)
 		return NULL;
 
+	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
+	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
+	atomic_add64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
+	
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
 	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
@@ -109,8 +113,6 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	}
 	// MODIFIED_BY_MANTECH DW-1237: set request data buffer ref to 1 for local I/O.
 	atomic_set(&req->req_databuf_ref, 1);
-	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
-	atomic_add64(bio_src->bi_size, &g_total_req_buf_bytes);
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
@@ -118,9 +120,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree2(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(bio_src->bi_size, &g_total_req_buf_bytes);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
         return NULL;
     }
 #else
@@ -197,11 +200,12 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         {
             // DW-596: required to verify to free req_databuf at this point
             kfree2(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -363,7 +367,7 @@ void drbd_req_destroy(struct kref *kref)
 								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
 						struct drbd_oos_no_req* send_oos = NULL;
 
-						drbd_info(peer_device, "found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+						WDRBD_TRACE("found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
 
 						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
 						if (send_oos)
@@ -431,10 +435,11 @@ void drbd_req_destroy(struct kref *kref)
 				if (peer_ack_req->req_databuf)
 				{
 					kfree2(peer_ack_req->req_databuf);
-					// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-					atomic_sub64(peer_ack_req->i.size, &g_total_req_buf_bytes);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+				// DW-1539
+				atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
 			}
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
@@ -453,10 +458,11 @@ void drbd_req_destroy(struct kref *kref)
     	if (req->req_databuf)
     	{
     		kfree2(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -995,7 +1001,6 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		if (0 == atomic_dec(&req->req_databuf_ref))
 		{
 			kfree2(req->req_databuf);
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
 		}
 	}
 #endif

@@ -1264,6 +1264,7 @@ struct drbd_resource {
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
 #endif
+	bool breqbuf_overflow_alarm; // DW-1539
 #ifdef _WIN32_MULTIVOL_THREAD
 	MVOL_THREAD			WorkThreadInfo;
 #endif
@@ -1287,7 +1288,6 @@ struct drbd_connection {
 	enum drbd_role peer_role[2];
 #ifdef _WIN32
 	ULONG_PTR flags;
-	bool breqbuf_overflow_alarm;
 #else
 	unsigned long flags;
 #endif
@@ -3365,18 +3365,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
 		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
 	}
-
-	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
-	{
-		struct drbd_connection *connection;
-		u64 im;
-
-		for_each_connection_ref(connection, im, device->resource)
-			connection->breqbuf_overflow_alarm = TRUE;
+	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
+		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit())
 			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
 		rv = false;
+	} else {
+		device->resource->breqbuf_overflow_alarm = FALSE;
 	}
 #endif
 
