@@ -152,6 +152,11 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 #endif
 
+	// DW-1541 : Remove the VolumeExtension from the device list before deleting the DeviceObject.
+	MVOL_LOCK();
+	mvolDeleteDeviceList(VolumeExtension);
+	MVOL_UNLOCK();
+
 	if (VolumeExtension->dev) {
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, FALSE);
@@ -194,10 +199,6 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
 	FreeUnicodeString(&VolumeExtension->VolumeGuid);
-
-	MVOL_LOCK();
-	mvolDeleteDeviceList(VolumeExtension);
-	MVOL_UNLOCK();
 	
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
