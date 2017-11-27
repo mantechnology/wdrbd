@@ -2290,25 +2290,18 @@ void do_submit(struct work_struct *ws)
 #ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 			drbd_kick_lo(device);
 #endif
-#ifdef _WIN32 // DW-1513 : If al_wait event is not received during AL_WAIT_TIMEOUT, force detach drbd disk. (Not really an IO error)
+#ifdef _WIN32 // DW-1513, DW-1546 : If al_wait event is not received during AL_WAIT_TIMEOUT, disconnect.
 			if(!schedule(&device->al_wait, AL_WAIT_TIMEOUT, __FUNCTION__, __LINE__))
 			{
-				drbd_err(device, "al_wait timeout...");
+				drbd_err(device, "al_wait timeout... disconnect\n");
+
+				struct drbd_peer_device *peer_device;
+				for_each_peer_device_rcu(peer_device, device) {
+					change_cstate(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+				}
 				
-				al_write_fail = true;
-
-				list_splice_tail_init(&busy, &incoming);
+				continue;
 				
-				spin_lock_irq(&device->resource->req_lock);
-				list_splice_tail_init(&device->submit.writes, &incoming);
-				spin_unlock_irq(&device->resource->req_lock);
-
-				if (!list_empty(&incoming))
-					list_splice_init(&incoming, &pending);
-
-				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
-			
-				goto fail;
 			}
 #else
 			schedule();
@@ -2380,18 +2373,9 @@ void do_submit(struct work_struct *ws)
 		drbd_al_begin_io_commit(device);
 
 		ensure_current_uuid(device);
-#ifdef _WIN32 // DW-1513 : Complete the pending IO.
-fail:
-#endif
 
 		send_and_submit_pending(device, &pending);
 
-#ifdef _WIN32 // DW-1513
-		if (al_write_fail)
-		{
-			break;
-		}
-#endif
 	}
 #ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 	drbd_kick_lo(device);
