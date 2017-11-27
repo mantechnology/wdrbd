@@ -8792,11 +8792,12 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
     if (req->req_databuf)
     {
         kfree2(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+	// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
+	atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
@@ -9460,11 +9461,12 @@ static void destroy_request(struct kref *kref)
     if (req->req_databuf)
     {
         kfree2(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     }
 
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+	// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+	// DW-1539
+	atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
@@ -9584,6 +9586,13 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 		drbd_reclaim_net_peer_reqs(connection);
 
+#ifdef _WIN32
+		// DW-1539 alarm req-buf overflow and disconnect
+		if(connection->resource->breqbuf_overflow_alarm == TRUE) {
+			drbd_err(connection, "drbd_resource:%p drbd_req overflow alarm\n",connection->resource);
+			goto reconnect;
+		}
+#endif
 		if (test_and_clear_bit(SEND_PING, &connection->flags)) {
 #ifdef _WIN32
 			int ping_ret;
