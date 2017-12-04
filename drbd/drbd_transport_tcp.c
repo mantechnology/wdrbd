@@ -467,6 +467,15 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
     if (err < 0) {
 		goto fail;
 	}
+	else if (err != size) 
+	{
+		// DW-1502 : If the size of the received data differs from the expected size, the consistency will be broken.
+		WDRBD_ERROR("Wrong data (expected size:%d, received size:%d)\n", size, err);
+		err = -EIO;		
+		
+		goto fail;
+	}
+	
 #else
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
