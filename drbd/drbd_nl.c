@@ -1009,6 +1009,7 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 
         kref_put(&connection->kref, drbd_destroy_connection);
 	}
+	ZwClose (hThread);
 #else
 	/* We may just have force_sig()'ed this thread
 	 * to get it out of some blocking network function.

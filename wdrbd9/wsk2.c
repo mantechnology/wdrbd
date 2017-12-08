@@ -634,8 +634,12 @@ __inout  NTSTATUS* pStatus
 		else
 			*pStatus = Status = Irp->IoStatus.Status;
 	}
-	
-	WskSocket = Status == STATUS_SUCCESS ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
+	if(Status != STATUS_SUCCESS) {
+		if(Irp->IoStatus.Information) {
+			WDRBD_WARN("WskSocketConnect fail but socket is allocated:%p\n",(PWSK_SOCKET) Irp->IoStatus.Information);
+		}
+	}
+	WskSocket = (Status == STATUS_SUCCESS) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
 	IoFreeIrp(Irp);
 	return WskSocket;
 }
