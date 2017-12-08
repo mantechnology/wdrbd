@@ -237,6 +237,7 @@ static void dtt_free_one_sock(struct socket *socket)
         {
             KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
             KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
+			//ZwClose (attr->send_buf_thread_handle);
             attr->send_buf_thread_handle = NULL;
         }
 #endif		
@@ -671,7 +672,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 #endif 
 	if (!NT_SUCCESS(status)) {
 		err = status;
-		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x\n",status);
+		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x socket->sk:%p\n",status,socket->sk);
 		switch (status) {
 		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
 #ifdef _WIN32
@@ -2482,9 +2483,10 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 						attr->bab = NULL;
 						return FALSE;
 					}
-
+					ZwClose(attr->send_buf_thread_handle);
 					// wait send buffering thread start...
 					KeWaitForSingleObject(&attr->send_buf_thr_start_event, Executive, KernelMode, FALSE, NULL);
+					
 				}
 				else
 				{
@@ -2497,6 +2499,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 						//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
 						KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
 						//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+						//ZwClose(attr->send_buf_thread_handle);
 						attr->send_buf_thread_handle = NULL;
 						
 						// free DATA_STREAM bab
@@ -2536,6 +2539,7 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 				//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
 				KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
 				//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+				//ZwClose(attr->send_buf_thread_handle);
 				attr->send_buf_thread_handle = NULL;
 			}
 			else
