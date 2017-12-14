@@ -607,6 +607,12 @@ struct drbd_request {
 	u64 dagtag_sector;
 
 	struct list_head tl_requests; /* ring list in the transfer log */
+
+#ifdef _WIN32_NETQUEUED_LOG
+	struct list_head nq_requests; /* ring list in the net queued log */
+	atomic_t nq_ref;
+#endif
+	
 	struct bio *master_bio;       /* master bio pointer */
 
 	/* see struct drbd_device */
@@ -1202,6 +1208,10 @@ struct drbd_resource {
 #endif
 	struct list_head transfer_log;	/* all requests not yet fully processed */
 
+#ifdef _WIN32_NETQUEUED_LOG
+	struct list_head net_queued_log;	/* RQ_NET_QUEUED requests */
+#endif
+
 	struct list_head peer_ack_list;  /* requests to send peer acks for */
 	u64 last_peer_acked_dagtag;  /* dagtag of last PEER_ACK'ed request */
 	struct drbd_request *peer_ack_req;  /* last request not yet PEER_ACK'ed */
@@ -1254,6 +1264,7 @@ struct drbd_resource {
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
 #endif
+	bool breqbuf_overflow_alarm; // DW-1539
 #ifdef _WIN32_MULTIVOL_THREAD
 	MVOL_THREAD			WorkThreadInfo;
 #endif
@@ -3354,12 +3365,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
 		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
 	}
-
-	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max)
-	{
+	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
+		device->resource->breqbuf_overflow_alarm = TRUE;
+	
 		if (drbd_ratelimit())
 			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
 		rv = false;
+	} else {
+		device->resource->breqbuf_overflow_alarm = FALSE;
 	}
 #endif
 

@@ -139,7 +139,7 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
                 0);
             if (!NT_SUCCESS(status))
             {
-                WDRBD_WARN("ZwCreateFile Failed. status(0x%x)\n", status);
+                WDRBD_INFO("ZwCreateFile Failed. status(0x%x)\n", status);
                 __leave;
             }
         }
@@ -165,13 +165,13 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 		{
 			status = ZwFlushBuffersFile(hFile, &StatusBlock);
 			if (!NT_SUCCESS(status)) {
-				WDRBD_ERROR("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
+				WDRBD_INFO("ZwFlushBuffersFile Failed. status(0x%x)\n", status);
 			}
 		}
 		
         status = ZwFsControlFile(hFile, 0, 0, 0, &StatusBlock, FSCTL_DISMOUNT_VOLUME, 0, 0, 0, 0);
         if (!NT_SUCCESS(status)) {
-            WDRBD_ERROR("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
             __leave;
         }
 
@@ -247,7 +247,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
             0);
         if (!NT_SUCCESS(status))
         {
-            WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwCreateFile Failed. status(0x%x)\n", status);
             __leave;
         }
 
@@ -261,7 +261,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
         if (!NT_SUCCESS(status))
         {
             //printk(KERN_ERR "ZwFsControlFile Failed. status(0x%x)\n", status);
-            WDRBD_ERROR("ZwFsControlFile Failed. status(0x%x) &ObjectAttributes(0x%p) hFile(0x%p)\n", status, &ObjectAttributes, hFile);
+            WDRBD_INFO("ZwFsControlFile Failed. status(0x%x) &ObjectAttributes(0x%p) hFile(0x%p)\n", status, &ObjectAttributes, hFile);
             __leave;
         }
         
@@ -296,7 +296,7 @@ NTSTATUS FsctlUnlockVolume(unsigned int minor)
 
     if (!pvext->LockHandle)
     {
-        WDRBD_WARN("volume(%ws) not locked\n", pvext->PhysicalDeviceName);
+        WDRBD_INFO("volume(%ws) not locked\n", pvext->PhysicalDeviceName);
         return STATUS_NOT_LOCKED;
     }
 
@@ -308,7 +308,7 @@ NTSTATUS FsctlUnlockVolume(unsigned int minor)
         status = ZwFsControlFile(pvext->LockHandle, 0, 0, 0, &StatusBlock, FSCTL_UNLOCK_VOLUME, 0, 0, 0, 0);
         if (!NT_SUCCESS(status))
         {
-            WDRBD_ERROR("ZwFsControlFile Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwFsControlFile Failed. status(0x%x)\n", status);
             __leave;
         }
 
@@ -365,7 +365,7 @@ NTSTATUS FsctlFlushVolume(unsigned int minor)
 
         if (!NT_SUCCESS(status))
         {
-            WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
+            WDRBD_INFO("ZwCreateFile Failed. status(0x%x)\n", status);
             __leave;
         }
 

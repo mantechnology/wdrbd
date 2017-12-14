@@ -299,9 +299,9 @@
 #define DRBD_MAX_BIO_SIZE_SCALE '1'
 
 #ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size, 512mb ~ 10gb, default : 1gb
-#define DRBD_REQ_BUF_SIZE_MIN        (512 << 10)
-#define DRBD_REQ_BUF_SIZE_DEF        (1024 << 10)
+// MODIFIED_BY_MANTECH DW-1200 DW-1539: request buffer maximum size, 10MB ~ 10GB, default : 100MB
+#define DRBD_REQ_BUF_SIZE_MIN        (10 << 10)
+#define DRBD_REQ_BUF_SIZE_DEF        (100 << 10)
 #define DRBD_REQ_BUF_SIZE_MAX        (10240 << 10)
 #define DRBD_REQ_BUF_SIZE_SCALE        'k'
 #endif

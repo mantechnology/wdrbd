@@ -981,7 +981,7 @@ struct scatterlist {
 #define BUG_ON(_condition)	\
     do {	\
         if(_condition) { \
-            WDRBD_FATAL("BUG: failure\n"); \
+            WDRBD_FATAL("BUG: failure [ %s ]\n", #_condition); \
 		}\
 	} while (0)
 

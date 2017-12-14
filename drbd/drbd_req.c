@@ -98,6 +98,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	if (!req)
 		return NULL;
 
+	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
+	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
+	atomic_add64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
+	
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
 	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
@@ -109,8 +113,6 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	}
 	// MODIFIED_BY_MANTECH DW-1237: set request data buffer ref to 1 for local I/O.
 	atomic_set(&req->req_databuf_ref, 1);
-	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
-	atomic_add64(bio_src->bi_size, &g_total_req_buf_bytes);
 	memcpy(req->req_databuf, bio_src->bio_databuf, bio_src->bi_size);
 #endif
 
@@ -118,9 +120,10 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree2(req->req_databuf);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		atomic_sub64(bio_src->bi_size, &g_total_req_buf_bytes);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
         return NULL;
     }
 #else
@@ -145,6 +148,12 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	req->i.waiting = false;
 
 	INIT_LIST_HEAD(&req->tl_requests);
+
+#ifdef _WIN32_NETQUEUED_LOG	
+	INIT_LIST_HEAD(&req->nq_requests);
+	atomic_set(&req->nq_ref, 0);
+#endif
+	
 	INIT_LIST_HEAD(&req->req_pending_master_completion);
 	INIT_LIST_HEAD(&req->req_pending_local);
 
@@ -191,11 +200,12 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
         {
             // DW-596: required to verify to free req_databuf at this point
             kfree2(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
         }
 
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -289,6 +299,11 @@ void drbd_req_destroy(struct kref *kref)
 		goto out;
 	}
 
+#ifdef _WIN32_NETQUEUED_LOG
+	atomic_set(&req->nq_ref, 0);
+	list_del_init(&req->nq_requests);
+#endif
+	
 	list_del_init(&req->tl_requests);
 
 	/* finally remove the request from the conflict detection
@@ -352,7 +367,7 @@ void drbd_req_destroy(struct kref *kref)
 								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
 						struct drbd_oos_no_req* send_oos = NULL;
 
-						drbd_warn(peer_device, "found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+						drbd_debug(peer_device,"found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
 
 						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
 						if (send_oos)
@@ -420,10 +435,11 @@ void drbd_req_destroy(struct kref *kref)
 				if (peer_ack_req->req_databuf)
 				{
 					kfree2(peer_ack_req->req_databuf);
-					// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-					atomic_sub64(peer_ack_req->i.size, &g_total_req_buf_bytes);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+				// DW-1539
+				atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
 			}
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
@@ -442,10 +458,11 @@ void drbd_req_destroy(struct kref *kref)
     	if (req->req_databuf)
     	{
     		kfree2(req->req_databuf);
-			// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
     	}
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
+		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
+		// DW-1539
+		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -926,6 +943,13 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 	if (!(old_net & RQ_NET_QUEUED) && (set & RQ_NET_QUEUED)) {
 		atomic_inc(&req->completion_ref);
+		
+#ifdef _WIN32_NETQUEUED_LOG
+		if(atomic_inc_return(&req->nq_ref) == 1)
+		{
+			list_add_tail(&req->nq_requests, &device->resource->net_queued_log);
+		}
+#endif
 		set_if_null_req_next(peer_device, req);
 	}
 
@@ -977,7 +1001,6 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		if (0 == atomic_dec(&req->req_databuf_ref))
 		{
 			kfree2(req->req_databuf);
-			atomic_sub64(req->i.size, &g_total_req_buf_bytes);
 		}
 	}
 #endif
@@ -991,6 +1014,13 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 	if ((old_net & RQ_NET_QUEUED) && (clear & RQ_NET_QUEUED)) {
 		++c_put;
+
+#ifdef _WIN32_NETQUEUED_LOG
+		if (atomic_dec(&req->nq_ref) == 0)
+		{
+			list_del_init(&req->nq_requests);
+		}
+#endif
 		advance_conn_req_next(peer_device, req);
 	}
 
@@ -2265,25 +2295,18 @@ void do_submit(struct work_struct *ws)
 #ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 			drbd_kick_lo(device);
 #endif
-#ifdef _WIN32 // DW-1513 : If al_wait event is not received during AL_WAIT_TIMEOUT, force detach drbd disk. (Not really an IO error)
+#ifdef _WIN32 // DW-1513, DW-1546 : If al_wait event is not received during AL_WAIT_TIMEOUT, disconnect.
 			if(!schedule(&device->al_wait, AL_WAIT_TIMEOUT, __FUNCTION__, __LINE__))
 			{
-				drbd_err(device, "al_wait timeout...");
+				drbd_err(device, "al_wait timeout... disconnect\n");
+
+				struct drbd_peer_device *peer_device;
+				for_each_peer_device_rcu(peer_device, device) {
+					change_cstate(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+				}
 				
-				al_write_fail = true;
-
-				list_splice_tail_init(&busy, &incoming);
+				continue;
 				
-				spin_lock_irq(&device->resource->req_lock);
-				list_splice_tail_init(&device->submit.writes, &incoming);
-				spin_unlock_irq(&device->resource->req_lock);
-
-				if (!list_empty(&incoming))
-					list_splice_init(&incoming, &pending);
-
-				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
-			
-				goto fail;
 			}
 #else
 			schedule();
@@ -2355,18 +2378,9 @@ void do_submit(struct work_struct *ws)
 		drbd_al_begin_io_commit(device);
 
 		ensure_current_uuid(device);
-#ifdef _WIN32 // DW-1513 : Complete the pending IO.
-fail:
-#endif
 
 		send_and_submit_pending(device, &pending);
 
-#ifdef _WIN32 // DW-1513
-		if (al_write_fail)
-		{
-			break;
-		}
-#endif
 	}
 #ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 	drbd_kick_lo(device);

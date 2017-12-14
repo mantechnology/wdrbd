@@ -271,12 +271,12 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 		if (ret != tx_sz) {
 			if (ret < 0) {
 				if (ret != -EINTR) {
-					WDRBD_ERROR("Send Error(%d)\n", ret);
+					WDRBD_INFO("Send Error(%d)\n", ret);
 					ret = 0;
 				}
 				break;
 			} else {
-				WDRBD_ERROR("Tx mismatch. req(%d) sent(%d)\n", tx_sz, ret);
+				WDRBD_INFO("Tx mismatch. req(%d) sent(%d)\n", tx_sz, ret);
 				// will be recovered by upper drbd protocol 
 			}
 		}
