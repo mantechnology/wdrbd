@@ -1552,7 +1552,7 @@ void del_gendisk(struct gendisk *disk)
 	
 	if (!sock)
 	{
-		WDRBD_WARN("socket is null.\n");
+		WDRBD_INFO("socket is null.\n");
 		return;
 	}
 

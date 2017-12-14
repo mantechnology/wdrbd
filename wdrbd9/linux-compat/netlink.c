@@ -191,7 +191,7 @@ int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 #endif
             if (sent != skb->len)
             {
-                WDRBD_WARN("Failed to send socket(0x%x)\n", socket_entry->ptr);
+                WDRBD_INFO("Failed to send socket(0x%x)\n", socket_entry->ptr);
             }
         }
 
@@ -258,7 +258,7 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
 #endif
         
         // -ENODEV : occured by first drbdadm adjust. response?
-        WDRBD_WARN("drbd_adm_get_status_all err = %d\n", err);
+        WDRBD_INFO("drbd_adm_get_status_all err = %d\n", err);
     }
 
     if (nlh)
@@ -294,7 +294,7 @@ int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
     }
     else
     {
-        WDRBD_WARN("sent Error=0x%x. sock=%p, data=%p sz=%d\n", sent, info->NetlinkSock, skb->data, skb->len);
+        WDRBD_INFO("sent Error=0x%x. sock=%p, data=%p sz=%d\n", sent, info->NetlinkSock, skb->data, skb->len);
         return -2; // return non-zero!
     }
 }
@@ -539,7 +539,7 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 
                 ret = _genl_dump(pops, skb, &ncb, pinfo);
 				if(cnt++ > 512) {
-					WDRBD_WARN("_genl_dump exceed process break;\n");
+					WDRBD_INFO("_genl_dump exceed process break;\n");
 					break;
 				}
             }
@@ -648,7 +648,7 @@ $BindRetry:
 	        if (readcount == 0) {
 	            goto cleanup;
 	        } else if(readcount < 0) {
-	            WDRBD_ERROR("Receive error = 0x%x\n", readcount);
+	            WDRBD_INFO("Receive error = 0x%x\n", readcount);
 	            goto cleanup;
 	        }
 
@@ -726,11 +726,11 @@ $BindRetry:
 						errcnt++;
 					}
 				} else {
-					WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
+					WDRBD_INFO("Failed to acquire the mutex : 0x%x\n", status);
 				}
 
 	        } else {
-	            WDRBD_WARN("Not validated cmd(%d)\n", cmd);
+	            WDRBD_INFO("Not validated cmd(%d)\n", cmd);
 	        }
 		}
 
@@ -802,7 +802,7 @@ NetlinkWorkThread(PVOID context)
             //WDRBD_INFO("peer closed\n"); // disconenct 명령??
             goto cleanup;
         } else if(readcount < 0) {
-            WDRBD_ERROR("Receive error = 0x%x\n", readcount);
+            WDRBD_INFO("Receive error = 0x%x\n", readcount);
             goto cleanup;
         }
 
@@ -891,11 +891,11 @@ NetlinkWorkThread(PVOID context)
 					errcnt++;
 				}
 			} else {
-				WDRBD_WARN("Failed to acquire the mutex : 0x%x\n", status);
+				WDRBD_INFO("Failed to acquire the mutex : 0x%x\n", status);
 			}
 
         } else {
-            WDRBD_WARN("Not validated cmd(%d)\n", cmd);
+            WDRBD_INFO("Not validated cmd(%d)\n", cmd);
         }
     }
 

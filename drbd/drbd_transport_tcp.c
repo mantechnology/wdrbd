@@ -237,6 +237,7 @@ static void dtt_free_one_sock(struct socket *socket)
         {
             KeSetEvent(&attr->send_buf_kill_event, 0, FALSE);
             KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
+			//ZwClose (attr->send_buf_thread_handle);
             attr->send_buf_thread_handle = NULL;
         }
 #endif		
@@ -467,6 +468,15 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
     if (err < 0) {
 		goto fail;
 	}
+	else if (err != size) 
+	{
+		// DW-1502 : If the size of the received data differs from the expected size, the consistency will be broken.
+		WDRBD_ERROR("Wrong data (expected size:%d, received size:%d)\n", size, err);
+		err = -EIO;		
+		
+		goto fail;
+	}
+	
 #else
 	page_chain_for_each(page) {
 		size_t len = min_t(int, size, PAGE_SIZE);
@@ -662,7 +672,7 @@ static int dtt_try_connect(struct dtt_path *path, struct socket **ret_socket)
 #endif 
 	if (!NT_SUCCESS(status)) {
 		err = status;
-		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x\n",status);
+		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x socket->sk:%p\n",status,socket->sk);
 		switch (status) {
 		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
 #ifdef _WIN32
@@ -1343,7 +1353,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	// DW-1398: do not accept if already connected.
 	if (atomic_read(&waiter->transport->listening_done))
 	{
-		WDRBD_WARN("listening is done for this transport, request won't be accepted\n");
+		WDRBD_INFO("listening is done for this transport, request won't be accepted\n");
 		kfree(s_estab->sk_linux_attr);
 		kfree(s_estab);
 		spin_unlock(&listener->waiters_lock);
@@ -2473,9 +2483,10 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 						attr->bab = NULL;
 						return FALSE;
 					}
-
+					ZwClose(attr->send_buf_thread_handle);
 					// wait send buffering thread start...
 					KeWaitForSingleObject(&attr->send_buf_thr_start_event, Executive, KernelMode, FALSE, NULL);
+					
 				}
 				else
 				{
@@ -2488,6 +2499,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 						//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
 						KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
 						//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+						//ZwClose(attr->send_buf_thread_handle);
 						attr->send_buf_thread_handle = NULL;
 						
 						// free DATA_STREAM bab
@@ -2527,6 +2539,7 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 				//WDRBD_INFO("wait for send_buffering_data_thread(%s) ack\n", tcp_transport->stream[i]->name);
 				KeWaitForSingleObject(&attr->send_buf_killack_event, Executive, KernelMode, FALSE, NULL);
 				//WDRBD_INFO("send_buffering_data_thread(%s) acked\n", tcp_transport->stream[i]->name);
+				//ZwClose(attr->send_buf_thread_handle);
 				attr->send_buf_thread_handle = NULL;
 			}
 			else

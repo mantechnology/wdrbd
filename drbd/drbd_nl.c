@@ -1009,6 +1009,7 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 
         kref_put(&connection->kref, drbd_destroy_connection);
 	}
+	ZwClose (hThread);
 #else
 	/* We may just have force_sig()'ed this thread
 	 * to get it out of some blocking network function.
@@ -1436,14 +1437,14 @@ retry:
 	// step 2 : wait barrier pending with timeout
 	wait_event_timeout(time_out, resource->barrier_wait, !barrier_pending(resource), time_out);
 	if(!time_out) {
-		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
+		WDRBD_INFO("drbd_set_secondary_from_shutdown wait_event_timeout\n ");
 		goto out;
 	}
 	/* After waiting for pending barriers, we got any possible NEG_ACKs,
 	   and see them in wait_for_peer_disk_updates() */
 	// step 3 : wait for updating peer disk with timeout   
 	if(!wait_for_peer_disk_updates_timeout(resource)) {
-		WDRBD_ERROR("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
+		WDRBD_INFO("drbd_set_secondary_from_shutdown wait_for_peer_disk_updates_timeout\n ");
 		goto out;
 	}
 	
@@ -3815,10 +3816,12 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 
 #ifdef _WIN32 
 	// DW-1436 unable to change send buffer size dynamically
-	if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
-		retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
-		goto fail;
-	}	
+	if (connection->cstate[NOW] >= C_CONNECTED){
+		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+			retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+			goto fail;
+		}
+	}
 #endif
 
 	/* re-sync running */

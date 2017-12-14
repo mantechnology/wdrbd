@@ -2382,7 +2382,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 	// no start resync if I haven't received uuid from peer.	
 	if (!peer_device->uuids_received)
 	{
-		drbd_warn(peer_device, "I have not yet received uuid from peer, can not be %s\n", drbd_repl_str(replState));
+		drbd_info(peer_device, "I have not yet received uuid from peer, can not be %s\n", drbd_repl_str(replState));
 		return false;
 	}
 
@@ -2404,7 +2404,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		case L_VERIFY_T:
 			return true;
 		default:
-			drbd_warn(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
+			drbd_info(peer_device, "unexpected repl_state (%s)\n", drbd_repl_str(replState));
 			return false;
 	}
 	
@@ -2412,7 +2412,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 	{
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE))
 		{
-			drbd_warn(peer_device, "Sync source is unstable, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+			drbd_info(peer_device, "Sync source is unstable, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
 				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
 			return false;
 		}
@@ -2424,7 +2424,7 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 #endif
 			!(NODE_MASK(peer_device->node_id) & authoritative))
 		{
-			drbd_warn(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s, authoritative(%llx)\n",
+			drbd_info(peer_device, "I am unstable and sync source is not my authoritative node, can not be %s, authoritative(%llx)\n",
 				drbd_repl_str(replState), authoritative);
 			return false;
 		}
@@ -2437,14 +2437,14 @@ bool drbd_inspect_resync_side(struct drbd_peer_device *peer_device, enum drbd_re
 		if (!drbd_device_stable_ex(device, &authoritative, which))
 #endif
 		{
-			drbd_warn(peer_device, "I am unstable, can not be %s, authoritative(%llx)\n", drbd_repl_str(replState), authoritative);
+			drbd_info(peer_device, "I am unstable, can not be %s, authoritative(%llx)\n", drbd_repl_str(replState), authoritative);
 			return false;
 		}
 
 		if (!(peer_device->uuid_flags & UUID_FLAG_STABLE) &&
 			!(NODE_MASK(device->resource->res_opts.node_id) & peer_device->uuid_authoritative_nodes))
 		{
-			drbd_warn(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
+			drbd_info(peer_device, "Sync target is unstable and I am not its authoritative node, can not be %s, uuid_flags(%llx), authoritative(%llx)\n",
 				drbd_repl_str(replState), peer_device->uuid_flags, peer_device->uuid_authoritative_nodes);
 			return false;			
 		}
@@ -2992,14 +2992,22 @@ static bool dequeue_work_batch(struct drbd_work_queue *queue, struct list_head *
 static struct drbd_request *__next_request_for_connection(
 		struct drbd_connection *connection, struct drbd_request *r)
 {
-#ifdef _WIN32
+#ifdef _WIN32    
+#ifdef _WIN32_NETQUEUED_LOG
+    r = list_prepare_entry(struct drbd_request, r, &connection->resource->net_queued_log, nq_requests);
+#else
     r = list_prepare_entry(struct drbd_request, r, &connection->resource->transfer_log, tl_requests);
+#endif
 #else
 	r = list_prepare_entry(r, &connection->resource->transfer_log, tl_requests);
 #endif
 
 #ifdef _WIN32 
+#ifdef _WIN32_NETQUEUED_LOG
+	list_for_each_entry_continue(struct drbd_request, r, &connection->resource->net_queued_log, nq_requests) {
+#else
 	list_for_each_entry_continue(struct drbd_request, r, &connection->resource->transfer_log, tl_requests) {
+#endif
 #else
 	list_for_each_entry_continue(r, &connection->resource->transfer_log, tl_requests) {
 #endif
@@ -3326,7 +3334,6 @@ static int process_one_request(struct drbd_connection *connection)
 				(req->rq_state[0] & RQ_LOCAL_COMPLETED))
 			{
 				kfree2(req->req_databuf);
-				atomic_sub64(req->i.size, &g_total_req_buf_bytes);
 			}
 #endif
 
@@ -3451,7 +3458,6 @@ int drbd_sender(struct drbd_thread *thi)
 
 	while (get_t_state(thi) == RUNNING) {
 		drbd_thread_current_set_cpu(thi);
-
 		if (list_empty(&connection->todo.work_list) &&
 		    connection->todo.req == NULL) {
 			update_sender_timing_details(connection, wait_for_sender_todo);
