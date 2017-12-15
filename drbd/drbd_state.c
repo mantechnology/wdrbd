@@ -1448,7 +1448,7 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 #ifdef _WIN32
 			{
 				// DW-1529 : Eliminated stopped state of WFBitMapT. This node will try to reconnect after the state change fails. 
-				drbd_info(connection, "Ignore SS_NEED_CONNECTION!!! cs=%d repl=%d - Check please!!!!\n",
+				drbd_info(connection, "return SS_NEED_CONNECTION!!! cs=%d repl=%d \n",
 					connection->cstate[OLD], peer_device->repl_state[NEW]);
 				return SS_NEED_CONNECTION; 
 			}
