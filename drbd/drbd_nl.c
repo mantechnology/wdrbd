@@ -7184,7 +7184,12 @@ void notify_path(struct drbd_connection *connection, struct drbd_path *path,
 unlock_fail:
 	mutex_unlock(&notification_mutex);
 fail:
+#ifdef _WIN32 // DW-1556 fix DV crash, NULL dereference
+	if(skb)
+		nlmsg_free(skb);
+#else 
 	nlmsg_free(skb);
+#endif
 	drbd_err(resource, "Error %d while broadcasting event. Event seq:%u\n",
 		 err, seq);
 }
