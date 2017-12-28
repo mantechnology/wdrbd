@@ -2075,32 +2075,6 @@ __in LONG			mask
     return Status;
 }
 
-/**
- * applies to whether conditional acceptance mode is enabled on a listening socket
- * @Mode: conditional accept mode
- *  0 - Disable
- *  1 - Enable
- */
-NTSTATUS
-NTAPI
-SetConditionalAccept(
-    __in PWSK_SOCKET ListeningSocket,
-    __in ULONG       Mode
-)
-{
-    return ControlSocket(
-        ListeningSocket,
-        WskSetOption,           // RequestType
-        SO_CONDITIONAL_ACCEPT,  // ControlCode
-        SOL_SOCKET,	            // level
-        sizeof(ULONG),          // InputSize
-        &Mode,                  // NULL
-        0,                      // OutputSize
-        NULL,                   // OutputBuffer
-        NULL                    // OutputSizeReturned
-    );
-}
-
 NTSTATUS WSKAPI
 AcceptEvent(
 _In_  PVOID         SocketContext,
