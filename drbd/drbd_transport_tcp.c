@@ -1040,11 +1040,9 @@ struct dtt_path **ret_path)
 
 retry:
 #ifdef _WIN32
-	atomic_set(&(transport->listening), 1);
 	wait_event_interruptible_timeout(timeo, waiter->wait,
 		(path = dtt_wait_connect_cond(transport)),
 		timeo);
-	atomic_set(&(transport->listening), 0);
 #else
 	timeo = wait_event_interruptible_timeout(waiter->wait,
 		(path = dtt_wait_connect_cond(transport)),
@@ -1284,19 +1282,31 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32
-
 	struct drbd_resource *resource = (struct drbd_resource *)SocketContext;
 	struct drbd_listener *listener = NULL;
 	bool find_listener = false;
+
+    if (AcceptSocket == NULL ) {
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! AcceptSocket is null.\n");
+        return STATUS_REQUEST_NOT_ACCEPTED;
+    }
 	
 	if (!resource) {
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! SocketContext is null.\n");
         return STATUS_REQUEST_NOT_ACCEPTED;
 	}
+
+	char buf[128];
+	WDRBD_CONN_TRACE("LocalAddress:%s \n", get_ip4(buf, (struct sockaddr_in*)LocalAddress));
+	WDRBD_CONN_TRACE("RemoteAddress:%s \n", get_ip4(buf, (struct sockaddr_in*)RemoteAddress));
+
 	
 	spin_lock_bh(&resource->listeners_lock);	
 
 	// DW-1498 : Find the listener that matches the LocalAddress in resource-> listeners.
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
+		WDRBD_CONN_TRACE("listener->listen_addr:%s \n", get_ip4(buf, (struct sockaddr_in*)&listener->listen_addr));
+		
 		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
 			find_listener = true;
 			break;
@@ -1305,6 +1315,7 @@ static void dtt_incoming_connection(struct sock *sock)
 
 	if (!find_listener) {
 		spin_unlock_bh(&resource->listeners_lock);
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! listener not found.\n");
         return STATUS_REQUEST_NOT_ACCEPTED;
 	}
 
@@ -1313,6 +1324,7 @@ static void dtt_incoming_connection(struct sock *sock)
     if (!s_estab)
     {
     	spin_unlock_bh(&resource->listeners_lock);
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! s_estab alloc failed.\n");
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
@@ -1336,6 +1348,7 @@ static void dtt_incoming_connection(struct sock *sock)
     {
         kfree(s_estab);
 		spin_unlock_bh(&resource->listeners_lock);
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! sk_linux_attr alloc failed.\n");
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
@@ -1347,6 +1360,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		kfree(s_estab);
 		spin_unlock(&listener->waiters_lock);
 		spin_unlock_bh(&resource->listeners_lock);
+		WDRBD_CONN_TRACE("NOT_ACCEPTED! waiter not found.\n");
         return STATUS_REQUEST_NOT_ACCEPTED;
 	}
 
@@ -1431,82 +1445,10 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 }
 
 #ifdef _WIN32
-// A listening socket's WskInspectEvent event callback function
-WSK_INSPECT_ACTION WSKAPI
-dtt_inspect_incoming(
-    PVOID SocketContext,
-    PSOCKADDR LocalAddress,
-    PSOCKADDR RemoteAddress,
-    PWSK_INSPECT_ID InspectID
-)
-{
-    // Check for a valid inspect ID
-    if (NULL == InspectID)
-    {
-        return WskInspectReject;
-    }
-	
-	struct drbd_listener *listener = NULL;
-
-    WSK_INSPECT_ACTION action = WskInspectAccept;
-    struct drbd_resource *resource = (struct drbd_resource *)SocketContext;
-	
-	if (!resource) {
-        return WskInspectReject;
-	}
-
-	spin_lock_bh(&resource->listeners_lock);
-
-
-	// DW-1498 
-	// Finds the listener that is waiting for RemoteAddress.
-	// Because LocalAddress can be null.
-	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
-		spin_lock(&listener->waiters_lock);
-		struct drbd_waiter *waiter = drbd_find_waiter_by_addr(listener, (struct sockaddr_storage_win*)RemoteAddress);
-		if (waiter && atomic_read(&waiter->transport->listening))
-		{
-			LocalAddress = (PSOCKADDR)&listener->listen_addr;
-			atomic_set(&waiter->transport->listening, 0);
-			spin_unlock(&listener->waiters_lock);	
-			action = WskInspectAccept;
-			goto out;
-		}
-		
-		spin_unlock(&listener->waiters_lock);	
-	}
-	// not found waiter.
-	action = WskInspectReject;
-	
-out:
-	spin_unlock_bh(&resource->listeners_lock);
-	
-	if (action == WskInspectReject)
-		WDRBD_TRACE("WskInspectReject\n"); 
-	if (action == WskInspectAccept)
-		WDRBD_CONN_TRACE("return WskInspecAccept\n");
-
-	return action;
-}
-
-// A listening socket's WskAbortEvent event callback function
-NTSTATUS WSKAPI
-dtt_abort_inspect_incoming(
-    PVOID SocketContext,
-    PWSK_INSPECT_ID InspectID
-)
-{
-    // Terminate the inspection for the incoming connection
-    // request with a matching inspect ID. To test for a matching
-    // inspect ID, the contents of the WSK_INSPECT_ID structures
-    // must be compared, not the pointers to the structures.
-    return STATUS_SUCCESS;
-}
-
 WSK_CLIENT_LISTEN_DISPATCH dispatch = {
 	dtt_incoming_connection,
-    dtt_inspect_incoming,       // WskInspectEvent is required only if conditional-accept is used.
-    dtt_abort_inspect_incoming  // WskAbortEvent is required only if conditional-accept is used.
+    NULL,	// WskInspectEvent is required only if conditional-accept is used.
+    NULL	// WskAbortEvent is required only if conditional-accept is used.
 };
 #endif
 
@@ -1576,14 +1518,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = -1;
         goto out;
     }
-
-    status = SetConditionalAccept(s_listen->sk, 1);
-	if (!NT_SUCCESS(status))
-    {
-		WDRBD_ERROR("Failed to set SO_CONDITIONAL_ACCEPT. err(0x%x)\n", status);
-        err = status;
-        goto out;
-    }
+	
     s_listen->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '72DW');
     if (!s_listen->sk_linux_attr)
     {
