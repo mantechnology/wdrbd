@@ -2869,6 +2869,20 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 	return bdev;
 }
 
+static bool want_bitmap(struct drbd_peer_device *peer_device)
+{
+	struct peer_device_conf *pdc;
+	bool want_bitmap = false;
+
+	rcu_read_lock();
+	pdc = rcu_dereference(peer_device->conf);
+	if (pdc)
+		want_bitmap |= pdc->bitmap;
+	rcu_read_unlock();
+
+	return want_bitmap;
+}
+
 static int open_backing_devices(struct drbd_device *device,
 		struct disk_conf *new_disk_conf,
 		struct drbd_backing_dev *nbc)
@@ -3218,7 +3232,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		bitmap_index = nbc->md.peers[connection->peer_node_id].bitmap_index;
 		if (bitmap_index != -1)
 			peer_device->bitmap_index = bitmap_index;
-		else
+		else if (want_bitmap(peer_device))
 			slots_needed++;
 	}
 	if (slots_needed) {
@@ -3233,7 +3247,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			goto force_diskless_dec;
 		}
 		for_each_peer_device(peer_device, device) {
-			if (peer_device->bitmap_index != -1)
+			if (peer_device->bitmap_index != -1 || !want_bitmap(peer_device))
 				continue;
 
 			err = allocate_bitmap_index(peer_device, nbc); 
@@ -4079,7 +4093,6 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	struct drbd_connection *connection;
 	enum drbd_ret_code retcode;
 	int i, err;
-	bool allocate_bitmap_slots = false;
 	char *transport_name;
 	struct drbd_transport_class *tr_class;
 
@@ -4200,9 +4213,9 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	if (connection->peer_node_id > adm_ctx->resource->max_node_id)
 		adm_ctx->resource->max_node_id = connection->peer_node_id;
 
-	/* Make sure we have a bitmap slot for this peer id on each device */
+	/* Set bitmap_index if it was allocated previously */
 #ifdef _WIN32
-    idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
+	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, i) {
 #endif
@@ -4213,47 +4226,9 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 			continue;
 
 		bitmap_index = device->ldev->md.peers[adm_ctx->peer_node_id].bitmap_index;
-		if (bitmap_index != -1) {
+		if (bitmap_index != -1)
 			peer_device->bitmap_index = bitmap_index;
-		} else {
-			int slots_available;
-
-			allocate_bitmap_slots = true;
-
-			slots_available = device->bitmap->bm_max_peers - used_bitmap_slots(device->ldev);
-			if (slots_available <= 0) {
-				drbd_err(device, "Not enough free bitmap "
-					 "slots (available=%d, needed=%d)\n",
-					 slots_available, 1);
-				put_ldev(device);
-				retcode = ERR_INVALID_REQUEST;
-				goto unlock_fail_free_connection;
-			}
-		}
-
-		put_ldev(device);
-	}
-	if (allocate_bitmap_slots) {
-#ifdef _WIN32
-        idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
-#else
-		idr_for_each_entry(&connection->peer_devices, peer_device, i) {
-#endif
-			if (peer_device->bitmap_index != -1)
-				continue;
-
-			device = peer_device->device;
-			if (!get_ldev(device))
-				continue;
-
-			err = allocate_bitmap_index(peer_device, device->ldev);
-			put_ldev(device);
-			if (err) {
-				retcode = ERR_INVALID_REQUEST;
-				goto unlock_fail_free_connection;
-			}
-			drbd_md_mark_dirty(device);
-		}
+		put_ldev(device); 
 	}
 
 	connection_to_info(&connection_info, connection);
@@ -4436,15 +4411,18 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
 	struct connect_parms parms = { 0, };
+	struct drbd_peer_device *peer_device;
+	struct drbd_connection *connection;
 	enum drbd_ret_code retcode;
 	enum drbd_conn_state cstate;
-	int err;
+	int i, err;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_CONNECTION);
 	if (!adm_ctx.reply_skb)
 		return retcode;
 
-	cstate = adm_ctx.connection->cstate[NOW];
+	connection = adm_ctx.connection;
+	cstate = connection->cstate[NOW];
 	if (cstate != C_STANDALONE) {
 #ifndef _WIN32	// MODIFIED_BY_MANTECH DW-1292 : skip if cstate is not StandAlone
 		retcode = ERR_NET_CONFIGURED;
@@ -4452,7 +4430,7 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 
-	if (first_path(adm_ctx.connection) == NULL) {
+	if (first_path(connection) == NULL) {
 		drbd_msg_put_info(adm_ctx.reply_skb, "connection endpoint(s) missing");
 		retcode = ERR_INVALID_REQUEST;
 		goto out;
@@ -4471,12 +4449,36 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 			retcode = ERR_DISCARD_IMPOSSIBLE;
 			goto out;
 		}
-		set_bit(CONN_DISCARD_MY_DATA, &adm_ctx.connection->flags);
+		set_bit(CONN_DISCARD_MY_DATA, &connection->flags);
 	}
 	if (parms.tentative)
-		set_bit(CONN_DRY_RUN, &adm_ctx.connection->flags);
+		set_bit(CONN_DRY_RUN, &connection->flags);
 
-	retcode = change_cstate(adm_ctx.connection, C_UNCONNECTED, CS_VERBOSE);
+	/* Eventually allocate bitmap indexes for the peer_devices here */
+#ifdef _WIN32
+	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, i) {
+#else
+	idr_for_each_entry(&connection->peer_devices, peer_device, i) {
+#endif 
+		struct drbd_device *device;
+
+		if (peer_device->bitmap_index != -1 || !want_bitmap(peer_device))
+			continue;
+
+		device = peer_device->device;
+		if (!get_ldev(device))
+			continue;
+
+		err = allocate_bitmap_index(peer_device, device->ldev);
+		put_ldev(device);
+		if (err) {
+			retcode = ERR_INVALID_REQUEST;
+			goto out;
+		}
+		drbd_md_mark_dirty(device);
+	}
+
+	retcode = change_cstate(connection, C_UNCONNECTED, CS_VERBOSE);
 
 out:
 	drbd_adm_finish(&adm_ctx, info, retcode);
