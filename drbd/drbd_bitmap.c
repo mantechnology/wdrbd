@@ -1181,6 +1181,9 @@ unsigned long drbd_bm_total_weight(struct drbd_peer_device *peer_device)
 #else
 	unsigned long s;
 #endif
+	if (peer_device->bitmap_index == -1)
+		return 0;
+
 	/* if I don't have a disk, I don't know about out-of-sync status */
 	if (!get_ldev_if_state(device, D_NEGOTIATING))
 		return 0;
