@@ -1855,6 +1855,12 @@ int was_file_already_seen(char *fn)
 	ENTRY e, *ep;
 	char *real_path;
 
+	static int global_htable_init = 0;
+	if (!global_htable_init) {
+		check_uniq_init();
+		global_htable_init = 1;
+	}
+
 	real_path = realpath(fn, NULL);
 	if (!real_path)
 		real_path = fn;
@@ -2017,12 +2023,6 @@ void include_stmt(char *str)
 
 void my_parse(void)
 {
-	static int global_htable_init = 0;
-	if (!global_htable_init) {
-		check_uniq_init();
-		global_htable_init = 1;
-	}
-
 	/* Remember that we're reading that file. */
 	was_file_already_seen(config_file);
 
