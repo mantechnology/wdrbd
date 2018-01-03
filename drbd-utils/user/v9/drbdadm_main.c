@@ -1250,6 +1250,8 @@ static int adm_attach(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = (char *)ctx->cmd->name; /* "attach" : "disk-options"; */
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	if (do_attach) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 		if (!strcmp(vol->meta_disk, "internal")) {
 			argv[NA(argc)] = vol->disk;
@@ -1482,6 +1484,8 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	argv[NA(argc)] = "v09";
 	if (!strcmp(vol->meta_disk, "internal")) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 	} else {
 		argv[NA(argc)] = vol->meta_disk;
@@ -1790,7 +1794,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 		snprintf(volume_string, sizeof(volume_string), "%u", vol->vnr);
 		setenv("DRBD_MINOR", minor_string, 1);
 		setenv("DRBD_VOLUME", volume_string, 1);
-		setenv("DRBD_LL_DISK", shell_escape(vol->disk), 1);
+		setenv("DRBD_LL_DISK", shell_escape(vol->disk ? : "none"), 1);
 	} else {
 		char *minor_list;
 		char *volume_list;
@@ -1805,7 +1809,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 		for_each_volume(vol, &res->me->volumes) {
 			volumes++;
-			ll_len += strlen(shell_escape(vol->disk)) + 1;
+			ll_len += strlen(shell_escape(vol->disk ? : "none")) + 1;
 		}
 
 		/* max minor number is 2**20 - 1, which is 7 decimal digits.
@@ -1836,7 +1840,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 			append(minor, "%d", vol->device_minor);
 			append(volume, "%d", vol->vnr);
-			append(ll, "%s", shell_escape(vol->disk));
+			append(ll, "%s", shell_escape(vol->disk ? : "none"));
 
 #undef append
 			separator = " ";
