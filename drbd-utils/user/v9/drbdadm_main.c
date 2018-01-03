@@ -1385,8 +1385,12 @@ int adm_resize(const struct cfg_ctx *ctx)
 	bool is_resize = !strcmp(ctx->cmd->name, "resize");
 #ifdef _WIN32
 	_off64_t old_size = -1;
+	_off64_t target_size = 0;
+	_off64_t new_size;
 #else
 	off64_t old_size = -1;
+	off64_t target_size = 0;
+	off64_t new_size;
 #endif 
 	int argc = 0;
 	int silent;
@@ -1398,8 +1402,12 @@ int adm_resize(const struct cfg_ctx *ctx)
 	opt = find_opt(&ctx->vol->disk_options, "size");
 	if (!opt)
 		opt = find_opt(&ctx->res->disk_options, "size");
-	if (opt)
+	if (opt) {
 		argv[NA(argc)] = ssprintf("--%s=%s", opt->name, opt->value);
+		target_size = m_strtoll(opt->value, 's');
+		/* FIXME: what if "add_setup_options" below overrides target_size
+		* with an explicit, on-command-line target_size? */
+	}
 	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
@@ -1409,6 +1417,15 @@ int adm_resize(const struct cfg_ctx *ctx)
 	/* if this is not "resize", but "check-resize", be silent! */
 	silent = !strcmp(ctx->cmd->name, "check-resize") ? SUPRESS_STDERR : 0;
 	ex = m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
+
+	if (ex && target_size) {
+		new_size = read_drbd_dev_size(ctx->vol->device_minor);
+		if (new_size == target_size) {
+			fprintf(stderr, "Current size of drbd%u equals target size (%llu byte), exit code %d ignored.\n",
+				ctx->vol->device_minor, (unsigned long long)new_size, ex);
+			ex = 0;
+		}
+	}
 
 	if (ex)
 		return ex;
@@ -1431,15 +1448,7 @@ int adm_resize(const struct cfg_ctx *ctx)
 	changed, but only up to 10 seconds if know the target size, up to
 	3 seconds waiting for some change. */
 	if (old_size > 0) {
-#ifdef _WIN32
-		_off64_t target_size, new_size;
-#else 
-		off64_t target_size, new_size;
-#endif 
-		int timeo;
-
-		target_size = m_strtoll(get_opt_val(&ctx->vol->disk_options, "size", "0"), 's');
-		timeo = target_size ? 100 : 30;
+		int timeo = target_size ? 100 : 30;
 
 		do {
 			new_size = read_drbd_dev_size(ctx->vol->device_minor);
