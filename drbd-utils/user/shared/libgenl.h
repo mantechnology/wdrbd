@@ -76,6 +76,11 @@ struct msg_buff {
 
 #define DEFAULT_MSG_SIZE	8192
 
+static inline unsigned char *msg_tail_pointer(struct msg_buff *msg)
+{
+	return msg->tail;
+}
+
 static inline int msg_tailroom(struct msg_buff *msg)
 {
 	return msg->end - msg->tail;

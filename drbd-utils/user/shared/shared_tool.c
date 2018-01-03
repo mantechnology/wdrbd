@@ -39,9 +39,10 @@ const char* shell_escape(const char* s)
 	/* ugly static buffer. so what. */
 	static char buffer[1024];
 	char *c = buffer;
-
+	
+	*c = '\0';
 	if (s == NULL)
-		return s;
+		return buffer;
 
 	while (*s) {
 		if (buffer + sizeof(buffer) < c+2)

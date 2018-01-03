@@ -678,7 +678,6 @@ const char *read_balancing_map[] = {
 	{ "disk-flushes", BOOLEAN(disk_flushes, DISK_FLUSHES) }, 			\
 	/*{ "disk-drain", BOOLEAN(disk_drain, DISK_DRAIN) }, */				\
 	/*{ "md-flushes", BOOLEAN(md_flushes, MD_FLUSHES) }, */				\ 
-	{ "unplug-watermark", NUMERIC(unplug_watermark, UNPLUG_WATERMARK) },		\
 	{ "resync-after", NUMERIC(resync_after, MINOR_NUMBER), .checked_in_postparse = true}, \
 	{ "al-extents", NUMERIC(al_extents, AL_EXTENTS), .implicit_clamp = true, },	\
 	{ "al-updates", BOOLEAN(al_updates, AL_UPDATES) },				\
@@ -920,6 +919,7 @@ struct context_def peer_device_options_ctx = {
 		{ "c-fill-target", NUMERIC(c_fill_target, C_FILL_TARGET), .unit = "bytes" },
 		{ "c-max-rate", NUMERIC(c_max_rate, C_MAX_RATE), .unit = "bytes/second" },
 		{ "c-min-rate", NUMERIC(c_min_rate, C_MIN_RATE), .unit = "bytes/second" },
+		{ "bitmap", BOOLEAN(bitmap, BITMAP) },
 		{ } },
 };
 

@@ -77,6 +77,7 @@ struct option general_admopt[] = {
 	{"verbose", no_argument, 0, 'v'},
 	{"config-file", required_argument, 0, 'c'},
 	{"config-to-test", required_argument, 0, 't'},
+	{"config-to-exclude", required_argument, 0, 'E'},
 	{"drbdsetup", required_argument, 0, 's'},
 	{"drbdmeta", required_argument, 0, 'm'},
 	{"drbd-proxy-ctl", required_argument, 0, 'p'},
@@ -136,6 +137,7 @@ static int adm_forget_peer(const struct cfg_ctx *);
 static int adm_peer_device(const struct cfg_ctx *);
 
 int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check);
+int was_file_already_seen(char *fn);
 
 static char *get_opt_val(struct options *, const char *, char *);
 
@@ -343,8 +345,8 @@ static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT .backe
 #else
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT};
 #endif
-/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, ACF1_DEFAULT .disk_required = 1};
-static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, ACF1_PEER_DEVICE};
+/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, &resize_cmd_ctx, ACF1_DEFAULT .disk_required = 1};
+static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, &verify_cmd_ctx, ACF1_PEER_DEVICE};
 static struct adm_cmd pause_sync_cmd = {"pause-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd resume_sync_cmd = {"resume-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd adjust_cmd = { "adjust", adm_adjust, &adjust_ctx, ACF1_RESNAME.vol_id_optional = 1 };
@@ -393,8 +395,8 @@ static struct adm_cmd sh_status_cmd = {"sh-status", sh_status, ACF2_GEN_SHELL};
 static struct adm_cmd proxy_up_cmd = {"proxy-up", adm_proxy_up, ACF2_PROXY};
 static struct adm_cmd proxy_down_cmd = {"proxy-down", adm_proxy_down, ACF2_PROXY};
 
-/*  */ struct adm_cmd new_resource_cmd = {"new-resource", adm_resource, ACF2_SH_RESNAME};
-/*  */ struct adm_cmd new_minor_cmd = {"new-minor", adm_new_minor, ACF4_ADVANCED};
+/*  */ struct adm_cmd new_resource_cmd = {"new-resource", adm_resource, &resource_options_ctx, ACF2_SH_RESNAME};
+/*  */ struct adm_cmd new_minor_cmd = {"new-minor", adm_new_minor, &device_options_ctx, ACF4_ADVANCED};
 /*  */ struct adm_cmd del_minor_cmd = { "del-minor", adm_drbdsetup, ACF1_MINOR_ONLY.show_in_usage = 4, .disk_required = 0, };
 
 static struct adm_cmd khelper01_cmd = {"before-resync-target", adm_khelper, ACF3_RES_HANDLER};
@@ -413,7 +415,7 @@ static struct adm_cmd khelper12_cmd = {"unfence-peer", adm_khelper, ACF3_RES_HAN
 
 static struct adm_cmd suspend_io_cmd = {"suspend-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
 static struct adm_cmd resume_io_cmd = {"resume-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
-static struct adm_cmd set_gi_cmd = {"set-gi", adm_drbdmeta, .disk_required = 1, .need_peer = 1, ACF4_ADVANCED_NEED_VOL};
+static struct adm_cmd set_gi_cmd = {"set-gi", adm_drbdmeta, &wildcard_ctx, .disk_required = 1, .need_peer = 1, ACF4_ADVANCED_NEED_VOL};
 static struct adm_cmd new_current_uuid_cmd = {"new-current-uuid", adm_drbdsetup, &new_current_uuid_cmd_ctx, ACF4_ADVANCED_NEED_VOL .backend_res_name = 0};
 static struct adm_cmd check_resize_cmd = {"check-resize", adm_chk_resize, ACF4_ADVANCED};
 
@@ -824,6 +826,8 @@ static int adm_adjust(const struct cfg_ctx *ctx)
 
 static int sh_nop(const struct cfg_ctx *ctx)
 {
+	if (!config_valid)
+		return 10;
 	return 0;
 }
 
@@ -1246,6 +1250,8 @@ static int adm_attach(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = (char *)ctx->cmd->name; /* "attach" : "disk-options"; */
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	if (do_attach) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 		if (!strcmp(vol->meta_disk, "internal")) {
 			argv[NA(argc)] = vol->disk;
@@ -1347,10 +1353,49 @@ static int adm_resource(const struct cfg_ctx *ctx)
 	return ex;
 }
 
+#ifdef _WIN32
+static _off64_t read_drbd_dev_size(int minor)
+#else 
+static off64_t read_drbd_dev_size(int minor)
+#endif 
+{
+	char *path;
+	FILE *file;
+#ifdef _WIN32
+	_off64_t val;
+#else 
+	off64_t val;
+#endif 
+	int r;
+
+	m_asprintf(&path, "/sys/block/drbd%d/size", minor);
+	file = fopen(path, "r");
+	if (file) {
+		r = fscanf(file, "%" SCNd64, &val);
+		fclose(file);
+		if (r != 1)
+			val = -1;
+	}
+	else
+		val = -1;
+
+	return val;
+}
+
 int adm_resize(const struct cfg_ctx *ctx)
 {
 	char *argv[MAX_ARGS];
 	struct d_option *opt;
+	bool is_resize = !strcmp(ctx->cmd->name, "resize");
+#ifdef _WIN32
+	_off64_t old_size = -1;
+	_off64_t target_size = 0;
+	_off64_t new_size;
+#else
+	off64_t old_size = -1;
+	off64_t target_size = 0;
+	off64_t new_size;
+#endif 
 	int argc = 0;
 	int silent;
 	int ex;
@@ -1361,14 +1406,30 @@ int adm_resize(const struct cfg_ctx *ctx)
 	opt = find_opt(&ctx->vol->disk_options, "size");
 	if (!opt)
 		opt = find_opt(&ctx->res->disk_options, "size");
-	if (opt)
+	if (opt) {
 		argv[NA(argc)] = ssprintf("--%s=%s", opt->name, opt->value);
+		target_size = m_strtoll(opt->value, 's');
+		/* FIXME: what if "add_setup_options" below overrides target_size
+		* with an explicit, on-command-line target_size? */
+	}
 	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
+
+	if (is_resize && !dry_run)
+		old_size = read_drbd_dev_size(ctx->vol->device_minor);
 
 	/* if this is not "resize", but "check-resize", be silent! */
 	silent = !strcmp(ctx->cmd->name, "check-resize") ? SUPRESS_STDERR : 0;
 	ex = m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
+
+	if (ex && target_size) {
+		new_size = read_drbd_dev_size(ctx->vol->device_minor);
+		if (new_size == target_size) {
+			fprintf(stderr, "Current size of drbd%u equals target size (%llu byte), exit code %d ignored.\n",
+				ctx->vol->device_minor, (unsigned long long)new_size, ex);
+			ex = 0;
+		}
+	}
 
 	if (ex)
 		return ex;
@@ -1387,6 +1448,29 @@ int adm_resize(const struct cfg_ctx *ctx)
 	/* ignore exit code */
 	m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
 
+	/* Here comes a really uggly hack. Wait until the device size actually
+	changed, but only up to 10 seconds if know the target size, up to
+	3 seconds waiting for some change. */
+	if (old_size > 0) {
+		int timeo = target_size ? 100 : 30;
+
+		do {
+			new_size = read_drbd_dev_size(ctx->vol->device_minor);
+			if (new_size >= target_size) /* should be == , but driver ignores usize right now */
+				return 0;
+			if (new_size != old_size) {
+				if (target_size == 0)
+					return 0;
+				err("Size changed from %"PRId64" to %"PRId64", waiting for %"PRId64".\n",
+					old_size, new_size, target_size);
+				old_size = new_size; /* I want to see it only once.*/
+			}
+
+			usleep(100000);
+		} while (timeo-- > 0);
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -1400,6 +1484,8 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	argv[NA(argc)] = "v09";
 	if (!strcmp(vol->meta_disk, "internal")) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 	} else {
 		argv[NA(argc)] = vol->meta_disk;
@@ -1708,7 +1794,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 		snprintf(volume_string, sizeof(volume_string), "%u", vol->vnr);
 		setenv("DRBD_MINOR", minor_string, 1);
 		setenv("DRBD_VOLUME", volume_string, 1);
-		setenv("DRBD_LL_DISK", shell_escape(vol->disk), 1);
+		setenv("DRBD_LL_DISK", shell_escape(vol->disk ? : "none"), 1);
 	} else {
 		char *minor_list;
 		char *volume_list;
@@ -1723,7 +1809,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 		for_each_volume(vol, &res->me->volumes) {
 			volumes++;
-			ll_len += strlen(shell_escape(vol->disk)) + 1;
+			ll_len += strlen(shell_escape(vol->disk ? : "none")) + 1;
 		}
 
 		/* max minor number is 2**20 - 1, which is 7 decimal digits.
@@ -1754,7 +1840,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 			append(minor, "%d", vol->device_minor);
 			append(volume, "%d", vol->vnr);
-			append(ll, "%s", shell_escape(vol->disk));
+			append(ll, "%s", shell_escape(vol->disk ? : "none"));
 
 #undef append
 			separator = " ";
@@ -3075,6 +3161,10 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 		case 't':
 			config_test = optarg;
 			break;
+		case 'E':
+			/* Remember as absolute name */
+			was_file_already_seen(optarg);
+			break;
 		case 's':
 			{
 				char *pathes[2];
@@ -3189,7 +3279,8 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 				break;
 
 		field = NULL;
-		if (option[0] == '-' && option[1] == '-' && (*cmd)->drbdsetup_ctx) {
+		if (option[0] == '-' && option[1] == '-' && (*cmd)->drbdsetup_ctx &&
+			(*cmd)->drbdsetup_ctx != &wildcard_ctx) {
 			for (field = (*cmd)->drbdsetup_ctx->fields; field->name; field++) {
 				if (strlen(field->name) == len - 2 &&
 				    !strncmp(option + 2, field->name, len - 2))
@@ -3198,7 +3289,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			if (!field->name)
 				field = NULL;
 		}
-		if (!field) {
+		if (!field && (*cmd)->drbdsetup_ctx != &wildcard_ctx) {
 			err("%s: unrecognized option '%.*s'\n", progname, len, option);
 			goto help;
 		}
