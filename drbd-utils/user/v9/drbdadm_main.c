@@ -1403,7 +1403,7 @@ int adm_resize(const struct cfg_ctx *ctx)
 	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
-	if (is_resize)
+	if (is_resize && !dry_run)
 		old_size = read_drbd_dev_size(ctx->vol->device_minor);
 
 	/* if this is not "resize", but "check-resize", be silent! */
