@@ -1349,10 +1349,45 @@ static int adm_resource(const struct cfg_ctx *ctx)
 	return ex;
 }
 
+#ifdef _WIN32
+static _off64_t read_drbd_dev_size(int minor)
+#else 
+static off64_t read_drbd_dev_size(int minor)
+#endif 
+{
+	char *path;
+	FILE *file;
+#ifdef _WIN32
+	_off64_t val;
+#else 
+	off64_t val;
+#endif 
+	int r;
+
+	m_asprintf(&path, "/sys/block/drbd%d/size", minor);
+	file = fopen(path, "r");
+	if (file) {
+		r = fscanf(file, "%" SCNd64, &val);
+		fclose(file);
+		if (r != 1)
+			val = -1;
+	}
+	else
+		val = -1;
+
+	return val;
+}
+
 int adm_resize(const struct cfg_ctx *ctx)
 {
 	char *argv[MAX_ARGS];
 	struct d_option *opt;
+	bool is_resize = !strcmp(ctx->cmd->name, "resize");
+#ifdef _WIN32
+	_off64_t old_size = -1;
+#else
+	off64_t old_size = -1;
+#endif 
 	int argc = 0;
 	int silent;
 	int ex;
@@ -1367,6 +1402,9 @@ int adm_resize(const struct cfg_ctx *ctx)
 		argv[NA(argc)] = ssprintf("--%s=%s", opt->name, opt->value);
 	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
+
+	if (is_resize)
+		old_size = read_drbd_dev_size(ctx->vol->device_minor);
 
 	/* if this is not "resize", but "check-resize", be silent! */
 	silent = !strcmp(ctx->cmd->name, "check-resize") ? SUPRESS_STDERR : 0;
@@ -1388,6 +1426,37 @@ int adm_resize(const struct cfg_ctx *ctx)
 	argv[3] = NULL;
 	/* ignore exit code */
 	m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
+
+	/* Here comes a really uggly hack. Wait until the device size actually
+	changed, but only up to 10 seconds if know the target size, up to
+	3 seconds waiting for some change. */
+	if (old_size > 0) {
+#ifdef _WIN32
+		_off64_t target_size, new_size;
+#else 
+		off64_t target_size, new_size;
+#endif 
+		int timeo;
+
+		target_size = m_strtoll(get_opt_val(&ctx->vol->disk_options, "size", "0"), 's');
+		timeo = target_size ? 100 : 30;
+
+		do {
+			new_size = read_drbd_dev_size(ctx->vol->device_minor);
+			if (new_size >= target_size) /* should be == , but driver ignores usize right now */
+				return 0;
+			if (new_size != old_size) {
+				if (target_size == 0)
+					return 0;
+				err("Size changed from %"PRId64" to %"PRId64", waiting for %"PRId64".\n",
+					old_size, new_size, target_size);
+				old_size = new_size; /* I want to see it only once.*/
+			}
+
+			usleep(100000);
+		} while (timeo-- > 0);
+		return 1;
+	}
 
 	return 0;
 }
