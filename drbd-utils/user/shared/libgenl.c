@@ -311,6 +311,8 @@ int genl_recv_msgs(struct genl_sock *s, struct iovec *iov, char **err_desc, int 
         nlh->nlmsg_len, nlh->nlmsg_type, nlh->nlmsg_flags, nlh->nlmsg_seq, nlh->nlmsg_pid, hdr->cmd, hdr->version);
 #endif
 	if (s->s_seq_expect && nlh->nlmsg_seq != s->s_seq_expect) {
+		dbg(2, "sequence mismatch: 0x%x != 0x%x, type:%x flags:%x sportid:%x\n",
+			nlh->nlmsg_seq, s->s_seq_expect, nlh->nlmsg_type, nlh->nlmsg_flags, nlh->nlmsg_pid);
 		if (err_desc)
 			*err_desc = "sequence mismatch in netlink reply";
 		return -E_RCV_SEQ_MISMATCH;

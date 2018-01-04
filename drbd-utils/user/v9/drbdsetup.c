@@ -241,7 +241,7 @@ struct drbd_cmd {
 // other functions
 static int get_af_ssocks(int warn);
 static void print_command_usage(struct drbd_cmd *cm, enum usage_type);
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 		__attribute__ ((noreturn));
 static const char *resync_susp_str(struct peer_device_info *info);
 
@@ -1589,6 +1589,13 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 	}
 
 	if (cm->continuous_poll) {
+#ifndef _WIN32
+		/* also always (try to) listen to nlctrl notify,
+		* so we have a chance to notice rmmod.  */
+		int id = GENL_ID_CTRL;
+		setsockopt(drbd_sock->s_fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP,
+			&id, sizeof(id));
+#endif
 		if (genl_join_mc_group(drbd_sock, "events") &&
 		    !kernel_older_than(2, 6, 23)) {
 			desc = "unable to join drbd events multicast group";
@@ -1732,12 +1739,14 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 				.attrs = global_attrs,
 			};
 
+			dbg(3, "received type:%x\n", nlh->nlmsg_type);
 			if (nlh->nlmsg_type < NLMSG_MIN_TYPE) {
 				/* Ignore netlink control messages. */
 				continue;
 			}
 			if (nlh->nlmsg_type == GENL_ID_CTRL) {
 #ifdef HAVE_CTRL_CMD_DELMCAST_GRP
+				dbg(3, "received cmd:%x\n", info.genlhdr->cmd);
 				if (info.genlhdr->cmd == CTRL_CMD_DELMCAST_GRP) {
 					struct nlattr *nla =
 						nlmsg_find_attr(nlh, GENL_HDRLEN, CTRL_ATTR_FAMILY_ID);
@@ -3423,84 +3432,51 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	return rv;
 }
 
+#define _EVPRINT(checksize, fstr, ...) do { \
+    ret = snprintf(key + pos, size, fstr, __VA_ARGS__); \
+    if (ret < 0) \
+        return ret; \
+    pos += ret; \
+    if (size && checksize) \
+        size -= ret; \
+} while(0)
+#define EVPRINT(...) _EVPRINT(1, __VA_ARGS__)
+/* for llvm static analyzer */
+#define EVPRINT_NOSIZE(...) _EVPRINT(0, __VA_ARGS__)
 static int event_key(char *key, int size, const char *name, unsigned minor,
 		     struct drbd_cfg_context *ctx)
 {
 	char addr[ADDRESS_STR_MAX];
 	int ret, pos = 0;
 
-	ret = snprintf(key + pos, size,
-		       "%s", name);
-	if (ret < 0)
-		return ret;
-	pos += ret;
-	if (size)
-		size -= ret;
-	if (ctx->ctx_resource_name) {
-		ret = snprintf(key + pos, size,
-			       " name:%s", ctx->ctx_resource_name);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_peer_node_id != -1U) {
-		ret = snprintf(key + pos, size,
-			      " peer-node-id:%d", ctx->ctx_peer_node_id);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_conn_name_len) {
-		ret = snprintf(key + pos, size,
-			       " conn-name:%s", ctx->ctx_conn_name);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
+	if (!ctx)
+		return -1;
+
+	EVPRINT("%s", name);
+
+	if (ctx->ctx_resource_name)
+		EVPRINT(" name:%s", ctx->ctx_resource_name);
+
+	if (ctx->ctx_peer_node_id != -1U)
+		EVPRINT(" peer-node-id:%d", ctx->ctx_peer_node_id);
+
+	if (ctx->ctx_conn_name_len)
+		EVPRINT(" conn-name:%s", ctx->ctx_conn_name);
+
 	if (ctx->ctx_my_addr_len &&
-	    address_str(addr, ctx->ctx_my_addr, ctx->ctx_my_addr_len)) {
-		ret = snprintf(key + pos, size,
-			      " local:%s", addr);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
+		address_str(addr, ctx->ctx_my_addr, ctx->ctx_my_addr_len))
+		EVPRINT(" local:%s", addr);
+		    
 	if (ctx->ctx_peer_addr_len &&
-	    address_str(addr, ctx->ctx_peer_addr, ctx->ctx_peer_addr_len)) {
-		ret = snprintf(key + pos, size,
-			      " peer:%s", addr);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_volume != -1U) {
-		ret = snprintf(key + pos, size,
-			      " volume:%u", ctx->ctx_volume);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (minor != -1U) {
-		ret = snprintf(key + pos, size,
-			      " minor:%u", minor);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		/* if (size) */
-		/* 	size -= ret; */
-	}
+		address_str(addr, ctx->ctx_peer_addr, ctx->ctx_peer_addr_len))
+		EVPRINT(" peer:%s", addr);
+
+	if (ctx->ctx_volume != -1U)
+		EVPRINT(" volume:%u", ctx->ctx_volume);
+
+	if (minor != -1U)
+		EVPRINT_NOSIZE(" minor:%u", minor);
+	
 	return pos;
 }
 
@@ -4087,7 +4063,7 @@ static void print_command_usage(struct drbd_cmd *cm, enum usage_type ut)
 	}
 }
 
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 {
 	size_t i;
 
@@ -4101,7 +4077,7 @@ static void print_usage_and_exit(const char* addinfo)
 
 	printf("\nUse 'drbdsetup help command' for command-specific help.\n\n");
 	if (addinfo)  /* FIXME: ?! */
-		printf("\n%s\n",addinfo);
+		printf("\n%s\n", addinfo);
 
 	exit(20);
 }
@@ -4212,7 +4188,7 @@ int main(int argc, char **argv)
 			} else
 				print_usage_and_exit("unknown command");
 		} else
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 
 	/*
@@ -4226,7 +4202,7 @@ int main(int argc, char **argv)
 	}
 
 	if (argc < 2)
-		print_usage_and_exit(0);
+		print_usage_and_exit(NULL);
 
 	if (!modprobe_drbd()) {
 		if (!strcmp(argv[1], "down") ||
@@ -4254,13 +4230,16 @@ int main(int argc, char **argv)
 		if (c == -1)
 			break;
 		if (c == '?' || c == ':')
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 	/* All non-option arguments now are in argv[optind .. argc - 1]. */
 	first_optind = optind;
 
-	if (cmd->continuous_poll && kernel_older_than(2, 6, 23))
+	if (cmd->continuous_poll && kernel_older_than(2, 6, 23)) {
+		/* with newer kernels, we need to use setsockopt NETLINK_ADD_MEMBERSHIP */
+		/* maybe more specific: (1 << GENL_ID_CTRL)? */
 		drbd_genl_family.nl_groups = -1;
+	}
 	drbd_sock = genl_connect_to_family(&drbd_genl_family);
 	if (!drbd_sock) {
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");
