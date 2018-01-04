@@ -5423,8 +5423,15 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 		peer_device = peer_device_by_node_id(device, node_id);
 		if (peer_device) {
 			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
-			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED;
-			do_it = do_it || NODE_MASK(node_id) & weak_nodes;
+			
+			if (peer_device->bitmap_index == -1) {
+				struct peer_device_conf *pdc;
+				pdc = rcu_dereference(peer_device->conf);
+				if (pdc && !pdc->bitmap)
+					continue;
+			}
+			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED ||
+				(NODE_MASK(node_id) & weak_nodes);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
 			do_it = do_it || ((peer_device->connection->cstate[NEW] < C_CONNECTED) && (pdsk == D_INCONSISTENT));
