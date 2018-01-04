@@ -9842,7 +9842,7 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 
 		spin_unlock_irq(&peer_device->send_oos_lock);
 
-		drbd_send_out_of_sync(peer_device, &req);
+		drbd_send_out_of_sync(peer_device, &req.i);
 
 		spin_lock_irq(&peer_device->send_oos_lock);
 		
