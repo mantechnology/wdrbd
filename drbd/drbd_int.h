@@ -1255,6 +1255,7 @@ struct drbd_resource {
 	spinlock_t listeners_lock;
 
 	struct timer_list peer_ack_timer; /* send a P_PEER_ACK after last completion */
+	struct timer_list repost_up_to_date_timer;
 
 	unsigned int w_cb_nr; /* keeps counting up */
 	struct drbd_thread_timing_details w_timing_details[DRBD_THREAD_DETAILS_HIST];
@@ -2415,6 +2416,11 @@ extern void wait_until_done_or_force_detached(struct drbd_device *device,
 extern void drbd_rs_controller_reset(struct drbd_peer_device *);
 extern void drbd_ping_peer(struct drbd_connection *connection);
 extern struct drbd_peer_device *peer_device_by_node_id(struct drbd_device *, int);
+#ifdef _WIN32
+extern void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2); 
+#else
+extern void repost_up_to_date_fn(unsigned long data);
+#endif 
 
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
