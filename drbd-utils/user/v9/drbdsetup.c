@@ -1589,12 +1589,13 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 	}
 
 	if (cm->continuous_poll) {
+#ifndef _WIN32
 		/* also always (try to) listen to nlctrl notify,
 		* so we have a chance to notice rmmod.  */
 		int id = GENL_ID_CTRL;
 		setsockopt(drbd_sock->s_fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP,
 			&id, sizeof(id));
-
+#endif
 		if (genl_join_mc_group(drbd_sock, "events") &&
 		    !kernel_older_than(2, 6, 23)) {
 			desc = "unable to join drbd events multicast group";
