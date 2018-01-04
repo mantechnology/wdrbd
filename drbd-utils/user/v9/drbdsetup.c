@@ -241,7 +241,7 @@ struct drbd_cmd {
 // other functions
 static int get_af_ssocks(int warn);
 static void print_command_usage(struct drbd_cmd *cm, enum usage_type);
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 		__attribute__ ((noreturn));
 static const char *resync_susp_str(struct peer_device_info *info);
 
@@ -4062,7 +4062,7 @@ static void print_command_usage(struct drbd_cmd *cm, enum usage_type ut)
 	}
 }
 
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 {
 	size_t i;
 
@@ -4076,7 +4076,7 @@ static void print_usage_and_exit(const char* addinfo)
 
 	printf("\nUse 'drbdsetup help command' for command-specific help.\n\n");
 	if (addinfo)  /* FIXME: ?! */
-		printf("\n%s\n",addinfo);
+		printf("\n%s\n", addinfo);
 
 	exit(20);
 }
@@ -4187,7 +4187,7 @@ int main(int argc, char **argv)
 			} else
 				print_usage_and_exit("unknown command");
 		} else
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 
 	/*
@@ -4201,7 +4201,7 @@ int main(int argc, char **argv)
 	}
 
 	if (argc < 2)
-		print_usage_and_exit(0);
+		print_usage_and_exit(NULL);
 
 	if (!modprobe_drbd()) {
 		if (!strcmp(argv[1], "down") ||
@@ -4229,7 +4229,7 @@ int main(int argc, char **argv)
 		if (c == -1)
 			break;
 		if (c == '?' || c == ':')
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 	/* All non-option arguments now are in argv[optind .. argc - 1]. */
 	first_optind = optind;
