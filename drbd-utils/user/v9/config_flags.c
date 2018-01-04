@@ -682,12 +682,13 @@ const char *read_balancing_map[] = {
 	{ "al-extents", NUMERIC(al_extents, AL_EXTENTS), .implicit_clamp = true, },	\
 	{ "al-updates", BOOLEAN(al_updates, AL_UPDATES) },				\
 	{ "discard-zeroes-if-aligned",							\
-	BOOLEAN(discard_zeroes_if_aligned, DISCARD_ZEROES_IF_ALIGNED) },	\
+		BOOLEAN(discard_zeroes_if_aligned, DISCARD_ZEROES_IF_ALIGNED) },	\
 	{ "disk-timeout", NUMERIC(disk_timeout,	DISK_TIMEOUT),				\
-	.unit = "1/10 seconds" },							\
+		.unit = "1/10 seconds" },							\
 	{ "read-balancing", ENUM(read_balancing, READ_BALANCING) },			\
 	{ "rs-discard-granularity",							\
-	NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY) }
+		NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY), \
+		.unit = "bytes" }
 #else
 #define CHANGEABLE_DISK_OPTIONS								\
 	{ "on-io-error", ENUM(on_io_error, ON_IO_ERROR) },				\
@@ -703,10 +704,11 @@ const char *read_balancing_map[] = {
 	{ "discard-zeroes-if-aligned",							\
 		BOOLEAN(discard_zeroes_if_aligned, DISCARD_ZEROES_IF_ALIGNED) },	\
 	{ "disk-timeout", NUMERIC(disk_timeout,	DISK_TIMEOUT),				\
-	  .unit = "1/10 seconds" },							\
+		.unit = "1/10 seconds" },							\
 	{ "read-balancing", ENUM(read_balancing, READ_BALANCING) },			\
 	{ "rs-discard-granularity",							\
-		NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY) }
+		NUMERIC(rs_discard_granularity, RS_DISCARD_GRANULARITY),            \
+		.unit = "bytes" }
 #endif
 #define CHANGEABLE_NET_OPTIONS								\
 	{ "protocol", ENUM_NOCASE(wire_protocol, PROTOCOL) },				\
@@ -859,11 +861,14 @@ struct context_def resource_options_ctx = {
 		{ "cpu-mask", STRING(cpu_mask) },
 		{ "on-no-data-accessible", ENUM(on_no_data, ON_NO_DATA) },
 		{ "auto-promote", BOOLEAN(auto_promote, AUTO_PROMOTE) },
-		{ "peer-ack-window", NUMERIC(peer_ack_window, PEER_ACK_WINDOW) },
-		{ "peer-ack-delay", NUMERIC(peer_ack_delay, PEER_ACK_DELAY) },
-		{ "twopc-timeout", NUMERIC(twopc_timeout, TWOPC_TIMEOUT) },
-		{ "twopc-retry-timeout", NUMERIC(twopc_retry_timeout, TWOPC_RETRY_TIMEOUT) },
-		{ "auto-promote-timeout", NUMERIC(auto_promote_timeout, AUTO_PROMOTE_TIMEOUT) },
+		{ "peer-ack-window", NUMERIC(peer_ack_window, PEER_ACK_WINDOW), .unit = "bytes" },
+		{ "peer-ack-delay", NUMERIC(peer_ack_delay, PEER_ACK_DELAY),
+			.unit = "milliseconds" },
+		{ "twopc-timeout", NUMERIC(twopc_timeout, TWOPC_TIMEOUT), .unit = "1/10 seconds" },
+		{ "twopc-retry-timeout", NUMERIC(twopc_retry_timeout, TWOPC_RETRY_TIMEOUT),
+			.unit = "1/10 seconds" },
+		{ "auto-promote-timeout", NUMERIC(auto_promote_timeout, AUTO_PROMOTE_TIMEOUT),
+			.unit = "1/10 seconds" },
 		{ "max-io-depth", NUMERIC(nr_requests, NR_REQUESTS) },
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
