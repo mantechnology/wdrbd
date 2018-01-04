@@ -750,23 +750,34 @@ struct drbd_peer_request {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
 	struct list_head recv_order; /* writes only */
-	struct drbd_epoch *epoch; /* for writes */
 	struct drbd_page_chain_head page_chain;
 	atomic_t pending_bios;
 	struct drbd_interval i;
-	/* see comments on ee flag bits below */
 #ifdef _WIN32
-    ULONG_PTR flags;
-    ULONG_PTR submit_jif;
+    ULONG_PTR flags; /* see comments on ee flag bits below */
 #else
-	unsigned long flags;
-	unsigned long submit_jif;
+	unsigned long flags; /* see comments on ee flag bits below */
 #endif
 	union {
-		u64 block_id;
-		struct digest_info *digest;
+		struct { /* regular peer_request */
+			struct drbd_epoch *epoch; /* for writes */
+#ifdef _WIN32
+			ULONG_PTR submit_jif;
+#else
+			unsigned long submit_jif;
+#endif 
+			union {
+				u64 block_id;
+				struct digest_info *digest;
+			};
+			u64 dagtag_sector;
+		}; 
+		struct { /* reused object to queue send OOS to other nodes */
+			u64 sent_oos_nodes; /* Used to notify L_SYNC_TARGETs about new out_of_sync bits */
+			struct drbd_peer_device *send_oos_peer_device;
+			u64 send_oos_in_sync;
+		};
 	};
-	u64 dagtag_sector;
 #ifdef _WIN32
 	void* peer_req_databuf;
 #endif
@@ -2456,7 +2467,6 @@ extern int w_send_dblock(struct drbd_work *, int);
 extern int w_send_read_req(struct drbd_work *, int);
 extern int w_e_reissue(struct drbd_work *, int);
 extern int w_restart_disk_io(struct drbd_work *, int);
-extern int w_send_out_of_sync(struct drbd_work *, int);
 extern int w_start_resync(struct drbd_work *, int);
 extern int w_send_uuids(struct drbd_work *, int);
 

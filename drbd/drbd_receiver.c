@@ -7843,8 +7843,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
-			break;
-	// DW-1205 SyncSource 100% stuck at low bandwith, resolve linbit patching b2bfb5c
+		break; 
 	case L_SYNC_TARGET: 
 		mutex_lock(&device->bm_resync_fo_mutex);
 #ifdef _WIN32
@@ -9345,6 +9344,67 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	return bitmap_bits;
 }
 
+
+static bool is_sync_source(struct drbd_peer_device *peer_device)
+{
+	return is_sync_source_state(peer_device, NOW) ||
+		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+}
+
+static int w_send_out_of_sync(struct drbd_work *w, int cancel)
+{
+	struct drbd_peer_request *peer_req =
+		container_of(w, struct drbd_peer_request, w);
+	struct drbd_peer_device *peer_device = peer_req->send_oos_peer_device;
+	struct drbd_device *device = peer_device->device;
+	u64 in_sync = peer_req->send_oos_in_sync;
+	int err;
+
+	err = drbd_send_out_of_sync(peer_device, &peer_req->i);
+	peer_req->sent_oos_nodes |= NODE_MASK(peer_device->node_id);
+
+	rcu_read_lock();
+	for_each_peer_device_rcu(peer_device, device) {
+		if (!(NODE_MASK(peer_device->node_id) & in_sync) &&
+			is_sync_source(peer_device) &&
+			!(peer_req->sent_oos_nodes & NODE_MASK(peer_device->node_id))) {
+			rcu_read_unlock();
+			peer_req->send_oos_peer_device = peer_device;
+			drbd_queue_work(&peer_device->connection->sender_work,
+				&peer_req->w);
+			return err;
+		}
+	}
+	rcu_read_unlock();
+	drbd_free_peer_req(peer_req);
+
+	return err;
+}
+
+static void notify_sync_targets_or_free(struct drbd_peer_request *peer_req, u64 in_sync)
+{
+	struct drbd_device *device = peer_req->peer_device->device;
+	struct drbd_peer_device *peer_device;
+
+	rcu_read_lock();
+	for_each_peer_device_rcu(peer_device, device) {
+		if (!(NODE_MASK(peer_device->node_id) & in_sync) &&
+			is_sync_source(peer_device)) {
+			rcu_read_unlock();
+			peer_req->sent_oos_nodes = 0;
+			peer_req->send_oos_peer_device = peer_device;
+			peer_req->send_oos_in_sync = in_sync;
+			peer_req->w.cb = w_send_out_of_sync;
+			drbd_queue_work(&peer_device->connection->sender_work,
+				&peer_req->w);
+			return;
+		}
+	}
+	rcu_read_unlock();
+	drbd_free_peer_req(peer_req);
+}
+
+
 static int got_peer_ack(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -9414,7 +9474,7 @@ found:
 			put_ldev(device);
 		}
 		list_del(&peer_req->recv_order);
-		drbd_free_peer_req(peer_req);
+		notify_sync_targets_or_free(peer_req, in_sync);
 	}
 	return 0;
 }
@@ -9462,7 +9522,7 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 
 		list_del(&peer_req->recv_order);
 		drbd_al_complete_io(device, &peer_req->i);
-		drbd_free_peer_req(peer_req);
+		notify_sync_targets_or_free(peer_req, 0);
 	}
 }
 
