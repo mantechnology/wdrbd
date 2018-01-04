@@ -2872,6 +2872,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 static bool want_bitmap(struct drbd_peer_device *peer_device)
 {
 	struct peer_device_conf *pdc;
+#ifndef _WIN32 
 	bool want_bitmap = false;
 
 	rcu_read_lock();
@@ -2879,7 +2880,9 @@ static bool want_bitmap(struct drbd_peer_device *peer_device)
 	if (pdc)
 		want_bitmap |= pdc->bitmap;
 	rcu_read_unlock();
-
+#else // TODO_WIN : Disable bitmap = no options temporary 
+	bool want_bitmap = true;
+#endif 
 	return want_bitmap;
 }
 
