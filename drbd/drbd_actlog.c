@@ -326,6 +326,14 @@ find_active_resync_extent(struct drbd_device *device, unsigned int enr)
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
 			if (test_bit(BME_NO_WRITES, &bm_ext->flags)) {
+				if (peer_device->resync_wenr == tmp->lc_number) {
+					peer_device->resync_wenr = LC_FREE;
+					if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
+						bm_ext->flags = 0;
+						peer_device->resync_locked--;
+						continue;
+					}
+				}
 				rcu_read_unlock();
 				WDRBD_TRACE_AL("return bm_ext, bm_ext->lce.lc_number = %lu, bm_ext->lce.refcnt = %lu\n", bm_ext->lce.lc_number, bm_ext->lce.refcnt);
 				return bm_ext;
