@@ -2171,8 +2171,8 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
 #ifndef _WIN32
-#if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
-#error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
+#if DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
+#error Architecture not supported: DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
 #endif
 #else
 #define DRBD_MAX_BIO_SIZE (1 << 20)
