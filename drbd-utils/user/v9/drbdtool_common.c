@@ -409,7 +409,7 @@ void config_help_legacy(const char * const tool,
 	fprintf(stderr,
 			"This %s was build without support for drbd kernel code (%d.%d).\n"
 			"Consider to rebuild your user land tools\n"
-			"and configure --with-%d%d-support ...\n",
+			"and configure --with-%d%dsupport ...\n",
 			tool,
 			driver_version->version.major, driver_version->version.minor,
 			driver_version->version.major, driver_version->version.minor);
