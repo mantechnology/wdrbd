@@ -21,6 +21,7 @@
 
  */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -30,6 +31,7 @@
 #include <assert.h>
 #include "drbdtool_common.h"
 #include "drbdadm.h"
+#include <search.h>
 
 static void inherit_volumes(struct volumes *from, struct d_host_info *host);
 static void check_volume_sets_equal(struct d_resource *, struct d_host_info *, struct d_host_info *);
@@ -78,13 +80,13 @@ void set_on_hosts_in_res(struct d_resource *res)
 
 						for_each_volume(vol, &host->volumes)
 							check_uniq("device-minor", "device-minor:%s:%u", h->name,
-                                                                  vol->device_minor);
+								vol->device_minor);
 
-                                               for_each_volume(vol, &host->volumes)
-                                                       if (vol->device)
-                                                               check_uniq("device", "device:%s:%s", h->name,
-                                                                          vol->device);
-                                       }
+							for_each_volume(vol, &host->volumes)
+									if (vol->device)
+											check_uniq("device", "device:%s:%s", h->name,
+														vol->device);
+					}
 				}
 
 			host->lower = l_res;
@@ -195,6 +197,7 @@ static void _set_host_info_in_host_address_pairs(struct d_resource *res,
 				if (host_info->address.addr && host_info->address.af) {
 					ha->address.addr = host_info->address.addr;
 					ha->address.af = host_info->address.af;
+					ha->address.is_local_address = host_info->address.is_local_address;
 				} else
 					have_address = false;
 			}
@@ -837,18 +840,37 @@ static void create_connections_from_mesh(struct d_resource *res, struct mesh *me
 	}
 }
 
-static bool addresses_equal(struct d_address *addr1, struct d_address *addr2)
+int addresses_cmp(struct d_address *addr1, struct d_address *addr2)
 {
-	if (strcmp(addr1->af, addr2->af))
-		return false;
+	int ret;
 
-	if (strcmp(addr1->addr, addr2->addr))
-		return false;
+	if ((ret = strcmp(addr1->addr, addr2->addr)))
+		return ret;
 
-	if (strcmp(addr1->port, addr2->port))
-		return false;
+	if ((ret = strcmp(addr1->port, addr2->port)))
+		return ret;
 
-	return true;
+	return strcmp(addr1->af, addr2->af);
+}
+
+bool addresses_equal(struct d_address *addr1, struct d_address *addr2)
+{
+	return !addresses_cmp(addr1, addr2);
+}
+
+struct addrtree_entry {
+	struct d_address *da;
+	struct d_resource *res;
+};
+
+static void *addrtree = NULL;
+
+static int addrtree_key_cmp(const void *a, const void *b)
+{
+	struct addrtree_entry *e1 = (struct addrtree_entry *)a;
+	struct addrtree_entry *e2 = (struct addrtree_entry *)b;
+
+	return addresses_cmp(e1->da, e2->da);
 }
 
 static struct hname_address *find_hname_addr_in_res(struct d_resource *res, struct d_address *addr)
@@ -876,50 +898,62 @@ static struct hname_address *find_hname_addr_in_res(struct d_resource *res, stru
    but may not be mentioned in any other resource. Also make sure that the two
    endpoints are not configured as the same.
  */
-static void check_addr_conflict(struct d_resource *res, struct resources *resources)
+static void check_addr_conflict(void *addrtree_root, struct resources *resources)
 {
-	struct d_resource *res2;
+	struct d_resource *res;
 	struct hname_address *ha1, *ha2;
 	struct connection *conn;
+	struct path *path;
+	struct addrtree_entry *e, *ep, *f;
 
-	for_each_resource(res2, resources) {
-		if (res2 == res)
-			continue;
-
+	for_each_resource(res, resources) {
 		for_each_connection(conn, &res->connections) {
-			struct path *path;
-
 			for_each_path(path, &conn->paths) {
 				struct d_address *addr[2];
 				int i = 0;
 
 				STAILQ_FOREACH(ha1, &path->hname_address_pairs, link) {
 					addr[i] = ha1->address.addr ? &ha1->address : &ha1->host_info->address;
-					if (addr_scope_local(addr[i]->addr))
+					if (addr[i]->is_local_address)
 						continue;
 
-					if (ha1->conflicts)
-						continue;
+					e = malloc(sizeof *e);
+					if (!e) {
+						err("malloc: %m\n");
+						exit(E_EXEC_ERROR);
+					}
 
-					ha2 = find_hname_addr_in_res(res2, addr[i]);
-					if (!ha2)
-						continue;
+					e->da = addr[i];
+					e->res = res;
+					f = tfind(e, &addrtree_root, addrtree_key_cmp);
+					if (f) {
+						ep = *(struct addrtree_entry **)f;
+						if (ep->res != res) {
+							if (ha1->conflicts)
+								continue;
 
-					if (ha2->conflicts)
-						continue;
+							ha2 = find_hname_addr_in_res(ep->res, addr[i]);
+							if (!ha2)
+								continue;
 
-					fprintf(stderr, "%s:%d: in resource %s\n"
-						"    %s:%s:%s is also used %s:%d (resource %s)\n",
-						res->config_file, ha1->config_line, res->name,
-						addr[i]->af, addr[i]->addr, addr[i]->port,
-						res2->config_file, ha2->config_line, res2->name);
-					ha2->conflicts = 1;
-					ha1->conflicts = 1;
-					config_valid = 0;
+							if (ha2->conflicts)
+								continue;
+							fprintf(stderr, "%s:%d: in resource %s\n"
+								"    %s:%s:%s is also used %s:%d (resource %s)\n",
+								e->res->config_file, ha1->config_line, e->res->name,
+								addr[i]->af, addr[i]->addr, addr[i]->port,
+								ep->res->config_file, ha2->config_line, ep->res->name);
+							ha2->conflicts = 1;
+							ha1->conflicts = 1;
+							config_valid = 0;
+						}
+					}
+					else
+						tsearch(e, &addrtree_root, addrtree_key_cmp);
 					i++;
 				}
 				if (i == 2 && addresses_equal(addr[0], addr[1]) &&
-				    !addr_scope_local(addr[0]->addr)) {
+					!addr[0]->is_local_address) {
 					err("%s:%d: in resource %s %s:%s:%s is used for both endpoints\n",
 					    res->config_file, conn->config_line,
 					    res->name, addr[0]->af, addr[0]->addr,
@@ -929,6 +963,11 @@ static void check_addr_conflict(struct d_resource *res, struct resources *resour
 			}
 		}
 	}
+
+	/* free element from tree, but not its members, they are pointers to list entries */
+	tdestroy(addrtree_root, free);
+	addrtree_root = NULL;
+
 }
 
 static void _must_have_two_hosts(struct d_resource *res, struct path *path)
@@ -979,8 +1018,14 @@ static void fixup_peer_devices(struct d_resource *res)
 		struct peer_device *peer_device;
 		struct hname_address *ha;
 		struct d_volume *vol;
-		struct path *some_path = STAILQ_FIRST(&conn->paths);
-		struct d_host_info *some_host = STAILQ_FIRST(&some_path->hname_address_pairs)->host_info;
+		struct path *some_path;
+		struct d_host_info *some_host;
+
+		some_path = STAILQ_FIRST(&conn->paths);
+		if (!some_path)
+			continue;
+
+		some_host = STAILQ_FIRST(&some_path->hname_address_pairs)->host_info;
 
 		STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link) {
 
@@ -1068,8 +1113,7 @@ void post_parse(struct resources *resources, enum pp_flags flags)
 	}
 
 	if (config_valid) {
-		for_each_resource(res, resources)
-			check_addr_conflict(res, resources);
+		check_addr_conflict(addrtree, resources);
 	}
 
 	/* Needs "on_hosts" and host->lower already set */
