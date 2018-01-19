@@ -7396,6 +7396,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	{
 #ifdef _WIN32 // DW-1447
         peer_device->last_repl_state = old_peer_state.conn;
+		// DW-1529 : if old connection state is C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING
+		// DISCONNECTING makes cstate STANDALONE
+		if (connection->cstate[OLD] == C_CONNECTING){
+			drbd_info(peer_device, "connection->cstate[OLD] == C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING\n"); 
+			goto fail_network_failure; 
+		}
 #endif
 		goto fail;
 	}
@@ -7422,6 +7428,13 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	peer_device->last_repl_state = peer_state.conn;
 #endif
 	return 0;
+
+#ifdef _WIN32 // DW-1529
+fail_network_failure: 
+	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+	return -EIO;
+#endif 
+
 fail:
 	change_cstate(connection, C_DISCONNECTING, CS_HARD);
 	return -EIO;
