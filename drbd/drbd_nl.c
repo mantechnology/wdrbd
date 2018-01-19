@@ -4453,7 +4453,13 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 #ifndef _WIN32	// MODIFIED_BY_MANTECH DW-1292 : skip if cstate is not StandAlone
 		retcode = ERR_NET_CONFIGURED;
 #endif
+#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1574 : Do not end command execution in disconnecting state because it has to go to the connecting state
+		if (cstate != C_DISCONNECTING){
+			goto out; 
+		}
+#else 
 		goto out;
+#endif	
 	}
 
 	if (first_path(adm_ctx.connection) == NULL) {
@@ -4651,9 +4657,10 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 #ifdef _WIN32
 	{
 		long timeo;
+		// DW-1574: Increase the wait time from 1 second to 3 seconds.
 		wait_event_interruptible_timeout(timeo, resource->state_wait,
 						 connection->cstate[NOW] == C_STANDALONE,
-						 HZ);
+						 3*HZ);
 	}
 #else
 		wait_event_interruptible_timeout(resource->state_wait,
