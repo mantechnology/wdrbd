@@ -1447,9 +1447,10 @@ static enum drbd_state_rv is_valid_transition(struct drbd_resource *resource)
 			    peer_device->repl_state[NEW] >= L_ESTABLISHED)
 #ifdef _WIN32
 			{
-				// _WIN32 // DW- : detour SS_NEED_CONNECTION error: temporary fix: ignore SS_NEED_CONNECTION -> worked! 
-				drbd_debug(connection, "Ignore SS_NEED_CONNECTION!!! cs=%d repl=%d - Check please!!!!\n",
+				// DW-1529 : Eliminated stopped state of WFBitMapT. This node will try to reconnect after the state change fails. 
+				drbd_info(connection, "return SS_NEED_CONNECTION!!! cs=%d repl=%d \n",
 					connection->cstate[OLD], peer_device->repl_state[NEW]);
+				return SS_NEED_CONNECTION; 
 			}
 #else
 				return SS_NEED_CONNECTION;

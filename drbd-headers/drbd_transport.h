@@ -145,7 +145,6 @@ struct drbd_transport {
 #endif
 	
 #ifdef _WIN32
-    atomic_t listening;
 	// DW-1398: accepted all peers and listening socket is no longer available.
 	atomic_t listening_done;
 #endif
