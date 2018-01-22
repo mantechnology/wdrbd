@@ -4453,13 +4453,13 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 #ifndef _WIN32	// MODIFIED_BY_MANTECH DW-1292 : skip if cstate is not StandAlone
 		retcode = ERR_NET_CONFIGURED;
 #endif
-#ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1574 : Do not end command execution in disconnecting state because it has to go to the connecting state
-		if (cstate != C_DISCONNECTING){
-			goto out; 
+#ifdef _WIN32 /* MODIFIED_BY_MANTECH DW-1574 : Returns an error message to the user in the disconnecting status */
+			  /* Disconnecting status will soon change the standalone status */
+		if (cstate == C_DISCONNECTING){
+			retcode = ERR_NET_CONFIGURED;
 		}
-#else 
+#endif
 		goto out;
-#endif	
 	}
 
 	if (first_path(adm_ctx.connection) == NULL) {
