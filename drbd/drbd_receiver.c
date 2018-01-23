@@ -4475,10 +4475,12 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);	
 #endif
 	
+#ifdef LINBIT_PATCH // It will not be used for a while because DW-1195 reproduced. 
 	if (hg == 100 && (!drbd_device_stable(device, NULL) || !(peer_device->uuid_flags & UUID_FLAG_STABLE))) {
 		drbd_warn(device, "Ignore Split-Brain, for now, at least one side unstable\n");
 		hg = 0;
 	}
+#endif 
 
 	if (abs(hg) == 100)
 		drbd_khelper(device, connection, "initial-split-brain");
