@@ -1173,7 +1173,7 @@ retry:
 				tr_err(path2->waiter.transport,
 					 "Receiver busy; rejecting incoming connection\n");
 #else
-			socket_c = kmalloc(sizeof(*socket_c), GFP_KERNEL);
+			socket_c = kmalloc(sizeof(*socket_c), GFP_ATOMIC);
 			if (!socket_c) {
 				tr_info(path2->waiter.transport,
 					"No mem, dropped an incoming connection\n");
