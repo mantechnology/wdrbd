@@ -1263,7 +1263,7 @@ struct drbd_resource {
 	bool bPreSecondaryLock;
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
-	bool bGetVolBitmapDone;  // DW-1391	
+	atomic_t bGetVolBitmapDone;  // DW-1391	
 #endif
 	bool breqbuf_overflow_alarm; // DW-1539
 #ifdef _WIN32_MULTIVOL_THREAD
@@ -3259,7 +3259,7 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 			if (peer_device->connection->agreed_pro_version < 96)
 #else
 			// DW-1391 : Allow IO while getting the volume bitmap.
-			if (device->resource->bGetVolBitmapDone)
+			if (atomic_read(&device->resource->bGetVolBitmapDone))
 #endif
 				stable = false;
 			break;
