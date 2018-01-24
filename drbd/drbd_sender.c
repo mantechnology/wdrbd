@@ -2787,6 +2787,17 @@ static int do_md_sync(struct drbd_device *device)
 	return 0;
 }
 
+#ifdef _WIN32
+void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else 
+void repost_up_to_date_fn(unsigned long data)
+#endif 
+{
+	struct drbd_resource *resource = (struct drbd_resource *) data;
+
+	drbd_post_work(resource, TRY_BECOME_UP_TO_DATE);
+}
+
 static int try_become_up_to_date(struct drbd_resource *resource)
 {
 	enum drbd_state_rv rv;
@@ -2797,6 +2808,7 @@ static int try_become_up_to_date(struct drbd_resource *resource)
 	 * Avoid deadlock on state_sem, in case someone holds it while
 	 * waiting for the completion of some after-state-change work.
 	 */
+
 	if (list_empty(&resource->twopc_work.list)) {
 		if (down_trylock(&resource->state_sem))
 			goto repost;
@@ -2807,7 +2819,7 @@ static int try_become_up_to_date(struct drbd_resource *resource)
 			goto repost;
 	} else {
 	repost:
-		drbd_post_work(resource, TRY_BECOME_UP_TO_DATE);
+		mod_timer(&resource->repost_up_to_date_timer, jiffies + HZ / 10);
 	}
 
 	return 0;
@@ -3273,7 +3285,7 @@ static void re_init_if_first_write(struct drbd_connection *connection, unsigned 
 		connection->send.current_epoch_writes = 0;
 		connection->send.last_sent_barrier_jif = jiffies;
 		connection->send.current_dagtag_sector =
-			connection->resource->dagtag_sector - (BIO_MAX_SIZE >> 9) - 1;
+			connection->resource->dagtag_sector - ((BIO_MAX_PAGES << PAGE_SHIFT) >> 9) - 1;
 	}
 }
 
@@ -3348,7 +3360,7 @@ static int process_one_request(struct drbd_connection *connection)
 				peer_device->todo.was_ahead = true;
 				drbd_send_current_state(peer_device);
 			}
-			err = drbd_send_out_of_sync(peer_device, req);
+			err = drbd_send_out_of_sync(peer_device, &req->i);
 			what = OOS_HANDED_TO_NETWORK;
 		}
 	} else {

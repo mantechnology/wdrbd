@@ -2112,7 +2112,7 @@ static void p_req_detail_from_pi(struct drbd_connection *connection,
 	struct p_trim *p = pi->data;
 	bool is_trim_or_wsame = pi->cmd == P_TRIM || pi->cmd == P_WSAME;
 	unsigned int digest_size =
-		connection->peer_integrity_tfm ?
+		pi->cmd != P_TRIM && connection->peer_integrity_tfm ?
 		crypto_hash_digestsize(connection->peer_integrity_tfm) : 0;
 
 	d->sector = be64_to_cpu(p->p_data.sector);
@@ -2121,6 +2121,7 @@ static void p_req_detail_from_pi(struct drbd_connection *connection,
 	d->dp_flags = be32_to_cpu(p->p_data.dp_flags);
 	d->length = pi->size;
 	d->bi_size = is_trim_or_wsame ? be32_to_cpu(p->size) : pi->size - digest_size;
+	d->digest_size = digest_size;
 }
 
 /* used from receive_RSDataReply (recv_resync_read)
@@ -2138,15 +2139,14 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	struct drbd_device *device = peer_device->device;
 	const uint64_t capacity = drbd_get_capacity(device->this_bdev);
 	struct drbd_peer_request *peer_req;
-	int digest_size, err;
+	int err;
 	void *dig_in = peer_device->connection->int_dig_in;
 	void *dig_vv = peer_device->connection->int_dig_vv;
 	struct drbd_transport *transport = &peer_device->connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 
-	digest_size = d->length ? d->length - d->bi_size : 0;
-	if (digest_size) {
-		err = drbd_recv_into(peer_device->connection, dig_in, digest_size);
+	if (d->digest_size) {
+		err = drbd_recv_into(peer_device->connection, dig_in, d->digest_size);
 		if (err)
 			return NULL;
 	}
@@ -2178,7 +2178,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	if (d->length == 0)
 		return peer_req;
 
-	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->bi_size);
+	err = tr_ops->recv_pages(transport, &peer_req->page_chain, d->length - d->digest_size);
 	if (err)
 		goto fail;
 #ifdef _WIN32
@@ -2201,13 +2201,13 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 #endif
 	}
 
-	if (digest_size) {
+	if (d->digest_size) {
 #ifdef _WIN32
         drbd_csum_pages(peer_device->connection->peer_integrity_tfm, peer_req, dig_vv);
 #else
 		drbd_csum_pages(peer_device->connection->peer_integrity_tfm, peer_req->page_chain.head, dig_vv);
 #endif
-		if (memcmp(dig_in, dig_vv, digest_size)) {
+		if (memcmp(dig_in, dig_vv, d->digest_size)) {
 			drbd_err(device, "Digest integrity check FAILED: %llus +%u\n",
 				d->sector, d->bi_size);
 			goto fail;
@@ -4474,6 +4474,13 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
 	various_states_to_goodness(device, peer_device, peer_disk_state, peer_role, &hg);	
 #endif
+	
+#ifdef LINBIT_PATCH // It will not be used for a while because DW-1195 reproduced. 
+	if (hg == 100 && (!drbd_device_stable(device, NULL) || !(peer_device->uuid_flags & UUID_FLAG_STABLE))) {
+		drbd_warn(device, "Ignore Split-Brain, for now, at least one side unstable\n");
+		hg = 0;
+	}
+#endif 
 
 	if (abs(hg) == 100)
 		drbd_khelper(device, connection, "initial-split-brain");
@@ -5419,7 +5426,7 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 		   Note: Former unstable (but up-to-date) nodes become consistent for a short
 		   time after loosing their primary peer. Therefore consider consistent here
 		   as well. */
-		drbd_info(peer_device, "Upgrading local disk to %s after unstable (and no resync).\n",
+		drbd_info(peer_device, "Upgrading local disk to %s after unstable/weak (and no resync).\n",
 				drbd_disk_str(peer_disk_state));
 		change_disk_state(peer_device->device, peer_disk_state, CS_VERBOSE);
 		return;
@@ -7035,23 +7042,35 @@ static int process_twopc(struct drbd_connection *connection,
 
 static void try_to_get_resynced(struct drbd_device *device)
 {
+	int best_hg = -3000;
+	struct drbd_peer_device *best_peer_device = NULL;
 	struct drbd_peer_device *peer_device;
+
+	if (!get_ldev(device))
+		return;
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
-		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
-			goto found;
+		int hg, rule_nr, peer_node_id;
+		if (peer_device->disk_state[NOW] == D_UP_TO_DATE) {
+			hg = drbd_uuid_compare(peer_device, &rule_nr, &peer_node_id);
+			drbd_info(peer_device, "hg = %d\n", hg);
+			if (hg <= 0 && hg > best_hg) {
+				best_hg = hg;
+				best_peer_device = peer_device;
+			}
+		}
 	}
-	peer_device = NULL;
-found:
 	rcu_read_unlock();
+	peer_device = best_peer_device;
 
-	if (peer_device && get_ldev(device)) {
+	if (peer_device) {
 		drbd_resync(peer_device, DISKLESS_PRIMARY);
 		drbd_send_uuids(peer_device, UUID_FLAG_RESYNC | UUID_FLAG_DISKLESS_PRIMARY, 0);
-		put_ldev(device);
 	}
+	put_ldev(device);
 }
+
 
 static int receive_state(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -7843,8 +7862,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
-			break;
-	// DW-1205 SyncSource 100% stuck at low bandwith, resolve linbit patching b2bfb5c
+		break; 
 	case L_SYNC_TARGET: 
 		mutex_lock(&device->bm_resync_fo_mutex);
 #ifdef _WIN32
@@ -8055,7 +8073,7 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	peer_device->current_uuid = current_uuid;
 #endif
 
-	if (get_ldev(device)) {
+	if (get_ldev_if_state(device, D_UP_TO_DATE)) {
 		if (connection->peer_role[NOW] == R_PRIMARY) {
 			drbd_warn(peer_device, "received new current UUID: %016llX "
 				  "weak_nodes=%016llX\n", current_uuid, weak_nodes);
@@ -8063,7 +8081,7 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 			drbd_md_sync_if_dirty(device);
 		}
 		put_ldev(device);
-	} else if (resource->role[NOW] == R_PRIMARY) {
+	} else if (device->disk_state[NOW] == D_DISKLESS && resource->role[NOW] == R_PRIMARY) {
 		drbd_set_exposed_data_uuid(device, peer_device->current_uuid);
 	}
 
@@ -9345,6 +9363,67 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	return bitmap_bits;
 }
 
+
+static bool is_sync_source(struct drbd_peer_device *peer_device)
+{
+	return is_sync_source_state(peer_device, NOW) ||
+		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+}
+
+static int w_send_out_of_sync(struct drbd_work *w, int cancel)
+{
+	struct drbd_peer_request *peer_req =
+		container_of(w, struct drbd_peer_request, w);
+	struct drbd_peer_device *peer_device = peer_req->send_oos_peer_device;
+	struct drbd_device *device = peer_device->device;
+	u64 in_sync = peer_req->send_oos_in_sync;
+	int err;
+
+	err = drbd_send_out_of_sync(peer_device, &peer_req->i);
+	peer_req->sent_oos_nodes |= NODE_MASK(peer_device->node_id);
+
+	rcu_read_lock();
+	for_each_peer_device_rcu(peer_device, device) {
+		if (!(NODE_MASK(peer_device->node_id) & in_sync) &&
+			is_sync_source(peer_device) &&
+			!(peer_req->sent_oos_nodes & NODE_MASK(peer_device->node_id))) {
+			rcu_read_unlock();
+			peer_req->send_oos_peer_device = peer_device;
+			drbd_queue_work(&peer_device->connection->sender_work,
+				&peer_req->w);
+			return err;
+		}
+	}
+	rcu_read_unlock();
+	drbd_free_peer_req(peer_req);
+
+	return err;
+}
+
+static void notify_sync_targets_or_free(struct drbd_peer_request *peer_req, u64 in_sync)
+{
+	struct drbd_device *device = peer_req->peer_device->device;
+	struct drbd_peer_device *peer_device;
+
+	rcu_read_lock();
+	for_each_peer_device_rcu(peer_device, device) {
+		if (!(NODE_MASK(peer_device->node_id) & in_sync) &&
+			is_sync_source(peer_device)) {
+			rcu_read_unlock();
+			peer_req->sent_oos_nodes = 0;
+			peer_req->send_oos_peer_device = peer_device;
+			peer_req->send_oos_in_sync = in_sync;
+			peer_req->w.cb = w_send_out_of_sync;
+			drbd_queue_work(&peer_device->connection->sender_work,
+				&peer_req->w);
+			return;
+		}
+	}
+	rcu_read_unlock();
+	drbd_free_peer_req(peer_req);
+}
+
+
 static int got_peer_ack(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -9414,7 +9493,7 @@ found:
 			put_ldev(device);
 		}
 		list_del(&peer_req->recv_order);
-		drbd_free_peer_req(peer_req);
+		notify_sync_targets_or_free(peer_req, in_sync);
 	}
 	return 0;
 }
@@ -9462,7 +9541,7 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 
 		list_del(&peer_req->recv_order);
 		drbd_al_complete_io(device, &peer_req->i);
-		drbd_free_peer_req(peer_req);
+		notify_sync_targets_or_free(peer_req, 0);
 	}
 }
 
@@ -9842,7 +9921,7 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 
 		spin_unlock_irq(&peer_device->send_oos_lock);
 
-		drbd_send_out_of_sync(peer_device, &req);
+		drbd_send_out_of_sync(peer_device, &req.i);
 
 		spin_lock_irq(&peer_device->send_oos_lock);
 		

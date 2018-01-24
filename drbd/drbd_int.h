@@ -750,23 +750,34 @@ struct drbd_peer_request {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
 	struct list_head recv_order; /* writes only */
-	struct drbd_epoch *epoch; /* for writes */
 	struct drbd_page_chain_head page_chain;
 	atomic_t pending_bios;
 	struct drbd_interval i;
-	/* see comments on ee flag bits below */
 #ifdef _WIN32
-    ULONG_PTR flags;
-    ULONG_PTR submit_jif;
+    ULONG_PTR flags; /* see comments on ee flag bits below */
 #else
-	unsigned long flags;
-	unsigned long submit_jif;
+	unsigned long flags; /* see comments on ee flag bits below */
 #endif
 	union {
-		u64 block_id;
-		struct digest_info *digest;
+		struct { /* regular peer_request */
+			struct drbd_epoch *epoch; /* for writes */
+#ifdef _WIN32
+			ULONG_PTR submit_jif;
+#else
+			unsigned long submit_jif;
+#endif 
+			union {
+				u64 block_id;
+				struct digest_info *digest;
+			};
+			u64 dagtag_sector;
+		}; 
+		struct { /* reused object to queue send OOS to other nodes */
+			u64 sent_oos_nodes; /* Used to notify L_SYNC_TARGETs about new out_of_sync bits */
+			struct drbd_peer_device *send_oos_peer_device;
+			u64 send_oos_in_sync;
+		};
 	};
-	u64 dagtag_sector;
 #ifdef _WIN32
 	void* peer_req_databuf;
 #endif
@@ -1255,6 +1266,7 @@ struct drbd_resource {
 	spinlock_t listeners_lock;
 
 	struct timer_list peer_ack_timer; /* send a P_PEER_ACK after last completion */
+	struct timer_list repost_up_to_date_timer;
 
 	unsigned int w_cb_nr; /* keeps counting up */
 	struct drbd_thread_timing_details w_timing_details[DRBD_THREAD_DETAILS_HIST];
@@ -1909,7 +1921,7 @@ extern int drbd_send_state(struct drbd_peer_device *, union drbd_state);
 extern int drbd_send_current_state(struct drbd_peer_device *);
 extern int drbd_send_sync_param(struct drbd_peer_device *);
 extern void drbd_send_b_ack(struct drbd_connection *connection, u32 barrier_nr, u32 set_size);
-extern int drbd_send_out_of_sync(struct drbd_peer_device *, struct drbd_request *);
+extern int drbd_send_out_of_sync(struct drbd_peer_device *, struct drbd_interval *);
 extern int drbd_send_block(struct drbd_peer_device *, enum drbd_packet,
 			   struct drbd_peer_request *);
 extern int drbd_send_dblock(struct drbd_peer_device *, struct drbd_request *req);
@@ -2159,8 +2171,8 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
  * A followup commit may allow even bigger BIO sizes,
  * once we thought that through. */
 #ifndef _WIN32
-#if DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
-#error Architecture not supported: DRBD_MAX_BIO_SIZE > BIO_MAX_SIZE
+#if DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
+#error Architecture not supported: DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
 #endif
 #else
 #define DRBD_MAX_BIO_SIZE (1 << 20)
@@ -2415,6 +2427,11 @@ extern void wait_until_done_or_force_detached(struct drbd_device *device,
 extern void drbd_rs_controller_reset(struct drbd_peer_device *);
 extern void drbd_ping_peer(struct drbd_connection *connection);
 extern struct drbd_peer_device *peer_device_by_node_id(struct drbd_device *, int);
+#ifdef _WIN32
+extern void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2); 
+#else
+extern void repost_up_to_date_fn(unsigned long data);
+#endif 
 
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
@@ -2450,7 +2467,6 @@ extern int w_send_dblock(struct drbd_work *, int);
 extern int w_send_read_req(struct drbd_work *, int);
 extern int w_e_reissue(struct drbd_work *, int);
 extern int w_restart_disk_io(struct drbd_work *, int);
-extern int w_send_out_of_sync(struct drbd_work *, int);
 extern int w_start_resync(struct drbd_work *, int);
 extern int w_send_uuids(struct drbd_work *, int);
 
@@ -2501,6 +2517,7 @@ struct drbd_peer_request_details {
 	uint32_t length;	/* endian converted p_head*.length */
 	uint32_t bi_size;	/* resulting bio size */
 	/* for non-discards: bi_size = length - digest_size */
+	uint32_t digest_size;
 };
 
 struct queued_twopc {

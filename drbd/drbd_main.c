@@ -2925,15 +2925,15 @@ int drbd_send_block(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 	return err;
 }
 
-int drbd_send_out_of_sync(struct drbd_peer_device *peer_device, struct drbd_request *req)
+int drbd_send_out_of_sync(struct drbd_peer_device *peer_device, struct drbd_interval *i)
 {
 	struct p_block_desc *p;
 
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
 	if (!p)
 		return -EIO;
-	p->sector = cpu_to_be64(req->i.sector);
-	p->blksize = cpu_to_be32(req->i.size);
+	p->sector = cpu_to_be64(i->sector);
+	p->blksize = cpu_to_be32(i->size);
 	return drbd_send_command(peer_device, P_OUT_OF_SYNC, DATA_STREAM);
 }
 
@@ -3522,6 +3522,7 @@ void drbd_free_resource(struct drbd_resource *resource)
 #endif
 	del_timer_sync(&resource->twopc_timer);
 	del_timer_sync(&resource->peer_ack_timer);
+	del_timer_sync(&resource->repost_up_to_date_timer);
 	kref_debug_put(&resource->kref_debug, 8);
 	kref_put(&resource->kref, drbd_destroy_resource);
 }
@@ -4048,8 +4049,10 @@ struct drbd_resource *drbd_create_resource(const char *name,
 	INIT_LIST_HEAD(&resource->peer_ack_list);
 #ifdef _WIN32
     setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, resource);
+	setup_timer(&resource->repost_up_to_date_timer, repost_up_to_date_fn, resource);
 #else
 	setup_timer(&resource->peer_ack_timer, peer_ack_timer_fn, (unsigned long) resource);
+	setup_timer(&resource->repost_up_to_date_timer, repost_up_to_date_fn, (unsigned long)resource);
 #endif
 	sema_init(&resource->state_sem, 1);
 	resource->role[NOW] = R_SECONDARY;
@@ -5420,8 +5423,15 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 		peer_device = peer_device_by_node_id(device, node_id);
 		if (peer_device) {
 			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
-			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED;
-			do_it = do_it || NODE_MASK(node_id) & weak_nodes;
+			
+			if (peer_device->bitmap_index == -1) {
+				struct peer_device_conf *pdc;
+				pdc = rcu_dereference(peer_device->conf);
+				if (pdc && !pdc->bitmap)
+					continue;
+			}
+			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED ||
+				(NODE_MASK(node_id) & weak_nodes);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
 			do_it = do_it || ((peer_device->connection->cstate[NEW] < C_CONNECTED) && (pdsk == D_INCONSISTENT));

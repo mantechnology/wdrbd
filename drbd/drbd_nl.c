@@ -2872,6 +2872,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 static bool want_bitmap(struct drbd_peer_device *peer_device)
 {
 	struct peer_device_conf *pdc;
+#ifndef _WIN32 
 	bool want_bitmap = false;
 
 	rcu_read_lock();
@@ -2879,7 +2880,9 @@ static bool want_bitmap(struct drbd_peer_device *peer_device)
 	if (pdc)
 		want_bitmap |= pdc->bitmap;
 	rcu_read_unlock();
-
+#else // TODO_WIN : Disable bitmap = no options temporary 
+	bool want_bitmap = true;
+#endif 
 	return want_bitmap;
 }
 
@@ -2960,6 +2963,19 @@ void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *
 	kfree(ldev);
 }
 
+static void discard_not_wanted_bitmap_uuids(struct drbd_device *device, struct drbd_backing_dev *ldev)
+{
+	struct drbd_peer_md *peer_md = ldev->md.peers;
+	struct drbd_peer_device *peer_device;
+	int node_id;
+
+	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
+		peer_device = peer_device_by_node_id(device, node_id);
+		if (peer_device && peer_md[node_id].bitmap_uuid && !want_bitmap(peer_device))
+			peer_md[node_id].bitmap_uuid = 0;
+	}
+}
+
 int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
@@ -3037,9 +3053,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		goto fail;
 	}
 
-	mutex_lock(&resource->conf_update);
-	have_conf_update = true;
-
 	/* if you want to reconfigure, please tear down first */
 	if (device->disk_state[NOW] > D_DISKLESS) {
 		retcode = ERR_DISK_CONFIGURED;
@@ -3076,6 +3089,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (retcode != NO_ERROR)
 		goto fail;
 
+	discard_not_wanted_bitmap_uuids(device, nbc);
 	sanitize_disk_conf(device, new_disk_conf, nbc);
 
 	if (drbd_get_max_capacity(nbc) < new_disk_conf->disk_size) {
@@ -3206,6 +3220,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	drbd_info(device, "Maximum number of peer devices = %u\n",
 		  device->bitmap->bm_max_peers);
 
+	mutex_lock(&resource->conf_update);
+	have_conf_update = true;
+
 	/* Make sure the local node id matches or is unassigned */
 	if (nbc->md.node_id != -1 && nbc->md.node_id != resource->res_opts.node_id) {
 		drbd_err(device, "Local node id %d differs from local "
@@ -3316,6 +3333,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			goto force_diskless_dec;
 		}
 	}
+
+	mutex_unlock(&resource->conf_update);
+	have_conf_update = false;
 
 	lock_all_resources();
 	retcode = drbd_resync_after_valid(device, device->ldev->disk_conf->resync_after);
@@ -3472,7 +3492,6 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	drbd_kobject_uevent(device);
 	put_ldev(device);
-	mutex_unlock(&resource->conf_update);
 	mutex_unlock(&resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
 	return 0;
