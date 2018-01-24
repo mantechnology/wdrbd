@@ -4023,6 +4023,7 @@ struct drbd_resource *drbd_create_resource(const char *name,
     resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL, 'A0DW');
 	resource->bPreSecondaryLock = FALSE;
 	resource->bPreDismountLock = FALSE;
+	atomic_set(&resource->bGetVolBitmapDone, true);
 #else
 	resource = kzalloc(sizeof(struct drbd_resource), GFP_KERNEL);
 #endif
@@ -6262,12 +6263,18 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			device->resource->bTempAllowMount = TRUE;			
 		}
 
+		// DW-1391
+		atomic_set(&device->resource->bGetVolBitmapDone, false);
+
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
 		if (NULL == pBitmap) {
 			WDRBD_ERROR("Could not get bitmap for drbd\n");
 		}
 
+		// DW-1391
+		atomic_set(&device->resource->bGetVolBitmapDone, true);
+		
 		if (bSecondary)
 		{
 			// prevent from mounting volume.
