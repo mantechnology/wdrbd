@@ -1263,6 +1263,7 @@ struct drbd_resource {
 	bool bPreSecondaryLock;
 	bool bPreDismountLock; // DW-1286
 	bool bTempAllowMount;  // DW-1317
+	bool bGetVolBitmapDone;  // DW-1391	
 #endif
 	bool breqbuf_overflow_alarm; // DW-1539
 #ifdef _WIN32_MULTIVOL_THREAD
@@ -3256,6 +3257,9 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 #ifndef _WIN32
 			// MODIFIED_BY_MANTECH DW-1121: sending out-of-sync when repl state is WFBitmapS possibly causes stopping resync, by setting new out-of-sync sector which bm_resync_fo has been already swept.
 			if (peer_device->connection->agreed_pro_version < 96)
+#else
+			// DW-1391 : Allow IO while getting the volume bitmap.
+			if (device->resource->bGetVolBitmapDone)
 #endif
 				stable = false;
 			break;
