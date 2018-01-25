@@ -148,6 +148,9 @@ int fline;
 char *config_file = NULL;
 char *config_save = NULL;
 char *config_test = NULL;
+#ifdef _WIN32
+char *parse_file = NULL;
+#endif
 struct resources config = STAILQ_HEAD_INITIALIZER(config);
 struct d_resource *common = NULL;
 struct ifreq *ifreq_list = NULL;
@@ -3462,6 +3465,9 @@ int main(int argc, char **argv)
 	else
 		config_save = canonify_path(config_file);
 
+#ifdef _WIN32
+	parse_file = config_file;
+#endif
 	my_parse();
 
 	if (config_test) {
@@ -3490,7 +3496,9 @@ int main(int argc, char **argv)
 	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
 	if (cmd != &connect_cmd)
 	{
+		char *temp_file = config_file;
 		parse_drbdsetup_show();
+		config_file = temp_file;
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);

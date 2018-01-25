@@ -2012,7 +2012,7 @@ void include_stmt(char *str)
 			} else {
 #ifdef _WIN32
                 err("%s:%d: Failed to open include file 1 '%s'.\n",
-					config_file, line, glob_buf.gl_pathv[i]);
+					parse_file, line, glob_buf.gl_pathv[i]);
 #else
 				err("%s:%d: Failed to open include file '%s'.\n",
 					config_save, line, glob_buf.gl_pathv[i]);
@@ -2025,7 +2025,7 @@ void include_stmt(char *str)
 		if (!strchr(str, '?') && !strchr(str, '*') && !strchr(str, '[')) {
 #ifdef _WIN32
             err("%s:%d: Failed to open include file '%s'.\n",
-                config_file, line, str);
+                parse_file, line, str);
 #else
 			err("%s:%d: Failed to open include file '%s'.\n",
 			    config_save, line, str);

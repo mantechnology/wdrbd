@@ -438,6 +438,9 @@ bool peer_diskless(struct peer_device *peer_device);
 
 extern char *config_file;
 extern char *config_save;
+#ifdef _WIN32 // DW-1569 : incorrect output of config file name from dump/dump-xml.
+extern char *parse_file;
+#endif
 extern int config_valid;
 extern struct resources config;
 extern struct d_resource* common;
