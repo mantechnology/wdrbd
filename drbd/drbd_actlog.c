@@ -346,12 +346,7 @@ find_active_resync_extent(struct drbd_device *device, unsigned int enr)
 }
 
 static int
-#ifdef _WIN32
-set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except_,
-#else
-set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
-#endif
-		 unsigned int enr)
+set_bme_priority(struct drbd_device *device, unsigned int enr)
 {
 	struct drbd_peer_device *peer_device;
 	struct lc_element *tmp;
@@ -382,7 +377,7 @@ struct lc_element *__al_get(struct drbd_device *device,
 	spin_lock_irq(&device->al_lock);
 	bm_ext = find_active_resync_extent(device, enr);
 	if (bm_ext) {
-		wake = set_bme_priority(device, NULL, enr);
+		wake = set_bme_priority(device, enr);
 		spin_unlock_irq(&device->al_lock);
 		if (wake){
 			WDRBD_TRACE_AL("wake_up(&device->al_wait)\n");
@@ -755,7 +750,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	for (enr = first; enr <= last; enr++) {
 		bm_ext = find_active_resync_extent(device, enr);
 		if (unlikely(bm_ext != NULL)) {
-			if (set_bme_priority(device, NULL, enr))
+			if (set_bme_priority(device, enr))
 				return -EBUSY;
 			return -EWOULDBLOCK;
 		}
