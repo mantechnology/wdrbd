@@ -1277,8 +1277,7 @@ static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
 #ifdef _WIN32
-	struct drbd_connection *connection = (struct drbd_connection *) SocketContext;
-	struct drbd_resource *resource = connection->resource; 
+	struct drbd_resource *resource = (struct drbd_resource *) SocketContext;
 	struct drbd_listener *listener = NULL;
 	bool find_listener = false;
 
@@ -1359,6 +1358,8 @@ static void dtt_incoming_connection(struct sock *sock)
 		return STATUS_REQUEST_NOT_ACCEPTED;
 	}
 
+
+#if 0 // TODO_WIN, DW-1538 : disabled temporary
 	// DW-1398: do not accept if already connected.
 	if (atomic_read(&connection->transport.listening_done))
 	{
@@ -1369,6 +1370,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		spin_unlock_bh(&resource->listeners_lock);
 		return STATUS_REQUEST_NOT_ACCEPTED;
 	}
+#endif 
 
 	struct dtt_path *path2 = container_of(path, struct dtt_path, path);
 
@@ -1499,11 +1501,10 @@ static int dtt_create_listener(struct drbd_transport *transport,
 
 	struct drbd_connection *connection = container_of(transport, struct drbd_connection, transport);	
 	
-	// DW-1538 : Since waiter is removed, the parameter of resouce is changed to connection for listening_done variable. 
 	if (my_addr.ss_family == AF_INET6) {
-		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET6, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection->resource, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	} else {
-		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
+		s_listen->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, (PVOID*)connection->resource, &dispatch, WSK_FLAG_LISTEN_SOCKET); // this is listen socket
 	}
     if (s_listen->sk == NULL) {
         err = -1;
