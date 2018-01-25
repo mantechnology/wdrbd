@@ -64,7 +64,6 @@
 
 struct flush_work {
 	struct drbd_work w;
-	struct drbd_device *device;
 	struct drbd_epoch *epoch;
 };
 
@@ -1528,7 +1527,6 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 		if (fw) {
 			fw->w.cb = w_flush;
 			fw->epoch = epoch;
-			fw->device = NULL; /* FIXME drop this member, it is unused. */
 			drbd_queue_work(&resource->work, &fw->w);
 		} else {
 			drbd_warn(resource, "Could not kmalloc a flush_work obj\n");
