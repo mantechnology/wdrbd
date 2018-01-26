@@ -3494,10 +3494,18 @@ int main(int argc, char **argv)
 
 #ifdef _WIN32 
 	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
-	if (cmd != &connect_cmd)
+	if (cmd != &connect_cmd && cmd != &adjust_cmd)
 	{
 		char *temp_file = config_file;
-		parse_drbdsetup_show();
+		if (!resource_names[0] || !strcmp(resource_names[0], "all")) 
+		{	
+			parse_drbdsetup_show(NULL);
+		}
+		else
+		{	
+			parse_drbdsetup_show(resource_names[0]);
+		}
+		
 		config_file = temp_file;
 	}
 #endif

@@ -48,7 +48,7 @@
 /* drbdsetup show might complain that the device minor does
    not exist at all. Redirect stderr to /dev/null therefore.
  */
-static FILE *m_popen(int *pid,char** argv)
+static FILE *m_popen(int *pid, char * const* argv)
 {
 	int mpid;
 	int pipes[2];
@@ -826,18 +826,15 @@ static void adjust_disk(const struct cfg_ctx *ctx, struct d_resource* running)
 	}
 }
 
-bool drbdsetup_show_parsed = false;
 char config_file_drbdsetup_show[] = "drbdsetup show";
 struct resources running_config = STAILQ_HEAD_INITIALIZER(running_config);
 
-void parse_drbdsetup_show(void)
+struct d_resource *parse_drbdsetup_show(const char *name)
 {
-	char* argv[3];
+	struct d_resource *res = NULL;
+	char* argv[4];
 	int pid, argc;
 	int token;
-
-	if (drbdsetup_show_parsed)
-		return;
 
 	/* disable check_uniq, so it won't interfere
 	 * with parsing of drbdsetup show output */
@@ -850,6 +847,8 @@ void parse_drbdsetup_show(void)
 	argc = 0;
 	argv[argc++] = drbdsetup;
 	argv[argc++] = "show";
+	if (name)
+		argv[argc++] = ssprintf("%s", name);
 	argv[argc++] = NULL;
 
 	/* actually parse drbdsetup show output */
@@ -870,14 +869,16 @@ void parse_drbdsetup_show(void)
 		if (token != '{')
 			break;
 
-		insert_tail(&running_config, parse_resource(yylval.txt, PARSE_FOR_ADJUST));
+		res = parse_resource(yylval.txt, PARSE_FOR_ADJUST);
+		insert_tail(&running_config, res);
+
 	}
 
 	fclose(yyin);
 	waitpid(pid, 0, 0);
 
 	post_parse(&running_config, DRBDSETUP_SHOW);
-	drbdsetup_show_parsed = true;
+	return res;
 }
 
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
@@ -886,17 +887,31 @@ struct d_resource *running_res_by_name(const char *name, bool parse)
 struct d_resource *running_res_by_name(const char *name)
 #endif
 {
+	static bool drbdsetup_show_parsed = false;
 	struct d_resource *res;
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
-	if (parse && !drbdsetup_show_parsed)
+	if (parse && all_resources && !drbdsetup_show_parsed) {
 #else
-	if (!drbdsetup_show_parsed)
+	if (all_resources && !drbdsetup_show_parsed) {
 #endif
-		parse_drbdsetup_show();
+		parse_drbdsetup_show(NULL); /* all in one go */
+		drbdsetup_show_parsed = true;
+	}
+
 	for_each_resource(res, &running_config) {
 		if (strcmp(name, res->name) == 0)
 			return res;
 	}
+
+#ifdef _WIN32 // DW-889
+	if (parse && !all_resources)
+#else
+	if (!all_resources)
+#endif
+	{
+		return parse_drbdsetup_show(name);
+	}
+
 	return NULL;
 }
 
