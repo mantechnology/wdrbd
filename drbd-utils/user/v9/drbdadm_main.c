@@ -1317,6 +1317,8 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%s", ctx->res->name);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->device_minor);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
+	if (!ctx->vol->disk)
+		argv[NA(argc)] = ssprintf("--diskless");
 	argv[NA(argc)] = NULL;
 #ifdef _WIN32_MVFL
 	ex = add_registry_volume(ctx->vol->disk);

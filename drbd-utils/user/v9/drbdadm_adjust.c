@@ -269,6 +269,8 @@ static int disk_equal(struct d_volume *conf, struct d_volume *running)
 	if (conf->disk == NULL && running->disk == NULL)
 		return 1;
 	if (conf->disk == NULL) {
+		if (running->disk && !strcmp(running->disk, "none"))
+			return 1;
 		report_compare(1, "minor %u (vol:%u) %s missing from config\n",
 			running->device_minor, running->vnr, running->disk);
 		return 0;
