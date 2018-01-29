@@ -435,4 +435,8 @@ enum drbd_peer_state {
 
 #define DRBD_MAX_BIO_SIZE (1U << 20)
 
+#define QOU_OFF 0
+#define QOU_MAJORITY 1024
+#define QOU_ALL 1025
+
 #endif

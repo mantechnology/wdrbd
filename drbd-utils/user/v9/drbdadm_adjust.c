@@ -48,7 +48,7 @@
 /* drbdsetup show might complain that the device minor does
    not exist at all. Redirect stderr to /dev/null therefore.
  */
-static FILE *m_popen(int *pid,char** argv)
+static FILE *m_popen(int *pid, char * const* argv)
 {
 	int mpid;
 	int pipes[2];
@@ -269,6 +269,8 @@ static int disk_equal(struct d_volume *conf, struct d_volume *running)
 	if (conf->disk == NULL && running->disk == NULL)
 		return 1;
 	if (conf->disk == NULL) {
+		if (running->disk && !strcmp(running->disk, "none"))
+			return 1;
 		report_compare(1, "minor %u (vol:%u) %s missing from config\n",
 			running->device_minor, running->vnr, running->disk);
 		return 0;
@@ -558,8 +560,9 @@ void compare_volume(struct d_volume *conf, struct d_volume *kern)
 	}
 
 	/* Do we need to resize?
-	 * Though, if we are already going to attach, skip the resize. */
-	if (!conf->adj_attach && !conf->adj_detach)
+     * If we are going to attach, or we don't even have a local disk,
+     * don't even compare the size. */
+	if (!conf->adj_attach && !conf->adj_detach && conf->disk != NULL)
 		compare_size(conf, kern);
 
 	/* is it sufficient to only adjust the disk options? */
@@ -674,9 +677,11 @@ void schedule_peer_device_options(const struct cfg_ctx *ctx)
 		err("Call schedule_peer_devices_options() with vol or conn set!");
 		exit(E_THINKO);
 	} else if (!tmp_ctx.vol) {
-		STAILQ_FOREACH(peer_device, &tmp_ctx.conn->peer_devices, connection_link) {
-
-			if (STAILQ_EMPTY(&peer_device->pd_options))
+		struct d_host_info *me = ctx->res->me;
+		struct d_volume *vol;
+		for_each_volume(vol, &me->volumes) {
+			peer_device = find_peer_device(me, tmp_ctx.conn, vol->vnr);
+			if (!peer_device || STAILQ_EMPTY(&peer_device->pd_options))
 				continue;
 
 			tmp_ctx.vol = peer_device->volume;
@@ -824,18 +829,15 @@ static void adjust_disk(const struct cfg_ctx *ctx, struct d_resource* running)
 	}
 }
 
-bool drbdsetup_show_parsed = false;
 char config_file_drbdsetup_show[] = "drbdsetup show";
 struct resources running_config = STAILQ_HEAD_INITIALIZER(running_config);
 
-void parse_drbdsetup_show(void)
+struct d_resource *parse_drbdsetup_show(const char *name)
 {
-	char* argv[3];
+	struct d_resource *res = NULL;
+	char* argv[4];
 	int pid, argc;
 	int token;
-
-	if (drbdsetup_show_parsed)
-		return;
 
 	/* disable check_uniq, so it won't interfere
 	 * with parsing of drbdsetup show output */
@@ -848,6 +850,8 @@ void parse_drbdsetup_show(void)
 	argc = 0;
 	argv[argc++] = drbdsetup;
 	argv[argc++] = "show";
+	if (name)
+		argv[argc++] = ssprintf("%s", name);
 	argv[argc++] = NULL;
 
 	/* actually parse drbdsetup show output */
@@ -868,14 +872,16 @@ void parse_drbdsetup_show(void)
 		if (token != '{')
 			break;
 
-		insert_tail(&running_config, parse_resource(yylval.txt, PARSE_FOR_ADJUST));
+		res = parse_resource(yylval.txt, PARSE_FOR_ADJUST);
+		insert_tail(&running_config, res);
+
 	}
 
 	fclose(yyin);
 	waitpid(pid, 0, 0);
 
 	post_parse(&running_config, DRBDSETUP_SHOW);
-	drbdsetup_show_parsed = true;
+	return res;
 }
 
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
@@ -884,17 +890,31 @@ struct d_resource *running_res_by_name(const char *name, bool parse)
 struct d_resource *running_res_by_name(const char *name)
 #endif
 {
+	static bool drbdsetup_show_parsed = false;
 	struct d_resource *res;
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
-	if (parse && !drbdsetup_show_parsed)
+	if (parse && all_resources && !drbdsetup_show_parsed) {
 #else
-	if (!drbdsetup_show_parsed)
+	if (all_resources && !drbdsetup_show_parsed) {
 #endif
-		parse_drbdsetup_show();
+		parse_drbdsetup_show(NULL); /* all in one go */
+		drbdsetup_show_parsed = true;
+	}
+
 	for_each_resource(res, &running_config) {
 		if (strcmp(name, res->name) == 0)
 			return res;
 	}
+
+#ifdef _WIN32 // DW-889
+	if (parse && !all_resources)
+#else
+	if (!all_resources)
+#endif
+	{
+		return parse_drbdsetup_show(name);
+	}
+
 	return NULL;
 }
 

@@ -61,6 +61,11 @@
 #define EXIT_NOSOCK 30
 #define EXIT_THINKO 42
 
+/* is_intentional is a boolean value we get via nl from kernel. if we use new
+* utils and old kernel we don't get it, so we set this default, get kernel
+* info, and then decide from the value if the kernel was new enough */
+#define IS_INTENTIONAL_DEF 3
+
 /*
  * We are not using libnl,
  * using its API for the few things we want to do
@@ -244,7 +249,8 @@ static void print_command_usage(struct drbd_cmd *cm, enum usage_type);
 static void print_usage_and_exit(const char *addinfo)
 		__attribute__ ((noreturn));
 static const char *resync_susp_str(struct peer_device_info *info);
-
+static const char *intentional_diskless_str(struct device_info *info);
+static const char *peer_intentional_diskless_str(struct peer_device_info *info);
 
 // command functions
 static int generic_config_cmd(struct drbd_cmd *cm, int argc, char **argv);
@@ -2121,7 +2127,10 @@ static void show_volume(struct devices_list *device)
 			       double_quote_string(device->disk_conf.meta_dev),
 			       device->disk_conf.meta_dev_idx);
 		}
+	} else if (device->info.is_intentional_diskless == 1) {
+		printI("disk\t\t\tnone;\n");
 	}
+
 	print_options(device->disk_conf_nl, &attach_cmd_ctx, "disk");
 	--indent;
 	printI("}\n"); /* close volume */
@@ -2215,6 +2224,9 @@ static const char *susp_str(struct resource_info *info)
 		strcat(buffer, ",no-data" + (*buffer == 0));
 	if (info->res_susp_fen)
 		strcat(buffer, ",fencing" + (*buffer == 0));
+	if (info->res_susp_quorum)
+		strcat(buffer, ",quorum" + (*buffer == 0));
+
 	if (*buffer == 0)
 		strcat(buffer, "no");
 
@@ -2320,30 +2332,34 @@ void print_connection_statistics(int indent,
 static void peer_device_status_json(struct peer_devices_list *peer_device)
 {
 	struct peer_device_statistics *s = &peer_device->statistics;
+	bool in_rsync = (peer_device->info.peer_repl_state >= L_SYNC_SOURCE &&
+		peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T);
 
 	printf("        {\n"
 	       "          \"volume\": %d,\n"
 	       "          \"replication-state\": \"%s\",\n"
 	       "          \"peer-disk-state\": \"%s\",\n"
+		   "          \"peer-client\": \"%s\",\n"
 	       "          \"resync-suspended\": \"%s\",\n"
 	       "          \"received\": " U64 ",\n"
 	       "          \"sent\": " U64 ",\n"
 	       "          \"out-of-sync\": " U64 ",\n"
 	       "          \"pending\": " U32 ",\n"
-	       "          \"unacked\": " U32 "\n",
+		   "          \"unacked\": " U32 "%s\n",
 	       peer_device->ctx.ctx_volume,
 	       drbd_repl_str(peer_device->info.peer_repl_state),
 	       drbd_disk_str(peer_device->info.peer_disk_state),
+		   peer_intentional_diskless_str(&peer_device->info),
 	       resync_susp_str(&peer_device->info),
 	       (uint64_t)s->peer_dev_received / 2,
 	       (uint64_t)s->peer_dev_sent / 2,
 	       (uint64_t)s->peer_dev_out_of_sync / 2,
 	       s->peer_dev_pending,
-	       s->peer_dev_unacked);
+		   s->peer_dev_unacked,
+		   in_rsync ? "," : "");
 
-	if (peer_device->info.peer_repl_state >= L_SYNC_SOURCE &&
-	    peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T)
-		printf("          \"resync-done\": %.2f,\n",
+	if (in_rsync)
+		printf("          \"resync-done\": %.2f\n",
 		       100 * (1 - (double)peer_device->statistics.peer_dev_out_of_sync /
 			      (double)peer_device->device->statistics.dev_size));
 
@@ -2382,15 +2398,21 @@ static void connection_status_json(struct connections_list *connection,
 
 static void device_status_json(struct devices_list *device)
 {
+	enum drbd_disk_state disk_state = device->info.dev_disk_state;
+	bool d_statistics = (device->statistics.dev_size != -1);
 
 	printf("    {\n"
 	       "      \"volume\": %d,\n"
 	       "      \"minor\": %d,\n"
-	       "      \"disk-state:\": \"%s\"\n",
+		   "      \"disk-state\": \"%s\",\n"
+		   "      \"client\": \"%s\"%s\n",
 	       device->ctx.ctx_volume,
 	       device->minor,
-	       drbd_disk_str(device->info.dev_disk_state));
-	if (device->statistics.dev_size != -1) {
+		   drbd_disk_str(disk_state),
+		   intentional_diskless_str(&device->info),
+		   d_statistics ? "," : "");
+
+	if (d_statistics) {
 		struct device_statistics *s = &device->statistics;
 
 		printf("      \"size\": " U64 ",\n"
@@ -2425,7 +2447,8 @@ static void resource_status_json(struct resources_list *resource)
 	bool suspended =
 		resource->info.res_susp ||
 		resource->info.res_susp_nod ||
-		resource->info.res_susp_fen;
+		resource->info.res_susp_fen ||
+		resource->info.res_susp_quorum;
 
 	nla = nla_find_nested(resource->res_opts, __nla_type(T_node_id));
 	if (nla)
@@ -2484,7 +2507,8 @@ void resource_status(struct resources_list *resource)
 	if (opt_verbose ||
 	    resource->info.res_susp ||
 	    resource->info.res_susp_nod ||
-	    resource->info.res_susp_fen)
+		resource->info.res_susp_fen ||
+		resource->info.res_susp_quorum)
 		wrap_printf(4, " suspended:%s", susp_str(&resource->info));
 	if (opt_statistics && opt_verbose) {
 		wrap_printf(4, "\n");
@@ -2496,6 +2520,7 @@ void resource_status(struct resources_list *resource)
 static void device_status(struct devices_list *device, bool single_device)
 {
 	enum drbd_disk_state disk_state = device->info.dev_disk_state;
+	bool intentional_diskless = device->info.is_intentional_diskless == 1;
 	int indent = 2;
 
 	if (opt_verbose || !(single_device && device->ctx.ctx_volume == 0)) {
@@ -2505,9 +2530,12 @@ static void device_status(struct devices_list *device, bool single_device)
 			wrap_printf(indent, " minor:%u", device->minor);
 	}
 	wrap_printf(indent, " disk:%s%s%s",
-		    disk_state_color_start(disk_state, true),
+			disk_state_color_start(disk_state, intentional_diskless, true),
 		    drbd_disk_str(disk_state),
 		    disk_state_color_stop(disk_state, true));
+	if (disk_state == D_DISKLESS && opt_verbose) {
+		wrap_printf(indent, " client:%s", intentional_diskless_str(&device->info));
+	}
 	indent = 6;
 	if (device->statistics.dev_size != -1) {
 		if (opt_statistics)
@@ -2515,6 +2543,26 @@ static void device_status(struct devices_list *device, bool single_device)
 		print_device_statistics(indent, NULL, &device->statistics, wrap_printf);
 	}
 	wrap_printf(indent, "\n");
+}
+
+static const char *_intentionall_diskless_str(unsigned char intentional_diskless) {
+	switch (intentional_diskless) {
+	case 0:
+		return "no";
+	case 1:
+		return "yes";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *intentional_diskless_str(struct device_info *info)
+{
+	return _intentionall_diskless_str(info->is_intentional_diskless);
+}
+
+static const char *peer_intentional_diskless_str(struct peer_device_info *info) {
+	return _intentionall_diskless_str(info->peer_is_intentional_diskless);
 }
 
 static const char *resync_susp_str(struct peer_device_info *info)
@@ -2537,6 +2585,7 @@ static const char *resync_susp_str(struct peer_device_info *info)
 static void peer_device_status(struct peer_devices_list *peer_device, bool single_device)
 {
 	int indent = 4;
+	bool intentional_diskless = peer_device->info.peer_is_intentional_diskless == 1;
 
 	if (opt_verbose || !(single_device && peer_device->ctx.ctx_volume == 0)) {
 		wrap_printf(indent, "volume:%d", peer_device->ctx.ctx_volume);
@@ -2557,9 +2606,11 @@ static void peer_device_status(struct peer_devices_list *peer_device, bool singl
 		enum drbd_disk_state disk_state = peer_device->info.peer_disk_state;
 
 		wrap_printf(indent, " peer-disk:%s%s%s",
-			    disk_state_color_start(disk_state, false),
+				disk_state_color_start(disk_state, intentional_diskless, false),
 			    drbd_disk_str(disk_state),
 			    disk_state_color_stop(disk_state, false));
+		if (disk_state == D_DISKLESS && opt_verbose)
+			wrap_printf(indent, " peer-client:%s", peer_intentional_diskless_str(&peer_device->info));
 		indent = 8;
 		if (peer_device->info.peer_repl_state >= L_SYNC_SOURCE &&
 		    peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T) {
@@ -2702,9 +2753,12 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		struct connections_list *connections, *connection;
 		struct peer_devices_list *peer_devices = NULL;
 		bool single_device;
+		static bool jsonisfirst = true;
 
 		if (strcmp(objname, "all") && strcmp(objname, resource->name))
 			continue;
+		if (json)
+			jsonisfirst ? jsonisfirst = false : puts(",");
 
 		devices = list_devices(resource->name);
 		connections = sort_connections(list_connections(resource->name));
@@ -2727,8 +2781,6 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 					puts(",");
 			}
 			puts(" ]\n}");
-			if (resource->next)
-				puts(",");
 		} else {
 			resource_status(resource);
 			single_device = devices && !devices->next;
@@ -3025,6 +3077,7 @@ static int remember_device(struct drbd_cmd *cm, struct genl_info *info, void *u_
 		}
 		disk_conf_from_attrs(&d->disk_conf, info);
 		d->info.dev_disk_state = D_DISKLESS;
+		d->info.is_intentional_diskless = IS_INTENTIONAL_DEF;
 		device_info_from_attrs(&d->info, info);
 		memset(&d->statistics, -1, sizeof(d->statistics));
 		device_statistics_from_attrs(&d->statistics, info);
@@ -3207,6 +3260,7 @@ static int remember_peer_device(struct drbd_cmd *cmd, struct genl_info *info, vo
 			p->peer_device_conf = malloc(size);
 			memcpy(p->peer_device_conf, peer_device_conf, size);
 		}
+		p->info.peer_is_intentional_diskless = IS_INTENTIONAL_DEF;
 		peer_device_info_from_attrs(&p->info, info);
 		memset(&p->statistics, -1, sizeof(p->statistics));
 		peer_device_statistics_from_attrs(&p->statistics, info);
@@ -3651,7 +3705,8 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old ||
 			    new.i.res_susp != old->i.res_susp ||
 			    new.i.res_susp_nod != old->i.res_susp_nod ||
-			    new.i.res_susp_fen != old->i.res_susp_fen)
+				new.i.res_susp_fen != old->i.res_susp_fen ||
+				new.i.res_susp_quorum != old->i.res_susp_quorum)
 				printf(" suspended:%s",
 				       susp_str(&new.i));
 			if (opt_statistics) {
@@ -3674,14 +3729,18 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 				struct device_statistics s;
 			} *old, new;
 
+			new.i.is_intentional_diskless = IS_INTENTIONAL_DEF;
 			if (device_info_from_attrs(&new.i, info)) {
 				dbg(1, "device info missing\n");
 				goto nl_out;
 			}
 			old = update_info(&key, &new, sizeof(new));
-			if (!old || new.i.dev_disk_state != old->i.dev_disk_state)
+			if (!old || new.i.dev_disk_state != old->i.dev_disk_state) {
+				bool intentional = new.i.is_intentional_diskless == 1;
 				printf(" disk:%s%s%s",
-						DISK_COLOR_STRING(new.i.dev_disk_state, 1));
+					DISK_COLOR_STRING(new.i.dev_disk_state, intentional, true));
+				printf(" client:%s", intentional_diskless_str(&new.i));
+			}
 			if (opt_statistics) {
 				if (device_statistics_from_attrs(&new.s, info)) {
 					dbg(1, "device statistics missing\n");
@@ -3735,6 +3794,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 				struct peer_device_statistics s;
 			} *old, new;
 
+			new.i.peer_is_intentional_diskless = IS_INTENTIONAL_DEF;
 			if (peer_device_info_from_attrs(&new.i, info)) {
 				dbg(1, "peer device info missing\n");
 				goto nl_out;
@@ -3743,9 +3803,12 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old || new.i.peer_repl_state != old->i.peer_repl_state)
 				printf(" replication:%s%s%s",
 						REPL_COLOR_STRING(new.i.peer_repl_state));
-			if (!old || new.i.peer_disk_state != old->i.peer_disk_state)
+			if (!old || new.i.peer_disk_state != old->i.peer_disk_state) {
+				bool intentional = new.i.peer_is_intentional_diskless == 1;
 				printf(" peer-disk:%s%s%s",
-						DISK_COLOR_STRING(new.i.peer_disk_state, 0));
+					DISK_COLOR_STRING(new.i.peer_disk_state, intentional, false));
+				printf(" peer-client:%s", peer_intentional_diskless_str(&new.i));
+			}
 			if (!old ||
 			    new.i.peer_resync_susp_user != old->i.peer_resync_susp_user ||
 			    new.i.peer_resync_susp_peer != old->i.peer_resync_susp_peer ||

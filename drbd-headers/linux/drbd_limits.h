@@ -264,6 +264,7 @@
 #define DRBD_DISK_BARRIER_DEF	0
 #define DRBD_DISK_FLUSHES_DEF	1
 #define DRBD_DISK_DRAIN_DEF	1
+#define DRBD_DISK_DISKLESS_DEF    0
 #define DRBD_MD_FLUSHES_DEF	1
 #define DRBD_TCP_CORK_DEF	1
 #define DRBD_AL_UPDATES_DEF     1
@@ -273,6 +274,11 @@
  * we can make that an effective discard_zeroes_data=1,
  * if we only explicitly zero-out unaligned partial chunks. */
 #define DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF 1
+
+/* Some backends pretend to support WRITE SAME,
+* but fail such requests when they are actually submitted.
+* This is to tell DRBD to not even try. */
+#define DRBD_DISABLE_WRITE_SAME_DEF 0
 
 #define DRBD_ALLOW_TWO_PRIMARIES_DEF	0
 #define DRBD_ALWAYS_ASBP_DEF	0
@@ -369,5 +375,10 @@
 #define DRBD_RS_DISCARD_GRANULARITY_MAX (1<<20)  /* 1MiByte */
 #define DRBD_RS_DISCARD_GRANULARITY_DEF 0     /* disabled by default */
 #define DRBD_RS_DISCARD_GRANULARITY_SCALE '1' /* bytes */
+
+#define DRBD_QUORUM_MIN 0
+#define DRBD_QUORUM_MAX QOU_ALL /* Note: user visible min/max different */
+#define DRBD_QUORUM_DEF QOU_OFF /* kernel min/max includes symbolic values */
+#define DRBD_QUORUM_SCALE '1' /* nodes */
 
 #endif

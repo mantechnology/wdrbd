@@ -49,6 +49,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
+#include "linux/drbd.h"
 #include "linux/drbd_limits.h"
 #include "drbdtool_common.h"
 #include "drbdadm.h"
@@ -148,6 +149,9 @@ int fline;
 char *config_file = NULL;
 char *config_save = NULL;
 char *config_test = NULL;
+#ifdef _WIN32
+char *parse_file = NULL;
+#endif
 struct resources config = STAILQ_HEAD_INITIALIZER(config);
 struct d_resource *common = NULL;
 struct ifreq *ifreq_list = NULL;
@@ -409,6 +413,7 @@ static struct adm_cmd khelper09_cmd = {"initial-split-brain", adm_khelper, ACF3_
 static struct adm_cmd khelper10_cmd = {"split-brain", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper11_cmd = {"out-of-sync", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper12_cmd = {"unfence-peer", adm_khelper, ACF3_RES_HANDLER};
+static struct adm_cmd khelper13_cmd = { "quorum-lost", adm_khelper, ACF3_RES_HANDLER };
 
 
 static struct adm_cmd suspend_io_cmd = {"suspend-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
@@ -508,7 +513,8 @@ struct adm_cmd *cmds[] = {
 	&khelper10_cmd,
 	&khelper11_cmd,
 	&khelper12_cmd,
-
+	&khelper13_cmd,
+	
 	&suspend_io_cmd,
 	&resume_io_cmd,
 	&set_gi_cmd,
@@ -921,18 +927,31 @@ static int sh_udev(const struct cfg_ctx *ctx)
 	else
 		printf("DEVICE=drbd%u\n", vol->device_minor);
 
+	/* in case older udev rules are still in place,
+	* but do not yet have the work-around for the
+	* udev default change of "string_escape=none" -> "replace",
+	* populate plain "SYMLINK" with just the "by-res" one. */
 	printf("SYMLINK=");
 	if (vol->implicit)
-		printf("drbd/by-res/%s", res->name);
+		printf("drbd/by-res/%s\n", res->name);
 	else
-		printf("drbd/by-res/%s/%u", res->name, vol->vnr);
+		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
+
+	/* repeat, with _BY_RES */
+	printf("SYMLINK_BY_RES=");
+	if (vol->implicit)
+		printf("drbd/by-res/%s\n", res->name);
+	else
+		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
+
+	/* and add the _BY_DISK one explicitly */
 	if (vol->disk) {
+		printf("SYMLINK_BY_DISK=");
 		if (!strncmp(vol->disk, "/dev/", 5))
-			printf(" drbd/by-disk/%s", vol->disk + 5);
+			printf("drbd/by-disk/%s\n", vol->disk + 5);
 		else
-			printf(" drbd/by-disk/%s", vol->disk);
+			printf("drbd/by-disk/%s\n", vol->disk);
 	}
-	printf("\n");
 
 	return 0;
 }
@@ -1314,6 +1333,8 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%s", ctx->res->name);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->device_minor);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
+	if (!ctx->vol->disk)
+		argv[NA(argc)] = ssprintf("--diskless");
 	argv[NA(argc)] = NULL;
 #ifdef _WIN32_MVFL
 	ex = add_registry_volume(ctx->vol->disk);
@@ -1713,6 +1734,29 @@ static int adm_forget_peer(const struct cfg_ctx *ctx)
 	return rv;
 }
 
+static void setenv_node_id_and_uname(struct d_resource *res)
+{
+	char key[sizeof("DRBD_NODE_ID_32")];
+	int i;
+	struct d_host_info *host;
+
+	for (i = 0; i < DRBD_NODE_ID_MAX; i++) {
+		snprintf(key, sizeof(key), "DRBD_NODE_ID_%u", i);
+		unsetenv(key);
+	}
+	for_each_host(host, &res->all_hosts) {
+		if (!host->node_id)
+			continue;
+		/* range check in post parse has already clamped this */
+		snprintf(key, sizeof(key), "DRBD_NODE_ID_%s", host->node_id);
+		setenv(key, names_to_str(&host->on_hosts), 1);
+	}
+
+	/* Maybe we will pass it in from kernel some day */
+	if (!getenv("DRBD_MY_NODE_ID"))
+		setenv("DRBD_MY_NODE_ID", res->me->node_id, 1);
+}
+
 static int adm_khelper(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res = ctx->res;
@@ -1728,6 +1772,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 #endif
 	setenv("DRBD_CONF", config_save, 1);
 	setenv("DRBD_RESOURCE", res->name, 1);
+	setenv_node_id_and_uname(res);
 
 	if (vol) {
 		snprintf(minor_string, sizeof(minor_string), "%u", vol->device_minor);
@@ -1954,6 +1999,14 @@ int do_proxy_conn_up(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
@@ -1994,6 +2047,14 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 
 #ifdef _WIN32
@@ -2044,6 +2105,15 @@ int do_proxy_conn_down(const struct cfg_ctx *ctx)
 
 	rv = 0;
 	for_each_connection(conn, &res->connections) {
+		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
@@ -2065,6 +2135,11 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 	struct connection *conn = ctx->conn;
 	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 	int rv;
+
+	if (STAILQ_NEXT(path, link)) {
+		err("Multiple paths in connection within proxy setup not allowed\n");
+		exit(E_CONFIG_INVALID);
+	}
 
 	if (!path->my_proxy) {
 		if (all_resources)
@@ -3163,6 +3238,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			printf("DRBDADM_BUILDTAG=%s\n", shell_escape(drbd_buildtag()));
 			printf("DRBDADM_API_VERSION=%u\n", API_VERSION);
 			printf("DRBD_KERNEL_VERSION_CODE=0x%06x\n", version_code_kernel());
+			printf("DRBD_KERNEL_VERSION=%s\n", escaped_version_code_kernel());
 			printf("DRBDADM_VERSION_CODE=0x%06x\n", version_code_userland());
 			printf("DRBDADM_VERSION=%s\n", shell_escape(PACKAGE_VERSION));
 			exit(0);
@@ -3462,6 +3538,9 @@ int main(int argc, char **argv)
 	else
 		config_save = canonify_path(config_file);
 
+#ifdef _WIN32
+	parse_file = config_file;
+#endif
 	my_parse();
 
 	if (config_test) {
@@ -3488,9 +3567,19 @@ int main(int argc, char **argv)
 
 #ifdef _WIN32 
 	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
-	if (cmd != &connect_cmd)
+	if (cmd != &connect_cmd && cmd != &adjust_cmd)
 	{
-		parse_drbdsetup_show();
+		char *temp_file = config_file;
+		if (!resource_names[0] || !strcmp(resource_names[0], "all")) 
+		{	
+			parse_drbdsetup_show(NULL);
+		}
+		else
+		{	
+			parse_drbdsetup_show(resource_names[0]);
+		}
+		
+		config_file = temp_file;
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);

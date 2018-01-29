@@ -503,6 +503,7 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 		[CC_TOO_SMALL] = "too small",
 		[CC_TOO_BIG] = "too big",
 		[CC_STR_TOO_LONG] = "too long",
+		[CC_NOT_AN_ENUM_NUM] = "not valid",
 	};
 	err("%s:%u: Parse error: while parsing value ('%.20s%s')\nfor %s. Value is %s.\n",
 		config_file, line,
@@ -511,8 +512,10 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 
 	if (e == CC_NOT_AN_ENUM)
 		pe_valid_enums(field->u.e.map, field->u.e.size);
-	if (e == CC_STR_TOO_LONG)
+	else if (e == CC_STR_TOO_LONG)
 		err("max len: %u\n", field->u.s.max_len - 1);
+	/* else if (e == CC_NOT_AN_ENUM_NUM)
+		pe_valid_enum_num((field->u.en.map, field->u.en.map_size); */
 
 	if (config_valid <= 1)
 		config_valid = 0;
@@ -1665,6 +1668,11 @@ static struct connection *parse_connection(enum pr_flags flags)
 			insert_tail(&conn->paths, parse_path());
 			break;
 		case '}':
+			if (STAILQ_EMPTY(&conn->paths)) {
+				err("%s:%d: connection without a single path (maybe empty?) not allowed\n",
+					config_file, fline);
+				config_valid = 0;
+			}
 			return conn;
 		default:
 			pe_expected_got( "host | net | skip | }", token);
@@ -2012,10 +2020,10 @@ void include_stmt(char *str)
 			} else {
 #ifdef _WIN32
                 err("%s:%d: Failed to open include file 1 '%s'.\n",
-                    config_file, line, yylval.txt);
+					parse_file, line, glob_buf.gl_pathv[i]);
 #else
 				err("%s:%d: Failed to open include file '%s'.\n",
-				    config_save, line, yylval.txt);
+					config_save, line, glob_buf.gl_pathv[i]);
 #endif
 				config_valid = 0;
 			}
@@ -2025,10 +2033,10 @@ void include_stmt(char *str)
 		if (!strchr(str, '?') && !strchr(str, '*') && !strchr(str, '[')) {
 #ifdef _WIN32
             err("%s:%d: Failed to open include file '%s'.\n",
-                config_file, line, yylval.txt);
+                parse_file, line, str);
 #else
 			err("%s:%d: Failed to open include file '%s'.\n",
-			    config_save, line, yylval.txt);
+			    config_save, line, str);
 #endif
 			config_valid = 0;
 		}
