@@ -750,7 +750,12 @@ struct drbd_peer_request {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
 	struct list_head recv_order; /* writes only */
+	/* writes only, blocked on activity log;
+	* FIXME merge with rcv_order or w.list? */
+	struct list_head wait_for_actlog;
+
 	struct drbd_page_chain_head page_chain;
+	unsigned int op_flags; /* to be used as bi_op_flags */
 	atomic_t pending_bios;
 	struct drbd_interval i;
 #ifdef _WIN32
@@ -840,6 +845,9 @@ enum {
 
 	/* If it contains only 0 bytes, send back P_RS_DEALLOCATED */
 	__EE_RS_THIN_REQ,
+
+	/* Hold reference in activity log */
+	__EE_IN_ACTLOG,
 };
 #define EE_MAY_SET_IN_SYNC     (1<<__EE_MAY_SET_IN_SYNC)
 #define EE_IS_BARRIER          (1<<__EE_IS_BARRIER)
@@ -856,6 +864,7 @@ enum {
 #define EE_WRITE_SAME		(1<<__EE_WRITE_SAME)
 #define EE_APPLICATION		(1<<__EE_APPLICATION)
 #define EE_RS_THIN_REQ		(1<<__EE_RS_THIN_REQ)
+#define EE_IN_ACTLOG		(1<<__EE_IN_ACTLOG)
 
 /* flag bits per device */
 enum {
@@ -1508,6 +1517,7 @@ struct drbd_peer_device {
 	atomic_t ap_pending_cnt; /* AP data packets on the wire, ack expected */
 	atomic_t unacked_cnt;	 /* Need to send replies for */
 	atomic_t rs_pending_cnt; /* RS request/data packets on the wire */
+	atomic_t wait_for_actlog;
 
 	/* use checksums for *this* resync */
 	bool use_csums;
@@ -1609,6 +1619,7 @@ struct submit_worker {
 
 	/* protected by ..->resource->req_lock */
 	struct list_head writes;
+	struct list_head peer_writes;
 };
 
 struct drbd_device {
@@ -2553,6 +2564,7 @@ extern bool drbd_rs_should_slow_down(struct drbd_peer_device *, sector_t,
 extern int drbd_submit_peer_request(struct drbd_device *,
 				    struct drbd_peer_request *, const unsigned,
 				    const unsigned, const int);
+extern void drbd_cleanup_after_failed_submit_peer_request(struct drbd_peer_request *peer_req);
 extern int drbd_free_peer_reqs(struct drbd_resource *, struct list_head *, bool is_net_ee);
 extern struct drbd_peer_request *drbd_alloc_peer_req(struct drbd_peer_device *, gfp_t) __must_hold(local);
 extern void __drbd_free_peer_req(struct drbd_peer_request *, int);
@@ -2684,6 +2696,8 @@ extern const struct file_operations drbd_proc_fops;
 #endif
 
 /* drbd_actlog.c */
+extern bool drbd_al_try_lock(struct drbd_device *device);
+extern bool drbd_al_try_lock_for_transaction(struct drbd_device *device);
 extern int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *i);
 extern void drbd_al_begin_io_commit(struct drbd_device *device);
 extern bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i);

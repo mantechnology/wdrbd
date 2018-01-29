@@ -986,7 +986,7 @@ enum {
 
 #ifndef bio_set_op_attrs /* compat for Linux before 4.8 {{{2 */
 
-#define bi_opf bi_rw
+#define bi_opf	bi_rw
 
 #ifndef REQ_WRITE
 /* before 2.6.36 */

@@ -564,6 +564,7 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 	INIT_LIST_HEAD(&peer_req->w.list);
 	drbd_clear_interval(&peer_req->i);
 	INIT_LIST_HEAD(&peer_req->recv_order);
+	INIT_LIST_HEAD(&peer_req->wait_for_actlog);
 	peer_req->submit_jif = jiffies;
 	peer_req->peer_device = peer_device;
 
@@ -1823,6 +1824,7 @@ next_bio:
 	if (!(op == REQ_OP_WRITE || op == REQ_OP_READ)) {
 		drbd_err(device, "Invalid bio op received: 0x%x\n", op);
 		err = -EINVAL;
+		goto fail; 
 	}
 
 #ifdef _WIN32
@@ -1996,6 +1998,12 @@ int w_e_reissue(struct drbd_work *w, int cancel) __releases(local)
 	}
 }
 
+/* THINK: if we have incoming requests from multiple peers,
+* how can we guarantee that we will eventually finish here?
+* One peer may keep the lists busy, an other peer may wait for
+* them to become empty...
+* Do we really need to raise some per device "draining peer IO" flag?
+*/
 void conn_wait_active_ee_empty(struct drbd_connection *connection)
 {
 	struct drbd_peer_device *peer_device;
@@ -2998,6 +3006,17 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
 	return err;
 }
 
+static void drbd_queue_peer_request(struct drbd_device *device, struct drbd_peer_request *peer_req)
+{
+	atomic_inc(&peer_req->peer_device->wait_for_actlog);
+	spin_lock_irq(&device->resource->req_lock);
+	list_add_tail(&peer_req->wait_for_actlog, &device->submit.peer_writes);
+	spin_unlock_irq(&device->resource->req_lock);
+	queue_work(device->submit.wq, &device->submit.worker);
+	/* do_submit() may sleep internally on al_wait, too */
+	wake_up(&device->al_wait);
+}
+
 /* mirrored write */
 static int receive_Data(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -3188,6 +3207,11 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	if (peer_device->repl_state[NOW] >= L_SYNC_TARGET)
 		wait_event(device->ee_wait, !overlapping_resync_write(device, peer_req));
 
+	/* If we would need to block on the activity log,
+	* we may queue this request for the submitter workqueue.
+	* Remember the op_flags. */
+	peer_req->op_flags = op_flags;
+
 	/* In protocol < 110 (which is compat mode 8.4 <-> 9.0),
 	 * we must not block in the activity log here, that would
 	 * deadlock during an ongoing resync with the drbd_rs_begin_io
@@ -3199,18 +3223,26 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	 */
 	if (connection->agreed_pro_version >= 110 ||
 	    peer_device->disk_state[NOW] < D_INCONSISTENT) {
-		err = drbd_al_begin_io_for_peer(peer_device, &peer_req->i);
-		if (err)
-		{
-#ifdef _WIN32 // DW-1499 : Decrease unacked_cnt when returning an error. 
-			drbd_err(peer_device, "disconnect during al begin io (err = %d)\n", err);
-			if (peer_req->flags & EE_SEND_WRITE_ACK)
+		/* For now, it is easier to still handle some "special" requests
+		* "synchronously" from receiver context */
+		if (peer_req->flags & (EE_IS_TRIM | EE_WRITE_SAME | EE_IS_BARRIER)) {
+			err = drbd_al_begin_io_for_peer(peer_device, &peer_req->i);
+			if (err)
 			{
-				dec_unacked(peer_device);
-			}
+#ifdef _WIN32 // DW-1499 : Decrease unacked_cnt when returning an error. 
+				drbd_err(peer_device, "disconnect during al begin io (err = %d)\n", err);
+				if (peer_req->flags & EE_SEND_WRITE_ACK)
+				{
+					dec_unacked(peer_device);
+				}
 #endif
 			goto disconnect_during_al_begin_io;
+			}
+		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
+			drbd_queue_peer_request(device, peer_req);
+			return 0;
 		}
+		peer_req->flags |= EE_IN_ACTLOG;
 	}
 
 	err = drbd_submit_peer_request(device, peer_req, op, op_flags,
@@ -3230,7 +3262,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #endif
 
 	/* don't care for the reason here */
-	drbd_err(device, "submit failed, triggering re-connect\n");
+	drbd_err(peer_device, "submit failed, triggering re-connect\n");
 	drbd_al_complete_io(device, &peer_req->i);
 
 disconnect_during_al_begin_io:
@@ -3245,6 +3277,34 @@ out_interrupted:
 	put_ldev(device);
 	drbd_free_peer_req(peer_req);
 	return err;
+}
+
+/*
+* To be called when __drbd_submit_peer_request() fails from submitter
+* workqueue context.  Mimic what happens in the receive_Data() error path,
+* when the submit happens directly in the receiver context.
+*/
+void drbd_cleanup_after_failed_submit_peer_request(struct drbd_peer_request *peer_req)
+{
+	struct drbd_peer_device *peer_device = peer_req->peer_device;
+	struct drbd_device *device = peer_device->device;
+	struct drbd_connection *connection = peer_device->connection;
+
+	if (drbd_ratelimit())
+		drbd_err(peer_device, "submit failed, triggering re-connect\n");
+
+	drbd_al_complete_io(device, &peer_req->i);
+
+	spin_lock_irq(&device->resource->req_lock);
+	list_del(&peer_req->w.list);
+	list_del_init(&peer_req->recv_order);
+	drbd_remove_peer_req_interval(device, peer_req);
+	spin_unlock_irq(&device->resource->req_lock);
+
+	drbd_may_finish_epoch(connection, peer_req->epoch, EV_PUT + EV_CLEANUP);
+	put_ldev(device);
+	drbd_free_peer_req(peer_req);
+	change_cstate(connection, C_PROTOCOL_ERROR, CS_HARD);
 }
 
 /* We may throttle resync, if the lower device seems to be busy,
@@ -8405,15 +8465,15 @@ void conn_disconnect(struct drbd_connection *connection)
 		change_cstate(connection, C_STANDALONE, CS_VERBOSE | CS_HARD | CS_LOCAL_ONLY);
 }
 
-static int drbd_disconnected(struct drbd_peer_device *peer_device)
+static void drain_resync_activity(struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
 
-	/* wait for current activity to cease. */
+	/* verify or resync related peer requests are read_ee or sync_ee,
+	* drain them first */
 	spin_lock_irq(&device->resource->req_lock);
-	_drbd_wait_ee_list_empty(device, &device->active_ee);
-	_drbd_wait_ee_list_empty(device, &device->sync_ee);
 	_drbd_wait_ee_list_empty(device, &device->read_ee);
+	_drbd_wait_ee_list_empty(device, &device->sync_ee);
 	spin_unlock_irq(&device->resource->req_lock);
 
 	/* We do not have data structures that would allow us to
@@ -8439,6 +8499,25 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 	resync_timer_fn((unsigned long)peer_device);
 #endif
 	del_timer_sync(&peer_device->start_resync_timer);
+}
+
+static int drbd_disconnected(struct drbd_peer_device *peer_device)
+{
+	struct drbd_device *device = peer_device->device;
+
+	/* There may be peer_requests queued on the submitter workqueue,
+	* waiting for the resync to make progress.
+	* Drain in-flight resync IO, then reset peer_device->resync_lru(),
+	* otherwise those peer_requests would block forever. */
+	drain_resync_activity(peer_device);
+
+	/* Wait for current activity to cease.  This includes waiting for
+	* peer_request queued to the submitter workqueue.
+
+	* FIXME what if we are kept busy via a different connection?
+	* I think we need to move active_ee and read_ee over to peer_device.
+	*/
+	drbd_wait_ee_list_empty(device, &device->active_ee);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	 * w_make_resync_request etc. which may still be on the worker queue
@@ -8454,7 +8533,7 @@ static int drbd_disconnected(struct drbd_peer_device *peer_device)
 
 	/* This second workqueue flush is necessary, since drbd_finish_peer_reqs()
 	   might have issued a work again. The one before drbd_finish_peer_reqs() is
-	   necessary to reclain net_ee in drbd_finish_peer_reqs(). */
+	   necessary to reclaim net_ee in drbd_finish_peer_reqs(). */
 #ifdef _WIN32
 	drbd_flush_workqueue(device->resource, &peer_device->connection->sender_work);
 #else
