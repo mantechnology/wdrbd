@@ -370,4 +370,9 @@
 #define DRBD_RS_DISCARD_GRANULARITY_DEF 0     /* disabled by default */
 #define DRBD_RS_DISCARD_GRANULARITY_SCALE '1' /* bytes */
 
+#define DRBD_QUORUM_MIN 0
+#define DRBD_QUORUM_MAX QOU_ALL /* Note: user visible min/max different */
+#define DRBD_QUORUM_DEF QOU_OFF /* kernel min/max includes symbolic values */
+#define DRBD_QUORUM_SCALE '1' /* nodes */
+
 #endif
