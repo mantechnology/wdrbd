@@ -1957,6 +1957,14 @@ int do_proxy_conn_up(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
@@ -1997,6 +2005,14 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 
 #ifdef _WIN32
@@ -2047,6 +2063,15 @@ int do_proxy_conn_down(const struct cfg_ctx *ctx)
 
 	rv = 0;
 	for_each_connection(conn, &res->connections) {
+		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
