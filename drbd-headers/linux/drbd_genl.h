@@ -128,6 +128,7 @@ GENL_struct(DRBD_NLA_DISK_CONF, 3, disk_conf,
 	__u32_field_def(25, 0 /* OPTIONAL */,           rs_discard_granularity, DRBD_RS_DISCARD_GRANULARITY_DEF)
 	__flg_field_def(23,     0 /* OPTIONAL */,	al_updates, DRBD_AL_UPDATES_DEF)
 	__flg_field_def(24,     0 /* OPTIONAL */,       discard_zeroes_if_aligned, DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF)
+	__flg_field_def(26, 0 /* OPTIONAL */, disable_write_same, DRBD_DISABLE_WRITE_SAME_DEF)
 )
 
 GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,

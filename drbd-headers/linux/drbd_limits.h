@@ -274,6 +274,11 @@
  * if we only explicitly zero-out unaligned partial chunks. */
 #define DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF 1
 
+/* Some backends pretend to support WRITE SAME,
+* but fail such requests when they are actually submitted.
+* This is to tell DRBD to not even try. */
+#define DRBD_DISABLE_WRITE_SAME_DEF 0
+
 #define DRBD_ALLOW_TWO_PRIMARIES_DEF	0
 #define DRBD_ALWAYS_ASBP_DEF	0
 #define DRBD_USE_RLE_DEF	1
