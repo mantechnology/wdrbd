@@ -389,6 +389,26 @@ int version_code_kernel(void)
 	return driver_version ? driver_version->version_code : 0;
 }
 
+const char *escaped_version_code_kernel(void)
+{
+#ifdef _WIN32
+	const struct version *driver_version = drbd_driver_version(_STRICT);
+#else
+	const struct version *driver_version = drbd_driver_version(STRICT);
+#endif
+	char buf[32];
+
+	if (!driver_version)
+		return "0";
+
+	snprintf(buf, sizeof(buf), "%u.%u.%u",
+		driver_version->version.major, driver_version->version.minor,
+		driver_version->version.sublvl);
+
+	/* keep the shell_escape (or change the code), otherwise you don't have a static buffer */
+	return shell_escape(buf);
+}
+
 int version_code_userland(void)
 {
 	const struct version *utils_version = drbd_utils_version();
