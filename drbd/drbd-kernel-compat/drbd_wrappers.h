@@ -813,8 +813,8 @@ enum {
  * 7b6d91daee5cac6402186ff224c3af39d79f4a0e and
  * 7cc015811ef8992dfcce314d0ed9642bc18143d1
  * We communicate between different systems,
- * so we have to somehow semantically map the bi_rw flags
- * bi_rw (some kernel version) -> data packet flags -> bi_rw (other kernel version)
+ * so we have to somehow semantically map the bi_opf flags
+ * bi_opf (some kernel version) -> data packet flags -> bi_opf (other kernel version)
  */
 
 #if defined(bio_set_op_attrs)
@@ -985,6 +985,8 @@ enum {
 #endif
 
 #ifndef bio_set_op_attrs /* compat for Linux before 4.8 {{{2 */
+
+#define bi_opf bi_rw
 
 #ifndef REQ_WRITE
 /* before 2.6.36 */

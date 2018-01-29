@@ -736,7 +736,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	 */
 	if (!ok &&
 		bio_op(req->master_bio) == REQ_OP_READ &&
-		!(req->master_bio->bi_rw & REQ_RAHEAD) &&
+		!(req->master_bio->bi_opf & REQ_RAHEAD) &&
 		!list_empty(&req->tl_requests))
 		req->rq_state[0] |= RQ_POSTPONED;
 
@@ -1785,7 +1785,7 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 
 	if (bio_op(bio) != REQ_OP_READ)
 		type = DRBD_FAULT_DT_WR;
-	else if (bio->bi_rw & REQ_RAHEAD)
+	else if (bio->bi_opf & REQ_RAHEAD)
 		type = DRBD_FAULT_DT_RA;
 	else
 		type = DRBD_FAULT_DT_RD;
@@ -2411,7 +2411,7 @@ MAKE_REQUEST_TYPE drbd_make_request(struct request_queue *q, struct bio *bio)
 	 * We don't need to, anymore, either: starting with kernel 2.6.36,
 	 * we have REQ_FUA and REQ_PREFLUSH, which will be handled transparently
 	 * by the block layer. */
-	if (unlikely(bio->bi_rw & DRBD_REQ_HARDBARRIER)) {
+	if (unlikely(bio->bi_opf & DRBD_REQ_HARDBARRIER)) {
 		bio_endio(bio, -EOPNOTSUPP);
 		MAKE_REQUEST_RETURN;
 	}
