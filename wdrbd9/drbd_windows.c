@@ -703,11 +703,14 @@ void bio_free(struct bio *bio)
 	kfree(bio);
 }
 
-extern int submit_bio(int rw, struct bio *bio)
+
+// DW-1538
+extern int submit_bio(struct bio* bio)
 {
-	bio->bi_rw |= rw; 
+	//bio->bi_rw |= rw; 
 	return generic_make_request(bio);
 }
+
 
 void bio_endio(struct bio *bio, int error)
 {
