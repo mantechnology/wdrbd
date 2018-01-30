@@ -2838,16 +2838,10 @@ static int cstate_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	struct connections_list *connections, *connection;
 	bool found = false;
 
-	connections = list_connections(NULL);
+	connections = list_connections(objname);
 	for (connection = connections; connection; connection = connection->next) {
 		if (connection->ctx.ctx_peer_node_id != global_ctx.ctx_peer_node_id)
 			continue;
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-777 fix wrong cstate output.
-		// Add resource_name comparison.
-		if (strcmp(connection->ctx.ctx_resource_name, global_ctx.ctx_resource_name))
-			continue;
-#endif
 
 		printf("%s\n", drbd_conn_str(connection->info.conn_connection_state));
 		found = true;
