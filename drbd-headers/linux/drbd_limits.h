@@ -381,4 +381,7 @@
 #define DRBD_QUORUM_DEF QOU_OFF /* kernel min/max includes symbolic values */
 #define DRBD_QUORUM_SCALE '1' /* nodes */
 
+/* By default freeze IO, if set error all IOs as quick as possible */
+#define DRBD_ON_NO_QUORUM_DEF ONQ_SUSPEND_IO
+
 #endif
