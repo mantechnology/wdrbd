@@ -969,6 +969,8 @@ int _adm_adjust(const struct cfg_ctx *ctx, int adjust_flags)
 			int pid, argc;
 			char *argv[20];
 
+			if (!path)
+				continue;
 			configured_conn = matching_conn(conn, &ctx->res->connections, false);
 			if (!configured_conn)
 				continue;
@@ -991,14 +993,6 @@ int _adm_adjust(const struct cfg_ctx *ctx, int adjust_flags)
 
 			/* actually parse "drbd-proxy-ctl show" output */
 			yyin = m_popen(&pid, argv);
-#ifdef _WIN32 
-			// DW-1569 : crashed when adjust
-			// 1) drbdadm disconnect res
-			// 2) drbdadm del-path res
-			// 3) drbdadm adjust res   #crash
-			if (!path)
-				continue;
-#endif
 			r = !parse_proxy_options_section(&path->my_proxy);
 			can_do_proxy &= r;
 			fclose(yyin);
