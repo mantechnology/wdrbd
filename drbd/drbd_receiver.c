@@ -9435,11 +9435,9 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	int node_id;
 
 #ifdef _WIN32
-	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, 
-			 sizeof(node_ids) * BITS_PER_BYTE) {
+	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, DRBD_NODE_ID_MAX) {
 #else
-	for_each_set_bit(node_id, (unsigned long *)&node_ids,
-			 sizeof(node_ids) * BITS_PER_BYTE) {
+	for_each_set_bit(node_id, (unsigned long *)&node_ids, DRBD_NODE_ID_MAX) {
 #endif
 		int bitmap_bit = peer_md[node_id].bitmap_index;
 		if (bitmap_bit >= 0)

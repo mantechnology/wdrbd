@@ -1156,8 +1156,8 @@ struct twopc_reply {
 	u64 reachable_nodes;  /* behind other nodes */
 	u64 primary_nodes;
 	u64 weak_nodes;
-	int is_disconnect:1;
-	int is_aborted:1;
+	unsigned int is_disconnect : 1;
+	unsigned int is_aborted : 1;
 };
 
 struct drbd_thread_timing_details
