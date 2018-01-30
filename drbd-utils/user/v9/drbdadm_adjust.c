@@ -893,9 +893,9 @@ struct d_resource *running_res_by_name(const char *name)
 	static bool drbdsetup_show_parsed = false;
 	struct d_resource *res;
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-889
-	if (parse && all_resources && !drbdsetup_show_parsed) {
+	if (parse && adjust_more_than_one_resource && !drbdsetup_show_parsed) {
 #else
-	if (all_resources && !drbdsetup_show_parsed) {
+	if (adjust_more_than_one_resource && !drbdsetup_show_parsed) {
 #endif
 		parse_drbdsetup_show(NULL); /* all in one go */
 		drbdsetup_show_parsed = true;
@@ -907,9 +907,9 @@ struct d_resource *running_res_by_name(const char *name)
 	}
 
 #ifdef _WIN32 // DW-889
-	if (parse && !all_resources)
+	if (parse && !adjust_more_than_one_resource)
 #else
-	if (!all_resources)
+	if (!adjust_more_than_one_resource)
 #endif
 	{
 		return parse_drbdsetup_show(name);
