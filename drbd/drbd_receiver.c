@@ -624,8 +624,6 @@ int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, 
  */
 static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 {
-	struct drbd_connection *connection = peer_device->connection;
-	struct drbd_device *device = peer_device->device;
 	LIST_HEAD(work_list);
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
@@ -1714,7 +1712,11 @@ static void __conn_wait_ee_empty(struct drbd_connection *connection, struct list
 		prepare_to_wait(&connection->ee_wait, &wait, TASK_UNINTERRUPTIBLE);
 		spin_unlock_irq(&connection->resource->req_lock);
 		drbd_unplug_all_devices(connection);
+#ifdef _WIN32
+		schedule(&connection->ee_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
+#else 
 		schedule();
+#endif
 		finish_wait(&connection->ee_wait, &wait);
 		spin_lock_irq(&connection->resource->req_lock);
 	}
@@ -8343,7 +8345,11 @@ static void cleanup_resync_leftovers(struct drbd_peer_device *peer_device)
 	wake_up(&peer_device->device->misc_wait);
 
 	del_timer_sync(&peer_device->resync_timer);
+#ifdef _WIN32
+	resync_timer_fn(NULL, (PVOID)peer_device, NULL, NULL);
+#else
 	resync_timer_fn((unsigned long)peer_device);
+#endif 
 	del_timer_sync(&peer_device->start_resync_timer);
 }
 
@@ -8361,7 +8367,11 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	spin_unlock_irq(&connection->resource->req_lock);
 
 	rcu_read_lock();
+#ifdef _WIN32
+	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+#else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
+#endif 
 		struct drbd_device *device = peer_device->device;
 
 		kref_get(&device->kref);
@@ -8447,14 +8457,23 @@ void conn_disconnect(struct drbd_connection *connection)
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	* w_make_resync_request etc. which may still be on the worker queue
 	* to be "canceled" */
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &connection->sender_work);
+#else 
 	drbd_flush_workqueue(&connection->sender_work);
+#endif 
 
 	drbd_finish_peer_reqs(connection);
 
 	/* This second workqueue flush is necessary, since drbd_finish_peer_reqs()
 	might have issued a work again. The one before drbd_finish_peer_reqs() is
 	necessary to reclaim net_ee in drbd_finish_peer_reqs(). */
+
+#ifdef _WIN32
+	drbd_flush_workqueue(resource, &connection->sender_work);
+#else 
 	drbd_flush_workqueue(&connection->sender_work);
+#endif 
 
 	rcu_read_lock();
 #ifdef _WIN32

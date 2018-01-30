@@ -374,7 +374,7 @@ static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
 #endif
-		seq_print_device_peer_flushs(m, device, now);
+		seq_print_device_peer_flushes(m, device, now);
 	}
 	rcu_read_unlock();
 }
