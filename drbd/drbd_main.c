@@ -3208,11 +3208,6 @@ void drbd_cleanup_device(struct drbd_device *device)
 	}
 
 	clear_bit(AL_SUSPENDED, &device->flags);
-
-	D_ASSERT(device, list_empty(&device->active_ee));
-	D_ASSERT(device, list_empty(&device->sync_ee));
-	D_ASSERT(device, list_empty(&device->done_ee));
-	D_ASSERT(device, list_empty(&device->read_ee));
 	drbd_set_defaults(device);
 }
 
@@ -3369,28 +3364,6 @@ Enomem:
 	return -ENOMEM;
 }
 
-static void drbd_release_all_peer_reqs(struct drbd_device *device)
-{
-	struct drbd_resource *resource = device->resource;
-	int rr;
-
-	rr = drbd_free_peer_reqs(resource, &device->active_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in active list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->sync_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in sync list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->read_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in read list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->done_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in done list found!\n", rr);
-}
-
 static void free_peer_device(struct drbd_peer_device *peer_device)
 {
 	lc_destroy(peer_device->resync_lru);
@@ -3433,7 +3406,6 @@ void drbd_destroy_device(struct kref *kref)
 	drbd_backing_dev_free(device, device->ldev);
 	device->ldev = NULL;
 
-	drbd_release_all_peer_reqs(device);
 
 	lc_destroy(device->act_log);
 	for_each_peer_device_safe(peer_device, tmp, device) {
@@ -3825,6 +3797,7 @@ void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue
 #endif
 {
 	struct completion_work completion_work;
+	
 	if (get_t_state(&resource->worker) != RUNNING) {
 		WDRBD_INFO("drbd_flush_workqueue &resource->worker != RUNNING return resource:%p\n",resource);
 		return;
@@ -4168,12 +4141,18 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	connection->ack_receiver.connection = connection;
 	INIT_LIST_HEAD(&connection->peer_requests);
 	INIT_LIST_HEAD(&connection->connections);
+	INIT_LIST_HEAD(&connection->active_ee);
+	INIT_LIST_HEAD(&connection->sync_ee);
+	INIT_LIST_HEAD(&connection->read_ee);
 	INIT_LIST_HEAD(&connection->net_ee);
+	INIT_LIST_HEAD(&connection->done_ee);
+	init_waitqueue_head(&connection->ee_wait);
 
 	kref_init(&connection->kref);
 	kref_debug_init(&connection->kref_debug, &connection->kref, &kref_class_connection);
 
 	INIT_WORK(&connection->peer_ack_work, drbd_send_peer_ack_wf);
+	INIT_WORK(&connection->send_acks_work, drbd_send_acks_wf);
 
 	kref_get(&resource->kref);
 	kref_debug_get(&resource->kref_debug, 3);
@@ -4357,8 +4336,6 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	peer_device->resync_wenr = LC_FREE;
 	peer_device->resync_finished_pdsk = D_UNKNOWN;
 
-	INIT_WORK(&peer_device->send_acks_work, drbd_send_acks_wf);
-
 	return peer_device;
 }
 
@@ -4442,10 +4419,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
 
-	INIT_LIST_HEAD(&device->active_ee);
-	INIT_LIST_HEAD(&device->sync_ee);
-	INIT_LIST_HEAD(&device->done_ee);
-	INIT_LIST_HEAD(&device->read_ee);
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);
 	INIT_LIST_HEAD(&device->pending_completion[0]);
@@ -4483,7 +4456,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #endif
 #endif
 	init_waitqueue_head(&device->misc_wait);
-	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
 #ifdef _WIN32
@@ -4794,6 +4766,10 @@ void drbd_put_connection(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
 		refs++;
+
+	rr = drbd_free_peer_reqs(connection->resource, &connection->done_ee, false);
+	if (rr)
+		drbd_err(connection, "%d EEs in done list found!\n", rr);
 
 	rr = drbd_free_peer_reqs(connection->resource, &connection->net_ee, true);
 	if (rr)
