@@ -3044,6 +3044,18 @@ static int try_to_promote(struct drbd_device *device)
 	return rv;
 }
 
+static int ro_open_cond(struct drbd_device *device)
+{
+	struct drbd_resource *resource = device->resource;
+
+	if (resource->role[NOW] != R_PRIMARY && primary_peer_present(resource) && !allow_oos)
+		return -EMEDIUMTYPE;
+	else if (any_disk_is_uptodate(device))
+		return 0;
+	else
+		return -EAGAIN;
+}
+
 static int drbd_open(struct block_device *bdev, fmode_t mode)
 {
 	struct drbd_device *device = bdev->bd_disk->private_data;
@@ -3057,10 +3069,25 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 		   This avoids split brain when the drbd volume gets opened
 		   temporarily by udev while it scans for PV signatures. */
 
-		if (mode & FMODE_WRITE && resource->role[NOW] == R_SECONDARY) {
-			rv = try_to_promote(device);
-			if (rv < SS_SUCCESS)
-				drbd_info(resource, "Auto-promote failed: %s\n", drbd_set_st_err_str(rv));
+		if (mode & FMODE_WRITE) {
+			if (resource->role[NOW] == R_SECONDARY) {
+				rv = try_to_promote(device);
+				if (rv < SS_SUCCESS)
+					drbd_info(resource, "Auto-promote failed: %s\n",
+					drbd_set_st_err_str(rv));
+			}
+		}
+		else /* READ access only */ {
+#ifdef _WIN32
+			long timeo;
+			wait_event_interruptible_timeout(timeo, resource->state_wait,
+				ro_open_cond(device) != -EAGAIN,
+				resource->res_opts.auto_promote_timeout * HZ / 10);
+#else 
+			wait_event_interruptible_timeout(resource->state_wait,
+				ro_open_cond(device) != -EAGAIN,
+				resource->res_opts.auto_promote_timeout * HZ / 10);
+#endif 
 		}
 	} else if (resource->role[NOW] != R_PRIMARY && !(mode & FMODE_WRITE) && !allow_oos)
 		return -EMEDIUMTYPE;
