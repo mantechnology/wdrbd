@@ -3576,6 +3576,7 @@ int main(int argc, char **argv)
 	if (cmd != &connect_cmd && cmd != &adjust_cmd)
 	{
 		char *temp_file = config_file;
+		int temp_config_valid = config_valid;
 		if (!resource_names[0] || !strcmp(resource_names[0], "all")) 
 		{	
 			parse_drbdsetup_show(NULL);
@@ -3586,6 +3587,7 @@ int main(int argc, char **argv)
 		}
 		
 		config_file = temp_file;
+		config_valid = temp_config_valid;
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);
