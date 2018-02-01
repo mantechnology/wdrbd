@@ -171,6 +171,10 @@ int do_verify_ips = 0;
 int do_register = 1;
 /* whether drbdadm was called with "all" instead of resource name(s) */
 int all_resources = 0;
+/* if we want to adjust more than one resource,
+* instead of iteratively calling "drbdsetup show" for each of them,
+* call "drbdsetup show" once for all of them. */
+int adjust_more_than_one_resource = 0;
 char *drbdsetup = NULL;
 char *drbdmeta = NULL;
 char *drbdadm_83 = NULL;
@@ -583,7 +587,7 @@ void schedule_deferred_cmd(struct adm_cmd *cmd,
 			if (d->ctx.cmd == cmd &&
 			    d->ctx.res == ctx->res &&
 			    d->ctx.conn == ctx->conn &&
-			    d->ctx.vol == ctx->vol)
+				d->ctx.vol->vnr == ctx->vol->vnr)
 				return;
 		}
 	}
@@ -932,14 +936,14 @@ static int sh_udev(const struct cfg_ctx *ctx)
 	* udev default change of "string_escape=none" -> "replace",
 	* populate plain "SYMLINK" with just the "by-res" one. */
 	printf("SYMLINK=");
-	if (vol->implicit)
+	if (vol->implicit && !global_options.udev_always_symlink_vnr)
 		printf("drbd/by-res/%s\n", res->name);
 	else
 		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
 
 	/* repeat, with _BY_RES */
 	printf("SYMLINK_BY_RES=");
-	if (vol->implicit)
+	if (vol->implicit && !global_options.udev_always_symlink_vnr)
 		printf("drbd/by-res/%s\n", res->name);
 	else
 		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
@@ -1423,7 +1427,7 @@ int adm_resize(const struct cfg_ctx *ctx)
 	int ex;
 
 	argv[NA(argc)] = drbdsetup;
-	argv[NA(argc)] = "resize";
+	argv[NA(argc)] = "resize"; /* first execute resize, even if called from check-resize context */
 	argv[NA(argc)] = ssprintf("%d", ctx->vol->device_minor);
 	opt = find_opt(&ctx->vol->disk_options, "size");
 	if (!opt)
@@ -1440,9 +1444,9 @@ int adm_resize(const struct cfg_ctx *ctx)
 	if (is_resize && !dry_run)
 		old_size = read_drbd_dev_size(ctx->vol->device_minor);
 
-	/* if this is not "resize", but "check-resize", be silent! */
-	silent = !strcmp(ctx->cmd->name, "check-resize") ? SUPRESS_STDERR : 0;
-	ex = m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
+	/* if this is a "resize" triggered by "check-resize", be silent! */
+	silent = is_resize ? 0 : SUPRESS_STDERR;
+	ex = m_system_ex(argv, SLEEPS_LONG | silent, ctx->res->name);
 
 	if (ex && target_size) {
 		new_size = read_drbd_dev_size(ctx->vol->device_minor);
@@ -1852,7 +1856,7 @@ int adm_peer_device(const struct cfg_ctx *ctx)
 	char *argv[MAX_ARGS];
 	int argc = 0;
 
-	peer_device = find_peer_device(res->me, conn, vol->vnr);
+	peer_device = find_peer_device(conn, vol->vnr);
 	if (!peer_device) {
 		err("Could not find peer_device object!\n");
 		exit(E_THINKO);
@@ -2225,7 +2229,7 @@ static int adm_up(const struct cfg_ctx *ctx)
 				continue;
 
 			tmp2_ctx = tmp_ctx;
-			tmp2_ctx.vol = peer_device->volume;
+			tmp2_ctx.vol = volume_by_vnr(&conn->peer->volumes, peer_device->vnr);
 			schedule_deferred_cmd(&peer_device_options_cmd, &tmp2_ctx, CFG_PEER_DEVICE);
 		}
 	}
@@ -2402,6 +2406,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 					goto found;
 
 				if (conn->peer && !strcmp(conn->peer->node_id, hi->node_id)) {
+					conn->me = true;
 					if (!set_ignore_flag(conn, check, false))
 						return 1;
 				}
@@ -2414,6 +2419,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 					if (check == CTX_FIRST)
 						goto found;
 
+					conn->me = true;
 					if (!set_ignore_flag(conn, check, false))
 						return 1;
 				}
@@ -2437,7 +2443,6 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 
 	if (0) {
 found:
-		printf("found it\n");
 		if (conn->ignore) {
 			err("Connection '%s' has the ignore flag set\n",
 			    conn_or_hostname);
@@ -3461,6 +3466,7 @@ int main(int argc, char **argv)
 	char *env_drbd_nodename = NULL;
 	int is_dump_xml;
 	int is_dump;
+	int is_adjust;
 	struct cfg_ctx ctx = { };
 
 	initialize_err();
@@ -3508,6 +3514,7 @@ int main(int argc, char **argv)
 
 	is_dump_xml = (cmd == &dump_xml_cmd);
 	is_dump = (is_dump_xml || cmd == &dump_cmd);
+	is_adjust = (cmd == &adjust_cmd || cmd == &adjust_wp_cmd);
 
 	if (!resource_names[0]) {
 		if (is_dump)
@@ -3570,6 +3577,7 @@ int main(int argc, char **argv)
 	if (cmd != &connect_cmd && cmd != &adjust_cmd)
 	{
 		char *temp_file = config_file;
+		int temp_config_valid = config_valid;
 		if (!resource_names[0] || !strcmp(resource_names[0], "all")) 
 		{	
 			parse_drbdsetup_show(NULL);
@@ -3580,6 +3588,7 @@ int main(int argc, char **argv)
 		}
 		
 		config_file = temp_file;
+		config_valid = temp_config_valid;
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);
@@ -3622,6 +3631,8 @@ int main(int argc, char **argv)
 				print_dump_xml_header();
 			else if (is_dump)
 				print_dump_header();
+			if (is_adjust)
+				adjust_more_than_one_resource = 1;
 
 			for_each_resource(res, &config) {
 				if (!is_dump && res->ignore)
@@ -3670,6 +3681,9 @@ int main(int argc, char **argv)
 					    resource_names[i]);
 					exit(E_USAGE);
 				}
+
+			if (is_adjust && resource_names[1])
+				adjust_more_than_one_resource = 1;
 
 			for (i = 0; resource_names[i]; i++) {
 				ctx.res = NULL;

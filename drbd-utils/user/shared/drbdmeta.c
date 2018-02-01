@@ -64,7 +64,12 @@
 
 #include "config.h"
 
-/* BLKZEROOUT, available on linux-3.6 and later. */
+/* BLKZEROOUT, available on linux-3.6 and later,
+* and maybe backported to distribution kernels,
+* even if they pretend to be older.
+* Yes, we encountered a number of systems that already had it in their
+* kernels, but not yet in the headers used to build userland stuff like this.
+*/
 #ifndef BLKZEROOUT
 #define BLKZEROOUT    _IO(0x12,127)
 #endif
@@ -422,7 +427,7 @@ int v06_validate_md(struct format *cfg)
 /*
  * -- DRBD 0.7 --------------------------------------
  */
-unsigned long bm_bytes(const struct md_cpu const *md, uint64_t sectors);
+unsigned long bm_bytes(const struct md_cpu * const md, uint64_t sectors);
 
 struct __packed md_on_disk_07 {
 	be_u64 la_kb;		/* last agreed size. */
@@ -454,7 +459,7 @@ void md_disk_07_to_cpu(struct md_cpu *cpu, const struct md_on_disk_07 *disk)
 	cpu->al_stripe_size_4k = 8;
 }
 
-void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu const *cpu)
+void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu * const cpu)
 {
 	int i;
 
@@ -470,7 +475,7 @@ void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu const *cp
 }
 
 int is_valid_md(enum md_format f,
-	const struct md_cpu const *md, const int md_index, const uint64_t ll_size)
+	const struct md_cpu * const md, const int md_index, const uint64_t ll_size)
 {
 	uint64_t md_size_sect;
 	const char *v = f_ops[f].name;
@@ -1725,15 +1730,15 @@ static void zeroout_bitmap(struct format *cfg)
 	fprintf(stderr, "initializing bitmap (%u KB) to all zero\n",
 		(unsigned int)(bitmap_bytes >> 10));
 
-#ifdef _WIN32
-	errno = ENOTTY;
-#else // not support. execute the fallback code.
+#ifndef _WIN32 // not support. execute the fallback code.
 	err = ioctl(cfg->md_fd, BLKZEROOUT, &range);
 	if (!err)
 		return;
+	PERROR("ioctl(%s, BLKZEROOUT, [%llu, %llu]) failed", cfg->md_device_name,
+		(unsigned long long)range[0], (unsigned long long)range[1]);
 #endif
-
-	if (errno == ENOTTY) {
+	fprintf(stderr, "Using slow(er) fallback.\n");
+	{
 		/* need to sector-align this for O_DIRECT.
 		 * "sector" here means hard-sect size, which may be != 512.
 		 * Note that even though ALIGN does round up, for sector sizes
@@ -1760,10 +1765,7 @@ static void zeroout_bitmap(struct format *cfg)
 				percent_last_report = percent_done;
 			}
 		}
-		fprintf(stderr,"\r100%%\n");
-	} else {
-		PERROR("ioctl(%s) failed", cfg->md_device_name);
-		exit(10);
+		fprintf(stderr,"\r100%%\n");	
 	}
 }
 
@@ -2459,7 +2461,7 @@ int meta_apply_al(struct format *cfg, char **argv __attribute((unused)), int arg
 	return err;
 }
 
-unsigned long bm_bytes(const struct md_cpu const *md, uint64_t sectors)
+unsigned long bm_bytes(const struct md_cpu * const md, uint64_t sectors)
 {
 	unsigned long long bm_bits;
 	unsigned long sectors_per_bit = md->bm_bytes_per_bit >> 9;
@@ -4580,25 +4582,25 @@ void check_for_existing_data(struct format *cfg)
 }
 
 /* tries to guess what is in the on_disk_buffer */
-enum md_format detect_md(struct md_cpu *md, const uint64_t ll_size)
+enum md_format detect_md(struct md_cpu *md, const uint64_t ll_size, int index_format)
 {
 	struct md_cpu md_test;
 	enum md_format have = DRBD_UNKNOWN;
 
 	md_disk_07_to_cpu(&md_test, (struct md_on_disk_07*)on_disk_buffer);
-	if (is_valid_md(DRBD_V07, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V07, &md_test, index_format, ll_size)) {
 		have = DRBD_V07;
 		*md = md_test;
 	}
 
 	md_disk_08_to_cpu(&md_test, (struct md_on_disk_08*)on_disk_buffer);
-	if (is_valid_md(DRBD_V08, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V08, &md_test, index_format, ll_size)) {
 		have = DRBD_V08;
 		*md = md_test;
 	}
 
 	md_disk_09_to_cpu(&md_test, (struct meta_data_on_disk_9*)on_disk_buffer);
-	if (is_valid_md(DRBD_V09, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V09, &md_test, index_format, ll_size)) {
 		have = DRBD_V09;
 		*md = md_test;
 	}
@@ -4638,7 +4640,7 @@ void check_internal_md_flavours(struct format * cfg) {
 
 	if (have == DRBD_UNKNOWN) {
 		PREAD(cfg, on_disk_buffer, 4096, flex_offset);
-		have = detect_md(&md_now, cfg->bd_size);
+		have = detect_md(&md_now, cfg->bd_size, DRBD_MD_INDEX_FLEX_INT);
 	}
 
 	if (have == DRBD_UNKNOWN)
@@ -4747,7 +4749,7 @@ void check_external_md_flavours(struct format * cfg) {
 	}
 
 	PREAD(cfg, on_disk_buffer, 4096, cfg->md_offset);
-	have = detect_md(&md_now, cfg->bd_size);
+	have = detect_md(&md_now, cfg->bd_size, DRBD_MD_INDEX_FLEX_EXT);
 
 	if (have == DRBD_UNKNOWN)
 		return;

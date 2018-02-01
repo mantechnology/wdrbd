@@ -31,11 +31,12 @@
 #include <assert.h>
 #include "drbdtool_common.h"
 #include "drbdadm.h"
+#include "config_flags.h"
 #include <search.h>
 
 static void inherit_volumes(struct volumes *from, struct d_host_info *host);
 static void check_volume_sets_equal(struct d_resource *, struct d_host_info *, struct d_host_info *);
-static void expand_opts(struct options *common, struct options *options);
+static void expand_opts(struct d_resource *, struct context_def *, struct options *, struct options *);
 
 static void append_names(struct names *head, struct names *to_copy)
 {
@@ -79,13 +80,14 @@ void set_on_hosts_in_res(struct d_resource *res)
 						struct d_volume *vol;
 
 						for_each_volume(vol, &host->volumes)
-							check_uniq("device-minor", "device-minor:%s:%u", h->name,
+							check_uniq_file_line(vol->v_config_file, vol->v_device_line,
+								"device-minor", "device-minor:%s:%u", h->name,
 								vol->device_minor);
 
 							for_each_volume(vol, &host->volumes)
-									if (vol->device)
-											check_uniq("device", "device:%s:%s", h->name,
-														vol->device);
+								if (vol->device)
+									check_uniq_file_line(vol->v_config_file, vol->v_device_line,
+									"device", "device:%s:%s", h->name, vol->device);
 					}
 				}
 
@@ -461,7 +463,7 @@ bool peer_diskless(struct peer_device *peer_device)
 {
 	struct d_volume *vol;
 
-	vol = volume_by_vnr(&peer_device->connection->peer->volumes, peer_device->volume->vnr);
+	vol = volume_by_vnr(&peer_device->connection->peer->volumes, peer_device->vnr);
 	return vol->disk == NULL;
 }
 
@@ -590,21 +592,29 @@ static void inherit_volumes(struct volumes *from, struct d_host_info *host)
 			t = alloc_volume();
 			t->device_minor = -1;
 			t->vnr = s->vnr;
+			t->implicit = s->implicit;
+			t->v_config_file = s->v_config_file;
+			t->v_device_line = s->v_device_line;
+			t->v_disk_line = s->v_disk_line;
+			t->v_meta_disk_line = s->v_meta_disk_line;
 			insert_volume(&host->volumes, t);
 		}
 		if (!t->disk && s->disk) {
 			t->disk = strdup(s->disk);
 			STAILQ_FOREACH(h, &host->on_hosts, link)
-				check_uniq("disk", "disk:%s:%s", h->name, t->disk);
+				check_uniq_file_line(t->v_config_file, t->v_disk_line,
+					"disk", "disk:%s:%s", h->name, t->disk);
 		}
 		if (!t->device && s->device)
 			t->device = strdup(s->device);
 		if (t->device_minor == -1U && s->device_minor != -1U) {
 			t->device_minor = s->device_minor;
 			STAILQ_FOREACH(h, &host->on_hosts, link) {
-				check_uniq("device-minor", "device-minor:%s:%u", h->name, t->device_minor);
+				check_uniq_file_line(t->v_config_file, t->v_device_line,
+					"device-minor", "device-minor:%s:%u", h->name, t->device_minor);
 				if (t->device)
-					check_uniq("device", "device:%s:%s", h->name, t->device);
+					check_uniq_file_line(t->v_config_file, t->v_device_line,
+						"device", "device:%s:%s", h->name, t->device);
 			}
 		}
 		if (!t->meta_disk && s->meta_disk) {
@@ -657,7 +667,8 @@ static void check_meta_disk(struct d_volume *vol, struct d_host_info *host)
 	if (strcmp(vol->meta_disk, "internal") != 0) {
 		/* index either some number, or "flexible" */
 		STAILQ_FOREACH(h, &host->on_hosts, link)
-			check_uniq("meta-disk", "%s:%s[%s]", h->name, vol->meta_disk, vol->meta_index);
+			check_uniq_file_line(vol->v_config_file, vol->v_meta_disk_line,
+				"meta-disk", "%s:%s[%s]", h->name, vol->meta_disk, vol->meta_index);
 	}
 }
 
@@ -701,6 +712,15 @@ static void check_volume_sets_equal(struct d_resource *res, struct d_host_info *
 			b = STAILQ_NEXT(b, link);
 		}
 		if (a && b && a->vnr == b->vnr) {
+			if (a->implicit != b->implicit) {
+				err("%s:%d: in resource %s, on %s resp. %s: volume %d must not be implicit on one but not the other\n",
+					config_file, line, res->name,
+					names_to_str(&host1->on_hosts),
+					compare_stacked ? host1->lower->name : names_to_str(&host2->on_hosts),
+					a->vnr);
+				config_valid = 0;
+			}
+
 			a = STAILQ_NEXT(a, link);
 			b = STAILQ_NEXT(b, link);
 		}
@@ -821,7 +841,7 @@ static void create_connections_from_mesh(struct d_resource *res, struct mesh *me
 			path->implicit = 1;
 			insert_tail(&conn->paths, path);
 
-			expand_opts(&mesh->net_options, &conn->net_options);
+			expand_opts(res, &show_net_options_ctx, &mesh->net_options, &conn->net_options);
 
 			ha = alloc_hname_address();
 			ha->host_info = hi1;
@@ -993,18 +1013,13 @@ static void must_have_two_hosts(struct d_resource *res, struct connection *conn)
 		_must_have_two_hosts(res, path);
 }
 
-struct peer_device *find_peer_device(struct d_host_info *host, struct connection *conn, int vnr)
+struct peer_device *find_peer_device(struct connection *conn, int vnr)
 {
 	struct peer_device *peer_device;
-	struct d_volume *vol;
 
 	STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link) {
-		if (peer_device->vnr == vnr) {
-			for_each_volume(vol, &host->volumes) {
-				if (vol == peer_device->volume)
-					return peer_device;
-			}
-		}
+		if (peer_device->vnr == vnr)
+			return peer_device;
 	}
 
 	return NULL;
@@ -1025,39 +1040,30 @@ static void fixup_peer_devices(struct d_resource *res)
 		if (!some_path)
 			continue;
 
-		some_host = STAILQ_FIRST(&some_path->hname_address_pairs)->host_info;
-
 		STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link) {
-
-			vol = volume_by_vnr(&some_host->volumes, peer_device->vnr);
-			if (!vol) {
-				err("%s:%d: Resource %s: There is a reference to a volume %d that"
-				    "is not known in this resource\n",
-				    res->config_file, peer_device->config_line, res->name,
-				    peer_device->vnr);
-				config_valid = 0;
+			STAILQ_FOREACH(ha, &some_path->hname_address_pairs, link) {
+				struct d_host_info *host = ha->host_info;
+				vol = volume_by_vnr(&host->volumes, peer_device->vnr);
+				if (!vol) {
+					err("%s:%d: Resource %s: There is a reference to a volume %d that"
+						"is not known in this resource\n",
+						res->config_file, peer_device->config_line, res->name,
+						peer_device->vnr);
+					config_valid = 0;
+				}
 			}
-			peer_device->volume = vol;
-			STAILQ_INSERT_TAIL(&vol->peer_devices, peer_device, volume_link);
 		}		
 
-		/* Take the first path, iterate over hname_address_pairs, take the host_info.
-		this is the way to get hold of the two hosts of a connection. */
-		STAILQ_FOREACH(ha, &some_path->hname_address_pairs, link) {
-			struct d_host_info *host = ha->host_info;
-
-			for_each_volume(vol, &host->volumes) {
-				peer_device = find_peer_device(host, conn, vol->vnr);
-				if (peer_device)
-					continue;
-				peer_device = alloc_peer_device();
-				peer_device->vnr = vol->vnr;
-				peer_device->implicit = 1;
-				peer_device->connection = conn;
-				peer_device->volume = vol;
-				STAILQ_INSERT_TAIL(&conn->peer_devices, peer_device, connection_link);
-				STAILQ_INSERT_TAIL(&vol->peer_devices, peer_device, volume_link);
-			}
+		some_host = STAILQ_FIRST(&some_path->hname_address_pairs)->host_info;
+		for_each_volume(vol, &some_host->volumes) {
+			peer_device = find_peer_device(conn, vol->vnr);
+			if (peer_device)
+				continue;
+			peer_device = alloc_peer_device();
+			peer_device->vnr = vol->vnr;
+			peer_device->implicit = 1;
+			peer_device->connection = conn;
+			STAILQ_INSERT_TAIL(&conn->peer_devices, peer_device, connection_link);
 		}
 	}
 }
@@ -1070,18 +1076,30 @@ void post_parse(struct resources *resources, enum pp_flags flags)
 	/* inherit volumes from resource level into the d_host_info objects */
 	for_each_resource(res, resources) {
 		struct d_host_info *host;
+		bool any_implicit = false;
+		bool any_non_zero_vnr = false;
 		for_each_host(host, &res->all_hosts) {
 			struct d_volume *vol;
 			inherit_volumes(&res->volumes, host);
 
-			for_each_volume(vol, &host->volumes)
+			for_each_volume(vol, &host->volumes) {
+				any_implicit |= vol->implicit;
+				any_non_zero_vnr |= vol->vnr != 0;
+
 				check_meta_disk(vol, host);
+			}
 
 			if (host->require_minor)
 				check_volumes_complete(res, host);
 		}
 
 		check_volumes_hosts(res);
+
+		if (any_implicit && any_non_zero_vnr) {
+			err("%s:%d: in resource %s: you must not mix implicit any explicit volumes\n",
+				config_file, line, res->name);
+			config_valid = 0;
+		}
 	}
 
 	for_each_resource(res, resources)
@@ -1135,15 +1153,34 @@ void post_parse(struct resources *resources, enum pp_flags flags)
 		fixup_peer_devices(res);
 }
 
-static void expand_opts(struct options *common, struct options *options)
+static void expand_opts(struct d_resource *res, struct context_def *oc, struct options *common, struct options *options)
 {
-	struct d_option *option, *new_option;
+	struct d_option *option, *new_option, *existing_option;
 
 	STAILQ_FOREACH(option, common, link) {
-		if (!find_opt(options, option->name)) {
+		existing_option = find_opt(options, option->name);
+		if (!existing_option) {
 			new_option = new_opt(strdup(option->name),
 					     option->value ? strdup(option->value) : NULL);
+			new_option->inherited = true;
 			insert_head(options, new_option);
+		} else if (existing_option->inherited && oc != &wildcard_ctx) {
+			if (!is_equal(oc, existing_option, option)) {
+				err("%s:%d: in resource %s, "
+					"ambiguous inheritance for option \"%s\".\n"
+					"should be \"%s\" and \"%s\" at the same time\n.",
+					res->config_file, res->start_line, res->name,
+					option->name, existing_option->value, option->value);
+				config_valid = 0;
+			}
+			/* else {
+			err("%s:%d: WARNING: in resource %s, "
+			"multiple inheritance for option \"%s\".\n"
+			"with same value\n.",
+			res->config_file, res->start_line, res->name,
+			option->name, existing_option->value, option->value);
+			}
+			*/
 		}
 	}
 }
@@ -1181,26 +1218,26 @@ void expand_common(void)
 			template = common;
 
 		if (template) {
-			expand_opts(&template->net_options, &res->net_options);
-			expand_opts(&template->disk_options, &res->disk_options);
-			expand_opts(&template->pd_options, &res->pd_options);
-			expand_opts(&template->startup_options, &res->startup_options);
-			expand_opts(&template->proxy_options, &res->proxy_options);
-			expand_opts(&template->handlers, &res->handlers);
-			expand_opts(&template->res_options, &res->res_options);
+			expand_opts(res, &show_net_options_ctx, &template->net_options, &res->net_options);
+			expand_opts(res, &disk_options_ctx, &template->disk_options, &res->disk_options);
+			expand_opts(res, &device_options_ctx, &template->pd_options, &res->pd_options);
+			expand_opts(res, &startup_options_ctx, &template->startup_options, &res->startup_options);
+			expand_opts(res, &proxy_options_ctx, &template->proxy_options, &res->proxy_options);
+			expand_opts(res, &handlers_ctx, &template->handlers, &res->handlers);
+			expand_opts(res, &resource_options_ctx, &template->res_options, &res->res_options);
 
 			if (template->stacked_timeouts)
 				res->stacked_timeouts = 1;
 
-			expand_opts(&template->proxy_plugins, &res->proxy_plugins);
+			expand_opts(res, &wildcard_ctx, &template->proxy_plugins, &res->proxy_plugins);
 		}
 
 		/* now that common disk options (if any) have been propagated to the
 		 * resource level, further propagate them to the volume level. */
 		for_each_host(h, &res->all_hosts) {
 			for_each_volume(vol, &h->volumes) {
-				expand_opts(&res->disk_options, &vol->disk_options);
-				expand_opts(&res->pd_options, &vol->pd_options);
+				expand_opts(res, &disk_options_ctx, &res->disk_options, &vol->disk_options);
+				expand_opts(res, &peer_device_options_ctx, &res->pd_options, &vol->pd_options);
 			}
 		}
 
@@ -1208,14 +1245,14 @@ void expand_common(void)
 		for_each_volume(vol, &res->volumes) {
 			for_each_host(h, &res->all_hosts) {
 				host_vol = volume_by_vnr(&h->volumes, vol->vnr);
-				expand_opts(&vol->disk_options, &host_vol->disk_options);
-				expand_opts(&vol->pd_options, &host_vol->pd_options);
+				expand_opts(res, &disk_options_ctx, &vol->disk_options, &host_vol->disk_options);
+				expand_opts(res, &peer_device_options_ctx, &vol->pd_options, &host_vol->pd_options);
 			}
 		}
 
 		/* inherit network options from resource objects into connection objects */
 		for_each_connection(conn, &res->connections)
-			expand_opts(&res->net_options, &conn->net_options);
+			expand_opts(res, &show_net_options_ctx, &res->net_options, &conn->net_options);
 
 		/* inherit proxy options from resource to the proxies in the connections */
 		for_each_connection(conn, &res->connections) {
@@ -1226,8 +1263,8 @@ void expand_common(void)
 					if (!ha->proxy)
 						continue;
 
-					expand_opts(&res->proxy_options, &ha->proxy->options);
-					expand_opts(&res->proxy_plugins, &ha->proxy->plugins);
+					expand_opts(res, &proxy_options_ctx, &res->proxy_options, &ha->proxy->options);
+					expand_opts(res, &wildcard_ctx, &res->proxy_plugins, &ha->proxy->plugins);
 				}
 			}
 		}
@@ -1236,9 +1273,23 @@ void expand_common(void)
 		   tie the peer_device options from the volume to peer_devices */
 		for_each_connection(conn, &res->connections) {
 			struct peer_device *peer_device;
-			STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link) {
-				expand_opts(&conn->pd_options, &peer_device->pd_options);
-				expand_opts(&peer_device->volume->pd_options, &peer_device->pd_options);
+			struct hname_address *ha;
+			struct path *some_path;
+
+			STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link)
+				expand_opts(res, &peer_device_options_ctx, &conn->pd_options, &peer_device->pd_options);
+			
+			some_path = STAILQ_FIRST(&conn->paths);
+			if (!some_path)
+				continue;
+
+			STAILQ_FOREACH(ha, &some_path->hname_address_pairs, link) {
+				h = ha->host_info;
+				for_each_volume(vol, &h->volumes) {
+					peer_device = find_peer_device(conn, vol->vnr);
+
+					expand_opts(res, &peer_device_options_ctx, &vol->pd_options, &peer_device->pd_options);
+				}
 			}
 		}
 	}

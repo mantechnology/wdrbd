@@ -136,6 +136,11 @@ enum drbd_on_no_data {
 	OND_SUSPEND_IO
 };
 
+enum drbd_on_no_quorum {
+	ONQ_IO_ERROR = OND_IO_ERROR,
+	ONQ_SUSPEND_IO = OND_SUSPEND_IO
+};
+
 enum drbd_on_congestion {
 	OC_BLOCK,
 	OC_PULL_AHEAD,

@@ -342,6 +342,7 @@ struct option events_cmd_options[] = {
 	{ "timestamps", no_argument, 0, 'T' },
 	{ "statistics", no_argument, 0, 's' },
 	{ "now", no_argument, 0, 'n' },
+	{ "poll", no_argument, 0, 'p' },
 	{ "color", optional_argument, 0, 'c' },
 	{ }
 };
@@ -1570,6 +1571,7 @@ static bool parse_color_argument(void)
 }
 
 static bool opt_now;
+static bool opt_poll;
 static bool opt_verbose;
 static bool opt_statistics;
 static bool opt_timestamps;
@@ -1921,6 +1923,10 @@ static int generic_get_cmd(struct drbd_cmd *cm, int argc, char **argv)
 			opt_now = true;
 			break;
 
+		case 'p':
+			opt_poll = true;
+			break;
+
 		case 's':
 			opt_verbose = true;
 			opt_statistics = true;
@@ -2004,6 +2010,21 @@ static int generic_get_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		timeout_ms = 120000; /* normal "get" request, or "show" */
 
 	err = generic_get(cm, timeout_ms, peer_devices);
+	if (cm->show_function == &print_notifications &&
+		opt_now && opt_poll) { /* events2 --now --poll */
+		while ((c = fgetc(stdin)) != EOF) {
+			switch (c) {
+			case 'n': /* now */
+				err = generic_get(cm, timeout_ms, peer_devices);
+				break;
+			case '\n':
+				break;
+			default:
+				goto out_polling;
+			}
+		}
+out_polling:;
+	}
 
 	free_peer_devices(peer_devices);
 
@@ -2838,16 +2859,10 @@ static int cstate_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	struct connections_list *connections, *connection;
 	bool found = false;
 
-	connections = list_connections(NULL);
+	connections = list_connections(objname);
 	for (connection = connections; connection; connection = connection->next) {
 		if (connection->ctx.ctx_peer_node_id != global_ctx.ctx_peer_node_id)
 			continue;
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-777 fix wrong cstate output.
-		// Add resource_name comparison.
-		if (strcmp(connection->ctx.ctx_resource_name, global_ctx.ctx_resource_name))
-			continue;
-#endif
 
 		printf("%s\n", drbd_conn_str(connection->info.conn_connection_state));
 		found = true;
@@ -4217,6 +4232,7 @@ int main(int argc, char **argv)
 {
 	struct drbd_cmd *cmd;
 	struct option *options;
+	const char *opts;
 	int c, rv = 0;
 	int longindex, first_optind;
 
@@ -4288,8 +4304,9 @@ int main(int argc, char **argv)
 	argc--;
 
 	options = make_longoptions(cmd);
+	opts = make_optstring(options);
 	for (;;) {
-		c = getopt_long(argc, argv, "(", options, &longindex);
+		c = getopt_long(argc, argv, opts, options, &longindex);
 		if (c == -1)
 			break;
 		if (c == '?' || c == ':')
