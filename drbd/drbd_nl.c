@@ -343,7 +343,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 			err = ERR_INVALID_REQUEST;
 			goto finish;
 		}
-		if (adm_ctx->peer_node_id == adm_ctx->resource->res_opts.node_id) {
+		if (adm_ctx->resource && adm_ctx->peer_node_id == adm_ctx->resource->res_opts.node_id) {
 			drbd_msg_put_info(adm_ctx->reply_skb, "peer node id cannot be my own node id");
 			err = ERR_INVALID_REQUEST;
 			goto finish;
@@ -2033,7 +2033,7 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 		 * to move the on-disk location of the activity log ringbuffer.
 		 * Lock for transaction is good enough, it may well be "dirty"
 		 * or even "starving". */
-		wait_event(device->al_wait, lc_try_lock_for_transaction(device->act_log));
+		wait_event(device->al_wait, drbd_al_try_lock_for_transaction(device));
 
 		/* mark current on-disk bitmap and activity log as unreliable */
 		prev_al_disabled = !!(md->flags & MDF_AL_DISABLED);
@@ -2518,7 +2518,7 @@ static void drbd_try_suspend_al(struct drbd_device *device)
 			return;
 	}
 
-	if (!lc_try_lock(device->act_log)) {
+	if (!drbd_al_try_lock(device)) {
 		drbd_warn(device, "Failed to lock al in %s()", __func__);
 		return;
 	}
@@ -2669,7 +2669,7 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	sanitize_disk_conf(device, new_disk_conf, device->ldev);
 
 	drbd_suspend_io(device, READ_AND_WRITE);
-	wait_event(device->al_wait, lc_try_lock(device->act_log));
+	wait_event(device->al_wait, drbd_al_try_lock(device));
 	drbd_al_shrink(device);
 	err = drbd_check_al_size(device, new_disk_conf);
 	lc_unlock(device->act_log);
@@ -2706,9 +2706,9 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 		device->ldev->md.flags |= MDF_AL_DISABLED;
 
 	if (new_disk_conf->md_flushes)
-		clear_bit(MD_NO_BARRIER, &device->flags);
+		clear_bit(MD_NO_FUA, &device->flags);
 	else
-		set_bit(MD_NO_BARRIER, &device->flags);
+		set_bit(MD_NO_FUA, &device->flags);
 
 	if (write_ordering_changed(old_disk_conf, new_disk_conf))
 		drbd_bump_write_ordering(device->resource, NULL, WO_BIO_BARRIER);
@@ -3347,9 +3347,9 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	/* Reset the "barriers don't work" bits here, then force meta data to
 	 * be written, to ensure we determine if barriers are supported. */
 	if (device->ldev->disk_conf->md_flushes)
-		clear_bit(MD_NO_BARRIER, &device->flags);
+		clear_bit(MD_NO_FUA, &device->flags);
 	else
-		set_bit(MD_NO_BARRIER, &device->flags);
+		set_bit(MD_NO_FUA, &device->flags);
 
 	drbd_resync_after_changed(device);
 	drbd_bump_write_ordering(resource, device->ldev, WO_BIO_BARRIER);
@@ -4773,11 +4773,12 @@ int adm_disconnect(struct sk_buff *skb, struct genl_info *info, bool destroy)
 
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-	mutex_lock(&connection->resource->conf_update);
 	rv = conn_try_disconnect(connection, parms.force_disconnect);
-	if (rv >= SS_SUCCESS && destroy)
+	if (rv >= SS_SUCCESS && destroy) {
+		mutex_lock(&connection->resource->conf_update);
 		del_connection(connection);
-	mutex_unlock(&connection->resource->conf_update);
+		mutex_unlock(&connection->resource->conf_update);
+	}
 	if (rv < SS_SUCCESS)
 		retcode = rv;  /* FIXME: Type mismatch. */
 	else
@@ -6700,14 +6701,16 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
 	struct drbd_resource *resource;
-	struct drbd_connection *connection, *tmp;
+	struct drbd_connection *connection;
 	struct drbd_device *device;
 	int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
+	enum drbd_ret_code ret;
 #ifdef _WIN32
 	int i;
 #else
 	unsigned i;
 #endif
+	u64 im;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info,
 			DRBD_ADM_NEED_RESOURCE | DRBD_ADM_IGNORE_VERSION);
@@ -6854,48 +6857,52 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 #endif
-	mutex_lock(&resource->conf_update);
-	for_each_connection_safe(connection, tmp, resource) {
+
+	for_each_connection_ref(connection, im, resource) {
 		retcode = conn_try_disconnect(connection, 0);
 		if (retcode >= SS_SUCCESS) {
+			mutex_lock(&resource->conf_update);
 			del_connection(connection);
+			mutex_unlock(&resource->conf_update);
 		} else {
 			drbd_msg_put_info(adm_ctx.reply_skb, "failed to disconnect");
-			goto unlock_out;
+			kref_debug_put(&connection->kref_debug, 13);
+			kref_put(&connection->kref, drbd_destroy_connection);
+			goto out;
 		}
 	}
 
-	/* detach */
+	
+	/* detach and delete minor */
+	rcu_read_lock();
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
 #endif
+		kref_get(&device->kref);
+		rcu_read_unlock();
 		retcode = adm_detach(device, 0);
+		mutex_lock(&resource->conf_update);
+		ret = adm_del_minor(device);
+		mutex_unlock(&resource->conf_update);
+		kref_put(&device->kref, drbd_destroy_device);
 		if (retcode < SS_SUCCESS || retcode > NO_ERROR) {
 			drbd_msg_put_info(adm_ctx.reply_skb, "failed to detach");
-			goto unlock_out;
+			goto out;
 		}
-	}
-
-	/* delete volumes */
-#ifdef _WIN32
-    idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
-#else
-	idr_for_each_entry(&resource->devices, device, i) {
-#endif
-		retcode = adm_del_minor(device);
-		if (retcode != NO_ERROR) {
+		if (ret != NO_ERROR) {
 			/* "can not happen" */
 			drbd_msg_put_info(adm_ctx.reply_skb, "failed to delete volume");
-			goto unlock_out;
+			goto out;
 		}
+		rcu_read_lock();
 	}
+	rcu_read_unlock();
 
+	mutex_lock(&resource->conf_update);
 	retcode = adm_del_resource(resource);
 	/* holding a reference to resource in adm_crx until drbd_adm_finish() */
-
-unlock_out:
 	mutex_unlock(&resource->conf_update);
 out:
 #ifdef _WIN32

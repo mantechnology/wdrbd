@@ -1288,7 +1288,7 @@ static void additional_size_command(struct drbd_connection *connection,
 	connection->send_buffer[drbd_stream].additional_size = additional_size;
 }
 
-static void *__conn_prepare_command(struct drbd_connection *connection, int size,
+void *__conn_prepare_command(struct drbd_connection *connection, int size,
 				    enum drbd_stream drbd_stream)
 {
 	struct drbd_transport *transport = &connection->transport;
@@ -1379,7 +1379,7 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	return err;
 }
 
-static int __send_command(struct drbd_connection *connection, int vnr,
+int __send_command(struct drbd_connection *connection, int vnr,
 			  enum drbd_packet cmd, enum drbd_stream drbd_stream)
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
@@ -2432,6 +2432,11 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 	struct drbd_transport *peer_transport = &peer_device->connection->transport;
 	int err = -1;
 
+	if (peer_device->bitmap_index == -1) {
+		drbd_err(peer_device, "No bitmap allocated in drbd_send_bitmap()!\n");
+		return -EIO;
+	}
+
 	mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 	if (peer_transport->ops->stream_ok(peer_transport, DATA_STREAM))
 		err = !_drbd_send_bitmap(device, peer_device);
@@ -2633,7 +2638,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 		if (err)
 			return err;
 		/* REQ_WRITE_SAME has only one segment */
-		if (bio->bi_rw & DRBD_REQ_WSAME)
+		if (bio_op(bio) == REQ_OP_WRITE_SAME)
 			break;
 
 		peer_device->send_cnt += (bvec BVD bv_len) >> 9;
@@ -2728,18 +2733,18 @@ static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 /* see also wire_flags_to_bio()
  * DRBD_REQ_*, because we need to semantically map the flags to data packet
  * flags and back. We may replicate to other kernel versions. */
-static u32 bio_flags_to_wire(struct drbd_connection *connection, unsigned long bi_rw)
+static u32 bio_flags_to_wire(struct drbd_connection *connection, struct bio *bio)
 {
 	if (connection->agreed_pro_version >= 95)
-		return  (bi_rw & DRBD_REQ_SYNC ? DP_RW_SYNC : 0) |
-			(bi_rw & DRBD_REQ_UNPLUG ? DP_UNPLUG : 0) |
-			(bi_rw & DRBD_REQ_FUA ? DP_FUA : 0) |
-			(bi_rw & DRBD_REQ_FLUSH ? DP_FLUSH : 0) |
-			(bi_rw & DRBD_REQ_WSAME ? DP_WSAME : 0) |
-			(bi_rw & DRBD_REQ_DISCARD ? DP_DISCARD : 0);
+		return  (bio->bi_opf & DRBD_REQ_SYNC ? DP_RW_SYNC : 0) |
+			(bio->bi_opf & DRBD_REQ_UNPLUG ? DP_UNPLUG : 0) |
+			(bio->bi_opf & DRBD_REQ_FUA ? DP_FUA : 0) |
+			(bio->bi_opf & DRBD_REQ_PREFLUSH ? DP_FLUSH : 0) |
+			(bio_op(bio) == REQ_OP_WRITE_SAME ? DP_WSAME : 0) |
+			(bio_op(bio) == REQ_OP_DISCARD ? DP_DISCARD : 0);
 
 	/* else: we used to communicate one bit only in older DRBD */
-	return bi_rw & (DRBD_REQ_SYNC | DRBD_REQ_UNPLUG) ? DP_RW_SYNC : 0;
+	return bio->bi_opf & (DRBD_REQ_SYNC | DRBD_REQ_UNPLUG) ? DP_RW_SYNC : 0;
 }
 
 /* Used to send write or TRIM aka REQ_DISCARD requests
@@ -2795,7 +2800,7 @@ int drbd_send_dblock(struct drbd_peer_device *peer_device, struct drbd_request *
 #endif
 	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
 	
-	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio->bi_rw);
+	dp_flags = bio_flags_to_wire(peer_device->connection, req->master_bio);
 	if (peer_device->repl_state[NOW] >= L_SYNC_SOURCE && peer_device->repl_state[NOW] <= L_PAUSED_SYNC_T)
 		dp_flags |= DP_MAY_SET_IN_SYNC;
 	if (peer_device->connection->agreed_pro_version >= 100) {
@@ -3044,6 +3049,18 @@ static int try_to_promote(struct drbd_device *device)
 	return rv;
 }
 
+static int ro_open_cond(struct drbd_device *device)
+{
+	struct drbd_resource *resource = device->resource;
+
+	if (resource->role[NOW] != R_PRIMARY && primary_peer_present(resource) && !allow_oos)
+		return -EMEDIUMTYPE;
+	else if (any_disk_is_uptodate(device))
+		return 0;
+	else
+		return -EAGAIN;
+}
+
 static int drbd_open(struct block_device *bdev, fmode_t mode)
 {
 	struct drbd_device *device = bdev->bd_disk->private_data;
@@ -3051,20 +3068,39 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 	unsigned long flags;
 	int rv = 0;
 
+	kref_get(&device->kref);
+	kref_debug_get(&device->kref_debug, 9);
+
 	if (resource->res_opts.auto_promote) {
 		enum drbd_state_rv rv;
 		/* Allow opening in read-only mode on an unconnected secondary.
 		   This avoids split brain when the drbd volume gets opened
 		   temporarily by udev while it scans for PV signatures. */
 
-		if (mode & FMODE_WRITE && resource->role[NOW] == R_SECONDARY) {
-			rv = try_to_promote(device);
-			if (rv < SS_SUCCESS)
-				drbd_info(resource, "Auto-promote failed: %s\n", drbd_set_st_err_str(rv));
+		if (mode & FMODE_WRITE) {
+			if (resource->role[NOW] == R_SECONDARY) {
+				rv = try_to_promote(device);
+				if (rv < SS_SUCCESS)
+					drbd_info(resource, "Auto-promote failed: %s\n",
+					drbd_set_st_err_str(rv));
+			}
 		}
-	} else if (resource->role[NOW] != R_PRIMARY && !(mode & FMODE_WRITE) && !allow_oos)
-		return -EMEDIUMTYPE;
-
+		else /* READ access only */ {
+#ifdef _WIN32
+			long timeo;
+			wait_event_interruptible_timeout(timeo, resource->state_wait,
+				ro_open_cond(device) != -EAGAIN,
+				resource->res_opts.auto_promote_timeout * HZ / 10);
+#else 
+			wait_event_interruptible_timeout(resource->state_wait,
+				ro_open_cond(device) != -EAGAIN,
+				resource->res_opts.auto_promote_timeout * HZ / 10);
+#endif 
+		}
+	} else if (resource->role[NOW] != R_PRIMARY && !(mode & FMODE_WRITE) && !allow_oos) {
+		rv = -EMEDIUMTYPE;
+		goto out;
+	}
 
 	down(&resource->state_sem);
 	/* drbd_set_role() should be able to rely on nobody increasing rw_cnt */
@@ -3096,6 +3132,10 @@ static int drbd_open(struct block_device *bdev, fmode_t mode)
 	}
 	spin_unlock_irqrestore(&resource->req_lock, flags);
 	up(&resource->state_sem);
+
+out:
+	kref_debug_put(&device->kref_debug, 9);
+	kref_put(&device->kref, drbd_destroy_device);
 
 	return rv;
 }
@@ -3208,11 +3248,6 @@ void drbd_cleanup_device(struct drbd_device *device)
 	}
 
 	clear_bit(AL_SUSPENDED, &device->flags);
-
-	D_ASSERT(device, list_empty(&device->active_ee));
-	D_ASSERT(device, list_empty(&device->sync_ee));
-	D_ASSERT(device, list_empty(&device->done_ee));
-	D_ASSERT(device, list_empty(&device->read_ee));
 	drbd_set_defaults(device);
 }
 
@@ -3369,28 +3404,6 @@ Enomem:
 	return -ENOMEM;
 }
 
-static void drbd_release_all_peer_reqs(struct drbd_device *device)
-{
-	struct drbd_resource *resource = device->resource;
-	int rr;
-
-	rr = drbd_free_peer_reqs(resource, &device->active_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in active list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->sync_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in sync list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->read_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in read list found!\n", rr);
-
-	rr = drbd_free_peer_reqs(resource, &device->done_ee, false);
-	if (rr)
-		drbd_err(device, "%d EEs in done list found!\n", rr);
-}
-
 static void free_peer_device(struct drbd_peer_device *peer_device)
 {
 	lc_destroy(peer_device->resync_lru);
@@ -3433,7 +3446,6 @@ void drbd_destroy_device(struct kref *kref)
 	drbd_backing_dev_free(device, device->ldev);
 	device->ldev = NULL;
 
-	drbd_release_all_peer_reqs(device);
 
 	lc_destroy(device->act_log);
 	for_each_peer_device_safe(peer_device, tmp, device) {
@@ -3825,6 +3837,7 @@ void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue
 #endif
 {
 	struct completion_work completion_work;
+	
 	if (get_t_state(&resource->worker) != RUNNING) {
 		WDRBD_INFO("drbd_flush_workqueue &resource->worker != RUNNING return resource:%p\n",resource);
 		return;
@@ -4168,12 +4181,18 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	connection->ack_receiver.connection = connection;
 	INIT_LIST_HEAD(&connection->peer_requests);
 	INIT_LIST_HEAD(&connection->connections);
+	INIT_LIST_HEAD(&connection->active_ee);
+	INIT_LIST_HEAD(&connection->sync_ee);
+	INIT_LIST_HEAD(&connection->read_ee);
 	INIT_LIST_HEAD(&connection->net_ee);
+	INIT_LIST_HEAD(&connection->done_ee);
+	init_waitqueue_head(&connection->ee_wait);
 
 	kref_init(&connection->kref);
 	kref_debug_init(&connection->kref_debug, &connection->kref, &kref_class_connection);
 
 	INIT_WORK(&connection->peer_ack_work, drbd_send_peer_ack_wf);
+	INIT_WORK(&connection->send_acks_work, drbd_send_acks_wf);
 
 	kref_get(&resource->kref);
 	kref_debug_get(&resource->kref_debug, 3);
@@ -4350,13 +4369,12 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->ap_pending_cnt, 0);
 	atomic_set(&peer_device->unacked_cnt, 0);
 	atomic_set(&peer_device->rs_pending_cnt, 0);
+	atomic_set(&peer_device->wait_for_actlog, 0);
 	atomic_set(&peer_device->rs_sect_in, 0);
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;
 	peer_device->resync_finished_pdsk = D_UNKNOWN;
-
-	INIT_WORK(&peer_device->send_acks_work, drbd_send_acks_wf);
 
 	return peer_device;
 }
@@ -4376,6 +4394,7 @@ static int init_submitter(struct drbd_device *device)
 		return -ENOMEM;
 	INIT_WORK(&device->submit.worker, do_submit);
 	INIT_LIST_HEAD(&device->submit.writes);
+	INIT_LIST_HEAD(&device->submit.peer_writes);
 	return 0;
 }
 
@@ -4440,10 +4459,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
 
-	INIT_LIST_HEAD(&device->active_ee);
-	INIT_LIST_HEAD(&device->sync_ee);
-	INIT_LIST_HEAD(&device->done_ee);
-	INIT_LIST_HEAD(&device->read_ee);
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);
 	INIT_LIST_HEAD(&device->pending_completion[0]);
@@ -4481,7 +4496,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #endif
 #endif
 	init_waitqueue_head(&device->misc_wait);
-	init_waitqueue_head(&device->ee_wait);
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
 #ifdef _WIN32
@@ -4718,6 +4732,7 @@ void drbd_unregister_device(struct drbd_device *device)
 	for_each_peer_device(peer_device, device)
 		drbd_debugfs_peer_device_cleanup(peer_device);
 	drbd_debugfs_device_cleanup(device);
+	del_gendisk(device->vdisk);
 }
 
 void drbd_put_device(struct drbd_device *device)
@@ -4727,7 +4742,6 @@ void drbd_put_device(struct drbd_device *device)
 
 	destroy_workqueue(device->submit.wq);
 	device->submit.wq = NULL;
-	del_gendisk(device->vdisk);
 	del_timer_sync(&device->request_timer);
 
 	for_each_peer_device(peer_device, device)
@@ -4792,6 +4806,10 @@ void drbd_put_connection(struct drbd_connection *connection)
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
 		refs++;
+
+	rr = drbd_free_peer_reqs(connection->resource, &connection->done_ee, false);
+	if (rr)
+		drbd_err(connection, "%d EEs in done list found!\n", rr);
 
 	rr = drbd_free_peer_reqs(connection->resource, &connection->net_ee, true);
 	if (rr)
@@ -4967,7 +4985,7 @@ void drbd_md_write(struct drbd_device *device, void *b)
 	D_ASSERT(device, drbd_md_ss(device->ldev) == device->ldev->md.md_offset);
 	sector = device->ldev->md.md_offset;
 
-	if (drbd_md_sync_page_io(device, device->ldev, sector, WRITE)) {
+	if (drbd_md_sync_page_io(device, device->ldev, sector, REQ_OP_WRITE)) {
 		/* this was a try anyways ... */
 		drbd_err(device, "meta data update failed!\n");
 		drbd_chk_io_error(device, 1, DRBD_META_IO_ERROR);
@@ -5197,7 +5215,8 @@ int drbd_md_read(struct drbd_device *device, struct drbd_backing_dev *bdev)
 	 * Affects the paranoia out-of-range access check in drbd_md_sync_page_io(). */
 	bdev->md.md_size_sect = 8;
 
-	if (drbd_md_sync_page_io(device, bdev, bdev->md.md_offset, READ)) {
+	if (drbd_md_sync_page_io(device, bdev, bdev->md.md_offset,
+		REQ_OP_READ)) {
 		/* NOTE: can't do normal error processing here as this is
 		   called BEFORE disk is attached */
 		drbd_err(device, "Error while reading metadata.\n");
@@ -6419,10 +6438,15 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
 	if(!bm_io_work) {
 		drbd_err(peer_device, "Could not allocate bm io work.\n");
+		done(device, peer_device, -ENOMEM);
 		return;
 	}
 #else
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO);
+	if (!bm_io_work) {
+		done(device, peer_device, -ENOMEM);
+		return;
+	}
 #endif
 	bm_io_work->w.cb = w_bitmap_io;
 	bm_io_work->device = device;

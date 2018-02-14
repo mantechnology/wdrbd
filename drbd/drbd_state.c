@@ -3369,7 +3369,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			 * if the resync finished cleanly, or aborted because of peer disk
 			 * failure, or on transition from resync back to AHEAD/BEHIND.
 			 *
-			 * Connection loss is handled in drbd_disconnected() by the receiver.
+			 * Connection loss is handled in conn_disconnect() by the receiver.
 			 *
 			 * For resync aborted because of local disk failure, we cannot do
 			 * any bitmap writeout anymore.
@@ -5160,7 +5160,7 @@ static bool do_change_cstate(struct change_context *context, enum change_phase p
 				    context->val.conn,
 				    cstate_context->outdate_what);
 
-	if (phase == PH_COMMIT && context->val.conn == C_DISCONNECTING) {
+	if (phase == PH_COMMIT) {
 		struct drbd_resource *resource = context->resource;
 		struct twopc_reply *reply = &resource->twopc_reply;
 		u64 directly_reachable = directly_connected_nodes(resource, NEW) |

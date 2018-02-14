@@ -183,18 +183,18 @@ void wait_until_done_or_force_detached(struct drbd_device *device, struct drbd_b
 
 static int _drbd_md_sync_page_io(struct drbd_device *device,
 				 struct drbd_backing_dev *bdev,
-				 sector_t sector, int rw)
+				 sector_t sector, int op)
 {
 	struct bio *bio;
 	/* we do all our meta data IO in aligned 4k blocks. */
 	const int size = 4096;
-	int err;
+	int err, op_flags = 0;
 
-	if ((rw & WRITE) && !test_bit(MD_NO_BARRIER, &device->flags))
-		rw |= DRBD_REQ_FUA | DRBD_REQ_FLUSH;
-	rw |= DRBD_REQ_UNPLUG | DRBD_REQ_SYNC | REQ_NOIDLE;
+	if ((op == REQ_OP_WRITE) && !test_bit(MD_NO_FUA, &device->flags))
+		op_flags |= DRBD_REQ_FUA | DRBD_REQ_PREFLUSH;
+	op_flags |= DRBD_REQ_UNPLUG | DRBD_REQ_SYNC | REQ_NOIDLE;
 
-#ifndef REQ_FLUSH
+#ifdef COMPAT_MAYBE_RETRY_HARDBARRIER
 	/* < 2.6.36, "barrier" semantic may fail with EOPNOTSUPP */
  retry:
 #endif
@@ -216,9 +216,10 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 		goto out;
 	bio->bi_private = device;
 	bio->bi_end_io = drbd_md_endio;
-	bio->bi_rw = rw;
 
-	if (!(rw & WRITE) && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)
+	bio_set_op_attrs(bio, op, op_flags);
+
+	if (op != REQ_OP_WRITE && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)
 		/* special case, drbd_md_read() during drbd_adm_attach(): no get_ldev */
 		;
 	else if (!get_ldev_if_state(device, D_ATTACHING)) {
@@ -232,14 +233,14 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	atomic_inc(&device->md_io.in_use); /* drbd_md_put_buffer() is in the completion handler */
 	device->md_io.submit_jif = jiffies;
 
-	if (drbd_insert_fault(device, (rw & WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
+	if (drbd_insert_fault(device, (op == REQ_OP_WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
 		bio_endio(bio, -EIO);
 #ifndef _WIN32
 	else
-		submit_bio(rw, bio);
+		submit_bio(bio);
 #else
 	else {
-		if (submit_bio(rw, bio)) {
+		if (submit_bio(bio)) {
 			bio_endio(bio, -EIO);
 		}
 	}
@@ -256,15 +257,15 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
     }
 #endif
 
-#ifndef REQ_FLUSH
+#ifdef COMPAT_MAYBE_RETRY_HARDBARRIER
 	/* check for unsupported barrier op.
 	 * would rather check on EOPNOTSUPP, but that is not reliable.
 	 * don't try again for ANY return value != 0 */
-	if (err && device->md_io.done && (bio->bi_rw & DRBD_REQ_HARDBARRIER)) {
+	if (err && device->md_io.done && (bio->bi_opf & DRBD_REQ_HARDBARRIER)) {
 		/* Try again with no barrier */
 		drbd_warn(device, "Barriers not supported on meta data device - disabling\n");
-		set_bit(MD_NO_BARRIER, &device->flags);
-		rw &= ~DRBD_REQ_HARDBARRIER;
+		set_bit(MD_NO_FUA, &device->flags);
+		op_flags &= ~DRBD_REQ_HARDBARRIER;
 		bio_put(bio);
 		goto retry;
 	}
@@ -278,7 +279,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 }
 
 int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bdev,
-			 sector_t sector, int rw)
+			 sector_t sector, int op)
 {
 	int err;
 	D_ASSERT(device, atomic_read(&device->md_io.in_use) == 1);
@@ -291,12 +292,12 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 #ifdef _WIN32
 	drbd_dbg(device, "meta_data io: %s [0x%p]:%s(,%llus,%s) %pS\n",
 	     current->comm, current->pid, __func__,
-	     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ",
+		 (unsigned long long)sector, (op == REQ_OP_WRITE) ? "WRITE" : "READ",
 	     (void*)_RET_IP_ );
 #else
 	drbd_dbg(device, "meta_data io: %s [%d]:%s(,%llus,%s) %pS\n",
 	     current->comm, current->pid, __func__,
-	     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ",
+		 (unsigned long long)sector, (op == REQ_OP_WRITE) ? "WRITE" : "READ",
 	     (void*)_RET_IP_ );
 #endif
 
@@ -304,25 +305,37 @@ int drbd_md_sync_page_io(struct drbd_device *device, struct drbd_backing_dev *bd
 	    sector + 7 > drbd_md_last_sector(bdev))
 		drbd_alert(device, "%s [%d]:%s(,%llus,%s) out of range md access!\n",
 		     current->comm, current->pid, __func__,
-		     (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ");
+		     (unsigned long long)sector, 
+			 (op == REQ_OP_WRITE) ? "WRITE" : "READ");
 
-	err = _drbd_md_sync_page_io(device, bdev, sector, rw);
+	err = _drbd_md_sync_page_io(device, bdev, sector, op);
 	if (err) {
 		drbd_err(device, "drbd_md_sync_page_io(,%llus,%s) failed with error %d\n",
-		    (unsigned long long)sector, (rw & WRITE) ? "WRITE" : "READ", err);
+		    (unsigned long long)sector,
+			(op == REQ_OP_WRITE) ? "WRITE" : "READ", err);
 	}
 	return err;
 }
 
+struct get_activity_log_ref_ctx {
+	/* in: which extent on which device? */
+	struct drbd_device *device;
+	unsigned int enr;
+	bool nonblock;
+
+	/* out: do we need to wake_up(&device->al_wait)? */
+	bool wake_up;
+};
+
 static struct bm_extent*
-find_active_resync_extent(struct drbd_device *device, unsigned int enr)
+find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 {
 	struct drbd_peer_device *peer_device;
 	struct lc_element *tmp;
 
 	rcu_read_lock();
-	for_each_peer_device_rcu(peer_device, device) {
-		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
+	for_each_peer_device_rcu(peer_device, al_ctx->device) {
+		tmp = lc_find(peer_device->resync_lru, al_ctx->enr/AL_EXT_PER_BM_SECT);
 		if (unlikely(tmp != NULL)) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
 			if (test_bit(BME_NO_WRITES, &bm_ext->flags)) {
@@ -330,6 +343,7 @@ find_active_resync_extent(struct drbd_device *device, unsigned int enr)
 					peer_device->resync_wenr = LC_FREE;
 					if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
 						bm_ext->flags = 0;
+						al_ctx->wake_up = true;
 						peer_device->resync_locked--;
 						continue;
 					}
@@ -345,65 +359,64 @@ find_active_resync_extent(struct drbd_device *device, unsigned int enr)
 	return NULL;
 }
 
-static int
-#ifdef _WIN32
-set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except_,
-#else
-set_bme_priority(struct drbd_device *device, struct drbd_peer_device *except,
-#endif
-		 unsigned int enr)
+void
+set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 {
 	struct drbd_peer_device *peer_device;
 	struct lc_element *tmp;
 	int wake = 0;
 
 	rcu_read_lock();
-	for_each_peer_device_rcu(peer_device, device) {
-		tmp = lc_find(peer_device->resync_lru, enr/AL_EXT_PER_BM_SECT);
+	for_each_peer_device_rcu(peer_device, al_ctx->device) {
+		tmp = lc_find(peer_device->resync_lru, al_ctx->enr/AL_EXT_PER_BM_SECT);
 		if (tmp) {
 			struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
-			if (test_bit(BME_NO_WRITES, &bm_ext->flags))
-				wake |= !test_and_set_bit(BME_PRIORITY, &bm_ext->flags);
+			if (test_bit(BME_NO_WRITES, &bm_ext->flags)
+			&& !test_and_set_bit(BME_PRIORITY, &bm_ext->flags))
+				al_ctx->wake_up = true;
 		}
 	}
 	rcu_read_unlock();
-
-	return wake;
 }
 
 static
-struct lc_element *__al_get(struct drbd_device *device,
-	unsigned int enr, bool nonblock)
+struct lc_element *__al_get(struct get_activity_log_ref_ctx *al_ctx)
 {
-	struct lc_element *al_ext;
+	struct drbd_device *device = al_ctx->device;
+	struct lc_element *al_ext = NULL;
 	struct bm_extent *bm_ext;
-	int wake;
 
 	spin_lock_irq(&device->al_lock);
-	bm_ext = find_active_resync_extent(device, enr);
+	bm_ext = find_active_resync_extent(al_ctx);
 	if (bm_ext) {
-		wake = set_bme_priority(device, NULL, enr);
-		spin_unlock_irq(&device->al_lock);
-		if (wake){
-			WDRBD_TRACE_AL("wake_up(&device->al_wait)\n");
-			wake_up(&device->al_wait);
-		}
-		return NULL;
+		set_bme_priority(al_ctx);
+		goto out;
 	}
-	if (nonblock)
-		al_ext = lc_try_get(device->act_log, enr);
+	if (al_ctx->nonblock)
+		al_ext = lc_try_get(device->act_log, al_ctx->enr);
 	else
-		al_ext = lc_get(device->act_log, enr);
-	if (al_ext != NULL)
-		WDRBD_TRACE_AL("al_ext->lc_number = %lu, al_ext->refcnt = %lu, enr = %lu\n", al_ext->lc_number, al_ext->refcnt, enr); 
+		al_ext = lc_get(device->act_log, al_ctx->enr);
+out: 
 	spin_unlock_irq(&device->al_lock);
+	if (al_ctx->wake_up)
+		wake_up(&device->al_wait);
 	return al_ext;
 }
 
 static
 struct lc_element *_al_get_nonblock(struct drbd_device *device, unsigned int enr)
 {
-	return __al_get(device, enr, true);
+	struct get_activity_log_ref_ctx al_ctx =
+	{ .device = device, .enr = enr, .nonblock = true };
+	return __al_get(&al_ctx);
+}
+
+static
+struct lc_element *_al_get(struct drbd_device *device, unsigned int enr)
+{
+	struct get_activity_log_ref_ctx al_ctx =
+	{ .device = device, .enr = enr, .nonblock = false };
+	return __al_get(&al_ctx);
 }
 
 bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i)
@@ -543,7 +556,7 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 		write_al_updates = rcu_dereference(device->ldev->disk_conf)->al_updates;
 		rcu_read_unlock();
 		if (write_al_updates) {
-			if (drbd_md_sync_page_io(device, device->ldev, sector, WRITE)) {
+			if (drbd_md_sync_page_io(device, device->ldev, sector, REQ_OP_WRITE)) {
 				err = -EIO;
 				drbd_chk_io_error(device, 1, DRBD_META_IO_ERROR);
 			} else {
@@ -594,16 +607,36 @@ static int al_write_transaction(struct drbd_device *device)
 
 static int bm_e_weight(struct drbd_peer_device *peer_device, unsigned long enr);
 
+bool drbd_al_try_lock(struct drbd_device *device)
+{
+	bool locked;
+
+	spin_lock_irq(&device->al_lock);
+	locked = lc_try_lock(device->act_log);
+	spin_unlock_irq(&device->al_lock);
+
+	return locked;
+}
+
+bool drbd_al_try_lock_for_transaction(struct drbd_device *device)
+{
+	bool locked;
+
+	spin_lock_irq(&device->al_lock);
+	locked = lc_try_lock_for_transaction(device->act_log);
+	spin_unlock_irq(&device->al_lock);
+
+	return locked;
+}
+
+
 void drbd_al_begin_io_commit(struct drbd_device *device)
 {
 	bool locked = false;
 
-	/* Serialize multiple transactions.
-	 * This uses test_and_set_bit, memory barrier is implicit.
-	 */
 	wait_event(device->al_wait,
-			device->act_log->pending_changes == 0 ||
-			(locked = lc_try_lock_for_transaction(device->act_log)));
+		device->act_log->pending_changes == 0 ||
+		(locked = drbd_al_try_lock_for_transaction(device)));
 
 	if (locked) {
 		/* Double check: it may have been committed by someone else
@@ -628,12 +661,6 @@ void drbd_al_begin_io_commit(struct drbd_device *device)
 		lc_unlock(device->act_log);
 		wake_up(&device->al_wait);
 	}
-}
-
-static
-struct lc_element *_al_get(struct drbd_device *device, unsigned int enr)
-{
-	return __al_get(device, enr, false);
 }
 
 bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int last)
@@ -679,8 +706,8 @@ int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_
 	unsigned enr;
 	bool need_transaction = false;
 
-	D_ASSERT(device, first <= last);
-	D_ASSERT(device, atomic_read(&device->local_cnt) > 0);
+	D_ASSERT(peer_device, first <= last);
+	D_ASSERT(peer_device, atomic_read(&device->local_cnt) > 0);
 
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
@@ -697,7 +724,7 @@ int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_
 	}
 
 	if (need_transaction)
-		drbd_al_begin_io_commit(peer_device->device);
+		drbd_al_begin_io_commit(device);
 	return 0;
 
 }
@@ -712,6 +739,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
 	unsigned nr_al_extents;
 	unsigned available_update_slots;
+	struct get_activity_log_ref_ctx al_ctx = { .device = device, };
 	unsigned enr;
 
 	D_ASSERT(device, first <= last);
@@ -753,9 +781,11 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 
 	/* Is resync active in this area? */
 	for (enr = first; enr <= last; enr++) {
-		bm_ext = find_active_resync_extent(device, enr);
+		al_ctx.enr = enr;
+		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
-			if (set_bme_priority(device, NULL, enr))
+			set_bme_priority(&al_ctx);
+			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;
 		}
@@ -1246,7 +1276,7 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 	unsigned long count = 0;
 	sector_t esector, nr_sectors;
 
-	/* This would be an empty REQ_FLUSH, be silent. */
+	/* This would be an empty REQ_OP_FLUSH, be silent. */
 	if ((mode == SET_OUT_OF_SYNC) && size == 0)
 		return 0;
 
