@@ -28,6 +28,7 @@
 #ifndef _WIN32
 #include <linux/drbd_limits.h>
 #include <linux/random.h>
+#include <linux/jiffies.h>
 #else
 #include "linux-compat/drbd_endian.h"
 #endif
