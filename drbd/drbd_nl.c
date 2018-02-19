@@ -1237,6 +1237,7 @@ retry:
 			struct drbd_connection *connection;
 			u64 im;
 
+			up(&resource->state_sem); /* Allow connect while fencing */
 			for_each_connection_ref(connection, im, resource) {
 				struct drbd_peer_device *peer_device;
 				int vnr;
@@ -1258,6 +1259,7 @@ retry:
 						with_force = true;
 				}
 			}
+			down(&resource->state_sem);
 			if (with_force)
 				continue;
 		}
@@ -1268,12 +1270,14 @@ retry:
 			struct drbd_connection *connection;
 			u64 im;
 
+			up(&resource->state_sem); /* Allow connect while fencing */
 			for_each_connection_ref(connection, im, resource) {
 				if (!conn_try_outdate_peer(connection) && force) {
 					drbd_warn(connection, "Forced into split brain situation!\n");
 					with_force = true;
 				}
 			}
+			down(&resource->state_sem);
 			if (with_force)
 				continue;
 		}
