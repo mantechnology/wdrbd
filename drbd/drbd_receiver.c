@@ -765,7 +765,7 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 	err = drbd_send_sync_param(peer_device);
 	if (!err)
 		err = drbd_send_sizes(peer_device, 0, 0);
-	if (!err && device->disk_state[NOW] > D_DISKLESS)
+	if (!err)
 		err = drbd_send_uuids(peer_device, 0, 0);
 	if (!err) {
 		set_bit(INITIAL_STATE_SENT, &peer_device->flags);
@@ -7166,7 +7166,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	struct drbd_device *device = NULL;
 	struct p_state *p = pi->data;
 	union drbd_state old_peer_state, peer_state;
-	enum drbd_disk_state peer_disk_state;
+	enum drbd_disk_state peer_disk_state, new_disk_state = D_MASK;
 	enum drbd_repl_state new_repl_state;
 	bool peer_was_resync_target, try_to_get_resync = false;
 	int rv;
@@ -7412,11 +7412,17 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			peer_device->negotiation_result = new_repl_state;
 		}
 	} else if (peer_state.role == R_PRIMARY &&
-		   peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
-		   device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
-		/* I got connected to a diskless primary. Try to get a resync from
-		   some other node that is D_UP_TO_DATE. */
-		try_to_get_resync = true;
+		peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
+		device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
+		/* I got connected to a diskless primary */
+		if (peer_device->current_uuid == drbd_current_uuid(device)) {
+			drbd_info(peer_device, "Upgrading local disk to D_UP_TO_DATE since current UUID matches.\n");
+			new_disk_state = D_UP_TO_DATE;
+		}
+		else {
+			/* Try to get a resync from some other node that is D_UP_TO_DATE. */
+			try_to_get_resync = true;
+		}
 	}
 
 	spin_lock_irq(&resource->req_lock);
@@ -7432,6 +7438,8 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		goto retry;
 	}
 	clear_bit(CONSIDER_RESYNC, &peer_device->flags);
+	if (new_disk_state != D_MASK)
+		__change_disk_state(device, new_disk_state);
 	if (device->disk_state[NOW] != D_NEGOTIATING)
 		__change_repl_state(peer_device, new_repl_state);
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
@@ -8136,7 +8144,8 @@ out:
 	return 0;
 }
 
-/* Accept a new current UUID generated on a diskless node, that just became primary */
+/* Accept a new current UUID generated on a diskless node, that just became primary
+(or during handshake) */
 static int receive_current_uuid(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -8156,6 +8165,10 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	// MODIFIED_BY_MANTECH DW-977: Newly created uuid hasn't been updated for peer device, do it as soon as peer sends its uuid which means it was adopted for peer's current uuid.
 	peer_device->current_uuid = current_uuid;
 #endif
+
+	if (connection->peer_role[NOW] == R_UNKNOWN)
+		return 0;
+
 	if (current_uuid == drbd_current_uuid(device))
 		return 0;
 #ifndef _WIN32
