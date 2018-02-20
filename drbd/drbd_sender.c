@@ -1817,15 +1817,15 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 #else
 			digest = kmalloc(digest_size, GFP_NOIO);
 #endif
-		}
-		if (digest) {
+			if (digest) {
 #ifdef _WIN32
-            drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
 #else
-			drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
 #endif
-			eq = !memcmp(digest, di->digest, digest_size);
-			kfree(digest);
+				eq = !memcmp(digest, di->digest, digest_size);
+				kfree(digest);
+			}
 		}
 
 		if (eq) {
