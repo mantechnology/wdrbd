@@ -2302,11 +2302,10 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32
-	pc = (struct p_compressed_bm *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
-#else
-	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
-#endif
+
+	pc = (struct p_compressed_bm *)
+		(alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size);
+
 	len = fill_bitmap_rle_bits(peer_device, pc,
 			DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*pc), c);
 	if (len < 0)
