@@ -3088,12 +3088,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 	int n_device, n_connection;
 	bool still_connected = false;
 	bool try_become_up_to_date = false;
-#ifdef _WIN32
 	bool resync_finished = false;
-#else
-	bool resync_finished;
-#endif
-
 
 	notify_state_change(state_change);
 
