@@ -61,13 +61,12 @@ struct buffer {
 
 struct drbd_tcp_transport {
 	struct drbd_transport transport; /* Must be first! */
-	struct mutex paths_mutex;
+	spinlock_t paths_lock;
 #ifdef _WIN32
 	ULONG_PTR flags;
 #else
 	unsigned long flags;
 #endif
-	
 	struct socket *stream[2];
 	struct buffer rbuf[2];
 };
@@ -163,6 +162,51 @@ static struct drbd_transport_ops dtt_ops = {
 WSK_CLIENT_CONNECTION_DISPATCH dispatchDisco = { NULL, WskDisconnectEvent, NULL };
 #endif
 
+/* Might restart iteration, if current element is removed from list!! */
+#define for_each_path_ref(path, transport)			\
+	for (path = __drbd_next_path_ref(NULL, transport);	\
+	     path;						\
+	     path = __drbd_next_path_ref(path, transport))
+
+/* This is save as long you use list_del_init() everytime something is removed
+from the list. */
+static struct drbd_path *__drbd_next_path_ref(struct drbd_path *drbd_path,
+struct drbd_transport *transport)
+{
+	struct drbd_tcp_transport *tcp_transport =
+		container_of(transport, struct drbd_tcp_transport, transport);
+
+	spin_lock(&tcp_transport->paths_lock);
+	if (!drbd_path) {
+		drbd_path = list_first_entry_or_null(&transport->paths, struct drbd_path, list);
+	}
+	else {
+		bool in_list = !list_empty(&drbd_path->list);
+		kref_put(&drbd_path->kref, drbd_destroy_path);
+		if (in_list) {
+			/* Element still on the list, ref count can not drop to zero! */
+			if (list_is_last(&drbd_path->list, &transport->paths))
+				drbd_path = NULL;
+			else{
+#ifdef _WIN32
+				drbd_path = list_next_entry(struct drbd_path, drbd_path, list);
+#else
+				drbd_path = list_next_entry(drbd_path, list);
+#endif
+			}
+		}
+		else {
+			/* No longer on the list, element might be freed already, restart from the start */
+			drbd_path = list_first_entry_or_null(&transport->paths, struct drbd_path, list);
+		}
+	}
+	if (drbd_path)
+		kref_get(&drbd_path->kref);
+	spin_unlock(&tcp_transport->paths_lock);
+
+	return drbd_path;
+}
+
 static void dtt_nodelay(struct socket *socket)
 {
 	int val = 1;
@@ -179,7 +223,7 @@ int dtt_init(struct drbd_transport *transport)
 		container_of(transport, struct drbd_tcp_transport, transport);
 	enum drbd_stream i;
 
-	mutex_init(&tcp_transport->paths_mutex);
+	spin_lock_init(&tcp_transport->paths_lock);
 	tcp_transport->transport.ops = &dtt_ops;
 	tcp_transport->transport.class = &tcp_transport_class;
 	for (i = DATA_STREAM; i <= CONTROL_STREAM ; i++) {
@@ -269,12 +313,7 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 		}
 	}
 
-	mutex_lock(&tcp_transport->paths_mutex);
-#ifdef _WIN32
-	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
-#else
-	list_for_each_entry(drbd_path, &transport->paths, list) {
-#endif
+	for_each_path_ref(drbd_path, transport) {
 		bool was_established = drbd_path->established;
 		drbd_path->established = false;
 		if (was_established)
@@ -292,16 +331,17 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 #endif	
 			tcp_transport->rbuf[i].base = NULL;
 		}
+		spin_lock(&tcp_transport->paths_lock);
 #ifdef _WIN32
 		list_for_each_entry_safe(struct drbd_path, drbd_path, tmp, &transport->paths, list) {
 #else
 		list_for_each_entry_safe(drbd_path, tmp, &transport->paths, list) {
 #endif
-			list_del(&drbd_path->list);
+			list_del_init(&drbd_path->list);
 			kref_put(&drbd_path->kref, drbd_destroy_path);
 		}
+		spin_unlock(&tcp_transport->paths_lock);
 	}
-	mutex_unlock(&tcp_transport->paths_mutex);
 }
 
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
@@ -959,7 +999,7 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 #endif
 	bool rv = false;
 
-	mutex_lock(&tcp_transport->paths_mutex);
+	spin_lock(&tcp_transport->paths_lock);
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
 #else
@@ -983,7 +1023,7 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 		if (rv)
 			break;
 	}
-	mutex_unlock(&tcp_transport->paths_mutex);
+	spin_unlock(&tcp_transport->paths_lock);
 
 	WDRBD_CONN_TRACE("rv = %d? path : NULL\n", rv); 
 
@@ -1662,17 +1702,14 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 
 	WDRBD_CONN_TRACE("dtt_put_listeners\n"); 
 
-	mutex_lock(&tcp_transport->paths_mutex);
+	spin_lock(&tcp_transport->paths_lock);
 	clear_bit(DTT_CONNECTING, &tcp_transport->flags);
+	spin_unlock(&tcp_transport->paths_lock);
 
-#ifdef _WIN32
-	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
-#else
-	list_for_each_entry(drbd_path, &transport->paths, list) {
-#endif
+	for_each_path_ref(drbd_path, transport) {
 		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 
-		drbd_put_listener(&path->path);
+		drbd_put_listener(drbd_path);
 #ifdef _WIN32
 		if (path->socket) {
 			sock_release(path->socket);
@@ -1682,7 +1719,6 @@ static void dtt_put_listeners(struct drbd_transport *transport)
 		dtt_cleanup_accepted_sockets(path);
 #endif
 	}
-	mutex_unlock(&tcp_transport->paths_mutex);
 }
 
 static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, struct dtt_path *path)
@@ -1690,7 +1726,7 @@ static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, 
 	struct drbd_transport *transport = &tcp_transport->transport;
 	struct drbd_path *drbd_path;
 
-	mutex_lock(&tcp_transport->paths_mutex);
+	spin_lock(&tcp_transport->paths_lock);
 	if (list_is_last(&path->path.list, &transport->paths))
 		drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	else
@@ -1699,7 +1735,7 @@ static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, 
 #else
 		drbd_path = list_next_entry(&path->path, list);
 #endif
-	mutex_unlock(&tcp_transport->paths_mutex);
+	spin_unlock(&tcp_transport->paths_lock);
 
 	return container_of(drbd_path, struct dtt_path, path);
 }
@@ -1728,25 +1764,38 @@ static int dtt_connect(struct drbd_transport *transport)
 	dsocket = NULL;
 	csocket = NULL;
 
-	mutex_lock(&tcp_transport->paths_mutex);
+	for_each_path_ref(drbd_path, transport) {
+		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
+#ifdef _WIN32
+		if (path->socket) {
+			sock_release(path->socket);
+			path->socket = NULL;
+		}
+#else
+		dtt_cleanup_accepted_sockets(path);
+#endif
+	}
+
+	spin_lock(&tcp_transport->paths_lock);
 	set_bit(DTT_CONNECTING, &tcp_transport->flags);
 
 	err = -EDESTADDRREQ;
-	if (list_empty(&transport->paths))
-		goto out_unlock;
+	if (list_empty(&transport->paths)) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto out;
+	}
 
 #ifdef _WIN32
 	list_for_each_entry(struct drbd_path, drbd_path, &transport->paths, list) {
 #else
 	list_for_each_entry(drbd_path, &transport->paths, list) {
 #endif
-		struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
-#ifndef _WIN32
-		dtt_cleanup_accepted_sockets(path);
-#endif
+		if (!drbd_path->listener) {
+			kref_get(&drbd_path->kref);
+			spin_unlock(&tcp_transport->paths_lock);
 
-#ifdef _WIN32
-		{
+#if 0// _WIN32
+		{		
 			if (path->path.my_addr.ss_family == AF_INET6) {
 				WDRBD_TRACE("dtt_connect: dtt_connect: path: %s -> %s.\n", get_ip6(sbuf, (struct sockaddr_in6*)&path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&path->path.peer_addr));
 			}
@@ -1755,10 +1804,17 @@ static int dtt_connect(struct drbd_transport *transport)
 			}
 		}
 #endif
-
-		err = drbd_get_listener(transport, &path->path, dtt_create_listener);
+		err = drbd_get_listener(transport, drbd_path, dtt_create_listener);
+		kref_put(&drbd_path->kref, drbd_destroy_path);
 		if (err)
-			goto out_unlock;	
+			goto out;
+		spin_lock(&tcp_transport->paths_lock);
+		drbd_path = list_first_entry_or_null(&transport->paths, struct drbd_path, list);
+		if (drbd_path)
+			continue;
+		else
+			break;
+		}
 	}
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
@@ -1773,7 +1829,6 @@ static int dtt_connect(struct drbd_transport *transport)
 	}
 #endif
 
-
 	connect_to_path = container_of(drbd_path, struct dtt_path, path);
 #ifdef _WIN32
 	{
@@ -1784,7 +1839,7 @@ static int dtt_connect(struct drbd_transport *transport)
 		}
 	}
 #endif
-	mutex_unlock(&tcp_transport->paths_mutex);
+	spin_unlock(&tcp_transport->paths_lock);
 
 	do {
 		struct socket *s = NULL;
@@ -2009,10 +2064,6 @@ randomize:
 out_eagain:
 	err = -EAGAIN;
 
-	if (0) {
-out_unlock:
-		mutex_unlock(&tcp_transport->paths_mutex);
-	}
 out:
 	dtt_put_listeners(transport);
 
@@ -2300,25 +2351,32 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
-	int err = 0;
+	bool active;
 
 	drbd_path->established = false;
 #ifndef _WIN32
 	INIT_LIST_HEAD(&path->sockets);
 #endif
-	mutex_lock(&tcp_transport->paths_mutex);
-	if (test_bit(DTT_CONNECTING, &tcp_transport->flags)) {
-		err = drbd_get_listener(transport, &path->path, dtt_create_listener);
+retry:
+	active = test_bit(DTT_CONNECTING, &tcp_transport->flags);
+	if (!active && drbd_path->listener)
+		drbd_put_listener(drbd_path);
+
+	if (active && !drbd_path->listener) {
+		int err = drbd_get_listener(transport, drbd_path, dtt_create_listener);
 		if (err)
-			goto out_unlock;
+			return err;
 	}
 
+	spin_lock(&tcp_transport->paths_lock);
+	if (active != test_bit(DTT_CONNECTING, &tcp_transport->flags)) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto retry;
+	}
 	list_add(&drbd_path->list, &transport->paths);
+	spin_unlock(&tcp_transport->paths_lock);
 
-out_unlock:
-	mutex_unlock(&tcp_transport->paths_mutex);
-
-	return err;
+	return 0;
 }
 
 static int dtt_remove_path(struct drbd_transport *transport, struct drbd_path *drbd_path)
@@ -2330,11 +2388,11 @@ static int dtt_remove_path(struct drbd_transport *transport, struct drbd_path *d
 	if (drbd_path->established)
 		return -EBUSY;
 
-	mutex_lock(&tcp_transport->paths_mutex);
+	spin_lock(&tcp_transport->paths_lock);
 	list_del_init(&drbd_path->list);
+	spin_unlock(&tcp_transport->paths_lock);
 	drbd_put_listener(&path->path);
-	mutex_unlock(&tcp_transport->paths_mutex);
-
+	
 	return 0;
 }
 
