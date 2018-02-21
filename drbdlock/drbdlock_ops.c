@@ -248,6 +248,56 @@ Return Value:
 		ObDereferenceObject(g_pCallbackObj);
 }
 
+
+NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	OBJECT_ATTRIBUTES cboa = { 0, };
+	UNICODE_STRING usCbName;
+	PCALLBACK_OBJECT pCallbackObj;
+
+	if (pszCallbackName == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	RtlInitUnicodeString(&usCbName, pszCallbackName);
+	InitializeObjectAttributes(&cboa, &usCbName, OBJ_CASE_INSENSITIVE, 0, 0);
+
+	status = ExCreateCallback(&pCallbackObj, &cboa, FALSE, TRUE);
+
+	if (NT_SUCCESS(status))
+	{
+		ExNotifyCallback(pCallbackObj, pParam, NULL);
+		ObDereferenceObject(pCallbackObj);
+	}
+	else
+		drbdlock_print_log("Failed to open callback object for %ws, status : 0x%x\n", pszCallbackName, status);
+
+	return status;
+}
+
+NTSTATUS ResizeDrbdVolume(PDEVICE_OBJECT pDeviceObject)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+
+	DRBD_VOLUME_CONTROL volume = { 0, };
+
+	volume.pVolumeObject = pDeviceObject;
+	
+	
+	status = NotifyCallbackObject(DRBD_CALLBACK_NAME, &volume);
+
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
+
+	return status;
+}
+
+
 NTSTATUS
 DefaultIrpDispatch(
 	IN PDEVICE_OBJECT pDeviceObject,
