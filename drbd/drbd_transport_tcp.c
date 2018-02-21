@@ -992,11 +992,8 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_listener *listener;
 	struct drbd_path *drbd_path;
-#ifdef _WIN32
-	struct dtt_path *path = 0;
-#else
-	struct dtt_path *path;
-#endif
+	struct dtt_path *path = NULL;
+
 	bool rv = false;
 
 	spin_lock(&tcp_transport->paths_lock);
