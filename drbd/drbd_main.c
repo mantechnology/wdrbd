@@ -3143,19 +3143,21 @@ out:
 	return rv;
 }
 
-static int open_rw_count(struct drbd_resource *resource)
+static void open_counts(struct drbd_resource *resource, int *rw_count_ptr, int *ro_count_ptr)
 {
 	struct drbd_device *device;
-	int vnr, count = 0;
+	int vnr, rw_count = 0, ro_count = 0;
 
 #ifdef _WIN32
-    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr){
 #else
-	idr_for_each_entry(&resource->devices, device, vnr)
+	idr_for_each_entry(&resource->devices, device, vnr){
 #endif
-		count += device->open_rw_cnt;
-
-	return count;
+		rw_count += device->open_rw_cnt;
+		ro_count += device->open_ro_cnt;
+	}
+	*rw_count_ptr = rw_count;
+	*ro_count_ptr = ro_count;
 }
 
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
@@ -3163,7 +3165,7 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 	struct drbd_device *device = gd->private_data;
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
-	int open_rw_cnt;
+	int open_rw_cnt, open_ro_cnt;
 
 	spin_lock_irqsave(&resource->req_lock, flags);
 	if (mode & FMODE_WRITE)
@@ -3171,8 +3173,11 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 	else
 		device->open_ro_cnt--;
 
-	open_rw_cnt = open_rw_count(resource);
+	open_counts(resource, &open_rw_cnt, &open_ro_cnt);
 	spin_unlock_irqrestore(&resource->req_lock, flags);
+
+	if (open_ro_cnt == 0)
+		wake_up(&resource->state_wait);
 
 	if (resource->res_opts.auto_promote) {
 		enum drbd_state_rv rv;
