@@ -6088,7 +6088,7 @@ change_connection_state(struct drbd_connection *connection,
 
 	mask = convert_state(mask);
 	val = convert_state(val);
-
+retry:
 	begin_state_change(resource, &irq_flags, flags);
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -6113,6 +6113,28 @@ change_connection_state(struct drbd_connection *connection,
 
 	rv = end_state_change(resource, &irq_flags);
 out:
+
+	if (rv == SS_NO_UP_TO_DATE_DISK && resource->role[NOW] != R_PRIMARY) {
+#ifdef _WIN32
+		long t = 0;
+#else
+		long t;
+#endif
+		/* Most probably udev opened it read-only. That might happen
+		if it was demoted very recently. Wait up to one second. */
+#ifdef _WIN32
+		wait_event_interruptible_timeout(t, resource->state_wait,
+			drbd_open_ro_count(resource) == 0,
+			HZ);
+#else
+		t = wait_event_interruptible_timeout(resource->state_wait,
+			drbd_open_ro_count(resource) == 0,
+			HZ);
+#endif
+		if (t > 0)
+			goto retry;
+	}
+
 	return rv;
 fail:
 	abort_state_change(resource, &irq_flags);

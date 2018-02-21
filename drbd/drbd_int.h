@@ -2764,6 +2764,7 @@ extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 extern void notify_path(struct drbd_connection *, struct drbd_path *,
 			enum drbd_notification_type);
 
+extern int drbd_open_ro_count(struct drbd_resource *resource);
 /*
  * inline helper functions
  *************************/
