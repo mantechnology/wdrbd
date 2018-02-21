@@ -56,6 +56,7 @@ bool is_suspended_fen(struct drbd_resource *resource, enum which_state which)
 	struct drbd_connection *connection;
 	bool rv = false;
 
+#ifdef LINBIT_PATCH //DW-1538: Disable for a while to avoid recursively locking
 	rcu_read_lock();
 	for_each_connection_rcu(connection, resource) {
 		if (connection->susp_fen[which]) {
@@ -64,7 +65,14 @@ bool is_suspended_fen(struct drbd_resource *resource, enum which_state which)
 		}
 	}
 	rcu_read_unlock();
-
+#else
+	for_each_connection(connection, resource) {
+		if (connection->susp_fen[which]) {
+			rv = true;
+			break;
+		}
+	}
+#endif
 	return rv;
 }
 
