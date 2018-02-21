@@ -130,6 +130,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
 	DoTraceMessage(TRCINFO, "WDRBD V9(1:1) MVF Driver loaded.");
 #endif
+
+	drbdStartupCallback();
     // Init DRBD engine
     drbd_init();
 
@@ -146,6 +148,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WPP_CLEANUP(DriverObject);
 #endif
 	wdrbd_logger_cleanup();
+	drbdCleanupCallback();
 	SocketsDeinit ();
 }
 

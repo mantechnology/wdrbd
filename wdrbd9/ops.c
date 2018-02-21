@@ -25,6 +25,9 @@
 
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
+PCALLBACK_OBJECT g_pCallbackObj;
+PVOID g_pCallbackReg;
+
 NTSTATUS
 IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 {
@@ -425,3 +428,132 @@ IOCTL_SetHandlerUse(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	return STATUS_SUCCESS;
 }
+
+
+VOID
+drbdCallbackFunc(
+	IN PVOID Context, 
+	IN PVOID Argument1,	
+	IN PVOID Argument2)
+/*++
+
+Routine Description:
+
+	This routine is called whenever drbdlock driver notifies drbdlock's callback object.
+
+Arguments:
+
+	Context - not used.
+	Argument1 - Pointer to the DRBD_VOLUME_CONTROL data structure containing volume information to be resized.
+	Argument2 - not used.
+
+Return Value:
+
+	None.
+
+--*/	
+{
+	UNREFERENCED_PARAMETER(Context);
+	UNREFERENCED_PARAMETER(Argument2);
+
+	PDRBD_VOLUME_CONTROL pVolume = (PDRBD_VOLUME_CONTROL)Argument1;
+
+	if (pVolume == NULL)
+	{
+		// invalid parameter.
+		WDRBD_ERROR("pVolume is NULL\n");
+		return;
+	}
+
+	PDEVICE_OBJECT pDeviceObject = pVolume->pVolumeObject;
+
+	PVOLUME_EXTENSION VolumeExtension = mvolSearchVolExtention(pDeviceObject);
+	
+	if (VolumeExtension == NULL)
+	{
+		WDRBD_ERROR("cannot find volume, PDO=0x%p\n", pDeviceObject);
+		return;
+	}
+	
+	if (VolumeExtension->Active) {	
+		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
+
+		if (device)
+		{
+			sector_t vol_new_size = get_targetdev_volsize(VolumeExtension) >> 9;			
+
+			WDRBD_INFO("volume [%ws] is extended.\n", VolumeExtension->PhysicalDeviceName);
+			drbd_set_my_capacity(device, vol_new_size);
+
+			//drbd_bm_resize(device, vol_new_size, 0);
+
+			kref_put(&device->kref, drbd_destroy_device);
+		}
+	}
+}
+
+NTSTATUS 
+drbdStartupCallback(
+)
+/*++
+
+Routine Description:
+
+	Initializes callback object to be notified.
+
+Arguments:
+
+	None.
+
+Return Value:
+
+	NtStatus values.
+
+--*/
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	OBJECT_ATTRIBUTES oa = { 0, };
+	UNICODE_STRING usCallbackName;
+
+	RtlInitUnicodeString(&usCallbackName, DRBD_CALLBACK_NAME);
+	InitializeObjectAttributes(&oa, &usCallbackName, OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, 0, 0);
+
+	status = ExCreateCallback(&g_pCallbackObj, &oa, TRUE, TRUE);
+	if (!NT_SUCCESS(status))
+	{
+		WDRBD_INFO("ExCreateCallback failed, status : 0x%x\n", status);
+		return status;
+	}
+
+	g_pCallbackReg = ExRegisterCallback(g_pCallbackObj, drbdCallbackFunc, NULL);
+
+	return status;
+}
+
+VOID
+drbdCleanupCallback(
+	)
+/*++
+
+Routine Description:
+
+	Cleans up callback object.
+
+Arguments:
+
+	None.
+
+Return Value:
+
+	None.
+
+--*/
+{
+	if (g_pCallbackReg)
+		ExUnregisterCallback(g_pCallbackReg);
+
+	if (g_pCallbackObj)
+		ObDereferenceObject(g_pCallbackObj);
+}
+
+
