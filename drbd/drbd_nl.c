@@ -5756,8 +5756,6 @@ int drbd_adm_dump_devices_done(struct netlink_callback *cb) {
 	return put_resource_in_arg0(cb, 7);
 }
 
-static void device_to_info(struct device_info *, struct drbd_device *);
-
 int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct nlattr *resource_filter;
@@ -6556,10 +6554,11 @@ out:
 	return 0;
 }
 
-static void device_to_info(struct device_info *info,
+void device_to_info(struct device_info *info,
 			   struct drbd_device *device)
 {
 	info->dev_disk_state = device->disk_state[NOW];
+	info->is_intentional_diskless = device->device_conf.intentional_diskless;
 }
 
 int drbd_adm_new_minor(struct sk_buff *skb, struct genl_info *info)
