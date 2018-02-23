@@ -2908,7 +2908,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 	return bdev;
 }
 
-static bool want_bitmap(struct drbd_peer_device *peer_device)
+bool want_bitmap(struct drbd_peer_device *peer_device)
 {
 	struct peer_device_conf *pdc;
 #ifndef _WIN32 
@@ -4120,6 +4120,7 @@ static void peer_device_to_info(struct peer_device_info *info,
 	info->peer_resync_susp_user = peer_device->resync_susp_user[NOW];
 	info->peer_resync_susp_peer = peer_device->resync_susp_peer[NOW];
 	info->peer_resync_susp_dependency = peer_device->resync_susp_dependency[NOW];
+	info->peer_is_intentional_diskless = !want_bitmap(peer_device);
 }
 
 static bool is_resync_target_in_other_connection(struct drbd_peer_device *peer_device)
