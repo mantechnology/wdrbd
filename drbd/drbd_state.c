@@ -1947,10 +1947,6 @@ static void sanitize_state(struct drbd_resource *resource)
 #endif
 				peer_disk_state[NEW] = min_peer_disk_state;
 
-			if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED &&
-				disk_state[NEW] == D_CONSISTENT && may_be_up_to_date(device))
-				disk_state[NEW] = D_UP_TO_DATE;
-
 			/* Suspend IO while fence-peer handler runs (peer lost) */
 			if (connection->fencing_policy == FP_STONITH &&
 			    (role[NEW] == R_PRIMARY &&
@@ -2031,7 +2027,11 @@ static void sanitize_state(struct drbd_resource *resource)
 #else
 				disk_state[NEW] = peer_disk_state[NEW];
 #endif
-			
+			/* clause intentional here, the D_CONSISTENT form above might trigger this */
+			if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED &&
+				disk_state[NEW] == D_CONSISTENT && may_be_up_to_date(device))
+				disk_state[NEW] = D_UP_TO_DATE;
+
 			peer_device->uuid_flags &= ~UUID_FLAG_GOT_STABLE;
 		}
 		if (disk_state[OLD] == D_UP_TO_DATE)
