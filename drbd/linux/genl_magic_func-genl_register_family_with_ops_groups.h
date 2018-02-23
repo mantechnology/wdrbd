@@ -27,11 +27,16 @@ static int CONCAT_(GENL_MAGIC_FAMILY, _genl_multicast_ ## group)(	\
 #undef GENL_mc_group
 #define GENL_mc_group(group)
 
+
 int CONCAT_(GENL_MAGIC_FAMILY, _genl_register)(void)
 {
-	return genl_register_family_with_ops_groups(&ZZZ_genl_family,	\
-						    ZZZ_genl_ops,	\
-						    ZZZ_genl_mcgrps);
+#if defined(COMPAT_HAVE_GENL_REGISTER_FAMILY_WITH_OPS) || defined(COMPAT_HAVE_GENL_REGISTER_FAMILY_WITH_OPS3)
+	return genl_register_family_with_ops_groups(&ZZZ_genl_family, \
+		ZZZ_genl_ops, \
+		ZZZ_genl_mcgrps);
+#else
+	return genl_register_family(&ZZZ_genl_family);
+#endif
 }
 
 void CONCAT_(GENL_MAGIC_FAMILY, _genl_unregister)(void)
