@@ -84,13 +84,8 @@ static bool may_be_up_to_date(struct drbd_device *device) __must_hold(local)
 		if (node_id == device->ldev->md.node_id)
 			continue;
 
-#ifdef _WIN32 // DW-1538: It caused an irql error. Therefore changed.
 		if (peer_md->bitmap_index == -1 && !(peer_md->flags & MDF_NODE_EXISTS))
 			continue; 
-#else
-		if (peer_md[node_id].bitmap_index == -1 && !(peer_md[node_id].flags & MDF_NODE_EXISTS))
-			continue;
-#endif
 
 		if (!(peer_md->flags & MDF_PEER_FENCING))
 			continue;
