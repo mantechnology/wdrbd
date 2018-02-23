@@ -1510,7 +1510,7 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 	// not support
         return false;
 #else
-		bdi = &device->ldev->backing_bdev->bd_disk->queue->backing_dev_info;
+		bdi = bdi_from_device(device);
 		return bdi_read_congested(bdi);
 #endif
 	case RB_LEAST_PENDING:

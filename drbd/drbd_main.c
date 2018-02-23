@@ -3765,7 +3765,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
         r = 0;  
 #else
 		q = bdev_get_queue(device->ldev->backing_bdev);
-		r = bdi_congested(&q->backing_dev_info, bdi_bits);
+		r = bdi_congested(q->backing_dev_info, bdi_bits);
 #endif
 		put_ldev(device);
 	}
@@ -4543,6 +4543,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
+	init_bdev_info(q->backing_dev_info, drbd_congested, device);
 #endif
 #ifdef _WIN32
 	kref_get(&pvext->dev->kref);
