@@ -46,7 +46,7 @@ struct after_state_change_work {
 	struct completion *done;
 };
 
-static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns);
+static bool lost_contact_to_peer_data(enum drbd_disk_state *peer_disk_state);
 static bool peer_returns_diskless(struct drbd_peer_device *peer_device,
 enum drbd_disk_state os, enum drbd_disk_state ns);
 static void print_state_change(struct drbd_resource *resource, const char *prefix);
@@ -2502,9 +2502,9 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
-			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW]) || (peer_disk_state[NEW] == D_INCONSISTENT)) {
+			if (lost_contact_to_peer_data(peer_disk_state) || (peer_disk_state[NEW] == D_INCONSISTENT)) {
 #else
-			if (lost_contact_to_peer_data(peer_disk_state[OLD], peer_disk_state[NEW])) {
+			if (lost_contact_to_peer_data(peer_disk_state)) {
 #endif
 				if (role[NEW] == R_PRIMARY && !test_bit(UNREGISTERED, &device->flags) &&
 #ifdef _WIN32
@@ -3108,8 +3108,11 @@ static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_
 #endif
 
 /* takes old and new peer disk state */
-static bool lost_contact_to_peer_data(enum drbd_disk_state os, enum drbd_disk_state ns)
+static bool lost_contact_to_peer_data(enum drbd_disk_state *peer_disk_state)
 {
+	enum drbd_disk_state os = peer_disk_state[OLD];
+	enum drbd_disk_state ns = peer_disk_state[NEW];
+
 	return (os >= D_INCONSISTENT && os != D_UNKNOWN && os != D_OUTDATED)
 		&& (ns < D_INCONSISTENT || ns == D_UNKNOWN || ns == D_OUTDATED);
 }
