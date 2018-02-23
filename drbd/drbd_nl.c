@@ -864,6 +864,29 @@ static bool initial_states_pending(struct drbd_connection *connection)
 	return pending;
 }
 
+static bool intentional_diskless(struct drbd_resource *resource)
+{
+	bool intentional_diskless = true;
+	struct drbd_device *device;
+	int vnr;
+
+	rcu_read_lock();
+
+#ifdef _WIN32
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+#else
+	idr_for_each_entry(&resource->devices, device, vnr) {
+#endif
+		if (!device->device_conf.intentional_diskless) {
+			intentional_diskless = false;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return intentional_diskless;
+}
+
 bool conn_try_outdate_peer(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -873,6 +896,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	unsigned long last_reconnect_jif;
 #endif
 	enum drbd_fencing_policy fencing_policy;
+	enum drbd_disk_state disk_state;
 	char *ex_to_string;
 	int r;
 	unsigned long irq_flags;
@@ -886,7 +910,9 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 
 	last_reconnect_jif = connection->last_reconnect_jif;
 
-	if (conn_highest_disk(connection) < D_CONSISTENT) {
+	disk_state = conn_highest_disk(connection);
+	if (disk_state < D_CONSISTENT &&
+		!(disk_state == D_DISKLESS && intentional_diskless(resource))) {
 		begin_state_change_locked(resource, CS_VERBOSE | CS_HARD);
 		__change_io_susp_fencing(connection, false);
 		/* We are no longer suspended due to the fencing policy.
