@@ -1739,6 +1739,7 @@ struct drbd_device {
 	/* any requests that would block in drbd_make_request()
 	 * are deferred to this single-threaded work queue */
 	struct submit_worker submit;
+	bool susp_quorum[2];		/* IO suspended quorum lost */
 };
 
 struct drbd_bm_aio_ctx {

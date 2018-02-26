@@ -5549,6 +5549,8 @@ int drbd_adm_resume_io(struct sk_buff *skb, struct genl_info *info)
 	__change_io_susp_no_data(resource, false);
 	for_each_connection(connection, resource)
 		__change_io_susp_fencing(connection, false);
+	__change_io_susp_quorum(device, false);
+	/* TODO: Throw away queued IO requests... */
 	retcode = end_state_change(resource, &irq_flags);
 	if (retcode == SS_SUCCESS) {
 		struct drbd_peer_device *peer_device;
@@ -6485,6 +6487,7 @@ static void resource_to_info(struct resource_info *info,
 	info->res_susp = resource->susp[NOW];
 	info->res_susp_nod = resource->susp_nod[NOW];
 	info->res_susp_fen = is_suspended_fen(resource, NOW);
+	info->res_susp_quorum = is_suspended_quorum(resource, NOW);
 }
 
 int drbd_adm_new_resource(struct sk_buff *skb, struct genl_info *info)
