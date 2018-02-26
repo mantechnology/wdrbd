@@ -5236,6 +5236,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		cur_size = drbd_get_capacity(device->this_bdev);
 		if (new_size < cur_size &&
 		    device->disk_state[NOW] >= D_OUTDATED &&
+#ifdef _WIN32 // DW-1469 : allowed if discard_my_data option.
+		    !test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
+#endif
 		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
 		    drbd_err(peer_device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
 					(unsigned long long)new_size, (unsigned long long)cur_size);

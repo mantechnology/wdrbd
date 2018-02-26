@@ -3252,7 +3252,7 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 	return status;
 }
 
-
+// DW-1469
 int drbd_resize(struct drbd_device *device, sector_t new_size)
 {
 	struct disk_conf *old_disk_conf, *new_disk_conf = NULL;

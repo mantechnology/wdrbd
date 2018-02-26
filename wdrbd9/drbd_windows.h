@@ -1658,7 +1658,7 @@ LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 
-
+// DW-1469
 int drbd_resize(struct drbd_device *device, sector_t new_size);
 
 #endif // DRBD_WINDOWS_H
