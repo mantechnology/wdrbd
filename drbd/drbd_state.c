@@ -52,6 +52,23 @@ struct quorum_info {
 	int quorum_at;
 };
 
+struct change_context {
+	struct drbd_resource *resource;
+	int vnr;
+	union drbd_state mask;
+	union drbd_state val;
+	int target_node_id;
+	enum chg_state_flags flags;
+	bool change_local_state_last;
+};
+
+enum change_phase {
+	PH_LOCAL_COMMIT,
+	PH_PREPARE,
+	PH_84_COMMIT,
+	PH_COMMIT,
+};
+
 static bool lost_contact_to_peer_data(enum drbd_disk_state *peer_disk_state);
 static bool got_contact_to_peer_data(enum drbd_disk_state *peer_disk_state);
 static bool peer_returns_diskless(struct drbd_peer_device *peer_device,
@@ -4402,23 +4419,6 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
 		conn_send_twopc_request(connection, vnr, twopc_cmd, request);
 	}
 }
-
-struct change_context {
-	struct drbd_resource *resource;
-	int vnr;
-	union drbd_state mask;
-	union drbd_state val;
-	int target_node_id;
-	enum chg_state_flags flags;
-	bool change_local_state_last;
-};
-
-enum change_phase {
-    PH_LOCAL_COMMIT,
-    PH_PREPARE,
-    PH_84_COMMIT,
-    PH_COMMIT,
-};
 
 
 /**
