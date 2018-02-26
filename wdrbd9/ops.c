@@ -480,12 +480,20 @@ Return Value:
 
 		if (device)
 		{
-			sector_t vol_new_size = get_targetdev_volsize(VolumeExtension) >> 9;			
+			int err = 0;
+			sector_t new_size = get_targetdev_volsize(VolumeExtension) >> 9;			
 
-			WDRBD_INFO("volume [%ws] is extended.\n", VolumeExtension->PhysicalDeviceName);
-			drbd_set_my_capacity(device, vol_new_size);
+			WDRBD_INFO("volume [%ws] is extended.(device->bResizingLock %d)\n", VolumeExtension->PhysicalDeviceName, device->bResizingLock);
 
-			//drbd_bm_resize(device, vol_new_size, 0);
+			// reset size
+			drbd_set_my_capacity(device, 0);
+			
+			err = drbd_resize(device, new_size);
+
+			if (err)
+			{
+				WDRBD_ERROR("drbd resize failed. (err=%d)\n", err);
+			}
 
 			kref_put(&device->kref, drbd_destroy_device);
 		}

@@ -3251,3 +3251,99 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 
 	return status;
 }
+
+
+int drbd_resize(struct drbd_device *device, sector_t new_size)
+{
+	struct disk_conf *old_disk_conf, *new_disk_conf = NULL;
+	struct resize_parms rs;
+	enum drbd_ret_code retcode = 0;
+	enum determine_dev_size dd;
+	bool change_al_layout = false;
+	enum dds_flags ddsf;
+	sector_t u_size;
+	int err;
+	struct drbd_peer_device *peer_device;
+	bool resolve_by_node_id = true;
+	bool has_up_to_date_primary;
+
+	
+	if (!get_ldev(device)) {
+		retcode = ERR_NO_DISK;
+		goto fail;
+	}
+
+	memset(&rs, 0, sizeof(struct resize_parms));
+	rs.al_stripes = device->ldev->md.al_stripes;
+	rs.al_stripe_size = device->ldev->md.al_stripe_size_4k * 4;	
+	rs.no_resync = 1;	// Do not run a resync for the new space
+	rs.resize_force = 1;
+	rs.resize_size = new_size;
+
+	rcu_read_lock();
+	u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
+	rcu_read_unlock();
+	if (u_size != (sector_t)rs.resize_size) {
+        new_disk_conf = kmalloc(sizeof(struct disk_conf), GFP_KERNEL, 'C1DW');
+		if (!new_disk_conf) {
+			retcode = ERR_NOMEM;
+			goto fail_ldev;
+		}
+	}
+
+	if (device->ldev->md.al_stripes != rs.al_stripes ||
+	    device->ldev->md.al_stripe_size_4k != rs.al_stripe_size / 4) {
+		u32 al_size_k = rs.al_stripes * rs.al_stripe_size;
+
+		if (al_size_k > (16 * 1024 * 1024)) {
+			retcode = ERR_MD_LAYOUT_TOO_BIG;
+			goto fail_ldev;
+		}
+
+		if (al_size_k < (32768 >> 10)) {
+			retcode = ERR_MD_LAYOUT_TOO_SMALL;
+			goto fail_ldev;
+		}
+
+		change_al_layout = true;
+	}
+
+	device->ldev->known_size = drbd_get_capacity(device->ldev->backing_bdev);
+
+	if (new_disk_conf) {
+		mutex_lock(&device->resource->conf_update);
+		old_disk_conf = device->ldev->disk_conf;
+		*new_disk_conf = *old_disk_conf;
+		new_disk_conf->disk_size = (sector_t)rs.resize_size;
+		synchronize_rcu_w32_wlock();
+		rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
+		mutex_unlock(&device->resource->conf_update);
+		synchronize_rcu();
+		kfree(old_disk_conf);
+		new_disk_conf = NULL;
+	}
+
+	ddsf = (rs.resize_force ? DDSF_FORCED : 0) | (rs.no_resync ? DDSF_NO_RESYNC : 0);
+	dd = drbd_determine_dev_size(device, ddsf, change_al_layout ? &rs : NULL);
+	drbd_md_sync_if_dirty(device);
+	put_ldev(device);
+	if (dd == DS_ERROR) {
+		retcode = ERR_NOMEM_BITMAP;
+		goto fail;
+	} else if (dd == DS_ERROR_SPACE_MD) {
+		retcode = ERR_MD_LAYOUT_NO_FIT;
+		goto fail;
+	} else if (dd == DS_ERROR_SHRINK) {
+		retcode = ERR_IMPLICIT_SHRINK;
+		goto fail;
+	}
+
+ fail:
+	return retcode;
+
+ fail_ldev:
+	put_ldev(device);
+	kfree(new_disk_conf);
+	goto fail;
+}
+
