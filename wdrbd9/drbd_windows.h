@@ -1661,4 +1661,5 @@ LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 
+extern char *kvasprintf(int flags, const char *fmt, va_list args);
 #endif // DRBD_WINDOWS_H

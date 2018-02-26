@@ -4687,20 +4687,24 @@ int drbd_open_ro_count(struct drbd_resource *resource)
 	return open_ro_cnt;
 }
 
-static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection, bool force)
+
+static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection, bool force,
+					      struct sk_buff *reply_skb)
 {
 	struct drbd_resource *resource = connection->resource;
 	enum drbd_conn_state cstate;
 	enum drbd_state_rv rv;
 	enum chg_state_flags flags = force ? CS_HARD : 0;
 #ifdef _WIN32
+	char *err_str = NULL;
 	long t = 0;
 #else
+	const char *err_str = NULL;
 	long t;
 #endif 
 
     repeat:
-	rv = change_cstate(connection, C_DISCONNECTING, flags);
+	rv = change_cstate_es(connection, C_DISCONNECTING, flags, &err_str);
 	switch (rv) {
 	case SS_CW_FAILED_BY_PEER:
 		spin_lock_irq(&resource->req_lock);
@@ -4756,6 +4760,11 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 						 connection->cstate[NOW] == C_STANDALONE,
 						 HZ);
 #endif
+	if (err_str) {
+		drbd_msg_put_info(reply_skb, err_str);
+		kfree(err_str);
+	}
+
 	return rv;
 }
 
@@ -4852,7 +4861,7 @@ int adm_disconnect(struct sk_buff *skb, struct genl_info *info, bool destroy)
 
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-	rv = conn_try_disconnect(connection, parms.force_disconnect);
+	rv = conn_try_disconnect(connection, parms.force_disconnect, adm_ctx.reply_skb);
 	if (rv >= SS_SUCCESS && destroy) {
 		mutex_lock(&connection->resource->conf_update);
 		del_connection(connection);
@@ -6938,13 +6947,12 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #endif
 
 	for_each_connection_ref(connection, im, resource) {
-		retcode = conn_try_disconnect(connection, 0);
+		retcode = conn_try_disconnect(connection, 0, adm_ctx.reply_skb);
 		if (retcode >= SS_SUCCESS) {
 			mutex_lock(&resource->conf_update);
 			del_connection(connection);
 			mutex_unlock(&resource->conf_update);
 		} else {
-			drbd_msg_put_info(adm_ctx.reply_skb, "failed to disconnect");
 			kref_debug_put(&connection->kref_debug, 13);
 			kref_put(&connection->kref, drbd_destroy_connection);
 			goto out;

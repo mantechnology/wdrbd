@@ -3254,3 +3254,21 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 
 	return status;
 }
+
+char *kvasprintf(int flags, const char *fmt, va_list args)
+{
+	char *buffer;
+	const int size = 4096;
+	NTSTATUS status;
+
+	buffer = kzalloc(size, flags, 'AVDW');
+	if (buffer) {
+		status = RtlStringCchVPrintfA(buffer, size, fmt, args);
+		if (status == STATUS_SUCCESS)
+			return buffer;
+
+		kfree(buffer);
+	}
+
+	return NULL;
+}

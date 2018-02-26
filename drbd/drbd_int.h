@@ -1241,6 +1241,7 @@ struct drbd_resource {
 	struct semaphore state_sem;
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
+	const char **state_change_err_str;
 	bool remote_state_change;  /* remote state change in progress */
 	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
 	struct list_head twopc_parents;  /* prepared on behalf of peer */
