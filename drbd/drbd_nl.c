@@ -4692,6 +4692,7 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 	struct drbd_resource *resource = connection->resource;
 	enum drbd_conn_state cstate;
 	enum drbd_state_rv rv;
+	enum chg_state_flags flags = force ? CS_HARD : 0;
 #ifdef _WIN32
 	long t = 0;
 #else
@@ -4699,7 +4700,7 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 #endif 
 
     repeat:
-	rv = change_cstate(connection, C_DISCONNECTING, force ? CS_HARD : 0);
+	rv = change_cstate(connection, C_DISCONNECTING, flags);
 	switch (rv) {
 	case SS_CW_FAILED_BY_PEER:
 		spin_lock_irq(&resource->req_lock);
@@ -4731,6 +4732,13 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 	case SS_IS_DISKLESS:
 	case SS_LOWER_THAN_OUTDATED:
 		rv = change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		break;
+	case SS_NO_QUORUM:
+		if (!(flags & CS_VERBOSE)) {
+			flags |= CS_VERBOSE;
+			goto repeat;
+		}
+		break;
 	default:;
 		/* no special handling necessary */
 	}
