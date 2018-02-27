@@ -584,7 +584,9 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-	drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
+	// DW-1538 : Connection seems to have already been freed.
+	if (&peer_device->connection->transport)
+		drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
