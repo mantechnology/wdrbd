@@ -2403,7 +2403,7 @@ drbd_determine_dev_size(struct drbd_device *, enum dds_flags, struct resize_parm
 extern void resync_after_online_grow(struct drbd_peer_device *);
 extern void drbd_reconsider_queue_parameters(struct drbd_device *device,
 			struct drbd_backing_dev *bdev, struct o_qlim *o);
-extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool);
+extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool, struct sk_buff *);
 #ifdef _WIN32
 extern enum drbd_state_rv drbd_set_secondary_from_shutdown(struct drbd_resource *);
 #endif

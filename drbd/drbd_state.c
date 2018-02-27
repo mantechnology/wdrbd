@@ -1387,6 +1387,27 @@ static bool calc_quorum(struct drbd_device *device, enum which_state which, stru
 }
 
 #ifdef _WIN32
+static void _drbd_state_err(struct change_context *context, const char *fmt, ...)
+#else
+static __printf(2, 3) void _drbd_state_err(struct change_context *context, const char *fmt, ...)
+#endif
+{
+	struct drbd_resource *resource = context->resource;
+	const char *err_str;
+	va_list args;
+
+	va_start(args, fmt);
+	err_str = kvasprintf(GFP_ATOMIC, fmt, args);
+	va_end(args);
+	if (!err_str)
+		return;
+	if (context->err_str)
+		*context->err_str = err_str;
+	if (context->flags & CS_VERBOSE)
+		drbd_err(resource, "%s\n", err_str);
+}
+
+#ifdef _WIN32
 static void drbd_state_err(struct drbd_resource *resource, const char *fmt, ...)
 #else
 static __printf(2, 3) void drbd_state_err(struct drbd_resource *resource, const char *fmt, ...)
@@ -4272,9 +4293,10 @@ bool cluster_wide_reply_ready(struct drbd_resource *resource)
 	return ready;
 }
 
-static enum drbd_state_rv get_cluster_wide_reply(struct drbd_resource *resource)
+static enum drbd_state_rv get_cluster_wide_reply(struct drbd_resource *resource,
+struct change_context *context)
 {
-	struct drbd_connection *connection;
+	struct drbd_connection *connection, *failed_by = NULL;
 	enum drbd_state_rv rv = SS_CW_SUCCESS;
 
 	if (test_bit(TWOPC_ABORT_LOCAL, &resource->flags))
@@ -4284,13 +4306,19 @@ static enum drbd_state_rv get_cluster_wide_reply(struct drbd_resource *resource)
 	for_each_connection_rcu(connection, resource) {
 		if (!test_bit(TWOPC_PREPARED, &connection->flags))
 			continue;
-		if (test_bit(TWOPC_NO, &connection->flags))
+		if (test_bit(TWOPC_NO, &connection->flags)) {
+			failed_by = connection;
 			rv = SS_CW_FAILED_BY_PEER;
+		}
 		if (test_bit(TWOPC_RETRY, &connection->flags)) {
 			rv = SS_CONCURRENT_ST_CHG;
 			break;
 		}
 	}
+	if (rv == SS_CW_FAILED_BY_PEER && context)
+		_drbd_state_err(context, "Declined by peer %s (id: %d), see the kernel log there",
+		rcu_dereference((failed_by)->transport.net_conf)->name,
+		failed_by->peer_node_id);
 	rcu_read_unlock();
 	return rv;
 }
@@ -4681,7 +4709,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 				       twopc_timeout(resource)))
 #endif
 		{
-			rv = get_cluster_wide_reply(resource);
+			rv = get_cluster_wide_reply(resource, context);
 #ifdef _WIN32_TWOPC
 			drbd_info(resource, "[TWOPC:%u] target_node_id(%d) get_cluster_wide_reply (%d) \n", 
 						reply->tid,
@@ -4994,7 +5022,7 @@ int nested_twopc_work(struct drbd_work *work, int cancel)
 	enum drbd_state_rv rv;
 	enum drbd_packet cmd;
 
-	rv = get_cluster_wide_reply(resource);
+	rv = get_cluster_wide_reply(resource, NULL);
 	if (rv >= SS_SUCCESS)
 		cmd = P_TWOPC_YES;
 	else if (rv == SS_CONCURRENT_ST_CHG)
@@ -5146,7 +5174,8 @@ enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
 enum drbd_state_rv change_role(struct drbd_resource *resource,
 			       enum drbd_role role,
 			       enum chg_state_flags flags,
-			       bool force)
+			       bool force,
+			       const char **err_str)
 {
 	struct change_role_context role_context = {
 		.context = {
@@ -5160,6 +5189,7 @@ enum drbd_state_rv change_role(struct drbd_resource *resource,
 			// MODIFIED_BY_MANTECH DW-1233: send TWOPC packets to other nodes before updating the local state
 			.change_local_state_last = true,
 #endif
+			.err_str = err_str,
 		},
 		.force = force,
 	};
