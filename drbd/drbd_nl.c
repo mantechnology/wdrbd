@@ -3199,7 +3199,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 #endif
 
 	rv = stable_state_change(resource,
-		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE));
+		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE, NULL));
 	retcode = rv;  /* FIXME: Type mismatch. */
 	if (rv >= SS_SUCCESS)
 		update_resource_dagtag(resource, nbc);
@@ -3521,7 +3521,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
 	   necessary, and falls back to a local state change */
 	rv = stable_state_change(resource,
-		change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE));
+		change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE, NULL));
 
 	if (rv < SS_SUCCESS)
 		goto force_diskless_dec;
@@ -3544,7 +3544,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
  force_diskless_dec:
 	put_ldev(device);
  force_diskless:
-	change_disk_state(device, D_DISKLESS, CS_HARD);
+	change_disk_state(device, D_DISKLESS, CS_HARD, NULL);
  fail:
 	mutex_unlock_cond(&resource->conf_update, &have_conf_update);
 	drbd_backing_dev_free(device, nbc);
@@ -3564,19 +3564,21 @@ static enum drbd_disk_state get_disk_state(struct drbd_device *device)
 	return disk_state;
 }
 
-static int adm_detach(struct drbd_device *device, int force)
+static int adm_detach(struct drbd_device *device, int force, struct sk_buff *reply_skb)
 {
 	enum drbd_state_rv retcode;
 #ifdef _WIN32
 	long timeo = 3*HZ;
+	char *err_str = NULL;
 	int ret = 0;
 #else
+	const char *err_str = NULL;
 	int ret;
 #endif
 
 	if (force) {
 		set_bit(FORCE_DETACH, &device->flags);
-		change_disk_state(device, D_DETACHING, CS_HARD);
+		change_disk_state(device, D_DETACHING, CS_HARD, NULL);
 		retcode = SS_SUCCESS;
 		goto out;
 	}
@@ -3584,7 +3586,7 @@ static int adm_detach(struct drbd_device *device, int force)
 	drbd_suspend_io(device, READ_AND_WRITE); /* so no-one is stuck in drbd_al_begin_io */
 	retcode = stable_state_change(device->resource,
 		change_disk_state(device, D_DETACHING,
-			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, &err_str));
 	/* D_DETACHING will transition to DISKLESS. */
 	drbd_resume_io(device);
 #ifdef _WIN32 // DW-1046 detour adm_detach hang
@@ -3603,6 +3605,10 @@ static int adm_detach(struct drbd_device *device, int force)
 	if (ret)
 		retcode = ERR_INTR;
 out:
+	if (err_str) {
+		drbd_msg_put_info(reply_skb, err_str);
+		kfree(err_str);
+	}
 	return retcode;
 }
 
@@ -3647,7 +3653,7 @@ int drbd_adm_detach(struct sk_buff *skb, struct genl_info *info)
 
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-	retcode = adm_detach(adm_ctx.device, parms.force_detach);
+	retcode = adm_detach(adm_ctx.device, parms.force_detach, adm_ctx.reply_skb);
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 out:
 	drbd_adm_finish(&adm_ctx, info, retcode);
@@ -5613,7 +5619,7 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 
 	retcode = stable_state_change(adm_ctx.device->resource,
 		change_disk_state(adm_ctx.device, D_OUTDATED,
-			      CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
+				CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, NULL));
 
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
 	drbd_adm_finish(&adm_ctx, info, retcode);
@@ -6981,7 +6987,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #endif
 		kref_get(&device->kref);
 		rcu_read_unlock();
-		retcode = adm_detach(device, 0);
+		retcode = adm_detach(device, 0, adm_ctx.reply_skb);
 		mutex_lock(&resource->conf_update);
 		ret = adm_del_minor(device);
 		mutex_unlock(&resource->conf_update);

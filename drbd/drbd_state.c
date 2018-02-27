@@ -3429,6 +3429,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		struct drbd_device_state_change *device_state_change = &state_change->devices[n_device];
 		struct drbd_device *device = device_state_change->device;
 		enum drbd_disk_state *disk_state = device_state_change->disk_state;
+		bool *susp_quorum = device_state_change->susp_quorum;
 		bool effective_disk_size_determined = false;
 #ifdef _WIN32
 		bool one_peer_disk_up_to_date[2] = { 0 };
@@ -4055,6 +4056,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			try_become_up_to_date = true;
 
 		drbd_md_sync_if_dirty(device);
+
+		if (!susp_quorum[OLD] && susp_quorum[NEW])
+			drbd_khelper(device, NULL, "quorum-lost");
 	}
 
 	if (role[OLD] == R_PRIMARY && role[NEW] == R_SECONDARY)
@@ -5442,7 +5446,8 @@ static bool do_change_disk_state(struct change_context *context, enum change_pha
 
 enum drbd_state_rv change_disk_state(struct drbd_device *device,
 				     enum drbd_disk_state disk_state,
-				     enum chg_state_flags flags)
+					 enum chg_state_flags flags,
+					 const char **err_str)
 {
 	struct change_disk_state_context disk_state_context = {
 		.context = {
@@ -5453,6 +5458,7 @@ enum drbd_state_rv change_disk_state(struct drbd_device *device,
 			.target_node_id = -1,
 			.flags = flags,
 			.change_local_state_last = true,
+			.err_str = err_str,
 		},
 		.device = device,
 	};

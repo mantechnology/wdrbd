@@ -6326,7 +6326,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 					get_ldev_if_state(device, D_NEGOTIATING))
 				{
 					set_bit(FORCE_DETACH, &device->flags);
-					change_disk_state(device, D_DETACHING, CS_HARD);
+					change_disk_state(device, D_DETACHING, CS_HARD, NULL);
 					put_ldev(device);
 				}
 			}
