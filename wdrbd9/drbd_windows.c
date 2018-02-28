@@ -2292,10 +2292,12 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	}
 
 	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
+	// DW-1469
+	unsigned long long d_size = get_targetdev_volsize(pvext);
+	
 	if (pvext->dev->bd_contains &&
-		pvext->dev->bd_contains->d_size == 0)
-	{
-		unsigned long long d_size = get_targetdev_volsize(pvext);
+		pvext->dev->bd_contains->d_size != d_size)
+	{	
 		pvext->dev->bd_contains->d_size = d_size;
 		pvext->dev->bd_disk->queue->max_hw_sectors =
 			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
@@ -3253,7 +3255,7 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 }
 
 // DW-1469
-int drbd_resize(struct drbd_device *device, sector_t new_size)
+int drbd_resize(struct drbd_device *device)
 {
 	struct disk_conf *old_disk_conf, *new_disk_conf = NULL;
 	struct resize_parms rs;
@@ -3262,15 +3264,20 @@ int drbd_resize(struct drbd_device *device, sector_t new_size)
 	bool change_al_layout = false;
 	enum dds_flags ddsf;
 	sector_t u_size;
-	int err;
 	struct drbd_peer_device *peer_device;
-	bool resolve_by_node_id = true;
-	bool has_up_to_date_primary;
 
 	
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
 		goto fail;
+	}
+	
+	for_each_peer_device(peer_device, device) {
+		if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
+			drbd_err(device, "drbd_resize failed.\n");
+			put_ldev(device);
+			goto fail;
+		}
 	}
 
 	memset(&rs, 0, sizeof(struct resize_parms));
@@ -3278,7 +3285,6 @@ int drbd_resize(struct drbd_device *device, sector_t new_size)
 	rs.al_stripe_size = device->ldev->md.al_stripe_size_4k * 4;	
 	rs.no_resync = 1;	// Do not run a resync for the new space
 	rs.resize_force = 1;
-	rs.resize_size = new_size;
 
 	rcu_read_lock();
 	u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;

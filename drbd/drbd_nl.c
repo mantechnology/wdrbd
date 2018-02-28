@@ -4858,6 +4858,15 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 
+#ifdef _WIN32
+	// DW-1469 disable drbd_adm_resize
+	struct drbd_resource *resource = adm_ctx.device->resource;
+	drbd_msg_put_info(adm_ctx.reply_skb, "cmd(drbd_adm_resize) error: not support.\n");
+	drbd_adm_finish(&adm_ctx, info, ERR_INVALID_REQUEST);
+	return 0;
+#endif
+	
+
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	device = adm_ctx.device;
 	if (!get_ldev(device)) {

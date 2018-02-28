@@ -474,6 +474,15 @@ Return Value:
 		WDRBD_ERROR("cannot find volume, PDO=0x%p\n", pDeviceObject);
 		return;
 	}
+
+	WDRBD_INFO("volume [%ws] is extended.\n", VolumeExtension->PhysicalDeviceName);
+
+	sector_t new_size = get_targetdev_volsize(VolumeExtension);
+	
+	if (VolumeExtension->dev->bd_contains)
+	{
+		VolumeExtension->dev->bd_contains->d_size = new_size;
+	}	
 	
 	if (VolumeExtension->Active) {	
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
@@ -481,14 +490,11 @@ Return Value:
 		if (device)
 		{
 			int err = 0;
-			sector_t new_size = get_targetdev_volsize(VolumeExtension) >> 9;			
-
-			WDRBD_INFO("volume [%ws] is extended.(device->bResizingLock %d)\n", VolumeExtension->PhysicalDeviceName, device->bResizingLock);
-
-			// reset size
-			drbd_set_my_capacity(device, 0);
 			
-			err = drbd_resize(device, new_size);
+
+			drbd_set_my_capacity(device, new_size >> 9);
+			
+			err = drbd_resize(device);
 
 			if (err)
 			{
