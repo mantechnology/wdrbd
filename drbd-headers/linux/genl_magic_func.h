@@ -287,18 +287,7 @@ static struct genl_ops ZZZ_genl_ops[] __read_mostly = {
  *									{{{2
  */
 #define ZZZ_genl_family		CONCAT_(GENL_MAGIC_FAMILY, _genl_family)
-static struct genl_family ZZZ_genl_family __read_mostly = {
-	.id = GENL_ID_GENERATE,
-	.name = __stringify(GENL_MAGIC_FAMILY),
-	.version = GENL_MAGIC_VERSION,
-#ifdef GENL_MAGIC_FAMILY_HDRSZ
-	.hdrsize = NLA_ALIGN(GENL_MAGIC_FAMILY_HDRSZ),
-#endif
-	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy)-1,
-#ifdef _PARALLEL_OPS	
-	.parallel_ops = true,
-#endif	
-};
+static struct genl_family ZZZ_genl_family;
 
 /*
  * Magic: define multicast groups
@@ -312,11 +301,37 @@ static struct genl_family ZZZ_genl_family __read_mostly = {
  * genetlink: only pass array to genl_register_family_with_ops()
  * which are commits c53ed742..2a94fe48
  */
-#ifdef genl_register_family_with_ops_groups
+#if defined(genl_register_family_with_ops_groups) || \
+    defined(COMPAT_HAVE_GENL_FAMILY_IN_GENLMSG_MULTICAST)
 #include <linux/genl_magic_func-genl_register_family_with_ops_groups.h>
 #else
 #include <linux/genl_magic_func-genl_register_mc_group.h>
 #endif
+
+static struct genl_family ZZZ_genl_family __read_mostly = {
+#ifdef HAVE_GENL_ID_GENERATE
+	.id = GENL_ID_GENERATE,
+#endif
+	.name = __stringify(GENL_MAGIC_FAMILY),
+	.version = GENL_MAGIC_VERSION,
+#ifdef GENL_MAGIC_FAMILY_HDRSZ
+	.hdrsize = NLA_ALIGN(GENL_MAGIC_FAMILY_HDRSZ),
+#endif
+	.maxattr = ARRAY_SIZE(drbd_tla_nl_policy) - 1,
+
+#if (!_WIN32) && !defined(COMPAT_HAVE_GENL_REGISTER_FAMILY_WITH_OPS) && !defined(COMPAT_HAVE_GENL_REGISTER_FAMILY_WITH_OPS3)
+	/* removed in 489111e5c25b93, relevant for v4.10,  now set directly */
+	.ops = ZZZ_genl_ops,
+	.n_ops = ARRAY_SIZE(ZZZ_genl_ops),
+	.mcgrps = ZZZ_genl_mcgrps,
+	.n_mcgrps = ARRAY_SIZE(ZZZ_genl_mcgrps),
+	.module = THIS_MODULE,
+#endif
+
+#ifdef COMPAT_HAVE_GENL_FAMILY_PARALLEL_OPS
+	.parallel_ops = true,
+#endif
+};
 
 /*
  * Magic: provide conversion functions					{{{1

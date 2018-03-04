@@ -184,7 +184,7 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 		    connection->cstate[NOW] != C_CONNECTED ||
 		    !(req->rq_state[1 + node_id] & RQ_NET_SENT))
 			continue;
-		atomic_inc(&req->kref.refcount); /* was 0, instead of kref_get() */
+		refcount_inc(&req->kref.refcount); /* was 0, instead of kref_get() */
 		req->rq_state[1 + node_id] |= RQ_PEER_ACK;
 		if (!queued) {
 			list_add_tail(&req->tl_requests, &resource->peer_ack_list);
@@ -479,7 +479,7 @@ void drbd_req_destroy(struct kref *kref)
 	 */
 	if (destroy_next) {
 		req = destroy_next;
-		if (atomic_dec_and_test(&req->kref.refcount))
+		if (refcount_dec_and_test(&req->kref.refcount))
 			goto tail_recursion;
 	}
 	
@@ -1050,7 +1050,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		/* Completion does it's own kref_put.  If we are going to
 		 * kref_sub below, we need req to be still around then. */
 		int at_least = k_put + !!c_put;
-		int refcount = atomic_read(&req->kref.refcount);
+		int refcount = refcount_read(&req->kref.refcount);
 		
 		if (refcount < at_least)
 #ifdef _WIN32
@@ -1510,7 +1510,7 @@ static bool remote_due_to_read_balancing(struct drbd_device *device,
 	// not support
         return false;
 #else
-		bdi = &device->ldev->backing_bdev->bd_disk->queue->backing_dev_info;
+		bdi = bdi_from_device(device);
 		return bdi_read_congested(bdi);
 #endif
 	case RB_LEAST_PENDING:

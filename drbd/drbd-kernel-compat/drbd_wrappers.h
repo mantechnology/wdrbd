@@ -984,6 +984,42 @@ enum {
 #define REQ_NOIDLE 0
 #endif
 
+#ifndef COMPAT_HAVE_REFCOUNT_INC
+#define refcount_inc(R) atomic_inc(R)
+#define refcount_read(R) atomic_read(R)
+#define refcount_dec_and_test(R) atomic_dec_and_test(R)
+#endif
+
+#ifndef KREF_INIT
+#define KREF_INIT(N) { ATOMIC_INIT(N) }
+#endif
+
+#define _adjust_ra_pages(qrap, brap) do { \
+	if (qrap != brap) { \
+		drbd_info(device, "Adjusting my ra_pages to backing device's (%lu -> %lu)\n", qrap, brap); \
+		qrap = brap; \
+		} \
+} while(0)
+
+#ifdef COMPAT_HAVE_POINTER_BACKING_DEV_INFO
+#define bdi_from_device(device) (device->ldev->backing_bdev->bd_disk->queue->backing_dev_info)
+#define init_bdev_info(bdev_info, drbd_congested, device) do { \
+	(bdev_info)->congested_fn = drbd_congested; \
+	(bdev_info)->congested_data = device; \
+} while(0)
+#define adjust_ra_pages(q, b) _adjust_ra_pages((q)->backing_dev_info->ra_pages, (b)->backing_dev_info->ra_pages)
+#else
+#define bdi_rw_congested(BDI) bdi_rw_congested(&BDI)
+#define bdi_congested(BDI, BDI_BITS) bdi_congested(&BDI, (BDI_BITS))
+#define bdi_from_device(device) (&device->ldev->backing_bdev->bd_disk->queue->backing_dev_info)
+#define init_bdev_info(bdev_info, drbd_congested, device) do { \
+	(bdev_info).congested_fn = drbd_congested; \
+	(bdev_info).congested_data = device; \
+} while(0)
+#define adjust_ra_pages(q, b) _adjust_ra_pages((q)->backing_dev_info.ra_pages, (b)->backing_dev_info.ra_pages)
+#endif
+
+
 #ifndef bio_set_op_attrs /* compat for Linux before 4.8 {{{2 */
 
 #define bi_opf	bi_rw
@@ -1838,6 +1874,18 @@ static inline int atomic_dec_if_positive(atomic_t *v)
                 c = old;
         }
         return dec;
+}
+#endif
+
+#ifndef COMPAT_HAVE_IDR_IS_EMPTY
+static int idr_has_entry(int id, void *p, void *data)
+{
+	return 1;
+}
+
+static inline bool idr_is_empty(struct idr *idr)
+{
+	return !idr_for_each(idr, idr_has_entry, NULL);
 }
 #endif
 

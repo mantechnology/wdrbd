@@ -541,12 +541,13 @@ enum drbd_stream;
 #include "drbd_interval.h"
 
 extern int drbd_wait_misc(struct drbd_device *, struct drbd_peer_device *, struct drbd_interval *);
-extern bool idr_is_empty(struct idr *idr);
 
 extern void lock_all_resources(void);
 extern void unlock_all_resources(void);
 
 extern enum drbd_disk_state disk_state_from_md(struct drbd_device *);
+extern bool want_bitmap(struct drbd_peer_device *peer_device);
+extern void device_to_info(struct device_info *, struct drbd_device *);
 extern long twopc_timeout(struct drbd_resource *);
 extern long twopc_retry_timeout(struct drbd_resource *, int);
 extern void twopc_connection_down(struct drbd_connection *);
@@ -1239,6 +1240,7 @@ struct drbd_resource {
 	struct semaphore state_sem;
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
+	const char **state_change_err_str;
 	bool remote_state_change;  /* remote state change in progress */
 	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
 	struct list_head twopc_parents;  /* prepared on behalf of peer */
@@ -1254,7 +1256,6 @@ struct drbd_resource {
 	enum drbd_role role[2];
 	bool susp[2];			/* IO suspended by user */
 	bool susp_nod[2];		/* IO suspended because no data */
-	bool susp_fen[2];		/* IO suspended because fence peer handler runs */
 
 	enum write_ordering_e write_ordering;
 	atomic_t current_tle_nr;	/* transfer log epoch number */
@@ -1307,6 +1308,7 @@ struct drbd_connection {
 	struct idr peer_devices;	/* volume number to peer device mapping */
 	enum drbd_conn_state cstate[2];
 	enum drbd_role peer_role[2];
+	bool susp_fen[2];		/* IO suspended because fence peer handler runs */
 #ifdef _WIN32
 	ULONG_PTR flags;
 #else
@@ -1737,6 +1739,7 @@ struct drbd_device {
 	/* any requests that would block in drbd_make_request()
 	 * are deferred to this single-threaded work queue */
 	struct submit_worker submit;
+	bool susp_quorum[2];		/* IO suspended quorum lost */
 };
 
 struct drbd_bm_aio_ctx {
@@ -1949,7 +1952,7 @@ extern void drbd_send_twopc_reply(struct drbd_connection *connection,
 				  enum drbd_packet, struct twopc_reply *);
 extern void drbd_send_peers_in_sync(struct drbd_peer_device *, u64, sector_t, int);
 extern int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd_connection *lost_peer);
-extern void drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes);
+extern int drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes);
 extern void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *ldev);
 extern void drbd_cleanup_device(struct drbd_device *device);
 extern void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text);
@@ -2399,7 +2402,7 @@ drbd_determine_dev_size(struct drbd_device *, enum dds_flags, struct resize_parm
 extern void resync_after_online_grow(struct drbd_peer_device *);
 extern void drbd_reconsider_queue_parameters(struct drbd_device *device,
 			struct drbd_backing_dev *bdev, struct o_qlim *o);
-extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool);
+extern enum drbd_state_rv drbd_set_role(struct drbd_resource *, enum drbd_role, bool, struct sk_buff *);
 #ifdef _WIN32
 extern enum drbd_state_rv drbd_set_secondary_from_shutdown(struct drbd_resource *);
 #endif
@@ -2764,6 +2767,7 @@ extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 extern void notify_path(struct drbd_connection *, struct drbd_path *,
 			enum drbd_notification_type);
 
+extern int drbd_open_ro_count(struct drbd_resource *resource);
 /*
  * inline helper functions
  *************************/
@@ -3345,14 +3349,10 @@ static inline void dec_ap_bio(struct drbd_device *device, int rw)
 		wake_up(&device->misc_wait);
 }
 
-static inline bool resource_is_suspended(struct drbd_resource *resource)
-{
-	return resource->susp[NOW] || resource->susp_fen[NOW] || resource->susp_nod[NOW];
-}
 
 static inline bool drbd_suspended(struct drbd_device *device)
 {
-	return resource_is_suspended(device->resource);
+	return resource_is_suspended(device->resource, NOW);
 }
 
 static inline bool may_inc_ap_bio(struct drbd_device *device)

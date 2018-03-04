@@ -992,10 +992,11 @@ void drbd_thread_current_set_cpu(struct drbd_thread *thi)
 #define drbd_calc_cpu_mask(A) ({})
 #endif
 
-static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *authoritative)
+static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *authoritative_ptr)
 {
 	struct drbd_connection *connection;
 	bool all_secondary = true;
+	u64 authoritative = 0;
 	int id;
 
 	rcu_read_lock();
@@ -1003,15 +1004,14 @@ static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *aut
 		if (connection->cstate[NOW] >= C_CONNECTED &&
 		    connection->peer_role[NOW] == R_PRIMARY) {
 			all_secondary = false;
-			if (authoritative) {
-				id = connection->peer_node_id;
-				*authoritative |= NODE_MASK(id);
-			} else {
-				break;
-			}
+			id = connection->peer_node_id;
+			authoritative |= NODE_MASK(id);
 		}
 	}
 	rcu_read_unlock();
+
+	if (authoritative_ptr)
+		*authoritative_ptr = authoritative;
 
 	return all_secondary;
 }
@@ -1020,17 +1020,18 @@ static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *aut
    A primary is stable since it is authoritative.
    Unstable are neighbors of a primary and resync target nodes.
    Nodes further away from a primary are stable! */
-bool drbd_device_stable(struct drbd_device *device, u64 *authoritative)
+bool drbd_device_stable(struct drbd_device *device, u64 *authoritative_ptr)
 {
 	struct drbd_resource *resource = device->resource;
 	struct drbd_connection *connection;
 	struct drbd_peer_device *peer_device;
+	u64 authoritative = 0;
 	bool device_stable = true;
 
 	if (resource->role[NOW] == R_PRIMARY)
 		return true;
 
-	if (!drbd_all_neighbor_secondary(resource, authoritative))
+	if (!drbd_all_neighbor_secondary(resource, authoritative_ptr))
 		return false;
 
 	rcu_read_lock();
@@ -1041,8 +1042,7 @@ bool drbd_device_stable(struct drbd_device *device, u64 *authoritative)
 		case L_SYNC_TARGET:
 		case L_PAUSED_SYNC_T:
 			device_stable = false;
-			if (authoritative)
-				*authoritative |= NODE_MASK(peer_device->node_id);
+			authoritative |= NODE_MASK(peer_device->node_id);
 			goto out;
 		default:
 			continue;
@@ -1051,6 +1051,8 @@ bool drbd_device_stable(struct drbd_device *device, u64 *authoritative)
 
 out:
 	rcu_read_unlock();
+	if (authoritative_ptr)
+		*authoritative_ptr = authoritative;
 	return device_stable;
 }
 
@@ -1252,7 +1254,7 @@ have_page:
 	sbuf->pos = page_address(sbuf->page);
 }
 
-static void *alloc_send_buffer(struct drbd_connection *connection, int size,
+static char *alloc_send_buffer(struct drbd_connection *connection, int size,
 			      enum drbd_stream drbd_stream)
 {
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[drbd_stream];
@@ -1739,7 +1741,8 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	int p_size = sizeof(*p);
 
 	if (!get_ldev_if_state(device, D_NEGOTIATING))
-		return 0;
+		return drbd_send_current_uuid(peer_device, device->exposed_data_uuid,
+		drbd_weak_nodes_device(device));
 
 	peer_md = device->ldev->md.peers;
 
@@ -1838,16 +1841,17 @@ void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text)
 	}
 }
 
-void drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes)
+int drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes)
 {
 	struct p_current_uuid *p;
 
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
-	if (p) {
-		p->uuid = cpu_to_be64(current_uuid);
-		p->weak_nodes = cpu_to_be64(weak_nodes);
-		drbd_send_command(peer_device, P_CURRENT_UUID, DATA_STREAM);
-	}
+	if (!p)
+		return -EIO;
+
+	p->uuid = cpu_to_be64(current_uuid);
+	p->weak_nodes = cpu_to_be64(weak_nodes);
+	return drbd_send_command(peer_device, P_CURRENT_UUID, DATA_STREAM);
 }
 
 void drbd_gen_and_send_sync_uuid(struct drbd_peer_device *peer_device)
@@ -1929,7 +1933,7 @@ void assign_p_sizes_qlim(struct drbd_device *device, struct p_sizes *p, struct r
 		p->qlim->io_opt = cpu_to_be32(queue_io_opt(q));
 		p->qlim->discard_enabled = blk_queue_discard(q);
 		p->qlim->discard_zeroes_data = queue_discard_zeroes_data(q);
-#ifdef REQ_WRITE_SAME
+#ifdef COMPAT_WRITE_SAME_CAPABLE
 		p->qlim->write_same_capable = !!q->limits.max_write_same_sectors;
 #else
 		p->qlim->write_same_capable = 0;
@@ -2302,11 +2306,10 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	struct p_compressed_bm *pc;
 	int len, err;
-#ifdef _WIN32
-	pc = (struct p_compressed_bm *)alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
-#else
-	pc = alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size;
-#endif
+
+	pc = (struct p_compressed_bm *)
+		(alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size);
+
 	len = fill_bitmap_rle_bits(peer_device, pc,
 			DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*pc), c);
 	if (len < 0)
@@ -2588,7 +2591,7 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, struct page *page,
 {
 	struct drbd_connection *connection = peer_device->connection;
 	struct drbd_send_buffer *sbuf = &connection->send_buffer[DATA_STREAM];
-	void *from_base;
+	char *from_base;
 	void *buffer2;
 	int err;
 
@@ -2637,7 +2640,7 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 					 bio_iter_last(bvec, iter) ? 0 : MSG_MORE);
 		if (err)
 			return err;
-		/* REQ_WRITE_SAME has only one segment */
+		/* WRITE_SAME has only one segment */
 		if (bio_op(bio) == REQ_OP_WRITE_SAME)
 			break;
 
@@ -3006,7 +3009,7 @@ static int try_to_promote(struct drbd_device *device)
 	long timeout = resource->res_opts.auto_promote_timeout * HZ / 10;
 	int rv, retry = timeout / (HZ / 5); /* One try every 200ms */
 	do {
-		rv = drbd_set_role(resource, R_PRIMARY, false);
+		rv = drbd_set_role(resource, R_PRIMARY, false, NULL);
 		if (rv >= SS_SUCCESS || timeout == 0) {
 			resource->bPreSecondaryLock = FALSE;
 			return rv;
@@ -3140,19 +3143,21 @@ out:
 	return rv;
 }
 
-static int open_rw_count(struct drbd_resource *resource)
+static void open_counts(struct drbd_resource *resource, int *rw_count_ptr, int *ro_count_ptr)
 {
 	struct drbd_device *device;
-	int vnr, count = 0;
+	int vnr, rw_count = 0, ro_count = 0;
 
 #ifdef _WIN32
-    idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr){
 #else
-	idr_for_each_entry(&resource->devices, device, vnr)
+	idr_for_each_entry(&resource->devices, device, vnr){
 #endif
-		count += device->open_rw_cnt;
-
-	return count;
+		rw_count += device->open_rw_cnt;
+		ro_count += device->open_ro_cnt;
+	}
+	*rw_count_ptr = rw_count;
+	*ro_count_ptr = ro_count;
 }
 
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
@@ -3160,7 +3165,7 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 	struct drbd_device *device = gd->private_data;
 	struct drbd_resource *resource = device->resource;
 	unsigned long flags;
-	int open_rw_cnt;
+	int open_rw_cnt, open_ro_cnt;
 
 	spin_lock_irqsave(&resource->req_lock, flags);
 	if (mode & FMODE_WRITE)
@@ -3168,8 +3173,15 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 	else
 		device->open_ro_cnt--;
 
-	open_rw_cnt = open_rw_count(resource);
+	open_counts(resource, &open_rw_cnt, &open_ro_cnt);
 	spin_unlock_irqrestore(&resource->req_lock, flags);
+
+	if (open_ro_cnt == 0)
+#ifdef _WIN32
+		wake_up(&resource->state_wait);
+#else
+		wake_up_all(&resource->state_wait);
+#endif
 
 	if (resource->res_opts.auto_promote) {
 		enum drbd_state_rv rv;
@@ -3177,7 +3189,7 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 		if (open_rw_cnt == 0 &&
 		    resource->role[NOW] == R_PRIMARY &&
 		    !test_bit(EXPLICIT_PRIMARY, &resource->flags)) {
-			rv = drbd_set_role(resource, R_SECONDARY, false);
+			rv = drbd_set_role(resource, R_SECONDARY, false, NULL);
 			if (rv < SS_SUCCESS)
 				drbd_warn(resource, "Auto-demote failed: %s\n",
 					  drbd_set_st_err_str(rv));
@@ -3753,7 +3765,7 @@ static int drbd_congested(void *congested_data, int bdi_bits)
         r = 0;  
 #else
 		q = bdev_get_queue(device->ldev->backing_bdev);
-		r = bdi_congested(&q->backing_dev_info, bdi_bits);
+		r = bdi_congested(q->backing_dev_info, bdi_bits);
 #endif
 		put_ldev(device);
 	}
@@ -4225,8 +4237,8 @@ void drbd_transport_shutdown(struct drbd_connection *connection, enum drbd_tr_fr
 
 	struct drbd_tcp_transport {
 		struct drbd_transport transport; /* Must be first! */
-		struct mutex paths_mutex;
-		unsigned long flags;
+		spinlock_t paths_lock;
+		ULONG_PTR flags;
 		struct socket *stream[2];
 		struct buffer rbuf[2];
 	};
@@ -4531,6 +4543,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
 	/* we have no partitions. we contain only ourselves. */
 	device->this_bdev->bd_contains = device->this_bdev;
+	init_bdev_info(q->backing_dev_info, drbd_congested, device);
 #endif
 #ifdef _WIN32
 	kref_get(&pvext->dev->kref);
@@ -5449,7 +5462,7 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 				if (pdc && !pdc->bitmap)
 					continue;
 			}
-			do_it = pdsk <= D_FAILED || pdsk == D_UNKNOWN || pdsk == D_OUTDATED ||
+			do_it = (pdsk <= D_UNKNOWN && pdsk != D_NEGOTIATING) ||
 				(NODE_MASK(node_id) & weak_nodes);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
@@ -6313,7 +6326,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 					get_ldev_if_state(device, D_NEGOTIATING))
 				{
 					set_bit(FORCE_DETACH, &device->flags);
-					change_disk_state(device, D_DETACHING, CS_HARD);
+					change_disk_state(device, D_DETACHING, CS_HARD, NULL);
 					put_ldev(device);
 				}
 			}
@@ -6650,16 +6663,6 @@ int drbd_wait_misc(struct drbd_device *device, struct drbd_peer_device *peer_dev
 	return 0;
 }
 
-static int idr_has_entry(int id, void *p, void *data)
-{
-	return 1;
-}
-
-bool idr_is_empty(struct idr *idr)
-{
-	return !idr_for_each(idr, idr_has_entry, NULL);
-}
-
 #ifndef __maybe_unused
 #define __maybe_unused                  __attribute__((unused))
 #endif
@@ -6699,63 +6702,6 @@ void unlock_all_resources(void)
 	mutex_unlock(&resources_mutex);
 }
 
-/**
- * disk_state_from_md()  -  determine initial disk state
- *
- * When a disk is attached to a device, we set the disk state to D_NEGOTIATING.
- * We then wait for all connected peers to send the peer disk state.  Once that
- * has happened, we can determine the actual disk state based on the peer disk
- * states and the state of the disk itself.
- *
- * The initial disk state becomes D_UP_TO_DATE without fencing or when we know
- * that all peers have been outdated, and D_CONSISTENT otherwise.
- *
- * The caller either needs to have a get_ldev() reference, or need to call
- * this function only if disk_state[NOW] >= D_NEGOTIATING and holding the
- * req_lock
- */
-enum drbd_disk_state disk_state_from_md(struct drbd_device *device) __must_hold(local)
-{
-	struct drbd_peer_device *peer_device;
-	enum drbd_disk_state disk_state;
-
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
-		disk_state = D_INCONSISTENT;
-	else if (!drbd_md_test_flag(device->ldev, MDF_WAS_UP_TO_DATE))
-		disk_state = D_OUTDATED;
-	else {
-		bool all_peers_outdated = true;
-		int node_id;
-
-		rcu_read_lock();
-		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
-			struct drbd_peer_md *peer_md = &device->ldev->md.peers[node_id];
-			enum drbd_disk_state peer_disk_state;
-
-			if (!peer_md->bitmap_uuid ||
-			    !(peer_md->flags & MDF_PEER_FENCING))
-				continue;
-			peer_device = peer_device_by_node_id(device, node_id);
-			if (peer_device)
-				peer_disk_state = peer_device->disk_state[NEW];
-			else
-				peer_disk_state = D_UNKNOWN;
-
-			if (peer_disk_state == D_OUTDATED ||
-			    peer_disk_state == D_INCONSISTENT)
-				continue;
-			else if (peer_disk_state != D_UNKNOWN ||
-				 !(peer_md->flags & MDF_PEER_OUTDATED)) {
-				all_peers_outdated = false;
-				break;
-			}
-		}
-		rcu_read_unlock();
-		disk_state = all_peers_outdated ? D_UP_TO_DATE : D_CONSISTENT;
-	}
-
-	return disk_state;
-}
 
 long twopc_timeout(struct drbd_resource *resource)
 {

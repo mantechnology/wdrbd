@@ -257,16 +257,12 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 		UCHAR* p = (UCHAR*)ExAllocateFromNPagedLookasideList(cache);
 		if (!p) break;
 #else
-		void *p = kmem_cache_alloc(cache, GFP_KERNEL);
+		unsigned char *p = kmem_cache_alloc(cache, GFP_KERNEL);
 		if (!p)
 			break;
 #endif
 		memset(p, 0, lc->element_size);
-#ifdef _WIN32
         e = (struct lc_element*)(p + e_off);
-#else
-		e = p + e_off;
-#endif
 		e->lc_index = i;
 		e->lc_number = LC_FREE;
 		e->lc_new_number = LC_FREE;
@@ -283,7 +279,7 @@ struct lru_cache *lc_create(const char *name, struct kmem_cache *cache,
 		ExFreeToNPagedLookasideList(cache, p - e_off);
 #else
 		void *p = element[i];
-		kmem_cache_free(cache, p - e_off);
+		kmem_cache_free(cache, (unsigned char *)p - e_off);
 #endif
 	}
 	kfree(lc);
@@ -295,19 +291,14 @@ out_fail:
 
 static void lc_free_by_index(struct lru_cache *lc, unsigned i)
 {
-#ifdef _WIN32
-	UCHAR* p = (UCHAR*)lc->lc_element[i];
-#else
-	void *p = lc->lc_element[i];
-#endif
-	
+	void *p = lc->lc_element[i];	
 	WARN_ON(!p);
 	if (p) {
 #ifdef _WIN32
-        p -= lc->element_off;
+		p = (UCHAR*)p - lc->element_off;
         ExFreeToNPagedLookasideList(lc->lc_cache, p);
 #else
-		p -= lc->element_off;
+		p = (unsigned char*)p - lc->element_off;
 		kmem_cache_free(lc->lc_cache, p);
 #endif
 	}
@@ -356,12 +347,12 @@ void lc_reset(struct lru_cache *lc)
 
 	for (i = 0; i < lc->nr_elements; i++) {
 		struct lc_element *e = lc->lc_element[i];
-#ifdef _WIN32
-		UCHAR* p = (UCHAR*)e;
-#else
 		void *p = e;
+#ifdef _WIN32
+		p = (UCHAR*)p - lc->element_off;
+#else
+		p = (unsigned char*)p - lc->element_off;
 #endif
-		p -= lc->element_off;
 		memset(p, 0, lc->element_size);
 		/* re-init it */
 		e->lc_index = i;

@@ -159,11 +159,7 @@ static void seq_print_minor_vnr_req(struct seq_file *m, struct drbd_request *req
 static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 
 	seq_puts(m, "minor\tvnr\tstart\tsubmit\tintent\n");
 	rcu_read_lock();
@@ -195,11 +191,7 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 	
 	seq_puts(m, "minor\tvnr\tage\t#waiting\n");
 	rcu_read_lock();
@@ -263,11 +255,7 @@ static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *d
 static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 
 	seq_puts(m, "minor\tvnr\trw\tage\t#in-flight\n");
 	rcu_read_lock();
@@ -359,12 +347,8 @@ static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 {
 	struct drbd_connection *connection;
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
-	
+
 	rcu_read_lock();
 	for_each_connection_rcu(connection, resource) {
 		seq_print_connection_peer_requests(m, connection, now);
@@ -1405,7 +1389,7 @@ static int peer_device_proc_drbd_show(struct seq_file *m, void *ignored)
 	rcu_read_lock();
 	{
 		/* reset device->congestion_reason */
-		bdi_rw_congested(&device->rq_queue->backing_dev_info);
+		bdi_rw_congested(device->rq_queue->backing_dev_info);
 
 		nc = rcu_dereference(peer_device->connection->transport.net_conf);
 		wp = nc ? nc->wire_protocol - DRBD_PROT_A + 'A' : ' ';

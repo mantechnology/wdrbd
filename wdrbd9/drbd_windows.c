@@ -2275,7 +2275,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		{
 			WDRBD_WARN("replicating volume letter is changed, detaching\n");
 			set_bit(FORCE_DETACH, &device->flags);
-			change_disk_state(device, D_DETACHING, CS_HARD);						
+			change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
 			put_ldev(device);
 		}
 		// DW-1300: put device reference count when no longer use.
@@ -3253,4 +3253,22 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 	}
 
 	return status;
+}
+
+char *kvasprintf(int flags, const char *fmt, va_list args)
+{
+	char *buffer;
+	const int size = 4096;
+	NTSTATUS status;
+
+	buffer = kzalloc(size, flags, 'AVDW');
+	if (buffer) {
+		status = RtlStringCchVPrintfA(buffer, size, fmt, args);
+		if (status == STATUS_SUCCESS)
+			return buffer;
+
+		kfree(buffer);
+	}
+
+	return NULL;
 }

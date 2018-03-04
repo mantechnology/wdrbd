@@ -338,7 +338,8 @@ enum drbd_state_rv {
 	SS_PRIMARY_READER = -22,
 	SS_TIMEOUT = -23,
 	SS_WEAKLY_CONNECTED = -24,
-	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
+	SS_NO_QUORUM = -25,
+	SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */
 };
 
 #define SHARED_SECRET_MAX 64

@@ -584,7 +584,9 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-	drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
+	// DW-1538 : Connection seems to have already been freed.
+	if (&peer_device->connection->transport)
+		drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
@@ -765,7 +767,7 @@ int drbd_connected(struct drbd_peer_device *peer_device)
 	err = drbd_send_sync_param(peer_device);
 	if (!err)
 		err = drbd_send_sizes(peer_device, 0, 0);
-	if (!err && device->disk_state[NOW] > D_DISKLESS)
+	if (!err)
 		err = drbd_send_uuids(peer_device, 0, 0);
 	if (!err) {
 		set_bit(INITIAL_STATE_SENT, &peer_device->flags);
@@ -3748,7 +3750,7 @@ static int drbd_asb_recover_1p(struct drbd_peer_device *peer_device) __must_hold
 			 /* drbd_change_state() does not sleep while in SS_IN_TRANSIENT_STATE,
 			  * we might be here in L_OFF which is transient.
 			  * we do not need to wait for the after state change work either. */
-			rv2 = change_role(resource, R_SECONDARY, CS_VERBOSE, false);
+			rv2 = change_role(resource, R_SECONDARY, CS_VERBOSE, false, NULL);
 			if (rv2 != SS_SUCCESS) {
 				drbd_khelper(device, connection, "pri-lost-after-sb");
 			} else {
@@ -3799,7 +3801,7 @@ static int drbd_asb_recover_2p(struct drbd_peer_device *peer_device) __must_hold
 			 /* drbd_change_state() does not sleep while in SS_IN_TRANSIENT_STATE,
 			  * we might be here in L_OFF which is transient.
 			  * we do not need to wait for the after state change work either. */
-			rv2 = change_role(device->resource, R_SECONDARY, CS_VERBOSE, false);
+			rv2 = change_role(device->resource, R_SECONDARY, CS_VERBOSE, false, NULL);
 			if (rv2 != SS_SUCCESS) {
 				drbd_khelper(device, connection, "pri-lost-after-sb");
 			} else {
@@ -5492,7 +5494,7 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 		   as well. */
 		drbd_info(peer_device, "Upgrading local disk to %s after unstable/weak (and no resync).\n",
 				drbd_disk_str(peer_disk_state));
-		change_disk_state(peer_device->device, peer_disk_state, CS_VERBOSE);
+		change_disk_state(peer_device->device, peer_disk_state, CS_VERBOSE, NULL);
 		return;
 	}
 
@@ -5996,7 +5998,7 @@ __change_connection_state(struct drbd_connection *connection,
 	}
 	if (mask.susp_fen) {
 		mask.susp_fen ^= -1;
-		__change_io_susp_fencing(resource, val.susp_fen);
+		__change_io_susp_fencing(connection, val.susp_fen);
 	}
 	if (mask.disk) {
 		/* Handled in __change_peer_device_state(). */
@@ -6088,7 +6090,7 @@ change_connection_state(struct drbd_connection *connection,
 
 	mask = convert_state(mask);
 	val = convert_state(val);
-
+retry:
 	begin_state_change(resource, &irq_flags, flags);
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -6113,6 +6115,28 @@ change_connection_state(struct drbd_connection *connection,
 
 	rv = end_state_change(resource, &irq_flags);
 out:
+
+	if (rv == SS_NO_UP_TO_DATE_DISK && resource->role[NOW] != R_PRIMARY) {
+#ifdef _WIN32
+		long t = 0;
+#else
+		long t;
+#endif
+		/* Most probably udev opened it read-only. That might happen
+		if it was demoted very recently. Wait up to one second. */
+#ifdef _WIN32
+		wait_event_interruptible_timeout(t, resource->state_wait,
+			drbd_open_ro_count(resource) == 0,
+			HZ);
+#else
+		t = wait_event_interruptible_timeout(resource->state_wait,
+			drbd_open_ro_count(resource) == 0,
+			HZ);
+#endif
+		if (t > 0)
+			goto retry;
+	}
+
 	return rv;
 fail:
 	abort_state_change(resource, &irq_flags);
@@ -6332,6 +6356,28 @@ far_away_change(struct drbd_connection *connection, union drbd_state mask,
 		enum chg_state_flags flags)
 {
 	struct drbd_resource *resource = connection->resource;
+	int vnr = resource->twopc_reply.vnr;
+
+	if (mask.i == 0 && val.i == 0 &&
+		resource->role[NEW] == R_PRIMARY && vnr == -1) {
+		/* A node far away test if there are primaries. I am the guy he
+		is concerned about... He learned about me in the CS_PREPARE phase.
+		Since he is commiting it I know that he is outdated now... */
+		struct drbd_connection *affected_connection;
+		int initiator_node_id = resource->twopc_reply.initiator_node_id;
+
+		affected_connection = drbd_get_connection_by_node_id(resource, initiator_node_id);
+		if (affected_connection) {
+			unsigned long irq_flags;
+			enum drbd_state_rv rv;
+
+			begin_state_change(resource, &irq_flags, flags);
+			__change_peer_disk_states(affected_connection, D_OUTDATED);
+			rv = end_state_change(resource, &irq_flags);
+			kref_put(&affected_connection->kref, drbd_destroy_connection);
+			return rv;
+		}
+	}
 
 	if (flags & CS_PREPARE && mask.role == role_MASK && val.role == R_PRIMARY &&
 		resource->role[NEW] == R_PRIMARY) {
@@ -7144,7 +7190,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	struct drbd_device *device = NULL;
 	struct p_state *p = pi->data;
 	union drbd_state old_peer_state, peer_state;
-	enum drbd_disk_state peer_disk_state;
+	enum drbd_disk_state peer_disk_state, new_disk_state = D_MASK;
 	enum drbd_repl_state new_repl_state;
 	bool peer_was_resync_target, try_to_get_resync = false;
 	int rv;
@@ -7390,11 +7436,17 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			peer_device->negotiation_result = new_repl_state;
 		}
 	} else if (peer_state.role == R_PRIMARY &&
-		   peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
-		   device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
-		/* I got connected to a diskless primary. Try to get a resync from
-		   some other node that is D_UP_TO_DATE. */
-		try_to_get_resync = true;
+		peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
+		device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
+		/* I got connected to a diskless primary */
+		if (peer_device->current_uuid == drbd_current_uuid(device)) {
+			drbd_info(peer_device, "Upgrading local disk to D_UP_TO_DATE since current UUID matches.\n");
+			new_disk_state = D_UP_TO_DATE;
+		}
+		else {
+			/* Try to get a resync from some other node that is D_UP_TO_DATE. */
+			try_to_get_resync = true;
+		}
 	}
 
 	spin_lock_irq(&resource->req_lock);
@@ -7410,6 +7462,8 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		goto retry;
 	}
 	clear_bit(CONSIDER_RESYNC, &peer_device->flags);
+	if (new_disk_state != D_MASK)
+		__change_disk_state(device, new_disk_state);
 	if (device->disk_state[NOW] != D_NEGOTIATING)
 		__change_repl_state(peer_device, new_repl_state);
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
@@ -8114,7 +8168,8 @@ out:
 	return 0;
 }
 
-/* Accept a new current UUID generated on a diskless node, that just became primary */
+/* Accept a new current UUID generated on a diskless node, that just became primary
+(or during handshake) */
 static int receive_current_uuid(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_resource *resource = connection->resource;
@@ -8134,6 +8189,10 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	// MODIFIED_BY_MANTECH DW-977: Newly created uuid hasn't been updated for peer device, do it as soon as peer sends its uuid which means it was adopted for peer's current uuid.
 	peer_device->current_uuid = current_uuid;
 #endif
+
+	if (connection->peer_role[NOW] == R_UNKNOWN)
+		return 0;
+
 	if (current_uuid == drbd_current_uuid(device))
 		return 0;
 #ifndef _WIN32

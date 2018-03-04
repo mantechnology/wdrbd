@@ -580,7 +580,7 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 	bio_for_each_segment(bvec, bio, iter) {
 		sg_set_page(&sg, bvec BVD bv_page, bvec BVD bv_len, bvec BVD bv_offset);
 		crypto_hash_update(&desc, &sg, sg.length);
-		/* REQ_WRITE_SAME has only one segment,
+		/* WRITE_SAME has only one segment,
 		 * checksum the payload only once. */
 		if (bio_op(bio) == REQ_OP_WRITE_SAME)
 			break;
@@ -1817,15 +1817,15 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 #else
 			digest = kmalloc(digest_size, GFP_NOIO);
 #endif
-		}
-		if (digest) {
+			if (digest) {
 #ifdef _WIN32
-            drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
 #else
-			drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
 #endif
-			eq = !memcmp(digest, di->digest, digest_size);
-			kfree(digest);
+				eq = !memcmp(digest, di->digest, digest_size);
+				kfree(digest);
+			}
 		}
 
 		if (eq) {
@@ -2786,7 +2786,7 @@ static void go_diskless(struct drbd_device *device)
 		}
 	}
 
-	change_disk_state(device, D_DISKLESS, CS_HARD);
+	change_disk_state(device, D_DISKLESS, CS_HARD, NULL);
 }
 
 static int do_md_sync(struct drbd_device *device)
