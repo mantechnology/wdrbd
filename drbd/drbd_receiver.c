@@ -5163,6 +5163,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 #else 
 	int err;
 #endif
+	u64 im;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -5215,8 +5216,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
 	/* Maybe the peer knows something about peers I cannot currently see. */
-	if (is_handshake)
-		ddsf |= DDSF_FORCED;
+	ddsf |= DDSF_IGNORE_PEER_CONSTRAINTS;
 
 	if (get_ldev(device)) {
 		sector_t new_size;
@@ -5250,7 +5250,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				p_usize = my_usize;
 		}
 
-		new_size = drbd_new_dev_size(device, p_usize, ddsf & DDSF_FORCED);
+		new_size = drbd_new_dev_size(device, p_csize, p_usize, ddsf);
 
 		/* Never shrink a device with usable data during connect.
 		   But allow online shrinking if we are connected. */
@@ -5308,7 +5308,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	if (have_ldev) {
 		drbd_reconsider_queue_parameters(device, device->ldev, o);
 		drbd_info(peer_device, "calling drbd_determine_dev_size()\n");		
-		dd = drbd_determine_dev_size(device, ddsf, NULL);
+		dd = drbd_determine_dev_size(device, p_csize, ddsf, NULL);
 		if (dd == DS_ERROR) {
 			err = -EIO;
 			goto out;
@@ -5366,18 +5366,23 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			goto disconnect;
 	}
 
-	if (should_send_sizes) {
-		u64 im;
-		for_each_peer_device_ref(peer_device_it, im, device)
-			drbd_send_sizes(peer_device_it, p_usize, ddsf);
-	} else {
-		u64 im;
+	for_each_peer_device_ref(peer_device_it, im, device) {
+		struct drbd_connection *con_it = peer_device_it->connection;
 
-		for_each_peer_device_ref(peer_device_it, im, device) {
-			if (peer_device_it->repl_state[NOW] > L_OFF
-				&&  peer_device_it->c_size != cur_size)
-					drbd_send_sizes(peer_device_it, p_usize, ddsf);
-		}
+		/* drop cached max_size, if we already grew beyond it */
+		if (peer_device_it->max_size < cur_size)
+			peer_device_it->max_size = 0;
+
+		if (con_it->cstate[NOW] < C_CONNECTED)
+			continue;
+
+		/* Send size updates only if something relevant has changed.
+		* TODO: only tell the sender thread to do so,
+		* or we may end up in a distributed deadlock on congestion. */
+		if (should_send_sizes ||
+			(peer_device_it->repl_state[NOW] > L_OFF &&
+			peer_device_it->c_size != cur_size))
+			drbd_send_sizes(peer_device_it, p_usize, ddsf);
 	}
 
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),

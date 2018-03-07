@@ -3338,8 +3338,9 @@ int drbd_resize(struct drbd_device *device)
 		new_disk_conf = NULL;
 	}
 
-	ddsf = (rs.resize_force ? DDSF_FORCED : 0) | (rs.no_resync ? DDSF_NO_RESYNC : 0);
-	dd = drbd_determine_dev_size(device, ddsf, change_al_layout ? &rs : NULL);
+	ddsf = (rs.resize_force ? DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE : 0)
+		| (rs.no_resync ? DDSF_NO_RESYNC : 0);
+	dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
 	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
 	if (dd == DS_ERROR) {
