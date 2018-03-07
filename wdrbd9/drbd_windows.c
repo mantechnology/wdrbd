@@ -3265,7 +3265,8 @@ int drbd_resize(struct drbd_device *device)
 	enum dds_flags ddsf;
 	sector_t u_size;
 	struct drbd_peer_device *peer_device;
-
+	bool traditional_resize = false;
+	sector_t local_max_size;
 	
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
@@ -3338,9 +3339,18 @@ int drbd_resize(struct drbd_device *device)
 		new_disk_conf = NULL;
 	}
 
+	local_max_size = drbd_local_max_size(device);
+
 	ddsf = (rs.resize_force ? DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE : 0)
 		| (rs.no_resync ? DDSF_NO_RESYNC : 0);
-	dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
+	
+	dd = change_cluster_wide_device_size(device, local_max_size, rs.resize_size, ddsf,
+				change_al_layout ? &rs : NULL);
+	if (dd == DS_2PC_NOT_SUPPORTED) {
+		traditional_resize = true;
+		dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
+	}
+	
 	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
 	if (dd == DS_ERROR) {
@@ -3351,6 +3361,9 @@ int drbd_resize(struct drbd_device *device)
 		goto fail;
 	} else if (dd == DS_ERROR_SHRINK) {
 		retcode = ERR_IMPLICIT_SHRINK;
+		goto fail;
+	} else if (dd == DS_2PC_ERR) {
+		retcode = SS_INTERRUPTED;
 		goto fail;
 	}
 

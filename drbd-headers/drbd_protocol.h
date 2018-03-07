@@ -85,6 +85,7 @@ enum drbd_packet {
 	 * On a receiving side without REQ_WRITE_SAME,
 	 * we may fall back to an opencoded loop instead. */
 	P_WSAME               = 0x34,
+	P_TWOPC_PREP_RSZ = 0x35, /* PREPARE a 2PC resize operation*/
 
 	P_PEER_ACK            = 0x40, /* meta sock: tell which nodes have acked a request */
 	P_PEERS_IN_SYNC       = 0x41, /* data sock: Mark area as in sync */
@@ -414,17 +415,37 @@ struct p_twopc_request {
 	uint32_t initiator_node_id;  /* initiator of the transaction */
 	uint32_t target_node_id;  /* target of the transaction (or -1) */
 	uint64_t nodes_to_reach;
-	uint64_t primary_nodes;
-	uint32_t mask;
-	uint32_t val;
+	union {
+		struct { /* TWOPC_STATE_CHANGE */
+			uint64_t primary_nodes;
+			uint32_t mask;
+			uint32_t val;
+		};
+		struct { /* TWOPC_RESIZE */
+			union {
+				uint16_t dds_flags;    /* P_TWOPC_PREP_RSZ */
+				uint64_t exposed_size; /* P_TWOPC_COMMIT   */
+			};
+			uint64_t user_size;
+		};
+	};
 } __packed;
 
 struct p_twopc_reply {
 	uint32_t tid;  /* transaction identifier */
 	uint32_t initiator_node_id;  /* initiator of the transaction */
 	uint64_t reachable_nodes;
-	uint64_t primary_nodes;
-	uint64_t weak_nodes;
+	union {
+		struct {
+			uint64_t primary_nodes;
+			uint64_t weak_nodes;
+		};
+		struct {
+			uint64_t max_possible_size;
+			uint64_t pad;
+		};
+	};
+
 } __packed;
 
 struct p_drbd06_param {
