@@ -5149,13 +5149,15 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	struct drbd_device *device;
 	struct p_sizes *p = pi->data;
 	struct o_qlim *o = (connection->agreed_features & DRBD_FF_WSAME) ? p->qlim : NULL;
-	uint64_t p_size, p_usize, p_csize, my_usize;
+	uint64_t p_size, p_usize, p_csize;
+	uint64_t my_usize, my_max_size, cur_size;
 	enum determine_dev_size dd = DS_UNCHANGED;
 	bool should_send_sizes = false;
 	enum dds_flags ddsf;
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
 	bool have_mutex = false;
+	bool is_handshake;
 #ifdef _WIN32
 	int err = 0;
 #else 
@@ -5190,36 +5192,54 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	if (p_size)
 		peer_device->max_size = p_size;
 
-	drbd_info(device, "current_size: %llu\n", (unsigned long long)drbd_get_capacity(device->this_bdev));
+	cur_size = drbd_get_capacity(device->this_bdev);
+	drbd_info(device, "current_size: %llu\n", (unsigned long long)cur_size);
 	drbd_info(peer_device, "c_size: %llu u_size: %llu d_size: %llu max_size: %llu\n",
 			(unsigned long long)p_csize,
 			(unsigned long long)p_usize,
 			(unsigned long long)p_size,
 			(unsigned long long)peer_device->max_size);
 
+	if ((p_size && p_csize > p_size) || (p_usize && p_csize > p_usize)) {
+		drbd_warn(peer_device, "Peer sent bogus sizes, disconnecting\n");
+		goto disconnect;
+	}
+
+	/* The protocol version limits how big requests can be.  In addition,
+	* peers before protocol version 94 cannot split large requests into
+	* multiple bios; their reported max_bio_size is a hard limit.
+	*/
+	protocol_max_bio_size = conn_max_bio_size(connection);
+	peer_device->max_bio_size = min(be32_to_cpu(p->max_bio_size), protocol_max_bio_size);
+	ddsf = be16_to_cpu(p->dds_flags);
+
+	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
+	/* Maybe the peer knows something about peers I cannot currently see. */
+	if (is_handshake)
+		ddsf |= DDSF_FORCED;
+
 	if (get_ldev(device)) {
-		sector_t new_size, cur_size;
+		sector_t new_size;
 
 		have_ldev = true;
 
 		rcu_read_lock();
 		my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
-
+		
+		my_max_size = drbd_get_max_capacity(device->ldev);
 		drbd_info(peer_device, "la_size: %llu my_usize: %llu my_max_size: %llu\n",
 			(unsigned long long)device->ldev->md.effective_size,
 			(unsigned long long)my_usize,
-			(unsigned long long)drbd_get_max_capacity(device->ldev));
+			(unsigned long long)my_max_size);
 
 		if (peer_device->disk_state[NOW] > D_DISKLESS)
 			warn_if_differ_considerably(peer_device, "lower level device sizes",
-					p_size, drbd_get_max_capacity(device->ldev));
+					p_size, my_max_size);
 		warn_if_differ_considerably(peer_device, "user requested size",
 					    p_usize, my_usize);
 
-		/* if this is the first connect, or an otherwise expected
-		 * param exchange, choose the minimum */
-		if (peer_device->repl_state[NOW] == L_OFF)
+		if (is_handshake)
 			p_usize = min_not_zero(my_usize, p_usize);
 
 		if (p_usize == 0) {
@@ -5230,10 +5250,10 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				p_usize = my_usize;
 		}
 
+		new_size = drbd_new_dev_size(device, p_usize, ddsf & DDSF_FORCED);
+
 		/* Never shrink a device with usable data during connect.
 		   But allow online shrinking if we are connected. */
-		new_size = drbd_new_dev_size(device, p_usize, 0);
-		cur_size = drbd_get_capacity(device->this_bdev);
 		if (new_size < cur_size &&
 		    device->disk_state[NOW] >= D_OUTDATED &&
 #ifdef _WIN32 // DW-1469 : allowed if discard_my_data option.
@@ -5242,11 +5262,14 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
 		    drbd_err(peer_device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
 					(unsigned long long)new_size, (unsigned long long)cur_size);
-			/* don't let a rejected peer confuse future handshakes with different peers. */
-			peer_device->max_size = 0;
-			change_cstate(connection, C_DISCONNECTING, CS_HARD);
-			err = -EIO;
-			goto out;
+			goto disconnect;
+		}
+
+		/* Disconnect, if we cannot grow to the peer's current size */
+		if (my_max_size < p_csize && !is_handshake) {
+			drbd_err(peer_device, "Peer's size larger than my maximum capacity (%llu < %llu sectors)\n",
+				(unsigned long long)my_max_size, (unsigned long long)p_csize);
+			goto disconnect;
 		}
 
 		if (my_usize != p_usize) {
@@ -5276,15 +5299,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				(unsigned long long)p_usize);
 			should_send_sizes = true;
 		}
-	}
-
-	/* The protocol version limits how big requests can be.  In addition,
-	 * peers before protocol version 94 cannot split large requests into
-	 * multiple bios; their reported max_bio_size is a hard limit.
-	 */
-	protocol_max_bio_size = conn_max_bio_size(connection);
-	peer_device->max_bio_size = min(be32_to_cpu(p->max_bio_size), protocol_max_bio_size);
-	ddsf = be16_to_cpu(p->dds_flags);
+	}		
 
 	/* Leave drbd_reconsider_queue_parameters() before drbd_determine_dev_size().
 	   In case we cleared the QUEUE_FLAG_DISCARD from our queue in
@@ -5300,7 +5315,6 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		}
 		drbd_md_sync_if_dirty(device);
 	} else {
-		struct drbd_peer_device *peer_device;
 		uint64_t size = 0;
 
 		drbd_reconsider_queue_parameters(device, NULL, o);
@@ -5315,15 +5329,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		size = p_csize;
 		size = min_not_zero(size, p_usize);
 		size = min_not_zero(size, p_size);
-
-		rcu_read_lock();
-		for_each_peer_device_rcu(peer_device, device) {
-			/* When a peer device is in L_OFF state, max_size is zero
-			 * until a P_SIZES packet is received.  */
-			uint64_t tmp = peer_device->max_size;
-			size = min_not_zero(size, tmp);
-		}
-		rcu_read_unlock();
+				
 		if (size != drbd_get_capacity(device->this_bdev)) {
 			char ppb[10];
 			should_send_sizes = true;
@@ -5339,9 +5345,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		drbd_err(device, "Peer cannot deal with requests bigger than %u. "
 			 "Please reduce max_bio_size in the configuration.\n",
 			 peer_device->max_bio_size);
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
-		err = -EIO;
-		goto out;
+		goto disconnect;
 	}
 
 	if (have_ldev) {
@@ -5380,6 +5384,13 @@ out:
 	if (have_mutex)
 		mutex_unlock(&connection->resource->conf_update);	
 	return err;
+
+disconnect:
+	/* don't let a rejected peer confuse future handshakes with different peers. */
+	peer_device->max_size = 0;
+	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	err = -EIO;
+	goto out;
 }
 
 static void drbd_resync(struct drbd_peer_device *peer_device,
