@@ -3271,14 +3271,23 @@ int drbd_resize(struct drbd_device *device)
 		retcode = ERR_NO_DISK;
 		goto fail;
 	}
-	
-	for_each_peer_device(peer_device, device) {
-		if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
-			drbd_err(device, "drbd_resize failed.\n");
-			put_ldev(device);
-			goto fail;
+
+	for_each_peer_device(peer_device, device) 
+	{
+		if (peer_device->repl_state[NOW] > L_ESTABLISHED) 
+		{
+			drbd_err(device, "Resize not allowed during resync. Disconnecting...\n");
+		} 
+		else if (peer_device->repl_state[NOW] == L_ESTABLISHED) 
+		{
+			drbd_err(device, "Connection is establised, resize not allowed. Disconnecting...\n");
+		} 
+		else
+		{
+			continue;
 		}
-	}
+		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+	}		
 
 	memset(&rs, 0, sizeof(struct resize_parms));
 	rs.al_stripes = device->ldev->md.al_stripes;
