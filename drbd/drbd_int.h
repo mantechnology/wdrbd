@@ -1133,7 +1133,6 @@ enum twopc_type {
 };
 
 struct twopc_reply {
-	enum twopc_type type; /* from prepare phase */
 	int vnr;
 	unsigned int tid;  /* transaction identifier */
 	int initiator_node_id;  /* initiator of the transaction */
@@ -1146,7 +1145,6 @@ struct twopc_reply {
 			u64 weak_nodes;
 		};
 		struct { /* type == TWOPC_RESIZE */
-			int dds_flags; /* from prepare phase */
 			u64 max_possible_size;
 		};
 	};
@@ -1234,12 +1232,14 @@ struct drbd_resource {
 	wait_queue_head_t state_wait;  /* upon each state change. */
 	enum chg_state_flags state_change_flags;
 	bool remote_state_change;  /* remote state change in progress */
+	enum twopc_type twopc_type; /* from prepare phase */
 	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
 	struct list_head twopc_parents;  /* prepared on behalf of peer */
 	struct twopc_reply twopc_reply;
 	struct timer_list twopc_timer;
 	struct drbd_work twopc_work;
 	wait_queue_head_t twopc_wait;
+	int twopc_resize_dds_flags; /* from prepare phase */
 	struct list_head queued_twopc;
 	spinlock_t queued_twopc_lock;
 	struct timer_list queued_twopc_timer;
