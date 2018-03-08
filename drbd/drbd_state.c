@@ -4273,6 +4273,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 
 		  
 	resource->remote_state_change = true;
+	resource->twopc_parent_nodes = 0;
 	reply->initiator_node_id = resource->res_opts.node_id;
 	reply->target_node_id = context->target_node_id;
 	reply->primary_nodes = 0;
@@ -4560,6 +4561,8 @@ retry:
 	request.user_size = cpu_to_be64(new_user_size);
 
 	resource->remote_state_change = true;
+	resource->twopc_parent_nodes = 0;
+
 	reply->initiator_node_id = resource->res_opts.node_id;
 	reply->target_node_id = -1;
 	reply->max_possible_size = local_max_size;
@@ -4643,7 +4646,7 @@ retry:
 		tr->dds_flags = dds_flags;
 		tr->user_size = new_user_size;
 
-		dd = drbd_commit_size_change(device, rs);
+		dd = drbd_commit_size_change(device, rs, reach_immediately);
 	}
 	else {
 		if (rv == SS_CW_FAILED_BY_PEER)
