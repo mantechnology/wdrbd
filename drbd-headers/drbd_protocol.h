@@ -416,17 +416,20 @@ struct p_twopc_request {
 	uint32_t target_node_id;  /* target of the transaction (or -1) */
 	uint64_t nodes_to_reach;
 	union {
-		struct { /* TWOPC_STATE_CHANGE */
+		struct { /* TWOPC_STATE_CHANGE, both phases */
 			uint64_t primary_nodes;
 			uint32_t mask;
 			uint32_t val;
 		};
-		struct { /* TWOPC_RESIZE */
-			union {
-				uint16_t dds_flags;    /* P_TWOPC_PREP_RSZ */
-				uint64_t exposed_size; /* P_TWOPC_COMMIT   */
+		union {  /* TWOPC_RESIZE */
+			struct {    /* P_TWOPC_PREP_RSZ */
+				uint64_t user_size;
+				uint16_t dds_flags;
 			};
-			uint64_t user_size;
+			struct {    /* P_TWOPC_COMMIT   */
+				uint64_t diskful_primary_nodes;
+				uint64_t exposed_size;
+			};
 		};
 	};
 } __packed;
@@ -436,13 +439,13 @@ struct p_twopc_reply {
 	uint32_t initiator_node_id;  /* initiator of the transaction */
 	uint64_t reachable_nodes;
 	union {
-		struct {
+		struct { /* TWOPC_STATE_CHANGE */
 			uint64_t primary_nodes;
 			uint64_t weak_nodes;
 		};
-		struct {
+		struct { /* TWOPC_RESIZE */
+			uint64_t diskful_primary_nodes;
 			uint64_t max_possible_size;
-			uint64_t pad;
 		};
 	};
 
