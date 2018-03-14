@@ -162,11 +162,16 @@
 #define DRBD_RESYNC_RATE_MIN 1
 /* channel bonding 10 GbE, or other hardware */
 #define DRBD_RESYNC_RATE_MAX (4 << 20)
+
+#if 0 // DW-1543 rollback resync-rate's default value
 #ifdef _WIN32 // DW-1188 we need to adjust resync-rate in normal 1G network.
 #define DRBD_RESYNC_RATE_DEF (100*1024)
 #else
 #define DRBD_RESYNC_RATE_DEF 250
 #endif
+#endif
+
+#define DRBD_RESYNC_RATE_DEF 250
 #define DRBD_RESYNC_RATE_SCALE 'k'  /* kilobytes */
 
   /* less than 67 would hit performance unnecessarily. */
@@ -218,11 +223,16 @@
 
 #define DRBD_C_PLAN_AHEAD_MIN  0
 #define DRBD_C_PLAN_AHEAD_MAX  300
+
+#if 0 // DW-1543 rollback default c-plan-ahead value
 #ifdef _WIN32 // DW-1039 a continuos resync throuput is required.
 #define DRBD_C_PLAN_AHEAD_DEF  0
 #else
 #define DRBD_C_PLAN_AHEAD_DEF  20
 #endif
+#endif
+
+#define DRBD_C_PLAN_AHEAD_DEF  20
 #define DRBD_C_PLAN_AHEAD_SCALE '1'
 
 #define DRBD_C_DELAY_TARGET_MIN 1
@@ -242,11 +252,15 @@
 
 #define DRBD_C_MIN_RATE_MIN     0
 #define DRBD_C_MIN_RATE_MAX     (4 << 20)
+
+#if 0 // DW-1543 rollback c-min-rate default vaule
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1041 
 #define DRBD_C_MIN_RATE_DEF     0
 #else
 #define DRBD_C_MIN_RATE_DEF     250
 #endif
+#endif
+#define DRBD_C_MIN_RATE_DEF     250
 #define DRBD_C_MIN_RATE_SCALE	'k'  /* kilobytes */
 
 #define DRBD_CONG_FILL_MIN	0
