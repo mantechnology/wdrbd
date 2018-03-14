@@ -421,6 +421,14 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #else
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO ##_m_, __VA_ARGS__)
 #endif
+
+#if defined (WDRBD_THREAD_POINTER) 
+// DW-1432: Set to output information. It is not recommended for general use.
+#define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG ##_m_, __VA_ARGS__)
+#endif
+
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM					// about timer
 #define WDRBD_TRACE_RCU					// about rcu
