@@ -38,7 +38,7 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -49,6 +49,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
+#include "linux/drbd.h"
 #include "linux/drbd_limits.h"
 #include "drbdtool_common.h"
 #include "drbdadm.h"
@@ -77,6 +78,7 @@ struct option general_admopt[] = {
 	{"verbose", no_argument, 0, 'v'},
 	{"config-file", required_argument, 0, 'c'},
 	{"config-to-test", required_argument, 0, 't'},
+	{"config-to-exclude", required_argument, 0, 'E'},
 	{"drbdsetup", required_argument, 0, 's'},
 	{"drbdmeta", required_argument, 0, 'm'},
 	{"drbd-proxy-ctl", required_argument, 0, 'p'},
@@ -122,7 +124,6 @@ static int sh_lres(const struct cfg_ctx *);
 static int sh_ll_dev(const struct cfg_ctx *);
 static int sh_md_dev(const struct cfg_ctx *);
 static int sh_md_idx(const struct cfg_ctx *);
-static int sh_status(const struct cfg_ctx *);
 static int adm_drbdmeta(const struct cfg_ctx *);
 static int adm_khelper(const struct cfg_ctx *);
 static int adm_setup_and_meta(const struct cfg_ctx *);
@@ -136,6 +137,7 @@ static int adm_forget_peer(const struct cfg_ctx *);
 static int adm_peer_device(const struct cfg_ctx *);
 
 int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check);
+int was_file_already_seen(char *fn);
 
 static char *get_opt_val(struct options *, const char *, char *);
 
@@ -147,6 +149,9 @@ int fline;
 char *config_file = NULL;
 char *config_save = NULL;
 char *config_test = NULL;
+#ifdef _WIN32
+char *parse_file = NULL;
+#endif
 struct resources config = STAILQ_HEAD_INITIALIZER(config);
 struct d_resource *common = NULL;
 struct ifreq *ifreq_list = NULL;
@@ -166,6 +171,10 @@ int do_verify_ips = 0;
 int do_register = 1;
 /* whether drbdadm was called with "all" instead of resource name(s) */
 int all_resources = 0;
+/* if we want to adjust more than one resource,
+* instead of iteratively calling "drbdsetup show" for each of them,
+* call "drbdsetup show" once for all of them. */
+int adjust_more_than_one_resource = 0;
 char *drbdsetup = NULL;
 char *drbdmeta = NULL;
 char *drbdadm_83 = NULL;
@@ -274,7 +283,7 @@ int adm_adjust_wp(const struct cfg_ctx *ctx)
 	.show_in_usage = 4,		\
 	.res_name_required = 1,		\
 	.backend_res_name = 1,		\
-	.iterate_volumes = 0,		\
+	.iterate_volumes = 1,		\
 	.vol_id_required = 1,		\
 	.verify_ips = 0,		\
 	.uc_dialog = 1,			\
@@ -343,8 +352,8 @@ static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT .backe
 #else
 static struct adm_cmd outdate_cmd = {"outdate", adm_outdate, ACF1_DEFAULT};
 #endif
-/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, ACF1_DEFAULT .disk_required = 1};
-static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, ACF1_PEER_DEVICE};
+/*  */ struct adm_cmd resize_cmd = {"resize", adm_resize, &resize_cmd_ctx, ACF1_DEFAULT .disk_required = 1};
+static struct adm_cmd verify_cmd = {"verify", adm_drbdsetup, &verify_cmd_ctx, ACF1_PEER_DEVICE};
 static struct adm_cmd pause_sync_cmd = {"pause-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd resume_sync_cmd = {"resume-sync", adm_drbdsetup, ACF1_PEER_DEVICE};
 static struct adm_cmd adjust_cmd = { "adjust", adm_adjust, &adjust_ctx, ACF1_RESNAME.vol_id_optional = 1 };
@@ -388,13 +397,12 @@ static struct adm_cmd sh_md_dev_cmd = {"sh-md-dev", sh_md_dev, ACF2_SHELL .disk_
 static struct adm_cmd sh_md_idx_cmd = {"sh-md-idx", sh_md_idx, ACF2_SHELL .disk_required = 1};
 static struct adm_cmd sh_ip_cmd = {"sh-ip", sh_ip, ACF2_SHELL};
 static struct adm_cmd sh_lr_of_cmd = {"sh-lr-of", sh_lres, ACF2_SHELL};
-static struct adm_cmd sh_status_cmd = {"sh-status", sh_status, ACF2_GEN_SHELL};
 
 static struct adm_cmd proxy_up_cmd = {"proxy-up", adm_proxy_up, ACF2_PROXY};
 static struct adm_cmd proxy_down_cmd = {"proxy-down", adm_proxy_down, ACF2_PROXY};
 
-/*  */ struct adm_cmd new_resource_cmd = {"new-resource", adm_resource, ACF2_SH_RESNAME};
-/*  */ struct adm_cmd new_minor_cmd = {"new-minor", adm_new_minor, ACF4_ADVANCED};
+/*  */ struct adm_cmd new_resource_cmd = {"new-resource", adm_resource, &resource_options_ctx, ACF2_SH_RESNAME};
+/*  */ struct adm_cmd new_minor_cmd = {"new-minor", adm_new_minor, &device_options_ctx, ACF4_ADVANCED};
 /*  */ struct adm_cmd del_minor_cmd = { "del-minor", adm_drbdsetup, ACF1_MINOR_ONLY.show_in_usage = 4, .disk_required = 0, };
 
 static struct adm_cmd khelper01_cmd = {"before-resync-target", adm_khelper, ACF3_RES_HANDLER};
@@ -409,11 +417,12 @@ static struct adm_cmd khelper09_cmd = {"initial-split-brain", adm_khelper, ACF3_
 static struct adm_cmd khelper10_cmd = {"split-brain", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper11_cmd = {"out-of-sync", adm_khelper, ACF3_RES_HANDLER};
 static struct adm_cmd khelper12_cmd = {"unfence-peer", adm_khelper, ACF3_RES_HANDLER};
+static struct adm_cmd khelper13_cmd = { "quorum-lost", adm_khelper, ACF3_RES_HANDLER };
 
 
 static struct adm_cmd suspend_io_cmd = {"suspend-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
 static struct adm_cmd resume_io_cmd = {"resume-io", adm_drbdsetup, ACF4_ADVANCED  .backend_res_name = 0 };
-static struct adm_cmd set_gi_cmd = {"set-gi", adm_drbdmeta, .disk_required = 1, .need_peer = 1, ACF4_ADVANCED_NEED_VOL};
+static struct adm_cmd set_gi_cmd = {"set-gi", adm_drbdmeta, &wildcard_ctx, .disk_required = 1, .need_peer = 1, ACF4_ADVANCED_NEED_VOL};
 static struct adm_cmd new_current_uuid_cmd = {"new-current-uuid", adm_drbdsetup, &new_current_uuid_cmd_ctx, ACF4_ADVANCED_NEED_VOL .backend_res_name = 0};
 static struct adm_cmd check_resize_cmd = {"check-resize", adm_chk_resize, ACF4_ADVANCED};
 
@@ -488,7 +497,6 @@ struct adm_cmd *cmds[] = {
 	&sh_md_idx_cmd,
 	&sh_ip_cmd,
 	&sh_lr_of_cmd,
-	&sh_status_cmd,
 
 	&proxy_up_cmd,
 	&proxy_down_cmd,
@@ -509,7 +517,8 @@ struct adm_cmd *cmds[] = {
 	&khelper10_cmd,
 	&khelper11_cmd,
 	&khelper12_cmd,
-
+	&khelper13_cmd,
+	
 	&suspend_io_cmd,
 	&resume_io_cmd,
 	&set_gi_cmd,
@@ -578,7 +587,7 @@ void schedule_deferred_cmd(struct adm_cmd *cmd,
 			if (d->ctx.cmd == cmd &&
 			    d->ctx.res == ctx->res &&
 			    d->ctx.conn == ctx->conn &&
-			    d->ctx.vol == ctx->vol)
+				d->ctx.vol->vnr == ctx->vol->vnr)
 				return;
 		}
 	}
@@ -803,19 +812,23 @@ int run_deferred_cmds(void)
 
 static int adm_adjust(const struct cfg_ctx *ctx)
 {
-	int adjust_flags = ADJUST_DISK | ADJUST_NET;
+	static int adjust_flags = 0;
 	struct d_name *opt;
 
-	opt = find_backend_option("--skip-disk");
-	if (opt) {
-		STAILQ_REMOVE(&backend_options, opt, d_name, link);
-		adjust_flags &= ~ADJUST_DISK;
-	}
+	if (!adjust_flags) {
+		opt = find_backend_option("--skip-disk");
+		if (opt)
+			STAILQ_REMOVE(&backend_options, opt, d_name, link);
+		else
+			adjust_flags |= ADJUST_DISK;
 
-	opt = find_backend_option("--skip-net");
-	if (opt) {
-		STAILQ_REMOVE(&backend_options, opt, d_name, link);
-		adjust_flags &= ~ADJUST_NET;
+		opt = find_backend_option("--skip-net");
+		if (opt)
+			STAILQ_REMOVE(&backend_options, opt, d_name, link);
+		else
+			adjust_flags |= ADJUST_NET;
+
+		adjust_flags |= ADJUST_SKIP_CHECKED;
 	}
 	
 	return _adm_adjust(ctx, adjust_flags);
@@ -824,6 +837,8 @@ static int adm_adjust(const struct cfg_ctx *ctx)
 
 static int sh_nop(const struct cfg_ctx *ctx)
 {
+	if (!config_valid)
+		return 10;
 	return 0;
 }
 
@@ -916,18 +931,31 @@ static int sh_udev(const struct cfg_ctx *ctx)
 	else
 		printf("DEVICE=drbd%u\n", vol->device_minor);
 
+	/* in case older udev rules are still in place,
+	* but do not yet have the work-around for the
+	* udev default change of "string_escape=none" -> "replace",
+	* populate plain "SYMLINK" with just the "by-res" one. */
 	printf("SYMLINK=");
-	if (vol->implicit)
-		printf("drbd/by-res/%s", res->name);
+	if (vol->implicit && !global_options.udev_always_symlink_vnr)
+		printf("drbd/by-res/%s\n", res->name);
 	else
-		printf("drbd/by-res/%s/%u", res->name, vol->vnr);
+		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
+
+	/* repeat, with _BY_RES */
+	printf("SYMLINK_BY_RES=");
+	if (vol->implicit && !global_options.udev_always_symlink_vnr)
+		printf("drbd/by-res/%s\n", res->name);
+	else
+		printf("drbd/by-res/%s/%u\n", res->name, vol->vnr);
+
+	/* and add the _BY_DISK one explicitly */
 	if (vol->disk) {
+		printf("SYMLINK_BY_DISK=");
 		if (!strncmp(vol->disk, "/dev/", 5))
-			printf(" drbd/by-disk/%s", vol->disk + 5);
+			printf("drbd/by-disk/%s\n", vol->disk + 5);
 		else
-			printf(" drbd/by-disk/%s", vol->disk);
+			printf("drbd/by-disk/%s\n", vol->disk);
 	}
-	printf("\n");
 
 	return 0;
 }
@@ -1246,6 +1274,8 @@ static int adm_attach(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = (char *)ctx->cmd->name; /* "attach" : "disk-options"; */
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	if (do_attach) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 		if (!strcmp(vol->meta_disk, "internal")) {
 			argv[NA(argc)] = vol->disk;
@@ -1307,6 +1337,8 @@ int adm_new_minor(const struct cfg_ctx *ctx)
 	argv[NA(argc)] = ssprintf("%s", ctx->res->name);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->device_minor);
 	argv[NA(argc)] = ssprintf("%u", ctx->vol->vnr);
+	if (!ctx->vol->disk)
+		argv[NA(argc)] = ssprintf("--diskless");
 	argv[NA(argc)] = NULL;
 #ifdef _WIN32_MVFL
 	ex = add_registry_volume(ctx->vol->disk);
@@ -1347,28 +1379,83 @@ static int adm_resource(const struct cfg_ctx *ctx)
 	return ex;
 }
 
+#ifdef _WIN32
+static _off64_t read_drbd_dev_size(int minor)
+#else 
+static off64_t read_drbd_dev_size(int minor)
+#endif 
+{
+	char *path;
+	FILE *file;
+#ifdef _WIN32
+	_off64_t val;
+#else 
+	off64_t val;
+#endif 
+	int r;
+
+	m_asprintf(&path, "/sys/block/drbd%d/size", minor);
+	file = fopen(path, "r");
+	if (file) {
+		r = fscanf(file, "%" SCNd64, &val);
+		fclose(file);
+		if (r != 1)
+			val = -1;
+	}
+	else
+		val = -1;
+
+	return val;
+}
+
 int adm_resize(const struct cfg_ctx *ctx)
 {
 	char *argv[MAX_ARGS];
 	struct d_option *opt;
+	bool is_resize = !strcmp(ctx->cmd->name, "resize");
+#ifdef _WIN32
+	_off64_t old_size = -1;
+	_off64_t target_size = 0;
+	_off64_t new_size;
+#else
+	off64_t old_size = -1;
+	off64_t target_size = 0;
+	off64_t new_size;
+#endif 
 	int argc = 0;
 	int silent;
 	int ex;
 
 	argv[NA(argc)] = drbdsetup;
-	argv[NA(argc)] = "resize";
+	argv[NA(argc)] = "resize"; /* first execute resize, even if called from check-resize context */
 	argv[NA(argc)] = ssprintf("%d", ctx->vol->device_minor);
 	opt = find_opt(&ctx->vol->disk_options, "size");
 	if (!opt)
 		opt = find_opt(&ctx->res->disk_options, "size");
-	if (opt)
+	if (opt) {
 		argv[NA(argc)] = ssprintf("--%s=%s", opt->name, opt->value);
+		target_size = m_strtoll(opt->value, 's');
+		/* FIXME: what if "add_setup_options" below overrides target_size
+		* with an explicit, on-command-line target_size? */
+	}
 	add_setup_options(argv, &argc, ctx->cmd->drbdsetup_ctx);
 	argv[NA(argc)] = 0;
 
-	/* if this is not "resize", but "check-resize", be silent! */
-	silent = !strcmp(ctx->cmd->name, "check-resize") ? SUPRESS_STDERR : 0;
-	ex = m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
+	if (is_resize && !dry_run)
+		old_size = read_drbd_dev_size(ctx->vol->device_minor);
+
+	/* if this is a "resize" triggered by "check-resize", be silent! */
+	silent = is_resize ? 0 : SUPRESS_STDERR;
+	ex = m_system_ex(argv, SLEEPS_LONG | silent, ctx->res->name);
+
+	if (ex && target_size) {
+		new_size = read_drbd_dev_size(ctx->vol->device_minor);
+		if (new_size == target_size) {
+			fprintf(stderr, "Current size of drbd%u equals target size (%llu byte), exit code %d ignored.\n",
+				ctx->vol->device_minor, (unsigned long long)new_size, ex);
+			ex = 0;
+		}
+	}
 
 	if (ex)
 		return ex;
@@ -1387,6 +1474,29 @@ int adm_resize(const struct cfg_ctx *ctx)
 	/* ignore exit code */
 	m_system_ex(argv, SLEEPS_SHORT | silent, ctx->res->name);
 
+	/* Here comes a really uggly hack. Wait until the device size actually
+	changed, but only up to 10 seconds if know the target size, up to
+	3 seconds waiting for some change. */
+	if (old_size > 0) {
+		int timeo = target_size ? 100 : 30;
+
+		do {
+			new_size = read_drbd_dev_size(ctx->vol->device_minor);
+			if (new_size >= target_size) /* should be == , but driver ignores usize right now */
+				return 0;
+			if (new_size != old_size) {
+				if (target_size == 0)
+					return 0;
+				err("Size changed from %"PRId64" to %"PRId64", waiting for %"PRId64".\n",
+					old_size, new_size, target_size);
+				old_size = new_size; /* I want to see it only once.*/
+			}
+
+			usleep(100000);
+		} while (timeo-- > 0);
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -1400,6 +1510,8 @@ int _adm_drbdmeta(const struct cfg_ctx *ctx, int flags, char *argument)
 	argv[NA(argc)] = ssprintf("%d", vol->device_minor);
 	argv[NA(argc)] = "v09";
 	if (!strcmp(vol->meta_disk, "internal")) {
+		assert(vol->disk != NULL);
+		assert(vol->disk[0] != '\0');
 		argv[NA(argc)] = vol->disk;
 	} else {
 		argv[NA(argc)] = vol->meta_disk;
@@ -1524,67 +1636,6 @@ static int __adm_drbdsetup_silent(const struct cfg_ctx *ctx)
 	return rv;
 }
 
-int sh_status(const struct cfg_ctx *ctx)
-{
-	struct cfg_ctx tmp_ctx = *ctx;
-	struct d_resource *r;
-	struct d_volume *vol, *lower_vol;
-	int rv = 0;
-
-	if (!dry_run) {
-		printf("_drbd_version=%s\n_drbd_api=%u\n",
-		       shell_escape(PACKAGE_VERSION), API_VERSION);
-		printf("_config_file=%s\n\n\n", shell_escape(config_save));
-	}
-
-	for_each_resource(r, &config) {
-		if (r->ignore)
-			continue;
-		tmp_ctx.res = r;
-
-		printf("_conf_res_name=%s\n", shell_escape(r->name));
-		printf("_conf_file_line=%s:%u\n\n", shell_escape(r->config_file), r->start_line);
-		if (r->stacked && r->me->lower) {
-			printf("_stacked_on=%s\n", shell_escape(r->me->lower->name));
-			lower_vol = STAILQ_FIRST(&r->me->lower->me->volumes);
-		} else {
-			/* reset stuff */
-			printf("_stacked_on=\n");
-			printf("_stacked_on_device=\n");
-			printf("_stacked_on_minor=\n");
-			lower_vol = NULL;
-		}
-		/* TODO: remove this loop, have drbdsetup use dump
-		 * and optionally filter on resource name.
-		 * "stacked" information is not directly known to drbdsetup, though.
-		 */
-		for_each_volume(vol, &r->me->volumes) {
-			/* do not continue in this loop,
-			 * or lower_vol will get out of sync */
-			if (lower_vol) {
-				printf("_stacked_on_device=%s\n", shell_escape(lower_vol->device));
-				printf("_stacked_on_minor=%d\n", lower_vol->device_minor);
-			} else if (r->stacked && r->me->lower) {
-				/* ASSERT */
-				err("in %s: stacked volume[%u] without lower volume\n",
-				    r->name, vol->vnr);
-				abort();
-			}
-			printf("_conf_volume=%d\n", vol->vnr);
-
-			tmp_ctx.vol = vol;
-			rv = _adm_drbdsetup(&tmp_ctx, SLEEPS_SHORT);
-			if (rv)
-				return rv;
-
-			if (lower_vol)
-				lower_vol = STAILQ_NEXT(lower_vol, link);
-			/* vol is advanced by for_each_volume */
-		}
-	}
-	return 0;
-}
-
 static int adm_outdate(const struct cfg_ctx *ctx)
 {
 	int rv;
@@ -1687,6 +1738,29 @@ static int adm_forget_peer(const struct cfg_ctx *ctx)
 	return rv;
 }
 
+static void setenv_node_id_and_uname(struct d_resource *res)
+{
+	char key[sizeof("DRBD_NODE_ID_32")];
+	int i;
+	struct d_host_info *host;
+
+	for (i = 0; i < DRBD_NODE_ID_MAX; i++) {
+		snprintf(key, sizeof(key), "DRBD_NODE_ID_%u", i);
+		unsetenv(key);
+	}
+	for_each_host(host, &res->all_hosts) {
+		if (!host->node_id)
+			continue;
+		/* range check in post parse has already clamped this */
+		snprintf(key, sizeof(key), "DRBD_NODE_ID_%s", host->node_id);
+		setenv(key, names_to_str(&host->on_hosts), 1);
+	}
+
+	/* Maybe we will pass it in from kernel some day */
+	if (!getenv("DRBD_MY_NODE_ID"))
+		setenv("DRBD_MY_NODE_ID", res->me->node_id, 1);
+}
+
 static int adm_khelper(const struct cfg_ctx *ctx)
 {
 	struct d_resource *res = ctx->res;
@@ -1702,13 +1776,14 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 #endif
 	setenv("DRBD_CONF", config_save, 1);
 	setenv("DRBD_RESOURCE", res->name, 1);
+	setenv_node_id_and_uname(res);
 
 	if (vol) {
 		snprintf(minor_string, sizeof(minor_string), "%u", vol->device_minor);
 		snprintf(volume_string, sizeof(volume_string), "%u", vol->vnr);
 		setenv("DRBD_MINOR", minor_string, 1);
 		setenv("DRBD_VOLUME", volume_string, 1);
-		setenv("DRBD_LL_DISK", shell_escape(vol->disk), 1);
+		setenv("DRBD_LL_DISK", shell_escape(vol->disk ? : "none"), 1);
 	} else {
 		char *minor_list;
 		char *volume_list;
@@ -1723,7 +1798,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 		for_each_volume(vol, &res->me->volumes) {
 			volumes++;
-			ll_len += strlen(shell_escape(vol->disk)) + 1;
+			ll_len += strlen(shell_escape(vol->disk ? : "none")) + 1;
 		}
 
 		/* max minor number is 2**20 - 1, which is 7 decimal digits.
@@ -1754,7 +1829,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 
 			append(minor, "%d", vol->device_minor);
 			append(volume, "%d", vol->vnr);
-			append(ll, "%s", shell_escape(vol->disk));
+			append(ll, "%s", shell_escape(vol->disk ? : "none"));
 
 #undef append
 			separator = " ";
@@ -1928,6 +2003,14 @@ int do_proxy_conn_up(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
@@ -1968,6 +2051,14 @@ int do_proxy_conn_plugins(const struct cfg_ctx *ctx)
 
 	for_each_connection(conn, &ctx->res->connections) {
 		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 
 #ifdef _WIN32
@@ -2018,6 +2109,15 @@ int do_proxy_conn_down(const struct cfg_ctx *ctx)
 
 	rv = 0;
 	for_each_connection(conn, &res->connections) {
+		struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
+
+#ifdef _WIN32
+		if (!path || !path->my_proxy || !path->peer_proxy)
+#else
+		if (!path->my_proxy || !path->peer_proxy)
+#endif
+			continue;
+
 		conn_name = proxy_connection_name(ctx->res, conn);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1426: avoid crash when no proxy exists.
@@ -2039,6 +2139,11 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 	struct connection *conn = ctx->conn;
 	struct path *path = STAILQ_FIRST(&conn->paths); /* multiple paths via proxy, later! */
 	int rv;
+
+	if (STAILQ_NEXT(path, link)) {
+		err("Multiple paths in connection within proxy setup not allowed\n");
+		exit(E_CONFIG_INVALID);
+	}
 
 	if (!path->my_proxy) {
 		if (all_resources)
@@ -2114,7 +2219,7 @@ static int adm_up(const struct cfg_ctx *ctx)
 		tmp_ctx.conn = conn;
 
 		schedule_deferred_cmd(&new_peer_cmd, &tmp_ctx, CFG_NET_PREP_UP);
-		schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PREP_UP);
+		schedule_deferred_cmd(&new_path_cmd, &tmp_ctx, CFG_NET_PATH);
 		schedule_deferred_cmd(&connect_cmd, &tmp_ctx, CFG_NET_CONNECT);
 
 		STAILQ_FOREACH(peer_device, &conn->peer_devices, connection_link) {
@@ -2124,7 +2229,7 @@ static int adm_up(const struct cfg_ctx *ctx)
 				continue;
 
 			tmp2_ctx = tmp_ctx;
-			tmp2_ctx.vol = peer_device->volume;
+			tmp2_ctx.vol = volume_by_vnr(&conn->peer->volumes, peer_device->vnr);
 			schedule_deferred_cmd(&peer_device_options_cmd, &tmp2_ctx, CFG_PEER_DEVICE);
 		}
 	}
@@ -2301,6 +2406,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 					goto found;
 
 				if (conn->peer && !strcmp(conn->peer->node_id, hi->node_id)) {
+					conn->me = true;
 					if (!set_ignore_flag(conn, check, false))
 						return 1;
 				}
@@ -2313,6 +2419,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 					if (check == CTX_FIRST)
 						goto found;
 
+					conn->me = true;
 					if (!set_ignore_flag(conn, check, false))
 						return 1;
 				}
@@ -2336,7 +2443,6 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 
 	if (0) {
 found:
-		printf("found it\n");
 		if (conn->ignore) {
 			err("Connection '%s' has the ignore flag set\n",
 			    conn_or_hostname);
@@ -2821,12 +2927,19 @@ void verify_ips(struct d_resource *res)
 		return;
 
 	if (!have_ip(res->me->address.af, res->me->address.addr)) {
-		ENTRY e, *ep;
-		e.key = e.data = ep = NULL;
-		m_asprintf(&e.key, "%s:%s", res->me->address.addr, res->me->address.port);
-		hsearch_r(e, FIND, &ep, &global_htable);
+		ENTRY *e, *ep, *f;
+		e = calloc(1, sizeof *e);
+		if (!e) {
+			err("calloc: %m\n");
+			exit(E_EXEC_ERROR);
+		}
+		m_asprintf(&e->key, "%s:%s", res->me->address.addr, res->me->address.port);
+		f = tfind(e, &global_btree, btree_key_cmp);
+		free(e);
+		if (f)
+			ep = *(ENTRY **)f;
 		err("%s: in resource %s, on %s:\n\t""IP %s not found on this host.\n",
-		    ep ? (char *)ep->data : res->config_file, res->name,
+			f ? (char *)ep->data : res->config_file, res->name,
 		    names_to_str(&res->me->on_hosts), res->me->address.addr);
 		if (INVALID_IP_IS_INVALID_CONF)
 			config_valid = 0;
@@ -3050,7 +3163,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			verbose++;
 			break;
 		case 'd':
-			dry_run++;
+			dry_run = 1;
 			break;
 		case 'c':
 			if (!strcmp(optarg, "-")) {
@@ -3074,6 +3187,10 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			break;
 		case 't':
 			config_test = optarg;
+			break;
+		case 'E':
+			/* Remember as absolute name */
+			was_file_already_seen(optarg);
 			break;
 		case 's':
 			{
@@ -3126,6 +3243,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			printf("DRBDADM_BUILDTAG=%s\n", shell_escape(drbd_buildtag()));
 			printf("DRBDADM_API_VERSION=%u\n", API_VERSION);
 			printf("DRBD_KERNEL_VERSION_CODE=0x%06x\n", version_code_kernel());
+			printf("DRBD_KERNEL_VERSION=%s\n", escaped_version_code_kernel());
 			printf("DRBDADM_VERSION_CODE=0x%06x\n", version_code_userland());
 			printf("DRBDADM_VERSION=%s\n", shell_escape(PACKAGE_VERSION));
 			exit(0);
@@ -3164,7 +3282,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 	}
 
 	if (help)
-		print_usage_and_exit(*cmd, 0, 0);
+		print_usage_and_exit(*cmd, NULL, 0);
 
 	if (*cmd == NULL) {
 		if (first_arg_index < argc) {
@@ -3189,7 +3307,8 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 				break;
 
 		field = NULL;
-		if (option[0] == '-' && option[1] == '-' && (*cmd)->drbdsetup_ctx) {
+		if (option[0] == '-' && option[1] == '-' && (*cmd)->drbdsetup_ctx &&
+			(*cmd)->drbdsetup_ctx != &wildcard_ctx) {
 			for (field = (*cmd)->drbdsetup_ctx->fields; field->name; field++) {
 				if (strlen(field->name) == len - 2 &&
 				    !strncmp(option + 2, field->name, len - 2))
@@ -3198,7 +3317,7 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			if (!field->name)
 				field = NULL;
 		}
-		if (!field) {
+		if (!field && (*cmd)->drbdsetup_ctx != &wildcard_ctx) {
 			err("%s: unrecognized option '%.*s'\n", progname, len, option);
 			goto help;
 		}
@@ -3347,6 +3466,7 @@ int main(int argc, char **argv)
 	char *env_drbd_nodename = NULL;
 	int is_dump_xml;
 	int is_dump;
+	int is_adjust;
 	struct cfg_ctx ctx = { };
 
 	initialize_err();
@@ -3394,6 +3514,7 @@ int main(int argc, char **argv)
 
 	is_dump_xml = (cmd == &dump_xml_cmd);
 	is_dump = (is_dump_xml || cmd == &dump_cmd);
+	is_adjust = (cmd == &adjust_cmd || cmd == &adjust_wp_cmd);
 
 	if (!resource_names[0]) {
 		if (is_dump)
@@ -3424,6 +3545,9 @@ int main(int argc, char **argv)
 	else
 		config_save = canonify_path(config_file);
 
+#ifdef _WIN32
+	parse_file = config_file;
+#endif
 	my_parse();
 
 	if (config_test) {
@@ -3450,9 +3574,21 @@ int main(int argc, char **argv)
 
 #ifdef _WIN32 
 	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
-	if (cmd != &connect_cmd)
+	if (cmd != &connect_cmd && cmd != &adjust_cmd)
 	{
-		parse_drbdsetup_show();
+		char *temp_file = config_file;
+		int temp_config_valid = config_valid;
+		if (!resource_names[0] || !strcmp(resource_names[0], "all")) 
+		{	
+			parse_drbdsetup_show(NULL);
+		}
+		else
+		{	
+			parse_drbdsetup_show(resource_names[0]);
+		}
+		
+		config_file = temp_file;
+		config_valid = temp_config_valid;
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);
@@ -3495,6 +3631,8 @@ int main(int argc, char **argv)
 				print_dump_xml_header();
 			else if (is_dump)
 				print_dump_header();
+			if (is_adjust)
+				adjust_more_than_one_resource = 1;
 
 			for_each_resource(res, &config) {
 				if (!is_dump && res->ignore)
@@ -3543,6 +3681,9 @@ int main(int argc, char **argv)
 					    resource_names[i]);
 					exit(E_USAGE);
 				}
+
+			if (is_adjust && resource_names[1])
+				adjust_more_than_one_resource = 1;
 
 			for (i = 0; resource_names[i]; i++) {
 				ctx.res = NULL;
@@ -3631,6 +3772,7 @@ int main(int argc, char **argv)
 	free(resource_names);
 	if (admopt != general_admopt)
 		free(admopt);
+	free_btrees();
 
 	return rv;
 }

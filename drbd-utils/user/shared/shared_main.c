@@ -37,9 +37,12 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#ifndef _WIN32
+#include <sys/prctl.h>
+#endif
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #ifndef _WIN32 
@@ -309,6 +312,9 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 		exit(E_EXEC_ERROR);
 	}
 	if (pid == 0) {
+#ifndef _WIN32
+		prctl(PR_SET_PDEATHSIG, SIGKILL);
+#endif
 		/* Child: close reading end. */
 		close(pipe_fds[0]);
 		if (flags & RETURN_STDOUT_FD) {

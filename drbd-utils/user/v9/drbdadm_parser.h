@@ -96,6 +96,7 @@ enum yytokentype {
 	TK_VIA,
 	TK_TEMPLATE_FILE,
 	TK_PATH,
+	TK_UDEV_ALWAYS_USE_VNR,
 };
 
 typedef struct YYSTYPE {
@@ -117,3 +118,4 @@ int yylex(void);
 void my_yypush_buffer_state(FILE *f);
 void yypop_buffer_state (void );
 void yyrestart(FILE *input_file);
+void free_btrees(void);

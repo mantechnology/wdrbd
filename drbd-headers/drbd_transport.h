@@ -16,7 +16,7 @@
    So that transport compiled against an older version of this
    header will no longer load in a module that assumes a newer
    version. */
-#define DRBD_TRANSPORT_API_VERSION 14
+#define DRBD_TRANSPORT_API_VERSION 15
 
 /* MSG_MSG_DONTROUTE and MSG_PROBE are not used by DRBD. I.e.
    we can reuse these flags for our purposes */
@@ -105,6 +105,7 @@ enum drbd_tr_free_op {
 	DESTROY_TRANSPORT
 };
 
+struct drbd_listener;
 
 /* A transport might wrap its own data structure around this. Having
    this base class as its first member. */
@@ -121,8 +122,11 @@ struct drbd_path {
 	int my_addr_len;
 	int peer_addr_len;
 	bool established; /* updated by the transport */
-
-	struct list_head list;
+	
+	struct list_head list; /* paths of a connection */
+	struct list_head listener_link; /* paths waiting for an incomming connection,
+									head is in a drbd_listener */
+	struct drbd_listener *listener;
 };
 
 /* Each transport implementation should embed a struct drbd_transport
@@ -250,7 +254,7 @@ struct drbd_listener {
 	struct kref kref;
 	struct drbd_resource *resource;
 	struct list_head list; /* link for resource->listeners */
-	struct list_head waiters; /* list head for waiter structs*/
+	struct list_head waiters; /* list head for paths */
 	spinlock_t waiters_lock;
 	int pending_accepts;
 #ifdef _WIN32
@@ -259,16 +263,6 @@ struct drbd_listener {
 	struct sockaddr_storage listen_addr;
 #endif
 	void (*destroy)(struct drbd_listener *);
-};
-
-/* This represents a drbd receiver thread that is waiting for an
-   incoming connection attempt. Again, should be embedded into a
-   implementation object */
-struct drbd_waiter {
-	struct drbd_transport *transport;
-	wait_queue_head_t wait;
-	struct list_head list;
-	struct drbd_listener *listener;
 };
 
 /* drbd_main.c */
@@ -285,12 +279,11 @@ extern void drbd_print_transports_loaded(struct seq_file *seq);
 #ifdef _WIN32 // DW-1498
 extern bool addr_and_port_equal(const struct sockaddr_storage_win *addr1, const struct sockaddr_storage_win *addr2);
 #endif
-extern int drbd_get_listener(struct drbd_waiter *waiter,
-			     const struct sockaddr *addr,
-			     int (*create_fn)(struct drbd_transport *, const struct sockaddr *, struct drbd_listener **));
-extern void drbd_put_listener(struct drbd_waiter *waiter);
+extern int drbd_get_listener(struct drbd_transport *transport, struct drbd_path *path,
+	int(*create_fn)(struct drbd_transport *, const struct sockaddr *, struct drbd_listener **));
+extern void drbd_put_listener(struct drbd_path *path);
 #ifdef _WIN32
-extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage_win *);
+extern struct drbd_path *drbd_find_path_by_addr(struct drbd_listener *, struct sockaddr_storage_win *);
 #else
 extern struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *, struct sockaddr_storage *);
 #endif

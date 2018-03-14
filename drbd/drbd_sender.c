@@ -172,17 +172,19 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	unsigned long flags = 0;
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
+	struct drbd_connection *connection = peer_device->connection;
+
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	device->read_cnt += peer_req->i.size >> 9;
 	list_del(&peer_req->w.list);
-	if (list_empty(&device->read_ee))
-		wake_up(&device->ee_wait);
+	if (list_empty(&connection->read_ee))
+		wake_up(&connection->ee_wait);
 	if (test_bit(__EE_WAS_ERROR, &peer_req->flags))
 		__drbd_chk_io_error(device, DRBD_READ_ERROR);
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
-	drbd_queue_work(&peer_device->connection->sender_work, &peer_req->w);
+	drbd_queue_work(&connection->sender_work, &peer_req->w);
 	put_ldev(device);
 }
 
@@ -236,7 +238,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	device->writ_cnt += peer_req->i.size >> 9;
-	list_move_tail(&peer_req->w.list, &device->done_ee);
+	atomic_inc(&connection->done_ee_cnt);
+	list_move_tail(&peer_req->w.list, &connection->done_ee);
 
 	/*
 	 * Do not remove from the write_requests tree here: we did not send the
@@ -246,25 +249,25 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * _drbd_clear_done_ee.
 	 */
 
-	do_wake = list_empty(block_id == ID_SYNCER ? &device->sync_ee : &device->active_ee);
+	if (block_id == ID_SYNCER)
+		do_wake = list_empty(&connection->sync_ee);
+	else
+		do_wake = list_empty(&connection->active_ee);
 
 	/* FIXME do we want to detach for failed REQ_DISCARD?
-	 * ((peer_req->flags & (EE_WAS_ERROR|EE_IS_TRIM)) == EE_WAS_ERROR) */
+	* ((peer_req->flags & (EE_WAS_ERROR|EE_IS_TRIM)) == EE_WAS_ERROR) */
 	if (peer_req->flags & EE_WAS_ERROR)
 		__drbd_chk_io_error(device, DRBD_WRITE_ERROR);
 
-	if (connection->cstate[NOW] == C_CONNECTED) {
-		kref_get(&device->kref); /* put is in drbd_send_acks_wf() */
-		if (!queue_work(connection->ack_sender, &peer_device->send_acks_work))
-			kref_put(&device->kref, drbd_destroy_device);
-	}
+	if (connection->cstate[NOW] == C_CONNECTED)
+		queue_work(connection->ack_sender, &connection->send_acks_work);
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
 	if (block_id == ID_SYNCER)
 		drbd_rs_complete_io(peer_device, sector);
 
 	if (do_wake)
-		wake_up(&device->ee_wait);
+		wake_up(&connection->ee_wait);
 
 	put_ldev(device);
 }
@@ -307,7 +310,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
 	bool is_write = bio_data_dir(bio) == WRITE;
-	bool is_discard = !!(bio->bi_rw & DRBD_REQ_DISCARD);
+	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
 
 	BIO_ENDIO_FN_START;
 	if (error && drbd_ratelimit())
@@ -455,18 +458,27 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	/* to avoid recursion in __req_mod */
 	if (unlikely(error)) {
-		if (bio->bi_rw & DRBD_REQ_DISCARD)
-			what = (error == -EOPNOTSUPP)
-				? DISCARD_COMPLETED_NOTSUPP
-				: DISCARD_COMPLETED_WITH_ERROR;
-		else
-			what = (bio_data_dir(bio) == WRITE)
-			? WRITE_COMPLETED_WITH_ERROR
-			: (bio_rw(bio) == READ)
-			  ? READ_COMPLETED_WITH_ERROR
-			  : READ_AHEAD_COMPLETED_WITH_ERROR;
-	} else
+		switch (bio_op(bio)) {
+		case REQ_OP_DISCARD:
+			if (error == -EOPNOTSUPP)
+				what = DISCARD_COMPLETED_NOTSUPP;
+			else
+				what = DISCARD_COMPLETED_WITH_ERROR;
+			break;
+		case REQ_OP_READ:
+			if (bio->bi_opf & REQ_RAHEAD)
+				what = READ_AHEAD_COMPLETED_WITH_ERROR;
+			else
+				what = READ_COMPLETED_WITH_ERROR;
+			break;
+		default:
+			what = WRITE_COMPLETED_WITH_ERROR;
+			break;
+		}
+	}
+	else {
 		what = COMPLETED_OK;
+	}
 
 #ifdef _WIN32
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
@@ -568,9 +580,9 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 	bio_for_each_segment(bvec, bio, iter) {
 		sg_set_page(&sg, bvec BVD bv_page, bvec BVD bv_len, bvec BVD bv_offset);
 		crypto_hash_update(&desc, &sg, sg.length);
-		/* REQ_WRITE_SAME has only one segment,
+		/* WRITE_SAME has only one segment,
 		 * checksum the payload only once. */
-		if (bio->bi_rw & DRBD_REQ_WSAME)
+		if (bio_op(bio) == REQ_OP_WRITE_SAME)
 			break;
 	}
 	crypto_hash_final(&desc, digest);
@@ -659,11 +671,12 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	peer_req->w.cb = w_e_send_csum;
 	spin_lock_irq(&device->resource->req_lock);
-	list_add_tail(&peer_req->w.list, &device->read_ee);
+	list_add_tail(&peer_req->w.list, &peer_device->connection->read_ee);
 	spin_unlock_irq(&device->resource->req_lock);
 
 	atomic_add(size >> 9, &device->rs_sect_ev);
-	if (drbd_submit_peer_request(device, peer_req, READ, DRBD_FAULT_RS_RD) == 0)
+	if (drbd_submit_peer_request(device, peer_req, REQ_OP_READ, 0,
+		DRBD_FAULT_RS_RD) == 0)
 		return 0;
 
 	/* If it failed because of ENOMEM, retry should help.  If it failed
@@ -1804,15 +1817,15 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 #else
 			digest = kmalloc(digest_size, GFP_NOIO);
 #endif
-		}
-		if (digest) {
+			if (digest) {
 #ifdef _WIN32
-            drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req, digest);
 #else
-			drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
+				drbd_csum_pages(peer_device->connection->csums_tfm, peer_req->page_chain.head, digest);
 #endif
-			eq = !memcmp(digest, di->digest, digest_size);
-			kfree(digest);
+				eq = !memcmp(digest, di->digest, digest_size);
+				kfree(digest);
+			}
 		}
 
 		if (eq) {
@@ -2773,7 +2786,7 @@ static void go_diskless(struct drbd_device *device)
 		}
 	}
 
-	change_disk_state(device, D_DISKLESS, CS_HARD);
+	change_disk_state(device, D_DISKLESS, CS_HARD, NULL);
 }
 
 static int do_md_sync(struct drbd_device *device)
@@ -2787,6 +2800,17 @@ static int do_md_sync(struct drbd_device *device)
 	return 0;
 }
 
+#ifdef _WIN32
+void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
+#else 
+void repost_up_to_date_fn(unsigned long data)
+#endif 
+{
+	struct drbd_resource *resource = (struct drbd_resource *) data;
+
+	drbd_post_work(resource, TRY_BECOME_UP_TO_DATE);
+}
+
 static int try_become_up_to_date(struct drbd_resource *resource)
 {
 	enum drbd_state_rv rv;
@@ -2797,6 +2821,7 @@ static int try_become_up_to_date(struct drbd_resource *resource)
 	 * Avoid deadlock on state_sem, in case someone holds it while
 	 * waiting for the completion of some after-state-change work.
 	 */
+
 	if (list_empty(&resource->twopc_work.list)) {
 		if (down_trylock(&resource->state_sem))
 			goto repost;
@@ -2807,7 +2832,7 @@ static int try_become_up_to_date(struct drbd_resource *resource)
 			goto repost;
 	} else {
 	repost:
-		drbd_post_work(resource, TRY_BECOME_UP_TO_DATE);
+		mod_timer(&resource->repost_up_to_date_timer, jiffies + HZ / 10);
 	}
 
 	return 0;
@@ -3273,7 +3298,7 @@ static void re_init_if_first_write(struct drbd_connection *connection, unsigned 
 		connection->send.current_epoch_writes = 0;
 		connection->send.last_sent_barrier_jif = jiffies;
 		connection->send.current_dagtag_sector =
-			connection->resource->dagtag_sector - (BIO_MAX_SIZE >> 9) - 1;
+			connection->resource->dagtag_sector - ((BIO_MAX_PAGES << PAGE_SHIFT) >> 9) - 1;
 	}
 }
 
@@ -3348,7 +3373,7 @@ static int process_one_request(struct drbd_connection *connection)
 				peer_device->todo.was_ahead = true;
 				drbd_send_current_state(peer_device);
 			}
-			err = drbd_send_out_of_sync(peer_device, req);
+			err = drbd_send_out_of_sync(peer_device, &req->i);
 			what = OOS_HANDED_TO_NETWORK;
 		}
 	} else {

@@ -88,6 +88,11 @@ enum drbd_on_no_data {
 	OND_SUSPEND_IO
 };
 
+enum drbd_on_no_quorum {
+	ONQ_IO_ERROR = OND_IO_ERROR,
+	ONQ_SUSPEND_IO = OND_SUSPEND_IO
+};
+
 enum drbd_on_congestion {
 	OC_BLOCK,
 	OC_PULL_AHEAD,
@@ -333,7 +338,8 @@ enum drbd_state_rv {
 	SS_PRIMARY_READER = -22,
 	SS_TIMEOUT = -23,
 	SS_WEAKLY_CONNECTED = -24,
-	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
+	SS_NO_QUORUM = -25,
+	SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */
 };
 
 #define SHARED_SECRET_MAX 64
@@ -434,5 +440,9 @@ enum drbd_peer_state {
 #define DRBD_CPU_MASK_SIZE 32
 
 #define DRBD_MAX_BIO_SIZE (1U << 20)
+
+#define QOU_OFF 0
+#define QOU_MAJORITY 1024
+#define QOU_ALL 1025
 
 #endif

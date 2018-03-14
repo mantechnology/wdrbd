@@ -153,6 +153,9 @@ enum
 #define BIO_RW_FAILFAST_DRIVER		9
 #define BIO_RW_NOIDLE				10
 
+// DW-1538
+#define REQ_RAHEAD		(1UL << BIO_RW_AHEAD)
+
 #define KBUILD_MODNAME      __FILE__
 
 /*
@@ -737,7 +740,7 @@ extern void bio_put(struct bio *);
 extern void bio_free(struct bio *bio); 
 extern void bio_endio(struct bio *, int);
 extern int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned int offset);
-extern int submit_bio(int rw, struct bio *bio);
+extern int submit_bio(struct bio *bio); // DW-1538
 extern void bio_endio(struct bio *bio, int error);
 
 #define bio_get(bio)			atomic_inc(&(bio)->bi_cnt) 
@@ -1658,4 +1661,5 @@ LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 
+extern char *kvasprintf(int flags, const char *fmt, va_list args);
 #endif // DRBD_WINDOWS_H
