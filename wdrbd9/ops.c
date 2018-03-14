@@ -324,7 +324,8 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	ULONG			inlen;
 	PLOGGING_MIN_LV pLoggingMinLv = NULL;
-	
+	NTSTATUS	Status;
+
 	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 
@@ -350,9 +351,12 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		}
 #endif
 
-		SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
-
-		WDRBD_TRACE("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin);
+		// DW-1432: Modified to see if command was successful 
+		Status = SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
+		WDRBD_FATAL("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d status = %lu\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin, Status);
+		if (Status != STATUS_SUCCESS){
+			return STATUS_UNSUCCESSFUL; 
+		}
 	}
 	else {
 		return STATUS_INVALID_PARAMETER;
