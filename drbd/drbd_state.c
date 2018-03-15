@@ -4848,6 +4848,8 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		clear_remote_state_change(resource);
 		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
 		abort_state_change(resource, &irq_flags);
+		// DW-1545: Modified to not display error messages and errors to users
+		rv = SS_NOTHING_TO_DO; 
 		return rv;
 #else
 		clear_remote_state_change(resource);
