@@ -49,7 +49,9 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
+#ifndef _WIN32
 #include "linux/drbd.h"
+#endif
 #include "linux/drbd_limits.h"
 #include "drbdtool_common.h"
 #include "drbdadm.h"
