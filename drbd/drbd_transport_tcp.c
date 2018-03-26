@@ -582,7 +582,7 @@ static void dtt_setbufsize(struct socket *socket, unsigned int snd,
         socket->sk_linux_attr->sk_sndbuf = snd;
     }
     else { 
-        socket->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
+        socket->sk_linux_attr->sk_sndbuf = DRBD_SNDBUF_SIZE_DEF;
     }
 
     if (rcv) {
@@ -691,7 +691,8 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 		goto out;
 	}
 	socket->sk_linux_attr->sk_rcvtimeo =
-		socket->sk_linux_attr->sk_sndtimeo = connect_int * HZ;
+	socket->sk_linux_attr->sk_sndtimeo = connect_int * HZ;
+	dtt_setbufsize(socket, sndbuf_size, rcvbuf_size);
 
 	what = "create-connect";
 
@@ -1140,7 +1141,7 @@ retry:
 				kfree(s_estab);
 				return -ENOMEM;
 			}
-            s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
+			s_estab->sk_linux_attr->sk_sndbuf = DRBD_SNDBUF_SIZE_DEF;
 #endif 
 		}
 		else {
@@ -1228,18 +1229,8 @@ retry:
 		}
 	}
 
-#if 0
-#ifdef _WIN32_SEND_BUFFING
-	if (nc->sndbuf_size < DRBD_SNDBUF_SIZE_DEF)
-	{
-		if (nc->sndbuf_size > 0)
-		{
-			tr_warn(transport, "sndbuf_size(%d) -> (%d)\n", nc->sndbuf_size, DRBD_SNDBUF_SIZE_DEF);
-			nc->sndbuf_size = DRBD_SNDBUF_SIZE_DEF;
-		}
-	}
+#ifdef _WIN32_SEND_BUFFING	
 	dtt_setbufsize(s_estab, nc->sndbuf_size, nc->rcvbuf_size);
-#endif
 #endif
 		
 #ifdef _WIN32
@@ -1374,7 +1365,7 @@ static void dtt_incoming_connection(struct sock *sock)
 
     if (s_estab->sk_linux_attr)
     {
-        s_estab->sk_linux_attr->sk_sndbuf = SOCKET_SND_DEF_BUFFER;
+        s_estab->sk_linux_attr->sk_sndbuf = DRBD_SNDBUF_SIZE_DEF;
     }
     else
     {
