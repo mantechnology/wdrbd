@@ -842,10 +842,10 @@ static int drbd_rs_controller(struct drbd_peer_device *peer_device, unsigned int
 
 	/* What we do in this step */
 	curr_corr = fifo_push(plan, 0);
-	plan->total -= curr_corr;
 #ifdef _WIN32
-	curr_corr = max_t(int, 8, min_t(int, curr_corr, 8));	// minimum 8
+	curr_corr = max_t(int, curr_corr, 8);	// minimum 8
 #endif
+	plan->total -= curr_corr;
 	req_sect = sect_in + curr_corr;
 	if (req_sect < 0)
 		req_sect = 0;
