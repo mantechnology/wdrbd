@@ -1766,6 +1766,11 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	unsigned nr_pages = peer_req->page_chain.nr_pages;
 	int err = -ENOMEM;
 
+#ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
+	if (test_bit(CONNECTION_ALREADY_FREED, &device->flags)){
+		return 0; 
+	}
+#endif
 	/* TRIM/DISCARD: for now, always use the helper function
 	 * blkdev_issue_zeroout(..., discard=true).
 	 * It's synchronous, but it does the right thing wrt. bio splitting.

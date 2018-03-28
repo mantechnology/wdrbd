@@ -902,6 +902,9 @@ enum {
 	HAVE_LDEV,
 	STABLE_RESYNC,		/* One peer_device finished the resync stable! */
 	READ_BALANCE_RR,
+#ifdef _WIN32 //DW-1598 
+	CONNECTION_ALREADY_FREED, 
+#endif 
 };
 
 /* flag bits per peer device */
