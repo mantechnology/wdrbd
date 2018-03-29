@@ -1767,7 +1767,7 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	int err = -ENOMEM;
 
 #ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
-	if (test_bit(CONNECTION_ALREADY_FREED, &device->flags)){
+	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
 		return 0; 
 	}
 #endif
