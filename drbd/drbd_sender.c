@@ -339,6 +339,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #endif
 
 	bio_put(bio); /* no need for the bio anymore */
+
+#ifdef _WIN32 // DW-1598 : Prevent the function below from referencing a connection that already freed.
+	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
+		BIO_ENDIO_FN_RETURN;
+	}
+#endif
+
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
 			drbd_endio_write_sec_final(peer_req);

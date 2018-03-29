@@ -937,6 +937,9 @@ enum {
 	SEND_BITMAP_WORK_PENDING, /* DW-1447 : Do not queue send_bitmap() until the peer's repl_state changes to WFBitmapT.
 										Used when invalidate-remote/invalidate.*/
 #endif
+#ifdef _WIN32 //DW-1598 
+	CONNECTION_ALREADY_FREED,
+#endif 
 };
 
 /* We could make these currently hardcoded constants configurable
