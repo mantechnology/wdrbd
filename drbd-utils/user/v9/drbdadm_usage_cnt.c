@@ -618,15 +618,18 @@ int adm_create_md(const struct cfg_ctx *ctx)
 
 	if(rv || dry_run) return rv;
 
+
+#ifdef _WIN32 // DW-1602 fix a inappropriate device name for bdev_size.
+	char device_name[256]= {0,};
+	sprintf(device_name,"\\\\.\\%s:",ctx->vol->disk);
+	device_size = bdev_size(device_name);
+#else
 	fd = open(ctx->vol->disk,O_RDONLY);
 	if( fd != -1) {
-#ifdef _WIN32
-		device_size = bdev_size(ctx->vol->meta_disk);
-#else
 		device_size = bdev_size(fd);
-#endif
 		close(fd);
 	}
+#endif
 
 	if( read_node_id(&ni) && device_size && !device_uuid) {
 		get_random_bytes(&device_uuid, sizeof(uint64_t));
