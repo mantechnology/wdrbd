@@ -2987,7 +2987,7 @@ static inline sector_t drbd_get_max_capacity(struct drbd_backing_dev *bdev)
 	switch (bdev->md.meta_dev_idx) {
 	case DRBD_MD_INDEX_INTERNAL:
 	case DRBD_MD_INDEX_FLEX_INT:
-#ifdef _WIN32 // DW-1369 : get real size
+#ifdef _WIN32 // DW-1469 : get real size
 		s = drbd_get_capacity(bdev->backing_bdev->bd_contains)
 #else
 		s = drbd_get_capacity(bdev->backing_bdev)
@@ -2997,7 +2997,7 @@ static inline sector_t drbd_get_max_capacity(struct drbd_backing_dev *bdev)
 			: 0;
 		break;
 	case DRBD_MD_INDEX_FLEX_EXT:		
-#ifdef _WIN32 // DW-1369
+#ifdef _WIN32 // DW-1469
 		s = min_t(sector_t, DRBD_MAX_SECTORS_FLEX,
 				drbd_get_capacity(bdev->backing_bdev->bd_contains));
 #else
@@ -3010,7 +3010,7 @@ static inline sector_t drbd_get_max_capacity(struct drbd_backing_dev *bdev)
 				     - bdev->md.bm_offset));
 		break;
 	default:		
-#ifdef _WIN32 // DW-1369
+#ifdef _WIN32 // DW-1469
 		s = min_t(sector_t, DRBD_MAX_SECTORS,
 				drbd_get_capacity(bdev->backing_bdev->bd_contains));
 #else
