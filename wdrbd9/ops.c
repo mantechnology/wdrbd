@@ -496,6 +496,7 @@ Return Value:
 			int err = 0;
 			
 
+			drbd_suspend_io(device, WRITE_ONLY);
 			drbd_set_my_capacity(device, new_size >> 9);
 			
 			err = drbd_resize(device);
@@ -504,6 +505,7 @@ Return Value:
 			{
 				WDRBD_ERROR("drbd resize failed. (err=%d)\n", err);
 			}
+			drbd_resume_io(device);
 
 			kref_put(&device->kref, drbd_destroy_device);
 		}
