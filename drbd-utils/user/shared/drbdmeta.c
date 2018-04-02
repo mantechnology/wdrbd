@@ -26,8 +26,6 @@
 /* have the <sys/....h> first, otherwise you get e.g. "redefined" types from
  * sys/types.h and other weird stuff */
 
-#define INITIALIZE_BITMAP 0
-
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
@@ -65,6 +63,16 @@
 #include "drbdmeta_parser.h"
 
 #include "config.h"
+
+/* BLKZEROOUT, available on linux-3.6 and later,
+* and maybe backported to distribution kernels,
+* even if they pretend to be older.
+* Yes, we encountered a number of systems that already had it in their
+* kernels, but not yet in the headers used to build userland stuff like this.
+*/
+#ifndef BLKZEROOUT
+#define BLKZEROOUT    _IO(0x12,127)
+#endif
 
 extern FILE* yyin;
 YYSTYPE yylval;
@@ -232,6 +240,9 @@ static int confirmed(const char *text)
  * Pending a "nice" implementation of replay_al_84 for striped activity log,
  * I chose a big buffer hopefully large enough to hold the whole activity log,
  * even with "large" number of stripes and stripe sizes.
+ *
+ * If you chose to change buffer_size, double check also fprintf_bm(),
+ * and how it calculates its chunk size.
  */
 const size_t buffer_size = 32 * 1024 * 1024;
 size_t pagesize; /* = sysconf(_SC_PAGESIZE) */
@@ -416,7 +427,7 @@ int v06_validate_md(struct format *cfg)
 /*
  * -- DRBD 0.7 --------------------------------------
  */
-unsigned long bm_bytes(const struct md_cpu const *md, uint64_t sectors);
+unsigned long bm_bytes(const struct md_cpu * const md, uint64_t sectors);
 
 struct __packed md_on_disk_07 {
 	be_u64 la_kb;		/* last agreed size. */
@@ -448,7 +459,7 @@ void md_disk_07_to_cpu(struct md_cpu *cpu, const struct md_on_disk_07 *disk)
 	cpu->al_stripe_size_4k = 8;
 }
 
-void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu const *cpu)
+void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu * const cpu)
 {
 	int i;
 
@@ -464,7 +475,7 @@ void md_cpu_to_disk_07(struct md_on_disk_07 *disk, const struct md_cpu const *cp
 }
 
 int is_valid_md(enum md_format f,
-	const struct md_cpu const *md, const int md_index, const uint64_t ll_size)
+	const struct md_cpu * const md, const int md_index, const uint64_t ll_size)
 {
 	uint64_t md_size_sect;
 	const char *v = f_ops[f].name;
@@ -1706,10 +1717,62 @@ void initialize_al(struct format *cfg)
 
 void check_for_existing_data(struct format *cfg);
 
+static void zeroout_bitmap(struct format *cfg)
+{
+	const size_t bitmap_bytes =
+		ALIGN(bm_bytes(&cfg->md, cfg->bd_size >> 9), cfg->md_hard_sect_size);
+	uint64_t range[2];
+	int err;
+
+	range[0] = cfg->bm_offset; /* start offset */
+	range[1] = bitmap_bytes; /* len */
+
+	fprintf(stderr, "initializing bitmap (%u KB) to all zero\n",
+		(unsigned int)(bitmap_bytes >> 10));
+
+#ifndef _WIN32 // not support. execute the fallback code.
+	err = ioctl(cfg->md_fd, BLKZEROOUT, &range);
+	if (!err)
+		return;
+	PERROR("ioctl(%s, BLKZEROOUT, [%llu, %llu]) failed", cfg->md_device_name,
+		(unsigned long long)range[0], (unsigned long long)range[1]);
+#endif
+	fprintf(stderr, "Using slow(er) fallback.\n");
+	{
+		/* need to sector-align this for O_DIRECT.
+		 * "sector" here means hard-sect size, which may be != 512.
+		 * Note that even though ALIGN does round up, for sector sizes
+		 * of 512, 1024, 2048, 4096 Bytes, this will be fully within
+		 * the claimed meta data area, since we already align all
+		 * "interesting" parts of that to 4kB */
+		size_t i = bitmap_bytes;
+		off_t bm_on_disk_off = cfg->bm_offset;
+		unsigned int percent_done = 0;
+		unsigned int percent_last_report = 0;
+		size_t chunk;
+
+		memset(on_disk_buffer, 0x00, buffer_size);
+		while (i) {
+			chunk = buffer_size < i ? buffer_size : i;
+			pwrite_or_die(cfg, on_disk_buffer,
+				chunk, bm_on_disk_off,
+				"md_initialize_common:BM");
+			bm_on_disk_off += chunk;
+			i -= chunk;
+			percent_done = 100 * (bitmap_bytes - i) / bitmap_bytes;
+			if (percent_done != percent_last_report) {
+				fprintf(stderr,"\r%u%%", percent_done);
+				percent_last_report = percent_done;
+			}
+		}
+		fprintf(stderr,"\r100%%\n");	
+	}
+}
+
 /* MAYBE DOES DISK WRITES!! */
 int md_initialize_common(struct format *cfg, int do_disk_writes)
 {
-	cfg->md.al_nr_extents = 257;	/* arbitrary. */
+	cfg->md.al_nr_extents = 257;    /* arbitrary. */
 	cfg->md.bm_bytes_per_bit = DEFAULT_BM_BLOCK_SIZE;
 
 	re_initialize_md_offsets(cfg);
@@ -1721,48 +1784,21 @@ int md_initialize_common(struct format *cfg, int do_disk_writes)
 
 	/* do you want to initialize al to something more useful? */
 	printf("initializing activity log\n");
-	if (MD_AL_MAX_SECT_07*512 > buffer_size) {
-		fprintf(stderr, "%s:%u: LOGIC BUG\n" , __FILE__ , __LINE__ );
+	if (MD_AL_MAX_SECT_07 * 512 > buffer_size) {
+		fprintf(stderr, "%s:%u: LOGIC BUG\n", __FILE__, __LINE__);
 		exit(111);
 	}
 	initialize_al(cfg);
 
-	/* THINK
-	 * do we really need to initialize the bitmap? */
-	if (INITIALIZE_BITMAP) {
-		/* need to sector-align this for O_DIRECT.
-		 * "sector" here means hard-sect size, which may be != 512.
-		 * Note that even though ALIGN does round up, for sector sizes
-		 * of 512, 1024, 2048, 4096 Bytes, this will be fully within
-		 * the claimed meta data area, since we already align all
-		 * "interesting" parts of that to 4kB */
-		const size_t bm_bytes = ALIGN(cfg->bm_bytes, cfg->md_hard_sect_size);
-		size_t i = bm_bytes;
-		off_t bm_on_disk_off = cfg->bm_offset;
-		unsigned int percent_done = 0;
-		unsigned int percent_last_report = 0;
-		size_t chunk;
-		fprintf(stderr,"initializing bitmap (%u KB)\n",
-			(unsigned int)(bm_bytes>>10));
+	/* We initialize the bitmap to all 0 for the use case that someone
+	* might use set-gi to pretend that the backend devices are completely
+	* in sync. (I.e. thinly provisioned storage, all zeroes)
+	*
+	* In case it current UUID is left at UUID_JUST_CREATED the kernel
+	* driver will set all bits to 1 when using it in a handshake...
+	*/
+	zeroout_bitmap(cfg);
 
-		memset(on_disk_buffer, 0xff, buffer_size);
-		while (i) {
-			chunk = buffer_size < i ? buffer_size : i;
-			pwrite_or_die(cfg, on_disk_buffer,
-				chunk, bm_on_disk_off,
-				"md_initialize_common:BM");
-			bm_on_disk_off += chunk;
-			i -= chunk;
-			percent_done = 100*(bm_bytes-i)/bm_bytes;
-			if (percent_done != percent_last_report) {
-				fprintf(stderr,"\r%u%%", percent_done);
-				percent_last_report = percent_done;
-			}
-		}
-		fprintf(stderr,"\r100%%\n");
-	} else {
-		fprintf(stderr,"NOT initializing bitmap\n");
-	}
 	return 0;
 }
 
@@ -2425,7 +2461,7 @@ int meta_apply_al(struct format *cfg, char **argv __attribute((unused)), int arg
 	return err;
 }
 
-unsigned long bm_bytes(const struct md_cpu const *md, uint64_t sectors)
+unsigned long bm_bytes(const struct md_cpu * const md, uint64_t sectors)
 {
 	unsigned long long bm_bits;
 	unsigned long sectors_per_bit = md->bm_bytes_per_bit >> 9;
@@ -2486,6 +2522,20 @@ static void fprintf_bm(FILE *f, struct format *cfg, int peer_nr, const char* ind
 	unsigned int i; /* in-buffer offset */
 	unsigned int j;
 
+	/*
+	* The code below is a bit "funky" (ugly, unreadable, not only) with
+	* the modulos, and implicit offset modulo continuation on buffer wrap.
+	* To work, it requires the "chunk size" that is read-in per iteration
+	* to be a multiple of max_peer_size * 8 bytes, or it will be seriously
+	* confused on buffer wrap.
+	* IO-size should be a multiple of 4k anyways (because of O_DIRECT),
+	* align on 4k * max_peers seems to be an easy enough fix for said confusion.
+	* If you change buffer_size, double check this hackish reasoning as well. */
+	const size_t max_chunk_size = round_down(buffer_size, 4096 * max_peers);
+
+	ASSERT(buffer_size >= DRBD_PEERS_MAX * 4096);
+	ASSERT(max_chunk_size);
+
 	i = peer_nr;
 	r = peer_nr;
 	cw.le = 0; /* silence compiler warning */
@@ -2497,13 +2547,13 @@ static void fprintf_bm(FILE *f, struct format *cfg, int peer_nr, const char* ind
 	while (r < n) {
 		/* need to read on first iteration,
 		 * and on buffer wrap */
-		if (i * sizeof(*bm) >= buffer_size) {
+		if (i * sizeof(*bm) >= max_chunk_size) {
 			size_t chunk;
-			i -= buffer_size / sizeof(*bm);
+			i -= max_chunk_size / sizeof(*bm);
 		start:
 			chunk = ALIGN((n - round_down(r, max_peers)) * sizeof(*bm), cfg->md_hard_sect_size);
-			if (chunk > buffer_size)
-				chunk = buffer_size;
+			if (chunk > max_chunk_size)
+				chunk = max_chunk_size;
 			ASSERT(chunk);
 			pread_or_die(cfg, on_disk_buffer,
 				chunk, bm_on_disk_off, "fprintf_bm");
@@ -2840,9 +2890,12 @@ int v07_style_md_open(struct format *cfg)
 	}
 
 	if (!S_ISBLK(sb.st_mode)) {
-		fprintf(stderr, "'%s' is not a block device!\n",
-			cfg->md_device_name);
-		exit(20);
+		if (!force) {
+			fprintf(stderr, "'%s' is not a block device!\n",
+				cfg->md_device_name);
+			exit(20);
+		}
+		cfg->bd_size = sb.st_size;
 	}
 #endif
 	if (format_version(cfg) >= DRBD_V08) {
@@ -2865,9 +2918,11 @@ int v07_style_md_open(struct format *cfg)
 			cfg->md_hard_sect_size);
 	}
 #ifdef _WIN32
-	cfg->bd_size = bdev_size(cfg->md_device_name);
+	if (!cfg->bd_size)
+		cfg->bd_size = bdev_size(cfg->md_device_name);
 #else
-	cfg->bd_size = bdev_size(cfg->md_fd);
+	if (!cfg->bd_size)
+		cfg->bd_size = bdev_size(cfg->md_fd);
 #endif
 	/* check_for_existing_data() wants to read that much,
 	 * so having less than that doesn't make sense.
@@ -3356,6 +3411,42 @@ void print_dump_header()
 	printf("\n#\n\n");
 }
 
+char *pretty_peer_md_flags(char *inbuf, unsigned int buf_size, unsigned int flags, const char *first_sep, const char *sep)
+{
+	static const char *flag_name[32] = {
+		/* MDF_PEER_CONNECTED   */ [0] = "connected",
+		/* MDF_PEER_OUTDATED    */[1] = "<=outdated",
+		/* MDF_PEER_FENCING     */[2] = "fencing",
+		/* MDF_PEER_FULL_SYNC   */[3] = "full-sync",
+		/* MDF_PEER_DEVICE_SEEN */[4] = "seen",
+		/* MDF_NODE_EXISTS      */[16] = "exists",
+	};
+
+	char *buf = inbuf;
+	int n = buf_size;
+	int c;
+	int i;
+	const char *cur_sep = first_sep;
+
+	*buf = '\0';
+	for (i = 0; i < 32; i++) {
+		unsigned int f = 1U << i;
+		if ((flags & f) == 0)
+			continue;
+
+		if (flag_name[i])
+			c = snprintf(buf, n, "%s%s", cur_sep, flag_name[i]);
+		else
+			c = snprintf(buf, n, "%s0x%x=?", cur_sep, f);
+		cur_sep = sep;
+		if (c < 0 || c >= n)
+			break;
+		buf += c;
+		n -= c;
+	}
+	return inbuf;
+}
+
 int meta_dump_md(struct format *cfg, char **argv __attribute((unused)), int argc)
 {
 	int al_is_clean;
@@ -3450,6 +3541,7 @@ int meta_dump_md(struct format *cfg, char **argv __attribute((unused)), int argc
 		       cfg->md.current_uuid, cfg->md.flags);
 		for (i = 0; i < DRBD_NODE_ID_MAX; i++) {
 			struct peer_md_cpu *peer = &cfg->md.peers[i];
+			char flag_buf[80];
 
 			printf("peer[%d] {\n", i);
 			if (format_version(cfg) >= DRBD_V09) {
@@ -3458,10 +3550,12 @@ int meta_dump_md(struct format *cfg, char **argv __attribute((unused)), int argc
 			}
 			printf("    bitmap-uuid 0x"X64(016)";\n"
 			       "    bitmap-dagtag 0x"X64(016)";\n"
-			       "    flags 0x"X32(08)";\n",
+				   "    flags 0x"X32(08)";%s\n",
 			       peer->bitmap_uuid,
 			       peer->bitmap_dagtag,
-			       peer->flags);
+				   peer->flags,
+				   pretty_peer_md_flags(flag_buf, sizeof(flag_buf),
+				   peer->flags, " # ", " | "));
 			printf("}\n");
 		}
 		printf("history-uuids {");
@@ -4074,6 +4168,7 @@ void md_convert_08_to_09(struct format *cfg)
 
 	cfg->md.flags &= ~(MDF_CONNECTED_IND | MDF_FULL_SYNC | MDF_PEER_OUT_DATED);
 
+	cfg->md.node_id = -1;
 	cfg->md.magic = DRBD_MD_MAGIC_09;
 	re_initialize_md_offsets(cfg);
 
@@ -4487,25 +4582,25 @@ void check_for_existing_data(struct format *cfg)
 }
 
 /* tries to guess what is in the on_disk_buffer */
-enum md_format detect_md(struct md_cpu *md, const uint64_t ll_size)
+enum md_format detect_md(struct md_cpu *md, const uint64_t ll_size, int index_format)
 {
 	struct md_cpu md_test;
 	enum md_format have = DRBD_UNKNOWN;
 
 	md_disk_07_to_cpu(&md_test, (struct md_on_disk_07*)on_disk_buffer);
-	if (is_valid_md(DRBD_V07, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V07, &md_test, index_format, ll_size)) {
 		have = DRBD_V07;
 		*md = md_test;
 	}
 
 	md_disk_08_to_cpu(&md_test, (struct md_on_disk_08*)on_disk_buffer);
-	if (is_valid_md(DRBD_V08, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V08, &md_test, index_format, ll_size)) {
 		have = DRBD_V08;
 		*md = md_test;
 	}
 
 	md_disk_09_to_cpu(&md_test, (struct meta_data_on_disk_9*)on_disk_buffer);
-	if (is_valid_md(DRBD_V09, &md_test, DRBD_MD_INDEX_FLEX_INT, ll_size)) {
+	if (is_valid_md(DRBD_V09, &md_test, index_format, ll_size)) {
 		have = DRBD_V09;
 		*md = md_test;
 	}
@@ -4545,7 +4640,7 @@ void check_internal_md_flavours(struct format * cfg) {
 
 	if (have == DRBD_UNKNOWN) {
 		PREAD(cfg, on_disk_buffer, 4096, flex_offset);
-		have = detect_md(&md_now, cfg->bd_size);
+		have = detect_md(&md_now, cfg->bd_size, DRBD_MD_INDEX_FLEX_INT);
 	}
 
 	if (have == DRBD_UNKNOWN)
@@ -4654,7 +4749,7 @@ void check_external_md_flavours(struct format * cfg) {
 	}
 
 	PREAD(cfg, on_disk_buffer, 4096, cfg->md_offset);
-	have = detect_md(&md_now, cfg->bd_size);
+	have = detect_md(&md_now, cfg->bd_size, DRBD_MD_INDEX_FLEX_EXT);
 
 	if (have == DRBD_UNKNOWN)
 		return;

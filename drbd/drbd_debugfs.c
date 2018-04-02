@@ -159,11 +159,7 @@ static void seq_print_minor_vnr_req(struct seq_file *m, struct drbd_request *req
 static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 
 	seq_puts(m, "minor\tvnr\tstart\tsubmit\tintent\n");
 	rcu_read_lock();
@@ -195,11 +191,7 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 	
 	seq_puts(m, "minor\tvnr\tage\t#waiting\n");
 	rcu_read_lock();
@@ -263,11 +255,7 @@ static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *d
 static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
 {
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
 
 	seq_puts(m, "minor\tvnr\trw\tage\t#in-flight\n");
 	rcu_read_lock();
@@ -292,6 +280,7 @@ static void seq_print_peer_request_flags(struct seq_file *m, struct drbd_peer_re
 	seq_print_rq_state_bit(m, f & EE_IS_BARRIER, &sep, "barr");
 	seq_print_rq_state_bit(m, f & EE_SEND_WRITE_ACK, &sep, "C");
 	seq_print_rq_state_bit(m, f & EE_MAY_SET_IN_SYNC, &sep, "set-in-sync");
+	seq_print_rq_state_bit(m, (f & (EE_IN_ACTLOG | EE_WRITE)) == EE_WRITE, &sep, "blocked-on-al");
 
 	if (f & EE_IS_TRIM)
 		__seq_print_rq_state_bit(m, f & EE_IS_TRIM_USE_ZEROOUT, &sep, "zero-out", "trim");
@@ -300,7 +289,7 @@ static void seq_print_peer_request_flags(struct seq_file *m, struct drbd_peer_re
 }
 
 static void seq_print_peer_request(struct seq_file *m,
-	struct drbd_device *device, struct list_head *lh,
+	struct drbd_connection *connection, struct list_head *lh,
 	unsigned long now)
 {
 	bool reported_preparing = false;
@@ -311,6 +300,9 @@ static void seq_print_peer_request(struct seq_file *m,
 #else
 	list_for_each_entry(peer_req, lh, w.list) {
 #endif
+		struct drbd_peer_device *peer_device = peer_req->peer_device;
+		struct drbd_device *device = peer_device ? peer_device->device : NULL;
+
 		if (reported_preparing && !(peer_req->flags & EE_SUBMITTED))
 			continue;
 
@@ -329,15 +321,20 @@ static void seq_print_peer_request(struct seq_file *m,
 	}
 }
 
-static void seq_print_device_peer_requests(struct seq_file *m,
-	struct drbd_device *device, unsigned long now)
+static void seq_print_connection_peer_requests(struct seq_file *m,
+	struct drbd_connection *connection, unsigned long now)
 {
 	seq_puts(m, "minor\tvnr\tsector\tsize\trw\tage\tflags\n");
-	spin_lock_irq(&device->resource->req_lock);
-	seq_print_peer_request(m, device, &device->active_ee, now);
-	seq_print_peer_request(m, device, &device->read_ee, now);
-	seq_print_peer_request(m, device, &device->sync_ee, now);
-	spin_unlock_irq(&device->resource->req_lock);
+	spin_lock_irq(&connection->resource->req_lock);
+	seq_print_peer_request(m, connection, &connection->active_ee, now);
+	seq_print_peer_request(m, connection, &connection->read_ee, now);
+	seq_print_peer_request(m, connection, &connection->sync_ee, now);
+	spin_unlock_irq(&connection->resource->req_lock);
+}
+
+static void seq_print_device_peer_flushes(struct seq_file *m,
+	struct drbd_device *device, unsigned long now)
+{
 	if (test_bit(FLUSH_PENDING, &device->flags)) {
 		seq_printf(m, "%u\t%u\t-\t-\tF\t%u\tflush\n",
 			device->minor, device->vnr,
@@ -348,20 +345,20 @@ static void seq_print_device_peer_requests(struct seq_file *m,
 static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 	struct drbd_resource *resource, unsigned long now)
 {
+	struct drbd_connection *connection;
 	struct drbd_device *device;
-#ifdef _WIN32
 	int i;
-#else
-	unsigned int i;
-#endif
-	
+
 	rcu_read_lock();
+	for_each_connection_rcu(connection, resource) {
+		seq_print_connection_peer_requests(m, connection, now);
+	}
 #ifdef _WIN32
 	idr_for_each_entry(struct drbd_device *, &resource->devices, device, i) {
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
 #endif
-		seq_print_device_peer_requests(m, device, now);
+		seq_print_device_peer_flushes(m, device, now);
 	}
 	rcu_read_unlock();
 }
@@ -1392,7 +1389,7 @@ static int peer_device_proc_drbd_show(struct seq_file *m, void *ignored)
 	rcu_read_lock();
 	{
 		/* reset device->congestion_reason */
-		bdi_rw_congested(&device->rq_queue->backing_dev_info);
+		bdi_rw_congested(device->rq_queue->backing_dev_info);
 
 		nc = rcu_dereference(peer_device->connection->transport.net_conf);
 		wp = nc ? nc->wire_protocol - DRBD_PROT_A + 'A' : ' ';

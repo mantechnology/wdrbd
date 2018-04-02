@@ -226,65 +226,76 @@ static void pperror(struct d_proxy_info *proxy, char *text)
  * for check_uniq: check uniqueness of
  * resource names, ip:port, node:disk and node:device combinations
  * as well as resource:section ...
- * hash table to test for uniqueness of these values...
- *  256  (max minors)
- *  *(
- *       2 (host sections) * 4 (res ip:port node:disk node:device)
- *     + 4 (other sections)
- *     + some more,
- *       if we want to check for scoped uniqueness of *every* option
- *   )
- *     since nobody (?) will actually use more than a dozen minors,
- *     this should be more than enough.
+ * binary tree to test for uniqueness of these values...
  *
  * Furthermore, the names of files that have been read are
  * registered here, to avoid reading the same file multiple times.
+ * IMPORTANT:
+ * It is fine to point key and value to the same object within one entry, that
+ * is handled by free_bt_node, BUT DON'T point to the same objects from
+ * multiple entries (double free).
  */
-struct hsearch_data global_htable;
-void check_uniq_init(void)
+
+void *global_btree = NULL;
+/* some settings need only be unique within one resource definition. */
+void *per_resource_btree = NULL;
+
+int btree_key_cmp(const void *a, const void *b)
 {
-	memset(&global_htable, 0, sizeof(global_htable));
-	if (!hcreate_r(16384 * ((2 * 4) + 4), &global_htable)) {
-		err("Insufficient memory.\n");
-		exit(E_EXEC_ERROR);
-	};
+	ENTRY *ka = (ENTRY*)a;
+	ENTRY *kb = (ENTRY*)b;
+
+	return strcmp((char*)ka->key, (char*)kb->key);
 }
 
-/* some settings need only be unique within one resource definition.
- * we need currently about 8 + (number of host) * 8 entries,
- * 200 should be much more than enough. */
-struct hsearch_data per_resource_htable;
+void free_bt_node(void *node)
+{
+	ENTRY *e = node;
+	/* creative users of the tree might point key and data to the same object */
+	if (e->key != e->data)
+		free(e->key);
+	free(e->data);
+	free(e);
+}
+
+void free_btrees(void)
+{
+	tdestroy(per_resource_btree, free_bt_node);
+	tdestroy(global_btree, free_bt_node);
+}
+
 void check_upr_init(void)
 {
 	static int created = 0;
 	if (config_valid >= 2)
-		return;
-	if (created)
-		hdestroy_r(&per_resource_htable);
-	memset(&per_resource_htable, 0, sizeof(per_resource_htable));
-	if (!hcreate_r(256, &per_resource_htable)) {
-		err("Insufficient memory.\n");
-		exit(E_EXEC_ERROR);
-	};
+		return;	
+	if (created) {
+		tdestroy(per_resource_btree, free_bt_node);
+	}
+	per_resource_btree = NULL;
+
 	created = 1;
 }
 
-/* FIXME
- * strictly speaking we don't need to check for uniqueness of disk and device names,
- * but for uniqueness of their major:minor numbers ;-)
- */
-int vcheck_uniq(struct hsearch_data *ht, const char *what, const char *fmt, va_list ap)
+int vcheck_uniq_file_line(
+	const char *file, const int line,
+	void **bt, const char *what, const char *fmt, va_list ap)
 {
 	int rv;
-	ENTRY e, *ep;
-	e.key = e.data = ep = NULL;
+	ENTRY *e, *f;
 
 	/* if we are done parsing the config file,
 	 * switch off this paranoia */
 	if (config_valid >= 2)
 		return 1;
 
-	rv = vasprintf(&e.key, fmt, ap);
+	e = calloc(1, sizeof *e);
+	if (!e) {
+		err("calloc: %m\n");
+		exit(E_THINKO);
+	}
+
+	rv = vasprintf(&e->key, fmt, ap);
 
 	if (rv < 0) {
 		err("vasprintf: %m\n");
@@ -295,29 +306,35 @@ int vcheck_uniq(struct hsearch_data *ht, const char *what, const char *fmt, va_l
 		err("Oops, unset argument in %s:%d.\n", __FILE__, __LINE__);
 		exit(E_THINKO);
 	}
-	m_asprintf((char **)&e.data, "%s:%u", config_file, fline);
-	hsearch_r(e, FIND, &ep, ht);
-	//err("FIND %s: %p\n", e.key, ep);
-	if (ep) {
+	m_asprintf((char **)&e->data, "%s:%u", file, line);
+
+	f = tfind(e, bt, btree_key_cmp);
+	if (f) {
 		if (what) {
+			ENTRY *ep = *(ENTRY **)f;
 			err("%s: conflicting use of %s '%s' ...\n%s: %s '%s' first used here.\n",
-			    (char *)e.data, what, ep->key, (char *)ep->data, what, ep->key);
+				(char *)e->data, what, ep->key, (char *)ep->data, what, ep->key);
 		}
-		free(e.key);
-		free(e.data);
+		free(e->key);
+		free(e->data);
+		free(e);
 		config_valid = 0;
 	} else {
-		//err("ENTER %s\t=>\t%s\n", e.key, (char *)e.data);
-		hsearch_r(e, ENTER, &ep, ht);
-		if (!ep) {
-			err("hash table entry (%s => %s) failed\n", e.key, (char *)e.data);
+		f = tsearch(e, bt, btree_key_cmp);
+		if (!f) {
+			err("tree entry (%s => %s) failed\n", e->key, (char *)e->data);
 			exit(E_THINKO);
 		}
-		ep = NULL;
+		f = NULL;
 	}
-	if (EXIT_ON_CONFLICT && ep)
+	if (EXIT_ON_CONFLICT && f)
 		exit(E_CONFIG_INVALID);
-	return !ep;
+	return !f;
+}
+
+int vcheck_uniq(void **bt, const char *what, const char *fmt, va_list ap)
+{
+	return vcheck_uniq_file_line(config_file, fline, bt, what, fmt, ap);
 }
 
 static void pe_expected(const char *exp)
@@ -385,6 +402,9 @@ static void parse_global(void)
 		int token = yylex();
 		fline = line;
 		switch (token) {
+		case TK_UDEV_ALWAYS_USE_VNR:
+			global_options.udev_always_symlink_vnr = 1;
+			break;
 		case TK_DISABLE_IP_VERIFICATION:
 			global_options.disable_ip_verification = 1;
 			break;
@@ -489,6 +509,7 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 		[CC_TOO_SMALL] = "too small",
 		[CC_TOO_BIG] = "too big",
 		[CC_STR_TOO_LONG] = "too long",
+		[CC_NOT_AN_ENUM_NUM] = "not valid",
 	};
 	err("%s:%u: Parse error: while parsing value ('%.20s%s')\nfor %s. Value is %s.\n",
 		config_file, line,
@@ -497,8 +518,10 @@ static void pe_field(struct field_def *field, enum check_codes e, char *value)
 
 	if (e == CC_NOT_AN_ENUM)
 		pe_valid_enums(field->u.e.map, field->u.e.size);
-	if (e == CC_STR_TOO_LONG)
+	else if (e == CC_STR_TOO_LONG)
 		err("max len: %u\n", field->u.s.max_len - 1);
+	/* else if (e == CC_NOT_AN_ENUM_NUM)
+		pe_valid_enum_num((field->u.en.map, field->u.en.map_size); */
 
 	if (config_valid <= 1)
 		config_valid = 0;
@@ -709,6 +732,8 @@ static void __parse_address(struct d_address *a)
 	EXP(TK_INTEGER);
 	a->port = yylval.txt;
 	range_check(R_PORT, "port", yylval.txt);
+
+	a->is_local_address = addr_scope_local(a->addr);
 }
 
 static void parse_address(struct names *on_hosts, struct d_address *address)
@@ -905,9 +930,11 @@ out:
 		return;
 
 	STAILQ_FOREACH(h, on_hosts, link) {
-		check_uniq("device-minor", "device-minor:%s:%u", h->name, vol->device_minor);
+		check_uniq_file_line(vol->v_config_file, vol->v_device_line,
+			"device-minor", "device-minor:%s:%u", h->name, vol->device_minor);
 		if (vol->device)
-			check_uniq("device", "device:%s:%s", h->name, vol->device);
+			check_uniq_file_line(vol->v_config_file, vol->v_device_line,
+			"device", "device:%s:%s", h->name, vol->device);
 	}
 }
 
@@ -943,7 +970,7 @@ struct d_volume *volume0(struct volumes *volumes)
 			return vol;
 
 		config_valid = 0;
-		err("%s:%d: Explicit and implicit volumes not allowed\n",
+		err("%s:%d: mixing explicit and implicit volumes is not allowed\n",
 		    config_file, line);
 		return vol;
 	}
@@ -951,6 +978,9 @@ struct d_volume *volume0(struct volumes *volumes)
 
 int parse_volume_stmt(struct d_volume *vol, struct names* on_hosts, int token)
 {
+	if (!vol->v_config_file)
+		vol->v_config_file = config_file;
+
 	switch (token) {
 	case TK_DISK:
 		token = yylex();
@@ -971,14 +1001,17 @@ int parse_volume_stmt(struct d_volume *vol, struct names* on_hosts, int token)
 			pe_expected_got( "TK_STRING | {", token);
 		}
 		vol->parsed_disk = 1;
+		vol->v_disk_line = fline;
 		break;
 	case TK_DEVICE:
 		parse_device(on_hosts, vol);
 		vol->parsed_device = 1;
+		vol->v_device_line = fline;
 		break;
 	case TK_META_DISK:
 		parse_meta_disk(vol);
 		vol->parsed_meta_disk = 1;
+		vol->v_meta_disk_line = fline;
 		break;
 	case TK_FLEX_META_DISK:
 		EXP(TK_STRING);
@@ -992,6 +1025,7 @@ int parse_volume_stmt(struct d_volume *vol, struct names* on_hosts, int token)
 		}
 		EXP(';');
 		vol->parsed_meta_disk = 1;
+		vol->v_meta_disk_line = fline;
 		break;
 	case TK_SKIP:
 		parse_skip();
@@ -1649,6 +1683,11 @@ static struct connection *parse_connection(enum pr_flags flags)
 			insert_tail(&conn->paths, parse_path());
 			break;
 		case '}':
+			if (STAILQ_EMPTY(&conn->paths) && !(flags & PARSE_FOR_ADJUST)) {
+				err("%s:%d: connection without a single path (maybe empty?) not allowed\n",
+					config_file, fline);
+				config_valid = 0;
+			}
 			return conn;
 		default:
 			pe_expected_got( "host | net | skip | }", token);
@@ -1754,9 +1793,12 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 			break;
 		case TK_DISK:
 			switch (token=yylex()) {
-			case TK_STRING:
+			case TK_STRING:{
 				/* open coded parse_volume_stmt() */
-				volume0(&res->volumes)->disk = yylval.txt;
+				struct d_volume *vol = volume0(&res->volumes);
+				vol->disk = yylval.txt;
+				vol->parsed_disk = 1;
+				}
 				EXP(';');
 				break;
 			case '{':
@@ -1766,7 +1808,7 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 				break;
 			default:
 				check_string_error(token);
-				pe_expected_got( "TK_STRING | {", token);
+				pe_expected_got("TK_STRING | {", token);
 			}
 			break;
 		case TK_NET:
@@ -1852,34 +1894,43 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 /* Returns the "previous" count, ie. 0 if this file wasn't seen before. */
 int was_file_already_seen(char *fn)
 {
-	ENTRY e, *ep;
+	ENTRY *e;
 	char *real_path;
 
-	real_path = realpath(fn, NULL);
-	if (!real_path)
-		real_path = fn;
-
-	ep = NULL;
-	e.key = real_path;
-	e.data = real_path;
-	hsearch_r(e, FIND, &ep, &global_htable);
-	if (ep) {
-		/* Can be freed, it's just a queried key. */
-		if (real_path != fn)
-			free(real_path);
-		return 1;
-	}
-
-	e.key = real_path;
-	e.data = real_path;
-	hsearch_r(e, ENTER, &ep, &global_htable);
-	if (!ep) {
-		err("hash table entry (%s => %s) failed\n", e.key, (char *)e.data);
+	e = calloc(1, sizeof *e);
+	if (!e) {
+		err("calloc %m\n");
 		exit(E_THINKO);
 	}
 
+	real_path = realpath(fn, NULL);
+	if (!real_path) {
+		real_path = strdup(fn);
+		if (!real_path) {
+			err("strdup %m");
+			free(e);
+			exit(E_THINKO);
+		}
+	}
 
-	/* Must not be freed, because it's still referenced by the hash table. */
+
+	e->key = real_path;
+	e->data = real_path;
+	if (tfind(e, &global_btree, btree_key_cmp)) {
+		/* Can be freed, it's just a queried key. */
+		free(real_path);
+		free(e);
+		return 1;
+	}
+
+	if (!tsearch(e, &global_btree, btree_key_cmp)) {
+		err("tree entry (%s => %s) failed\n", e->key, (char *)e->data);
+		free(real_path);
+		free(e);
+		exit(E_THINKO);
+	}
+
+	/* Must not be freed, because it's still referenced by the binary tree. */
 	/* free(real_path); */
 
 	return 0;
@@ -1987,10 +2038,10 @@ void include_stmt(char *str)
 			} else {
 #ifdef _WIN32
                 err("%s:%d: Failed to open include file 1 '%s'.\n",
-                    config_file, line, yylval.txt);
+					parse_file, line, glob_buf.gl_pathv[i]);
 #else
 				err("%s:%d: Failed to open include file '%s'.\n",
-				    config_save, line, yylval.txt);
+					config_save, line, glob_buf.gl_pathv[i]);
 #endif
 				config_valid = 0;
 			}
@@ -2000,10 +2051,10 @@ void include_stmt(char *str)
 		if (!strchr(str, '?') && !strchr(str, '*') && !strchr(str, '[')) {
 #ifdef _WIN32
             err("%s:%d: Failed to open include file '%s'.\n",
-                config_file, line, yylval.txt);
+                parse_file, line, str);
 #else
 			err("%s:%d: Failed to open include file '%s'.\n",
-			    config_save, line, yylval.txt);
+			    config_save, line, str);
 #endif
 			config_valid = 0;
 		}
@@ -2017,12 +2068,6 @@ void include_stmt(char *str)
 
 void my_parse(void)
 {
-	static int global_htable_init = 0;
-	if (!global_htable_init) {
-		check_uniq_init();
-		global_htable_init = 1;
-	}
-
 	/* Remember that we're reading that file. */
 	was_file_already_seen(config_file);
 
@@ -2058,4 +2103,41 @@ void my_parse(void)
 			pe_expected("global | common | resource | skip | include");
 		}
 	}
+}
+
+int check_uniq(const char *what, const char *fmt, ...)
+{
+	int rv;
+	va_list ap;
+
+	va_start(ap, fmt);
+	rv = vcheck_uniq(&global_btree, what, fmt, ap);
+	va_end(ap);
+
+	return rv;
+}
+
+int check_uniq_file_line(const char *file, const int line, const char *what, const char *fmt, ...)
+{
+	int rv;
+	va_list ap;
+
+	va_start(ap, fmt);
+	rv = vcheck_uniq_file_line(file, line, &global_btree, what, fmt, ap);
+	va_end(ap);
+
+	return rv;
+}
+
+/* unique per resource */
+int check_upr(const char *what, const char *fmt, ...)
+{
+	int rv;
+	va_list ap;
+
+	va_start(ap, fmt);
+	rv = vcheck_uniq(&per_resource_btree, what, fmt, ap);
+	va_end(ap);
+
+	return rv;
 }

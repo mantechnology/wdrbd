@@ -32,7 +32,7 @@ extern const char *drbd_buildtag(void);
 
 /* End of external module for 2.6.33 stuff */
 
-#define REL_VERSION "9.0.3-1"
+#define REL_VERSION "9.0.6"
 #define PRO_VERSION_MIN 86
 // DW-1293: protocol version 112 starts to support fast invalidate(remote)
 #define PRO_VERSION_MAX 112

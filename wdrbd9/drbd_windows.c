@@ -703,11 +703,14 @@ void bio_free(struct bio *bio)
 	kfree(bio);
 }
 
-extern int submit_bio(int rw, struct bio *bio)
+
+// DW-1538
+extern int submit_bio(struct bio* bio)
 {
-	bio->bi_rw |= rw; 
+	//bio->bi_rw |= rw; 
 	return generic_make_request(bio);
 }
+
 
 void bio_endio(struct bio *bio, int error)
 {
@@ -2272,7 +2275,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		{
 			WDRBD_WARN("replicating volume letter is changed, detaching\n");
 			set_bit(FORCE_DETACH, &device->flags);
-			change_disk_state(device, D_DETACHING, CS_HARD);						
+			change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
 			put_ldev(device);
 		}
 		// DW-1300: put device reference count when no longer use.
@@ -3376,3 +3379,20 @@ int drbd_resize(struct drbd_device *device)
 	goto fail;
 }
 
+char *kvasprintf(int flags, const char *fmt, va_list args)
+{
+	char *buffer;
+	const int size = 4096;
+	NTSTATUS status;
+
+	buffer = kzalloc(size, flags, 'AVDW');
+	if (buffer) {
+		status = RtlStringCchVPrintfA(buffer, size, fmt, args);
+		if (status == STATUS_SUCCESS)
+			return buffer;
+
+		kfree(buffer);
+	}
+
+	return NULL;
+}

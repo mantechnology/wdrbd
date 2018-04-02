@@ -136,6 +136,11 @@ enum drbd_on_no_data {
 	OND_SUSPEND_IO
 };
 
+enum drbd_on_no_quorum {
+	ONQ_IO_ERROR = OND_IO_ERROR,
+	ONQ_SUSPEND_IO = OND_SUSPEND_IO
+};
+
 enum drbd_on_congestion {
 	OC_BLOCK,
 	OC_PULL_AHEAD,
@@ -381,17 +386,16 @@ enum drbd_state_rv {
 	SS_PRIMARY_READER = -22,
 	SS_TIMEOUT = -23,
 	SS_WEAKLY_CONNECTED = -24,
+	SS_NO_QUORUM = -25,
+	SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */
 #ifdef _WIN32
-    SS_TARGET_DISK_TOO_SMALL = -25,
-	SS_CONNECTED_DISKLESS = -26, 
-	SS_LOWER_THAN_OUTDATED_PEER = -27, // DW-1340
+	SS_TARGET_DISK_TOO_SMALL = -27,
+	SS_CONNECTED_DISKLESS = -28,
+	SS_LOWER_THAN_OUTDATED_PEER = -29, // DW-1340
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 	// MODIFIED_BY_MANTECH DW-1142
 	SS_RESYNC_FROM_SECONDARY = -27,
 #endif
-    SS_AFTER_LAST_ERROR = -28,    /* Keep this at bottom */
-#else
-	SS_AFTER_LAST_ERROR = -25,    /* Keep this at bottom */
 #endif
 };
 
@@ -500,6 +504,10 @@ enum drbd_peer_state {
 #define DRBD_CPU_MASK_SIZE 32
 
 #define DRBD_MAX_BIO_SIZE (1U << 20)
+
+#define QOU_OFF 0
+#define QOU_MAJORITY 1024
+#define QOU_ALL 1025
 
 #define _WIN32_MVFL
 #define _WIN32_MULTI_VOLUME

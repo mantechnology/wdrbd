@@ -7,8 +7,8 @@ Signature   = "$Windows NT$"
 ; TODO - Change the Class and ClassGuid to match the Load Order Group value, see http://msdn.microsoft.com/en-us/windows/hardware/gg462963
 ; Class       = "ActivityMonitor"                         ;This is determined by the work this filter driver does
 ; ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ;This value is determined by the Load Order Group value
-Class = "_TODO_Change_Class_appropriately_"
-ClassGuid = {_TODO_Change_ClassGuid_appropriately_}
+Class = "ActivityMonitor"
+ClassGuid = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
 Provider    = %ManufacturerName%
 DriverVer   = 
 CatalogFile = drbdlock.cat
