@@ -3343,8 +3343,6 @@ int drbd_resize(struct drbd_device *device)
 		| (rs.no_resync ? DDSF_NO_RESYNC : 0);
 	
 	dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
-
-	drbd_info(device, "dd (%d)\n", dd);
 	
 	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
