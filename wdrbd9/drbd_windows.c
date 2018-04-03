@@ -3268,8 +3268,6 @@ int drbd_resize(struct drbd_device *device)
 	enum dds_flags ddsf;
 	sector_t u_size;
 	struct drbd_peer_device *peer_device;
-	bool traditional_resize = false;
-	sector_t local_max_size;
 	
 	if (!get_ldev(device)) {
 		retcode = ERR_NO_DISK;
@@ -3328,31 +3326,25 @@ int drbd_resize(struct drbd_device *device)
 	}
 
 	device->ldev->known_size = drbd_get_capacity(device->ldev->backing_bdev);
-
 	if (new_disk_conf) {
 		mutex_lock(&device->resource->conf_update);
 		old_disk_conf = device->ldev->disk_conf;
 		*new_disk_conf = *old_disk_conf;
-		new_disk_conf->disk_size = (sector_t)rs.resize_size;
+		new_disk_conf->disk_size = (sector_t)rs.resize_size;		
 		synchronize_rcu_w32_wlock();
 		rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
 		mutex_unlock(&device->resource->conf_update);
 		synchronize_rcu();
 		kfree(old_disk_conf);
-		new_disk_conf = NULL;
+		new_disk_conf = NULL;			
 	}
-
-	local_max_size = drbd_local_max_size(device);
 
 	ddsf = (rs.resize_force ? DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE : 0)
 		| (rs.no_resync ? DDSF_NO_RESYNC : 0);
 	
-	dd = change_cluster_wide_device_size(device, local_max_size, rs.resize_size, ddsf,
-				change_al_layout ? &rs : NULL);
-	if (dd == DS_2PC_NOT_SUPPORTED) {
-		traditional_resize = true;
-		dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
-	}
+	dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
+
+	drbd_info(device, "dd (%d)\n", dd);
 	
 	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
