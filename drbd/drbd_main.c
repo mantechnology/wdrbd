@@ -2016,7 +2016,6 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 	*/
 #ifdef _WIN32 
 	// DW-1469 : For initial sync, set c_size to 0.
-	// If the peer has been already agreed, this node accept the agreed size.
 	if (drbd_current_uuid(device) == UUID_JUST_CREATED)
 	{
 		p->c_size = 0;	
