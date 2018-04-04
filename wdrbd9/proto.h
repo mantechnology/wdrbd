@@ -58,6 +58,10 @@ GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength );
 PVOLUME_EXTENSION
 mvolSearchDevice( PWCHAR PhysicalDeviceName );
 
+PVOLUME_EXTENSION
+mvolSearchVolExtention( PDEVICE_OBJECT PhysicalDevice );
+
+
 VOID
 mvolAddDeviceList( PVOLUME_EXTENSION VolumeExtension );
 VOID
@@ -99,6 +103,11 @@ NTSTATUS
 IOCTL_GetDrbdLog(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG* size);
 NTSTATUS
 IOCTL_SetHandlerUse(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+NTSTATUS 
+drbdStartupCallback();
+VOID
+drbdCleanupCallback();
 
 //
 // thread.c

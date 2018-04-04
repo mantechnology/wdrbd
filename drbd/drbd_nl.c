@@ -1956,7 +1956,8 @@ static bool effective_disk_size_determined(struct drbd_device *device)
  * You should call drbd_md_sync() after calling this function.
  */
 enum determine_dev_size
-drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct resize_parms *rs) __must_hold(local)
+drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
+		enum dds_flags flags, struct resize_parms *rs) __must_hold(local)
 {
 	struct md_offsets_and_sizes {
 		u64 effective_size;
@@ -2012,7 +2013,7 @@ drbd_determine_dev_size(struct drbd_device *device, enum dds_flags flags, struct
 	rcu_read_lock();
 	u_size = rcu_dereference(device->ldev->disk_conf)->disk_size;
 	rcu_read_unlock();
-	size = drbd_new_dev_size(device, u_size, flags & DDSF_FORCED);
+	size = drbd_new_dev_size(device, peer_current_size, u_size, flags);
 
 	if (size < prev.effective_size) {
 		if (rs && u_size == 0) {
@@ -2184,8 +2185,16 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 				 * ignore the size we last knew, and
 				 * "assume_peer_has_space".  */
 #ifdef _WIN32
-				// MODIFIED_BY_MANTECH DW-1337: peer has already been agreed and has smaller current size. this node needs to also accept already agreed size.
-				*max = min_not_zero(*max, peer_device->c_size);
+				if ((drbd_current_uuid(device) == UUID_JUST_CREATED) && peer_device->c_size)
+				{
+					// MODIFIED_BY_MANTECH DW-1337: peer has already been agreed and has smaller current size. this node needs to also accept already agreed size.
+					// DW-1469 : only for initial sync
+					*max = min_not_zero(*max, peer_device->c_size);
+				}
+				else 
+				{
+					*max = min_not_zero(*max, peer_device->max_size);
+				}
 #else
 				*max = min_not_zero(*max, peer_device->max_size);
 #endif				
@@ -2223,13 +2232,20 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 /* MUST hold a reference on ldev. */
 
 sector_t
-drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_has_space) __must_hold(local)
+drbd_new_dev_size(struct drbd_device *device,
+		sector_t current_size, /* need at least this much */
+		sector_t user_capped_size, /* want (at most) this much */
+		enum dds_flags flags) __must_hold(local)
 {
+	struct drbd_resource *resource = device->resource;
 	uint64_t p_size = 0;
 	uint64_t la_size = device->ldev->md.effective_size; /* last agreed size */
 	uint64_t m_size; /* my size */
 	uint64_t size = 0;
 	bool all_known_connected;
+
+	if (flags & DDSF_2PC)
+		return resource->twopc_resize.new_size;
 
 	m_size = drbd_get_max_capacity(device->ldev);
 	all_known_connected = get_max_agreeable_size(device, &p_size);
@@ -2242,13 +2258,13 @@ drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_h
 		DDUMP_LLU(device, p_size);
 		DDUMP_LLU(device, m_size);
 		p_size = min_not_zero(p_size, m_size);
-	} else if (assume_peer_has_space) {
+	} else if (flags & DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE) {
 		DDUMP_LLU(device, p_size);
 		DDUMP_LLU(device, m_size);
 		DDUMP_LLU(device, la_size);
 		p_size = min_not_zero(p_size, m_size);
-		if (p_size > la_size)	
-			drbd_warn(device, "Resize while not connected was forced by the user!\n");
+		if (p_size > la_size)
+			drbd_warn(device, "Resize forced while not fully connected!\n");
 	} else {
 		DDUMP_LLU(device, p_size);
 		DDUMP_LLU(device, m_size);
@@ -2267,13 +2283,18 @@ drbd_new_dev_size(struct drbd_device *device, sector_t u_size, int assume_peer_h
 	if (size == 0)
 		drbd_err(device, "All nodes diskless!\n");
 
-	if (u_size) {
-		if (u_size > size)
-			drbd_err(device, "Requested disk size is too big (%lu > %lu)kiB\n",
-			    (unsigned long)u_size>>1, (unsigned long)size>>1);
-		else
-			size = u_size;
+	if (flags & DDSF_IGNORE_PEER_CONSTRAINTS) {
+		if (current_size > size
+			&&  current_size <= m_size)
+			size = current_size;
 	}
+
+	if (user_capped_size > size)
+		drbd_err(device, "Requested disk size is too big (%llu > %llu)kiB\n",
+		(unsigned long long)user_capped_size >> 1,
+		(unsigned long long)size >> 1);
+	else if (user_capped_size)
+		size = user_capped_size;
 
 	return size;
 }
@@ -3170,6 +3191,10 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	 * (we may currently be R_PRIMARY with no local disk...) */
 	if (drbd_get_max_capacity(nbc) <
 	    drbd_get_capacity(device->this_bdev)) {
+		drbd_err(device,
+			"Current (diskless) capacity %llu, cannot attach smaller (%llu) disk\n",
+			(unsigned long long)drbd_get_capacity(device->this_bdev),
+			(unsigned long long)drbd_get_max_capacity(nbc));
 		retcode = ERR_DISK_TOO_SMALL;
 		goto fail;
 	}
@@ -3402,7 +3427,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* Prevent shrinking of consistent devices ! */
 	{
-	unsigned long long nsz = drbd_new_dev_size(device, device->ldev->disk_conf->disk_size, 0);
+	unsigned long long nsz = drbd_new_dev_size(device, 0, device->ldev->disk_conf->disk_size, 0);
 	unsigned long long eff = device->ldev->md.effective_size;
 	if (drbd_md_test_flag(device->ldev, MDF_CONSISTENT) && nsz < eff) {
 		drbd_warn(device,
@@ -3468,7 +3493,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			set_bit(USE_DEGR_WFC_T, &peer_device->flags);
 	}
 
-	dd = drbd_determine_dev_size(device, 0, NULL);
+	dd = drbd_determine_dev_size(device, 0, 0, NULL);
 	if (dd == DS_ERROR) {
 		retcode = ERR_NOMEM_BITMAP;
 		goto force_diskless_dec;
@@ -4942,14 +4967,15 @@ void resync_after_online_grow(struct drbd_peer_device *peer_device)
 	drbd_start_resync(peer_device, sync_source ? L_SYNC_SOURCE : L_SYNC_TARGET);
 }
 
-static sector_t local_possible_max_size(struct drbd_device *device) __must_hold(local)
+sector_t drbd_local_max_size(struct drbd_device *device) __must_hold(local)
 {
 	struct drbd_backing_dev *tmp_bdev;
 	sector_t s;
 #ifdef _WIN32
-	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL, '97DW');
+	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_ATOMIC, '97DW');
 #else
-	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_KERNEL);
+	tmp_bdev = kmalloc(sizeof(struct drbd_backing_dev), GFP_ATOMIC);
+
 #endif
 	if (!tmp_bdev)
 		return 0;
@@ -4977,10 +5003,21 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_peer_device *peer_device;
 	bool resolve_by_node_id = true;
 	bool has_up_to_date_primary;
+	bool traditional_resize = false;
+	sector_t local_max_size;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
 		return retcode;
+
+#ifdef _WIN32
+	// DW-1469 disable drbd_adm_resize
+	struct drbd_resource *resource = adm_ctx.device->resource;
+	drbd_msg_put_info(adm_ctx.reply_skb, "cmd(drbd_adm_resize) error: not support.\n");
+	drbd_adm_finish(&adm_ctx, info, ERR_INVALID_REQUEST);
+	return 0;
+#endif
+	
 
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 	device = adm_ctx.device;
@@ -5009,7 +5046,11 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
-	if (rs.resize_size && local_possible_max_size(device) < (sector_t)rs.resize_size) {
+	local_max_size = drbd_local_max_size(device);
+	if (rs.resize_size && local_max_size < (sector_t)rs.resize_size) {
+		drbd_err(device, "requested %llu sectors, backend seems only able to support %llu\n",
+			(unsigned long long)(sector_t)rs.resize_size,
+			(unsigned long long)local_max_size);
 		retcode = ERR_DISK_TOO_SMALL;
 		goto fail_ldev;
 	}
@@ -5040,7 +5081,10 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	for_each_peer_device(peer_device, device) {
-		if (rs.no_resync && peer_device->connection->agreed_pro_version < 93) {
+		struct drbd_connection *connection = peer_device->connection;
+		if (rs.no_resync &&
+			connection->cstate[NOW] == C_CONNECTED &&
+			connection->agreed_pro_version < 93) {
 			retcode = ERR_NEED_APV_93;
 			goto fail_ldev;
 		}
@@ -5101,8 +5145,16 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 		new_disk_conf = NULL;
 	}
 
-	ddsf = (rs.resize_force ? DDSF_FORCED : 0) | (rs.no_resync ? DDSF_NO_RESYNC : 0);
-	dd = drbd_determine_dev_size(device, ddsf, change_al_layout ? &rs : NULL);
+	ddsf = (rs.resize_force ? DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE : 0)
+		| (rs.no_resync ? DDSF_NO_RESYNC : 0);
+	
+	dd = change_cluster_wide_device_size(device, local_max_size, rs.resize_size, ddsf,
+				change_al_layout ? &rs : NULL);
+	if (dd == DS_2PC_NOT_SUPPORTED) {
+		traditional_resize = true;
+		dd = drbd_determine_dev_size(device, 0, ddsf, change_al_layout ? &rs : NULL);
+	}
+	
 	drbd_md_sync_if_dirty(device);
 	put_ldev(device);
 	if (dd == DS_ERROR) {
@@ -5114,14 +5166,19 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 	} else if (dd == DS_ERROR_SHRINK) {
 		retcode = ERR_IMPLICIT_SHRINK;
 		goto fail;
+	} else if (dd == DS_2PC_ERR) {
+		retcode = SS_INTERRUPTED;
+		goto fail;
 	}
 
-	for_each_peer_device(peer_device, device) {
-		if (peer_device->repl_state[NOW] == L_ESTABLISHED) {
-			if (dd == DS_GREW)
-				set_bit(RESIZE_PENDING, &peer_device->flags);
-			drbd_send_uuids(peer_device, 0, 0);
-			drbd_send_sizes(peer_device, rs.resize_size, ddsf);
+	if (traditional_resize) {
+		for_each_peer_device(peer_device, device) {
+			if (peer_device->repl_state[NOW] == L_ESTABLISHED) {
+				if (dd == DS_GREW)
+					set_bit(RESIZE_PENDING, &peer_device->flags);
+				drbd_send_uuids(peer_device, 0, 0);
+				drbd_send_sizes(peer_device, rs.resize_size, ddsf);
+			}
 		}
 	}
 

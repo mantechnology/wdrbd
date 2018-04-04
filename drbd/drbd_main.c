@@ -2014,7 +2014,19 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 	TODO verify: this may be needed for v8 compatibility still.
 	p->c_size = cpu_to_be64(trigger_reply ? 0 : drbd_get_capacity(device->this_bdev));
 	*/
+#ifdef _WIN32 
+	// DW-1469 : For initial sync, set c_size to 0.
+	if (drbd_current_uuid(device) == UUID_JUST_CREATED)
+	{
+		p->c_size = 0;	
+	} 	
+	else
+	{
+		p->c_size = cpu_to_be64(drbd_get_capacity(device->this_bdev));
+	}
+#else
 	p->c_size = cpu_to_be64(drbd_get_capacity(device->this_bdev));
+#endif
 	p->max_bio_size = cpu_to_be32(max_bio_size);
 	p->queue_order_type = cpu_to_be16(q_order_type);
 	p->dds_flags = cpu_to_be16(flags);
@@ -2125,16 +2137,16 @@ void drbd_send_twopc_reply(struct drbd_connection *connection,
 		p->tid = cpu_to_be32(reply->tid);
 		p->initiator_node_id = cpu_to_be32(reply->initiator_node_id);
 		p->reachable_nodes = cpu_to_be64(reply->reachable_nodes);
-		p->primary_nodes = cpu_to_be64(reply->primary_nodes);
-		p->weak_nodes = cpu_to_be64(reply->weak_nodes);
-		drbd_debug(connection, "Sending %s reply for state change %u "
-			   "(reachable_nodes=%lX, primary_nodes=%lX, "
-			   "weak_nodes=%lX)\n",
-			   drbd_packet_name(cmd),
-			   reply->tid,
-			   (unsigned long)reply->reachable_nodes,
-			   (unsigned long)reply->primary_nodes,
-			   (unsigned long)reply->weak_nodes);
+		switch (connection->resource->twopc_type) {
+		case TWOPC_STATE_CHANGE:
+			p->primary_nodes = cpu_to_be64(reply->primary_nodes);
+			p->weak_nodes = cpu_to_be64(reply->weak_nodes);
+			break;
+		case TWOPC_RESIZE:
+			p->diskful_primary_nodes = cpu_to_be64(reply->diskful_primary_nodes);
+			p->max_possible_size = cpu_to_be64(reply->max_possible_size);
+			break;
+		}
 		send_command(connection, reply->vnr, cmd, CONTROL_STREAM);
 	}
 }

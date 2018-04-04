@@ -5226,18 +5226,21 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	struct drbd_device *device;
 	struct p_sizes *p = pi->data;
 	struct o_qlim *o = (connection->agreed_features & DRBD_FF_WSAME) ? p->qlim : NULL;
-	uint64_t p_size, p_usize, p_csize, my_usize;
+	uint64_t p_size, p_usize, p_csize;
+	uint64_t my_usize, my_max_size, cur_size;
 	enum determine_dev_size dd = DS_UNCHANGED;
 	bool should_send_sizes = false;
 	enum dds_flags ddsf;
 	unsigned int protocol_max_bio_size;
 	bool have_ldev = false;
 	bool have_mutex = false;
+	bool is_handshake;
 #ifdef _WIN32
 	int err = 0;
 #else 
 	int err;
 #endif
+	u64 im;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -5267,36 +5270,53 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	if (p_size)
 		peer_device->max_size = p_size;
 
-	drbd_info(device, "current_size: %llu\n", (unsigned long long)drbd_get_capacity(device->this_bdev));
+	cur_size = drbd_get_capacity(device->this_bdev);
+	drbd_info(device, "current_size: %llu\n", (unsigned long long)cur_size);
 	drbd_info(peer_device, "c_size: %llu u_size: %llu d_size: %llu max_size: %llu\n",
 			(unsigned long long)p_csize,
 			(unsigned long long)p_usize,
 			(unsigned long long)p_size,
 			(unsigned long long)peer_device->max_size);
 
+	if ((p_size && p_csize > p_size) || (p_usize && p_csize > p_usize)) {
+		drbd_warn(peer_device, "Peer sent bogus sizes, disconnecting\n");
+		goto disconnect;
+	}
+
+	/* The protocol version limits how big requests can be.  In addition,
+	* peers before protocol version 94 cannot split large requests into
+	* multiple bios; their reported max_bio_size is a hard limit.
+	*/
+	protocol_max_bio_size = conn_max_bio_size(connection);
+	peer_device->max_bio_size = min(be32_to_cpu(p->max_bio_size), protocol_max_bio_size);
+	ddsf = be16_to_cpu(p->dds_flags);
+
+	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
+	/* Maybe the peer knows something about peers I cannot currently see. */
+	ddsf |= DDSF_IGNORE_PEER_CONSTRAINTS;
+
 	if (get_ldev(device)) {
-		sector_t new_size, cur_size;
+		sector_t new_size;
 
 		have_ldev = true;
 
 		rcu_read_lock();
 		my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
 		rcu_read_unlock();
-
+		
+		my_max_size = drbd_get_max_capacity(device->ldev);
 		drbd_info(peer_device, "la_size: %llu my_usize: %llu my_max_size: %llu\n",
 			(unsigned long long)device->ldev->md.effective_size,
 			(unsigned long long)my_usize,
-			(unsigned long long)drbd_get_max_capacity(device->ldev));
+			(unsigned long long)my_max_size);
 
 		if (peer_device->disk_state[NOW] > D_DISKLESS)
 			warn_if_differ_considerably(peer_device, "lower level device sizes",
-					p_size, drbd_get_max_capacity(device->ldev));
+					p_size, my_max_size);
 		warn_if_differ_considerably(peer_device, "user requested size",
 					    p_usize, my_usize);
 
-		/* if this is the first connect, or an otherwise expected
-		 * param exchange, choose the minimum */
-		if (peer_device->repl_state[NOW] == L_OFF)
+		if (is_handshake)
 			p_usize = min_not_zero(my_usize, p_usize);
 
 		if (p_usize == 0) {
@@ -5307,20 +5327,26 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 				p_usize = my_usize;
 		}
 
+		new_size = drbd_new_dev_size(device, p_csize, p_usize, ddsf);
+
 		/* Never shrink a device with usable data during connect.
 		   But allow online shrinking if we are connected. */
-		new_size = drbd_new_dev_size(device, p_usize, 0);
-		cur_size = drbd_get_capacity(device->this_bdev);
 		if (new_size < cur_size &&
 		    device->disk_state[NOW] >= D_OUTDATED &&
+#ifdef _WIN32 // DW-1469 : allowed if discard_my_data option.
+		    !test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
+#endif
 		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
 		    drbd_err(peer_device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
 					(unsigned long long)new_size, (unsigned long long)cur_size);
-			/* don't let a rejected peer confuse future handshakes with different peers. */
-			peer_device->max_size = 0;
-			change_cstate(connection, C_DISCONNECTING, CS_HARD);
-			err = -EIO;
-			goto out;
+			goto disconnect;
+		}
+
+		/* Disconnect, if we cannot grow to the peer's current size */
+		if (my_max_size < p_csize && !is_handshake) {
+			drbd_err(peer_device, "Peer's size larger than my maximum capacity (%llu < %llu sectors)\n",
+				(unsigned long long)my_max_size, (unsigned long long)p_csize);
+			goto disconnect;
 		}
 
 		if (my_usize != p_usize) {
@@ -5348,17 +5374,9 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 
 			drbd_info(peer_device, "Peer sets u_size to %llu sectors\n",
 				(unsigned long long)p_usize);
-			should_send_sizes = true;
+			/* Do not set should_send_sizes here. That might cause packet storms */
 		}
-	}
-
-	/* The protocol version limits how big requests can be.  In addition,
-	 * peers before protocol version 94 cannot split large requests into
-	 * multiple bios; their reported max_bio_size is a hard limit.
-	 */
-	protocol_max_bio_size = conn_max_bio_size(connection);
-	peer_device->max_bio_size = min(be32_to_cpu(p->max_bio_size), protocol_max_bio_size);
-	ddsf = be16_to_cpu(p->dds_flags);
+	}		
 
 	/* Leave drbd_reconsider_queue_parameters() before drbd_determine_dev_size().
 	   In case we cleared the QUEUE_FLAG_DISCARD from our queue in
@@ -5367,14 +5385,17 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	if (have_ldev) {
 		drbd_reconsider_queue_parameters(device, device->ldev, o);
 		drbd_info(peer_device, "calling drbd_determine_dev_size()\n");		
-		dd = drbd_determine_dev_size(device, ddsf, NULL);
+		dd = drbd_determine_dev_size(device, p_csize, ddsf, NULL);
+
+		if (dd == DS_GREW || dd == DS_SHRUNK)
+			should_send_sizes = true;
+
 		if (dd == DS_ERROR) {
 			err = -EIO;
 			goto out;
 		}
 		drbd_md_sync_if_dirty(device);
 	} else {
-		struct drbd_peer_device *peer_device;
 		uint64_t size = 0;
 
 		drbd_reconsider_queue_parameters(device, NULL, o);
@@ -5389,15 +5410,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		size = p_csize;
 		size = min_not_zero(size, p_usize);
 		size = min_not_zero(size, p_size);
-
-		rcu_read_lock();
-		for_each_peer_device_rcu(peer_device, device) {
-			/* When a peer device is in L_OFF state, max_size is zero
-			 * until a P_SIZES packet is received.  */
-			uint64_t tmp = peer_device->max_size;
-			size = min_not_zero(size, tmp);
-		}
-		rcu_read_unlock();
+				
 		if (size != drbd_get_capacity(device->this_bdev)) {
 			char ppb[10];
 			should_send_sizes = true;
@@ -5413,9 +5426,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		drbd_err(device, "Peer cannot deal with requests bigger than %u. "
 			 "Please reduce max_bio_size in the configuration.\n",
 			 peer_device->max_bio_size);
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
-		err = -EIO;
-		goto out;
+		goto disconnect;
 	}
 
 	if (have_ldev) {
@@ -5427,19 +5438,23 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		drbd_setup_order_type(device, be16_to_cpu(p->queue_order_type));
 	}
 
-	if (should_send_sizes) {
-		u64 im;
-		for_each_peer_device_ref(peer_device_it, im, device)
-			drbd_send_sizes(peer_device_it, p_usize, ddsf);
-	} else {
-		sector_t my_size = drbd_get_capacity(device->this_bdev);
-		u64 im;
+	cur_size = drbd_get_capacity(device->this_bdev);
+	
+	for_each_peer_device_ref(peer_device_it, im, device) {
+		struct drbd_connection *con_it = peer_device_it->connection;
 
-		for_each_peer_device_ref(peer_device_it, im, device) {
-			if (peer_device_it->repl_state[NOW] > L_OFF
-				&&  peer_device_it->c_size != my_size)
-					drbd_send_sizes(peer_device_it, p_usize, ddsf);
-		}
+		/* drop cached max_size, if we already grew beyond it */
+		if (peer_device_it->max_size < cur_size)
+			peer_device_it->max_size = 0;
+
+		if (con_it->cstate[NOW] < C_CONNECTED)
+			continue;
+
+		/* Send size updates only if something relevant has changed.
+		* TODO: only tell the sender thread to do so,
+		* or we may end up in a distributed deadlock on congestion. */
+		if (should_send_sizes)
+			drbd_send_sizes(peer_device_it, p_usize, ddsf);
 	}
 
 	maybe_trigger_resync(device, get_neighbor_device(device, NEXT_HIGHER),
@@ -5454,6 +5469,13 @@ out:
 	if (have_mutex)
 		mutex_unlock(&connection->resource->conf_update);	
 	return err;
+
+disconnect:
+	/* don't let a rejected peer confuse future handshakes with different peers. */
+	peer_device->max_size = 0;
+	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	err = -EIO;
+	goto out;
 }
 
 static void drbd_resync(struct drbd_peer_device *peer_device,
@@ -6722,7 +6744,7 @@ static int receive_twopc(struct drbd_connection *connection, struct packet_info 
 	reply.target_node_id = be32_to_cpu(p->target_node_id);
 	reply.reachable_nodes = directly_connected_nodes(resource, NOW) |
 				NODE_MASK(resource->res_opts.node_id);
-	reply.primary_nodes = be64_to_cpu(p->primary_nodes);
+	reply.primary_nodes = 0;
 	reply.weak_nodes = 0;
 	reply.is_disconnect = 0;
 	reply.is_aborted = 0;
@@ -6752,6 +6774,155 @@ static void nested_twopc_abort(struct drbd_resource *resource, int vnr, enum drb
 	}
 }
 
+static bool is_prepare(enum drbd_packet cmd)
+{
+    return cmd == P_TWOPC_PREP_RSZ || cmd == P_TWOPC_PREPARE;
+}
+
+
+enum determine_dev_size
+drbd_commit_size_change(struct drbd_device *device, struct resize_parms *rs, u64 nodes_to_reach)
+{
+	struct twopc_resize *tr = &device->resource->twopc_resize;
+    enum determine_dev_size dd;
+    uint64_t my_usize;
+
+    if (!get_ldev(device)) {
+        char ppb[10];
+
+		drbd_set_my_capacity(device, tr->new_size);
+		drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, tr->new_size >> 1),
+			(unsigned long long)tr->new_size >> 1);
+        return DS_UNCHANGED; /* Not entirely true, but we are diskless... */
+    }
+
+    rcu_read_lock();
+    my_usize = rcu_dereference(device->ldev->disk_conf)->disk_size;
+    rcu_read_unlock();
+
+	if (my_usize != tr->user_size) {
+        struct disk_conf *old_disk_conf, *new_disk_conf;
+
+#ifdef _WIN32
+		new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL, 'E7DW');
+#else
+        new_disk_conf = kzalloc(sizeof(struct disk_conf), GFP_KERNEL);
+#endif
+        if (!new_disk_conf) {
+            drbd_err(device, "Allocation of new disk_conf failed\n");
+			device->ldev->disk_conf->disk_size = tr->user_size;
+            goto cont;
+        }
+
+        old_disk_conf = device->ldev->disk_conf;
+        *new_disk_conf = *old_disk_conf;
+		new_disk_conf->disk_size = tr->user_size;
+
+#ifdef _WIN32
+		synchronize_rcu_w32_wlock();
+#endif
+        rcu_assign_pointer(device->ldev->disk_conf, new_disk_conf);
+        synchronize_rcu();
+        kfree(old_disk_conf);
+
+        drbd_info(device, "New u_size %llu sectors\n",
+			(unsigned long long)tr->user_size);
+    }
+cont:
+	dd = drbd_determine_dev_size(device, tr->new_size, tr->dds_flags | DDSF_2PC, rs);
+
+	if (dd > DS_UNCHANGED) { /* DS_SHRUNK, DS_GREW, DS_GREW_FROM_ZERO */
+		struct drbd_peer_device *peer_device;
+		u64 im;
+
+		for_each_peer_device_ref(peer_device, im, device) {
+			if (peer_device->repl_state[NOW] != L_ESTABLISHED ||
+				peer_device->disk_state[NOW] < D_INCONSISTENT)
+				continue;
+
+			/* update cached sizes, relevant for the next handshake
+			* of a currently unconnected peeer. */
+			peer_device->c_size = tr->new_size;
+			peer_device->u_size = tr->user_size;
+			if (dd >= DS_GREW) {
+				if (tr->new_size > peer_device->d_size)
+					peer_device->d_size = tr->new_size;
+
+				if (tr->new_size > peer_device->max_size)
+					peer_device->max_size = tr->new_size;
+			}
+			else if (dd == DS_SHRUNK) {
+				if (tr->new_size < peer_device->d_size)
+					peer_device->d_size = tr->new_size;
+
+				if (tr->new_size < peer_device->max_size)
+					peer_device->max_size = tr->new_size;
+			}
+		}
+	}
+	
+	if (dd == DS_GREW && !(tr->dds_flags & DDSF_NO_RESYNC)) {
+		struct drbd_resource *resource = device->resource;
+		const int my_node_id = resource->res_opts.node_id;
+		struct drbd_peer_device *peer_device;
+		u64 im;
+
+		for_each_peer_device_ref(peer_device, im, device) {
+			if (peer_device->repl_state[NOW] != L_ESTABLISHED ||
+				peer_device->disk_state[NOW] < D_INCONSISTENT)
+				continue;
+
+			if (tr->diskful_primary_nodes) {
+				if (tr->diskful_primary_nodes & NODE_MASK(my_node_id)) {
+					enum drbd_repl_state resync;
+					if (peer_device->connection->peer_role[NOW] == R_SECONDARY) {
+						resync = L_SYNC_SOURCE;
+					}
+					else /* peer == R_PRIMARY */ {
+						resync = peer_device->node_id < my_node_id ?
+						L_SYNC_TARGET : L_SYNC_SOURCE;
+					}
+					drbd_start_resync(peer_device, resync);
+				}
+				else {
+					if (peer_device->connection->peer_role[NOW] == R_PRIMARY)
+						drbd_start_resync(peer_device, L_SYNC_TARGET);
+					/* else  no resync */
+				}
+			}
+			else {
+				if (resource->twopc_parent_nodes & NODE_MASK(peer_device->node_id))
+					drbd_start_resync(peer_device, L_SYNC_TARGET);
+				else if (nodes_to_reach & NODE_MASK(peer_device->node_id))
+					drbd_start_resync(peer_device, L_SYNC_SOURCE);
+				/* else  no resync */
+			}
+		}
+	}
+
+    put_ldev(device);
+    return dd;
+}
+
+enum drbd_state_rv drbd_support_2pc_resize(struct drbd_resource *resource)
+{
+    struct drbd_connection *connection;
+    enum drbd_state_rv rv = SS_SUCCESS;
+
+    rcu_read_lock();
+    for_each_connection_rcu(connection, resource) {
+        if (connection->cstate[NOW] == C_CONNECTED &&
+            connection->agreed_pro_version < 112) {
+            rv = SS_NOT_SUPPORTED;
+            break;
+        }
+    }
+    rcu_read_unlock();
+
+    return rv;
+}
+
+
 
 static int process_twopc(struct drbd_connection *connection,
 			 struct twopc_reply *reply,
@@ -6773,13 +6944,13 @@ static int process_twopc(struct drbd_connection *connection,
 	union drbd_state mask = {}, val = {};
 #endif
 	enum chg_state_flags flags = CS_VERBOSE | CS_LOCAL_ONLY;
-	enum drbd_state_rv rv;
+	enum drbd_state_rv rv = SS_SUCCESS;
 	enum csc_rv csc_rv;
 
 
 	/* Check for concurrent transactions and duplicate packets. */
 	spin_lock_irq(&resource->req_lock);
-
+	
 	csc_rv = check_concurrent_transactions(resource, reply);
 
 #ifdef _WIN32_TWOPC
@@ -6787,7 +6958,7 @@ static int process_twopc(struct drbd_connection *connection,
 					reply->tid, reply->target_node_id, csc_rv, reply->primary_nodes, drbd_packet_name(pi->cmd));
 #endif
 	if (csc_rv == CSC_CLEAR && pi->cmd != P_TWOPC_ABORT) {
-		if (pi->cmd != P_TWOPC_PREPARE) {
+		if (!is_prepare(pi->cmd)) {
 			/* We have committed or aborted this transaction already. */
 			spin_unlock_irq(&resource->req_lock);
 			drbd_debug(connection, "Ignoring %s packet %u\n",
@@ -6818,10 +6989,13 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
+		resource->twopc_type = pi->cmd == P_TWOPC_PREPARE ? TWOPC_STATE_CHANGE : TWOPC_RESIZE;
 		resource->twopc_prepare_reply_cmd = 0;
+		resource->twopc_parent_nodes = NODE_MASK(connection->peer_node_id);
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
-	} else if (csc_rv == CSC_MATCH && pi->cmd != P_TWOPC_PREPARE) {
+	} else if (csc_rv == CSC_MATCH && !is_prepare(pi->cmd)) {
 		flags |= CS_PREPARED;
+
 		if (test_and_set_bit(TWOPC_EXECUTED, &resource->flags)) {
 			spin_unlock_irq(&resource->req_lock);
 			drbd_info(connection, "Ignoring redundant %s packet %u.\n",
@@ -6829,7 +7003,7 @@ static int process_twopc(struct drbd_connection *connection,
 					reply->tid);
 			return 0;
 		}
-	} else if (csc_rv == CSC_ABORT_LOCAL && pi->cmd == P_TWOPC_PREPARE) {
+	} else if (csc_rv == CSC_ABORT_LOCAL && is_prepare(pi->cmd)) {
 		enum alt_rv alt_rv;
 
 		drbd_info(connection, "Aborting local state change %u to yield to remote "
@@ -6856,6 +7030,8 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 		resource->starting_queued_twopc = NULL;
 		resource->remote_state_change = true;
+		resource->twopc_type = pi->cmd == P_TWOPC_PREPARE ? TWOPC_STATE_CHANGE : TWOPC_RESIZE;
+		resource->twopc_parent_nodes = NODE_MASK(connection->peer_node_id);
 		resource->twopc_prepare_reply_cmd = 0;
 		clear_bit(TWOPC_EXECUTED, &resource->flags);
 	} else if (pi->cmd == P_TWOPC_ABORT) {
@@ -6892,7 +7068,7 @@ static int process_twopc(struct drbd_connection *connection,
 			return 0;
 		}
 
-		if (pi->cmd == P_TWOPC_PREPARE) {
+		if (is_prepare(pi->cmd)) {
 			if (csc_rv == CSC_QUEUE) {
 				int err = queue_twopc(connection, reply, pi);
 				if (err)
@@ -6905,6 +7081,7 @@ static int process_twopc(struct drbd_connection *connection,
 
 			match: 
 				spin_lock_irq(&resource->req_lock);
+				resource->twopc_parent_nodes |= NODE_MASK(connection->peer_node_id);
 				reply_cmd = resource->twopc_prepare_reply_cmd;
 				if (!reply_cmd) {
 					kref_get(&connection->kref);
@@ -6986,8 +7163,10 @@ static int process_twopc(struct drbd_connection *connection,
 		affected_connection = NULL;
 	}
 
-	mask.i = be32_to_cpu(p->mask);
-	val.i = be32_to_cpu(p->val);
+	if (resource->twopc_type == TWOPC_STATE_CHANGE) {
+		mask.i = be32_to_cpu(p->mask);
+		val.i = be32_to_cpu(p->val);
+	}
 	
 	if (affected_connection && affected_connection->cstate[NOW] < C_CONNECTED &&
 		mask.conn == 0)
@@ -7021,6 +7200,28 @@ static int process_twopc(struct drbd_connection *connection,
 		}
 	}
 
+	if (pi->cmd == P_TWOPC_PREP_RSZ) {
+		struct drbd_device *device;
+#ifdef _WIN32
+		device = (peer_device ? peer_device : conn_peer_device(connection, pi->vnr))->device;
+#else
+		device = (peer_device ?: conn_peer_device(connection, pi->vnr))->device;
+#endif
+		if (get_ldev(device)) {
+			if (resource->role[NOW] == R_PRIMARY)
+				reply->diskful_primary_nodes = NODE_MASK(resource->res_opts.node_id);
+			reply->max_possible_size = drbd_local_max_size(device);
+			put_ldev(device);
+		}
+		else {
+			reply->max_possible_size = DRBD_MAX_SECTORS_FLEX;
+			reply->diskful_primary_nodes = 0;
+		}
+		resource->twopc_resize.dds_flags = be16_to_cpu(p->dds_flags);
+		resource->twopc_resize.user_size = be64_to_cpu(p->user_size);
+	}
+
+
 	resource->twopc_reply = *reply;
 	spin_unlock_irq(&resource->req_lock);
 
@@ -7033,15 +7234,23 @@ static int process_twopc(struct drbd_connection *connection,
 			  (unsigned long)reply->weak_nodes);
 		flags |= CS_PREPARE;
 		break;
+	case P_TWOPC_PREP_RSZ:
+		drbd_info(connection, "Preparing remote state change %u "
+			"(local_max_size = %llu KiB)\n",
+			reply->tid, (unsigned long long)reply->max_possible_size >> 1);
+		flags |= CS_PREPARE;
+		break;
 	case P_TWOPC_ABORT:
 		drbd_info(connection, "Aborting remote state change %u\n",
 			  reply->tid);
 		flags |= CS_ABORT;
 		break;
-	default:
+	case P_TWOPC_COMMIT:
 		drbd_info(connection, "Committing remote state change %u\n",
 			  reply->tid);
 		break;
+	default:
+		BUG();
 	}
 
 
@@ -7056,17 +7265,25 @@ static int process_twopc(struct drbd_connection *connection,
 				mask.peer == peer_MASK ? drbd_role_str(val.peer) : "-",
 				flags);
 #endif
+		
+	switch (resource->twopc_type) {
+	case TWOPC_STATE_CHANGE:
+		if (flags & CS_PREPARED)
+			reply->primary_nodes = be64_to_cpu(p->primary_nodes);
 
-
-	
-	if (peer_device)
-		rv = change_peer_device_state(peer_device, mask, val, flags);
-	else if (affected_connection)
-		rv = change_connection_state(affected_connection,
-					     mask, val, reply, flags | CS_IGN_OUTD_FAIL);
-	else
-		rv = far_away_change(connection, mask, val, reply, flags);
-
+		if (peer_device)
+			rv = change_peer_device_state(peer_device, mask, val, flags);
+		else if (affected_connection)
+			rv = change_connection_state(affected_connection,
+			mask, val, reply, flags | CS_IGN_OUTD_FAIL);
+		else
+			rv = far_away_change(connection, mask, val, reply, flags);
+		break;
+	case TWOPC_RESIZE:
+		if (flags & CS_PREPARE)
+			rv = drbd_support_2pc_resize(resource);		
+		break;
+	}
 
 	if (flags & CS_PREPARE) {
 		spin_lock_irq(&resource->req_lock);
@@ -7105,6 +7322,21 @@ static int process_twopc(struct drbd_connection *connection,
 			del_timer(&resource->twopc_timer);
 
 		nested_twopc_request(resource, pi->vnr, pi->cmd, p);
+
+		if (resource->twopc_type == TWOPC_RESIZE && flags & CS_PREPARED && !(flags & CS_ABORT)) {
+			struct twopc_resize *tr = &resource->twopc_resize;
+			struct drbd_device *device;
+
+			tr->diskful_primary_nodes = be64_to_cpu(p->diskful_primary_nodes);
+			tr->new_size = be64_to_cpu(p->exposed_size);
+#ifdef _WIN32
+			device = (peer_device ? peer_device : conn_peer_device(connection, pi->vnr))->device;
+#else
+			device = (peer_device ? : conn_peer_device(connection, pi->vnr))->device;
+#endif
+			drbd_commit_size_change(device, NULL, be64_to_cpu(p->nodes_to_reach));
+			rv = SS_SUCCESS;
+		}
 
 		clear_remote_state_change(resource);
 
@@ -8320,6 +8552,7 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_CONN_ST_CHG_REQ] = { 0, sizeof(struct p_req_state), receive_req_state },
 	[P_PROTOCOL_UPDATE] = { 1, sizeof(struct p_protocol), receive_protocol },
 	[P_TWOPC_PREPARE] = { 0, sizeof(struct p_twopc_request), receive_twopc },
+	[P_TWOPC_PREP_RSZ] = { 0, sizeof(struct p_twopc_request), receive_twopc },
 	[P_TWOPC_ABORT] = { 0, sizeof(struct p_twopc_request), receive_twopc },
 	[P_DAGTAG]	    = { 0, sizeof(struct p_dagtag), receive_dagtag },
 	[P_UUIDS110]	    = { 1, sizeof(struct p_uuids110), receive_uuids110 },
@@ -9090,23 +9323,43 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 			   resource->twopc_reply.tid);
 
 		if (pi->cmd == P_TWOPC_YES) {
-			u64 reachable_nodes =
-				be64_to_cpu(p->reachable_nodes);
+			struct drbd_peer_device *peer_device;
+			u64 reachable_nodes;
+			u64 max_size;
 
-			if (resource->res_opts.node_id ==
-			    resource->twopc_reply.initiator_node_id &&
-			    connection->peer_node_id ==
-			    resource->twopc_reply.target_node_id) {
-				resource->twopc_reply.target_reachable_nodes |=
-					reachable_nodes;
-			} else {
-				resource->twopc_reply.reachable_nodes |=
-					reachable_nodes;
+			switch (resource->twopc_type) {
+			case TWOPC_STATE_CHANGE:
+				reachable_nodes =
+					be64_to_cpu(p->reachable_nodes);
+
+				if (resource->res_opts.node_id ==
+					resource->twopc_reply.initiator_node_id &&
+					connection->peer_node_id ==
+					resource->twopc_reply.target_node_id) {
+					resource->twopc_reply.target_reachable_nodes |=
+						reachable_nodes;
+				}
+				else {
+					resource->twopc_reply.reachable_nodes |=
+						reachable_nodes;
+				}
+				resource->twopc_reply.primary_nodes |=
+					be64_to_cpu(p->primary_nodes);
+				resource->twopc_reply.weak_nodes |=
+					be64_to_cpu(p->weak_nodes);
+				break;
+			case TWOPC_RESIZE:
+				resource->twopc_reply.diskful_primary_nodes |=
+					be64_to_cpu(p->diskful_primary_nodes);
+				max_size = be64_to_cpu(p->max_possible_size);
+				resource->twopc_reply.max_possible_size =
+					min_t(sector_t, resource->twopc_reply.max_possible_size,
+					max_size);
+				peer_device = conn_peer_device(connection, resource->twopc_reply.vnr);
+				if (peer_device)
+					peer_device->max_size = max_size;
+				break;
 			}
-			resource->twopc_reply.primary_nodes |=
-				be64_to_cpu(p->primary_nodes);
-			resource->twopc_reply.weak_nodes |=
-				be64_to_cpu(p->weak_nodes);
 		}
 
 		if (pi->cmd == P_TWOPC_YES)

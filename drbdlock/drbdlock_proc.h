@@ -39,3 +39,9 @@ DeviceIoControlDispatch(
 	IN PIRP pIrp
 	);
 
+NTSTATUS 
+ResizeDrbdVolume(
+	PDEVICE_OBJECT pDeviceObject
+	);
+
+

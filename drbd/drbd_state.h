@@ -150,4 +150,13 @@ extern int abort_nested_twopc_work(struct drbd_work *, int);
 extern bool resource_is_suspended(struct drbd_resource *resource, enum which_state which);
 extern bool is_suspended_fen(struct drbd_resource *resource, enum which_state which);
 extern bool is_suspended_quorum(struct drbd_resource *resource, enum which_state which);
+
+enum dds_flags;
+enum determine_dev_size;
+struct resize_parms;
+
+extern enum determine_dev_size
+change_cluster_wide_device_size(struct drbd_device *, sector_t, uint64_t, enum dds_flags,
+			struct resize_parms *);
+
 #endif

@@ -962,6 +962,27 @@ mvolSearchDevice( PWCHAR PhysicalDeviceName )
 	return NULL;
 }
 
+PVOLUME_EXTENSION
+mvolSearchVolExtention(PDEVICE_OBJECT PhysicalDevice)
+{
+	PROOT_EXTENSION		RootExtension = NULL;
+	PVOLUME_EXTENSION	VolumeExtension = NULL;
+
+	RootExtension = mvolRootDeviceObject->DeviceExtension;
+	VolumeExtension = RootExtension->Head;
+	while(VolumeExtension != NULL)
+	{
+		if(VolumeExtension->PhysicalDeviceObject == PhysicalDevice)
+		{
+			return VolumeExtension;
+		}
+
+		VolumeExtension = VolumeExtension->Next;
+	}
+	
+	return NULL;
+}
+
 VOID
 mvolAddDeviceList( PVOLUME_EXTENSION pEntry )
 {
@@ -1636,8 +1657,8 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	OBJECT_ATTRIBUTES cboa = { 0, };
 	UNICODE_STRING usCbName;
-	PCALLBACK_OBJECT g_pCallbackObj;
-	PVOID g_pCallbackReg;
+	PCALLBACK_OBJECT pCallbackObj;
+	PVOID pCallbackReg;
 
 	if (pszCallbackName == NULL)
 	{
@@ -1647,12 +1668,12 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 	RtlInitUnicodeString(&usCbName, pszCallbackName);
 	InitializeObjectAttributes(&cboa, &usCbName, OBJ_CASE_INSENSITIVE, 0, 0);
 
-	status = ExCreateCallback(&g_pCallbackObj, &cboa, FALSE, TRUE);
+	status = ExCreateCallback(&pCallbackObj, &cboa, FALSE, TRUE);
 
 	if (NT_SUCCESS(status))
 	{
-		ExNotifyCallback(g_pCallbackObj, pParam, NULL);
-		ObDereferenceObject(g_pCallbackObj);
+		ExNotifyCallback(pCallbackObj, pParam, NULL);
+		ObDereferenceObject(pCallbackObj);
 	}
 	else
 		WDRBD_ERROR("Failed to open callback object for %ws, status : 0x%x\n", pszCallbackName, status);

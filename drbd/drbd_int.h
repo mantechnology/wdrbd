@@ -1151,6 +1151,11 @@ enum {
 
 enum which_state { NOW, OLD = NOW, NEW };
 
+enum twopc_type {
+	TWOPC_STATE_CHANGE,
+	TWOPC_RESIZE,
+};
+
 struct twopc_reply {
 	int vnr;
 	unsigned int tid;  /* transaction identifier */
@@ -1158,10 +1163,18 @@ struct twopc_reply {
 	int target_node_id;  /* target of the transaction (or -1) */
 	u64 target_reachable_nodes;  /* behind the target node */
 	u64 reachable_nodes;  /* behind other nodes */
-	u64 primary_nodes;
-	u64 weak_nodes;
-	unsigned int is_disconnect : 1;
-	unsigned int is_aborted : 1;
+	union {
+		struct { /* type == TWOPC_STATE_CHANGE */
+			u64 primary_nodes;
+			u64 weak_nodes;
+		};
+		struct { /* type == TWOPC_RESIZE */
+			u64 diskful_primary_nodes;
+			u64 max_possible_size;
+		};
+	};
+	int is_disconnect:1;
+	int is_aborted:1;
 };
 
 struct drbd_thread_timing_details
@@ -1245,12 +1258,20 @@ struct drbd_resource {
 	enum chg_state_flags state_change_flags;
 	const char **state_change_err_str;
 	bool remote_state_change;  /* remote state change in progress */
+	enum twopc_type twopc_type; /* from prepare phase */
 	enum drbd_packet twopc_prepare_reply_cmd; /* this node's answer to the prepare phase or 0 */
 	struct list_head twopc_parents;  /* prepared on behalf of peer */
+	u64 twopc_parent_nodes;
 	struct twopc_reply twopc_reply;
 	struct timer_list twopc_timer;
 	struct drbd_work twopc_work;
 	wait_queue_head_t twopc_wait;
+	struct twopc_resize {
+		int dds_flags;            /* from prepare phase */
+		sector_t user_size;       /* from prepare phase */
+		u64 diskful_primary_nodes;/* added in commit phase */
+		u64 new_size;             /* added in commit phase */
+	} twopc_resize;
 	struct list_head queued_twopc;
 	spinlock_t queued_twopc_lock;
 	struct timer_list queued_twopc_timer;
@@ -1904,8 +1925,12 @@ static inline unsigned int device_to_minor(struct drbd_device *device)
 /* drbd_main.c */
 
 enum dds_flags {
-	DDSF_FORCED    = 1,
+	/* This enum is part of the wire protocol!
+	* See P_SIZES, struct p_sizes; */
+	DDSF_ASSUME_UNCONNECTED_PEER_HAS_SPACE = 1,
 	DDSF_NO_RESYNC = 2, /* Do not run a resync for the new space */
+	DDSF_IGNORE_PEER_CONSTRAINTS = 4,
+	DDSF_2PC = 8, /* local only, not on the wire */
 };
 
 extern int  drbd_thread_start(struct drbd_thread *thi);
@@ -2391,8 +2416,13 @@ enum suspend_scope {
 extern void drbd_suspend_io(struct drbd_device *device, enum suspend_scope);
 extern void drbd_resume_io(struct drbd_device *device);
 extern char *ppsize(char *buf, unsigned long long size);
-extern sector_t drbd_new_dev_size(struct drbd_device *, sector_t, int) __must_hold(local);
+extern sector_t drbd_new_dev_size(struct drbd_device *,
+	sector_t current_size, /* need at least this much */
+	sector_t user_capped_size, /* want (at most) this much */
+	enum dds_flags flags) __must_hold(local);
 enum determine_dev_size {
+	DS_2PC_ERR = -5,
+	DS_2PC_NOT_SUPPORTED = -4,
 	DS_ERROR_SHRINK = -3,
 	DS_ERROR_SPACE_MD = -2,
 	DS_ERROR = -1,
@@ -2402,7 +2432,8 @@ enum determine_dev_size {
 	DS_GREW_FROM_ZERO = 3,
 };
 extern enum determine_dev_size
-drbd_determine_dev_size(struct drbd_device *, enum dds_flags, struct resize_parms *) __must_hold(local);
+drbd_determine_dev_size(struct drbd_device *, sector_t peer_current_size,
+		enum dds_flags, struct resize_parms *) __must_hold(local);
 extern void resync_after_online_grow(struct drbd_peer_device *);
 extern void drbd_reconsider_queue_parameters(struct drbd_device *device,
 			struct drbd_backing_dev *bdev, struct o_qlim *o);
@@ -2592,6 +2623,9 @@ extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
 extern void queued_twopc_timer_fn(unsigned long data);
 #endif
 extern bool drbd_have_local_disk(struct drbd_resource *resource);
+extern enum drbd_state_rv drbd_support_2pc_resize(struct drbd_resource *resource);
+extern enum determine_dev_size
+drbd_commit_size_change(struct drbd_device *device, struct resize_parms *rs, u64 nodes_to_reach);
 
 static __inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
@@ -2771,7 +2805,9 @@ extern void notify_helper(enum drbd_notification_type, struct drbd_device *,
 extern void notify_path(struct drbd_connection *, struct drbd_path *,
 			enum drbd_notification_type);
 
+extern sector_t drbd_local_max_size(struct drbd_device *device) __must_hold(local);
 extern int drbd_open_ro_count(struct drbd_resource *resource);
+
 /*
  * inline helper functions
  *************************/
@@ -2951,22 +2987,36 @@ static inline sector_t drbd_get_max_capacity(struct drbd_backing_dev *bdev)
 	switch (bdev->md.meta_dev_idx) {
 	case DRBD_MD_INDEX_INTERNAL:
 	case DRBD_MD_INDEX_FLEX_INT:
+#ifdef _WIN32 // DW-1469 : get real size
+		s = drbd_get_capacity(bdev->backing_bdev->bd_contains)
+#else
 		s = drbd_get_capacity(bdev->backing_bdev)
+#endif
 			? min_t(sector_t, DRBD_MAX_SECTORS_FLEX,
 				drbd_md_first_sector(bdev))
 			: 0;
 		break;
-	case DRBD_MD_INDEX_FLEX_EXT:
+	case DRBD_MD_INDEX_FLEX_EXT:		
+#ifdef _WIN32 // DW-1469
 		s = min_t(sector_t, DRBD_MAX_SECTORS_FLEX,
-				drbd_get_capacity(bdev->backing_bdev));
+				drbd_get_capacity(bdev->backing_bdev->bd_contains));
+#else
+		s = min_t(sector_t, DRBD_MAX_SECTORS_FLEX,
+				//drbd_get_capacity(bdev->backing_bdev));
+#endif
 		/* clip at maximum size the meta device can support */
 		s = min_t(sector_t, s,
 			BM_EXT_TO_SECT(bdev->md.md_size_sect
 				     - bdev->md.bm_offset));
 		break;
-	default:
+	default:		
+#ifdef _WIN32 // DW-1469
+		s = min_t(sector_t, DRBD_MAX_SECTORS,
+				drbd_get_capacity(bdev->backing_bdev->bd_contains));
+#else
 		s = min_t(sector_t, DRBD_MAX_SECTORS,
 				drbd_get_capacity(bdev->backing_bdev));
+#endif
 	}
 	return s;
 }
