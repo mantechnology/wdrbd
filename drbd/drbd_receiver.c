@@ -3560,10 +3560,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	list_add_tail(&peer_req->w.list, &connection->read_ee);
 	spin_unlock_irq(&device->resource->req_lock);
 
+#if 0 //DW-1599 : Not use. Secondary node fails SendAsync() 
 	update_receiver_timing_details(connection, drbd_rs_should_slow_down);
 	if (connection->peer_role[NOW] != R_PRIMARY &&
 	    drbd_rs_should_slow_down(peer_device, sector, false))
 		schedule_timeout_uninterruptible(HZ/10);
+#endif
 
 	if (connection->agreed_pro_version >= 110) {
 		/* In DRBD9 we may not sleep here in order to avoid deadlocks.
