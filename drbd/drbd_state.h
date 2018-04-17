@@ -84,7 +84,16 @@ extern union drbd_state drbd_get_peer_device_state(struct drbd_peer_device *, en
 extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum which_state);
 
 #ifdef _WIN32
-extern __inline int stable_state_change(struct drbd_resource * resource, int change_state);
+// DW-1605 : try change_state again until timeout.
+#define stable_state_change(rv, resource, change_state) do{				\
+		int err = 0;							\
+		wait_event_interruptible_timeout(err, (resource)->state_wait,		\
+			(rv = (change_state)) != SS_IN_TRANSIENT_STATE, HZ);	\
+		if (err == -ETIMEDOUT)				\
+			rv = SS_TIMEOUT;				\
+		else if (err == -DRBD_SIGKILL)		\
+			rv = SS_INTERRUPTED;			\
+	}while(0)
 #else
 #define stable_state_change(resource, change_state) ({				\
 		enum drbd_state_rv rv;						\
