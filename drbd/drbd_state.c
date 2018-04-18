@@ -625,22 +625,6 @@ static void __clear_remote_state_change(struct drbd_resource *resource) {
 	wake_up(&resource->twopc_wait);
 	queue_queued_twopc(resource);
 }
-#ifdef _WIN32
-__inline
-int stable_state_change(struct drbd_resource * resource, int change_state)
-{
-    enum drbd_state_rv rv;
-    int err;
-    wait_event_interruptible(err, resource->state_wait,
-        ((rv = (change_state)) != SS_IN_TRANSIENT_STATE));
-    if (err)
-	    err = -SS_UNKNOWN_ERROR;
-    else
-	    err = rv;
-
-    return err;
-}
-#endif
 static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, struct completion *done,
 #ifdef _WIN32_RCU_LOCKED
 					      enum drbd_state_rv rv, bool locked)
@@ -5845,8 +5829,15 @@ enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device
 					    enum drbd_repl_state repl_state,
 					    enum chg_state_flags flags)
 {
+#if _WIN32 // DW-1605
+	enum drbd_state_rv rv = SS_SUCCESS;
+	stable_state_change(rv, peer_device->device->resource,
+		change_repl_state(peer_device, repl_state, flags));
+	return rv;
+#else
 	return stable_state_change(peer_device->device->resource,
 		change_repl_state(peer_device, repl_state, flags));
+#endif
 }
 
 void __change_peer_disk_state(struct drbd_peer_device *peer_device, enum drbd_disk_state disk_state)
