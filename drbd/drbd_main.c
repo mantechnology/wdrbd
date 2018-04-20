@@ -5116,7 +5116,11 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 		struct meta_data_on_disk_9 *on_disk,
 		struct drbd_backing_dev *bdev)
 {
+#ifdef _WIN32 // DW-1607
+	sector_t capacity = drbd_get_md_capacity(bdev->md_bdev);
+#else
 	sector_t capacity = drbd_get_capacity(bdev->md_bdev);
+#endif
 	struct drbd_md *in_core = &bdev->md;
 	u32 max_peers = be32_to_cpu(on_disk->bm_max_peers);
 	s32 on_disk_al_sect;

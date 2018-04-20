@@ -1865,7 +1865,11 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 		break;
 	case DRBD_MD_INDEX_FLEX_EXT:
 		/* just occupy the full device; unit: sectors */
+#ifdef _WIN32 // DW-1607
+		bdev->md.md_size_sect = drbd_get_md_capacity(bdev->md_bdev);
+#else
 		bdev->md.md_size_sect = drbd_get_capacity(bdev->md_bdev);
+#endif
 		bdev->md.al_offset = (4096 >> 9);
 		bdev->md.bm_offset = (4096 >> 9) + al_size_sect;
 		break;
@@ -3200,7 +3204,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 #endif
 	}
 
+#ifdef _WIN32 // DW-1607
+	if (drbd_get_md_capacity(nbc->md_bdev) < min_md_device_sectors) {
+#else
 	if (drbd_get_capacity(nbc->md_bdev) < min_md_device_sectors) {
+#endif
 		retcode = ERR_MD_DISK_TOO_SMALL;
 		drbd_warn(device, "refusing attach: md-device too small, "
 		     "at least %llu sectors needed for this meta-disk type\n",
