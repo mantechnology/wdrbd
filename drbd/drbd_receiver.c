@@ -893,6 +893,12 @@ start:
 		goto retry;
 	} else if (err < 0) {
 		drbd_warn(connection, "Failed to initiate connection, err=%d\n", err);
+#ifdef _WIN32 //DW-1608 : If cstate is already Networkfailure, it will retry the connection.
+		if (connection->cstate[NOW] == C_NETWORK_FAILURE){
+			drbd_warn(connection, "cstate is C_NETWORK_FAILURE now goto retry;\n");
+			goto retry; 
+		}	
+#endif
 		goto abort;
 	}
 
