@@ -1385,12 +1385,14 @@ retry:
 		rcu_read_unlock();
 
 #ifdef _WIN32
-		// DW-1609 : Apply 8 versions for younger primary.  
+		// DW-1609 : It has been modified to function similar to 8.4.x for younger primary 
 		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 			struct drbd_peer_device *peer_device;
 			u64 im;
-			bool younger_primary = false;
+			bool younger_primary = false; // Add a younger_primary variable to create a new UUID if the condition is met.
 
+			// If secondary node was promoted from Uptodate state under the following conditions, 
+			// it is hard to distinguish younger primary.
 			for_each_peer_device_ref(peer_device, im, device) {
 				if ((peer_device->connection->cstate[NOW] < C_CONNECTED || 
 					peer_device->disk_state[NOW] <= D_FAILED) 
