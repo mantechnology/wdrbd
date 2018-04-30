@@ -1389,22 +1389,22 @@ retry:
 		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 			struct drbd_peer_device *peer_device;
 			u64 im;
-			bool younger_primary = false;
+			bool younger_primary = true;
 
 			for_each_peer_device_ref(peer_device, im, device) {
 				if ((peer_device->connection->cstate[NOW] <= C_CONNECTED || 
 					peer_device->disk_state[NOW] <= D_FAILED) 
 					&& (device->ldev->md.peers[peer_device->node_id].bitmap_uuid == 0)) {
-					if (younger_primary == true)
-						younger_primary = false;
-				}
-				else{
 					if (younger_primary == false)
 						younger_primary = true;
 				}
+				else{
+					if (younger_primary == true)
+						younger_primary = false;
+				}
 			} 
 
-			if (forced || younger_primary == false)
+			if (forced || younger_primary == true)
 				drbd_uuid_new_current(device, true);
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
