@@ -1385,23 +1385,44 @@ retry:
 		rcu_read_unlock();
 
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-#else
-		idr_for_each_entry(&resource->devices, device, vnr) {
-#endif			
-			if (forced)
+		// DW-1609 : It has been modified to function similar to 8.4.x for younger primary 
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+			struct drbd_peer_device *peer_device;
+			u64 im;
+			bool younger_primary = false; // Add a younger_primary variable to create a new UUID if the condition is met.
+
+			// If secondary node was promoted from Uptodate state under the following conditions, 
+			// it is hard to distinguish younger primary.
+			for_each_peer_device_ref(peer_device, im, device) {
+				if ((peer_device->connection->cstate[NOW] < C_CONNECTED || 
+					peer_device->disk_state[NOW] <= D_FAILED) 
+					&& (device->ldev->md.peers[peer_device->node_id].bitmap_uuid == 0)) {
+					if (younger_primary == false){
+						younger_primary = true; 
+						break; 
+					}
+				}
+			} 
+
+			if (forced || younger_primary == true)
 				drbd_uuid_new_current(device, true);
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
-
-#ifdef _WIN32
+			
 			// MODIFIED_BY_MANTECH DW-1154 : set UUID_PRIMARY when promote a resource to primary role.
 			if (get_ldev(device)) {
 				device->ldev->md.current_uuid |= UUID_PRIMARY;
 				put_ldev(device);
 			}
-#endif
 		}
+#else
+		idr_for_each_entry(&resource->devices, device, vnr) {
+			if (forced)
+				drbd_uuid_new_current(device, true);
+			else
+				set_bit(NEW_CUR_UUID, &device->flags);
+		}
+#endif 
 	}
 
 #ifdef _WIN32
