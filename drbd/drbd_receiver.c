@@ -3194,10 +3194,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	    peer_device->disk_state[NOW] < D_INCONSISTENT) {
 		/* For now, it is easier to still handle some "special" requests
 		* "synchronously" from receiver context */
-
-#ifdef LINBIT_PATCH // TODO_WIN 
 		if (peer_req->flags & (EE_IS_TRIM | EE_WRITE_SAME | EE_IS_BARRIER)) {
-#endif 
 			err = drbd_al_begin_io_for_peer(peer_device, &peer_req->i);
 			if (err)
 			{
@@ -3210,12 +3207,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #endif
 			goto disconnect_during_al_begin_io;
 			}
-#ifdef LINBIT_PATCH // TODO_WIN
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
 			drbd_queue_peer_request(device, peer_req);
 			return 0;
 		}
-#endif
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
 
