@@ -153,6 +153,9 @@ enum
 #define BIO_RW_FAILFAST_DRIVER		9
 #define BIO_RW_NOIDLE				10
 
+// DW-1538
+#define REQ_RAHEAD		(1UL << BIO_RW_AHEAD)
+
 #define KBUILD_MODNAME      __FILE__
 
 /*
@@ -418,6 +421,14 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #else
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO ##_m_, __VA_ARGS__)
 #endif
+
+#if defined (WDRBD_THREAD_POINTER) 
+// DW-1432: Set to output information. It is not recommended for general use.
+#define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG ##_m_, __VA_ARGS__)
+#endif
+
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM					// about timer
 #define WDRBD_TRACE_RCU					// about rcu
@@ -737,7 +748,7 @@ extern void bio_put(struct bio *);
 extern void bio_free(struct bio *bio); 
 extern void bio_endio(struct bio *, int);
 extern int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned int offset);
-extern int submit_bio(int rw, struct bio *bio);
+extern int submit_bio(struct bio *bio); // DW-1538
 extern void bio_endio(struct bio *bio, int error);
 
 #define bio_get(bio)			atomic_inc(&(bio)->bi_cnt) 
@@ -1658,4 +1669,8 @@ LONGLONG	gTotalLogCnt;
 long		gLogCnt;
 char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 
+// DW-1469
+int drbd_resize(struct drbd_device *device);
+
+extern char *kvasprintf(int flags, const char *fmt, va_list args);
 #endif // DRBD_WINDOWS_H

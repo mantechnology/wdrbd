@@ -84,7 +84,16 @@ extern union drbd_state drbd_get_peer_device_state(struct drbd_peer_device *, en
 extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum which_state);
 
 #ifdef _WIN32
-extern __inline int stable_state_change(struct drbd_resource * resource, int change_state);
+// DW-1605 : try change_state again until timeout.
+#define stable_state_change(rv, resource, change_state) do{				\
+		int err = 0;							\
+		wait_event_interruptible_timeout(err, (resource)->state_wait,		\
+			(rv = (change_state)) != SS_IN_TRANSIENT_STATE, HZ);	\
+		if (err == -ETIMEDOUT)				\
+			rv = SS_TIMEOUT;				\
+		else if (err == -DRBD_SIGKILL)		\
+			rv = SS_INTERRUPTED;			\
+	}while(0)
 #else
 #define stable_state_change(resource, change_state) ({				\
 		enum drbd_state_rv rv;						\
@@ -103,21 +112,28 @@ extern int nested_twopc_work(struct drbd_work *work, int cancel);
 extern enum drbd_state_rv nested_twopc_request(struct drbd_resource *, int, enum drbd_packet, struct p_twopc_request *);
 extern bool cluster_wide_reply_ready(struct drbd_resource *);
 
-extern enum drbd_state_rv change_role(struct drbd_resource *, enum drbd_role, enum chg_state_flags, bool);
+extern enum drbd_state_rv change_role(struct drbd_resource *, enum drbd_role, enum chg_state_flags, bool, const char **);
 #ifdef _WIN32
 extern enum drbd_state_rv change_role_timeout(struct drbd_resource *, enum drbd_role , enum chg_state_flags , bool );
 #endif
 extern void __change_io_susp_user(struct drbd_resource *, bool);
 extern enum drbd_state_rv change_io_susp_user(struct drbd_resource *, bool, enum chg_state_flags);
 extern void __change_io_susp_no_data(struct drbd_resource *, bool);
-extern void __change_io_susp_fencing(struct drbd_resource *, bool);
+extern void __change_io_susp_fencing(struct drbd_connection *, bool);
+extern void __change_io_susp_quorum(struct drbd_device *, bool);
 
 extern void __change_disk_state(struct drbd_device *, enum drbd_disk_state);
 extern void __change_disk_states(struct drbd_resource *, enum drbd_disk_state);
-extern enum drbd_state_rv change_disk_state(struct drbd_device *, enum drbd_disk_state, enum chg_state_flags);
+extern enum drbd_state_rv change_disk_state(struct drbd_device *, enum drbd_disk_state, enum chg_state_flags, const char **);
 
 extern void __change_cstate(struct drbd_connection *, enum drbd_conn_state);
-extern enum drbd_state_rv change_cstate(struct drbd_connection *, enum drbd_conn_state, enum chg_state_flags);
+extern enum drbd_state_rv change_cstate_es(struct drbd_connection *, enum drbd_conn_state, enum chg_state_flags, const char **);
+static inline enum drbd_state_rv change_cstate(struct drbd_connection *connection,
+enum drbd_conn_state cstate,
+enum chg_state_flags flags)
+{
+	return change_cstate_es(connection, cstate, flags, NULL);
+}
 
 extern void __change_peer_role(struct drbd_connection *, enum drbd_role);
 
@@ -139,5 +155,17 @@ extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool);
 
 struct drbd_work;
 extern int abort_nested_twopc_work(struct drbd_work *, int);
+
+extern bool resource_is_suspended(struct drbd_resource *resource, enum which_state which);
+extern bool is_suspended_fen(struct drbd_resource *resource, enum which_state which);
+extern bool is_suspended_quorum(struct drbd_resource *resource, enum which_state which);
+
+enum dds_flags;
+enum determine_dev_size;
+struct resize_parms;
+
+extern enum determine_dev_size
+change_cluster_wide_device_size(struct drbd_device *, sector_t, uint64_t, enum dds_flags,
+			struct resize_parms *);
 
 #endif

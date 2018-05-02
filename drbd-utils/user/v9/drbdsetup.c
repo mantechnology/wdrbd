@@ -61,6 +61,11 @@
 #define EXIT_NOSOCK 30
 #define EXIT_THINKO 42
 
+/* is_intentional is a boolean value we get via nl from kernel. if we use new
+* utils and old kernel we don't get it, so we set this default, get kernel
+* info, and then decide from the value if the kernel was new enough */
+#define IS_INTENTIONAL_DEF 3
+
 /*
  * We are not using libnl,
  * using its API for the few things we want to do
@@ -241,8 +246,11 @@ struct drbd_cmd {
 // other functions
 static int get_af_ssocks(int warn);
 static void print_command_usage(struct drbd_cmd *cm, enum usage_type);
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 		__attribute__ ((noreturn));
+static const char *resync_susp_str(struct peer_device_info *info);
+static const char *intentional_diskless_str(struct device_info *info);
+static const char *peer_intentional_diskless_str(struct peer_device_info *info);
 
 // command functions
 static int generic_config_cmd(struct drbd_cmd *cm, int argc, char **argv);
@@ -334,6 +342,7 @@ struct option events_cmd_options[] = {
 	{ "timestamps", no_argument, 0, 'T' },
 	{ "statistics", no_argument, 0, 's' },
 	{ "now", no_argument, 0, 'n' },
+	{ "poll", no_argument, 0, 'p' },
 	{ "color", optional_argument, 0, 'c' },
 	{ }
 };
@@ -347,6 +356,7 @@ static struct option status_cmd_options[] = {
 	{ "verbose", no_argument, 0, 'v' },
 	{ "statistics", no_argument, 0, 's' },
 	{ "color", optional_argument, 0, 'c' },
+	{ "json", no_argument, 0, 'j' },
 	{ }
 };
 
@@ -1561,6 +1571,7 @@ static bool parse_color_argument(void)
 }
 
 static bool opt_now;
+static bool opt_poll;
 static bool opt_verbose;
 static bool opt_statistics;
 static bool opt_timestamps;
@@ -1586,6 +1597,13 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 	}
 
 	if (cm->continuous_poll) {
+#ifndef _WIN32
+		/* also always (try to) listen to nlctrl notify,
+		* so we have a chance to notice rmmod.  */
+		int id = GENL_ID_CTRL;
+		setsockopt(drbd_sock->s_fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP,
+			&id, sizeof(id));
+#endif
 		if (genl_join_mc_group(drbd_sock, "events") &&
 		    !kernel_older_than(2, 6, 23)) {
 			desc = "unable to join drbd events multicast group";
@@ -1729,12 +1747,14 @@ static int generic_get(struct drbd_cmd *cm, int timeout_arg, void *u_ptr)
 				.attrs = global_attrs,
 			};
 
+			dbg(3, "received type:%x\n", nlh->nlmsg_type);
 			if (nlh->nlmsg_type < NLMSG_MIN_TYPE) {
 				/* Ignore netlink control messages. */
 				continue;
 			}
 			if (nlh->nlmsg_type == GENL_ID_CTRL) {
 #ifdef HAVE_CTRL_CMD_DELMCAST_GRP
+				dbg(3, "received cmd:%x\n", info.genlhdr->cmd);
 				if (info.genlhdr->cmd == CTRL_CMD_DELMCAST_GRP) {
 					struct nlattr *nla =
 						nlmsg_find_attr(nlh, GENL_HDRLEN, CTRL_ATTR_FAMILY_ID);
@@ -1903,6 +1923,10 @@ static int generic_get_cmd(struct drbd_cmd *cm, int argc, char **argv)
 			opt_now = true;
 			break;
 
+		case 'p':
+			opt_poll = true;
+			break;
+
 		case 's':
 			opt_verbose = true;
 			opt_statistics = true;
@@ -1941,6 +1965,10 @@ static int generic_get_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		char *res_name = cm->ctx_key & CTX_RESOURCE ? objname : "all";
 
 		peer_devices = list_peer_devices(res_name);
+
+		/* if there are no peer devices, we don't wait by definition */
+		if (!peer_devices)
+			return 0;
 
 		iov.iov_len = DEFAULT_MSG_SIZE;
 		iov.iov_base = malloc(iov.iov_len);
@@ -1982,6 +2010,21 @@ static int generic_get_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		timeout_ms = 120000; /* normal "get" request, or "show" */
 
 	err = generic_get(cm, timeout_ms, peer_devices);
+	if (cm->show_function == &print_notifications &&
+		opt_now && opt_poll) { /* events2 --now --poll */
+		while ((c = fgetc(stdin)) != EOF) {
+			switch (c) {
+			case 'n': /* now */
+				err = generic_get(cm, timeout_ms, peer_devices);
+				break;
+			case '\n':
+				break;
+			default:
+				goto out_polling;
+			}
+		}
+out_polling:;
+	}
 
 	free_peer_devices(peer_devices);
 
@@ -2105,7 +2148,10 @@ static void show_volume(struct devices_list *device)
 			       double_quote_string(device->disk_conf.meta_dev),
 			       device->disk_conf.meta_dev_idx);
 		}
+	} else if (device->info.is_intentional_diskless == 1) {
+		printI("disk\t\t\tnone;\n");
 	}
+
 	print_options(device->disk_conf_nl, &attach_cmd_ctx, "disk");
 	--indent;
 	printI("}\n"); /* close volume */
@@ -2199,6 +2245,9 @@ static const char *susp_str(struct resource_info *info)
 		strcat(buffer, ",no-data" + (*buffer == 0));
 	if (info->res_susp_fen)
 		strcat(buffer, ",fencing" + (*buffer == 0));
+	if (info->res_susp_quorum)
+		strcat(buffer, ",quorum" + (*buffer == 0));
+
 	if (*buffer == 0)
 		strcat(buffer, "no");
 
@@ -2301,6 +2350,145 @@ void print_connection_statistics(int indent,
 		wrap_printf(indent, " congested:%s", new->conn_congested ? "yes" : "no");
 }
 
+static void peer_device_status_json(struct peer_devices_list *peer_device)
+{
+	struct peer_device_statistics *s = &peer_device->statistics;
+	bool in_rsync = (peer_device->info.peer_repl_state >= L_SYNC_SOURCE &&
+		peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T);
+
+	printf("        {\n"
+	       "          \"volume\": %d,\n"
+	       "          \"replication-state\": \"%s\",\n"
+	       "          \"peer-disk-state\": \"%s\",\n"
+		   "          \"peer-client\": \"%s\",\n"
+	       "          \"resync-suspended\": \"%s\",\n"
+	       "          \"received\": " U64 ",\n"
+	       "          \"sent\": " U64 ",\n"
+	       "          \"out-of-sync\": " U64 ",\n"
+	       "          \"pending\": " U32 ",\n"
+		   "          \"unacked\": " U32 "%s\n",
+	       peer_device->ctx.ctx_volume,
+	       drbd_repl_str(peer_device->info.peer_repl_state),
+	       drbd_disk_str(peer_device->info.peer_disk_state),
+		   peer_intentional_diskless_str(&peer_device->info),
+	       resync_susp_str(&peer_device->info),
+	       (uint64_t)s->peer_dev_received / 2,
+	       (uint64_t)s->peer_dev_sent / 2,
+	       (uint64_t)s->peer_dev_out_of_sync / 2,
+	       s->peer_dev_pending,
+		   s->peer_dev_unacked,
+		   in_rsync ? "," : "");
+
+	if (in_rsync)
+		printf("          \"resync-done\": %.2f\n",
+		       100 * (1 - (double)peer_device->statistics.peer_dev_out_of_sync /
+			      (double)peer_device->device->statistics.dev_size));
+
+	printf("        }");
+}
+
+static void connection_status_json(struct connections_list *connection,
+				   struct peer_devices_list *peer_devices)
+{
+	struct peer_devices_list *peer_device;
+	int i = 0;
+
+	printf("    {\n"
+	       "      \"peer-node-id\": %d,\n"
+	       "      \"name\": \"%s\",\n"
+	       "      \"connection-state\": \"%s\", \n"
+	       "      \"congested\": %s,\n"
+	       "      \"peer-role\": \"%s\",\n"
+	       "      \"peer_devices\": [\n",
+	       connection->ctx.ctx_peer_node_id,
+	       connection->ctx.ctx_conn_name,
+	       drbd_conn_str(connection->info.conn_connection_state),
+	       connection->statistics.conn_congested ? "true" : "false",
+	       drbd_role_str(connection->info.conn_role));
+
+	for (peer_device = peer_devices; peer_device; peer_device = peer_device->next) {
+		if (connection->ctx.ctx_peer_node_id != peer_device->ctx.ctx_peer_node_id)
+			continue;
+		if (i)
+			puts(",");
+		peer_device_status_json(peer_device);
+		i++;
+	}
+	printf(" ]\n    }");
+}
+
+static void device_status_json(struct devices_list *device)
+{
+	enum drbd_disk_state disk_state = device->info.dev_disk_state;
+	bool d_statistics = (device->statistics.dev_size != -1);
+
+	printf("    {\n"
+	       "      \"volume\": %d,\n"
+	       "      \"minor\": %d,\n"
+		   "      \"disk-state\": \"%s\",\n"
+		   "      \"client\": \"%s\"%s\n",
+	       device->ctx.ctx_volume,
+	       device->minor,
+		   drbd_disk_str(disk_state),
+		   intentional_diskless_str(&device->info),
+		   d_statistics ? "," : "");
+
+	if (d_statistics) {
+		struct device_statistics *s = &device->statistics;
+
+		printf("      \"size\": " U64 ",\n"
+		       "      \"read\": " U64 ",\n"
+		       "      \"written\": " U64 ",\n"
+		       "      \"al-writes\": " U64 ",\n"
+		       "      \"bm-writes\": " U64 ",\n"
+		       "      \"upper-pending\": " U32 ",\n"
+		       "      \"lower-pending\": " U32 "\n",
+		       (uint64_t)s->dev_size / 2,
+		       (uint64_t)s->dev_read / 2,
+		       (uint64_t)s->dev_write / 2,
+		       (uint64_t)s->dev_al_writes,
+		       (uint64_t)s->dev_bm_writes,
+		       s->dev_upper_pending,
+		       s->dev_lower_pending);
+	}
+	printf("    }");
+}
+
+static void resource_status_json(struct resources_list *resource)
+{
+	static const char *write_ordering_str[] = {
+		[WO_NONE] = "none",
+		[WO_DRAIN_IO] = "drain",
+		[WO_BDEV_FLUSH] = "flush",
+		[WO_BIO_BARRIER] = "barrier",
+	};
+
+	struct nlattr *nla;
+	int node_id = -1;
+	bool suspended =
+		resource->info.res_susp ||
+		resource->info.res_susp_nod ||
+		resource->info.res_susp_fen ||
+		resource->info.res_susp_quorum;
+
+	nla = nla_find_nested(resource->res_opts, __nla_type(T_node_id));
+	if (nla)
+		node_id = *(uint32_t *)nla_data(nla);
+
+	printf("{\n"
+	       "  \"name\": \"%s\",\n"
+	       "  \"node-id\": %d,\n"
+	       "  \"role\": \"%s\",\n"
+	       "  \"suspended\": %s,\n"
+	       "  \"write-ordering\": \"%s\",\n"
+	       "  \"devices\": [\n",
+	       resource->name,
+	       node_id,
+	       drbd_role_str(resource->info.res_role),
+	       suspended ? "true" : "false",
+	       write_ordering_str[resource->statistics.res_stat_write_ordering]);
+}
+
 void print_peer_device_statistics(int indent,
 				  struct peer_device_statistics *old,
 				  struct peer_device_statistics *new,
@@ -2340,7 +2528,8 @@ void resource_status(struct resources_list *resource)
 	if (opt_verbose ||
 	    resource->info.res_susp ||
 	    resource->info.res_susp_nod ||
-	    resource->info.res_susp_fen)
+		resource->info.res_susp_fen ||
+		resource->info.res_susp_quorum)
 		wrap_printf(4, " suspended:%s", susp_str(&resource->info));
 	if (opt_statistics && opt_verbose) {
 		wrap_printf(4, "\n");
@@ -2352,6 +2541,7 @@ void resource_status(struct resources_list *resource)
 static void device_status(struct devices_list *device, bool single_device)
 {
 	enum drbd_disk_state disk_state = device->info.dev_disk_state;
+	bool intentional_diskless = device->info.is_intentional_diskless == 1;
 	int indent = 2;
 
 	if (opt_verbose || !(single_device && device->ctx.ctx_volume == 0)) {
@@ -2361,9 +2551,12 @@ static void device_status(struct devices_list *device, bool single_device)
 			wrap_printf(indent, " minor:%u", device->minor);
 	}
 	wrap_printf(indent, " disk:%s%s%s",
-		    disk_state_color_start(disk_state, true),
+			disk_state_color_start(disk_state, intentional_diskless, true),
 		    drbd_disk_str(disk_state),
 		    disk_state_color_stop(disk_state, true));
+	if (disk_state == D_DISKLESS && opt_verbose) {
+		wrap_printf(indent, " client:%s", intentional_diskless_str(&device->info));
+	}
 	indent = 6;
 	if (device->statistics.dev_size != -1) {
 		if (opt_statistics)
@@ -2371,6 +2564,26 @@ static void device_status(struct devices_list *device, bool single_device)
 		print_device_statistics(indent, NULL, &device->statistics, wrap_printf);
 	}
 	wrap_printf(indent, "\n");
+}
+
+static const char *_intentionall_diskless_str(unsigned char intentional_diskless) {
+	switch (intentional_diskless) {
+	case 0:
+		return "no";
+	case 1:
+		return "yes";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *intentional_diskless_str(struct device_info *info)
+{
+	return _intentionall_diskless_str(info->is_intentional_diskless);
+}
+
+static const char *peer_intentional_diskless_str(struct peer_device_info *info) {
+	return _intentionall_diskless_str(info->peer_is_intentional_diskless);
 }
 
 static const char *resync_susp_str(struct peer_device_info *info)
@@ -2393,6 +2606,7 @@ static const char *resync_susp_str(struct peer_device_info *info)
 static void peer_device_status(struct peer_devices_list *peer_device, bool single_device)
 {
 	int indent = 4;
+	bool intentional_diskless = peer_device->info.peer_is_intentional_diskless == 1;
 
 	if (opt_verbose || !(single_device && peer_device->ctx.ctx_volume == 0)) {
 		wrap_printf(indent, "volume:%d", peer_device->ctx.ctx_volume);
@@ -2413,9 +2627,11 @@ static void peer_device_status(struct peer_devices_list *peer_device, bool singl
 		enum drbd_disk_state disk_state = peer_device->info.peer_disk_state;
 
 		wrap_printf(indent, " peer-disk:%s%s%s",
-			    disk_state_color_start(disk_state, false),
+				disk_state_color_start(disk_state, intentional_diskless, false),
 			    drbd_disk_str(disk_state),
 			    disk_state_color_stop(disk_state, false));
+		if (disk_state == D_DISKLESS && opt_verbose)
+			wrap_printf(indent, " peer-client:%s", peer_intentional_diskless_str(&peer_device->info));
 		indent = 8;
 		if (peer_device->info.peer_repl_state >= L_SYNC_SOURCE &&
 		    peer_device->info.peer_repl_state <= L_PAUSED_SYNC_T) {
@@ -2512,6 +2728,7 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		.sa_flags = SA_RESETHAND,
 	};
 	bool found = false;
+	bool json = false; 
 	int c;
 
 	optind = 0;  /* reset getopt_long() */
@@ -2533,6 +2750,9 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 			if (!parse_color_argument())
 				print_usage_and_exit("unknown --color argument");
 			break;
+		case 'j':
+			json = true;
+			break;
 		}
 	}
 
@@ -2546,14 +2766,20 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	sigaction(SIGPIPE, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 
+	if (json)
+		puts("[");
+
 	for (resource = resources; resource; resource = resource->next) {
 		struct devices_list *devices, *device;
 		struct connections_list *connections, *connection;
 		struct peer_devices_list *peer_devices = NULL;
 		bool single_device;
+		static bool jsonisfirst = true;
 
 		if (strcmp(objname, "all") && strcmp(objname, resource->name))
 			continue;
+		if (json)
+			jsonisfirst ? jsonisfirst = false : puts(",");
 
 		devices = list_devices(resource->name);
 		connections = sort_connections(list_connections(resource->name));
@@ -2562,19 +2788,38 @@ static int status_cmd(struct drbd_cmd *cm, int argc, char **argv)
 
 		link_peer_devices_to_devices(peer_devices, devices);
 
-		resource_status(resource);
-		single_device = devices && !devices->next;
-		for (device = devices; device; device = device->next)
-			device_status(device, single_device);
-		for (connection = connections; connection; connection = connection->next)
-			connection_status(connection, peer_devices, single_device);
-		wrap_printf(0, "\n");
+		if (json) {
+			resource_status_json(resource);
+			for (device = devices; device; device = device->next) {
+				device_status_json(device);
+				if (device->next)
+					puts(",");
+			}
+			puts(" ],\n  \"connections\": [");
+			for (connection = connections; connection; connection = connection->next) {
+				connection_status_json(connection, peer_devices);
+				if (connection->next)
+					puts(",");
+			}
+			puts(" ]\n}");
+		} else {
+			resource_status(resource);
+			single_device = devices && !devices->next;
+			for (device = devices; device; device = device->next)
+				device_status(device, single_device);
+			for (connection = connections; connection; connection = connection->next)
+				connection_status(connection, peer_devices, single_device);
+			wrap_printf(0, "\n");
+		}
 
 		free_connections(connections);
 		free_devices(devices);
 		free_peer_devices(peer_devices);
 		found = true;
 	}
+
+	if (json)
+		puts("]\n");
 
 	free_resources(resources);
 	if (!found && strcmp(objname, "all")) {
@@ -2614,16 +2859,10 @@ static int cstate_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	struct connections_list *connections, *connection;
 	bool found = false;
 
-	connections = list_connections(NULL);
+	connections = list_connections(objname);
 	for (connection = connections; connection; connection = connection->next) {
 		if (connection->ctx.ctx_peer_node_id != global_ctx.ctx_peer_node_id)
 			continue;
-#ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-777 fix wrong cstate output.
-		// Add resource_name comparison.
-		if (strcmp(connection->ctx.ctx_resource_name, global_ctx.ctx_resource_name))
-			continue;
-#endif
 
 		printf("%s\n", drbd_conn_str(connection->info.conn_connection_state));
 		found = true;
@@ -2853,6 +3092,7 @@ static int remember_device(struct drbd_cmd *cm, struct genl_info *info, void *u_
 		}
 		disk_conf_from_attrs(&d->disk_conf, info);
 		d->info.dev_disk_state = D_DISKLESS;
+		d->info.is_intentional_diskless = IS_INTENTIONAL_DEF;
 		device_info_from_attrs(&d->info, info);
 		memset(&d->statistics, -1, sizeof(d->statistics));
 		device_statistics_from_attrs(&d->statistics, info);
@@ -3035,6 +3275,7 @@ static int remember_peer_device(struct drbd_cmd *cmd, struct genl_info *info, vo
 			p->peer_device_conf = malloc(size);
 			memcpy(p->peer_device_conf, peer_device_conf, size);
 		}
+		p->info.peer_is_intentional_diskless = IS_INTENTIONAL_DEF;
 		peer_device_info_from_attrs(&p->info, info);
 		memset(&p->statistics, -1, sizeof(p->statistics));
 		peer_device_statistics_from_attrs(&p->statistics, info);
@@ -3260,84 +3501,51 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	return rv;
 }
 
+#define _EVPRINT(checksize, fstr, ...) do { \
+    ret = snprintf(key + pos, size, fstr, __VA_ARGS__); \
+    if (ret < 0) \
+        return ret; \
+    pos += ret; \
+    if (size && checksize) \
+        size -= ret; \
+} while(0)
+#define EVPRINT(...) _EVPRINT(1, __VA_ARGS__)
+/* for llvm static analyzer */
+#define EVPRINT_NOSIZE(...) _EVPRINT(0, __VA_ARGS__)
 static int event_key(char *key, int size, const char *name, unsigned minor,
 		     struct drbd_cfg_context *ctx)
 {
 	char addr[ADDRESS_STR_MAX];
 	int ret, pos = 0;
 
-	ret = snprintf(key + pos, size,
-		       "%s", name);
-	if (ret < 0)
-		return ret;
-	pos += ret;
-	if (size)
-		size -= ret;
-	if (ctx->ctx_resource_name) {
-		ret = snprintf(key + pos, size,
-			       " name:%s", ctx->ctx_resource_name);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_peer_node_id != -1U) {
-		ret = snprintf(key + pos, size,
-			      " peer-node-id:%d", ctx->ctx_peer_node_id);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_conn_name_len) {
-		ret = snprintf(key + pos, size,
-			       " conn-name:%s", ctx->ctx_conn_name);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
+	if (!ctx)
+		return -1;
+
+	EVPRINT("%s", name);
+
+	if (ctx->ctx_resource_name)
+		EVPRINT(" name:%s", ctx->ctx_resource_name);
+
+	if (ctx->ctx_peer_node_id != -1U)
+		EVPRINT(" peer-node-id:%d", ctx->ctx_peer_node_id);
+
+	if (ctx->ctx_conn_name_len)
+		EVPRINT(" conn-name:%s", ctx->ctx_conn_name);
+
 	if (ctx->ctx_my_addr_len &&
-	    address_str(addr, ctx->ctx_my_addr, ctx->ctx_my_addr_len)) {
-		ret = snprintf(key + pos, size,
-			      " local:%s", addr);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
+		address_str(addr, ctx->ctx_my_addr, ctx->ctx_my_addr_len))
+		EVPRINT(" local:%s", addr);
+		    
 	if (ctx->ctx_peer_addr_len &&
-	    address_str(addr, ctx->ctx_peer_addr, ctx->ctx_peer_addr_len)) {
-		ret = snprintf(key + pos, size,
-			      " peer:%s", addr);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (ctx->ctx_volume != -1U) {
-		ret = snprintf(key + pos, size,
-			      " volume:%u", ctx->ctx_volume);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		if (size)
-			size -= ret;
-	}
-	if (minor != -1U) {
-		ret = snprintf(key + pos, size,
-			      " minor:%u", minor);
-		if (ret < 0)
-			return ret;
-		pos += ret;
-		/* if (size) */
-		/* 	size -= ret; */
-	}
+		address_str(addr, ctx->ctx_peer_addr, ctx->ctx_peer_addr_len))
+		EVPRINT(" peer:%s", addr);
+
+	if (ctx->ctx_volume != -1U)
+		EVPRINT(" volume:%u", ctx->ctx_volume);
+
+	if (minor != -1U)
+		EVPRINT_NOSIZE(" minor:%u", minor);
+	
 	return pos;
 }
 
@@ -3512,7 +3720,8 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old ||
 			    new.i.res_susp != old->i.res_susp ||
 			    new.i.res_susp_nod != old->i.res_susp_nod ||
-			    new.i.res_susp_fen != old->i.res_susp_fen)
+				new.i.res_susp_fen != old->i.res_susp_fen ||
+				new.i.res_susp_quorum != old->i.res_susp_quorum)
 				printf(" suspended:%s",
 				       susp_str(&new.i));
 			if (opt_statistics) {
@@ -3535,14 +3744,18 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 				struct device_statistics s;
 			} *old, new;
 
+			new.i.is_intentional_diskless = IS_INTENTIONAL_DEF;
 			if (device_info_from_attrs(&new.i, info)) {
 				dbg(1, "device info missing\n");
 				goto nl_out;
 			}
 			old = update_info(&key, &new, sizeof(new));
-			if (!old || new.i.dev_disk_state != old->i.dev_disk_state)
+			if (!old || new.i.dev_disk_state != old->i.dev_disk_state) {
+				bool intentional = new.i.is_intentional_diskless == 1;
 				printf(" disk:%s%s%s",
-						DISK_COLOR_STRING(new.i.dev_disk_state, 1));
+					DISK_COLOR_STRING(new.i.dev_disk_state, intentional, true));
+				printf(" client:%s", intentional_diskless_str(&new.i));
+			}
 			if (opt_statistics) {
 				if (device_statistics_from_attrs(&new.s, info)) {
 					dbg(1, "device statistics missing\n");
@@ -3596,6 +3809,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 				struct peer_device_statistics s;
 			} *old, new;
 
+			new.i.peer_is_intentional_diskless = IS_INTENTIONAL_DEF;
 			if (peer_device_info_from_attrs(&new.i, info)) {
 				dbg(1, "peer device info missing\n");
 				goto nl_out;
@@ -3604,9 +3818,12 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old || new.i.peer_repl_state != old->i.peer_repl_state)
 				printf(" replication:%s%s%s",
 						REPL_COLOR_STRING(new.i.peer_repl_state));
-			if (!old || new.i.peer_disk_state != old->i.peer_disk_state)
+			if (!old || new.i.peer_disk_state != old->i.peer_disk_state) {
+				bool intentional = new.i.peer_is_intentional_diskless == 1;
 				printf(" peer-disk:%s%s%s",
-						DISK_COLOR_STRING(new.i.peer_disk_state, 0));
+					DISK_COLOR_STRING(new.i.peer_disk_state, intentional, false));
+				printf(" peer-client:%s", peer_intentional_diskless_str(&new.i));
+			}
 			if (!old ||
 			    new.i.peer_resync_susp_user != old->i.peer_resync_susp_user ||
 			    new.i.peer_resync_susp_peer != old->i.peer_resync_susp_peer ||
@@ -3924,7 +4141,7 @@ static void print_command_usage(struct drbd_cmd *cm, enum usage_type ut)
 	}
 }
 
-static void print_usage_and_exit(const char* addinfo)
+static void print_usage_and_exit(const char *addinfo)
 {
 	size_t i;
 
@@ -3938,7 +4155,7 @@ static void print_usage_and_exit(const char* addinfo)
 
 	printf("\nUse 'drbdsetup help command' for command-specific help.\n\n");
 	if (addinfo)  /* FIXME: ?! */
-		printf("\n%s\n",addinfo);
+		printf("\n%s\n", addinfo);
 
 	exit(20);
 }
@@ -4015,6 +4232,7 @@ int main(int argc, char **argv)
 {
 	struct drbd_cmd *cmd;
 	struct option *options;
+	const char *opts;
 	int c, rv = 0;
 	int longindex, first_optind;
 
@@ -4049,7 +4267,7 @@ int main(int argc, char **argv)
 			} else
 				print_usage_and_exit("unknown command");
 		} else
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 
 	/*
@@ -4063,7 +4281,7 @@ int main(int argc, char **argv)
 	}
 
 	if (argc < 2)
-		print_usage_and_exit(0);
+		print_usage_and_exit(NULL);
 
 	if (!modprobe_drbd()) {
 		if (!strcmp(argv[1], "down") ||
@@ -4086,18 +4304,22 @@ int main(int argc, char **argv)
 	argc--;
 
 	options = make_longoptions(cmd);
+	opts = make_optstring(options);
 	for (;;) {
-		c = getopt_long(argc, argv, "(", options, &longindex);
+		c = getopt_long(argc, argv, opts, options, &longindex);
 		if (c == -1)
 			break;
 		if (c == '?' || c == ':')
-			print_usage_and_exit(0);
+			print_usage_and_exit(NULL);
 	}
 	/* All non-option arguments now are in argv[optind .. argc - 1]. */
 	first_optind = optind;
 
-	if (cmd->continuous_poll && kernel_older_than(2, 6, 23))
+	if (cmd->continuous_poll && kernel_older_than(2, 6, 23)) {
+		/* with newer kernels, we need to use setsockopt NETLINK_ADD_MEMBERSHIP */
+		/* maybe more specific: (1 << GENL_ID_CTRL)? */
 		drbd_genl_family.nl_groups = -1;
+	}
 	drbd_sock = genl_connect_to_family(&drbd_genl_family);
 	if (!drbd_sock) {
 		fprintf(stderr, "Could not connect to 'drbd' generic netlink family\n");

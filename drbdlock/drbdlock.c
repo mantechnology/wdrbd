@@ -111,7 +111,10 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 		drbdlockPreOperation,
 		drbdlockPostOperation },
 
-
+		{ IRP_MJ_FILE_SYSTEM_CONTROL,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
 
 #if 0 // TODO - List all of the requests to filter.
     { IRP_MJ_CREATE,
@@ -650,6 +653,24 @@ Return Value:
 
 				return FLT_PREOP_COMPLETE;
 			}
+		}
+		case IRP_MJ_FILE_SYSTEM_CONTROL:
+		{
+			if (Data->Iopb->Parameters.FileSystemControl.Direct.FsControlCode == FSCTL_EXTEND_VOLUME)
+			{
+				NTSTATUS status = STATUS_UNSUCCESSFUL;
+				PDEVICE_OBJECT pDiskDev = NULL;				
+				
+				status = FltGetDiskDeviceObject(FltObjects->Volume, &pDiskDev);
+
+				if (NT_SUCCESS(status))
+				{				
+					ResizeDrbdVolume(pDiskDev);
+				}
+
+			}
+
+			break;
 		}
 	}
 

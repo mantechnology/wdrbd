@@ -117,7 +117,7 @@ void print_kref_debug_info(struct seq_file *seq)
 		int debug_refs, refs;
 
 		debug_refs = number_of_debug_refs(debug_info);
-		refs = atomic_read(&debug_info->kref->refcount);
+		refs = refcount_read(&debug_info->kref->refcount);
 
 		seq_printf(seq, "object of class: %s (r = %d, dr = %d)\n",
 			   debug_info->class->name, refs, debug_refs);

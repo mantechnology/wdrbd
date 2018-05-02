@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <sys/sysmacros.h>
 
 #ifndef IN_IS_ADDR_LOOPBACK
 #define IN_IS_ADDR_LOOPBACK(a) ((htonl((a)->s_addr) & 0xff000000) == 0x7f000000)
@@ -107,7 +108,7 @@ extern int lk_bdev_delete(const unsigned minor);
  * caller should free(bd->bd_name) once it is no longer needed. */
 extern int lk_bdev_load(const unsigned minor, struct bdev_info *bd);
 
-extern void get_random_bytes(void* buffer, int len);
+extern void get_random_bytes(void *buffer, size_t len);
 
 /* Since glibc 2.8~20080505-0ubuntu7 asprintf() is declared with the
    warn_unused_result attribute.... */

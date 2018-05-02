@@ -128,8 +128,8 @@ int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream,
 
 				struct drbd_tcp_transport {
 					struct drbd_transport transport; /* Must be first! */
-					struct mutex paths_mutex;
-					unsigned long flags;
+					spinlock_t paths_lock;
+					ULONG_PTR flags;
 					struct socket *stream[2];
 					struct buffer rbuf[2];
 				};

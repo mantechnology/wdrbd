@@ -650,7 +650,7 @@ int adm_dump_xml(const struct cfg_ctx *ctx)
 void print_dump_xml_header(void)
 {
 #ifdef _WIN32
-    printf("<config file=\"%s\">\n", config_file);
+	printf("<config file=\"%s\">\n", parse_file);
 #else
 	printf("<config file=\"%s\">\n", config_save);
 #endif    
@@ -662,7 +662,7 @@ void print_dump_xml_header(void)
 void print_dump_header(void)
 {
 #ifdef _WIN32
-    printf("# %s\n", config_file);
+	printf("# %s\n", parse_file);
 #else
 	printf("# %s\n", config_save);
 #endif

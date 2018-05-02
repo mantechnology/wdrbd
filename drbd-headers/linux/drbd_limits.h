@@ -162,11 +162,16 @@
 #define DRBD_RESYNC_RATE_MIN 1
 /* channel bonding 10 GbE, or other hardware */
 #define DRBD_RESYNC_RATE_MAX (4 << 20)
+
+#if 0 // DW-1543 rollback resync-rate's default value
 #ifdef _WIN32 // DW-1188 we need to adjust resync-rate in normal 1G network.
 #define DRBD_RESYNC_RATE_DEF (100*1024)
 #else
 #define DRBD_RESYNC_RATE_DEF 250
 #endif
+#endif
+
+#define DRBD_RESYNC_RATE_DEF 250
 #define DRBD_RESYNC_RATE_SCALE 'k'  /* kilobytes */
 
   /* less than 67 would hit performance unnecessarily. */
@@ -218,11 +223,16 @@
 
 #define DRBD_C_PLAN_AHEAD_MIN  0
 #define DRBD_C_PLAN_AHEAD_MAX  300
+
+#if 0 // DW-1543 rollback default c-plan-ahead value
 #ifdef _WIN32 // DW-1039 a continuos resync throuput is required.
 #define DRBD_C_PLAN_AHEAD_DEF  0
 #else
 #define DRBD_C_PLAN_AHEAD_DEF  20
 #endif
+#endif
+
+#define DRBD_C_PLAN_AHEAD_DEF  20
 #define DRBD_C_PLAN_AHEAD_SCALE '1'
 
 #define DRBD_C_DELAY_TARGET_MIN 1
@@ -242,11 +252,15 @@
 
 #define DRBD_C_MIN_RATE_MIN     0
 #define DRBD_C_MIN_RATE_MAX     (4 << 20)
+
+#if 0 // DW-1543 rollback c-min-rate default vaule
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1041 
 #define DRBD_C_MIN_RATE_DEF     0
 #else
 #define DRBD_C_MIN_RATE_DEF     250
 #endif
+#endif
+#define DRBD_C_MIN_RATE_DEF     250
 #define DRBD_C_MIN_RATE_SCALE	'k'  /* kilobytes */
 
 #define DRBD_CONG_FILL_MIN	0
@@ -264,6 +278,7 @@
 #define DRBD_DISK_BARRIER_DEF	0
 #define DRBD_DISK_FLUSHES_DEF	1
 #define DRBD_DISK_DRAIN_DEF	1
+#define DRBD_DISK_DISKLESS_DEF    0
 #define DRBD_MD_FLUSHES_DEF	1
 #define DRBD_TCP_CORK_DEF	1
 #define DRBD_AL_UPDATES_DEF     1
@@ -274,11 +289,17 @@
  * if we only explicitly zero-out unaligned partial chunks. */
 #define DRBD_DISCARD_ZEROES_IF_ALIGNED_DEF 1
 
+/* Some backends pretend to support WRITE SAME,
+* but fail such requests when they are actually submitted.
+* This is to tell DRBD to not even try. */
+#define DRBD_DISABLE_WRITE_SAME_DEF 0
+
 #define DRBD_ALLOW_TWO_PRIMARIES_DEF	0
 #define DRBD_ALWAYS_ASBP_DEF	0
 #define DRBD_USE_RLE_DEF	1
 #define DRBD_CSUMS_AFTER_CRASH_ONLY_DEF 0
 #define DRBD_AUTO_PROMOTE_DEF	1
+#define DRBD_BITMAP_DEF         1
 
 #ifdef _WIN32 // DW-1249: auto-start by svc
 #define DRBD_SVC_AUTOSTART_DEF 1
@@ -368,5 +389,13 @@
 #define DRBD_RS_DISCARD_GRANULARITY_MAX (1<<20)  /* 1MiByte */
 #define DRBD_RS_DISCARD_GRANULARITY_DEF 0     /* disabled by default */
 #define DRBD_RS_DISCARD_GRANULARITY_SCALE '1' /* bytes */
+
+#define DRBD_QUORUM_MIN 0
+#define DRBD_QUORUM_MAX QOU_ALL /* Note: user visible min/max different */
+#define DRBD_QUORUM_DEF QOU_OFF /* kernel min/max includes symbolic values */
+#define DRBD_QUORUM_SCALE '1' /* nodes */
+
+/* By default freeze IO, if set error all IOs as quick as possible */
+#define DRBD_ON_NO_QUORUM_DEF ONQ_SUSPEND_IO
 
 #endif

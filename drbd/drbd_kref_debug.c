@@ -34,6 +34,7 @@ struct kref_debug_class kref_class_connection = {
 		[13] = "for_each_conneciton_ref()",
 		[14] = "w_update_peers",
 		[15] = "for_each_peer_device_ref()",
+		[16] = "queue_twopc",
 	}
 };
 
@@ -45,6 +46,9 @@ struct kref_debug_class kref_class_device = {
 		[4] = "drbd_adm_prepare()/drbd_adm_finish()",
 		[5] = "w_update_peers",
 		[6] = "drbd_request",
+		[7] = "flush_after_epoch",
+		[8] = "send_acks_wf",
+		[9] = "open()",
 	}
 };
 

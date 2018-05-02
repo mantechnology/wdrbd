@@ -81,10 +81,11 @@ enum drbd_packet {
 	P_RS_THIN_REQ         = 0x32, /* Request a block for resync or reply P_RS_DEALLOCATED */
 	P_RS_DEALLOCATED      = 0x33, /* Contains only zeros on sync source node */
 
-	/* REQ_WRITE_SAME.
-	 * On a receiving side without REQ_WRITE_SAME,
+	/* WRITE_SAME.
+	 * On a receiving side without WRITE_SAME,
 	 * we may fall back to an opencoded loop instead. */
 	P_WSAME               = 0x34,
+	P_TWOPC_PREP_RSZ = 0x35, /* PREPARE a 2PC resize operation*/
 
 	P_PEER_ACK            = 0x40, /* meta sock: tell which nodes have acked a request */
 	P_PEERS_IN_SYNC       = 0x41, /* data sock: Mark area as in sync */
@@ -157,11 +158,11 @@ struct p_header100 {
 #define DP_MAY_SET_IN_SYNC    4
 #define DP_UNPLUG             8 /* equals REQ_UNPLUG (compat) */
 #define DP_FUA               16 /* equals REQ_FUA     */
-#define DP_FLUSH             32 /* equals REQ_FLUSH   */
+#define DP_FLUSH             32 /* equals REQ_PREFLUSH   */
 #define DP_DISCARD           64 /* equals REQ_DISCARD */
 #define DP_SEND_RECEIVE_ACK 128 /* This is a proto B write request */
 #define DP_SEND_WRITE_ACK   256 /* This is a proto C write request */
-#define DP_WSAME            512 /* equiv. REQ_WRITE_SAME */
+#define DP_WSAME            512 /* equiv. WRITE_SAME */
 
 struct p_data {
 	uint64_t sector;    /* 64 bits sector number */
@@ -218,7 +219,7 @@ struct p_block_req {
  * instead of fully allocate a supposedly thin volume on initial resync */
 #define DRBD_FF_THIN_RESYNC 2
 
-/* supports REQ_WRITE_SAME on the "wire" protocol.
+/* supports WRITE_SAME on the "wire" protocol.
  * Note: this flag is overloaded,
  * its presence also
  *   - indicates support for 128 MiB "batch bios",
@@ -414,17 +415,40 @@ struct p_twopc_request {
 	uint32_t initiator_node_id;  /* initiator of the transaction */
 	uint32_t target_node_id;  /* target of the transaction (or -1) */
 	uint64_t nodes_to_reach;
-	uint64_t primary_nodes;
-	uint32_t mask;
-	uint32_t val;
+	union {
+		struct { /* TWOPC_STATE_CHANGE, both phases */
+			uint64_t primary_nodes;
+			uint32_t mask;
+			uint32_t val;
+		};
+		union {  /* TWOPC_RESIZE */
+			struct {    /* P_TWOPC_PREP_RSZ */
+				uint64_t user_size;
+				uint16_t dds_flags;
+			};
+			struct {    /* P_TWOPC_COMMIT   */
+				uint64_t diskful_primary_nodes;
+				uint64_t exposed_size;
+			};
+		};
+	};
 } __packed;
 
 struct p_twopc_reply {
 	uint32_t tid;  /* transaction identifier */
 	uint32_t initiator_node_id;  /* initiator of the transaction */
 	uint64_t reachable_nodes;
-	uint64_t primary_nodes;
-	uint64_t weak_nodes;
+	union {
+		struct { /* TWOPC_STATE_CHANGE */
+			uint64_t primary_nodes;
+			uint64_t weak_nodes;
+		};
+		struct { /* TWOPC_RESIZE */
+			uint64_t diskful_primary_nodes;
+			uint64_t max_possible_size;
+		};
+	};
+
 } __packed;
 
 struct p_drbd06_param {
