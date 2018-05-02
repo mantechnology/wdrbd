@@ -154,30 +154,31 @@ static void write_node_id(struct node_info *ni)
 
 static int read_node_id(struct node_info *ni)
 {
-	int rr,fd;
+	int rr;
+	int fd;
 	struct node_info_od on_disk;
 
-	fd = open(NODE_ID_FILE,O_RDONLY);
-	if( fd == -1) {
+	fd = open(NODE_ID_FILE, O_RDONLY);
+	if (fd == -1) {
 		return 0;
 	}
 
-	rr = read(fd,&on_disk, sizeof(on_disk)); 
-	if( rr != sizeof(on_disk) && rr != SVN_STYLE_OD ) {
+	rr = read(fd, &on_disk, sizeof(on_disk));
+	if (rr != sizeof(on_disk) && rr != SVN_STYLE_OD) {
 		close(fd);
 		return 0;
 	}
 
-	switch(be32_to_cpu(on_disk.magic)) {
+	switch (be32_to_cpu(on_disk.magic)) {
 	case DRBD_MAGIC:
-		ni->node_uuid    = be64_to_cpu(on_disk.ni.node_uuid);
+		ni->node_uuid = be64_to_cpu(on_disk.ni.node_uuid);
 		ni->rev.svn_revision = be32_to_cpu(on_disk.ni.rev.svn_revision);
-		memset(ni->rev.git_hash,0,GIT_HASH_BYTE);
+		memset(ni->rev.git_hash, 0, GIT_HASH_BYTE);
 		break;
 	case DRBD_MAGIC+1:
-		ni->node_uuid    = be64_to_cpu(on_disk.ni.node_uuid);
+		ni->node_uuid = be64_to_cpu(on_disk.ni.node_uuid);
 		ni->rev.svn_revision = 0;
-		memcpy(ni->rev.git_hash,on_disk.ni.rev.git_hash,GIT_HASH_BYTE);
+		memcpy(ni->rev.git_hash, on_disk.ni.rev.git_hash, GIT_HASH_BYTE);
 		break;
 	default:
 		return 0;
@@ -187,15 +188,18 @@ static int read_node_id(struct node_info *ni)
 	return 1;
 }
 
+/* What we probably should do is use getaddrinfo_a(),
+* instead of alarm() and siglongjump limited gethostbyname(),
+* but I don't like implicit threads. */
 /* to interrupt gethostbyname,
  * we not only need a signal,
  * but also the long jump:
  * gethostbyname would otherwise just restart the syscall
  * and timeout again. */
-static jmp_buf timed_out;
+static sigjmp_buf timed_out;
 static void gethostbyname_timeout(int __attribute((unused)) signo)
 {
-	longjmp(timed_out, 1);
+	siglongjmp(timed_out, 1);
 }
 
 #define DNS_TIMEOUT 3	/* seconds */
@@ -205,24 +209,49 @@ struct hostent *my_gethostbyname(const char *name)
 	struct sigaction sa;
 	struct sigaction so;
 	struct hostent *h;
+	static int failed_once_already = 0;
+
+	if (failed_once_already)
+		return NULL;
 
 	alarm(0);
 	sa.sa_handler = &gethostbyname_timeout;
 	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
+	sa.sa_flags = SA_NODEFER;
 
 	sigaction(SIGALRM, &sa, &so);
 
-	if (!setjmp(timed_out)) {
+	if (!sigsetjmp(timed_out, 1)) {
+		struct hostent ret;
+		char buf[2048];
+		int my_h_errno;
+
 		alarm(DNS_TIMEOUT);
+		/* h = gethostbyname(name);
+		* If the resolver is unresponsive,
+		* we may siglongjmp out of a "critical section" of gethostbyname,
+		* still holding some glibc internal lock.
+		* Any later attempt to call gethostbyname() would then deadlock
+		* (last syscall would be futex(...))
+		*
+		* gethostbyname_r() apparently does not use any internal locks.
+		* Even if unnecessary in our case, it feels less dirty.
+		*/
+#ifdef _WIN32
 		h = gethostbyname(name);
-	} else
+#else	// not support
+		gethostbyname_r(name, &ret, buf, sizeof(buf), &h, &my_h_errno);
+#endif
+	} else {
 		/* timed out, longjmp of SIGALRM jumped here */
 		h = NULL;
+	}
 
 	alarm(0);
 	sigaction(SIGALRM, &so, NULL);
 
+	if (h == NULL)
+		failed_once_already = 1;
 	return h;
 }
 
@@ -319,19 +348,20 @@ static int make_get_request(char *uri) {
 	return 0;
 }
 
-static void url_encode(char* in, char* out)
+static void url_encode(char *in, char *out)
 {
 	char *h = "0123456789abcdef";
-	char c;
+	unsigned char c;
 
-	while( (c = *in++) != 0 ) {
-		if( c == '\n' ) break;
-		if( ( 'a' <= c && c <= 'z' )
-		    || ( 'A' <= c && c <= 'Z' )
-		    || ( '0' <= c && c <= '9' )
-		    || c == '-' || c == '_' || c == '.' )
+	while ((c = *in++) != 0) {
+		if (c == '\n')
+			break;
+		if (('a' <= c && c <= 'z') ||
+			('A' <= c && c <= 'Z') ||
+			('0' <= c && c <= '9') ||
+			c == '-' || c == '_' || c == '.')
 			*out++ = c;
-		else if( c == ' ' )
+		else if (c == ' ')
 			*out++ = '+';
 		else {
 			*out++ = '%';
@@ -518,9 +548,20 @@ struct d_name *find_backend_option(const char *opt_name)
 	return NULL;
 }
 
+static bool peer_completely_diskless(struct d_host_info *peer)
+{
+	struct d_volume *vol;
+
+	for_each_volume(vol, &peer->volumes) {
+		if (vol->disk)
+			return false;
+	}
+
+	return true;
+}
+
 int adm_create_md(const struct cfg_ctx *ctx)
 {
-	struct connection *conn;
 	char answer[ANSWER_SIZE];
 	struct node_info ni;
 	uint64_t device_uuid=0;
@@ -537,11 +578,17 @@ int adm_create_md(const struct cfg_ctx *ctx)
 	if (b_opt_max_peers) {
 		max_peers_str = ssprintf("%s", b_opt_max_peers->name + strlen(opt_max_peers));
 	} else {
+		struct connection *conn;
 		int max_peers = 0;
 
-		for_each_connection(conn, &ctx->res->connections)
-			if (!conn->ignore)
+		set_peer_in_resource(ctx->res, true);
+
+		for_each_connection(conn, &ctx->res->connections) {
+			if (conn->ignore)
+				continue;
+			if (!peer_completely_diskless(conn->peer))
 				max_peers++;
+		}
 
 		if (max_peers == 0)
 			max_peers = 1;
@@ -571,15 +618,18 @@ int adm_create_md(const struct cfg_ctx *ctx)
 
 	if(rv || dry_run) return rv;
 
+
+#ifdef _WIN32 // DW-1602 fix a inappropriate device name for bdev_size.
+	char device_name[256]= {0,};
+	sprintf(device_name,"\\\\.\\%s:",ctx->vol->disk);
+	device_size = bdev_size(device_name);
+#else
 	fd = open(ctx->vol->disk,O_RDONLY);
 	if( fd != -1) {
-#ifdef _WIN32
-		device_size = bdev_size(ctx->vol->meta_disk);
-#else
 		device_size = bdev_size(fd);
-#endif
 		close(fd);
 	}
+#endif
 
 	if( read_node_id(&ni) && device_size && !device_uuid) {
 		get_random_bytes(&device_uuid, sizeof(uint64_t));

@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -34,33 +35,36 @@
 #include "shared_tool.h"
 #include "shared_main.h"
 
+#ifdef HAVE_GETENTROPY
+#include <sys/random.h>
+#endif
+
 const char* shell_escape(const char* s)
 {
 	/* ugly static buffer. so what. */
 	static char buffer[1024];
 	char *c = buffer;
 
-	if (s == NULL)
-		return s;
-
-	while (*s) {
-		if (buffer + sizeof(buffer) < c+2)
-			break;
-
-		switch(*s) {
-		/* set of 'clean' characters */
-		case '%': case '+': case '-': case '.': case '/':
-		case '0' ... '9':
-		case ':': case '=': case '@':
-		case 'A' ... 'Z':
-		case '_':
-		case 'a' ... 'z':
-			break;
-		/* escape everything else */
-		default:
-			*c++ = '\\';
+	if (s != NULL) {
+		/* reserve space for a possible escape character and
+		* the terminating null character */
+		char *max_c = buffer + sizeof(buffer) - 2;
+		while (*s != '\0' && c < max_c) {
+			switch (*s) {
+				/* set of 'clean' characters */
+			case '%': case '+': case '-': case '.': case '/':
+			case '0' ... '9':
+			case ':': case '=': case '@':
+			case 'A' ... 'Z':
+			case '_':
+			case 'a' ... 'z':
+				break;
+				/* escape everything else */
+			default:
+				*c++ = '\\';
+			}
+			*c++ = *s++;
 		}
-		*c++ = *s++;
 	}
 	*c = '\0';
 	return buffer;
@@ -497,17 +501,7 @@ int lk_bdev_load(const unsigned minor, struct bdev_info *bd)
 		goto out;
 	}
 
-	/* GNU format extension: %as:
-	 * malloc buffer space for the resulting char */
-#define BDEV_FORMAT "%llu %as%[\n]uuid: %llx%[\n]"
-#ifdef __GLIBC_PREREQ
-#if __GLIBC_PREREQ(2, 7)
-#undef BDEV_FORMAT
-#define BDEV_FORMAT "%llu %ms%[\n]uuid: %llx%[\n]"
-#endif
-#endif
-
-	rc = fscanf(fp, BDEV_FORMAT,
+	rc = fscanf(fp, "%llu %ms%[\n]uuid: %llx%[\n]",
 			&bd_size, &bd_name, nl,
 			&bd_uuid, nl);
 	/* rc == 5: successfully converted two lines.
@@ -533,20 +527,41 @@ out:
 	return rc;
 }
 
-void get_random_bytes(void* buffer, int len)
+bool random_by_dev_urandom(void *buffer, size_t len)
 {
 	int fd;
+	bool ok = true;
 
-	fd = open("/dev/urandom",O_RDONLY);
-	if( fd == -1) {
+	fd = open("/dev/urandom", O_RDONLY);
+	if (fd == -1) {
 		perror("Open of /dev/urandom failed");
-		exit(20);
+		return false;
 	}
-	if(read(fd,buffer,len) != len) {
-		fprintf(stderr,"Reading from /dev/urandom failed\n");
-		exit(20);
+	if (read(fd, buffer, len) != len) {
+		ok = false;
+		fprintf(stderr, "Reading from /dev/urandom failed\n");
 	}
 	close(fd);
+
+	return ok;
+}
+
+void get_random_bytes(void *buffer, size_t len)
+{
+	bool ok;
+
+#ifdef HAVE_GETENTROPY
+	ok = (getentropy(buffer, len) == 0);
+	if (ok)
+		return;
+
+	perror("Could not get random data from getentropy(). Fallback to /dev/urandom");
+	/* fallback to /dev/urandom */
+#endif
+	ok = random_by_dev_urandom(buffer, len);
+
+	if (!ok)
+		exit(20);
 }
 
 int m_asprintf(char **strp, const char *fmt, ...)
@@ -1090,42 +1105,31 @@ const char *esc_xml(char *str)
 	if (strchr(str, '"') || strchr(str, '\'') || strchr(str, '<') ||
 	    strchr(str, '>') || strchr(str, '&') || strchr(str, '\\')) {
 		while (*ue) {
-			if (*ue == '"' || *ue == '\\') {
-				*e++ = '\\';
-				if (e - buffer >= 1021) {
-					err("string too long.\n");
-					exit(E_SYNTAX);
-				}
-				*e++ = *ue++;
-			} else if (*ue == '\'' || *ue == '<' || *ue == '>'
-				   || *ue == '&') {
-				if (*ue == '\'' && e - buffer < 1017) {
-					strcpy(e, "&apos;");
-					e += 6;
-				} else if (*ue == '<' && e - buffer < 1019) {
-					strcpy(e, "&lt;");
-					e += 4;
-				} else if (*ue == '>' && e - buffer < 1019) {
-					strcpy(e, "&gt;");
-					e += 4;
-				} else if (*ue == '&' && e - buffer < 1018) {
-					strcpy(e, "&amp;");
-					e += 5;
-				} else {
-					err("string too long.\n");
-					exit(E_SYNTAX);
-				}
-				ue++;
-			} else {
-				*e++ = *ue++;
-				if (e - buffer >= 1022) {
-					err("string too long.\n");
-					exit(E_SYNTAX);
-				}
+
+#define XML_ENCODE_SPECIAL(_ch, _repl) \
+            case _ch: \
+                if (e - buffer >= sizeof(buffer)-1-strlen(_repl)) goto too_long; \
+                strcpy(e, _repl); e += strlen(_repl); break;
+
+			switch (*ue) {
+				XML_ENCODE_SPECIAL('\'', "&apos;");
+				XML_ENCODE_SPECIAL('"', "&quot;");
+				XML_ENCODE_SPECIAL('<', "&lt;");
+				XML_ENCODE_SPECIAL('>', "&gt;");
+				XML_ENCODE_SPECIAL('&', "&amp;");
+				default:
+				*e++ = *ue;
+				if (e - buffer >= 1022)
+					goto too_long;
 			}
+			ue++;
 		}
 		*e++ = '\0';
 		return buffer;
 	}
 	return str;
+
+too_long:
+	err("string too long.\n");
+	exit(E_SYNTAX);
 }

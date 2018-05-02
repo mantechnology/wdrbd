@@ -4,6 +4,8 @@
 #define DRBDLOCK_SYMLINK_NAME		L"\\DosDevices\\DrbdLock"
 #define DRBDLOCK_CALLBACK_NAME		L"\\Callback\\DrbdLock"
 
+#define DRBD_CALLBACK_NAME		L"\\Callback\\Drbd"
+
 #define DRBDLOCK_DEVICE_NAME_USER	"\\\\.\\DrbdLock"
 
 #define	DRBDLOCK_TYPE		0x9801
@@ -15,3 +17,9 @@ typedef struct _DRBDLOCK_VOLUME_CONTROL
 	DRBDLOCK_VOLUME volume;
 	BOOLEAN bBlock;
 }DRBDLOCK_VOLUME_CONTROL, *PDRBDLOCK_VOLUME_CONTROL;
+
+
+typedef struct _DRBD_VOLUME_CONTROL
+{
+	PVOID pVolumeObject;
+}DRBD_VOLUME_CONTROL, *PDRBD_VOLUME_CONTROL;

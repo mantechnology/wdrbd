@@ -76,7 +76,12 @@
   <refsect1>
     <title>Example Configuration File</title>
     <para>
-      <programlisting format="linespecific">resource r0 {
+          <programlisting format="linespecific">
+global {
+    usage-count yes;
+    udev-always-use-vnr;
+}
+resource r0 {
       net {
 	      cram-hmac-alg sha1;
 	      shared-secret "FooFunFactory";
@@ -582,6 +587,7 @@ resource
         <pick_drbdsetup_option name="dialog-refresh"/>
         <pick_drbdsetup_option name="disable-ip-verification"/>
         <pick_drbdsetup_option name="usage-count"/>
+        <pick_drbdsetup_option name="udev-always-use-vnr"/>
       </variablelist>
     </refsect2>
 
@@ -765,7 +771,6 @@ resource
         <pick_drbdsetup_option name="sndbuf-size"/>
         <pick_drbdsetup_option name="tcp-cork"/>
         <pick_drbdsetup_option name="timeout"/>
-        <pick_drbdsetup_option name="unplug-watermark"/>
         <pick_drbdsetup_option name="use-rle"/>
         <pick_drbdsetup_option name="verify-alg"/>
       </variablelist>
@@ -847,6 +852,9 @@ resource
         <pick_drbdsetup_option name="on-no-data-accessible"/>
         <pick_drbdsetup_option name="peer-ack-window"/>
         <pick_drbdsetup_option name="peer-ack-delay"/>
+        <pick_drbdsetup_option name="quorum"/>
+        <pick_drbdsetup_option name="on-no-quorum"/>
+
       </variablelist>
     </refsect2>
 

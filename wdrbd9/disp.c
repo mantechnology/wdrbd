@@ -130,6 +130,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
 	DoTraceMessage(TRCINFO, "WDRBD V9(1:1) MVF Driver loaded.");
 #endif
+
+	drbdStartupCallback();
     // Init DRBD engine
     drbd_init();
 
@@ -146,6 +148,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WPP_CLEANUP(DriverObject);
 #endif
 	wdrbd_logger_cleanup();
+	drbdCleanupCallback();
 	SocketsDeinit ();
 }
 
@@ -674,6 +677,16 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			if (offset_sector + size_sector > vol_size_sector) {
 				WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
+
+				unsigned long long saved_size = VolumeExtension->dev->bd_contains->d_size;
+				unsigned long long real_size = get_targetdev_volsize(VolumeExtension); 	
+
+				if (offset_sector + size_sector > saved_size && real_size > saved_size)
+				{
+					WDRBD_TRACE("saved_size (%llu), real_size (%llu) vol_sector(%llu) off_sector(%llu)\n", saved_size >> 9, real_size >> 9, vol_size_sector, offset_sector + size_sector);
+					WDRBD_TRACE("need to temporary bm write\n");
+				}				
+				
 				// DW-1300: put device reference count when no longer use.
 				kref_put(&device->kref, drbd_destroy_device);
 				goto skip;
