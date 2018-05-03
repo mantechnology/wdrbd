@@ -671,6 +671,7 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 		connection->susp_fen[NOW] = connection->susp_fen[NEW];
 
 		wake_up(&connection->ping_wait);
+		wake_up(&connection->ee_wait);
 	}
 
 #ifdef _WIN32

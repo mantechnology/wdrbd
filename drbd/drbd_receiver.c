@@ -1731,6 +1731,12 @@ static void conn_wait_ee_empty(struct drbd_connection *connection, struct list_h
 	wait_event(connection->ee_wait, conn_wait_ee_cond(connection, head));
 }
 
+static void conn_wait_ee_empty_or_disconnect(struct drbd_connection *connection, struct list_head *head)
+{
+	wait_event(connection->ee_wait,
+		conn_wait_ee_cond(connection, head) || connection->cstate[NOW] < C_CONNECTED);
+}
+
 /**
  * drbd_submit_peer_request()
  * @device:	DRBD device.
@@ -2033,7 +2039,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	case WO_DRAIN_IO:
 		if (rv == FE_STILL_LIVE) {
 			set_bit(DE_BARRIER_IN_NEXT_EPOCH_ISSUED, &connection->current_epoch->flags);
-			conn_wait_ee_empty(connection, &connection->active_ee);
+			conn_wait_ee_empty_or_disconnect(connection, &connection->active_ee);
 			rv = drbd_flush_after_epoch(connection, connection->current_epoch);
 		}
 		if (rv == FE_RECYCLED)
@@ -2055,7 +2061,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	if (!epoch) {
 		drbd_warn(connection, "Allocation of an epoch failed, slowing down\n");
 		issue_flush = !test_and_set_bit(DE_BARRIER_IN_NEXT_EPOCH_ISSUED, &connection->current_epoch->flags);
-		conn_wait_ee_empty(connection, &connection->active_ee);
+		conn_wait_ee_empty_or_disconnect(connection, &connection->active_ee);
 		if (issue_flush) {
 			rv = drbd_flush_after_epoch(connection, connection->current_epoch);
 			if (rv == FE_RECYCLED)
