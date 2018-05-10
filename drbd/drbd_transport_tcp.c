@@ -1406,7 +1406,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	if (path2)
 	{
 		WDRBD_CONN_TRACE("if(path) path->socket = s_estab\n");
-		if (path2->socket) // DW-1567 fix system handle leak
+		if (path2->socket) // DW-1567 : fix system handle leak
 		{
 			drbd_info(resource, "accept socket(0x%p) exists. \n", path2->socket);
 			goto not_accept;
@@ -1420,7 +1420,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	{
 		WDRBD_CONN_TRACE("else listener->paccept_socket = AccceptSocket\n");
 #ifdef _WSK_DISCONNECT_EVENT
-		if (listener2->paccept_socket) // DW-1567 fix system handle leak
+		if (listener2->paccept_socket) // DW-1567 : fix system handle leak
 		{
 			drbd_info(resource, "accept socket(0x%p) exists.\n", listener2->paccept_socket);
 			goto not_accept;
@@ -1432,6 +1432,7 @@ static void dtt_incoming_connection(struct sock *sock)
 		}
 
 #else
+		listener->pending_accepts++;
 		listener->paccept_socket = AcceptSocket;
 #endif
 	}
@@ -1911,7 +1912,7 @@ static int dtt_connect(struct drbd_transport *transport)
 
 			if (use_for_data) {
 				dsocket = s;
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1567
 				if (dtt_send_first_packet(tcp_transport, dsocket, P_INITIAL_DATA, DATA_STREAM) <= 0)
 				{
 					WDRBD_ERROR("failed to send first packet, dsocket (%p)\n", dsocket->sk);
@@ -1925,7 +1926,7 @@ static int dtt_connect(struct drbd_transport *transport)
 			} else {
 				clear_bit(RESOLVE_CONFLICTS, &transport->flags);
 				csocket = s;
-#ifdef _WIN32
+#ifdef _WIN32 // DW-1567
 				if (dtt_send_first_packet(tcp_transport, csocket, P_INITIAL_META, CONTROL_STREAM) <= 0)
 				{
 					WDRBD_ERROR("failed to send first packet, csocket (%p)\n", csocket->sk);
