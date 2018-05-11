@@ -1405,6 +1405,13 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	len = min_t(unsigned int, PAGE_SIZE,
 		(drbd_md_last_sector(device->ldev) - on_disk_sector + 1)<<9);
 
+#ifdef _WIN32 // DW-1617 : drbd_bm_endio is not called if len is 0. If len is 0, change it to PAGE_SIZE.
+	if (len == 0){
+		drbd_warn(device, "If len is 0, change it to PAGE_SIZE.\n"); 
+		len = PAGE_SIZE; 
+	}
+#endif
+
 	/* serialize IO on this page */
 	bm_page_lock_io(device, page_nr);
 	/* before memcpy and submit,
