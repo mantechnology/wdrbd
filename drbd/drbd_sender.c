@@ -2365,7 +2365,8 @@ static void do_start_resync(struct drbd_peer_device *peer_device)
 	drbd_info(peer_device, "starting resync ...\n"); // DW-1518
 	drbd_start_resync(peer_device, peer_device->start_resync_side);
 #ifdef _WIN32
-	clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
+	// DW-1619 : moved to drbd_start_resync()
+	//clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
 #else
 	clear_bit(AHEAD_TO_SYNC_SOURCE, &device->flags);
 #endif
@@ -2488,6 +2489,11 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	enum drbd_disk_state finished_resync_pdsk = D_UNKNOWN;
 	enum drbd_repl_state repl_state;
 	int r;
+
+
+#ifdef _WIN32 // DW-1619 : clear AHEAD_TO_SYNC_SOURCE bit when start resync.
+	clear_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags);
+#endif	
 
 	spin_lock_irq(&device->resource->req_lock);
 	repl_state = peer_device->repl_state[NOW];
