@@ -61,10 +61,11 @@ DESTDIR ?= /
 CFLAGS += -Wall -I../../../drbd-headers -I.. -I. -I../shared -I../../../wdrbd9
 # _WIN32
 # _WIN32_V9 for 9.0.0 porting.
+# _WIN32_CLI_UPDATE for updated cygwin version (2.10.0)
 ifdef x64
-	CFLAGS += -gdwarf-2 -g3 -D_WIN32 -Dx64  -D_WIN32_APP  -D_WIN32_V9
+	CFLAGS += -gdwarf-2 -g3 -D_WIN32 -Dx64  -D_WIN32_APP  -D_WIN32_V9  -D_WIN32_CLI_UPDATE
 else
-	CFLAGS += -gdwarf-2 -g3 -D_WIN32  -D_WIN32_APP  -D_WIN32_V9
+	CFLAGS += -gdwarf-2 -g3 -D_WIN32  -D_WIN32_APP  -D_WIN32_V9  -D_WIN32_CLI_UPDATE
 endif
 
 #ifndef _WIN32

@@ -1501,7 +1501,10 @@ static bool kernel_older_than(int version, int patchlevel, int sublevel)
 	struct utsname utsname;
 	char *rel;
 	int l;
-
+#ifdef _WIN32_CLI_UPDATE
+	// DW-1210 : Not required on Windows OS
+	return true; 
+#endif
 	if (uname(&utsname) != 0)
 		return false;
 	rel = utsname.release;
