@@ -328,8 +328,9 @@ struct format {
 	int ll_fd;		/* not yet used here */
 	int md_fd;
 	int md_hard_sect_size;
-
-
+#ifdef _WIN32_CLI_UPDATE
+	HANDLE md_handle; 
+#endif 
 	/* unused in 06 */
 	int md_index;
 	unsigned int bm_bytes;
@@ -1088,8 +1089,27 @@ struct meta_cmd cmds[] = {
  * or do we want to duplicate the error handling everywhere? */
 void pread_or_die(struct format *cfg, void *buf, size_t count, off_t offset, const char* tag)
 {
+#ifdef _WIN32_CLI_UPDATE
+	if(cfg->md_handle == INVALID_HANDLE_VALUE){
+		fprintf(stderr, " pread_or_die : unable to use handle \n");
+		exit(10); 
+	}
+	HANDLE fd = cfg->md_handle; 
+	BOOL err;
+	OVERLAPPED ol = {0};
+	ol.Offset = offset; 
+	DWORD c; 
+       	
+	err = ReadFile(cfg->md_handle, buf, count, &c, &ol);
+	
+	if(err == FALSE){
+		fprintf(stderr, "Unable to read from file.\n GetLastError=%08x\n", GetLastError()); 
+		CloseHandle(cfg->md_handle);
+	}	
+#else 	
 	int fd = cfg->md_fd;
 	ssize_t c = pread(fd, buf, count, offset);
+#endif 
 	if (verbose >= 2) {
 		fflush(stdout);
 		fprintf(stderr, " %-26s: pread(%u, ...,%6lu,%12llu)\n", tag,
@@ -1160,9 +1180,21 @@ void validate_offsets_or_die(struct format *cfg, size_t count, off_t offset, con
 static unsigned n_writes = 0;
 void pwrite_or_die(struct format *cfg, const void *buf, size_t count, off_t offset, const char* tag)
 {
+#ifdef _WIN32_CLI_UPDATE
+	HANDLE fd = cfg->md_handle; 
+	DWORD c; 
+	BOOL err; 
+	OVERLAPPED ol = {0}; 
+	ol.Offset = offset; 
+
+	if(cfg->md_handle == INVALID_HANDLE_VALUE){
+		fprintf(stderr, " pwrite_or_die : unable to use handle \n"); 
+		exit(10); 
+	}
+#else 	
 	int fd = cfg->md_fd;
 	ssize_t c;
-
+#endif 
 	validate_offsets_or_die(cfg, count, offset, tag);
 
 	++n_writes;
@@ -1173,7 +1205,16 @@ void pwrite_or_die(struct format *cfg, const void *buf, size_t count, off_t offs
 			fprintf_hex(stderr, offset, buf, count);
 		return;
 	}
+#ifdef _WIN32_CLI_UPDATE
+	err = WriteFile(cfg->md_handle, buf, count, &c, &ol);
+	
+	if(err == FALSE){
+		fprintf(stderr, "Unable to write file. \n");
+		CloseHandle(cfg->md_handle);	
+	}
+#else 	
 	c = pwrite(fd, buf, count, offset);
+#endif 
 	if (verbose >= 2) {
 		fflush(stdout);
 		fprintf(stderr, " %-26s: pwrite(%u, ...,%6lu,%12llu)\n", tag,
@@ -1545,6 +1586,11 @@ int v06_md_open(struct format *cfg)
 
 int generic_md_close(struct format *cfg)
 {
+#ifdef _WIN32_CLI_UPDATE
+	if(cfg->md_handle != INVALID_HANDLE_VALUE){
+		CloseHandle(cfg->md_handle); 
+	}
+#else 	
 	/* On /dev/ram0 we may not use O_SYNC for some kernels (eg. RHEL6 2.6.32),
 	 * and fsync() returns EIO, too. So we don't do error checking here. */
 	fsync(cfg->md_fd);
@@ -1552,6 +1598,7 @@ int generic_md_close(struct format *cfg)
 		PERROR("close() failed");
 		return -1;
 	}
+#endif 	
 	return 0;
 }
 
@@ -2828,7 +2875,9 @@ int v07_style_md_open(struct format *cfg)
 	free(cfg->md_device_name);
 	cfg->md_device_name = buf;
 #endif
-
+#ifdef _WIN32_CLI_UPDATE
+	cfg->md_handle = INVALID_HANDLE_VALUE; 
+#endif 	
 	/* For old-style fixed size indexed external meta data,
 	 * we cannot really use O_EXCL, we have to trust the given minor.
 	 *
@@ -2840,9 +2889,21 @@ int v07_style_md_open(struct format *cfg)
 		open_flags |= O_EXCL;
 
  retry:
+#ifdef _WIN32_CLI_UPDATE
+	 cfg->md_handle = CreateFileA(cfg->md_device_name,       // drive to open
+                GENERIC_READ | GENERIC_WRITE,           // no access to the drive
+                FILE_SHARE_READ | FILE_SHARE_WRITE,     // share mode
+                NULL,                                   // default security attributes
+                OPEN_EXISTING,                          // disposition
+                0,                                      // file attributes
+                NULL);  				 // do not copy file attributes
+
+	if(cfg->md_handle == INVALID_HANDLE_VALUE){
+#else 	
 	cfg->md_fd = open(cfg->md_device_name, open_flags );
 
 	if (cfg->md_fd == -1) {
+#endif 		
 		int save_errno = errno;
 		PERROR("open(%s) failed", cfg->md_device_name);
 #ifdef FEATURE_VHD_META_SUPPORT

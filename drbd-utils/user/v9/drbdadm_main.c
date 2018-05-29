@@ -1171,8 +1171,13 @@ DWORD del_registry_volume(char * letter)
 
     while (ERROR_SUCCESS == RegEnumValueA(hKey, dwIndex++, szRegLetter, &cbRegLetter, NULL, NULL, (LPBYTE)volGuid, &cbVolGuid))
     {
-        if (!stricmp(szRegLetter, letter))
-        {
+    
+#ifdef _WIN32_CLI_UPDATE
+	if (!strcasecmp(szRegLetter, letter))
+#else 	    
+	if (!stricmp(szRegLetter, letter))
+#endif       
+      	{
             status = RegDeleteValue(hKey, szRegLetter);
             RegCloseKey(hKey);
             return status;
