@@ -1158,6 +1158,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force, s
 	bool with_force = false;
 #ifdef _WIN32
 	char *err_str = NULL;
+	long timeout = 7 * HZ;
 #else
 	const char *err_str = NULL;
 #endif
@@ -1180,24 +1181,33 @@ retry:
 		if (start_new_tl_epoch(resource)) {
 			struct drbd_connection *connection;
 			u64 im;
-
-			for_each_connection_ref(connection, im, resource)
 #ifdef _WIN32
+			for_each_connection_ref(connection, im, resource)
 				drbd_flush_workqueue(resource, &connection->sender_work);
-#else
-				drbd_flush_workqueue(&connection->sender_work);
-#endif
 		}
-		wait_event(resource->barrier_wait, !barrier_pending(resource));
+		// DW-1626 : A long wait occurs when the barrier is delayed. Wait 7 seconds.
+		wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);
+
+		if (!timeout){
+			WDRBD_WARN("drbd_set_role wait_event_timeout\n");
+			rv = SS_SECONDARY_FAILED;
+			goto out;
+		}
+
 		/* After waiting for pending barriers, we got any possible NEG_ACKs,
-		   and see them in wait_for_peer_disk_updates() */
-#ifdef _WIN32 // DW-1460 fixup infinate wait when network connection is disconnected.
+			and see them in wait_for_peer_disk_updates() */
+		// DW-1460 fixup infinate wait when network connection is disconnected.
 		wait_for_peer_disk_updates_timeout(resource);
 #else
+			for_each_connection_ref(connection, im, resource)
+				drbd_flush_workqueue(&connection->sender_work);
+		}
+		wait_event(resource->barrier_wait, !barrier_pending(resource));
+
+		/* After waiting for pending barriers, we got any possible NEG_ACKs,
+			and see them in wait_for_peer_disk_updates() */
 		wait_for_peer_disk_updates(resource);
-#endif
-		
-		
+#endif 
 		/* In case switching from R_PRIMARY to R_SECONDARY works
 		   out, there is no rw opener at this point. Thus, no new
 		   writes can come in. -> Flushing queued peer acks is
