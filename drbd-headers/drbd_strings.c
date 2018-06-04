@@ -129,6 +129,7 @@ static const char * const __error_messages[] = {
     [-SS_TARGET_DISK_TOO_SMALL] = "Target disk is smaller than source.",
 	[-SS_CONNECTED_DISKLESS] = "Refusing to be Diskless while Connected",
 	[-SS_LOWER_THAN_OUTDATED_PEER] = "Peer disk state is lower than outdated",
+	[-SS_SECONDARY_FAILED] = "Failed to set secondary role due to timeout. Try to disconnect first", 
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 	// MODIFIED_BY_MANTECH DW-1142
 	[-SS_RESYNC_FROM_SECONDARY] = "Non-primary node can't be sync source",
