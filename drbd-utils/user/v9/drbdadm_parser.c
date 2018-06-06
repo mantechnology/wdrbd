@@ -988,6 +988,12 @@ int parse_volume_stmt(struct d_volume *vol, struct names* on_hosts, int token)
 		case TK_STRING:
 			vol->disk = yylval.txt;
 #ifdef _WIN32
+			// DW-1451 : Device name and disk name must be the same in Windows. 			
+			if (vol->disk != NULL && vol->device != NULL && strcmp(vol->disk, vol->device) != 0){
+				err("The device(%s) and disk(%s) letters must be the same. Please check again.\n", vol->device, vol->disk);
+				exit(E_CONFIG_INVALID);
+			}
+
             vol->device = strdup(yylval.txt);
             vol->device_minor = (yylval.txt[0] & ~0x20) - 'C';
 #endif
@@ -1798,8 +1804,14 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 				struct d_volume *vol = volume0(&res->volumes);
 				vol->disk = yylval.txt;
 				vol->parsed_disk = 1;
+#ifdef _WIN32   // DW-1451 : Device name and disk name must be the same in Windows. 			
+				if (vol->disk != NULL && vol->device != NULL && strcmp(vol->disk, vol->device) != 0){
+					err("The device(%s) and disk(%s) letters must be the same. Please check again.\n", vol->device, vol->disk);
+					exit(E_CONFIG_INVALID);
 				}
-				EXP(';');
+#endif 
+				}
+				EXP(';');				
 				break;
 			case '{':
 				check_upr("disk section", "%s:disk", res->name);
