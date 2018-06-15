@@ -1158,7 +1158,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force, s
 	bool with_force = false;
 #ifdef _WIN32
 	char *err_str = NULL;
-	long timeout = 7 * HZ;
+	long timeout = 10 * HZ;
 #else
 	const char *err_str = NULL;
 #endif
@@ -1185,11 +1185,11 @@ retry:
 			for_each_connection_ref(connection, im, resource)
 				drbd_flush_workqueue(resource, &connection->sender_work);
 		}
-		// DW-1626 : A long wait occurs when the barrier is delayed. Wait 7 seconds.
+		// DW-1626 : A long wait occurs when the barrier is delayed. Wait 10 seconds.
 		wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);
 
 		if (!timeout){
-			WDRBD_WARN("drbd_set_role wait_event_timeout\n");
+			WDRBD_WARN("drbd_set_role :wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);\n");
 			rv = SS_SECONDARY_FAILED;
 			goto out;
 		}
