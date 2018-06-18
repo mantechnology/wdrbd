@@ -1116,7 +1116,13 @@ static int check_error(int err_no, char *desc)
 			} else if (err_no == SS_NO_LOCAL_DISK) {
 				/* Can not start resync, no local disks, try with drbdmeta */
 				rv = 16;
-			} else {
+			}
+#ifdef _WIN32 // DW-1626 : Other programs use these return value. Return -SS_BARRIER_ACK_PENDING_TIMEOUT.
+			else if (err_no == SS_BARRIER_ACK_PENDING_TIMEOUT){
+				rv = -SS_BARRIER_ACK_PENDING_TIMEOUT; 
+			}
+#endif 
+			else {
 				rv = 11;
 			}
 		}
