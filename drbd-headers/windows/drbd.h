@@ -395,7 +395,7 @@ enum drbd_state_rv {
 	SS_TARGET_DISK_TOO_SMALL = -27,
 	SS_CONNECTED_DISKLESS = -28,
 	SS_LOWER_THAN_OUTDATED_PEER = -29, // DW-1340
-	SS_SECONDARY_FAILED = -30,
+	SS_BARRIER_ACK_PENDING_TIMEOUT = -30,
 	SS_AFTER_LAST_ERROR = -31,    /* Keep this at bottom */
 #else
 	SS_AFTER_LAST_ERROR = -26,    /* Keep this at bottom */

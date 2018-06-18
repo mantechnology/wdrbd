@@ -1190,7 +1190,7 @@ retry:
 
 		if (!timeout){
 			WDRBD_WARN("Failed to set secondary role due to barrier ack pending timeout(10s).\n");
-			rv = SS_SECONDARY_FAILED;
+			rv = SS_BARRIER_ACK_PENDING_TIMEOUT;
 			goto out;
 		}
 
