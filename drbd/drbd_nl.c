@@ -1189,7 +1189,7 @@ retry:
 		wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);
 
 		if (!timeout){
-			WDRBD_WARN("drbd_set_role :wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);\n");
+			WDRBD_WARN("Failed to set secondary role due to barrier ack pending timeout(10s).\n");
 			rv = SS_SECONDARY_FAILED;
 			goto out;
 		}
