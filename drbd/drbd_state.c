@@ -3284,7 +3284,7 @@ enum drbd_disk_state os, enum drbd_disk_state ns)
 	return rv;
 }
 
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 /* MODIFIED_BY_MANTECH DW-1357: it is called when we determined that crashed primary is no longer need for one of peer at least.
 	I am no longer crashed primary for all peers if..
 		1. I've done resync as a sync target from one of uptodate peer.
@@ -3463,9 +3463,13 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
 			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
 				if (test_bit(CRASHED_PRIMARY, &device->flags))
-					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);				
+					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);
+#else
+				clear_bit(CRASHED_PRIMARY, &device->flags);
+#endif
 
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
@@ -3509,7 +3513,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			if ((disk_state[OLD] != D_UP_TO_DATE || peer_disk_state[OLD] != D_UP_TO_DATE) &&
 			    (disk_state[NEW] == D_UP_TO_DATE && peer_disk_state[NEW] == D_UP_TO_DATE)) {
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
 				if (test_bit(CRASHED_PRIMARY, &device->flags))
 					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);

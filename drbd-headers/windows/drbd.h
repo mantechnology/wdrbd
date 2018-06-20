@@ -427,7 +427,9 @@ enum mdf_peer_flag {
 	// It needs to be cleared when resync's done and gets matched current uuid.
 	// This flag indicates that above situation so that uuid will be propagated once resync is finished.
 	MDF_PEER_DIFF_CUR_UUID =	1 << 5,
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	MDF_PEER_IGNORE_CRASHED_PRIMARY = 1 << 6,		/* MODIFIED_BY_MANTECH DW-1357: no need to get synced from this peer, ignore crashed primary */
+#endif
 #endif
 	MDF_NODE_EXISTS =       1 << 16, /* */
 };
@@ -520,5 +522,5 @@ enum drbd_peer_state {
 #define _WIN32_RCU_LOCKED // DW-1477 : Lock if not locked.
 #define _WIN32_NOWAIT_CLOSESOCKET // DW-1479 : Do not wait for WskCloseSocket to complete.
 #define _WIN32_NETQUEUED_LOG // DW-1521 : Improve I/O response time at low bandwidth.
-
+#define _WIN32_CRASHED_PRIMARY_SYNCSOURCE // DW-1630 : crashed_primary node to be SyncSource.
 #endif

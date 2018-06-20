@@ -3512,7 +3512,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IND) &&
 	    !(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
 	    !device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags))
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	// MODIFIED_BY_MANTECH DW-1357: this is initialzing crashed primary. set crashed primary flag and clear all peer's ignoring flags.
 	{
 		set_bit(CRASHED_PRIMARY, &device->flags);
