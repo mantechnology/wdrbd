@@ -3284,6 +3284,7 @@ enum drbd_disk_state os, enum drbd_disk_state ns)
 	return rv;
 }
 
+#ifdef _WIN32
 #ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 /* MODIFIED_BY_MANTECH DW-1357: it is called when we determined that crashed primary is no longer need for one of peer at least.
 	I am no longer crashed primary for all peers if..
@@ -3326,6 +3327,7 @@ static void consider_finish_crashed_primary(struct drbd_peer_device *peer_device
 			drbd_md_clear_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY);
 	}	
 }
+#endif
 #endif
 
 static void check_may_resume_io_after_fencing(struct drbd_state_change *state_change, int n_connection)
