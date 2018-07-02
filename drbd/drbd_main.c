@@ -6013,6 +6013,9 @@ clear_flag:
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
 		device->disk_state[NOW] >= D_OUTDATED &&
+#ifdef _WIN32 // DW-1633
+		!test_bit(RECEIVE_DAGTAG_PENDING, &peer_device->connection->flags) &&
+#endif
 #ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 		(device->disk_state[NOW] == peer_device->disk_state[NOW]) && // DW-1357 clear bitmap when the disk state is same.
 #endif

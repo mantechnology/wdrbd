@@ -2737,6 +2737,9 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 
 		if (cstate[OLD] == C_CONNECTED && cstate[NEW] < C_CONNECTED) {
 			clear_bit(BARRIER_ACK_PENDING, &connection->flags);
+#ifdef _WIN32 // DW-1633
+			clear_bit(RECEIVE_DAGTAG_PENDING, &connection->flags);
+#endif
 			wake_up(&resource->barrier_wait);
 		}
 	}
@@ -3149,8 +3152,13 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
 				u64 weak_nodes = drbd_weak_nodes_device(device);
 				drbd_send_current_uuid(peer_device, current_uuid, weak_nodes);
 			}
-
+#ifdef _WIN32 // DW-1633			
+			set_bit(RECEIVE_DAGTAG_PENDING, &connection->flags);
+			if (drbd_send_peer_dagtag(connection, lost_peer))
+				clear_bit(RECEIVE_DAGTAG_PENDING, &connection->flags);
+#else
 			drbd_send_peer_dagtag(connection, lost_peer);
+#endif
 		}
 	}
 }

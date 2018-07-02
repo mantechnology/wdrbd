@@ -4449,7 +4449,14 @@ static void various_states_to_goodness(struct drbd_device *device,
 	}
 
 	// 2. compare disk state.
-	// DW-1127: no resync if pdisk is D_UNKNOWN.
+#ifdef _WIN32 // DW-1633: no resync. D_CONSISTENT is temporary state.
+	if (peer_disk_state == D_CONSISTENT || disk_state == D_CONSISTENT)
+	{
+		return;
+	}
+#endif
+	
+	// DW-1127: no resync if pdisk is D_UNKNOWN.	
 	if (peer_disk_state != D_UNKNOWN &&
 		peer_disk_state != disk_state &&
 		(peer_disk_state >= D_OUTDATED || disk_state >= D_OUTDATED))
@@ -8341,6 +8348,10 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 	   cleanup_unacked_peer_requests() function */
 	wait_event(resource->state_wait,
 		   lost_peer->cstate[NOW] <= C_UNCONNECTED || lost_peer->cstate[NOW] == C_CONNECTING);
+
+#ifdef _WIN32 // DW-1633
+	clear_bit(RECEIVE_DAGTAG_PENDING, &connection->flags);
+#endif
 
 	dagtag_offset = (s64)lost_peer->last_dagtag_sector - (s64)be64_to_cpu(p->dagtag);
 	if (dagtag_offset > 0)
