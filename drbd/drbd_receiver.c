@@ -8349,10 +8349,6 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 	wait_event(resource->state_wait,
 		   lost_peer->cstate[NOW] <= C_UNCONNECTED || lost_peer->cstate[NOW] == C_CONNECTING);
 
-#ifdef _WIN32 // DW-1633
-	clear_bit(RECEIVE_DAGTAG_PENDING, &connection->flags);
-#endif
-
 	dagtag_offset = (s64)lost_peer->last_dagtag_sector - (s64)be64_to_cpu(p->dagtag);
 	if (dagtag_offset > 0)
 		new_repl_state = L_WF_BITMAP_S;

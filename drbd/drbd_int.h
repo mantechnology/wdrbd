@@ -1127,9 +1127,6 @@ enum {
 	RECONNECT,
 	CONN_DISCARD_MY_DATA,
 	SEND_STATE_AFTER_AHEAD_C,
-#ifdef _WIN32 // DW-1633 : Flag added to not clear bitmap while exchanging dagtag for reconciliation resync
-	RECEIVE_DAGTAG_PENDING, 
-#endif
 };
 
 /* flag bits per resource */
