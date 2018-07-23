@@ -1158,6 +1158,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force, s
 	bool with_force = false;
 #ifdef _WIN32
 	char *err_str = NULL;
+	long timeout = 10 * HZ;
 #else
 	const char *err_str = NULL;
 #endif
@@ -1180,24 +1181,33 @@ retry:
 		if (start_new_tl_epoch(resource)) {
 			struct drbd_connection *connection;
 			u64 im;
-
-			for_each_connection_ref(connection, im, resource)
 #ifdef _WIN32
+			for_each_connection_ref(connection, im, resource)
 				drbd_flush_workqueue(resource, &connection->sender_work);
-#else
-				drbd_flush_workqueue(&connection->sender_work);
-#endif
 		}
-		wait_event(resource->barrier_wait, !barrier_pending(resource));
+		// DW-1626 : A long wait occurs when the barrier is delayed. Wait 10 seconds.
+		wait_event_timeout(timeout, resource->barrier_wait, !barrier_pending(resource), timeout);
+
+		if (!timeout){
+			WDRBD_WARN("Failed to set secondary role due to barrier ack pending timeout(10s).\n");
+			rv = SS_BARRIER_ACK_PENDING_TIMEOUT;
+			goto out;
+		}
+
 		/* After waiting for pending barriers, we got any possible NEG_ACKs,
-		   and see them in wait_for_peer_disk_updates() */
-#ifdef _WIN32 // DW-1460 fixup infinate wait when network connection is disconnected.
+			and see them in wait_for_peer_disk_updates() */
+		// DW-1460 fixup infinate wait when network connection is disconnected.
 		wait_for_peer_disk_updates_timeout(resource);
 #else
+			for_each_connection_ref(connection, im, resource)
+				drbd_flush_workqueue(&connection->sender_work);
+		}
+		wait_event(resource->barrier_wait, !barrier_pending(resource));
+
+		/* After waiting for pending barriers, we got any possible NEG_ACKs,
+			and see them in wait_for_peer_disk_updates() */
 		wait_for_peer_disk_updates(resource);
-#endif
-		
-		
+#endif 
 		/* In case switching from R_PRIMARY to R_SECONDARY works
 		   out, there is no rw opener at this point. Thus, no new
 		   writes can come in. -> Flushing queued peer acks is
@@ -1385,23 +1395,44 @@ retry:
 		rcu_read_unlock();
 
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-#else
-		idr_for_each_entry(&resource->devices, device, vnr) {
-#endif			
-			if (forced)
+		// DW-1609 : It has been modified to function similar to 8.4.x for younger primary 
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+			struct drbd_peer_device *peer_device;
+			u64 im;
+			bool younger_primary = false; // Add a younger_primary variable to create a new UUID if the condition is met.
+
+			// If secondary node was promoted from Uptodate state under the following conditions, 
+			// it is hard to distinguish younger primary.
+			for_each_peer_device_ref(peer_device, im, device) {
+				if ((peer_device->connection->cstate[NOW] < C_CONNECTED || 
+					peer_device->disk_state[NOW] <= D_FAILED) 
+					&& (device->ldev->md.peers[peer_device->node_id].bitmap_uuid == 0)) {
+					if (younger_primary == false){
+						younger_primary = true; 
+						break; 
+					}
+				}
+			} 
+
+			if (forced || younger_primary == true)
 				drbd_uuid_new_current(device, true);
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
-
-#ifdef _WIN32
+			
 			// MODIFIED_BY_MANTECH DW-1154 : set UUID_PRIMARY when promote a resource to primary role.
 			if (get_ldev(device)) {
 				device->ldev->md.current_uuid |= UUID_PRIMARY;
 				put_ldev(device);
 			}
-#endif
 		}
+#else
+		idr_for_each_entry(&resource->devices, device, vnr) {
+			if (forced)
+				drbd_uuid_new_current(device, true);
+			else
+				set_bit(NEW_CUR_UUID, &device->flags);
+		}
+#endif 
 	}
 
 #ifdef _WIN32
@@ -1865,7 +1896,11 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 		break;
 	case DRBD_MD_INDEX_FLEX_EXT:
 		/* just occupy the full device; unit: sectors */
+#ifdef _WIN32 // DW-1607
+		bdev->md.md_size_sect = drbd_get_md_capacity(bdev->md_bdev);
+#else
 		bdev->md.md_size_sect = drbd_get_capacity(bdev->md_bdev);
+#endif
 		bdev->md.al_offset = (4096 >> 9);
 		bdev->md.bm_offset = (4096 >> 9) + al_size_sect;
 		break;
@@ -3200,7 +3235,11 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 #endif
 	}
 
+#ifdef _WIN32 // DW-1607
+	if (drbd_get_md_capacity(nbc->md_bdev) < min_md_device_sectors) {
+#else
 	if (drbd_get_capacity(nbc->md_bdev) < min_md_device_sectors) {
+#endif
 		retcode = ERR_MD_DISK_TOO_SMALL;
 		drbd_warn(device, "refusing attach: md-device too small, "
 		     "at least %llu sectors needed for this meta-disk type\n",
@@ -3473,7 +3512,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IND) &&
 	    !(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
 	    !device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags))
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	// MODIFIED_BY_MANTECH DW-1357: this is initialzing crashed primary. set crashed primary flag and clear all peer's ignoring flags.
 	{
 		set_bit(CRASHED_PRIMARY, &device->flags);

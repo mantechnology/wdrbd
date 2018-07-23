@@ -893,6 +893,12 @@ start:
 		goto retry;
 	} else if (err < 0) {
 		drbd_warn(connection, "Failed to initiate connection, err=%d\n", err);
+#ifdef _WIN32 //DW-1608 : If cstate is already Networkfailure, it will retry the connection.
+		if (connection->cstate[NOW] == C_NETWORK_FAILURE){
+			drbd_warn(connection, "cstate is C_NETWORK_FAILURE now goto retry;\n");
+			goto retry; 
+		}	
+#endif
 		goto abort;
 	}
 
@@ -1705,31 +1711,31 @@ static void drbd_issue_peer_wsame(struct drbd_device *device,
 #endif
 }
 
-static void __conn_wait_ee_empty(struct drbd_connection *connection, struct list_head *head)
+static bool conn_wait_ee_cond(struct drbd_connection *connection, struct list_head *head)
 {
-	DEFINE_WAIT(wait);
+	struct drbd_resource *resource = connection->resource;
+	bool done;
 
-	while (!list_empty(head)) {
-		prepare_to_wait(&connection->ee_wait, &wait, TASK_UNINTERRUPTIBLE);
-		spin_unlock_irq(&connection->resource->req_lock);
+	spin_lock_irq(&resource->req_lock);
+	done = list_empty(head);
+	spin_unlock_irq(&resource->req_lock);
+
+	if (!done)
 		drbd_unplug_all_devices(connection);
-#ifdef _WIN32
-		schedule(&connection->ee_wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
-#else 
-		schedule();
-#endif
-		finish_wait(&connection->ee_wait, &wait);
-		spin_lock_irq(&connection->resource->req_lock);
-	}
+
+	return done;
 }
 
 static void conn_wait_ee_empty(struct drbd_connection *connection, struct list_head *head)
 {
-	spin_lock_irq(&connection->resource->req_lock);
-	__conn_wait_ee_empty(connection, head);
-	spin_unlock_irq(&connection->resource->req_lock);
+	wait_event(connection->ee_wait, conn_wait_ee_cond(connection, head));
 }
 
+static void conn_wait_ee_empty_or_disconnect(struct drbd_connection *connection, struct list_head *head)
+{
+	wait_event(connection->ee_wait,
+		conn_wait_ee_cond(connection, head) || connection->cstate[NOW] < C_CONNECTED);
+}
 
 /**
  * drbd_submit_peer_request()
@@ -2033,7 +2039,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	case WO_DRAIN_IO:
 		if (rv == FE_STILL_LIVE) {
 			set_bit(DE_BARRIER_IN_NEXT_EPOCH_ISSUED, &connection->current_epoch->flags);
-			conn_wait_ee_empty(connection, &connection->active_ee);
+			conn_wait_ee_empty_or_disconnect(connection, &connection->active_ee);
 			rv = drbd_flush_after_epoch(connection, connection->current_epoch);
 		}
 		if (rv == FE_RECYCLED)
@@ -2055,7 +2061,7 @@ static int receive_Barrier(struct drbd_connection *connection, struct packet_inf
 	if (!epoch) {
 		drbd_warn(connection, "Allocation of an epoch failed, slowing down\n");
 		issue_flush = !test_and_set_bit(DE_BARRIER_IN_NEXT_EPOCH_ISSUED, &connection->current_epoch->flags);
-		conn_wait_ee_empty(connection, &connection->active_ee);
+		conn_wait_ee_empty_or_disconnect(connection, &connection->active_ee);
 		if (issue_flush) {
 			rv = drbd_flush_after_epoch(connection, connection->current_epoch);
 			if (rv == FE_RECYCLED)
@@ -3188,10 +3194,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	    peer_device->disk_state[NOW] < D_INCONSISTENT) {
 		/* For now, it is easier to still handle some "special" requests
 		* "synchronously" from receiver context */
-
-#ifdef LINBIT_PATCH // TODO_WIN 
 		if (peer_req->flags & (EE_IS_TRIM | EE_WRITE_SAME | EE_IS_BARRIER)) {
-#endif 
 			err = drbd_al_begin_io_for_peer(peer_device, &peer_req->i);
 			if (err)
 			{
@@ -3204,12 +3207,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #endif
 			goto disconnect_during_al_begin_io;
 			}
-#ifdef LINBIT_PATCH // TODO_WIN
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
 			drbd_queue_peer_request(device, peer_req);
 			return 0;
 		}
-#endif
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
 
@@ -4044,6 +4045,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			test_bit(RECONNECT, &peer_device->connection->flags))
 			return 0;
 
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 		/* Peer crashed as primary, I survived, resync from me */
 		if (peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY &&
 		    test_bit(RECONNECT, &peer_device->connection->flags))
@@ -4059,6 +4061,7 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 		if (peer_device->uuid_flags & UUID_FLAG_RECONNECT ||
 		    test_bit(RECONNECT, &peer_device->connection->flags))
 			return 0;
+#endif
 
 		/* Common power [off|failure]? */
 		*rule_nr = 40;
@@ -4367,7 +4370,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 }
 
 static void disk_states_to_goodness(struct drbd_device *device,
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 // MODIFIED_BY_MANTECH DW-1357: need to see peer device md flags.
 					struct drbd_peer_device *peer_device,
 #endif
@@ -4378,6 +4381,7 @@ static void disk_states_to_goodness(struct drbd_device *device,
 	bool p = false;
 
 #ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	/* MODIFIED_BY_MANTECH DW-1357: one of node is crashed primary, but need to ignore if..
 		1. crashed primary's disk state is higher than peer's, crashed primary will be sync source.
 		2. we've already done resync(by #1).
@@ -4388,6 +4392,7 @@ static void disk_states_to_goodness(struct drbd_device *device,
 			drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
 			*hg = 0;
 	}		
+#endif
 #endif
 
 	if (*hg != 0 && rule_nr != 40)
@@ -4444,7 +4449,14 @@ static void various_states_to_goodness(struct drbd_device *device,
 	}
 
 	// 2. compare disk state.
-	// DW-1127: no resync if pdisk is D_UNKNOWN.
+#ifdef _WIN32 // DW-1633: no resync. D_CONSISTENT is temporary state.
+	if (peer_disk_state == D_CONSISTENT || disk_state == D_CONSISTENT)
+	{
+		return;
+	}
+#endif
+	
+	// DW-1127: no resync if pdisk is D_UNKNOWN.	
 	if (peer_disk_state != D_UNKNOWN &&
 		peer_disk_state != disk_state &&
 		(peer_disk_state >= D_OUTDATED || disk_state >= D_OUTDATED))
@@ -4499,7 +4511,7 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 		return -1;
 
 	bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	disk_states_to_goodness(peer_device->device, peer_device, peer_disk_state, &hg, rule_nr);
 #else
 	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg, rule_nr);
@@ -4536,7 +4548,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 		return -1;
 	}
 
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	disk_states_to_goodness(device, peer_device, peer_disk_state, &hg, rule_nr);
 #else
 	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
@@ -5492,12 +5504,20 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, reason == DISKLESS_PRIMARY);
 
 #ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
 	if (reason == AFTER_UNSTABLE)
 	{
 		disk_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], &hg, rule_nr);
 		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
 	}
+#else
+	if (!hg && reason == AFTER_UNSTABLE)
+	{
+		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
+		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
+	}
+#endif
 #endif
 	new_repl_state = hg < -4 || hg > 4 ? -1 : goodness_to_repl_state(peer_device, peer_role, hg);
 
@@ -8368,7 +8388,20 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			__change_repl_state(peer_device, new_repl_state);
 			set_bit(RECONCILIATION_RESYNC, &peer_device->flags);
 		}
+#ifdef _WIN32 // DW-1632: If the RECONCILIATION_RESYNC flag is set, it will not be updated with the new UUID after resynchronization.
+			  // If the change to WFBitMapS fails, disable the RECONCILIATION_RESYNC flag.
+		enum drbd_status_rv rv = end_state_change(resource, &irq_flags);
+		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
+			if (new_repl_state == L_WF_BITMAP_S && test_bit(RECONCILIATION_RESYNC, &peer_device->flags)){
+				if(rv != SS_SUCCESS){
+					drbd_debug(peer_device, "Disable RECONCILIATION_RESYNC flag.\n");
+					clear_bit(RECONCILIATION_RESYNC, &peer_device->flags);
+				}
+			}
+		}
+#else 
 		end_state_change(resource, &irq_flags);
+#endif	
 	} else {
 #ifdef _WIN32_TRACE_PEER_DAGTAG	
 		drbd_info(connection, "No reconciliation resync even though \'%s\' disappeared. (o=%d) lost_peer:%p lost_peer->last_dagtag_sector:0x%llx be64_to_cpu(p->dagtag):%llx\n",
@@ -8668,10 +8701,8 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	/* verify or resync related peer requests are read_ee or sync_ee,
 	* drain them first */
 
-	spin_lock_irq(&connection->resource->req_lock);
-	__conn_wait_ee_empty(connection, &connection->read_ee);
-	__conn_wait_ee_empty(connection, &connection->sync_ee);
-	spin_unlock_irq(&connection->resource->req_lock);
+	conn_wait_ee_empty(connection, &connection->read_ee);
+	conn_wait_ee_empty(connection, &connection->sync_ee);
 
 	rcu_read_lock();
 #ifdef _WIN32

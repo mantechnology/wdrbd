@@ -1116,7 +1116,13 @@ static int check_error(int err_no, char *desc)
 			} else if (err_no == SS_NO_LOCAL_DISK) {
 				/* Can not start resync, no local disks, try with drbdmeta */
 				rv = 16;
-			} else {
+			}
+#ifdef _WIN32 // DW-1626 : Other programs use these return value. Return -SS_BARRIER_ACK_PENDING_TIMEOUT.
+			else if (err_no == SS_BARRIER_ACK_PENDING_TIMEOUT){
+				rv = -SS_BARRIER_ACK_PENDING_TIMEOUT; 
+			}
+#endif 
+			else {
 				rv = 11;
 			}
 		}
@@ -1501,7 +1507,10 @@ static bool kernel_older_than(int version, int patchlevel, int sublevel)
 	struct utsname utsname;
 	char *rel;
 	int l;
-
+#ifdef _WIN32_CLI_UPDATE
+	// DW-1210 : Not required on Windows OS
+	return true; 
+#endif
 	if (uname(&utsname) != 0)
 		return false;
 	rel = utsname.release;
