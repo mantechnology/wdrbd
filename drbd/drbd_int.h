@@ -2627,6 +2627,27 @@ extern enum drbd_state_rv drbd_support_2pc_resize(struct drbd_resource *resource
 extern enum determine_dev_size
 drbd_commit_size_change(struct drbd_device *device, struct resize_parms *rs, u64 nodes_to_reach);
 
+#ifdef _WIN32 // DW-1607 : get the real size of the meta disk.
+static __inline sector_t drbd_get_md_capacity(struct block_device *bdev)
+{
+	if (!bdev) {
+		WDRBD_ERROR("md block_device is null.\n");
+		return 0;
+	}
+
+	PVOLUME_EXTENSION pvext = (bdev->bd_disk) ? bdev->bd_disk->pDeviceExtension : NULL;
+	if (pvext && (KeGetCurrentIrql() < 2)) {
+		bdev->d_size = get_targetdev_volsize(pvext);	// real size
+		return bdev->d_size >> 9;
+	}
+	else
+	{
+		WDRBD_ERROR("bd_disk is null.\n");
+		return 0;
+	}
+}
+#endif
+
 static __inline sector_t drbd_get_capacity(struct block_device *bdev)
 {
 #ifdef _WIN32

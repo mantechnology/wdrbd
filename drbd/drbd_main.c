@@ -1779,7 +1779,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	p->dirty_bits = cpu_to_be64(peer_device->comm_bm_set);
 	if (test_bit(DISCARD_MY_DATA, &peer_device->flags))
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
-#ifdef _WIN32
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 	// MODIFIED_BY_MANTECH DW-1357: do not send UUID_FLAG_CRASHED_PRIMARY if I don't need to get synced from this peer.
 	if (test_bit(CRASHED_PRIMARY, &device->flags) &&
 		!drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
@@ -5116,7 +5116,11 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 		struct meta_data_on_disk_9 *on_disk,
 		struct drbd_backing_dev *bdev)
 {
+#ifdef _WIN32 // DW-1607
+	sector_t capacity = drbd_get_md_capacity(bdev->md_bdev);
+#else
 	sector_t capacity = drbd_get_capacity(bdev->md_bdev);
+#endif
 	struct drbd_md *in_core = &bdev->md;
 	u32 max_peers = be32_to_cpu(on_disk->bm_max_peers);
 	s32 on_disk_al_sect;
@@ -6009,7 +6013,12 @@ clear_flag:
 		peer_device->dirty_bits == 0 &&
 		isForgettableReplState(peer_device->repl_state[NOW]) &&
 		device->disk_state[NOW] >= D_OUTDATED &&
+		// DW-1633 : if the peer has lost a primary and becomes stable, the dstate of peer_device becomes D_CONSISTENT and UUID_FLAG_GOT_STABLE is set.
+		// at this time, the reconciliation resync may work, so do not clear the bitmap.
+		!((peer_device->disk_state[NOW] == D_CONSISTENT) && (peer_device->uuid_flags & UUID_FLAG_GOT_STABLE)) &&
+#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
 		(device->disk_state[NOW] == peer_device->disk_state[NOW]) && // DW-1357 clear bitmap when the disk state is same.
+#endif
 		!(peer_device->uuid_authoritative_nodes & NODE_MASK(device->resource->res_opts.node_id)) &&
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 		// MODIFIED_BY_MANTECH DW-1162: clear bitmap only when peer stays secondary.
