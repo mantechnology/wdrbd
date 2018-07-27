@@ -1100,32 +1100,43 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 			lc_put(peer_device->resync_lru, &ext->lce);
 		/* no race, we are within the al_lock! */
 
-		if (ext->rs_left <= ext->rs_failed) {
-			struct update_peers_work *upw;
+		if (ext->rs_left <= ext->rs_failed){
 #ifdef _WIN32
-            upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
+			// DW-1640 : Node that are not synctarget or syncsource send P_PEERS_IN_SYNC packtet to synctarget, causing a disk inconsistency. 
+			// Only sync source can send P_PEERS_IN_SYNC to peers. In WDRBD, it can be guaranteed that only primary is sync source. 
+			if (device->resource->role[NOW] == R_PRIMARY || peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
+				struct update_peers_work *upw;
+				upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
 #else
+			struct update_peers_work *upw;
 			upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN);
 #endif
-			if (upw) {
-				upw->enr = ext->lce.lc_number;
-				upw->w.cb = w_update_peers;
+				if (upw) {
+					upw->enr = ext->lce.lc_number;
+					upw->w.cb = w_update_peers;
 
-				kref_get(&peer_device->device->kref);
-				kref_debug_get(&peer_device->device->kref_debug, 5);
+					kref_get(&peer_device->device->kref);
+					kref_debug_get(&peer_device->device->kref_debug, 5);
 
-				kref_get(&peer_device->connection->kref);
-				kref_debug_get(&peer_device->connection->kref_debug, 14);
+					kref_get(&peer_device->connection->kref);
+					kref_debug_get(&peer_device->connection->kref_debug, 14);
 
-				upw->peer_device = peer_device;
-				drbd_queue_work(&device->resource->work, &upw->w);
-			} else {
-				if (drbd_ratelimit())
-					drbd_warn(peer_device, "kmalloc(udw) failed.\n");
+					upw->peer_device = peer_device;
+					drbd_queue_work(&device->resource->work, &upw->w);
+				}
+				else {
+					if (drbd_ratelimit())
+						drbd_warn(peer_device, "kmalloc(udw) failed.\n");
+				}
+
+				ext->rs_failed = 0;
+				return true;
 			}
-
-			ext->rs_failed = 0;
-			return true;
+#ifdef _WIN32 // DW-1640
+			else {
+				return true;
+			}
+#endif 
 		}
 	} else if (mode != SET_OUT_OF_SYNC) {
 		/* be quiet if lc_find() did not find it. */
