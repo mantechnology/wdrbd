@@ -280,7 +280,11 @@
 #define DRBD_DISK_DRAIN_DEF	1
 #define DRBD_DISK_DISKLESS_DEF    0
 #define DRBD_MD_FLUSHES_DEF	1
+#ifdef _WIN32 // DW-1652 : change the default value of tcp-cork to no
+#define DRBD_TCP_CORK_DEF	0
+#else
 #define DRBD_TCP_CORK_DEF	1
+#endif
 #define DRBD_AL_UPDATES_DEF     1
 /* We used to ignore the discard_zeroes_data setting.
  * To not change established (and expected) behaviour,
