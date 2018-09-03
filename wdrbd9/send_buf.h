@@ -48,15 +48,15 @@ struct _send_req {
 struct ring_buffer {
 	char *name;
 	char *mem;
-	unsigned int length;
-	unsigned int read_pos;
-	unsigned int write_pos;
+	signed long long length;
+	signed long long read_pos;
+	signed long long write_pos;
 	struct mutex cs;
-	int que;
-	int deque;
-	int seq;
+	signed long long que;
+	signed long long deque;
+	signed long long seq;
 	char *static_big_buf;
-	unsigned int sk_wmem_queued;
+	signed long long sk_wmem_queued;
 #ifdef SENDBUF_TRACE
 	struct list_head send_req_list;
 #endif
@@ -74,11 +74,11 @@ struct _buffering_attr {
 
 typedef struct ring_buffer  ring_buffer;
 
-extern ring_buffer *create_ring_buffer(char *name, unsigned int length);
+extern ring_buffer *create_ring_buffer(char *name, signed long long length);
 extern void destroy_ring_buffer(ring_buffer *ring);
-extern unsigned int get_ring_buffer_size(ring_buffer *ring);
+extern signed long long get_ring_buffer_size(ring_buffer *ring);
 //extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
-extern unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigned int* pLen);
-extern int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, int len, int highwater, int retry);
+extern bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long* pLen);
+extern signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, signed long long len, signed long long highwater, int retry);
 extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size);
 #endif

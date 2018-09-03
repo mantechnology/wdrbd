@@ -521,7 +521,8 @@ struct sock {
 #else
 	int sk_wmem_queued;
 #endif
-	int sk_sndbuf;
+	//int sk_sndbuf;
+	signed long long sk_sndbuf;
 	KSPIN_LOCK sk_callback_lock; 
 };
 

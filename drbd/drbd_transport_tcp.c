@@ -123,7 +123,7 @@ static int dtt_add_path(struct drbd_transport *, struct drbd_path *path);
 static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 
 #ifdef _WIN32_SEND_BUFFING
-static bool dtt_start_send_buffring(struct drbd_transport *, int size);
+static bool dtt_start_send_buffring(struct drbd_transport *, signed long long size);
 static void dtt_stop_send_buffring(struct drbd_transport *);
 #endif
 static struct drbd_transport_class tcp_transport_class = {
@@ -574,7 +574,7 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 	}
 }
 
-static void dtt_setbufsize(struct socket *socket, unsigned int snd,
+static void dtt_setbufsize(struct socket *socket, signed long long snd,
 			   unsigned int rcv)
 {
 #ifdef _WIN32
@@ -644,7 +644,9 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 #endif
 	struct net_conf *nc;
 	int err;
-	int sndbuf_size, rcvbuf_size, connect_int;
+	//int sndbuf_size, rcvbuf_size, connect_int;
+	int rcvbuf_size, connect_int; signed long long sndbuf_size;
+	
 	char sbuf[128] = {0,};
 	char dbuf[128] = {0,};
 	
@@ -1508,7 +1510,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 			       struct drbd_listener **ret_listener)
 {
 #ifdef _WIN32
-	int err = 0, sndbuf_size, rcvbuf_size; 
+	//int err = 0, sndbuf_size, rcvbuf_size; 
+	int err = 0, rcvbuf_size; signed long long sndbuf_size;
 	struct sockaddr_storage_win my_addr;
 	NTSTATUS status;
 	SOCKADDR_IN ListenV4Addr = {0,};
@@ -2452,7 +2455,7 @@ static void __exit dtt_cleanup(void)
 
 extern VOID NTAPI send_buf_thread(PVOID p);
 
-static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
+static bool dtt_start_send_buffring(struct drbd_transport *transport, signed long long size)
 {
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
 

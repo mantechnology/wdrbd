@@ -33,10 +33,10 @@
 
 #define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
 
-ring_buffer *create_ring_buffer(char *name, unsigned int length)
+ring_buffer *create_ring_buffer(char *name, signed long long length)
 {
 	ring_buffer *ring;
-	int sz = sizeof(*ring) + length;
+	signed long long sz = sizeof(*ring) + length;
 
 	if (length == 0 || length > DRBD_SNDBUF_SIZE_MAX)
 	{
@@ -66,7 +66,7 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		if (!ring->static_big_buf)
 		{
 			ExFreePool(ring);
-			WDRBD_ERROR("bab(%s): alloc(%d) failed.\n", name, MAX_ONETIME_SEND_BUF);
+			WDRBD_ERROR("bab(%s): static_big_buf alloc(%d) failed.  \n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
 	}
@@ -81,14 +81,14 @@ void destroy_ring_buffer(ring_buffer *ring)
 {
 	if (ring)
 	{
-			kfree(ring->static_big_buf);
+		kfree(ring->static_big_buf);
 		ExFreePool(ring);
 	}
 }
 
-unsigned int get_ring_buffer_size(ring_buffer *ring)
+signed long long get_ring_buffer_size(ring_buffer *ring)
 {
-	unsigned int s;
+	signed long long s;
 	if (!ring)
 	{
 		return 0;
@@ -101,10 +101,10 @@ unsigned int get_ring_buffer_size(ring_buffer *ring)
 	return s;
 }
 
-int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, int len, int highwater, int retry)
+signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, signed long long len, signed long long highwater, int retry)
 {
-	unsigned int remain;
-	int ringbuf_size = 0;
+	signed long long remain;
+	signed long long ringbuf_size = 0;
 	LARGE_INTEGER	Interval;
 	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative
 
@@ -188,11 +188,11 @@ $GO_BUFFERING:
 	return len;
 }
 
-unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigned int* pLen)
+bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long* pLen)
 {
-	unsigned int remain;
-	unsigned int ringbuf_size = 0;
-	unsigned int tx_sz = 0;
+	signed long long remain;
+	signed long long ringbuf_size = 0;
+	signed long long tx_sz = 0;
 
 	EnterCriticalSection(&ring->cs);
 	ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
@@ -231,8 +231,8 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 		return Send(socket->sk, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
-	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
-	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
+	signed long long  tmp = (long long)buffering_attr->bab->length * 99;
+	signed long long highwater = (signed long long)tmp / 100; // 99% // refacto: global
 	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
@@ -256,7 +256,7 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 	}
 
 	while (1) {
-		unsigned int tx_sz = 0;
+		signed long long tx_sz = 0;
 
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
