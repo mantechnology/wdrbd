@@ -798,7 +798,7 @@ void conn_connect2(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	atomic_set(&connection->ap_in_flight, 0);
+	atomic_set64(&connection->ap_in_flight, 0);
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -977,19 +977,16 @@ start:
 
 #ifdef _WIN32_SEND_BUFFING
 	// DW-1436 removing the protocol dependency of the send buffer thread
-	if (nc->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN)
-	{
+	if (nc->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN) {
 		bool send_buffring = FALSE;
 
 		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
 		if (send_buffring)
-			drbd_info(connection, "send-buffering size(%d) cong_fill(%d)\n", nc->sndbuf_size, (nc->cong_fill * 512));
+			drbd_info(connection, "send-buffering ok size(%lld) cong_fill(%lld)\n", nc->sndbuf_size, (nc->cong_fill));
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
-	}
-	else 
-	{
-		drbd_warn(connection, "send-buffering disabled\n");
+	} else {
+		drbd_warn(connection, "send-buffering disabled nc->sndbuf_size:%lld\n",nc->sndbuf_size);
 	}
 #endif
 
@@ -9725,7 +9722,7 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 #endif
 		struct drbd_device *device = peer_device->device;
 		if (peer_device->repl_state[NOW] == L_AHEAD &&
-		    atomic_read(&connection->ap_in_flight) == 0 &&
+		    atomic_read64(&connection->ap_in_flight) == 0 &&
 #ifdef _WIN32
 			!test_and_set_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags)) {
 #else

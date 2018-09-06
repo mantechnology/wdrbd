@@ -891,6 +891,7 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
+extern void atomic_set64(atomic_t64* v, LONGLONG i);
 extern void atomic_add(int i, atomic_t *v);
 extern void atomic_add64(LONGLONG a, atomic_t64 *v);
 extern void atomic_sub(int i, atomic_t *v);

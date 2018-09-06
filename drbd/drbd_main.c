@@ -4175,7 +4175,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	INIT_LIST_HEAD(&connection->todo.work_list);
 	connection->todo.req = NULL;
 
-	atomic_set(&connection->ap_in_flight, 0);
+	atomic_set64(&connection->ap_in_flight, 0);
 	connection->send.seen_any_write_yet = false;
 	connection->send.current_epoch_nr = 0;
 	connection->send.current_epoch_writes = 0;

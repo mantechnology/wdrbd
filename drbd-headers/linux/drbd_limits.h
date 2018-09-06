@@ -264,9 +264,11 @@
 #define DRBD_C_MIN_RATE_SCALE	'k'  /* kilobytes */
 
 #define DRBD_CONG_FILL_MIN	0
-#define DRBD_CONG_FILL_MAX	(10<<21) /* 10GByte in sectors */
+//#define DRBD_CONG_FILL_MAX	(10<<21) /* 10GByte in sectors */
+#define DRBD_CONG_FILL_MAX 	(0xFFFFFFFFFF)
 #define DRBD_CONG_FILL_DEF	0
-#define DRBD_CONG_FILL_SCALE	's'  /* sectors */
+//#define DRBD_CONG_FILL_SCALE	's'  /* sectors */
+#define DRBD_CONG_FILL_SCALE	'1'
 
 #define DRBD_CONG_EXTENTS_MIN	DRBD_AL_EXTENTS_MIN
 #define DRBD_CONG_EXTENTS_MAX	DRBD_AL_EXTENTS_MAX
