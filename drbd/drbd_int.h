@@ -1481,6 +1481,8 @@ struct drbd_connection {
 		u64 current_dagtag_sector;
 	} send;
 
+	ring_buffer* ptxbab[2];
+	
 	unsigned int peer_node_id;
 	struct list_head twopc_parent_list;
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal

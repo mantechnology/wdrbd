@@ -883,7 +883,12 @@ start:
 
 #ifdef _WIN32
 	// DW-1398: initialize.
+	rcu_read_lock();
+	nc = rcu_dereference(connection->transport.net_conf);
+	rcu_read_unlock();
+
 	atomic_set(&transport->listening_done, false);
+	
 #endif
 
 	err = transport->ops->connect(transport);
@@ -904,17 +909,24 @@ start:
 
 	connection->last_received = jiffies;
 
-	rcu_read_lock();
-	nc = rcu_dereference(connection->transport.net_conf);
+	//rcu_read_lock();
+	//nc = rcu_dereference(connection->transport.net_conf);
 	ping_timeo = nc->ping_timeo;
 	ping_int = nc->ping_int;
-	rcu_read_unlock();
+	//rcu_read_unlock();
 
 	/* Make sure we are "uncorked", otherwise we risk timeouts,
 	* in case this is a reconnect and we had been corked before. */
 	drbd_uncork(connection, CONTROL_STREAM);
 	drbd_uncork(connection, DATA_STREAM);
 
+	// 
+	// alloc_bab
+	//
+	if(alloc_bab(connection, nc)) {
+	} else {
+	}
+	
 	/* Make sure the handshake happens without interference from other threads,
 	* or the challenge respons authentication could be garbled. */
 	mutex_lock(&connection->mutex[DATA_STREAM]);

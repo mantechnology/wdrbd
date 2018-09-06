@@ -33,7 +33,49 @@
 
 #define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
 
-ring_buffer *create_ring_buffer(char *name, signed long long length)
+bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf) 
+{
+	ring_buffer* ring = NULL;
+
+	if(0 == nconf->sndbuf_size) {
+		return FALSE;
+	}
+
+	if(nconf->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN ) {
+		signed long long sz = sizeof(*ring) + nconf->sndbuf_size;
+		ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
+		if(ring) {
+			connection->ptxbab[DATA_STREAM] = ring;
+			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
+			if(ring) {
+				connection->ptxbab[CONTROL_STREAM] = ring;
+			} else {
+				kfree2(connection->ptxbab[DATA_STREAM]);
+				connection->ptxbab[CONTROL_STREAM] = NULL;
+			}
+		}
+		
+	} else {
+		WDRBD_INFO("alloc_bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN \n", nconf->sndbuf_size);
+		return FALSE;
+	}
+	WDRBD_INFO("alloc_bab ok nconf->sndbuf_size:%lld\n",nconf->sndbuf_size);
+	return TRUE;
+}
+
+void destroy_bab(struct drbd_connection* connection)
+{
+	if(connection->ptxbab[DATA_STREAM]) {
+		kfree2(connection->ptxbab[DATA_STREAM]);
+	} 
+	if(connection->ptxbab[CONTROL_STREAM]) {
+		kfree2(connection->ptxbab[CONTROL_STREAM]);
+	}
+	return;
+}
+
+ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, signed long long length, enum drbd_stream stream)
 {
 	ring_buffer *ring;
 	signed long long sz = sizeof(*ring) + length;
@@ -44,9 +86,13 @@ ring_buffer *create_ring_buffer(char *name, signed long long length)
 		return NULL;
 	}
 
-	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
-	if (ring)
-	{
+	//ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
+	if(stream == DATA_STREAM) {
+		ring = connection->ptxbab[DATA_STREAM];
+	} else {
+		ring = connection->ptxbab[CONTROL_STREAM];
+	}
+	if (ring) {
 		ring->mem = (char*) (ring + 1);
 		ring->length = length + 1;
 		ring->read_pos = 0;
@@ -63,15 +109,13 @@ ring_buffer *create_ring_buffer(char *name, signed long long length)
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
 		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '1ADW');
-		if (!ring->static_big_buf)
-		{
-			ExFreePool(ring);
+		if (!ring->static_big_buf) {
+			//ExFreePool(ring);
+			kfree2(ring);
 			WDRBD_ERROR("bab(%s): static_big_buf alloc(%d) failed.  \n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
-	}
-	else
-	{
+	} else {
 		WDRBD_ERROR("bab(%s):alloc(%u) failed\n", name, sz);
 	}
 	return ring;
@@ -81,8 +125,9 @@ void destroy_ring_buffer(ring_buffer *ring)
 {
 	if (ring)
 	{
-		kfree(ring->static_big_buf);
-		ExFreePool(ring);
+		kfree2(ring->static_big_buf);
+		//ExFreePool(ring);
+		kfree2(ring);
 	}
 }
 

@@ -2457,7 +2457,8 @@ extern VOID NTAPI send_buf_thread(PVOID p);
 
 static bool dtt_start_send_buffring(struct drbd_transport *transport, signed long long size)
 {
-	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
+	struct drbd_tcp_transport* tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
+	struct drbd_connection* connection = container_of(transport, struct drbd_connection, transport);
 
 	if (size > 0 )
 	{
@@ -2485,7 +2486,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, signed lon
 					size = 1024 * 5120; // meta bab is about 5MB
 				}
 
-				if ((attr->bab = create_ring_buffer(tcp_transport->stream[i]->name, size)) != NULL)
+				if ((attr->bab = create_ring_buffer(connection, tcp_transport->stream[i]->name, size, i)) != NULL)
 				{
 					KeInitializeEvent(&attr->send_buf_kill_event, SynchronizationEvent, FALSE);
 					KeInitializeEvent(&attr->send_buf_killack_event, SynchronizationEvent, FALSE);

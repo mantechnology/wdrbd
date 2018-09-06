@@ -73,8 +73,9 @@ struct _buffering_attr {
 };
 
 typedef struct ring_buffer  ring_buffer;
-
-extern ring_buffer *create_ring_buffer(char *name, signed long long length);
+extern bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf);
+extern void destroy_bab(struct drbd_connection* connection);
+extern ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, signed long long length, enum drbd_stream stream);
 extern void destroy_ring_buffer(ring_buffer *ring);
 extern signed long long get_ring_buffer_size(ring_buffer *ring);
 //extern void read_ring_buffer(ring_buffer *ring, char *data, int len);

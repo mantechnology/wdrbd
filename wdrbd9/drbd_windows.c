@@ -1594,13 +1594,11 @@ void del_gendisk(struct gendisk *disk)
 	struct _buffering_attr *buffering_attr = &sock->buffering_attr;
 	struct ring_buffer *bab = buffering_attr->bab;
 
-	if (bab)
-	{
-		if (bab->static_big_buf)
-		{
-			kfree(bab->static_big_buf);
+	if (bab){
+		if (bab->static_big_buf) {
+			kfree2(bab->static_big_buf);
 		}
-		kfree(bab);
+		kfree2(bab);
 	}
 	
 	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);
