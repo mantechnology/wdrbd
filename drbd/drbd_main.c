@@ -4327,7 +4327,8 @@ void drbd_destroy_connection(struct kref *kref)
 	//
 	// destroy_bab
 	//
-	//destroy_bab(connection); // recheck
+	destroy_bab(connection);
+	
 	kfree(connection);
 	kref_debug_put(&resource->kref_debug, 3);
 	kref_put(&resource->kref, drbd_destroy_resource);

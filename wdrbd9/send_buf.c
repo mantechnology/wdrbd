@@ -36,32 +36,60 @@
 bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf) 
 {
 	ring_buffer* ring = NULL;
+	signed long long sz = 0;
 
 	if(0 == nconf->sndbuf_size) {
 		return FALSE;
 	}
 
-	if(nconf->sndbuf_size >= DRBD_SNDBUF_SIZE_MIN ) {
-		signed long long sz = sizeof(*ring) + nconf->sndbuf_size;
-		ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
-		if(ring) {
-			connection->ptxbab[DATA_STREAM] = ring;
-			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
-			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
-			if(ring) {
-				connection->ptxbab[CONTROL_STREAM] = ring;
-			} else {
-				kfree2(connection->ptxbab[DATA_STREAM]);
-				connection->ptxbab[CONTROL_STREAM] = NULL;
+	do {
+		if(nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN ) {
+			WDRBD_INFO("alloc bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			goto $ALLOC_FAIL;
+		}
+		__try {
+			sz = sizeof(*ring) + nconf->sndbuf_size;
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
+			if(!ring) {
+				WDRBD_INFO("alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+				goto $ALLOC_FAIL;
 			}
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			if(ring) {
+				ExFreePool(ring);
+			}
+			goto $ALLOC_FAIL;
 		}
 		
-	} else {
-		WDRBD_INFO("alloc_bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN \n", nconf->sndbuf_size);
-		return FALSE;
-	}
-	WDRBD_INFO("alloc_bab ok nconf->sndbuf_size:%lld\n",nconf->sndbuf_size);
+		connection->ptxbab[DATA_STREAM] = ring;
+		__try {
+			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '2ADW');
+			if(!ring) {
+				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
+				goto $ALLOC_FAIL;
+			}
+		} __except (EXCEPTION_EXECUTE_HANDLER) {
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			if(ring) {
+				ExFreePool(ring);
+			}
+			goto $ALLOC_FAIL;
+		}
+		
+		connection->ptxbab[CONTROL_STREAM] = ring;
+		
+	} while(FALSE);
+	
+	WDRBD_INFO("alloc_bab ok connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 	return TRUE;
+
+$ALLOC_FAIL:
+	connection->ptxbab[DATA_STREAM] = NULL;
+	connection->ptxbab[CONTROL_STREAM] = NULL;
+	return FALSE;
 }
 
 void destroy_bab(struct drbd_connection* connection)
@@ -111,7 +139,7 @@ ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, 
 		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '1ADW');
 		if (!ring->static_big_buf) {
 			//ExFreePool(ring);
-			kfree2(ring);
+			//kfree2(ring);
 			WDRBD_ERROR("bab(%s): static_big_buf alloc(%d) failed.  \n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
@@ -127,7 +155,7 @@ void destroy_ring_buffer(ring_buffer *ring)
 	{
 		kfree2(ring->static_big_buf);
 		//ExFreePool(ring);
-		kfree2(ring);
+		//kfree2(ring);
 	}
 }
 

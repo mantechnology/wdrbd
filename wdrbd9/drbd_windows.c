@@ -1559,8 +1559,7 @@ void del_gendisk(struct gendisk *disk)
 {
 	NTSTATUS status;
 	
-	if (!sock)
-	{
+	if (!sock) {
 		WDRBD_INFO("socket is null.\n");
 		return;
 	}
@@ -1584,8 +1583,7 @@ void del_gendisk(struct gendisk *disk)
 		}
 	}
 
-	if (sock->sk_linux_attr)
-	{
+	if (sock->sk_linux_attr) {
 		kfree(sock->sk_linux_attr);
 		sock->sk_linux_attr = 0;
 	}
@@ -1598,7 +1596,7 @@ void del_gendisk(struct gendisk *disk)
 		if (bab->static_big_buf) {
 			kfree2(bab->static_big_buf);
 		}
-		kfree2(bab);
+		//kfree2(bab);
 	}
 	
 	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);
