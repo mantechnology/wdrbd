@@ -1723,6 +1723,14 @@ static bool conn_wait_ee_cond(struct drbd_connection *connection, struct list_he
 	return done;
 }
 
+// DW-1682 Added 3 sec timeout for active_ee when disconnecting 
+static void conn_wait_ee_empty_timeout(struct drbd_connection *connection, struct list_head *head)
+{
+	long t, timeout;	
+	t = timeout = 3 * HZ; // 3 sec
+	wait_event_timeout(t, connection->ee_wait, conn_wait_ee_cond(connection, head), timeout);
+}
+
 static void conn_wait_ee_empty(struct drbd_connection *connection, struct list_head *head)
 {
 	wait_event(connection->ee_wait, conn_wait_ee_cond(connection, head));
@@ -8802,7 +8810,8 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
-	conn_wait_ee_empty(connection, &connection->active_ee);
+
+	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	* w_make_resync_request etc. which may still be on the worker queue
