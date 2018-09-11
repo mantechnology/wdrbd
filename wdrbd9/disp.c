@@ -491,16 +491,7 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         if (device) {
 #ifdef _WIN32_MULTIVOL_THREAD
 			IoMarkIrpPending(Irp);
-			//mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
-			status = mvolReadWriteDevice(VolumeExtension, Irp, IRP_MJ_WRITE);
-			if (status != STATUS_SUCCESS) {
-				mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
-
-				Irp->IoStatus.Information = 0;
-				Irp->IoStatus.Status = status;
-				IoCompleteRequest(Irp, (CCHAR)(NT_SUCCESS(Irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
-				return status;
-			} 
+			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp); 
 #else
 			PMVOL_THREAD				pThreadInfo;
 			pThreadInfo = &VolumeExtension->WorkThreadInfo;
