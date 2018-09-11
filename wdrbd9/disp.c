@@ -701,8 +701,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #ifdef _WIN32_MULTIVOL_THREAD
 			IoMarkIrpPending(Irp);
 			//It is processed in 2 passes according to IRQL.
-			//1. If IRQL is greater than or equal to DISPATCH LEVEL,
-			//2. Directly call mvolwritedispatch otherwise
+			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
+			//2. Otherwise, Directly call mvolwritedispatch
 			if(KeGetCurrentIrql() < DISPATCH_LEVEL) {
 				status = mvolReadWriteDevice(VolumeExtension, Irp, IRP_MJ_WRITE);
 				if (status != STATUS_SUCCESS) {
