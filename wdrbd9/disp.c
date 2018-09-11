@@ -700,7 +700,22 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 #ifdef _WIN32_MULTIVOL_THREAD
 			IoMarkIrpPending(Irp);
-			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+			//It is processed in 2 passes according to IRQL.
+			//1. If IRQL is greater than or equal to DISPATCH LEVEL,
+			//2. Directly call mvolwritedispatch otherwise
+			if(KeGetCurrentIrql() < DISPATCH_LEVEL) {
+				status = mvolReadWriteDevice(VolumeExtension, Irp, IRP_MJ_WRITE);
+				if (status != STATUS_SUCCESS) {
+                	mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
+
+                	Irp->IoStatus.Information = 0;
+                	Irp->IoStatus.Status = status;
+                	IoCompleteRequest(Irp, (CCHAR)(NT_SUCCESS(Irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
+                	return status;
+            	}	
+			} else {
+				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+			}
 #else
 			PMVOL_THREAD	pThreadInfo = &VolumeExtension->WorkThreadInfo;
 
