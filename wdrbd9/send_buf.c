@@ -228,7 +228,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
 
 	if (buffering_attr->send_buf_thread_handle == NULL || buffering_attr->bab == NULL) {
-		return Send(socket->sk, buf, size, 0, timeout, NULL, transport, stream);
+		return Send(socket, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
 	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
@@ -242,11 +242,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	return size;
 }
 
-#ifdef _WSK_IRP_REUSE
-int do_send(PIRP pReuseIrp, PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
-#else
-int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
-#endif
+int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 {
 	int ret = 0;
 
@@ -262,12 +258,8 @@ int do_send(PWSK_SOCKET sock, struct ring_buffer *bab, int timeout, KEVENT *send
 			break;
 		}
 		
-#ifdef _WSK_IRP_REUSE
-		ret = SendEx(pReuseIrp, sock, bab->static_big_buf, tx_sz, 0, timeout, send_buf_kill_event);
-#else
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
-		ret = SendAsync(sock, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
-#endif
+		ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
 		if (ret != tx_sz) {
 			if (ret < 0) {
 				if (ret != -EINTR) {
@@ -311,20 +303,10 @@ VOID NTAPI send_buf_thread(PVOID p)
 	PVOID waitObjects[MAX_EVT];
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
-#ifdef _WSK_IRP_REUSE
-	// Irp reuse can be improvement, for reducing irp memory allocation.(because we send a one packet at a time, irp reusing is valid)
-	PIRP		pReuseIrp = IoAllocateIrp(1, FALSE);
-	if (pReuseIrp == NULL) {
-		WDRBD_ERROR("WSK alloc. reuse Irp is NULL.\n");
-		return;
-	}
-#endif
 
-	while (TRUE)
-	{
+	while (TRUE) {
 		status = KeWaitForMultipleObjects(MAX_EVT, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
-		switch (status)
-		{
+		switch (status) {
 		case STATUS_TIMEOUT:
 			break;
 
@@ -333,12 +315,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 			goto done;
 
 		case (STATUS_WAIT_0 + 1) :
-#ifdef _WSK_IRP_REUSE
-			if (do_send(pReuseIrp , socket->sk, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR)
-#else
-			if (do_send(socket->sk, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR)
-#endif
-			{
+			if (do_send(socket, buffering_attr->bab, socket->sk_linux_attr->sk_sndtimeo, &buffering_attr->send_buf_kill_event) == -EINTR) {
 				goto done;
 			}
 			break;
@@ -350,12 +327,9 @@ VOID NTAPI send_buf_thread(PVOID p)
 	}
 
 done:
-#ifdef _WSK_IRP_REUSE
-	IoFreeIrp(pReuseIrp);
-#endif
 	WDRBD_INFO("send_buf_killack_event!\n");
 	KeSetEvent(&buffering_attr->send_buf_killack_event, 0, FALSE);
-	WDRBD_INFO("sendbuf thread done.!!\n");
+	WDRBD_INFO("sendbuf thread[%p] terminate!!\n",KeGetCurrentThread());
 	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 

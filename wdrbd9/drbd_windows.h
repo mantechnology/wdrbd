@@ -38,8 +38,6 @@
 //#define DRBD_TRACE1				    // trace replication flow(detail)
 
 #define _WIN32_SEND_BUFFING				// Use Send Buffering
-//#define _WSK_IRP_REUSE				// WSK IRP reuse. // DW-1078 disable reuse Irp 
-//#define _WIN32_NETLINK_EX
 //#define _WIN32_TRACE_PEER_DAGTAG		// trace peer_dagtag, last_dagtag 
 #define _WSK_SOCKETCONNECT
 #define _WIN32_EVENTLOG			        // Windows Eventlog porting point
@@ -530,9 +528,15 @@ struct sock {
 #include <send_buf.h>
 #endif
 
-#ifdef _WSK_DISCONNECT_EVENT
-#define	TCP_DISCONNECTED	0
-#define	TCP_ESTABLISHED	1
+#ifdef _WSK_SOCKET_STATE
+enum sock_state {
+	WSK_INVALID_DEVICE = 0,
+	WSK_INIT,	
+	WSK_DISCONNECTED,
+	WSK_ESTABLISHED
+};
+//#define	TCP_DISCONNECTED	0
+//#define	TCP_ESTABLISHED	1
 #endif 
 
 struct socket {
@@ -542,7 +546,7 @@ struct socket {
 #ifdef _WIN32_SEND_BUFFING
 	struct _buffering_attr buffering_attr;
 #endif
-#ifdef _WSK_DISCONNECT_EVENT
+#ifdef _WSK_SOCKET_STATE
 	int sk_state; 
 #endif 
 };
@@ -1339,13 +1343,8 @@ extern NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlo
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
-#ifdef _WIN32_NETLINK_EX
-extern
-void NetlinkWorkThread(void * pctx);
-#else
 extern
 void InitWskNetlink(void * pctx);
-#endif
 
 extern void monitor_mnt_change(PVOID pParam);
 extern NTSTATUS start_mnt_monitor();
@@ -1673,4 +1672,6 @@ char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 int drbd_resize(struct drbd_device *device);
 
 extern char *kvasprintf(int flags, const char *fmt, va_list args);
+
+
 #endif // DRBD_WINDOWS_H
