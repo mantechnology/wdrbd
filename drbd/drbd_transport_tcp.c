@@ -702,17 +702,17 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&my_addr), get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
 	}
 #ifdef _WSK_SOCKET_STATE
-	socket->sk = SocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
+	socket->sk = CreateSocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
 #else
-	socket->sk = SocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status);
+	socket->sk = CreateSocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status);
 #endif 
 	if (!NT_SUCCESS(status)) {
 		err = status;
-		WDRBD_TRACE("dtt_try_connect: SocketConnect fail status:%x socket->sk:%p\n",status,socket->sk);
+		WDRBD_TRACE("dtt_try_connect: CreateSocketConnect fail status:%x socket->sk:%p\n",status,socket->sk);
 		switch (status) {
 		case STATUS_CONNECTION_REFUSED: err = -ECONNREFUSED; break;
 #ifdef _WIN32
-		// DW-1272, DW-1290 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
+		// DW-1272, DW-1290 : retry CreateSocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
 		case STATUS_INVALID_ADDRESS_COMPONENT: err = -EAGAIN; break;
 #endif
 		case STATUS_INVALID_DEVICE_STATE: err = -EAGAIN; break;
@@ -869,7 +869,7 @@ out:
 		if (socket)
 			sock_release(socket);
 #ifdef _WIN32
-		// DW-1272 : retry SocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
+		// DW-1272 : retry CreateSocketConnect if STATUS_INVALID_ADDRESS_COMPONENT
 		if (err != -EAGAIN && err != -EINVALADDR)
 #else
 		if (err != -EAGAIN)

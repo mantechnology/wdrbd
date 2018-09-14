@@ -79,7 +79,7 @@ Disconnect(
 #ifdef _WSK_SOCKET_STATE
 PWSK_SOCKET
 NTAPI
-SocketConnect(
+CreateSocketConnect(
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
@@ -91,7 +91,7 @@ __in PVOID socketContext
 #else
 PWSK_SOCKET
 NTAPI
-SocketConnect(
+CreateSocketConnect(
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
@@ -220,7 +220,7 @@ extern
 NTSTATUS InitWskEvent();
 
 extern
-PWSK_SOCKET CreateSocketEvent(
+PWSK_SOCKET CreateEventSocket(
 __in ADDRESS_FAMILY	AddressFamily,
 __in USHORT			SocketType,
 __in ULONG			Protocol,
@@ -228,7 +228,7 @@ __in ULONG			Flags
 );
 
 extern
-NTSTATUS CloseWskEventSocket();
+NTSTATUS CloseEventSocket();
 
 extern
 void ReleaseProviderNPI();

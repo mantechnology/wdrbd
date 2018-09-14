@@ -393,7 +393,7 @@ InitWskNetlink(void * pctx)
 		return;
 	}
 	
-    netlink_socket = CreateSocketEvent(
+    netlink_socket = CreateEventSocket(
         AF_INET,
         SOCK_STREAM,
         IPPROTO_TCP,
@@ -446,7 +446,7 @@ ReleaseWskNetlink()
 
     ExDeleteResourceLite(&genl_multi_socket_res_lock);
     
-    return CloseWskEventSocket();
+    return CloseEventSocket();
 }
 
 
@@ -581,7 +581,7 @@ NetlinkWorkThread(PVOID context)
         readcount = Receive(pSock, psock_buf, NLMSG_GOODSIZE, 0, 0);
 
         if (readcount == 0) {
-            //WDRBD_INFO("peer closed\n"); // disconenct 명령??
+            //WDRBD_INFO("peer closed\n");
             goto cleanup;
         } else if(readcount < 0) {
             WDRBD_INFO("Receive error = 0x%x\n", readcount);

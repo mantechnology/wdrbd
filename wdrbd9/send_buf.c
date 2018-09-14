@@ -259,7 +259,8 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 		}
 		
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
-		ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
+		//ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
+		ret = Send(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, NULL, 0);
 		if (ret != tx_sz) {
 			if (ret < 0) {
 				if (ret != -EINTR) {
