@@ -610,12 +610,12 @@ Send(
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
 			if(pSock->sk_state == WSK_INVALID_DEVICE) {
 				BytesSent = -ECONNRESET;
-				
 			} else {
 				// FIXME: cancel & completion's race condition may be occurred.
 				// Status or Irp->IoStatus.Status  
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				BytesSent = -EAGAIN;
 			}
 			goto $Send_fail;
 		}
@@ -726,6 +726,7 @@ SendLocal(
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				WDRBD_INFO("SendLocal cancel done(0x%p) \n", WskSocket);
+				BytesSent = -EAGAIN;
 			}
 			goto $SendLoacl_fail;
 		}
