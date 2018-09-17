@@ -1578,27 +1578,21 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	status = GetRegistryValue(L"handler_timeout", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
 	if (status == STATUS_SUCCESS){
 		g_handler_timeout = *(int*) aucTemp;
-		if (g_handler_timeout < 0)
-		{
-			g_handler_timeout = 600;
+		if (g_handler_timeout < 0) {
+			g_handler_timeout = 10;
 		}
-	}
-	else
-	{
+	} else {
 		g_handler_timeout = 1;
 	}	
 	g_handler_timeout = g_handler_timeout * 1000; // change to ms
 	
 	status = GetRegistryValue(L"handler_retry", &ulLength, (UCHAR*) &aucTemp, RegPath_unicode);
-	if (status == STATUS_SUCCESS){
+	if (status == STATUS_SUCCESS) {
 		g_handler_retry = *(int*) aucTemp;
-		if (g_handler_retry < 0)
-		{
+		if (g_handler_retry < 0) {
 			g_handler_retry = 0;
 		}
-	}
-	else
-	{
+	} else {
 		g_handler_retry = 0;
 	}
 #endif

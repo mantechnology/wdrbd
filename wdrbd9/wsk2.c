@@ -557,14 +557,6 @@ __inout  NTSTATUS* pStatus
 }
 
 
-// DW-1679 refactor WSK engine 
-// 1. Code cleanup: renaming in an intuitive sense
-// 2. SendAsync is disabled, perform tx by unifying with Send function
-// 3. Changed to perform nowaitcompletion method when disconnecting, for timeout hang issues
-// 4. Removal of IO cancellation method at timeout of Send, Connect, etc.:
-// Changed to receive notification of timeout in WSK layer (wait for INFINITE after WSK I/O, follow-up processing of completion routine)
-// - Bypass for intermittent hang issues when WSK I/O is canceled.
-
 LONG
 NTAPI
 Send(
@@ -579,11 +571,12 @@ Send(
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
-	KEVENT		CompletionEvent = { 0 };
-	PIRP		Irp = NULL;
-	WSK_BUF		WskBuffer = { 0 };
-	LONG		BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
-	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+	KEVENT			CompletionEvent = { 0 };
+	PIRP			Irp = NULL;
+	WSK_BUF			WskBuffer = { 0 };
+	LONG			BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
+	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
+	LARGE_INTEGER	nWaitTime; LARGE_INTEGER	*pTime;
 
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0) || (pSock->sk_state == WSK_INVALID_DEVICE)) {
 		return SOCKET_ERROR;
@@ -602,17 +595,33 @@ Send(
 
 	Flags |= WSK_FLAG_NODELAY;
 
+	nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+	pTime = &nWaitTime;
+
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
-		WskSocket,
-		&WskBuffer,
-		Flags,
-		Irp);
+																			WskSocket,
+																			&WskBuffer,
+																			Flags,
+																			Irp);
 
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = Irp->IoStatus.Status;
+		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
+		if(Status == STATUS_TIMEOUT) {
+			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
+			if(pSock->sk_state == WSK_INVALID_DEVICE) {
+				BytesSent = -ECONNRESET;
+				goto $Send_fail;
+			} else {
+				// FIXME: cancel & completion's race condition may be occurred.
+				// Status or Irp->IoStatus.Status  
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			}
+		}
+		Status = Irp->IoStatus.Status;		
 	}
-	if(NT_SUCCESS(Status)) {
+
+	if(Status == STATUS_SUCCESS) {
 		BytesSent = (LONG)Irp->IoStatus.Information;
 	} else {
 		switch (Irp->IoStatus.Status) {
@@ -631,10 +640,10 @@ Send(
 			break;
 		}
 	}
-	
-	IoFreeIrp(Irp);
+$Send_fail:		
 	FreeWskBuffer(&WskBuffer);
-
+	IoFreeIrp(Irp);
+	
 	return BytesSent;
 }
 
@@ -780,6 +789,7 @@ SendLocal(
 	WSK_BUF		WskBuffer = { 0 };
 	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
+	LARGE_INTEGER	nWaitTime; LARGE_INTEGER	*pTime;
 
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0) || (pSock->sk_state == WSK_INVALID_DEVICE))
 		return SOCKET_ERROR;
@@ -795,32 +805,43 @@ SendLocal(
 		return SOCKET_ERROR;
 	}
 
+	// DW-1015 fix crash. WskSocket->Dispatch)->WskSend is NULL while machine is shutdowning
+	// DW-1029 to prevent possible contingency, check if dispatch table is valid.
+	if(gbShutdown || !WskSocket->Dispatch) { 
+		IoFreeIrp(Irp);
+		FreeWskBuffer(&WskBuffer);
+		return SOCKET_ERROR;
+	}
+
 	Flags |= WSK_FLAG_NODELAY;
-
-	if(gbShutdown) { // DW-1015 fix crash. WskSocket->Dispatch)->WskSend is NULL while machine is shutdowning
-		IoFreeIrp(Irp);
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
-	}
-
-	if (!WskSocket->Dispatch) { // DW-1029 to prevent possible contingency, check if dispatch table is valid.
-		IoFreeIrp(Irp);
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
-	}
+	
+	nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
+	pTime = &nWaitTime;
 
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
-		WskSocket,
-		&WskBuffer,
-		Flags,
-		Irp);
+																			WskSocket,
+																			&WskBuffer,
+																			Flags,
+																			Irp);
 
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = Irp->IoStatus.Status;
+		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
+		if(Status == STATUS_TIMEOUT) {
+			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
+			if(pSock->sk_state == WSK_INVALID_DEVICE) {
+				BytesSent = -ECONNRESET;
+				goto $SendLoacl_fail;
+			} else {
+				// FIXME: cancel & completion's race condition may be occurred.
+				// Status or Irp->IoStatus.Status  
+				IoCancelIrp(Irp);
+				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+			}
+		}
+		Status = Irp->IoStatus.Status;		
 	}
 	
-	if(NT_SUCCESS(Status)) {
+	if(Status == STATUS_SUCCESS) {
 		BytesSent = (LONG)Irp->IoStatus.Information;
 	} else {
 		switch (Irp->IoStatus.Status) {
@@ -839,7 +860,7 @@ SendLocal(
 			break;
 		}
 	}
-	
+$SendLoacl_fail:	
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
 
