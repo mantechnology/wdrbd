@@ -1579,10 +1579,10 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	if (status == STATUS_SUCCESS){
 		g_handler_timeout = *(int*) aucTemp;
 		if (g_handler_timeout < 0) {
-			g_handler_timeout = 10;
+			g_handler_timeout = DRBD_TIMEOUT_DEF;
 		}
 	} else {
-		g_handler_timeout = 1;
+		g_handler_timeout = DRBD_TIMEOUT_DEF/10;
 	}	
 	g_handler_timeout = g_handler_timeout * 1000; // change to ms
 	

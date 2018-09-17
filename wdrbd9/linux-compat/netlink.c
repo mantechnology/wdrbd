@@ -195,7 +195,7 @@ int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 
         if (socket_entry) {
             //WDRBD_TRACE("send socket(0x%p), data(0x%p), len(%d)\n", socket_entry->ptr, skb->data, skb->len);
-			int sent = SendLocal(socket_entry->ptr, skb->data, skb->len, 0, 0);
+			int sent = SendLocal(socket_entry->ptr, skb->data, skb->len, 0, (DRBD_TIMEOUT_DEF*100));
             if (sent != skb->len) {
                 WDRBD_INFO("Failed to send socket(0x%x)\n", socket_entry->ptr);
             }
@@ -285,7 +285,7 @@ int genlmsg_unicast(struct sk_buff *skb, struct genl_info *info)
         return -1; // return non-zero!
     }
 	
-	if ((sent = SendLocal(info->pSock, skb->data, skb->len, 0, 0)) == (skb->len)) {
+	if ((sent = SendLocal(info->pSock, skb->data, skb->len, 0, (DRBD_TIMEOUT_DEF*100))) == (skb->len)) {
         return 0; // success
     } else {
         WDRBD_INFO("sent Error=0x%x. sock=%p, data=%p sz=%d\n", sent, info->pSock->sk, skb->data, skb->len);
