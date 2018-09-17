@@ -806,8 +806,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 #endif
 	notify_helper(NOTIFY_CALL, device, connection, cmd, 0);
 #ifdef _WIN32_HANDLER_TIMEOUT
-	if (g_handler_use)
-	{
+	if (g_handler_use) {
 		ret = call_usermodehelper(usermode_helper, argv, envp, UMH_WAIT_PROC);
 	}
 	ret = 0;

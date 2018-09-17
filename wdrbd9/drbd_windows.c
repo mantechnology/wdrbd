@@ -1576,7 +1576,7 @@ void del_gendisk(struct gendisk *disk)
 
 	// DW-1493 : WSK_EVENT_DISCONNECT disable
 	if (sock->sk){
-		status = SetEventCallbacks(sock->sk, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
+		status = SetEventCallbacks(sock, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
 		WDRBD_INFO("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
 		if (!NT_SUCCESS(status)) {
 			WDRBD_INFO("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
@@ -1600,7 +1600,7 @@ void del_gendisk(struct gendisk *disk)
 	}
 	
 	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);
-	status = CloseSocket(sock->sk);
+	status = CloseSocket(sock);
 	WDRBD_CONN_TRACE("CloseSocket error(%p)\n", status);
 	if (!NT_SUCCESS(status)) {
 		WDRBD_CONN_TRACE("CloseSocket failed \n");
@@ -2921,31 +2921,41 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 {
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
-	PWSK_SOCKET		Socket = NULL;
+	//PWSK_SOCKET		Socket = NULL;
 	char *cmd_line;
 	int leng;
 	char ret = 0;
-
-	if (0 == g_handler_use)
-	{
+	struct socket* pSock = NULL;
+	if (0 == g_handler_use)	{
 		return -1;
 	}
 
+	pSock = kzalloc(sizeof(struct socket), 0, '42DW');
+	if (!pSock) {
+		WDRBD_ERROR("call_usermodehelper kzalloc failed\n");
+		return -1;
+	}
+	
 	leng = strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1;
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
-	if (!cmd_line)
-	{
-		WDRBD_ERROR("malloc(%d) failed", leng);
+	if (!cmd_line) {
+		WDRBD_ERROR("malloc(%d) failed\n", leng);
+		if(pSock) {
+			kfree(pSock);
+		}
 		return -1;
 	}
 
     sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 
-    Socket = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
-	if (Socket == NULL) {
+    pSock->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
+	if (pSock->sk == NULL) {
 		WDRBD_ERROR("CreateSocket() returned NULL\n");
 		kfree(cmd_line);
+		if(pSock) {
+			kfree(pSock);
+		}
 		return -1; 
 	}
 
@@ -2953,7 +2963,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	LocalAddress.sin_addr.s_addr = INADDR_ANY;
 	LocalAddress.sin_port = 0; 
 
-	Status = Bind(Socket, (PSOCKADDR) &LocalAddress);
+	Status = Bind(pSock, (PSOCKADDR) &LocalAddress);
 	if (!NT_SUCCESS(Status)) {
 		goto error;
 	}
@@ -2965,12 +2975,10 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	RemoteAddress.sin_addr.S_un.S_un_b.s_b4 = 1;
 	RemoteAddress.sin_port = HTONS(g_daemon_tcp_port); 
 
-	Status = Connect(Socket, (PSOCKADDR) &RemoteAddress);
+	Status = Connect(pSock, (PSOCKADDR) &RemoteAddress);
 	if (!NT_SUCCESS(Status)) {
 		goto error;;
-	}
-	else if (Status == STATUS_TIMEOUT)
-	{
+	} else if (Status == STATUS_TIMEOUT) {
 		WDRBD_INFO("Connect() timeout. IRQL(%d)\n", KeGetCurrentIrql());
 		goto error;
 	}
@@ -2987,21 +2995,12 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		LONG readcount;
 		char hello[2];
 		WDRBD_TRACE("Wait Hi\n");
-		if ((readcount = Receive(Socket, &hello, 2, 0, g_handler_timeout)) == 2)
-		{
+		if ((readcount = Receive(pSock, &hello, 2, 0, g_handler_timeout)) == 2) {
 			WDRBD_TRACE("recv HI!!! \n");
-			//CloseSocket(Socket);
-			//kfree(cmd_line);
-			//return ret; 
-		}
-		else
-		{
-			if (readcount == -EAGAIN)
-			{
+		} else {
+			if (readcount == -EAGAIN) {
 				WDRBD_INFO("error rx hi timeout(%d) g_handler_retry(%d) !!!!\n", g_handler_timeout, g_handler_retry);
-			}
-			else
-			{
+			} else {
 				WDRBD_INFO("error recv status=0x%x\n", readcount);
 			}
 			ret = -1;
@@ -3010,65 +3009,48 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 			goto error;
 		}
 
-#ifdef _WIN32
-		if ((Status = SendLocal(Socket, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line))
-#endif
-		{
+
+		if ((Status = SendLocal(pSock, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line)) {
 			WDRBD_ERROR("send command fail stat=0x%x\n", Status);
 			ret = -1;
 			goto error;
 		}
 
-		//WDRBD_INFO("send local done %s! Disconnect\n", Status);
-		//Disconnect(Socket);
-
-		if ((readcount = Receive(Socket, &ret, 1, 0, g_handler_timeout)) > 0)
-		{
+		if ((readcount = Receive(pSock, &ret, 1, 0, g_handler_timeout)) > 0) {
 			WDRBD_TRACE("recv val=0x%x\n", ret);
-			//CloseSocket(Socket);
-			//kfree(cmd_line);
-			//return ret; 
-		}
-		else
-		{
-			if (readcount == -EAGAIN)
-			{
+		} else {
+			if (readcount == -EAGAIN) {
 				WDRBD_INFO("recv retval timeout(%d)!\n", g_handler_timeout);
-			}
-			else
-			{
-			
+			} else {
 				WDRBD_INFO("recv status=0x%x\n", readcount);
 			}
 			ret = -1;
 			goto error;
 		}
 
-#ifdef _WIN32
-		if ((Status = SendLocal(Socket, "BYE", 3, 0, g_handler_timeout)) != 3)
-#endif
-		{
+
+		if ((Status = SendLocal(pSock, "BYE", 3, 0, g_handler_timeout)) != 3) {
 			WDRBD_ERROR("send bye fail stat=0x%x\n", Status); // ignore!
 		}
 
 		WDRBD_TRACE("Disconnect:shutdown...\n", Status);
-		Disconnect(Socket);
+		Disconnect(pSock);
 
-		/*
-		if ((readcount = Receive(Socket, &ret, 1, 0, 0)) > 0)
-		{
+#if 0
+		if ((readcount = Receive(Socket, &ret, 1, 0, 0)) > 0) {
 			WDRBD_INFO("recv dummy  val=0x%x\n", ret);// ignore!
-		}
-		else
-		{
+		} else {
 			WDRBD_INFO("recv dummy  status=%d\n", readcount);// ignore!
 		}
-		*/
+#endif
 	}
 
 error:
-	CloseSocket(Socket);
+	CloseSocket(pSock);
 	kfree(cmd_line);
+	if(pSock) {
+		kfree(pSock);
+	}
 	return ret;
 }
 

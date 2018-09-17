@@ -54,8 +54,9 @@
    * more than one minute timeout is not useful */
 #define DRBD_TIMEOUT_MIN 1
 #define DRBD_TIMEOUT_MAX 600
-#ifdef _WIN32  // DW-1524 fix infinite send retry on low-bandwith
-#define DRBD_TIMEOUT_DEF (60*2)       /* 12 seconds */
+#ifdef _WIN32  
+// DW-1524 fix infinite send retry on low-bandwith
+#define DRBD_TIMEOUT_DEF (50)     /* 5 seconds */
 #else
 #define DRBD_TIMEOUT_DEF 60       /* 6 seconds */
 #endif
