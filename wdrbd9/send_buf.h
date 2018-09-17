@@ -32,7 +32,7 @@
 #define SENDER_IS_UNDEF			-1
 
 // #define SENDBUF_TRACE // trace send buffring 
-#define _WSK_DISCONNECT_EVENT
+#define _WSK_SOCKET_STATE // DW-1679 change _WSK_DISCONNECT_EVENT macro to _WSK_SOCKET_STATE
 
 #ifdef SENDBUF_TRACE
 struct _send_req {

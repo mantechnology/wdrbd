@@ -136,9 +136,6 @@
     <ClCompile Include="..\drbd-headers\drbd_strings.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="loglink.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drbd_windows.h">
@@ -248,9 +245,6 @@
     </ClInclude>
     <ClInclude Include="linux-compat\Bitops.h">
       <Filter>Header Files\linux-compat</Filter>
-    </ClInclude>
-    <ClInclude Include="loglink.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
