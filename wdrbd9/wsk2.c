@@ -668,8 +668,6 @@ SendLocal(
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 	LARGE_INTEGER	nWaitTime; LARGE_INTEGER	*pTime;
 
-	WDRBD_INFO("SendLocal WskSocket:%p Timeout:%d\n",WskSocket,Timeout);
-	
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0) || (pSock->sk_state == WSK_INVALID_DEVICE)) {
 		WDRBD_INFO("pSock->sk_state == WSK_INVALID_DEVICE WskSocket:%p\n",WskSocket);
 		return SOCKET_ERROR;
@@ -695,7 +693,7 @@ SendLocal(
 	}
 
 	Flags |= WSK_FLAG_NODELAY;
-	
+
 	nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
 	pTime = &nWaitTime;
 
@@ -704,12 +702,6 @@ SendLocal(
 																			&WskBuffer,
 																			Flags,
 																			Irp);
-#if 0	
-	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = Irp->IoStatus.Status;	
-	}
-#else
 	if (Status == STATUS_PENDING) {
 
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
@@ -717,15 +709,13 @@ SendLocal(
 		if(Status == STATUS_TIMEOUT) {
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
 			if(pSock->sk_state == WSK_INVALID_DEVICE) {
-				WDRBD_INFO("SendLocal WSK_INVALID_DEVICE(0x%p) goto fail\n", WskSocket);
+				WDRBD_INFO("SendLocal WSK_INVALID_DEVICE(0x%p)\n", WskSocket);
 				BytesSent = -ECONNRESET;
 			} else {
 				// FIXME: cancel & completion's race condition may be occurred.
 				// Status or Irp->IoStatus.Status  
-				WDRBD_INFO("SendLocal cancel(0x%p) \n", WskSocket);
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				WDRBD_INFO("SendLocal cancel done(0x%p) \n", WskSocket);
 				BytesSent = -EAGAIN;
 			}
 			goto $SendLoacl_fail;
@@ -734,10 +724,8 @@ SendLocal(
 
 	Status = Irp->IoStatus.Status;
 	
-#endif		
 	if(Status == STATUS_SUCCESS) {
 		BytesSent = (LONG)Irp->IoStatus.Information;
-		WDRBD_INFO("SendLocal STATUS_SUCCESS(0x%p)\n", WskSocket);
 	} else {
 		switch (Irp->IoStatus.Status) {
 		case STATUS_IO_TIMEOUT:
@@ -756,12 +744,11 @@ SendLocal(
 			break;
 		}
 	}
+	
 $SendLoacl_fail:	
 
 	IoFreeIrp(Irp);
 	FreeWskBuffer(&WskBuffer);
-
-	WDRBD_INFO("SendLocal done WskSocket:%p BytesSent:%d\n",WskSocket, BytesSent);
 
 	return BytesSent;
 }
