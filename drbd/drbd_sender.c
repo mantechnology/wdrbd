@@ -966,13 +966,16 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (transport->ops->stream_ok(transport, DATA_STREAM)) {
 			struct drbd_transport_stats transport_stats;
+#ifdef _WIN32
+			signed long long queued, sndbuf;
+#else
 			int queued, sndbuf;
-
+#endif
 			transport->ops->stats(transport, &transport_stats);
 			queued = transport_stats.send_buffer_used;
 			sndbuf = transport_stats.send_buffer_size;
 #ifdef _WIN32
-			WDRBD_TRACE_TR("make_resync_request: %d/%d: queued=%d sndbuf=%d\n", i, number, queued, sndbuf);
+			WDRBD_TRACE_TR("make_resync_request: %d/%d: queued=%lld sndbuf=%lld\n", i, number, queued, sndbuf);
 #endif
 			if (queued > sndbuf / 2) {
 				requeue = 1;

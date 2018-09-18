@@ -154,8 +154,13 @@ struct drbd_transport {
 struct drbd_transport_stats {
 	int unread_received;
 	int unacked_send;
+#ifdef _WIN32
+	signed long long send_buffer_size;
+	signed long long send_buffer_used;
+#else
 	int send_buffer_size;
 	int send_buffer_used;
+#endif
 };
 
 /* argument to ->recv_pages() */

@@ -558,13 +558,9 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 		{
 			struct _buffering_attr *buffering_attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
 			struct ring_buffer *bab = buffering_attr->bab;
-
-			if (bab)
-			{
+			if (bab) {
 				stats->send_buffer_used = bab->sk_wmem_queued;
-			}
-			else
-			{
+			} else {
 				stats->send_buffer_used = 0; // don't know how to get WSK tx buffer usage yet. Ignore it.
 			}
 		}
