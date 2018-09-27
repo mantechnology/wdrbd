@@ -2247,6 +2247,10 @@ void *idr_get_next(struct idr *idp, int *nextidp)
  */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
+	unsigned long long 	d_size;
+	UNICODE_STRING 		new_name;
+	NTSTATUS 			status;
+		
 	if (!pvext) {
 		WDRBD_WARN("pvext is NULL parameter\n");
 		return;
@@ -2270,8 +2274,8 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		WDRBD_INFO("pvext->VolumeGuid is empty do not mvolQueryMountPointByVolExt\n");
 	}
 
-	UNICODE_STRING new_name;
-	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
+	
+	status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
 	// if not same, it need to re-query
 	if (!NT_SUCCESS(status)) {	// ex: CD-ROM
 		WDRBD_INFO("IoVolumeDeviceToDosName fail status:%x\n",status);
@@ -2280,8 +2284,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 
 	// DW-1105: detach volume when replicating volume letter is changed.
 	if (pvext->Active &&
-		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
-	{
+		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE)) {
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
 		if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
@@ -2298,27 +2301,27 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
 		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
-		//FreeUnicodeString(&pvext->MountPoint);
-		//RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-		WDRBD_INFO("new_name:%wZ\n",&new_name); 	
-		RtlCopyUnicodeString(&pvext->MountPoint,&new_name);
+		FreeUnicodeString(&pvext->MountPoint);
+		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
 		
 		if (IsDriveLetterMountPoint(&new_name)) {
 			pvext->Minor_Index = pvext->MountPoint.Buffer[0] - 'C';
+		}
+	} else {
+		if(new_name.Buffer) {
+			ExFreePool(new_name.Buffer);
 		}
 	}
 
 	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
 	// DW-1469
-	unsigned long long d_size = get_targetdev_volsize(pvext);
+	d_size = get_targetdev_volsize(pvext);
 	
-	if (pvext->dev->bd_contains &&
-		pvext->dev->bd_contains->d_size != d_size)
-	{	
+	if ( pvext->dev->bd_contains && (pvext->dev->bd_contains->d_size != d_size) ) {	
 		pvext->dev->bd_contains->d_size = d_size;
-		pvext->dev->bd_disk->queue->max_hw_sectors =
-			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
+		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
+
 	// debug
 	WDRBD_INFO("after query_targetdev Active:%d blockdevice:%p deviceobject:%p Flag:%lld MountPoint:%wZ Minor_Index:%d VolumeGuid:%wZ\n", 
 									pvext->Active,
