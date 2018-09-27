@@ -59,7 +59,7 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 		RtlCopyMemory(pventry->MountPoint, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
 		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
 		pventry->ExtensionActive = pvext->Active;
-		pventry->Minor_Index = (UCHAR)pvext->Minor_Index;
+		pventry->Minor = pvext->Minor;
 #ifndef _WIN32_MULTIVOL_THREAD
 		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
 		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;

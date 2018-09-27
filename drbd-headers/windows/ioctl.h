@@ -91,7 +91,7 @@ typedef struct _WDRBD_VOLUME_ENTRY
 	ULONGLONG	Size;
 	ULONGLONG	AgreedSize;
 
-	UCHAR		Minor_Index;
+	UCHAR		Minor;
 	BOOLEAN		ExtensionActive;
 #ifndef _WIN32_MULTIVOL_THREAD
 	BOOLEAN		ThreadActive;

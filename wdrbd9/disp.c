@@ -230,7 +230,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
 					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->Minor_Index = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
@@ -341,7 +341,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->Minor_Index))
+    if (do_add_minor(VolumeExtension->Minor))
     {
 #ifndef _WIN32_MULTIVOL_THREAD
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
@@ -363,7 +363,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
         VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->Minor_Index,
+        VolumeExtension->Minor,
         VolumeExtension->Active,
         &VolumeExtension->MountPoint);
 
