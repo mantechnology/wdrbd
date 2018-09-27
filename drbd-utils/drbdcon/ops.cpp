@@ -96,8 +96,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
     DWORD res = ERROR_SUCCESS;
 
 	HANDLE handle = OpenDevice(MVOL_DEVICE);
-	if (INVALID_HANDLE_VALUE == handle)
-	{
+	if (INVALID_HANDLE_VALUE == handle)	{
 		res = GetLastError();
 		fprintf(stderr, "%s: cannot open root device, err=%u\n", __FUNCTION__, res);
 		return res;
@@ -108,19 +107,14 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	PVOID buffer = malloc(mem_size);
 	memset(buffer, 0, mem_size);
 
-	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO,
-		NULL, 0, buffer, mem_size, &dwReturned, NULL))
-	{
+	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO, NULL, 0, buffer, mem_size, &dwReturned, NULL)) {
 		res = GetLastError();
-		if (ERROR_INSUFFICIENT_BUFFER == res)
-		{
+		if (ERROR_INSUFFICIENT_BUFFER == res) {
 			mem_size <<= 1;
 			free(buffer);
 			buffer = malloc(mem_size);
 			memset(buffer, 0, mem_size);
-		}
-		else
-		{
+		} else {
 			fprintf(stderr, "%s: ioctl err. GetLastError(%d)\n", __FUNCTION__, res);
 			goto out;
 		}

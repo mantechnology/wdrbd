@@ -468,8 +468,11 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
     return status;
 }
 
+// 1. Get mount point by volume extension's PhysicalDeviceName
+// 2. If QueryMountPoint return SUCCESS, parse mount point to letter or GUID, and update volume extension's mount point info
+
 NTSTATUS
-mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
+mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext)
 {
 	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
 	ULONG mpslen = 4096 * 2;
@@ -506,7 +509,7 @@ mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
-			pvext->VolIndex = name.Buffer[0] - 'C';
+			pvext->Minor_Index = name.Buffer[0] - 'C';
 			link = &pvext->MountPoint;
 			FreeUnicodeString(link);
 		}

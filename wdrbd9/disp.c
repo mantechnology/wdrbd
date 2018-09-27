@@ -230,7 +230,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
 					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->Minor_Index = pvext->MountPoint.Buffer[0] - 'C';
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
@@ -341,7 +341,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex))
+    if (do_add_minor(VolumeExtension->Minor_Index))
     {
 #ifndef _WIN32_MULTIVOL_THREAD
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
@@ -360,10 +360,10 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 	// DW-1109: create block device in add device routine, it won't be destroyed at least we put ref in remove device routine.
 	VolumeExtension->dev = create_drbd_block_device(VolumeExtension);
 
-    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
+    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ)\n",
         VolumeExtension,
         VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->VolIndex,
+        VolumeExtension->Minor_Index,
         VolumeExtension->Active,
         &VolumeExtension->MountPoint);
 

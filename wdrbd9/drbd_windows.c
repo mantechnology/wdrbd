@@ -2011,10 +2011,10 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      __list_add_rcu(new, head->prev, head);
 }
 
- struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
- {
-     return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
- }
+struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
+{
+ 	return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
+}
 
 void blk_cleanup_queue(struct request_queue *q)
 {
@@ -2242,25 +2242,39 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 
 /**
  * @brief
- *	Recreate the VOLUME_EXTENSION's MountPoint, VolIndex, block_device
+ *	Recreate the VOLUME_EXTENSION's MountPoint, Minor_Index, block_device
  *	if it was changed
  */
 void query_targetdev(PVOLUME_EXTENSION pvext)
 {
 	if (!pvext) {
-		WDRBD_WARN("Null parameter\n");
+		WDRBD_WARN("pvext is NULL parameter\n");
 		return;
 	}
 
+	// debug
+	WDRBD_INFO("pre query_targetdev Active:%d blockdevice:%p deviceobject:%p Flag:%lld MountPoint:%wZ Minor_Index:%d VolumeGuid:%wZ\n", 
+									pvext->Active,
+									pvext->dev, 
+									pvext->DeviceObject, 
+									pvext->Flag, 
+									&pvext->MountPoint, 
+									pvext->Minor_Index, 
+									&pvext->VolumeGuid);
+				
+	
 	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
 		// Should be existed guid's name
-		mvolQueryMountPoint(pvext);
+		mvolQueryMountPointByVolExt(pvext);
+	} else {
+		WDRBD_INFO("pvext->VolumeGuid is empty do not mvolQueryMountPointByVolExt\n");
 	}
 
 	UNICODE_STRING new_name;
 	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
 	// if not same, it need to re-query
 	if (!NT_SUCCESS(status)) {	// ex: CD-ROM
+		WDRBD_INFO("IoVolumeDeviceToDosName fail status:%x\n",status);
 		return;
 	}
 
@@ -2270,9 +2284,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	{
 		// DW-1300: get device and get reference.
 		struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
-		if (device &&
-			get_ldev_if_state(device, D_NEGOTIATING))
-		{
+		if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
 			WDRBD_WARN("replicating volume letter is changed, detaching\n");
 			set_bit(FORCE_DETACH, &device->flags);
 			change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
@@ -2286,11 +2298,13 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
 		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
 
-		FreeUnicodeString(&pvext->MountPoint);
-		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-
+		//FreeUnicodeString(&pvext->MountPoint);
+		//RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
+		WDRBD_INFO("new_name:%wZ\n",&new_name); 	
+		RtlCopyUnicodeString(&pvext->MountPoint,&new_name);
+		
 		if (IsDriveLetterMountPoint(&new_name)) {
-			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+			pvext->Minor_Index = pvext->MountPoint.Buffer[0] - 'C';
 		}
 	}
 
@@ -2305,6 +2319,16 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		pvext->dev->bd_disk->queue->max_hw_sectors =
 			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
+	// debug
+	WDRBD_INFO("after query_targetdev Active:%d blockdevice:%p deviceobject:%p Flag:%lld MountPoint:%wZ Minor_Index:%d VolumeGuid:%wZ\n", 
+									pvext->Active,
+									pvext->dev, 
+									pvext->DeviceObject, 
+									pvext->Flag, 
+									&pvext->MountPoint, 
+									pvext->Minor_Index, 
+									&pvext->VolumeGuid);
+	
 }
 
 // DW-1105: refresh all volumes and handle changes.
@@ -2326,8 +2350,7 @@ void monitor_mnt_change(PVOID pParam)
 	RtlInitUnicodeString(&usMntMgr, MOUNTMGR_DEVICE_NAME);
 	InitializeObjectAttributes(&oaMntMgr, &usMntMgr, OBJ_CASE_INSENSITIVE, NULL, NULL);
 
-	do
-	{
+	do {
 		status = ZwCreateFile(&hMntMgr,
 			FILE_READ_DATA | FILE_WRITE_DATA,
 			&oaMntMgr,
@@ -2340,15 +2363,13 @@ void monitor_mnt_change(PVOID pParam)
 			NULL,
 			0);
 
-		if (!NT_SUCCESS(status))
-		{
+		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("could not open mount manager, status : 0x%x\n", status);
 			break;
 		}
 
 		status = ZwCreateEvent(&hEvent, GENERIC_ALL, 0, NotificationEvent, FALSE);
-		if (!NT_SUCCESS(status))
-		{
+		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("could not create event, status : 0x%x\n", status);
 			break;
 		}
@@ -2357,32 +2378,28 @@ void monitor_mnt_change(PVOID pParam)
 		atomic_set(&g_monitor_mnt_working, TRUE);
 
 		MOUNTMGR_CHANGE_NOTIFY_INFO mcni1 = { 0, }, mcni2 = { 0, };
-		while (TRUE == atomic_read(&g_monitor_mnt_working))
-		{
+
+		while (TRUE == atomic_read(&g_monitor_mnt_working)) {
+			
 			status = ZwDeviceIoControlFile(hMntMgr, hEvent, NULL, NULL, &iosb, IOCTL_MOUNTMGR_CHANGE_NOTIFY,
 				&mcni1, sizeof(mcni1), &mcni2, sizeof(mcni2));
 
-			if (!NT_SUCCESS(status))
-			{
+			if (!NT_SUCCESS(status)) {
 				WDRBD_ERROR("ZwDeviceIoControl with IOCTL_MOUNTMGR_CHANGE_NOTIFY has been failed, status : 0x%x\n", status);
 				break;
-			}
-			else if (STATUS_PENDING == status)
-			{
+			} else if (STATUS_PENDING == status) {
 				status = ZwWaitForSingleObject(hEvent, TRUE, NULL);
 			}
 
 			// we've got notification, refresh all volume and adjust changes if necessary.
 			HANDLE hVolRefresher = NULL;
 			status = PsCreateSystemThread(&hVolRefresher, THREAD_ALL_ACCESS, NULL, NULL, NULL, adjust_changes_to_volume, NULL);
-			if (!NT_SUCCESS(status))
-			{
+			if (!NT_SUCCESS(status)) {
 				WDRBD_ERROR("PsCreateSystemThread for adjust_changes_to_volume failed, status : 0x%x\n", status);
 				break;
 			}
 
-			if (NULL != hVolRefresher)
-			{
+			if (NULL != hVolRefresher) {
 				ZwClose(hVolRefresher);
 				hVolRefresher = NULL;
 			}
@@ -2395,8 +2412,7 @@ void monitor_mnt_change(PVOID pParam)
 
 	atomic_set(&g_monitor_mnt_working, FALSE);
 
-	if (NULL != hMntMgr)
-	{
+	if (NULL != hMntMgr) {
 		ZwClose(hMntMgr);
 		hMntMgr = NULL;
 	}
@@ -2409,14 +2425,12 @@ NTSTATUS start_mnt_monitor()
 	HANDLE	hVolMonitor = NULL;
 
 	status = PsCreateSystemThread(&hVolMonitor, THREAD_ALL_ACCESS, NULL, NULL, NULL, monitor_mnt_change, NULL);
-	if (!NT_SUCCESS(status))
-	{
+	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("PsCreateSystemThread for monitor_mnt_change failed with status 0x%08X\n", status);
 		return status;
 	}
 
-	if (NULL != hVolMonitor)
-	{
+	if (NULL != hVolMonitor) {
 		ZwClose(hVolMonitor);
 		hVolMonitor = NULL;
 	}
@@ -2527,7 +2541,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
+	sprintf(dev->bd_disk->disk_name, "drbd", pvext->Minor_Index);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;

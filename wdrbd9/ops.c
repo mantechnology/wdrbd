@@ -37,16 +37,14 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 
 	MVOL_LOCK();
 	ULONG count = prext->Count;
-	if (count == 0)
-	{
+	if (count == 0) {
 		goto out;
 	}
 
 	PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
 	ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if (outlen < (count * sizeof(WDRBD_VOLUME_ENTRY)))
-	{
-		WDRBD_ERROR("buffer too small\n");
+	if (outlen < (count * sizeof(WDRBD_VOLUME_ENTRY))) {
+		//WDRBD_ERROR("IOCTL_GetAllVolumeInfo buffer too small outlen:%d required len:%d\n",outlen,(count * sizeof(WDRBD_VOLUME_ENTRY)) );
 		*ReturnLength = count * sizeof(WDRBD_VOLUME_ENTRY);
 		status = STATUS_BUFFER_TOO_SMALL;
 		goto out;
@@ -54,24 +52,21 @@ IOCTL_GetAllVolumeInfo( PIRP Irp, PULONG ReturnLength )
 
 	PWDRBD_VOLUME_ENTRY pventry = (PWDRBD_VOLUME_ENTRY)Irp->AssociatedIrp.SystemBuffer;
 	PVOLUME_EXTENSION pvext = prext->Head;
-	for ( ; pvext; pvext = pvext->Next, pventry++)
-	{
+	for ( ; pvext; pvext = pvext->Next, pventry++) {
 		RtlZeroMemory(pventry, sizeof(WDRBD_VOLUME_ENTRY));
 
 		RtlCopyMemory(pventry->PhysicalDeviceName, pvext->PhysicalDeviceName, pvext->PhysicalDeviceNameLength);
 		RtlCopyMemory(pventry->MountPoint, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
 		RtlCopyMemory(pventry->VolumeGuid, pvext->VolumeGuid.Buffer, pvext->VolumeGuid.Length);
 		pventry->ExtensionActive = pvext->Active;
-		pventry->VolIndex = (UCHAR)pvext->VolIndex;
+		pventry->Minor_Index = (UCHAR)pvext->Minor_Index;
 #ifndef _WIN32_MULTIVOL_THREAD
 		pventry->ThreadActive = pvext->WorkThreadInfo.Active;
 		pventry->ThreadExit = pvext->WorkThreadInfo.exit_thread;
 #endif
-		if (pvext->dev)
-		{
+		if (pvext->dev) {
 			pventry->AgreedSize = pvext->dev->d_size;
-			if (pvext->dev->bd_contains)
-			{
+			if (pvext->dev->bd_contains) {
 				pventry->Size = pvext->dev->bd_contains->d_size;
 			}
 		}
