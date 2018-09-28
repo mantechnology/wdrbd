@@ -517,7 +517,10 @@ mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext)
 			link = &pvext->VolumeGuid;
 		}
 
-		link && ucsdup(link, name.Buffer, name.Length);
+		if(link) {
+			ucsdup(link, name.Buffer, name.Length);
+		}
+		
 	}
 
 cleanup:

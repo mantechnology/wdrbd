@@ -2256,17 +2256,6 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		return;
 	}
 
-	// debug
-	WDRBD_INFO("pre query_targetdev Active:%d blockdevice:%p deviceobject:%p Flag:%lld MountPoint:%wZ Minor:%d VolumeGuid:%wZ\n", 
-									pvext->Active,
-									pvext->dev, 
-									pvext->DeviceObject, 
-									pvext->Flag, 
-									&pvext->MountPoint, 
-									pvext->Minor, 
-									&pvext->VolumeGuid);
-				
-
 	// If VolumeGuid's Info is empty, Try to update volume's guid Info 
 	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
 		// Should be existed guid's name
@@ -2274,7 +2263,7 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 	} 
 
 	if(KeAreAllApcsDisabled()) {
-		WDRBD_WARN("query_targetdev fail... All Apcs are Disabled\n");
+		WDRBD_WARN("IoVolumeDeviceToDosName fail... All Apcs are Disabled\n");
 		return;
 	}
 	
@@ -2329,17 +2318,6 @@ void query_targetdev(PVOLUME_EXTENSION pvext)
 		pvext->dev->bd_contains->d_size = d_size;
 		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
-
-	// debug
-	WDRBD_INFO("after query_targetdev Active:%d blockdevice:%p deviceobject:%p Flag:%lld MountPoint:%wZ Minor:%d VolumeGuid:%wZ\n", 
-									pvext->Active,
-									pvext->dev, 
-									pvext->DeviceObject, 
-									pvext->Flag, 
-									&pvext->MountPoint, 
-									pvext->Minor, 
-									&pvext->VolumeGuid);
-	
 }
 
 // DW-1105: refresh all volumes and handle changes.
