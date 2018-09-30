@@ -12,8 +12,8 @@ enum
 	INITIALIZED
 };
 
-NTSTATUS NTAPI SocketsInit();
-VOID NTAPI SocketsDeinit();
+NTSTATUS NTAPI WskGetNPI();
+VOID NTAPI WskPutNPI();
 
 NTSTATUS
 InitWskBuffer(
@@ -37,12 +37,6 @@ InitWskDataAsync(
 	);
 
 VOID
-ReInitWskData(
-	__out PIRP*		pIrp,
-	__out PKEVENT	CompletionEvent
-	);
-
-VOID
 FreeWskBuffer(
 	__in PWSK_BUF WskBuffer
 	);
@@ -54,7 +48,7 @@ FreeWskData(
 
 PWSK_SOCKET
 NTAPI
-  CreateSocket(
+CreateSocket(
     __in ADDRESS_FAMILY	AddressFamily,
     __in USHORT			SocketType,
     __in ULONG			Protocol,
@@ -65,33 +59,27 @@ NTAPI
 
 NTSTATUS
 NTAPI
-CloseSocketLocal(
-	__in PWSK_SOCKET WskSocket
-);
-
-NTSTATUS
-NTAPI
-  CloseSocket(
-	__in PWSK_SOCKET WskSocket
+CloseSocket(
+	__in struct socket* pSock
 	);
 
 NTSTATUS
 NTAPI
-  Connect(
-	__in PWSK_SOCKET	WskSocket,
+Connect(
+	__in struct socket* pSock,
 	__in PSOCKADDR		RemoteAddress
 	);
 
 extern
 NTSTATUS NTAPI
 Disconnect(
-	__in PWSK_SOCKET	WskSocket
+	__in struct socket* pSock
 	);
 
-#ifdef _WSK_DISCONNECT_EVENT
+#ifdef _WSK_SOCKET_STATE
 PWSK_SOCKET
 NTAPI
-SocketConnect(
+CreateSocketConnect(
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
@@ -103,7 +91,7 @@ __in PVOID socketContext
 #else
 PWSK_SOCKET
 NTAPI
-SocketConnect(
+CreateSocketConnect(
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
@@ -113,24 +101,10 @@ __inout  NTSTATUS* pStatus
 #endif 
 
 
-#ifdef _WSK_IRP_REUSE
-LONG
+LONG 
 NTAPI
-SendEx(
-__in PIRP           pIrp,
-__in PWSK_SOCKET	WskSocket,
-__in PVOID			Buffer,
-__in ULONG			BufferSize,
-__in ULONG			Flags,
-__in ULONG			Timeout,
-__in KEVENT			*send_buf_kill_event
-);
-#endif
-
-LONG
-NTAPI
-  Send(
-	__in PWSK_SOCKET	WskSocket,
+Send(
+	__in struct socket* pSock,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in ULONG			Flags,
@@ -143,7 +117,7 @@ NTAPI
 LONG
 NTAPI
 SendAsync(
-	__in PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in ULONG			Flags,
@@ -155,7 +129,7 @@ SendAsync(
 LONG
 NTAPI
 SendLocal(
-	__in PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in ULONG			Flags,
@@ -165,26 +139,16 @@ SendLocal(
 LONG
 NTAPI
 SendTo(
-	__in PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__in PVOID			Buffer,
 	__in ULONG			BufferSize,
 	__in_opt PSOCKADDR	RemoteAddress
 	);
 
-LONG 
-NTAPI 
-ReceiveLocal(
-	__in  PWSK_SOCKET	WskSocket,
-	__out PVOID			Buffer,
-	__in  ULONG			BufferSize,
-	__in  ULONG			Flags,
-	__in ULONG			Timeout
-	);
-
 LONG
 NTAPI
 Receive(
-	__in  PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
 	__in  ULONG			Flags,
@@ -194,7 +158,7 @@ Receive(
 LONG
 NTAPI
 ReceiveFrom(
-	__in  PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
 	__out_opt PSOCKADDR	RemoteAddress,
@@ -204,23 +168,14 @@ ReceiveFrom(
 NTSTATUS
 NTAPI
 Bind(
-	__in PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__in PSOCKADDR		LocalAddress
 	);
-PWSK_SOCKET
-NTAPI
-AcceptLocal(
-	__in PWSK_SOCKET	WskSocket,
-	__out_opt PSOCKADDR	LocalAddress,
-	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt NTSTATUS	*RetStaus,
-	__in int			timeout
-);
 
 PWSK_SOCKET
 NTAPI
 Accept(
-	__in PWSK_SOCKET	WskSocket,
+	__in struct socket* pSock,
 	__out_opt PSOCKADDR	LocalAddress,
 	__out_opt PSOCKADDR	RemoteAddress,
 	__out PNTSTATUS		Error,
@@ -230,23 +185,23 @@ Accept(
 NTSTATUS
 NTAPI
 ControlSocket(
-__in PWSK_SOCKET	WskSocket,
-__in ULONG			RequestType,
-__in ULONG		    ControlCode,
-__in ULONG			Level,
-__in SIZE_T			InputSize,
-__in_opt PVOID		InputBuffer,
-__in SIZE_T			OutputSize,
-__out_opt PVOID		OutputBuffer,
-__out_opt SIZE_T	*OutputSizeReturned
-);
+	__in struct socket* pSock,
+	__in ULONG			RequestType,
+	__in ULONG		    ControlCode,
+	__in ULONG			Level,
+	__in SIZE_T			InputSize,
+	__in_opt PVOID		InputBuffer,
+	__in SIZE_T			OutputSize,
+	__out_opt PVOID		OutputBuffer,
+	__out_opt SIZE_T	*OutputSizeReturned
+	);
 
 NTSTATUS
 NTAPI
 GetRemoteAddress(
-__in PWSK_SOCKET	WskSocket,
-__out PSOCKADDR	pRemoteAddress
-);
+	__in struct socket* pSock,
+	__out PSOCKADDR	pRemoteAddress
+	);
 
 #define HTONS(n)		(((((unsigned short)(n) & 0xFFu  )) << 8) | \
 				(((unsigned short) (n) & 0xFF00u) >> 8))
@@ -259,13 +214,13 @@ extern void sock_release(void  *sock);
 #define HTON_SHORT(n) (((((unsigned short)(n) & 0xFFu  )) << 8) | \
     (((unsigned short)(n)& 0xFF00u) >> 8))
 
-extern PWSK_SOCKET netlink_server_socket;
+extern struct socket* gpNetlinkServerSocket;
 
 extern
 NTSTATUS InitWskEvent();
 
 extern
-PWSK_SOCKET CreateSocketEvent(
+PWSK_SOCKET CreateEventSocket(
 __in ADDRESS_FAMILY	AddressFamily,
 __in USHORT			SocketType,
 __in ULONG			Protocol,
@@ -273,7 +228,7 @@ __in ULONG			Flags
 );
 
 extern
-NTSTATUS CloseWskEventSocket();
+NTSTATUS CloseEventSocket();
 
 extern
 void ReleaseProviderNPI();
@@ -282,9 +237,9 @@ extern
 NTSTATUS
 NTAPI
 SetEventCallbacks(
-__in PWSK_SOCKET    Socket,
-__in LONG			mask
-);
+	__in struct socket* pSock,
+	__in LONG			mask
+	);
 
 extern
 NTSTATUS WSKAPI
@@ -301,7 +256,7 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 char *GetSockErrorString(NTSTATUS status);
 
 
-#ifdef _WSK_DISCONNECT_EVENT 
+#ifdef _WSK_SOCKET_STATE 
 
 NTSTATUS WskDisconnectEvent(
 	_In_opt_ PVOID SocketContext,

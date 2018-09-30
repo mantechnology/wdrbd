@@ -103,7 +103,7 @@ struct genl_info
     struct nlattr **	attrs;
     u32             snd_seq;
     u32			    snd_portid;
-    PWSK_SOCKET		NetlinkSock;
+    struct socket*  pSock;
     LIST_ENTRY      ListEntry;
 };
 

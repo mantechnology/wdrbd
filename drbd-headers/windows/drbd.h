@@ -520,7 +520,7 @@ enum drbd_peer_state {
 #define _WIN32_TWOPC
 #define _WIN32_SIMPLE_TWOPC
 #define _WIN32_RCU_LOCKED // DW-1477 : Lock if not locked.
-#define _WIN32_NOWAIT_CLOSESOCKET // DW-1479 : Do not wait for WskCloseSocket to complete.
+#define _WIN32_NOWAIT_COMPLETION // DW-1479 : Do not wait for WskCloseSocket to complete.
 #define _WIN32_NETQUEUED_LOG // DW-1521 : Improve I/O response time at low bandwidth.
 #define _WIN32_CRASHED_PRIMARY_SYNCSOURCE // DW-1630 : crashed_primary node to be SyncSource.
 #endif
