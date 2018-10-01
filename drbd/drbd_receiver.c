@@ -893,11 +893,11 @@ start:
 		goto retry;
 	} else if (err < 0) {
 		drbd_warn(connection, "Failed to initiate connection, err=%d\n", err);
-#ifdef _WIN32 //DW-1608 : If cstate is already Networkfailure, it will retry the connection.
-		if (connection->cstate[NOW] == C_NETWORK_FAILURE){
-			drbd_warn(connection, "cstate is C_NETWORK_FAILURE now goto retry;\n");
-			goto retry; 
-		}	
+#ifdef _WIN32 //DW-1608 : If cstate is already Networkfailure or Connecting, it will retry the connection.
+		if (connection->cstate[NOW] == C_NETWORK_FAILURE || connection->cstate[NOW] == C_CONNECTING){
+			drbd_warn(connection, "cstate is C_NETWORK_FAILURE or C_CONNECTING now goto retry;\n");
+			goto retry;
+		}
 #endif
 		goto abort;
 	}
@@ -1724,6 +1724,14 @@ static bool conn_wait_ee_cond(struct drbd_connection *connection, struct list_he
 		drbd_unplug_all_devices(connection);
 
 	return done;
+}
+
+// DW-1682 Added 3 sec timeout for active_ee when disconnecting 
+static void conn_wait_ee_empty_timeout(struct drbd_connection *connection, struct list_head *head)
+{
+	long t, timeout;	
+	t = timeout = 3 * HZ; // 3 sec
+	wait_event_timeout(t, connection->ee_wait, conn_wait_ee_cond(connection, head), timeout);
 }
 
 static void conn_wait_ee_empty(struct drbd_connection *connection, struct list_head *head)
@@ -4653,6 +4661,19 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 			     "assumption\n");
 		}
 	}
+
+#ifdef _WIN32 // DW-1657 : If an inconsistent node tries to become a SyncSource, it will disconnect.
+	if (hg == 3 && device->disk_state[NOW] < D_OUTDATED && 
+		drbd_current_uuid(peer_device->device) != UUID_JUST_CREATED) {
+		drbd_err(device, "I shall become SyncSource, but I am inconsistent!\n");
+		return -1;
+	}
+
+	if (hg == -3 && peer_device->uuid_flags & UUID_FLAG_INCONSISTENT) {
+		drbd_err(device, "I shall become SyncTarget, but peer is inconsistent!\n");
+		return -1;
+	}	
+#endif
 
 	if (test_bit(CONN_DRY_RUN, &connection->flags)) {
 		if (hg == 0)
@@ -8420,12 +8441,14 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		{	
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
-			// DW-1365 fixup secondary's diskless case for crashed primary.
-			if(get_ldev_if_state(peer_device->device, D_OUTDATED)) {
+			// DW-1365 : fixup secondary's diskless case for crashed primary.
+			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
+			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
 				drbd_bm_clear_many_bits(peer_device, 0, -1UL);
 				put_ldev (peer_device->device);
 			} else {
-				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d\n",peer_device->device->disk_state[NOW]);
+				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d peer disk_state:%d\n",
+							peer_device->device->disk_state[NOW], peer_device->disk_state[NOW]);
 			}
 #else		
 			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
@@ -8790,7 +8813,8 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
-	conn_wait_ee_empty(connection, &connection->active_ee);
+
+	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	* w_make_resync_request etc. which may still be on the worker queue
