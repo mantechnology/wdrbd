@@ -41,7 +41,7 @@ mvolReadWriteDevice( IN PVOLUME_EXTENSION VolumeExtension, IN PIRP Irp, IN ULONG
 NTSTATUS
 mvolGetVolumeSize( PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize );
 extern NTSTATUS
-mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext);
+mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext);
 VOID
 mvolLogError( PDEVICE_OBJECT DeviceObject, ULONG UniqID,
 	NTSTATUS ErrorCode, NTSTATUS Status );

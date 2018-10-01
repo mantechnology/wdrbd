@@ -2245,70 +2245,18 @@ void *idr_get_next(struct idr *idp, int *nextidp)
  *	Recreate the VOLUME_EXTENSION's MountPoint, Minor, block_device
  *	if it was changed
  */
-void query_targetdev(PVOLUME_EXTENSION pvext)
+void update_targetdev(PVOLUME_EXTENSION pvext)
 {
 	unsigned long long 	d_size;
 	UNICODE_STRING 		new_name;
 	NTSTATUS 			status;
 		
 	if (!pvext) {
-		WDRBD_WARN("pvext is NULL parameter\n");
+		WDRBD_WARN("update_targetdev fail pvext is NULL\n");
 		return;
 	}
 
-	// If VolumeGuid's Info is empty, Try to update volume's guid Info 
-	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
-		// Should be existed guid's name
-		mvolQueryMountPointByVolExt(pvext);
-	} 
-
-	if(KeAreAllApcsDisabled()) {
-		WDRBD_WARN("IoVolumeDeviceToDosName fail... All Apcs are Disabled\n");
-		return;
-	}
-	
-	status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
-	// if not same, it need to re-query
-	if (!NT_SUCCESS(status)) {	// ex: CD-ROM
-		WDRBD_INFO("IoVolumeDeviceToDosName fail status:%x\n",status);
-		return;
-	}
-
-	if(!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE)) {
-		// DW-1105: detach volume when replicating volume letter is changed.
-		if (pvext->Active) {
-			// DW-1300: get device and get reference.
-			struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
-			if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
-				WDRBD_WARN("replicating volume letter is changed, detaching\n");
-				set_bit(FORCE_DETACH, &device->flags);
-				change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
-				put_ldev(device);
-			}
-			// DW-1300: put device reference count when no longer use.
-			if (device)
-				kref_put(&device->kref, drbd_destroy_device);
-		}
-		// If mount point is change, set Minor value to zero
-		pvext->Minor = 0;
-	}
-	
-	// If mount point is letter and find new mount point letter, update volume extension's mount point and minor
-	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
-		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
-		
-		FreeUnicodeString(&pvext->MountPoint);
-		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-
-		// If find letter, update minor.
-		if (IsDriveLetterMountPoint(&new_name)) {
-			pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
-		}
-	} else {
-		// If mount point is volume mount point, just copy to MountPoint
-		FreeUnicodeString(&pvext->MountPoint);
-		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-	}
+	mvolUpdateMountPointInfoByExtension(pvext);
 
 	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
 	// DW-1469
@@ -2443,7 +2391,7 @@ void refresh_targetdev_list()
 
     MVOL_LOCK();
     for (PVOLUME_EXTENSION pvext = proot->Head; pvext; pvext = pvext->Next) {
-        query_targetdev(pvext);
+        update_targetdev(pvext);
     }
     MVOL_UNLOCK();
 }
@@ -2813,7 +2761,7 @@ struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
 	for (; pvext; pvext = pvext->Next) {
 
 		// if no block_device instance yet,
-		query_targetdev(pvext);
+		//update_targetdev(pvext);
 
 		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
 			&pvext->VolumeGuid : &pvext->MountPoint;

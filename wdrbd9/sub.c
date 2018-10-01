@@ -181,20 +181,16 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	// DW-1277: check volume type we marked when drbd attaches.
 	// for normal volume.
-	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) &&
-		!test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) && !test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	// for replication volume.
-	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Replication volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	// for meta volume.
-	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
@@ -472,7 +468,7 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
 // 2. If QueryMountPoint return SUCCESS, parse mount point to letter or GUID, and update volume extension's mount point info
 
 NTSTATUS
-mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext)
+mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 {
 	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
 	ULONG mpslen = 4096 * 2;
@@ -497,6 +493,11 @@ mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext)
 		goto cleanup;
 	}
 
+	FreeUnicodeString(&pvext->MountPoint);
+	FreeUnicodeString(&pvext->VolumeGuid);
+	pvext->Minor = 0;
+	
+	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p\n",pvext);
 	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
 
 		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
@@ -505,24 +506,32 @@ mvolQueryMountPointByVolExt(PVOLUME_EXTENSION pvext)
 			.Length = p->SymbolicLinkNameLength,
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
-		
+		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,name);
+
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
+
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
 			pvext->Minor = name.Buffer[0] - 'C';
+
 			link = &pvext->MountPoint;
-			FreeUnicodeString(link);
+			//FreeUnicodeString(link);
+			WDRBD_TRACE("Free letter link\n");
 		}
 		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
+
 			link = &pvext->VolumeGuid;
+			//FreeUnicodeString(link);
+			WDRBD_TRACE("Free volume guid link\n");
 		}
 
 		if(link) {
 			ucsdup(link, name.Buffer, name.Length);
+			WDRBD_TRACE("link alloc\n");
 		}
 		
 	}
-
+	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p end..............\n",pvext);
 cleanup:
 	kfree(inbuf);
 	kfree(otbuf);
