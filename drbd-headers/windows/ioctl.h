@@ -76,7 +76,7 @@ typedef struct _MVOL_COUNT_INFO
 typedef struct _MVOL_SYNC_REQ
 {
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
-	LARGE_INTEGER			Offset;
+	LARGE_INTEGER		Offset;
 	ULONG				BlockSize;
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
@@ -91,7 +91,7 @@ typedef struct _WDRBD_VOLUME_ENTRY
 	ULONGLONG	Size;
 	ULONGLONG	AgreedSize;
 
-	UCHAR		VolIndex;
+	UCHAR		Minor;
 	BOOLEAN		ExtensionActive;
 #ifndef _WIN32_MULTIVOL_THREAD
 	BOOLEAN		ThreadActive;

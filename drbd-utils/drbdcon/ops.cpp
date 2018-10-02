@@ -96,8 +96,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
     DWORD res = ERROR_SUCCESS;
 
 	HANDLE handle = OpenDevice(MVOL_DEVICE);
-	if (INVALID_HANDLE_VALUE == handle)
-	{
+	if (INVALID_HANDLE_VALUE == handle)	{
 		res = GetLastError();
 		fprintf(stderr, "%s: cannot open root device, err=%u\n", __FUNCTION__, res);
 		return res;
@@ -108,19 +107,14 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	PVOID buffer = malloc(mem_size);
 	memset(buffer, 0, mem_size);
 
-	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO,
-		NULL, 0, buffer, mem_size, &dwReturned, NULL))
-	{
+	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO, NULL, 0, buffer, mem_size, &dwReturned, NULL)) {
 		res = GetLastError();
-		if (ERROR_INSUFFICIENT_BUFFER == res)
-		{
+		if (ERROR_INSUFFICIENT_BUFFER == res) {
 			mem_size <<= 1;
 			free(buffer);
 			buffer = malloc(mem_size);
 			memset(buffer, 0, mem_size);
-		}
-		else
-		{
+		} else {
 			fprintf(stderr, "%s: ioctl err. GetLastError(%d)\n", __FUNCTION__, res);
 			goto out;
 		}
@@ -133,10 +127,10 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	if (verbose)
 	{
 		printf("=====================================================================================\n");
-#ifdef _WIN32_MULTIVOL_THREAD
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");
-#else
+#ifndef _WIN32_MULTIVOL_THREAD
 		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
+#else
+		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");		
 #endif
 		printf("=====================================================================================\n");
 	}
@@ -153,11 +147,11 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 
 		if (verbose)
 		{
-			printf("%ws, %3ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
+			printf("%ws, %ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
 				pEntry->PhysicalDeviceName,
 				pEntry->MountPoint,
 				pEntry->VolumeGuid,
-				pEntry->VolIndex,
+				pEntry->Minor,
 				pEntry->ExtensionActive,
 #ifndef _WIN32_MULTIVOL_THREAD
 				pEntry->ThreadActive,
@@ -169,9 +163,9 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 		}
 		else
 		{
-			printf("%ws, %2d, %3ws, %d\n",
+			printf("%ws, %2d, %ws, %d\n",
 				pEntry->PhysicalDeviceName,
-				pEntry->VolIndex,
+				pEntry->Minor,
 				pEntry->MountPoint,
 				pEntry->ExtensionActive
 			);

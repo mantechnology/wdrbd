@@ -1382,7 +1382,7 @@ extern void delete_drbd_block_device(struct kref *kref);
 extern struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext, bool bCheckRemoveLock);
 extern BOOLEAN do_add_minor(unsigned int minor);
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
-extern void query_targetdev(PVOLUME_EXTENSION pvext);
+extern void update_targetdev(PVOLUME_EXTENSION pvext);
 extern void refresh_targetdev_list();
 extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
