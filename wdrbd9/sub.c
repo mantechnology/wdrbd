@@ -431,8 +431,7 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
 
-    if (KeGetCurrentIrql() > APC_LEVEL)
-    {
+    if (KeGetCurrentIrql() > APC_LEVEL) {
         WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d)\n", KeGetCurrentIrql());
     }
 
@@ -440,21 +439,18 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
         TargetDeviceObject, NULL, 0,
         &li, sizeof(li),
         FALSE, &event, &ioStatus);
-    if (!newIrp)
-    {
+    if (!newIrp) {
         WDRBD_ERROR("cannot alloc new IRP\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     status = IoCallDriver(TargetDeviceObject, newIrp);
-    if (status == STATUS_PENDING)
-    {
+    if (status == STATUS_PENDING) {
         KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
         status = ioStatus.Status;
     }
 
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("cannot get volume information, err=0x%x\n", status);
         return status;
     }

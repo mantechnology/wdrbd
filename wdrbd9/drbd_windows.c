@@ -2248,16 +2248,44 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 void update_targetdev(PVOLUME_EXTENSION pvext)
 {
 	unsigned long long 	d_size;
-	UNICODE_STRING 		new_name;
+	UNICODE_STRING 		old_mount_point;
 	NTSTATUS 			status;
-		
+	bool				bWasExist = FALSE;	
 	if (!pvext) {
 		WDRBD_WARN("update_targetdev fail pvext is NULL\n");
 		return;
 	}
 
+	if(!IsEmptyUnicodeString(&pvext->MountPoint)) {
+		ucsdup (&old_mount_point, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
+		bWasExist = TRUE;
+	}
+	
 	mvolUpdateMountPointInfoByExtension(pvext);
+	WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+	// DW-1105: detach volume when replicating volume letter is changed.
+	if (pvext->Active && bWasExist) {
+		if(IsEmptyUnicodeString(&pvext->MountPoint) || 
+			!RtlEqualUnicodeString(&pvext->MountPoint, &old_mount_point, TRUE) ) {
 
+			// DW-1300: get device and get reference.
+			struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
+			if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
+				WDRBD_WARN("replicating volume letter is changed, detaching\n");
+				set_bit(FORCE_DETACH, &device->flags);
+				change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
+				put_ldev(device);
+			}
+			// DW-1300: put device reference count when no longer use.
+			if (device)
+				kref_put(&device->kref, drbd_destroy_device);
+		}
+	}
+
+	if(bWasExist) {
+		FreeUnicodeString (&old_mount_point);
+	}
+	
 	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
 	// DW-1469
 	d_size = get_targetdev_volsize(pvext);
@@ -2266,6 +2294,7 @@ void update_targetdev(PVOLUME_EXTENSION pvext)
 		pvext->dev->bd_contains->d_size = d_size;
 		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
+	WDRBD_TRACE("d_size:%lld bd_contains->d_size:%lld max_hw_sectors:%lld\n",d_size, pvext->dev->bd_contains->d_size, pvext->dev->bd_disk->queue->max_hw_sectors );
 }
 
 // DW-1105: refresh all volumes and handle changes.
@@ -2418,16 +2447,14 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 {
 	LARGE_INTEGER	volumeSize;
-	NTSTATUS	status;
+	NTSTATUS		status;
 
-	if (VolumeExtension->TargetDeviceObject == NULL)
-	{
+	if (VolumeExtension->TargetDeviceObject == NULL) {
 		WDRBD_ERROR("TargetDeviceObject is null!\n");
 		return (LONGLONG)0;
 	}
 	status = mvolGetVolumeSize(VolumeExtension->TargetDeviceObject, &volumeSize);
-	if (!NT_SUCCESS(status))
-	{
+	if (!NT_SUCCESS(status)) {
 		WDRBD_WARN("get volume size error = 0x%x\n", status);
 		volumeSize.QuadPart = 0;
 	}
@@ -2688,14 +2715,16 @@ bool is_equal_volume_link(
 	_In_ UNICODE_STRING * rhs,
 	_In_ bool case_sensitive)
 {
-	WCHAR * l = lhs->Buffer;
-	WCHAR * r = rhs->Buffer;
+	WCHAR* l = lhs->Buffer;
+	WCHAR* r = rhs->Buffer;
 	USHORT index = 0;
 	int gap = lhs->Length - rhs->Length;
 
-	if (abs(gap) > sizeof(WCHAR)) {
+	if ( !l || !r || (abs(gap) > sizeof(WCHAR)) ) {
 		return false;
 	}
+	
+
 
 	for (; index < min(lhs->Length, rhs->Length); ++l, ++r, index += sizeof(WCHAR)) {
 
