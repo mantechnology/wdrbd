@@ -1705,10 +1705,10 @@ ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 		return 0;
 	}
 
-    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
+    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size + sizeof(UNICODE_NULL), '46DW');
 	if (dst->Buffer) {
 		dst->Length = size;
-		dst->MaximumLength = size + sizeof(WCHAR);
+		dst->MaximumLength = size + sizeof(UNICODE_NULL);
 		RtlCopyMemory(dst->Buffer, src, size);
 		return size;
 	}

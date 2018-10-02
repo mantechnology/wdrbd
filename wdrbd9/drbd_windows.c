@@ -2261,27 +2261,29 @@ void update_targetdev(PVOLUME_EXTENSION pvext)
 		bWasExist = TRUE;
 	}
 	
-	mvolUpdateMountPointInfoByExtension(pvext);
-	WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
-	// DW-1105: detach volume when replicating volume letter is changed.
-	if (pvext->Active && bWasExist) {
-		if(IsEmptyUnicodeString(&pvext->MountPoint) || 
-			!RtlEqualUnicodeString(&pvext->MountPoint, &old_mount_point, TRUE) ) {
+	status = mvolUpdateMountPointInfoByExtension(pvext);
+	if(NT_SUCCESS(status)) {
+		WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+		// DW-1105: detach volume when replicating volume letter is changed.
+		if (pvext->Active && bWasExist) {
+			if(IsEmptyUnicodeString(&pvext->MountPoint) || 
+				!RtlEqualUnicodeString(&pvext->MountPoint, &old_mount_point, TRUE) ) {
 
-			// DW-1300: get device and get reference.
-			struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
-			if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
-				WDRBD_WARN("replicating volume letter is changed, detaching\n");
-				set_bit(FORCE_DETACH, &device->flags);
-				change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
-				put_ldev(device);
+				// DW-1300: get device and get reference.
+				struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
+				if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
+					WDRBD_WARN("replicating volume letter is changed, detaching\n");
+					set_bit(FORCE_DETACH, &device->flags);
+					change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
+					put_ldev(device);
+				}
+				// DW-1300: put device reference count when no longer use.
+				if (device)
+					kref_put(&device->kref, drbd_destroy_device);
 			}
-			// DW-1300: put device reference count when no longer use.
-			if (device)
-				kref_put(&device->kref, drbd_destroy_device);
 		}
 	}
-
+	
 	if(bWasExist) {
 		FreeUnicodeString (&old_mount_point);
 	}
