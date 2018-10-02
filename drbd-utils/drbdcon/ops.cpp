@@ -128,16 +128,16 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	{
 		printf("=====================================================================================\n");
 #ifndef _WIN32_MULTIVOL_THREAD
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
+		printf(" PhysicalDeviceName Minor MountPoint Lock VolSize AgreedSize ThreadActive ThreadExit VolumeGuid \n");
 #else
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");		
+		printf(" PhysicalDeviceName Minor MountPoint Lock VolSize AgreedSize VolumeGuid \n");		
 #endif
 		printf("=====================================================================================\n");
 	}
 	else
 	{
 		printf("================================\n");
-		printf(" PhysicalDeviceName Minor MountPoint Replication Volume\n");
+		printf(" PhysicalDeviceName Minor MountPoint Lock\n");
 		printf("================================\n");
 	}
 	
@@ -147,18 +147,22 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 
 		if (verbose)
 		{
-			printf("%ws, %ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
+#ifndef _WIN32_MULTIVOL_THREAD
+			printf("%ws, %2d, %ws, %d, %llu, %llu, %d, %d, %ws\n",
+#else
+			printf("%ws, %2d, %ws, %d, %llu, %llu, %ws\n",
+#endif
 				pEntry->PhysicalDeviceName,
-				pEntry->MountPoint,
-				pEntry->VolumeGuid,
 				pEntry->Minor,
+				pEntry->MountPoint,
 				pEntry->ExtensionActive,
+				pEntry->Size,
+				pEntry->AgreedSize,
 #ifndef _WIN32_MULTIVOL_THREAD
 				pEntry->ThreadActive,
 				pEntry->ThreadExit,
 #endif
-				pEntry->AgreedSize,
-				pEntry->Size
+				pEntry->VolumeGuid
 			);
 		}
 		else
