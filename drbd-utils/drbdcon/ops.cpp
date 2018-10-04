@@ -123,53 +123,35 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	res = ERROR_SUCCESS;
 	int count = dwReturned / sizeof(WDRBD_VOLUME_ENTRY);
 	//printf("size(%d) count(%d) sizeof(WDRBD_VOLUME_ENTRY)(%d)\n", dwReturned, count, sizeof(WDRBD_VOLUME_ENTRY));
-	
-	if (verbose)
-	{
-		printf("=====================================================================================\n");
-#ifndef _WIN32_MULTIVOL_THREAD
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
-#else
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");		
-#endif
-		printf("=====================================================================================\n");
-	}
-	else
-	{
-		printf("================================\n");
-		printf(" PhysicalDeviceName Minor MountPoint Replication Volume\n");
-		printf("================================\n");
-	}
-	
-	for (int i = 0; i < count; ++i)
-	{
-		PWDRBD_VOLUME_ENTRY pEntry = ((PWDRBD_VOLUME_ENTRY)buffer) + i;
 
-		if (verbose)
-		{
-			printf("%ws, %ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
+	for (int i = 0; i < count; ++i) {
+		PWDRBD_VOLUME_ENTRY pEntry = ((PWDRBD_VOLUME_ENTRY)buffer) + i;
+		printf("--------------------------------------------------------------------------------------\n");
+		printf( "   Physical Device Name| %ws\n"
+				"                  Minor| %d\n"
+				"            Mount Point| %ws\n"
+				"     Replication volume| %d\n"
+				"   Original Volume Size| %llu BYTE (%llu KiBYTE)\n"
+				"DRBD Agreed Volume Size| %llu BYTE (%llu KiBYTE)\n"
+#ifndef _WIN32_MULTIVOL_THREAD
+				"           ThreadActive| %d\n"
+				"             ThreadExit| %d\n"
+#endif
+				"            Volume GUID| %ws\n",
 				pEntry->PhysicalDeviceName,
-				pEntry->MountPoint,
-				pEntry->VolumeGuid,
 				pEntry->Minor,
+				pEntry->MountPoint,
 				pEntry->ExtensionActive,
+				pEntry->Size, (pEntry->Size/1024),
+				pEntry->AgreedSize, (pEntry->AgreedSize/1024),
 #ifndef _WIN32_MULTIVOL_THREAD
 				pEntry->ThreadActive,
 				pEntry->ThreadExit,
 #endif
-				pEntry->AgreedSize,
-				pEntry->Size
-			);
-		}
-		else
-		{
-			printf("%ws, %2d, %ws, %d\n",
-				pEntry->PhysicalDeviceName,
-				pEntry->Minor,
-				pEntry->MountPoint,
-				pEntry->ExtensionActive
-			);
-		}
+				pEntry->VolumeGuid
+		);
+		printf("--------------------------------------------------------------------------------------\n\n");
+
 	}
 out:
 	if (INVALID_HANDLE_VALUE != handle)

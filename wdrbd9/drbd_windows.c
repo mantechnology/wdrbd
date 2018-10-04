@@ -2609,8 +2609,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     PAGED_CODE();
 
     PWCHAR new_reg_buf = (PWCHAR)ExAllocatePoolWithTag(PagedPool, MAX_TEXT_BUF, '93DW');
-    if (!new_reg_buf)
-    {
+    if (!new_reg_buf) {
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag new_reg_buf\n", 0);
         return FALSE;
     }
@@ -2629,62 +2628,51 @@ BOOLEAN do_add_minor(unsigned int minor)
         NULL);
 
     status = ZwOpenKey(&hKey, KEY_READ, &attributes);
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
 
     status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
-    if (status != STATUS_BUFFER_TOO_SMALL)
-    {
+    if (status != STATUS_BUFFER_TOO_SMALL) {
         ASSERT(!NT_SUCCESS(status));
         goto cleanup;
     }
 
     keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, 'A3DW');
-    if (!keyInfo)
-    {
+    if (!keyInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%d)\n", size);
         goto cleanup;
     }
 
     status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
 
     count = keyInfo->Values;
 
     valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, 'B3DW');
-    if (!valueInfo)
-    {
+    if (!valueInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag() valueInfoSize(%d)\n", valueInfoSize);
         goto cleanup;
     }
 
-    for (int i = 0; i < count; ++i)
-    {
+    for (int i = 0; i < count; ++i) {
         RtlZeroMemory(valueInfo, valueInfoSize);
 
         status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
 
-        if (!NT_SUCCESS(status))
-        {
-            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL)
-            {
+        if (!NT_SUCCESS(status)) {
+            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
                 goto cleanup;
             }
         }
 
-        if (REG_BINARY == valueInfo->Type)
-        {
-            valueInfo->Name[0] &= ~0x20;
-
-            if (minor == valueInfo->Name[0] - L'C')
-            {
+        if (REG_BINARY == valueInfo->Type) {
+            WCHAR temp = toupper(valueInfo->Name[0]);
+            if (minor == temp - L'C') {
                 ret = true;
                 goto cleanup;
             }
