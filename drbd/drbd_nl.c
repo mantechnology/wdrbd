@@ -4440,6 +4440,13 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	}
 	mutex_unlock(&adm_ctx->resource->conf_update);
 
+	// 
+	// alloc_bab
+	//
+	if(alloc_bab(connection, connection->transport.net_conf)) {
+	} else {
+	}
+	
 	drbd_debugfs_connection_add(connection); /* after ->net_conf was assigned */
 	drbd_thread_start(&connection->sender);
 	*ret_conn = connection;

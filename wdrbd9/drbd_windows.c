@@ -348,6 +348,12 @@ void atomic_set(atomic_t *v, int i)
 	InterlockedExchange((long *)v, i);
 }
 
+void atomic_set64(atomic_t64* v, LONGLONG i)
+{
+	InterlockedExchange64((LONGLONG *)v, i);
+}
+
+
 void atomic_add(int i, atomic_t *v)
 {
 	InterlockedExchangeAdd((long *)v, i);
@@ -1553,8 +1559,7 @@ void del_gendisk(struct gendisk *disk)
 {
 	NTSTATUS status;
 	
-	if (!sock)
-	{
+	if (!sock) {
 		WDRBD_INFO("socket is null.\n");
 		return;
 	}
@@ -1578,8 +1583,7 @@ void del_gendisk(struct gendisk *disk)
 		}
 	}
 
-	if (sock->sk_linux_attr)
-	{
+	if (sock->sk_linux_attr) {
 		kfree(sock->sk_linux_attr);
 		sock->sk_linux_attr = 0;
 	}
@@ -1588,13 +1592,11 @@ void del_gendisk(struct gendisk *disk)
 	struct _buffering_attr *buffering_attr = &sock->buffering_attr;
 	struct ring_buffer *bab = buffering_attr->bab;
 
-	if (bab)
-	{
-		if (bab->static_big_buf)
-		{
-			kfree(bab->static_big_buf);
+	if (bab){
+		if (bab->static_big_buf) {
+			kfree2(bab->static_big_buf);
 		}
-		kfree(bab);
+		//kfree2(bab);
 	}
 	
 	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);

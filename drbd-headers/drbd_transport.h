@@ -154,8 +154,13 @@ struct drbd_transport {
 struct drbd_transport_stats {
 	int unread_received;
 	int unacked_send;
+#ifdef _WIN32
+	signed long long send_buffer_size;
+	signed long long send_buffer_used;
+#else
 	int send_buffer_size;
 	int send_buffer_used;
+#endif
 };
 
 /* argument to ->recv_pages() */
@@ -227,7 +232,7 @@ struct drbd_transport_ops {
 	int (*add_path)(struct drbd_transport *, struct drbd_path *path);
 	int (*remove_path)(struct drbd_transport *, struct drbd_path *path);
 #ifdef _WIN32_SEND_BUFFING 
-	bool (*start_send_buffring)(struct drbd_transport *, int size);
+	bool (*start_send_buffring)(struct drbd_transport *, signed long long size);
 	void (*stop_send_buffring)(struct drbd_transport *);
 #endif
 };

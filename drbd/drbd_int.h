@@ -1353,7 +1353,7 @@ struct drbd_connection {
 #else
 	unsigned long last_received;	/* in jiffies, either socket */
 #endif
-	atomic_t ap_in_flight; /* App sectors in flight (waiting for ack) */
+	atomic_t64 ap_in_flight; /* App sectors in flight (waiting for ack) */
 
 	struct drbd_work connect_timer_work;
 	struct timer_list connect_timer;
@@ -1481,6 +1481,8 @@ struct drbd_connection {
 		u64 current_dagtag_sector;
 	} send;
 
+	ring_buffer* ptxbab[2];
+	
 	unsigned int peer_node_id;
 	struct list_head twopc_parent_list;
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal

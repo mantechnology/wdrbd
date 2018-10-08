@@ -33,10 +33,80 @@
 
 #define MAX_ONETIME_SEND_BUF	(1024*1024*10) // 10MB
 
-ring_buffer *create_ring_buffer(char *name, unsigned int length)
+bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf) 
+{
+	ring_buffer* ring = NULL;
+	signed long long sz = 0;
+
+	if(0 == nconf->sndbuf_size) {
+		return FALSE;
+	}
+
+	do {
+		if(nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN ) {
+			WDRBD_INFO("alloc bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			goto $ALLOC_FAIL;
+		}
+		__try {
+			sz = sizeof(*ring) + nconf->sndbuf_size;
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
+			if(!ring) {
+				WDRBD_INFO("alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+				goto $ALLOC_FAIL;
+			}
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			if(ring) {
+				ExFreePool(ring);
+			}
+			goto $ALLOC_FAIL;
+		}
+		
+		connection->ptxbab[DATA_STREAM] = ring;
+		__try {
+			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '2ADW');
+			if(!ring) {
+				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
+				goto $ALLOC_FAIL;
+			}
+		} __except (EXCEPTION_EXECUTE_HANDLER) {
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			if(ring) {
+				ExFreePool(ring);
+			}
+			goto $ALLOC_FAIL;
+		}
+		
+		connection->ptxbab[CONTROL_STREAM] = ring;
+		
+	} while(FALSE);
+	
+	WDRBD_INFO("alloc_bab ok connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+	return TRUE;
+
+$ALLOC_FAIL:
+	connection->ptxbab[DATA_STREAM] = NULL;
+	connection->ptxbab[CONTROL_STREAM] = NULL;
+	return FALSE;
+}
+
+void destroy_bab(struct drbd_connection* connection)
+{
+	if(connection->ptxbab[DATA_STREAM]) {
+		kfree2(connection->ptxbab[DATA_STREAM]);
+	} 
+	if(connection->ptxbab[CONTROL_STREAM]) {
+		kfree2(connection->ptxbab[CONTROL_STREAM]);
+	}
+	return;
+}
+
+ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, signed long long length, enum drbd_stream stream)
 {
 	ring_buffer *ring;
-	int sz = sizeof(*ring) + length;
+	signed long long sz = sizeof(*ring) + length;
 
 	if (length == 0 || length > DRBD_SNDBUF_SIZE_MAX)
 	{
@@ -44,9 +114,13 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		return NULL;
 	}
 
-	ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
-	if (ring)
-	{
+	//ring = (ring_buffer *) ExAllocatePoolWithTag(NonPagedPool, sz, '0ADW');
+	if(stream == DATA_STREAM) {
+		ring = connection->ptxbab[DATA_STREAM];
+	} else {
+		ring = connection->ptxbab[CONTROL_STREAM];
+	}
+	if (ring) {
 		ring->mem = (char*) (ring + 1);
 		ring->length = length + 1;
 		ring->read_pos = 0;
@@ -63,15 +137,13 @@ ring_buffer *create_ring_buffer(char *name, unsigned int length)
 		INIT_LIST_HEAD(&ring->send_req_list);
 #endif
 		ring->static_big_buf = (char *) ExAllocatePoolWithTag(NonPagedPool, MAX_ONETIME_SEND_BUF, '1ADW');
-		if (!ring->static_big_buf)
-		{
-			ExFreePool(ring);
-			WDRBD_ERROR("bab(%s): alloc(%d) failed.\n", name, MAX_ONETIME_SEND_BUF);
+		if (!ring->static_big_buf) {
+			//ExFreePool(ring);
+			//kfree2(ring);
+			WDRBD_ERROR("bab(%s): static_big_buf alloc(%d) failed.  \n", name, MAX_ONETIME_SEND_BUF);
 			return NULL;
 		}
-	}
-	else
-	{
+	} else {
 		WDRBD_ERROR("bab(%s):alloc(%u) failed\n", name, sz);
 	}
 	return ring;
@@ -81,14 +153,15 @@ void destroy_ring_buffer(ring_buffer *ring)
 {
 	if (ring)
 	{
-			kfree(ring->static_big_buf);
-		ExFreePool(ring);
+		kfree2(ring->static_big_buf);
+		//ExFreePool(ring);
+		//kfree2(ring);
 	}
 }
 
-unsigned int get_ring_buffer_size(ring_buffer *ring)
+signed long long get_ring_buffer_size(ring_buffer *ring)
 {
-	unsigned int s;
+	signed long long s;
 	if (!ring)
 	{
 		return 0;
@@ -101,10 +174,10 @@ unsigned int get_ring_buffer_size(ring_buffer *ring)
 	return s;
 }
 
-int write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, int len, int highwater, int retry)
+signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, signed long long len, signed long long highwater, int retry)
 {
-	unsigned int remain;
-	int ringbuf_size = 0;
+	signed long long remain;
+	signed long long ringbuf_size = 0;
 	LARGE_INTEGER	Interval;
 	Interval.QuadPart = (-1 * 100 * 10000);   //// wait 100ms relative
 
@@ -188,11 +261,11 @@ $GO_BUFFERING:
 	return len;
 }
 
-unsigned long read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT unsigned int* pLen)
+bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long* pLen)
 {
-	unsigned int remain;
-	unsigned int ringbuf_size = 0;
-	unsigned int tx_sz = 0;
+	signed long long remain;
+	signed long long ringbuf_size = 0;
+	signed long long tx_sz = 0;
 
 	EnterCriticalSection(&ring->cs);
 	ringbuf_size = (ring->write_pos - ring->read_pos + ring->length) % ring->length;
@@ -231,8 +304,8 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 		return Send(socket, buf, size, 0, timeout, NULL, transport, stream);
 	}
 
-	unsigned long long  tmp = (long long)buffering_attr->bab->length * 99;
-	int highwater = (unsigned long long)tmp / 100; // 99% // refacto: global
+	signed long long  tmp = (long long)buffering_attr->bab->length * 99;
+	signed long long highwater = (signed long long)tmp / 100; // 99% // refacto: global
 	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
@@ -252,7 +325,7 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 	}
 
 	while (1) {
-		unsigned int tx_sz = 0;
+		signed long long tx_sz = 0;
 
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
