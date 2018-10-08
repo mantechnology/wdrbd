@@ -94,8 +94,7 @@ typedef struct _VOLUME_EXTENSION
 
 	USHORT				PhysicalDeviceNameLength;
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
-	ULONG				VolIndex;
-	//CHAR				Letter;
+	UCHAR				Minor;
 	UNICODE_STRING		MountPoint;	// IoVolumeDeviceToDosName()
 	UNICODE_STRING		VolumeGuid;
 
