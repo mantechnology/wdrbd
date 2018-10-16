@@ -297,28 +297,33 @@ struct p_protocol {
 
 } __packed;
 
-#define UUID_FLAG_DISCARD_MY_DATA 1
-#define UUID_FLAG_CRASHED_PRIMARY 2
-#define UUID_FLAG_INCONSISTENT 4
-#define UUID_FLAG_SKIP_INITIAL_SYNC 8
-#define UUID_FLAG_NEW_DATAGEN 16
-#define UUID_FLAG_STABLE 32
-#define UUID_FLAG_GOT_STABLE 64 /* send UUIDs */
-#define UUID_FLAG_RESYNC 128    /* compare UUIDs and eventually start resync */
-#define UUID_FLAG_RECONNECT 256
-#define UUID_FLAG_DISKLESS_PRIMARY 512 /* Use with UUID_FLAG_RESYNC if a diskless primary is
-					  the reason */
+#define UUID_FLAG_DISCARD_MY_DATA 		(1 << 0)
+#define UUID_FLAG_CRASHED_PRIMARY 		(1 << 1)
+#define UUID_FLAG_INCONSISTENT 			(1 << 2)
+#define UUID_FLAG_SKIP_INITIAL_SYNC 	(1 << 3)
+#define UUID_FLAG_NEW_DATAGEN 			(1 << 4)
+#define UUID_FLAG_STABLE 				(1 << 5)
+#define UUID_FLAG_GOT_STABLE 			(1 << 6) /* send UUIDs */
+#define UUID_FLAG_RESYNC 				(1 << 7)    /* compare UUIDs and eventually start resync */
+#define UUID_FLAG_RECONNECT 			(1 << 8)
+#define UUID_FLAG_DISKLESS_PRIMARY 		(1 << 9) /* Use with UUID_FLAG_RESYNC if a diskless primary is the reason */
+
 #ifdef _WIN32
 // MODIFIED_BY_MANTECH DW-1145
-#define UUID_FLAG_CONSISTENT_WITH_PRI 1024    /* this flag indicates that my disk is consistent with primary's */
-#endif
+#define UUID_FLAG_CONSISTENT_WITH_PRI 	(1 << 10)    /* this flag indicates that my disk is consistent with primary's */
+
 #ifdef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 // MODIFIED_BY_MANTECH DW-1148
-#define UUID_FLAG_PROMOTED	2048		/* one of node has been promoted, about to start resync */
+#define UUID_FLAG_PROMOTED				(1 << 11)		/* one of node has been promoted, about to start resync */
 #endif
+
 #ifdef _WIN32_STABLE_SYNCSOURCE
 // DW-1315
-#define UUID_FLAG_AUTHORITATIVE	2048	/* the authoritative node is changed while I am unstable, this flag is for resuming resync */
+#define UUID_FLAG_AUTHORITATIVE			(1 << 11)	/* the authoritative node is changed while I am unstable, this flag is for resuming resync */
+#endif
+
+#define UUID_FLAG_INIT_SYNCT_BEGIN 		(1 << 12)    /* If this flag is on, then this flag's owner is already processing intial (fast or full) sync target */
+
 #endif
 
 struct p_uuids {

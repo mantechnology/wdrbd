@@ -1802,6 +1802,9 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	// MODIFIED_BY_MANTECH DW-1145: set UUID_FLAG_CONSISTENT_WITH_PRI if my disk is consistent with primary's
 	if (is_consistent_with_primary(device))
 		uuid_flags |= UUID_FLAG_CONSISTENT_WITH_PRI;
+	// DW-1285 If MDF_PEER_INIT_SYNCT_BEGIN is on, send UUID_FLAG_INIT_SYNCT_BEGIN flag.
+	if(drbd_md_test_peer_flag(peer_device, MDF_PEER_INIT_SYNCT_BEGIN))
+		uuid_flags |= UUID_FLAG_INIT_SYNCT_BEGIN;
 #endif
 
 	p->uuid_flags = cpu_to_be64(uuid_flags);

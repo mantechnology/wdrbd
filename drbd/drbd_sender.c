@@ -2653,6 +2653,12 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	unlock_all_resources();
 
 	if (r == SS_SUCCESS) {
+#ifdef _WIN32 // DW-1285 set MDF_PEER_INIT_SYNCT_BEGIN 
+		if( (side == L_SYNC_TARGET) 
+			&& (peer_device->device->ldev->md.current_uuid == UUID_JUST_CREATED) ) { 
+			drbd_md_set_peer_flag (peer_device, MDF_PEER_INIT_SYNCT_BEGIN);
+		}
+#endif
 		drbd_info(peer_device, "Began resync as %s (will sync %lu KB [%lu bits set]).\n",
 		     drbd_repl_str(repl_state),
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
