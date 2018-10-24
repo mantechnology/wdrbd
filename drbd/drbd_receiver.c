@@ -654,6 +654,8 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
 #endif
 		int err2;
+		// MODIFIED_BY_MANTECH DW-1665: check callback function(e_end_block)
+		bool epoch_put = (peer_req->w.cb == e_end_block) ? true : false;
 
 		++n;
 		/* list_del not necessary, next/prev members not touched */
@@ -665,11 +667,20 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 			// MODIFIED_BY_MANTECH DW-972: Gotten peer_req is not always allocated in current connection since the work_list is spliced from device->done_ee.
 			// Provide peer_req associated transport to be freed from right connection.
 			drbd_free_page_chain(&peer_req->peer_device->connection->transport, &peer_req->page_chain, 0);
+
+			// MODIFIED_BY_MANTECH DW-1665: change the EV_PUT(e_end_block) setting location
+			if (epoch_put) 
+				drbd_may_finish_epoch(peer_req->peer_device->connection, peer_req->epoch, EV_PUT + (!!err ? EV_CLEANUP : 0));
 #else
 			drbd_free_page_chain(&connection->transport, &peer_req->page_chain, 0);
 #endif
-		} else
+		} else {
+			// MODIFIED_BY_MANTECH DW-1665: change the EV_PUT(e_end_block) setting location
+			if (epoch_put) 
+				drbd_may_finish_epoch(peer_req->peer_device->connection, peer_req->epoch, EV_PUT + (!!err ? EV_CLEANUP : 0));
+
 			drbd_free_peer_req(peer_req);
+		}
 	}
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
@@ -2617,7 +2628,8 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	} else
 		D_ASSERT(device, drbd_interval_empty(&peer_req->i));
 
-	drbd_may_finish_epoch(peer_device->connection, peer_req->epoch, EV_PUT + (cancel ? EV_CLEANUP : 0));
+	// MODIFIED_BY_MANTECH DW-1665: P_DATA, P_BARRIER sync problem for protocol A, change call location to drbd_finish_peer_reqs()
+	//drbd_may_finish_epoch(peer_device->connection, peer_req->epoch, EV_PUT + (cancel ? EV_CLEANUP : 0));
 
 	return err;
 }
