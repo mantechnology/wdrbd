@@ -1476,9 +1476,9 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 	// DW-1483 : WSK_EVENT_ACCEPT disable	
 	NTSTATUS status = SetEventCallbacks(listener->s_listen, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
-	WDRBD_INFO("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
+	WDRBD_TRACE("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
 	if (!NT_SUCCESS(status)) {
-		WDRBD_INFO("WSK_EVENT_DISABLE failed (listener = 0x%p)\n", listener);
+		WDRBD_TRACE("WSK_EVENT_DISABLE failed (listener = 0x%p)\n", listener);
 	}
 #else
 	unregister_state_change(listener->s_listen->sk, listener);
@@ -2028,7 +2028,7 @@ randomize:
 #ifdef _WIN32 // release event callback before dtt_put_listener 
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	if (!NT_SUCCESS(status)) {
-		WDRBD_INFO("WSK_EVENT_DISABLE failed=0x%x\n", status);
+		WDRBD_TRACE("WSK_EVENT_DISABLE failed=0x%x\n", status);
 		//goto out; // just go to release listener 
 	}
 #endif

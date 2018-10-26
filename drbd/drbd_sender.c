@@ -323,8 +323,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -333,9 +332,16 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				IoFreeMdl(mdl); // This function will also unmap pages.
 			}
 			Irp->MdlAddress = NULL;
+
+			// DW-1695 fix PFN_LIST_CORRUPT-9A bugcheck by releasing the peer_req_databuf when EE_WRITE peer_req is completed.
+			// for case, peer_req_databuf may be released before the write completion. 
+			if(peer_req->flags & EE_WRITE) {
+				kfree2 (peer_req->peer_req_databuf);
+			}
 		}
 		IoFreeIrp(Irp);
 	}
+
 #endif
 
 	bio_put(bio); /* no need for the bio anymore */
