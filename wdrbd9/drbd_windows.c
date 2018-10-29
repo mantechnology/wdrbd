@@ -1577,9 +1577,9 @@ void del_gendisk(struct gendisk *disk)
 	// DW-1493 : WSK_EVENT_DISCONNECT disable
 	if (sock->sk){
 		status = SetEventCallbacks(sock, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
-		WDRBD_INFO("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
+		WDRBD_TRACE("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
 		if (!NT_SUCCESS(status)) {
-			WDRBD_INFO("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
+			WDRBD_TRACE("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
 		}
 	}
 

@@ -573,31 +573,25 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
-
-#ifdef _WIN32
-	//might_sleep();
-	if (peer_req->peer_req_databuf)
-	{
-		kfree(peer_req->peer_req_databuf);
-		peer_req->peer_req_databuf = NULL;
+#ifndef _WIN32
+	might_sleep();
+#else
+	if ( !(peer_req->flags & EE_WRITE) && peer_req->peer_req_databuf)	{
+		kfree2(peer_req->peer_req_databuf);
 	}
+#endif
 
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-		
 	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
 	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
 	drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
+#ifdef _WIN32
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
 #else
-	might_sleep();
-	if (peer_req->flags & EE_HAS_DIGEST)
-		kfree(peer_req->digest);
-	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
-	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
-	drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	mempool_free(peer_req, drbd_ee_mempool);
 #endif
+
 }
 
 int drbd_free_peer_reqs(struct drbd_resource *resource, struct list_head *list, bool is_net_ee)
@@ -2126,6 +2120,8 @@ static void p_req_detail_from_pi(struct drbd_connection *connection,
 	d->length = pi->size;
 	d->bi_size = is_trim_or_wsame ? be32_to_cpu(p->size) : pi->size - digest_size;
 	d->digest_size = digest_size;
+
+	WDRBD_TRACE("sector: %lld block_id: %lld peer_seq: %d dp_flags:%d length:%d bi_size:%d digest_size: %d\n",d->sector,d->block_id,d->peer_seq, d->dp_flags, d->length, d->bi_size, d->digest_size);
 }
 
 /* used from receive_RSDataReply (recv_resync_read)
@@ -3006,10 +3002,6 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	struct drbd_peer_request_details d;
 	int op, op_flags;
 	int err, tp;
-
-#ifdef DRBD_TRACE
-	WDRBD_TRACE("seq=0x%x sect:0x%llx pi->size:%d\n", peer_seq, be64_to_cpu(p->sector), pi->size);
-#endif
 
 #ifdef _WIN32 // DW-1502 bump the mirrored data after the ack_receiver has terminated.
 	if(get_t_state(&connection->ack_receiver) != RUNNING) {
@@ -8683,15 +8675,13 @@ static void drbdd(struct drbd_connection *connection)
 		}
 
 		update_receiver_timing_details(connection, cmd->fn);
-		err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-		drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+		drbd_debug(connection, "receiving %s, size: %d vnr: %d\n", drbd_packet_name(pi.cmd), pi.size, pi.vnr);
 #endif
+		err = cmd->fn(connection, &pi);
 		if (err) {
-#ifndef _WIN32
 			drbd_err(connection, "error receiving %s, e: %d l: %d!\n",
 				 drbd_packet_name(pi.cmd), err, pi.size);
-#endif
 			goto err_out;
 		}
 	}
