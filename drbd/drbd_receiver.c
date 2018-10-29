@@ -576,7 +576,7 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 #ifndef _WIN32
 	might_sleep();
 #else
-	if (peer_req->peer_req_databuf)	{
+	if ( !(peer_req->flags & EE_WRITE) && peer_req->peer_req_databuf)	{
 		kfree2(peer_req->peer_req_databuf);
 	}
 #endif
