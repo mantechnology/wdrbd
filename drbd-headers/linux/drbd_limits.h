@@ -103,7 +103,11 @@
   /* max number of write requests between write barriers */
 #define DRBD_MAX_EPOCH_SIZE_MIN 1
 #define DRBD_MAX_EPOCH_SIZE_MAX 20000
+#ifdef _WIN32 // DW-1695 Increase a max-epoch-size's default value by increasing the max-buffers'.
+#define DRBD_MAX_EPOCH_SIZE_DEF 16000
+#else
 #define DRBD_MAX_EPOCH_SIZE_DEF 2048
+#endif
 #define DRBD_MAX_EPOCH_SIZE_SCALE '1'
 
 
@@ -137,7 +141,11 @@
   /* @4k PageSize -> 128kB - 512MB */
 #define DRBD_MAX_BUFFERS_MIN  32
 #define DRBD_MAX_BUFFERS_MAX  131072
+#ifdef _WIN32 // DW-1695 Takes the value of max-buffers sufficiently.
+#define DRBD_MAX_BUFFERS_DEF  16000
+#else
 #define DRBD_MAX_BUFFERS_DEF  2048
+#endif
 #define DRBD_MAX_BUFFERS_SCALE '1'
 
   /* @4k PageSize -> 4kB - 512MB */
