@@ -8709,7 +8709,12 @@ static void cleanup_resync_leftovers(struct drbd_peer_device *peer_device)
 	atomic_set(&peer_device->rs_pending_cnt, 0);
 	wake_up(&peer_device->device->misc_wait);
 
+	// DW-1663  : When the "DPC function" is running, "del_timer_sync()" does not wait but cancels only the timer in the queue and releases the resource, resulting in "BSOD".
+	// Add the mutex so that "del_timer_sync()" can be called after terminating "DPC function".
+	mutex_lock(&peer_device->device->bm_resync_fo_mutex);
 	del_timer_sync(&peer_device->resync_timer);
+	mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+
 #ifdef _WIN32
 	resync_timer_fn(NULL, (PVOID)peer_device, NULL, NULL);
 #else
