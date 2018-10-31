@@ -1263,8 +1263,8 @@ extern long PTR_ERR(const void *ptr);
 extern long IS_ERR_OR_NULL(const void *ptr);
 extern int IS_ERR(void *err);
 
-extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name);
-extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder);
+extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev);
+extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev);
 
 extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
 extern void hlist_del_init(struct hlist_node *entry);
@@ -1386,7 +1386,7 @@ extern BOOLEAN do_add_minor(unsigned int minor);
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
 extern void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate);
 extern void refresh_targetdev_list();
-extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor);
+extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
 extern int WriteEventLogEntryData(
