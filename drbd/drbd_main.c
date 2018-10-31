@@ -4577,7 +4577,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors:%x, device->this_bdev->d_size >> 9:%x\n",device ,q->max_hw_sectors,device->this_bdev->d_size >> 9);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;

@@ -87,8 +87,7 @@ IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength 
 	PMVOL_VOLUME_INFO	pOutBuffer = NULL;
 	ULONG			outlen;
 
-	if( DeviceObject == mvolRootDeviceObject )
-	{
+	if( DeviceObject == mvolRootDeviceObject ) {
 		mvolLogError( DeviceObject, 211,
 			MSG_ROOT_DEVICE_REQUEST, STATUS_INVALID_DEVICE_REQUEST );
 		WDRBD_ERROR("RootDevice\n");
@@ -97,8 +96,7 @@ IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength 
 
 	VolumeExtension = DeviceObject->DeviceExtension;
 	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( outlen < sizeof(MVOL_VOLUME_INFO) )
-	{
+	if( outlen < sizeof(MVOL_VOLUME_INFO) )	{
 		mvolLogError( DeviceObject, 212, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
 		WDRBD_ERROR("buffer too small out %d sizeof(MVOL_VOLUME_INFO) %d\n", outlen, sizeof(MVOL_VOLUME_INFO));
 		*ReturnLength = sizeof(MVOL_VOLUME_INFO);
@@ -116,13 +114,11 @@ IOCTL_GetVolumeInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength 
 NTSTATUS
 IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 {
-	if (DeviceObject == mvolRootDeviceObject)
-	{
+	if (DeviceObject == mvolRootDeviceObject) {
 		return STATUS_INVALID_DEVICE_REQUEST;
 	}
 
-	if (!Irp->AssociatedIrp.SystemBuffer)
-	{
+	if (!Irp->AssociatedIrp.SystemBuffer) {
 		WDRBD_WARN("SystemBuffer is NULL. Maybe older drbdcon was used or other access was tried\n");
 		return STATUS_INVALID_PARAMETER;
 	}
@@ -178,8 +174,7 @@ out:
 	if (device)
 		kref_put(&device->kref, drbd_destroy_device);
 
-	if (*ReturnLength)
-	{
+	if (*ReturnLength) {
 		ULONG outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
 		ULONG DecidedLength = ((*ReturnLength) >= outlen) ?
 			outlen - 1 : *ReturnLength;
@@ -202,8 +197,7 @@ IOCTL_GetVolumeSize( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( inlen < sizeof(MVOL_VOLUME_INFO) || outlen < sizeof(LARGE_INTEGER) )
-	{
+	if( inlen < sizeof(MVOL_VOLUME_INFO) || outlen < sizeof(LARGE_INTEGER) ) {
 		mvolLogError( DeviceObject, 321, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
 
 		WDRBD_ERROR("buffer too small\n");
@@ -212,8 +206,7 @@ IOCTL_GetVolumeSize( PDEVICE_OBJECT DeviceObject, PIRP Irp )
 
 	pVolumeInfo = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
 	
-	if( DeviceObject == mvolRootDeviceObject )
-	{
+	if( DeviceObject == mvolRootDeviceObject ) {
 		WDRBD_TRACE("Root Device IOCTL\n");
 
 		MVOL_LOCK();
@@ -254,24 +247,21 @@ IOCTL_GetCountInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength )
 
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 	outlen = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	if( inlen < sizeof(MVOL_VOLUME_INFO) || outlen < sizeof(MVOL_COUNT_INFO) )
-	{
+	if( inlen < sizeof(MVOL_VOLUME_INFO) || outlen < sizeof(MVOL_COUNT_INFO) ) {
 		mvolLogError( DeviceObject, 351, MSG_BUFFER_SMALL, STATUS_BUFFER_TOO_SMALL );
 		WDRBD_ERROR("buffer too small\n");
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
 	pVolumeInfo = (PMVOL_VOLUME_INFO) Irp->AssociatedIrp.SystemBuffer;
-	if( DeviceObject == mvolRootDeviceObject )
-	{
+	if( DeviceObject == mvolRootDeviceObject ) {
 		WDRBD_TRACE("Root Device IOCTL\n");
 
 		MVOL_LOCK();
 		VolumeExtension = mvolSearchDevice( pVolumeInfo->PhysicalDeviceName );
 		MVOL_UNLOCK();
 
-		if( VolumeExtension == NULL )
-		{
+		if( VolumeExtension == NULL ) {
 			mvolLogError( DeviceObject, 352, MSG_NO_DEVICE, STATUS_NO_SUCH_DEVICE );
 			WDRBD_ERROR("cannot find volume, PD=%ws\n", pVolumeInfo->PhysicalDeviceName);
 			return STATUS_NO_SUCH_DEVICE;
@@ -340,8 +330,7 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
 #ifdef _WIN32_DEBUG_OOS
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_OOSLOG)
-		{
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_OOSLOG) {
 			if (pLoggingMinLv->nErrLvMin)
 				atomic_set(&g_oos_trace, TRUE);
 			else
@@ -457,8 +446,7 @@ Return Value:
 
 	PDRBD_VOLUME_CONTROL pVolume = (PDRBD_VOLUME_CONTROL)Argument1;
 
-	if (pVolume == NULL)
-	{
+	if (pVolume == NULL) {
 		// invalid parameter.
 		WDRBD_ERROR("pVolume is NULL\n");
 		return;
@@ -468,26 +456,23 @@ Return Value:
 
 	PVOLUME_EXTENSION VolumeExtension = mvolSearchVolExtention(pDeviceObject);
 	
-	if (VolumeExtension == NULL)
-	{
+	if (VolumeExtension == NULL) {
 		WDRBD_ERROR("cannot find volume, PDO=0x%p\n", pDeviceObject);
 		return;
 	}
 
 	WDRBD_INFO("volume [%ws] is extended.\n", VolumeExtension->PhysicalDeviceName);
 
-	sector_t new_size = get_targetdev_volsize(VolumeExtension);
+	unsigned long long new_size = get_targetdev_volsize(VolumeExtension);
 	
-	if (VolumeExtension->dev->bd_contains)
-	{
+	if (VolumeExtension->dev->bd_contains) {
 		VolumeExtension->dev->bd_contains->d_size = new_size;
 	}	
 	
 	if (VolumeExtension->Active) {	
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 
-		if (device)
-		{
+		if (device) {
 			int err = 0;
 			
 
@@ -496,8 +481,7 @@ Return Value:
 			
 			err = drbd_resize(device);
 
-			if (err)
-			{
+			if (err) {
 				WDRBD_ERROR("drbd resize failed. (err=%d)\n", err);
 			}
 			drbd_resume_io(device);
@@ -534,8 +518,7 @@ Return Value:
 	InitializeObjectAttributes(&oa, &usCallbackName, OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, 0, 0);
 
 	status = ExCreateCallback(&g_pCallbackObj, &oa, TRUE, TRUE);
-	if (!NT_SUCCESS(status))
-	{
+	if (!NT_SUCCESS(status)) {
 		WDRBD_INFO("ExCreateCallback failed, status : 0x%x\n", status);
 		return status;
 	}
