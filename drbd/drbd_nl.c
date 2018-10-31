@@ -1694,7 +1694,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
-			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 			if (pvext)
 			{
 				SetDrbdlockIoBlock(pvext, FALSE);
@@ -1720,7 +1720,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		// DW-1327: 
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
-			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 			if (pvext)
 			{
 				SetDrbdlockIoBlock(pvext, TRUE);
@@ -2956,7 +2956,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 	int err = 0;
 
 	bdev = blkdev_get_by_path(bdev_path,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
+				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr, FALSE);
 	if (IS_ERR(bdev)) {
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
@@ -3303,7 +3303,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_genlmsghdr *dh = info->userhdr;
 	if (do_add_minor(dh->minor)) {
 		NTSTATUS status = STATUS_UNSUCCESSFUL;
-		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor, FALSE);
 		if (pvext) {
 			// DW-1461: set volume protection when attaching.
 			SetDrbdlockIoBlock(pvext, resource->role[NOW] == R_PRIMARY ? FALSE : TRUE);
@@ -7012,7 +7012,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	// DW-1461: set volume protection when going down. 
 	idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 	{
-		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 		if (pvext)
 		{
 			SetDrbdlockIoBlock(pvext, TRUE);

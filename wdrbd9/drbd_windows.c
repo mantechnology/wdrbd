@@ -2435,12 +2435,11 @@ void refresh_targetdev_list()
 /**
  * @brief
  */
-PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
+PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev)
 {
 	char path[3] = { minor_to_letter(minor), ':', '\0' };
-	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL);
-	if (IS_ERR(dev))
-	{
+	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL, bUpdatetargetdev);
+	if (IS_ERR(dev)) {
 		return NULL;
 	}
 
@@ -2776,7 +2775,7 @@ static void _adjust_guid_name(char * dst, const char * src)
  *	- "c/vdrive" or "c\\vdrive"
  *	f no block_device allocated, then query
  */
-struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
+struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev)
 {
 	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
 	VOLUME_EXTENSION * pvext = proot->Head;
@@ -2784,7 +2783,8 @@ struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
 	MVOL_LOCK();
 	for (; pvext; pvext = pvext->Next) {
 
-		update_targetdev(pvext, FALSE);
+		if(bUpdatetargetdev)
+			update_targetdev(pvext, FALSE);
 
 		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
 			&pvext->VolumeGuid : &pvext->MountPoint;
@@ -2798,7 +2798,7 @@ struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
 	return (pvext) ? pvext->dev : NULL;
 }
 
-struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
+struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev)
 {
 #ifdef _WIN32
 	UNREFERENCED_PARAMETER(mode);
@@ -2807,7 +2807,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	ANSI_STRING apath;
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
-
+	
 	_adjust_guid_name(cpath, path);
 
 	RtlInitAnsiString(&apath, cpath);
@@ -2817,7 +2817,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 		return ERR_PTR(-EINVAL);
 	}
 
-	struct block_device * dev = blkdev_get_by_link(&upath);
+	struct block_device * dev = blkdev_get_by_link(&upath, bUpdatetargetdev);
 	RtlFreeUnicodeString(&upath);
 
 	return dev ? dev : ERR_PTR(-ENODEV);
