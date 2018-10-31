@@ -653,7 +653,7 @@ struct block_device {
 	struct block_device *	bd_parent;			// DW-1109: it points the block device whose bd_contains points me.
 	struct block_device *	bd_contains;
 	struct gendisk * bd_disk;
-	unsigned long long d_size; // volume size in bytes
+	unsigned long long d_size;
 	struct kref kref;
 };
 
