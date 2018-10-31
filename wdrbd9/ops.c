@@ -340,7 +340,8 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
 #ifdef _WIN32_DEBUG_OOS
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_OOSLOG) {
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_OOSLOG)
+		{
 			if (pLoggingMinLv->nErrLvMin)
 				atomic_set(&g_oos_trace, TRUE);
 			else
@@ -456,7 +457,8 @@ Return Value:
 
 	PDRBD_VOLUME_CONTROL pVolume = (PDRBD_VOLUME_CONTROL)Argument1;
 
-	if (pVolume == NULL) {
+	if (pVolume == NULL)
+	{
 		// invalid parameter.
 		WDRBD_ERROR("pVolume is NULL\n");
 		return;
@@ -466,26 +468,29 @@ Return Value:
 
 	PVOLUME_EXTENSION VolumeExtension = mvolSearchVolExtention(pDeviceObject);
 	
-	if (VolumeExtension == NULL) {
+	if (VolumeExtension == NULL)
+	{
 		WDRBD_ERROR("cannot find volume, PDO=0x%p\n", pDeviceObject);
 		return;
 	}
 
 	WDRBD_INFO("volume [%ws] is extended.\n", VolumeExtension->PhysicalDeviceName);
 
-	unsigned long long new_size = get_targetdev_volsize(VolumeExtension);
+	sector_t new_size = get_targetdev_volsize(VolumeExtension);
 	
-	if (VolumeExtension->dev->bd_contains) {
+	if (VolumeExtension->dev->bd_contains)
+	{
 		VolumeExtension->dev->bd_contains->d_size = new_size;
 	}	
 	
 	if (VolumeExtension->Active) {	
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, TRUE);
 
-		if (device) {
-			
+		if (device)
+		{
 			int err = 0;
 			
+
 			drbd_suspend_io(device, WRITE_ONLY);
 			drbd_set_my_capacity(device, new_size >> 9);
 			
@@ -529,7 +534,8 @@ Return Value:
 	InitializeObjectAttributes(&oa, &usCallbackName, OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, 0, 0);
 
 	status = ExCreateCallback(&g_pCallbackObj, &oa, TRUE, TRUE);
-	if (!NT_SUCCESS(status)) {
+	if (!NT_SUCCESS(status))
+	{
 		WDRBD_INFO("ExCreateCallback failed, status : 0x%x\n", status);
 		return status;
 	}

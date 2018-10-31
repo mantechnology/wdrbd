@@ -5190,8 +5190,8 @@ static void warn_if_differ_considerably(struct drbd_peer_device *peer_device,
 		return;
 	d = (a > b) ? (a - b) : (b - a);
 	if (d > (a>>3) || d > (b>>3))
-		drbd_warn(peer_device, "Considerable difference in %s: %llu bytes vs. %llu bytes\n", s,
-		     (unsigned long long)(a<<9), (unsigned long long)(b<<9));
+		drbd_warn(peer_device, "Considerable difference in %s: %llus vs. %llus\n", s,
+		     (unsigned long long)a, (unsigned long long)b);
 }
 
 /* Maximum bio size that a protocol version supports. */
@@ -5310,12 +5310,12 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		peer_device->max_size = p_size;
 
 	cur_size = drbd_get_capacity(device->this_bdev);
-	drbd_info(device, "current_mydisk_size: %llu bytes\n", (unsigned long long)(cur_size<<9));
-	drbd_info(peer_device, "peer_current_size: %llu bytes peer_user_size: %llu bytes peer_disk_size: %llu bytes peer_max_size: %llu bytes\n",
-			(unsigned long long)(p_csize<<9),
-			(unsigned long long)(p_usize<<9),
-			(unsigned long long)(p_size<<9),
-			(unsigned long long)(peer_device->max_size<<9));
+	drbd_info(device, "current_size: %llu\n", (unsigned long long)cur_size);
+	drbd_info(peer_device, "c_size: %llu u_size: %llu d_size: %llu max_size: %llu\n",
+			(unsigned long long)p_csize,
+			(unsigned long long)p_usize,
+			(unsigned long long)p_size,
+			(unsigned long long)peer_device->max_size);
 
 	if ((p_size && p_csize > p_size) || (p_usize && p_csize > p_usize)) {
 		drbd_warn(peer_device, "Peer sent bogus sizes, disconnecting\n");
@@ -5344,7 +5344,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		rcu_read_unlock();
 		
 		my_max_size = drbd_get_max_capacity(device->ldev);
-		drbd_info(peer_device, "md_effective_size: %llu my_user_size: %llu my_max_size: %llu\n",
+		drbd_info(peer_device, "la_size: %llu my_usize: %llu my_max_size: %llu\n",
 			(unsigned long long)device->ldev->md.effective_size,
 			(unsigned long long)my_usize,
 			(unsigned long long)my_max_size);
@@ -5352,7 +5352,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		if (peer_device->disk_state[NOW] > D_DISKLESS)
 			warn_if_differ_considerably(peer_device, "lower level device sizes",
 					p_size, my_max_size);
-			warn_if_differ_considerably(peer_device, "user requested size",
+		warn_if_differ_considerably(peer_device, "user requested size",
 					    p_usize, my_usize);
 
 		if (is_handshake)
@@ -5376,8 +5376,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 		    !test_bit(DISCARD_MY_DATA, &peer_device->flags) &&
 #endif
 		    peer_device->repl_state[NOW] < L_ESTABLISHED) {
-		    drbd_err(peer_device, "The peer's disk size is too small! (%llu bytes < %llu bytes)\n",
-					(unsigned long long)(new_size<<9), (unsigned long long)(cur_size<<9));
+		    drbd_err(peer_device, "The peer's disk size is too small! (%llu < %llu sectors)\n",
+					(unsigned long long)new_size, (unsigned long long)cur_size);
 			goto disconnect;
 		}
 

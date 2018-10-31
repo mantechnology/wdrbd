@@ -1261,8 +1261,8 @@ retry:
             {
                 struct drbd_peer_device *peer_device;
                 for_each_peer_device_ref(peer_device, im, device) {
-                    unsigned long long p_size = peer_device->max_size << 9; // volume size in bytes
-                    unsigned long long l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension); // volume size in bytes
+                    sector_t p_size = peer_device->max_size << 9;
+                    sector_t l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension);
 					// DW-1323: abort initial full sync when target disk is smaller than source
 					// If p_size is nonzero, it was connected with the peer.
                     if ((drbd_current_uuid(device) == UUID_JUST_CREATED) && 
