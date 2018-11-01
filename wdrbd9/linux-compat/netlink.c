@@ -554,12 +554,12 @@ NetlinkWorkThread(PVOID context)
     LONG readcount, minor = 0;
     int err = 0, errcnt = 0;
     struct genl_info * pinfo = NULL;
-	const char *first_cmd = NULL;
-	bool is_first_cmd = true;
-	bool is_dumpit_cmd = false;
 	void * psock_buf = NULL;
+
 	// set thread priority
 	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
+
+	WDRBD_TRACE("NetlinkWorkThread:%p begin...accept socket:%p\n",KeGetCurrentThread(),socket);
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
     //WDRBD_INFO("Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), pctx);
@@ -572,7 +572,7 @@ NetlinkWorkThread(PVOID context)
 	pSock->sk = socket;
 	
     psock_buf = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
-    if (!psock_buf){
+    if (!psock_buf) {
         WDRBD_ERROR("Failed to allocate NP memory. size(%d)\n", NLMSG_GOODSIZE);
         goto cleanup;
     }
@@ -630,12 +630,7 @@ NetlinkWorkThread(PVOID context)
         if (gmh) {
             minor = gmh->minor;
             struct drbd_conf * mdev = minor_to_device(minor);
-#ifdef _WIN32
-            if (mdev && drbd_suspended(mdev))
-#else
-            if (mdev && (drbd_suspended(mdev) || test_bit(SUSPEND_IO, &mdev->flags)))
-#endif
-            {
+            if (mdev && drbd_suspended(mdev)) {
                 reply_error(NLMSG_ERROR, NLM_F_MULTI, EIO, pinfo);
                 WDRBD_WARN("minor(%d) suspended\n", gmh->minor);
                 goto cleanup;
@@ -648,32 +643,32 @@ NetlinkWorkThread(PVOID context)
 
         if (pops) {
 			NTSTATUS status = STATUS_UNSUCCESSFUL;
-			
-			if (is_first_cmd) {
-				first_cmd = pops->str;
-				is_first_cmd = false;
-			}
+
 			// DW-1432 Except status log
-			if (pops->dumpit && ( (cmd == DRBD_ADM_GET_RESOURCES) || (cmd == DRBD_ADM_GET_PEER_DEVICES) || (cmd == DRBD_ADM_GET_DEVICES)) ) {
-				is_dumpit_cmd = true;
-				WDRBD_TRACE("drbd cmd(%s:%u)\n", pops->str, cmd);
-			}
-			else if (!pops->dumpit)
-				WDRBD_INFO("drbd cmd(%s:%u)\n", pops->str, cmd);
-
-            cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
-
+			// DW-1699 fixup netlink log level. the get series commands are adjusted to log at the trace log level.
+			cli_info(gmh->minor, "Command (%s:%u)\n", pops->str, cmd);
+			
+            if( (DRBD_ADM_GET_RESOURCES <= cmd)  && (cmd <= DRBD_ADM_GET_PEER_DEVICES) ) {
+				WDRBD_TRACE("drbd netlink cmd(%s:%u) begin ->\n", pops->str, cmd);
+            } else {
+            	WDRBD_INFO("drbd netlink cmd(%s:%u) begin ->\n", pops->str, cmd);
+            }
 			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
 
 			if (STATUS_SUCCESS == status) {
 				err = _genl_ops(pops, pinfo);
 				mutex_unlock(&g_genl_mutex);
 				if (err) {
-					WDRBD_ERROR("Failed while operating. cmd(%u), error(%d)\n", cmd, err);
+					WDRBD_ERROR("netlink cmd failed while operating. cmd(%u), error(%d)\n", cmd, err);
 					errcnt++;
 				}
+				if( (DRBD_ADM_GET_RESOURCES <= cmd)  && (cmd <= DRBD_ADM_GET_PEER_DEVICES) ) {
+					WDRBD_TRACE("drbd netlink cmd(%s:%u) done <-\n", pops->str, cmd);
+				} else {
+					WDRBD_INFO("drbd netlink cmd(%s:%u) done <-\n", pops->str, cmd);
+				}
 			} else {
-				WDRBD_INFO("Failed to acquire the mutex : 0x%x\n", status);
+				WDRBD_INFO("drbd netlink cmd(%s:%u) Failed to acquire the mutex status: 0x%x\n", pops->str, cmd, status);
 			}
 
         } else {
@@ -700,12 +695,9 @@ cleanup:
 		kfree(pSock);
 	
     if (errcnt) {
-        WDRBD_ERROR("done. error occured %d times\n", errcnt);
+        WDRBD_ERROR("NetlinkWorkThread:%p done. error occured %d times\n",KeGetCurrentThread(), errcnt);
     } else {
-		if (is_dumpit_cmd)
-			WDRBD_TRACE("done : %s\n", first_cmd);
-		else
-			WDRBD_INFO("done : %s\n", first_cmd);
+		WDRBD_TRACE("NetlinkWorkThread:%p done...\n",KeGetCurrentThread());
     }
 }
 
