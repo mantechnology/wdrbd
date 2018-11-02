@@ -130,9 +130,9 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 		printf( "   Physical Device Name| %ws\n"
 				"                  Minor| %d\n"
 				"            Mount Point| %ws\n"
-				"     Replication volume| %d\n"
-				"   Original Volume Size| %llu BYTE (%llu KiBYTE)\n"
-				"DRBD Agreed Volume Size| %llu BYTE (%llu KiBYTE)\n"
+				"     Replication Volume| %d\n"
+				"    Disk Partition Size| %llu bytes (%llu kibytes)\n"
+				"       Replication Size| %llu bytes (%llu kibytes)\n"
 #ifndef _WIN32_MULTIVOL_THREAD
 				"           ThreadActive| %d\n"
 				"             ThreadExit| %d\n"
