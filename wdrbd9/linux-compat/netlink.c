@@ -13,6 +13,7 @@ NPAGED_LOOKASIDE_LIST genl_msg_mempool;
 typedef struct _NETLINK_WORK_ITEM {
     WORK_QUEUE_ITEM Item;
     PWSK_SOCKET Socket;
+	USHORT		RemotePort;
 } NETLINK_WORK_ITEM, *PNETLINK_WORK_ITEM;
 
 typedef struct _NETLINK_CTX {
@@ -272,7 +273,7 @@ static int _genl_dump(struct genl_ops * pops, struct sk_buff * skb, struct netli
 		err = -1;
 	}
 
-    WDRBD_TRACE_NETLINK("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
+    WDRBD_TRACE("send_reply(%d) seq(%d)\n", err, cb->nlh->nlmsg_seq);
 
     return err;
 }
@@ -559,10 +560,10 @@ NetlinkWorkThread(PVOID context)
 	// set thread priority
 	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 
-	WDRBD_TRACE("NetlinkWorkThread:%p begin...accept socket:%p\n",KeGetCurrentThread(),socket);
+	WDRBD_TRACE("NetlinkWorkThread:%p begin...accept socket:%p remote port:%d\n",KeGetCurrentThread(),socket, HTON_SHORT(((PNETLINK_WORK_ITEM)context)->RemotePort));
 
     ct_add_thread(KeGetCurrentThread(), "drbdcmd", FALSE, '25DW');
-    //WDRBD_INFO("Thread(%s-0x%p) IRQL(%d) socket(0x%p)------------- start!\n", current->comm, current->pid, KeGetCurrentIrql(), pctx);
+    
 	pSock = kzalloc(sizeof(struct socket), 0, '42DW'); 
 	if(!pSock) {
 		WDRBD_ERROR("Failed to allocate struct socket memory. size(%d)\n", sizeof(struct socket));
@@ -581,15 +582,17 @@ NetlinkWorkThread(PVOID context)
         readcount = Receive(pSock, psock_buf, NLMSG_GOODSIZE, 0, 0);
 
         if (readcount == 0) {
-            //WDRBD_INFO("peer closed\n");
+            WDRBD_TRACE("Receive done...\n");
             goto cleanup;
         } else if(readcount < 0) {
             WDRBD_INFO("Receive error = 0x%x\n", readcount);
             goto cleanup;
         }
-
+		
 		struct nlmsghdr *nlh = (struct nlmsghdr *)psock_buf;
-
+		
+		
+		// drbdsetup events2
         if (strstr(psock_buf, DRBD_EVENT_SOCKET_STRING)) {
 			WDRBD_TRACE("DRBD_EVENT_SOCKET_STRING received. socket(0x%p)\n", socket);
 			if (!push_msocket_entry(pSock)) {
@@ -604,6 +607,17 @@ NetlinkWorkThread(PVOID context)
 			}
         }
 
+		// DW-1701 Performs a sanity check on the netlink command, enhancing security.
+		// verify nlh header field
+		if( (readcount != nlh->nlmsg_len) 
+			|| (nlh->nlmsg_type < NLMSG_MIN_TYPE) 
+			|| (nlh->nlmsg_pid != 0x5744) ) {
+			WDRBD_WARN("Unrecognizable netlink command arrives and doesn't process...\n");
+			WDRBD_TRACE("rx(%d), len(%d), flags(0x%x), type(0x%x), seq(%d), magic(%x)\n",
+            	readcount, nlh->nlmsg_len, nlh->nlmsg_flags, nlh->nlmsg_type, nlh->nlmsg_seq, nlh->nlmsg_pid);
+			goto cleanup;
+		}
+		
         if (pinfo)
             ExFreeToNPagedLookasideList(&genl_info_mempool, pinfo);
 		
@@ -622,7 +636,7 @@ NetlinkWorkThread(PVOID context)
             goto cleanup;
         }
 
-        WDRBD_TRACE_NETLINK("rx(%d), len(%d), cmd(%d), flags(0x%x), type(0x%x), seq(%d), pid(%d)\n",
+        WDRBD_TRACE("rx readcount(%d), headerlen(%d), cmd(%d), flags(0x%x), type(0x%x), seq(%d), magic(%x)\n",
             readcount, nlh->nlmsg_len, pinfo->genlhdr->cmd, nlh->nlmsg_flags, nlh->nlmsg_type, nlh->nlmsg_seq, nlh->nlmsg_pid);
 
         // check whether resource suspended
@@ -733,22 +747,28 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         return STATUS_REQUEST_NOT_ACCEPTED;
     }
 
-    SOCKADDR_IN * premote = (SOCKADDR_IN *)RemoteAddress;
-    SOCKADDR_IN * plocal = (SOCKADDR_IN *)LocalAddress;
+    SOCKADDR_IN * pRemote = (SOCKADDR_IN *)RemoteAddress;
+    SOCKADDR_IN * pLocal = (SOCKADDR_IN *)LocalAddress;
 
-    DbgPrint("\n");
-    WDRBD_TRACE_NETLINK("%u.%u.%u.%u:%u -> %u.%u.%u.%u:%u connected\n",
-        premote->sin_addr.S_un.S_un_b.s_b1,
-        premote->sin_addr.S_un.S_un_b.s_b2,
-        premote->sin_addr.S_un.S_un_b.s_b3,
-        premote->sin_addr.S_un.S_un_b.s_b4,
-        HTON_SHORT(premote->sin_port),
-        plocal->sin_addr.S_un.S_un_b.s_b1,
-        plocal->sin_addr.S_un.S_un_b.s_b2,
-        plocal->sin_addr.S_un.S_un_b.s_b3,
-        plocal->sin_addr.S_un.S_un_b.s_b4,
-        HTON_SHORT(plocal->sin_port));
+    WDRBD_TRACE("%u.%u.%u.%u:%u -> %u.%u.%u.%u:%u connected\n",
+					        pRemote->sin_addr.S_un.S_un_b.s_b1,
+					        pRemote->sin_addr.S_un.S_un_b.s_b2,
+					        pRemote->sin_addr.S_un.S_un_b.s_b3,
+					        pRemote->sin_addr.S_un.S_un_b.s_b4,
+					        HTON_SHORT(pRemote->sin_port),
+					        pLocal->sin_addr.S_un.S_un_b.s_b1,
+					        pLocal->sin_addr.S_un.S_un_b.s_b2,
+					        pLocal->sin_addr.S_un.S_un_b.s_b3,
+					        pLocal->sin_addr.S_un.S_un_b.s_b4,
+					        HTON_SHORT(pLocal->sin_port));
 
+	// DW-1701 Only allow to local loopback netlink command
+	if(pRemote->sin_addr.S_un.S_un_b.s_b1 != 0x7f) {
+		WDRBD_TRACE("External connection attempt was made and blocked.\n");		
+		return STATUS_REQUEST_NOT_ACCEPTED;
+	}
+
+	
     PNETLINK_WORK_ITEM netlinkWorkItem = ExAllocateFromNPagedLookasideList(&drbd_workitem_mempool);
 
     if (!netlinkWorkItem) {
@@ -757,7 +777,8 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
     }
 
     netlinkWorkItem->Socket = AcceptSocket;
-    
+    netlinkWorkItem->RemotePort = pRemote->sin_port;
+	
 	ExInitializeWorkItem(&netlinkWorkItem->Item,
 		NetlinkWorkThread,
 		netlinkWorkItem);
