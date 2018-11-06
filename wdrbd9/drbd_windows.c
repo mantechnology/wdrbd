@@ -2777,25 +2777,28 @@ static void _adjust_guid_name(char * dst, const char * src)
  */
 struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev)
 {
-	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
-	VOLUME_EXTENSION * pvext = proot->Head;
-
+	ROOT_EXTENSION* pRoot = mvolRootDeviceObject->DeviceExtension;
+	VOLUME_EXTENSION* pVExt = pRoot->Head;
+	VOLUME_EXTENSION* pRetVExt = NULL;
+		
 	MVOL_LOCK();
-	for (; pvext; pvext = pvext->Next) {
+	for (; pVExt; pVExt = pVExt->Next) {
 
 		if(bUpdatetargetdev)
-			update_targetdev(pvext, FALSE);
+			update_targetdev(pVExt, FALSE);
 
 		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
-			&pvext->VolumeGuid : &pvext->MountPoint;
+			&pVExt->VolumeGuid : &pVExt->MountPoint;
 
 		if (plink && is_equal_volume_link(name, plink, false)) {
-			break;
+			// break;	
+			// DW-1702 fixup the logic to perform update_targetdev on all volumes at blkdev_get_by_link. Even if found VExt, no break;
+			pRetVExt = pVExt;
 		}
 	}
 	MVOL_UNLOCK();
 
-	return (pvext) ? pvext->dev : NULL;
+	return (pRetVExt) ? pRetVExt->dev : NULL;
 }
 
 struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev)
