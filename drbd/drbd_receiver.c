@@ -1241,9 +1241,13 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	BIO_ENDIO_FN_START;
 
+#ifdef _WIN32
+	if (NT_ERROR(error)) {
+#else
 	if (error) {
+#endif
 		ctx->error = error;
-		drbd_info(device, "local disk FLUSH FAILED with status %d\n", error);
+		drbd_err(device, "local disk FLUSH FAILED with status %08X\n", error);
 	}
 
 #ifdef _WIN32 // DW-1117 patch flush io memory leak

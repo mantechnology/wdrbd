@@ -524,7 +524,7 @@ static bool state_has_changed(struct drbd_resource *resource)
 			    peer_device->resync_susp_dependency[OLD] !=
 				peer_device->resync_susp_dependency[NEW] ||
 			    peer_device->resync_susp_other_c[OLD] !=
-#ifdef _WIN32 DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
+#ifdef _WIN32 // DW-1362 To avoid, twopc_commit processing with nostatechange should clear remote_state_change_flag
 				peer_device->resync_susp_other_c[NEW])
 #else
 				peer_device->resync_susp_other_c[NEW] ||
