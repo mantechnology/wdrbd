@@ -5914,6 +5914,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		
 		if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
 		    drbd_device_stable(device, NULL) && get_ldev(device)) {
+			// DW-1666: The local state value is not updated on the peer, resulting in the CONSISTNET state after sending drbd_send_uuids (UUID_FLAG_RESYNC, 0).
+			// Local status updates are sent from a separate thread to a peer and issues arise due to time differences.
+			// Send local state to peer before sending drbd_send_uids (UUID_FLAG_RESYNC, 0) for issue resolution.
+			drbd_send_state(peer_device, drbd_get_device_state(device, NOW));
 			drbd_send_uuids(peer_device, UUID_FLAG_RESYNC, 0);
 			drbd_resync(peer_device, AFTER_UNSTABLE);
 			put_ldev(device);
