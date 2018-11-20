@@ -80,8 +80,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_md_io_complete IRQL(%d) .............\n", current->comm, KeGetCurrentIrql());
 #endif
 
-    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG)
-    {
+    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
@@ -95,9 +94,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
-    }
-    else
-    {
+    } else {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
@@ -107,17 +104,18 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device = bio->bi_private;
 	device->md_io.error = error;
 
+	if(NT_ERROR(error)) {
+		drbd_err(device, "drbd_md_endio fail status %08X\n", error);
+	}
+	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
-		if (Irp->MdlAddress != NULL)
-		{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
-			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
-			{
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
 				nextMdl = mdl->Next;
 				MmUnlockPages(mdl);
 				IoFreeMdl(mdl); // This function will also unmap pages.
@@ -129,8 +127,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		bio_put(bio);
 	}
 #else
@@ -313,13 +310,21 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
 
 	BIO_ENDIO_FN_START;
+#ifdef _WIN32 
+	if (NT_ERROR(error) && drbd_ratelimit())
+#else
 	if (error && drbd_ratelimit())
-		drbd_warn(device, "%s: error=%d s=%llus\n",
+#endif
+		drbd_warn(device, "%s: error=0x%08X sec=%llus size:%d\n",
 				is_write ? (is_discard ? "discard" : "write")
 					: "read", error,
-				(unsigned long long)peer_req->i.sector);
+				(unsigned long long)peer_req->i.sector, peer_req->i.size);
 
+#ifdef _WIN32
+	if (NT_ERROR(error))
+#else
 	if (error)
+#endif
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 
 #ifdef _WIN32
@@ -470,7 +475,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 
 	/* to avoid recursion in __req_mod */
+#ifdef _WIN32 // DW-1706 By NT_ERROR(), reduce the error sensitivity to I/O.
+	if (NT_ERROR(error)) {
+#else
 	if (unlikely(error)) {
+#endif
 		switch (bio_op(bio)) {
 		case REQ_OP_DISCARD:
 			if (error == -EOPNOTSUPP)
@@ -488,6 +497,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			what = WRITE_COMPLETED_WITH_ERROR;
 			break;
 		}
+		drbd_err(device, "drbd_request_endio what:%d error:0x%08X sector:%llus size:%d\n", what, error, bio->bi_sector, bio->bi_size);
 	}
 	else {
 		what = COMPLETED_OK;

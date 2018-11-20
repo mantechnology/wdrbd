@@ -1289,8 +1289,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     int error = 0;
     PIRP Irp = NULL;
 
-    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-    {
+    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
@@ -1304,9 +1303,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
-    }
-    else
-    {
+    } else {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
