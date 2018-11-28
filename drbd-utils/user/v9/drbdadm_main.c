@@ -77,6 +77,7 @@ struct deferred_cmd {
 struct option general_admopt[] = {
 	{"stacked", no_argument, 0, 'S'},
 	{"dry-run", no_argument, 0, 'd'},
+	{"ignore-hostname", no_argument, 0, 'i'},
 	{"verbose", no_argument, 0, 'v'},
 	{"config-file", required_argument, 0, 'c'},
 	{"config-to-test", required_argument, 0, 't'},
@@ -2153,6 +2154,8 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 	}
 
 	if (!path->my_proxy) {
+		return 0;
+#if 0 // DW-1719: Ignore connections that do not use proxy
 		if (all_resources)
 			return 0;
 		err("%s:%d: In resource '%s',no proxy config for connection %sfrom '%s' to '%s'%s.\n",
@@ -2162,6 +2165,7 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 		    names_to_str(&conn->peer->on_hosts),
 		    conn->name ? ")" : "");
 		exit(E_CONFIG_INVALID);
+#endif
 	}
 
 	if (!hostname_in_list(hostname, &path->my_proxy->on_hosts)) {
