@@ -130,6 +130,7 @@
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (10<<20)
 #define DRBD_SNDBUF_SIZE_DEF  0
+#define DRBD_SNDBUF_SIZE_MIN  0 // DW-1719 add missing definitions (support linux)
 #endif
 #define DRBD_SNDBUF_SIZE_SCALE '1'
 
