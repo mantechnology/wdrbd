@@ -420,6 +420,26 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+
+		if( bio->bi_rw & WRITE) {
+			PIO_STACK_LOCATION  irpStack;
+			if(bio->retry) {
+				bio->retry--;
+				irpStack = IoGetNextIrpStackLocation (Irp);
+				if(bio->MasterIrpStackFlags) { 
+					irpStack->Flags = bio->MasterIrpStackFlags;
+				} else { 
+				}
+				IoSetCompletionRoutine(Irp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+				// retry request
+				WDRBD_INFO("pre retry IoCallDriver\n");
+				IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, Irp);
+				WDRBD_INFO("post retry IoCallDriver\n");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			} else {
+				//bio->retry = 1;
+			}
+		}
 	
 	} else {
 		error = (int)p3;
