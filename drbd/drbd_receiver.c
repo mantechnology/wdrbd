@@ -1865,7 +1865,7 @@ next_bio:
 	bio->bi_next = bios;
 	bios = bio;
 	++n_bios;
-	bio->retry = 1;
+	bio->io_retry = device->resource->res_opts.io_error_retry_count;
 	
 #ifdef _WIN32 
 	bio->bi_size = data_size;

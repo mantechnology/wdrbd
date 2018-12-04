@@ -240,8 +240,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 
 	nr_pages = (length + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	bio = bio_alloc(GFP_NOIO, nr_pages, '75DW');
-	if (!bio) 
-	{
+	if (!bio) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -252,17 +251,16 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	bio->bio_databuf = buffer;
 	bio->pMasterIrp = upper_pirp; 
 
-	bio->bi_sector = offset.QuadPart >> 9; 
+	bio->bi_sector = offset.QuadPart >> 9;
 	bio->bi_bdev = VolumeExtension->dev;
 	bio->bi_rw |= (io == IRP_MJ_WRITE) ? WRITE : READ;
 	bio->bi_size = length;
 	// save original Master Irp's Stack Flags
 	bio->MasterIrpStackFlags = ((PIO_STACK_LOCATION)IoGetCurrentIrpStackLocation(upper_pirp))->Flags;
 
-	bio->retry = 1;
+	bio->io_retry = device->resource->res_opts.io_error_retry_count;
 	status = drbd_make_request(device->rq_queue, bio); // drbd local I/O entry point 
-	if (STATUS_SUCCESS != status)
-	{
+	if (STATUS_SUCCESS != status) {
 		bio_free(bio);
 		status = STATUS_INSUFFICIENT_RESOURCES;
 	}

@@ -96,7 +96,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		}
 		
 		if(NT_ERROR(error)) {
-			if( (bio->bi_rw & WRITE) && bio->retry ) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_md_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
@@ -310,7 +310,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 
 		// DW-1716 retry if an write I/O error occurs.
 		if (NT_ERROR(error)) {
-			if( (bio->bi_rw & WRITE) && bio->retry ) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_peer_request_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
@@ -439,7 +439,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		
 		// DW-1716 retry if an write I/O error occurs.
 		if (NT_ERROR(error)) {
-			if( (bio->bi_rw & WRITE) && bio->retry ) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_request_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
