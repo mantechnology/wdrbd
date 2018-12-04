@@ -1303,6 +1303,12 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_bm_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
     } else {
         error = (int)p3;
         bio = (struct bio *)p2;
@@ -1438,6 +1444,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	bio->bi_private = ctx;
 	bio->bi_end_io = drbd_bm_endio;
 	bio_set_op_attrs(bio, op, 0);
+	bio->retry = 1;
 
 	if (drbd_insert_fault(device, (op == REQ_OP_WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD)) {
 		bio_endio(bio, -EIO);

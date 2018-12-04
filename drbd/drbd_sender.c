@@ -94,6 +94,14 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+		
+		if(NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_md_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
+		
     } else {
         error = (int)p3;
         bio = (struct bio *)p2;
@@ -299,6 +307,14 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 			WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_peer_request_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
@@ -420,24 +436,12 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
-
-		if( bio->bi_rw & WRITE) {
-			PIO_STACK_LOCATION  irpStack;
-			if(bio->retry) {
-				bio->retry--;
-				irpStack = IoGetNextIrpStackLocation (Irp);
-				if(bio->MasterIrpStackFlags) { 
-					irpStack->Flags = bio->MasterIrpStackFlags;
-				} else { 
-				}
-				IoSetCompletionRoutine(Irp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
-				// retry request
-				WDRBD_INFO("pre retry IoCallDriver\n");
-				IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, Irp);
-				WDRBD_INFO("post retry IoCallDriver\n");
+		
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_request_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
-			} else {
-				//bio->retry = 1;
 			}
 		}
 	

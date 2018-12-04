@@ -1865,7 +1865,8 @@ next_bio:
 	bio->bi_next = bios;
 	bios = bio;
 	++n_bios;
-
+	bio->retry = 1;
+	
 #ifdef _WIN32 
 	bio->bi_size = data_size;
     bio->bio_databuf = peer_req->peer_req_databuf = page;
