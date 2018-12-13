@@ -94,6 +94,14 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+		
+		if(NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_md_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
+		
     } else {
         error = (int)p3;
         bio = (struct bio *)p2;
@@ -299,6 +307,14 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 			WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....\n");
 			error = STATUS_UNSUCCESSFUL;
 		}
+
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_peer_request_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
 	} else {
 		error = (int)p3;
 		bio = (struct bio *)p2;
@@ -419,6 +435,14 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
 			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
 			error = STATUS_UNSUCCESSFUL;
+		}
+		
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_request_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
 		}
 	
 	} else {

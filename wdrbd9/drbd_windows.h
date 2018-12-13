@@ -722,6 +722,7 @@ struct bio {
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
+	unsigned int 			io_retry;
 };
 
 struct bio_set {
@@ -1674,6 +1675,6 @@ char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 int drbd_resize(struct drbd_device *device);
 
 extern char *kvasprintf(int flags, const char *fmt, va_list args);
-
+VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx);
 
 #endif // DRBD_WINDOWS_H

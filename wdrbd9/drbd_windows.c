@@ -3345,3 +3345,19 @@ char *kvasprintf(int flags, const char *fmt, va_list args)
 
 	return NULL;
 }
+
+VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx) 
+{
+	PIO_STACK_LOCATION  pIrpStack = NULL;
+
+	WDRBD_WARN("ctx:%s error:%x bio->io_retry:%d\n", ctx, error, bio->io_retry);
+	
+	atomic_dec(&bio->io_retry);
+	pIrpStack = IoGetNextIrpStackLocation (Irp);
+	if(bio->MasterIrpStackFlags) 
+		pIrpStack->Flags = bio->MasterIrpStackFlags;
+	IoSetCompletionRoutine(Irp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, Irp);
+	return; 
+}
+
