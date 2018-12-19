@@ -217,6 +217,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
 			drbd_info(connection, "find > inactive peer request : %p\n", peer_req);
+			list_del(&peer_req->recv_order);
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 			spin_unlock_irqrestore(&device->resource->req_lock, flags);
