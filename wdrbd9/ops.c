@@ -299,7 +299,7 @@ IOCTL_SetSimulDiskIoError( PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if(Irp->AssociatedIrp.SystemBuffer) {
 		pSDError = (SIMULATION_DISK_IO_ERROR*)Irp->AssociatedIrp.SystemBuffer;
 		RtlCopyMemory(&gSimulDiskIoError, pSDError, sizeof(SIMULATION_DISK_IO_ERROR));
-		WDRBD_TRACE("IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR DiskErrorOn:%d ErrorType:%d\n", gSimulDiskIoError.bDiskErrorOn, gSimulDiskIoError.ErrorType);
+		WDRBD_TRACE("IOCTL_MVOL_SET_SIMUL_DISKIO_ERROR ErrorFlag:%d ErrorType:%d\n", gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorType);
 	} else {
 		return STATUS_INVALID_PARAMETER;
 	}

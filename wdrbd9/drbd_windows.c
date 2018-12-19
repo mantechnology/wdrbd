@@ -1832,24 +1832,26 @@ int generic_make_request(struct bio *bio)
 	//
 	//	simulation disk-io error point . (generic_make_request fail) - disk error simluation type 0
 	//
-	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
-		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
-		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+	if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
+		if(IsDiskError()) {
+			WDRBD_ERROR("SimulDiskIoError: type0...............ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
-		// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
-		// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
-		// If no error simulation, calling 'IoCallDriver' verifies our completion routine called so that irp will be freed there.
-		if (newIrp->MdlAddress != NULL) {
-			PMDL mdl, nextMdl;
-			for (mdl = newIrp->MdlAddress; mdl != NULL; mdl = nextMdl) {
-				nextMdl = mdl->Next;
-				MmUnlockPages(mdl);
-				IoFreeMdl(mdl); // This function will also unmap pages.
+			// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
+			// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
+			// If no error simulation, calling 'IoCallDriver' verifies our completion routine called so that irp will be freed there.
+			if (newIrp->MdlAddress != NULL) {
+				PMDL mdl, nextMdl;
+				for (mdl = newIrp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+					nextMdl = mdl->Next;
+					MmUnlockPages(mdl);
+					IoFreeMdl(mdl); // This function will also unmap pages.
+				}
+				newIrp->MdlAddress = NULL;
 			}
-			newIrp->MdlAddress = NULL;
+			IoFreeIrp(newIrp);
+			return -EIO;		
 		}
-		IoFreeIrp(newIrp);
-		return -EIO;
 	}
 
 	// DW-1495 : If any volume is set to read only, all writes operations are paused temporarily. 
@@ -3361,3 +3363,15 @@ VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx
 	return; 
 }
 
+bool IsDiskError()
+{
+	bool bErr = FALSE;
+	if( gSimulDiskIoError.ErrorFlag == SIMUL_DISK_IO_ERROR_FLAG1) {
+		bErr = TRUE;
+	}
+	if( (gSimulDiskIoError.ErrorFlag == SIMUL_DISK_IO_ERROR_FLAG2) && gSimulDiskIoError.ErrorCount) {
+		bErr = TRUE;
+		gSimulDiskIoError.ErrorCount--;
+	}
+	return bErr;
+}

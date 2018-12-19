@@ -90,9 +90,11 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 3
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE3) {
-			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE3) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....ErrorFlag:%d ErrorCount:%d\n", gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
 		}
 		
 		if(NT_ERROR(error)) {
@@ -303,9 +305,11 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 2
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE2) {
-			WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE2) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....ErrorFlag:%d ErrorCount:%d\n", gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
 		}
 
 		// DW-1716 retry if an write I/O error occurs.
@@ -432,9 +436,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 1
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
-			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag,gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
 		}
 		
 		// DW-1716 retry if an write I/O error occurs.
