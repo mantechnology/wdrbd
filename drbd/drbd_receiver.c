@@ -8832,7 +8832,7 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
-	//DW-1696 : If active_ee is left, destroy it.
+	//DW-1696 : If inactive_ee is left, destroy it.
 	bool is_empty = true;
 
 	spin_lock(&resource->req_lock);

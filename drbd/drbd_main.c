@@ -4309,19 +4309,6 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
-	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
-	struct drbd_peer_request *peer_req, *t;
-	if (!list_empty(&connection->inactive_ee)) {
-		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
-			drbd_info(connection, "destroy > inactive peer request : %p\n", peer_req);
-			list_del(&peer_req->w.list);
-			drbd_free_peer_req(peer_req);
-}
-	}
-	else {
-		drbd_info(connection, "destroy > empty p_requst\n");
-	}
-
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
@@ -4335,6 +4322,22 @@ void drbd_destroy_connection(struct kref *kref)
 		kref_put(&peer_device->device->kref, drbd_destroy_device);
 		free_peer_device(peer_device);
 	}
+
+	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
+	struct drbd_peer_request *peer_req, *t;
+	spin_lock(&resource->req_lock);
+	if (!list_empty(&connection->inactive_ee)) {
+		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
+			drbd_info(connection, "destroy > inactive peer request : %p\n", peer_req);
+			list_del(&peer_req->w.list);
+			drbd_free_peer_req(peer_req);
+		}
+	}
+	else {
+		drbd_info(connection, "destroy > empty p_requst\n");
+	}
+	spin_unlock(&resource->req_lock);
+
 	idr_destroy(&connection->peer_devices);
 
 	kfree(connection->transport.net_conf);
