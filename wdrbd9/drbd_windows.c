@@ -684,15 +684,13 @@ struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
 	}
 	
 	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask, Tag);
-	if (!bio)
-	{
+	if (!bio) {
 		return 0;
 	}
 	bio->bi_max_vecs = nr_iovecs;
 	bio->bi_vcnt = 0;
 
-	if (nr_iovecs > 256)
-	{
+	if (nr_iovecs > 256) {
 		WDRBD_ERROR("DRBD_PANIC: bio_alloc: nr_iovecs too big = %d. check over 1MB.\n", nr_iovecs);
 		BUG();
 	}
@@ -735,8 +733,7 @@ struct bio *bio_clone(struct bio * bio_src, int flag)
 {
     struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs, '24DW');
 
-    if (!bio)
-    {
+    if (!bio) {
         return NULL;
     }
 
@@ -748,6 +745,7 @@ struct bio *bio_clone(struct bio * bio_src, int flag)
 	bio->bi_vcnt = bio_src->bi_vcnt;
 	bio->bi_size = bio_src->bi_size;
 	bio->bi_idx = bio_src->bi_idx;
+	bio->io_retry = bio_src->io_retry;
 
 	return bio;
 }
@@ -756,8 +754,7 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 {
 	struct bio_vec *bvec = &bio->bi_io_vec[bio->bi_vcnt++];
 		
-	if (bio->bi_vcnt > 1)
-	{
+	if (bio->bi_vcnt > 1) {
 		WDRBD_ERROR("DRBD_PANIC: bio->bi_vcn=%d. multi page occured!\n", bio->bi_vcnt);
         BUG();
 	}

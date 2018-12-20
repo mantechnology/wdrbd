@@ -4,6 +4,32 @@
 #include "mvol.h"
 #include "LogManager.h"
 
+void
+disk_error_usage()
+{
+	printf("disk error simulation. Absolutely only for testing purposes!\n"
+		"usage: drbdcon /disk_error <errorflag> <errortype> <errorcount>\n\n"
+		"errorflag:\n"
+		"   0: no disk error, disable error simulation\n"
+        "   1: continuous disk error\n"
+        "   2: temporary disk error\n"
+        "\n\n"
+
+		"errortype:\n"		
+		"   0: Errors before Disk I/O request, generic_make_request fail\n"
+		"   1: Local Disk I/O complete with error\n"
+		"   2: Peer Disk I/O complete with error\n"
+		"   3: Meta Data I/O complete with error\n"
+		"   4: Bitmap I/O complete with error\n"
+		"\n\n"
+
+		"errorcount:\n"
+        "   0 ~ 4294967295, unsigned integer\n"
+	);
+
+	exit(ERROR_INVALID_PARAMETER);
+}
+
 
 void
 usage()
@@ -300,18 +326,25 @@ main(int argc, char* argv [])
 			argIndex++;
 			// get parameter 1 (DiskI/O error flag)
 			if (argIndex < argc) {
-				sdie.bDiskErrorOn = atoi(argv[argIndex]);
+				sdie.ErrorFlag = atoi(argv[argIndex]);
+				argIndex++;
+				// get parameter 2 (DiskI/O error Type)
+				if (argIndex < argc) {
+					sdie.ErrorType = atoi(argv[argIndex]);
+					argIndex++;
+					// get parameter 3 (DiskI/O error count)
+					if (argIndex < argc) {
+						sdie.ErrorCount = atoi(argv[argIndex]);
+					} else {
+						disk_error_usage();					
+					}
+				} else {
+					disk_error_usage();
+				}
 			} else {
-				usage();
+				disk_error_usage();
 			}
 			
-			argIndex++;
-			// get parameter 2 (DiskI/O error Type)
-			if (argIndex < argc) {
-				sdie.ErrorType = atoi(argv[argIndex]);
-			} else {
-				// if parameter 2 does not exist, parameter 2 is default value(0)
-			}
 		}
 		else if (strcmp(argv[argIndex], "/minlog_lv") == 0)
 		{
