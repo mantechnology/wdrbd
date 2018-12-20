@@ -4309,7 +4309,7 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	WDRBD_TRACE("%s\n", __FUNCTION__);
+	drbd_info(connection, "%s\n", __FUNCTION__);
 
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
@@ -4334,14 +4334,11 @@ void drbd_destroy_connection(struct kref *kref)
 	spin_lock(&resource->req_lock);
 	if (!list_empty(&connection->inactive_ee)) {
 		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
-			WDRBD_TRACE("destroy > inactive peer request : %p\n", peer_req);
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 		}
 	}
-	else {
-		drbd_info(connection, "destroy > empty p_requst\n");
-	}
+
 	spin_unlock(&resource->req_lock);
 
 	idr_destroy(&connection->peer_devices);
