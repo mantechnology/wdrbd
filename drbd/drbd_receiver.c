@@ -10221,7 +10221,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #else
 			if (drbd_send_ping(connection)) {
 #endif
-				drbd_err(connection, "drbd_send_ping has failed\n");
+				drbd_err(connection, "drbd_send_ping has failed (%d)\n", ping_ret);
 				goto reconnect;
 			}
 			set_ping_timeout(connection);

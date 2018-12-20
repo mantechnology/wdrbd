@@ -7133,6 +7133,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 			del_connection(connection);
 			mutex_unlock(&resource->conf_update);
 		} else {
+			drbd_info(connection, "conn_try_disconnect retcode : %d, connection ref : %d\n", retcode, connection->kref);
 			kref_debug_put(&connection->kref_debug, 13);
 			kref_put(&connection->kref, drbd_destroy_connection);
 			goto out;

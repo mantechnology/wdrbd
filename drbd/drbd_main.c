@@ -3447,6 +3447,8 @@ void drbd_destroy_device(struct kref *kref)
 	struct drbd_peer_device *peer_device, *tmp;
 
 
+	drbd_info(device, "%s\n", __FUNCTION__);
+
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 	if (device->this_bdev)
@@ -3503,6 +3505,8 @@ void drbd_destroy_device(struct kref *kref)
 void drbd_destroy_resource(struct kref *kref)
 {
 	struct drbd_resource *resource = container_of(kref, struct drbd_resource, kref);
+
+	drbd_info(resource, "%s\n", __FUNCTION__);
 
 	idr_destroy(&resource->devices);
 #ifndef _WIN32
@@ -4304,7 +4308,9 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
 	int vnr;
-	
+
+	drbd_info(connection, "%s\n", __FUNCTION__);
+
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
