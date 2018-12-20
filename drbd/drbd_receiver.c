@@ -8848,7 +8848,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
 	struct drbd_peer_request *p_req;
 	list_for_each_entry(struct drbd_peer_request, p_req, &connection->inactive_ee, w.list) {
-		drbd_info(connection, "add > inactive peer request : %p\n", p_req);
+		WDRBD_TRACE("add > inactive peer request : %p\n", p_req);
 	}
 	spin_unlock(&resource->req_lock);
 
@@ -10042,7 +10042,7 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 			if (p_req == peer_req) {
 				list_del(&peer_req->recv_order);
 				is_inactive = true;
-				drbd_info(connection, "find > inactive peer request : %p\n", peer_req);
+				WDRBD_TRACE("find > inactive peer request : %p\n", peer_req);
 				break;
 			}
 		}
