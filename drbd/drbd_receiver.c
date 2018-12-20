@@ -8832,6 +8832,26 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
+	//DW-1696 : If inactive_ee is left, destroy it.
+	bool is_empty = true;
+
+	spin_lock(&resource->req_lock);
+	is_empty = list_empty(&connection->inactive_ee);
+	spin_unlock(&resource->req_lock);
+
+	if (!is_empty)
+		drbd_free_peer_reqs(resource, &connection->inactive_ee, false);
+
+	//DW-1696 : Add the incomplete active_ee, sync_ee
+	spin_lock(&resource->req_lock);
+	list_splice_init(&connection->active_ee, &connection->inactive_ee);
+	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
+	struct drbd_peer_request *p_req;
+	list_for_each_entry(struct drbd_peer_request, p_req, &connection->inactive_ee, w.list) {
+		WDRBD_TRACE("add > inactive peer request : %p\n", p_req);
+	}
+	spin_unlock(&resource->req_lock);
+
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
 	* w_make_resync_request etc. which may still be on the worker queue
 	* to be "canceled" */
@@ -10002,6 +10022,9 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_request *peer_req, *tmp;
+	struct drbd_peer_request *p_req;
+	bool is_inactive = false;
+
 	LIST_HEAD(work_list);
 
 	spin_lock_irq(&resource->req_lock);
@@ -10012,6 +10035,22 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
+		//DW-1696 : If the same peer_request exists, remove it from the list.
+		is_inactive = false;
+		spin_lock(&resource->req_lock);
+		list_for_each_entry(struct drbd_peer_request, p_req, &connection->inactive_ee, w.list) {
+			if (p_req == peer_req) {
+				list_del(&peer_req->recv_order);
+				is_inactive = true;
+				WDRBD_TRACE("find > inactive peer request : %p\n", peer_req);
+				break;
+			}
+		}
+		spin_unlock(&resource->req_lock);
+
+		if (is_inactive)
+			continue;
+
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		int bitmap_index = peer_device->bitmap_index;
@@ -10182,7 +10221,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #else
 			if (drbd_send_ping(connection)) {
 #endif
-				drbd_err(connection, "drbd_send_ping has failed\n");
+				drbd_err(connection, "drbd_send_ping has failed (%d)\n", ping_ret);
 				goto reconnect;
 			}
 			set_ping_timeout(connection);

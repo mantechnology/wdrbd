@@ -1395,6 +1395,9 @@ struct drbd_connection {
 	struct list_head read_ee;   /* [RS]P_DATA_REQUEST being read */
 	struct list_head net_ee;    /* zero-copy network send in progress */
 	struct list_head done_ee;   /* need to send P_WRITE_ACK */
+
+	struct list_head inactive_ee;	//DW-1696 : List of active_ee, sync_ee not processed at the end of the connection
+
 	atomic_t done_ee_cnt;
 	struct work_struct send_acks_work;
 	wait_queue_head_t ee_wait;
