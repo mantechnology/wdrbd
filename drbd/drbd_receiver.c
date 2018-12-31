@@ -8832,16 +8832,6 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
-	//DW-1696 : If inactive_ee is left, destroy it.
-	bool is_empty = true;
-
-	spin_lock(&resource->req_lock);
-	is_empty = list_empty(&connection->inactive_ee);
-	spin_unlock(&resource->req_lock);
-
-	if (!is_empty)
-		drbd_free_peer_reqs(resource, &connection->inactive_ee, false);
-
 	//DW-1696 : Add the incomplete active_ee, sync_ee
 	spin_lock(&resource->req_lock);
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
