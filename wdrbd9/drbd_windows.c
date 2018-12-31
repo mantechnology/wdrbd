@@ -2782,18 +2782,22 @@ struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetarge
 		
 	MVOL_LOCK();
 	for (; pVExt; pVExt = pVExt->Next) {
-
-		if(bUpdatetargetdev)
+		
+		if(IsEmptyUnicodeString(&pVExt->VolumeGuid)) { // DW-1728 update the volume's GUID information again for a volume without a GUID (VHD).
+			update_targetdev(pVExt, TRUE);
+		} else {
 			update_targetdev(pVExt, FALSE);
+		}
 
 		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
 			&pVExt->VolumeGuid : &pVExt->MountPoint;
-
+		
 		if (plink && is_equal_volume_link(name, plink, false)) {
 			// break;	
 			// DW-1702 fixup the logic to perform update_targetdev on all volumes at blkdev_get_by_link. Even if found VExt, no break;
 			pRetVExt = pVExt;
 		}
+		WDRBD_TRACE("name:%wZ pVExt:%p PhysicalDeviceName:%ws VolumeGuid:%wZ MountPoint:%wZ\n",name,pVExt->PhysicalDeviceName, &pVExt->VolumeGuid,&pVExt->MountPoint);
 	}
 	MVOL_UNLOCK();
 
