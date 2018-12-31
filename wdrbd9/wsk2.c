@@ -642,6 +642,7 @@ Send(
 			pSock->sk_state = WSK_INVALID_DEVICE;
 			break;	
 		default:
+			WDRBD_INFO("Send error, default state(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
 			BytesSent = -ECONNRESET;
 			break;
 		}
