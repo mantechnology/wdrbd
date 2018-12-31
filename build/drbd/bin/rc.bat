@@ -39,6 +39,9 @@ REM drbdadm -c /etc/drbd.conf adjust-with-progress all
 ::echo WDRBD Starting ...
 
 setlocal EnableDelayedExpansion
+
+set /a adj_retry=0
+:adjust_retry
 for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
 	set ADJUST=0
 
@@ -52,13 +55,23 @@ for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
 			@(set ADJUST=1)
 		)		
 	)
-	
 	if !ADJUST! == 1 (
 		echo [!date!_!time!] drbdadm adjust %%a >> %log%
 		drbdadm -c /etc/drbd.conf adjust %%a
 		if !errorlevel! gtr 0 (
 			echo [!date!_!time!] Failed to drbdadm adjust %%a. >> %log%
+			set /a adj_retry=adj_retry+1
+			REM Retry 10 times. If it fails more than 10 times, it may adjust fail.
+			if %adj_retry% gtr 10 (
+				echo [!date!_!time!] drbdadm adjust %%a finally failed.>> %log%
+			) else (
+				timeout /t 3 /NOBREAK > nul
+				goto adjust_retry
+			)	
+		) else (
+			echo [!date!_!time!] drbdadm adjust %%a success.>> %log%	
 		)
+		
 		timeout /t 3 /NOBREAK > nul
 	)
 )
