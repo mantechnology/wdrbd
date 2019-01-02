@@ -3598,7 +3598,6 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		{
 			err = drbd_try_rs_begin_io(peer_device, sector, false);
 			if (err) {
-				drbd_info(device, "drbd_try_rs_begin_io error(P_RS_CANCEL) : %d\n", err);
 				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 				/* If err is set, we will drop the connection... */
 				goto fail3;
@@ -8222,7 +8221,9 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		/* admin may have requested C_DISCONNECTING,
 		 * other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
-		    drbd_repl_str(peer_device->repl_state[NOW]));
+			drbd_repl_str(peer_device->repl_state[NOW]));
+		//DW-1613 : Reconnect the UUID because it might not be received properly due to a synchronization issue.
+		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 	err = 0;
 
@@ -9725,9 +9726,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = min(device->bm_resync_fo, bit);
 			mutex_unlock(&device->bm_resync_fo_mutex);
-			drbd_info(device, "%s : cancel start", __FUNCTION__);
 			atomic_add(size >> 9, &peer_device->rs_sect_in);
-			drbd_info(device, "%s : cacnel end", __FUNCTION__);
 
 			mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 			break;
