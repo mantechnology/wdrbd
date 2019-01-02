@@ -185,7 +185,6 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
 	struct drbd_peer_request *p_req, *t_inative;
-	spin_lock_irqsave(&device->resource->req_lock, flags);
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
 			drbd_info(connection, "read completed after reconnection, inactive_ee(%p)\n", peer_req);
