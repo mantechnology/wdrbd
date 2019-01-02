@@ -8222,7 +8222,9 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		/* admin may have requested C_DISCONNECTING,
 		 * other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
-		    drbd_repl_str(peer_device->repl_state[NOW]));
+			drbd_repl_str(peer_device->repl_state[NOW]));
+		//DW-1613 : Reconnect the UUID because it might not be received properly due to a synchronization issue.
+		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 	err = 0;
 
