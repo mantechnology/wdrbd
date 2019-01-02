@@ -8838,6 +8838,8 @@ void conn_disconnect(struct drbd_connection *connection)
 	spin_lock(&resource->req_lock);
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
+	//DW-1735 : Add the incomplete read_ee
+	list_splice_init(&connection->read_ee, &connection->inactive_ee);
 	spin_unlock(&resource->req_lock);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
