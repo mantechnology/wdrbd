@@ -181,20 +181,16 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	// DW-1277: check volume type we marked when drbd attaches.
 	// for normal volume.
-	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) &&
-		!test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) && !test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	// for replication volume.
-	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Replication volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Replication volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	// for meta volume.
-	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag))
-	{
-		WDRBD_INFO("Meta volume %wZ was removed\n", &VolumeExtension->MountPoint);
+	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
 	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
@@ -244,8 +240,7 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 
 	nr_pages = (length + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	bio = bio_alloc(GFP_NOIO, nr_pages, '75DW');
-	if (!bio) 
-	{
+	if (!bio) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -256,16 +251,16 @@ int DoSplitIo(PVOLUME_EXTENSION VolumeExtension, ULONG io, PIRP upper_pirp, stru
 	bio->bio_databuf = buffer;
 	bio->pMasterIrp = upper_pirp; 
 
-	bio->bi_sector = offset.QuadPart >> 9; 
+	bio->bi_sector = offset.QuadPart >> 9;
 	bio->bi_bdev = VolumeExtension->dev;
 	bio->bi_rw |= (io == IRP_MJ_WRITE) ? WRITE : READ;
 	bio->bi_size = length;
 	// save original Master Irp's Stack Flags
 	bio->MasterIrpStackFlags = ((PIO_STACK_LOCATION)IoGetCurrentIrpStackLocation(upper_pirp))->Flags;
-	
+
+	bio->io_retry = device->resource->res_opts.io_error_retry_count;
 	status = drbd_make_request(device->rq_queue, bio); // drbd local I/O entry point 
-	if (STATUS_SUCCESS != status)
-	{
+	if (STATUS_SUCCESS != status) {
 		bio_free(bio);
 		status = STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -435,8 +430,7 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
 
-    if (KeGetCurrentIrql() > APC_LEVEL)
-    {
+    if (KeGetCurrentIrql() > APC_LEVEL) {
         WDRBD_ERROR("cannot run IoBuildDeviceIoControlRequest becauseof IRP(%d)\n", KeGetCurrentIrql());
     }
 
@@ -444,21 +438,18 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
         TargetDeviceObject, NULL, 0,
         &li, sizeof(li),
         FALSE, &event, &ioStatus);
-    if (!newIrp)
-    {
+    if (!newIrp) {
         WDRBD_ERROR("cannot alloc new IRP\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     status = IoCallDriver(TargetDeviceObject, newIrp);
-    if (status == STATUS_PENDING)
-    {
+    if (status == STATUS_PENDING) {
         KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
         status = ioStatus.Status;
     }
 
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("cannot get volume information, err=0x%x\n", status);
         return status;
     }
@@ -468,8 +459,11 @@ mvolGetVolumeSize(PDEVICE_OBJECT TargetDeviceObject, PLARGE_INTEGER pVolumeSize)
     return status;
 }
 
+// 1. Get mount point by volume extension's PhysicalDeviceName
+// 2. If QueryMountPoint return SUCCESS, parse mount point to letter or GUID, and update volume extension's mount point info
+
 NTSTATUS
-mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
+mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 {
 	ULONG mplen = pvext->PhysicalDeviceNameLength + sizeof(MOUNTMGR_MOUNT_POINT);
 	ULONG mpslen = 4096 * 2;
@@ -494,6 +488,11 @@ mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
 		goto cleanup;
 	}
 
+	FreeUnicodeString(&pvext->MountPoint);
+	FreeUnicodeString(&pvext->VolumeGuid);
+	pvext->Minor = 0;
+	
+	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p\n",pvext);
 	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
 
 		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
@@ -502,21 +501,32 @@ mvolQueryMountPoint(PVOLUME_EXTENSION pvext)
 			.Length = p->SymbolicLinkNameLength,
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
-		
+		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,name);
+
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
+
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
-			pvext->VolIndex = name.Buffer[0] - 'C';
+			pvext->Minor = name.Buffer[0] - 'C';
+
 			link = &pvext->MountPoint;
-			FreeUnicodeString(link);
+			//FreeUnicodeString(link);
+			WDRBD_TRACE("Free letter link\n");
 		}
 		else if (MOUNTMGR_IS_VOLUME_NAME(&name)) {
+
 			link = &pvext->VolumeGuid;
+			//FreeUnicodeString(link);
+			WDRBD_TRACE("Free volume guid link\n");
 		}
 
-		link && ucsdup(link, name.Buffer, name.Length);
+		if(link) {
+			ucsdup(link, name.Buffer, name.Length);
+			WDRBD_TRACE("link alloc\n");
+		}
+		
 	}
-
+	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p end..............\n",pvext);
 cleanup:
 	kfree(inbuf);
 	kfree(otbuf);

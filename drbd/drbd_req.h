@@ -296,8 +296,7 @@ static inline void drbd_req_make_private_bio(struct drbd_request *req, struct bi
 	bio = bio_clone(bio_src, GFP_NOIO); /* XXX cannot fail?? */
 
 #ifdef _WIN32
-    if (!bio) 
-    {
+    if (!bio) {
         return FALSE;
     }
 	bio->bio_databuf = bio_src->bio_databuf;

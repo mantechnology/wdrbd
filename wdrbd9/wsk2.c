@@ -541,15 +541,19 @@ __inout  NTSTATUS* pStatus
 		Irp);
 #endif 
 	if (Status == STATUS_PENDING) {
-		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-        Status = Irp->IoStatus.Status;
-		if(!NT_SUCCESS(Status)) {
-			WDRBD_TRACE("WskSocketConnect Status:%s\n",GetSockErrorString(Irp->IoStatus.Status));
+		// DW-1689 Timeout(Adjusted from 3 sec to 2 sec) handling for WskSocketConnect.
+		LARGE_INTEGER nWaitTime = { 0, };
+		nWaitTime = RtlConvertLongToLargeInteger(-2 * 1000 * 1000 * 10);	// 2s
+		if ((Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime)) == STATUS_TIMEOUT) {
+			IoCancelIrp(Irp);
+			KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);			
+			*pStatus = STATUS_TIMEOUT;
+		} else {
+			*pStatus = Status = Irp->IoStatus.Status;
 		}
 	} 
 
-	*pStatus = Status = Irp->IoStatus.Status;
-	WskSocket = NT_SUCCESS(Status) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
+	WskSocket = (Status == STATUS_SUCCESS) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
 
 	IoFreeIrp(Irp);
 	
@@ -638,6 +642,7 @@ Send(
 			pSock->sk_state = WSK_INVALID_DEVICE;
 			break;	
 		default:
+			WDRBD_INFO("Send error, default state(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
 			BytesSent = -ECONNRESET;
 			break;
 		}

@@ -348,6 +348,12 @@ void atomic_set(atomic_t *v, int i)
 	InterlockedExchange((long *)v, i);
 }
 
+void atomic_set64(atomic_t64* v, LONGLONG i)
+{
+	InterlockedExchange64((LONGLONG *)v, i);
+}
+
+
 void atomic_add(int i, atomic_t *v)
 {
 	InterlockedExchangeAdd((long *)v, i);
@@ -678,15 +684,13 @@ struct bio *bio_alloc(gfp_t gfp_mask, int nr_iovecs, ULONG Tag)
 	}
 	
 	bio = kzalloc(sizeof(struct bio) + nr_iovecs * sizeof(struct bio_vec), gfp_mask, Tag);
-	if (!bio)
-	{
+	if (!bio) {
 		return 0;
 	}
 	bio->bi_max_vecs = nr_iovecs;
 	bio->bi_vcnt = 0;
 
-	if (nr_iovecs > 256)
-	{
+	if (nr_iovecs > 256) {
 		WDRBD_ERROR("DRBD_PANIC: bio_alloc: nr_iovecs too big = %d. check over 1MB.\n", nr_iovecs);
 		BUG();
 	}
@@ -729,8 +733,7 @@ struct bio *bio_clone(struct bio * bio_src, int flag)
 {
     struct bio *bio = bio_alloc(flag, bio_src->bi_max_vecs, '24DW');
 
-    if (!bio)
-    {
+    if (!bio) {
         return NULL;
     }
 
@@ -742,6 +745,7 @@ struct bio *bio_clone(struct bio * bio_src, int flag)
 	bio->bi_vcnt = bio_src->bi_vcnt;
 	bio->bi_size = bio_src->bi_size;
 	bio->bi_idx = bio_src->bi_idx;
+	bio->io_retry = bio_src->io_retry;
 
 	return bio;
 }
@@ -750,8 +754,7 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 {
 	struct bio_vec *bvec = &bio->bi_io_vec[bio->bi_vcnt++];
 		
-	if (bio->bi_vcnt > 1)
-	{
+	if (bio->bi_vcnt > 1) {
 		WDRBD_ERROR("DRBD_PANIC: bio->bi_vcn=%d. multi page occured!\n", bio->bi_vcnt);
         BUG();
 	}
@@ -1553,8 +1556,7 @@ void del_gendisk(struct gendisk *disk)
 {
 	NTSTATUS status;
 	
-	if (!sock)
-	{
+	if (!sock) {
 		WDRBD_INFO("socket is null.\n");
 		return;
 	}
@@ -1572,14 +1574,13 @@ void del_gendisk(struct gendisk *disk)
 	// DW-1493 : WSK_EVENT_DISCONNECT disable
 	if (sock->sk){
 		status = SetEventCallbacks(sock, WSK_EVENT_DISCONNECT | WSK_EVENT_DISABLE);
-		WDRBD_INFO("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
+		WDRBD_TRACE("WSK_EVENT_DISABLE (sock = 0x%p)\n", sock);
 		if (!NT_SUCCESS(status)) {
-			WDRBD_INFO("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
+			WDRBD_TRACE("WSK_EVENT_DISABLE failed (sock = 0x%p)\n", sock);
 		}
 	}
 
-	if (sock->sk_linux_attr)
-	{
+	if (sock->sk_linux_attr) {
 		kfree(sock->sk_linux_attr);
 		sock->sk_linux_attr = 0;
 	}
@@ -1588,13 +1589,11 @@ void del_gendisk(struct gendisk *disk)
 	struct _buffering_attr *buffering_attr = &sock->buffering_attr;
 	struct ring_buffer *bab = buffering_attr->bab;
 
-	if (bab)
-	{
-		if (bab->static_big_buf)
-		{
-			kfree(bab->static_big_buf);
+	if (bab){
+		if (bab->static_big_buf) {
+			kfree2(bab->static_big_buf);
 		}
-		kfree(bab);
+		//kfree2(bab);
 	}
 	
 	WDRBD_CONN_TRACE("sock_relese: called CloseSocket(%p)\n", sock->sk);
@@ -1830,24 +1829,26 @@ int generic_make_request(struct bio *bio)
 	//
 	//	simulation disk-io error point . (generic_make_request fail) - disk error simluation type 0
 	//
-	if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
-		WDRBD_ERROR("SimulDiskIoError: type0...............\n");
-		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+	if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
+		if(IsDiskError()) {
+			WDRBD_ERROR("SimulDiskIoError: type0...............ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
-		// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
-		// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
-		// If no error simulation, calling 'IoCallDriver' verifies our completion routine called so that irp will be freed there.
-		if (newIrp->MdlAddress != NULL) {
-			PMDL mdl, nextMdl;
-			for (mdl = newIrp->MdlAddress; mdl != NULL; mdl = nextMdl) {
-				nextMdl = mdl->Next;
-				MmUnlockPages(mdl);
-				IoFreeMdl(mdl); // This function will also unmap pages.
+			// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
+			// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
+			// If no error simulation, calling 'IoCallDriver' verifies our completion routine called so that irp will be freed there.
+			if (newIrp->MdlAddress != NULL) {
+				PMDL mdl, nextMdl;
+				for (mdl = newIrp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+					nextMdl = mdl->Next;
+					MmUnlockPages(mdl);
+					IoFreeMdl(mdl); // This function will also unmap pages.
+				}
+				newIrp->MdlAddress = NULL;
 			}
-			newIrp->MdlAddress = NULL;
+			IoFreeIrp(newIrp);
+			return -EIO;		
 		}
-		IoFreeIrp(newIrp);
-		return -EIO;
 	}
 
 	// DW-1495 : If any volume is set to read only, all writes operations are paused temporarily. 
@@ -2011,10 +2012,10 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
      __list_add_rcu(new, head->prev, head);
 }
 
- struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
- {
-     return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
- }
+struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
+{
+ 	return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
+}
 
 void blk_cleanup_queue(struct request_queue *q)
 {
@@ -2242,69 +2243,64 @@ void *idr_get_next(struct idr *idp, int *nextidp)
 
 /**
  * @brief
- *	Recreate the VOLUME_EXTENSION's MountPoint, VolIndex, block_device
+ *	Recreate the VOLUME_EXTENSION's MountPoint, Minor, block_device
  *	if it was changed
  */
-void query_targetdev(PVOLUME_EXTENSION pvext)
+void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 {
+	unsigned long long 	d_size;
+	UNICODE_STRING 		old_mount_point;
+	NTSTATUS 			status;
+	bool				bWasExist = FALSE;	
 	if (!pvext) {
-		WDRBD_WARN("Null parameter\n");
+		WDRBD_WARN("update_targetdev fail pvext is NULL\n");
 		return;
 	}
 
-	if (IsEmptyUnicodeString(&pvext->VolumeGuid)) {
-		// Should be existed guid's name
-		mvolQueryMountPoint(pvext);
-	}
-
-	UNICODE_STRING new_name;
-	NTSTATUS status = IoVolumeDeviceToDosName(pvext->DeviceObject, &new_name);
-	// if not same, it need to re-query
-	if (!NT_SUCCESS(status)) {	// ex: CD-ROM
-		return;
-	}
-
-	// DW-1105: detach volume when replicating volume letter is changed.
-	if (pvext->Active &&
-		!RtlEqualUnicodeString(&pvext->MountPoint, &new_name, TRUE))
-	{
-		// DW-1300: get device and get reference.
-		struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
-		if (device &&
-			get_ldev_if_state(device, D_NEGOTIATING))
-		{
-			WDRBD_WARN("replicating volume letter is changed, detaching\n");
-			set_bit(FORCE_DETACH, &device->flags);
-			change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
-			put_ldev(device);
+	// DW-1681 Since there is a performance problem in update_targetdev, it is discriminated whether or not to update the mount point.
+	if(bMountPointUpdate) {
+		if(!IsEmptyUnicodeString(&pvext->MountPoint)) {
+			ucsdup (&old_mount_point, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
+			bWasExist = TRUE;
 		}
-		// DW-1300: put device reference count when no longer use.
-		if (device)
-			kref_put(&device->kref, drbd_destroy_device);
-	}
+		
+		status = mvolUpdateMountPointInfoByExtension(pvext);
+		if(NT_SUCCESS(status)) {
+			WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+			// DW-1105: detach volume when replicating volume letter is changed.
+			if (pvext->Active && bWasExist) {
+				if(IsEmptyUnicodeString(&pvext->MountPoint) || 
+					!RtlEqualUnicodeString(&pvext->MountPoint, &old_mount_point, TRUE) ) {
 
-	if (!MOUNTMGR_IS_VOLUME_NAME(&new_name) &&
-		!RtlEqualUnicodeString(&new_name, &pvext->MountPoint, TRUE)) {
-
-		FreeUnicodeString(&pvext->MountPoint);
-		RtlUnicodeStringInit(&pvext->MountPoint, new_name.Buffer);
-
-		if (IsDriveLetterMountPoint(&new_name)) {
-			pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+					// DW-1300: get device and get reference.
+					struct drbd_device *device = get_device_with_vol_ext(pvext, TRUE);
+					if (device && get_ldev_if_state(device, D_NEGOTIATING)) {
+						WDRBD_WARN("replicating volume letter is changed, detaching\n");
+						set_bit(FORCE_DETACH, &device->flags);
+						change_disk_state(device, D_DETACHING, CS_HARD, NULL);						
+						put_ldev(device);
+					}
+					// DW-1300: put device reference count when no longer use.
+					if (device)
+						kref_put(&device->kref, drbd_destroy_device);
+				}
+			}
 		}
-	}
-
+		
+		if(bWasExist) {
+			FreeUnicodeString (&old_mount_point);
+		}
+	} 
+	
 	// DW-1109: not able to get volume size in add device routine, get it here if no size is assigned.
 	// DW-1469
-	unsigned long long d_size = get_targetdev_volsize(pvext);
+	d_size = get_targetdev_volsize(pvext);
 	
-	if (pvext->dev->bd_contains &&
-		pvext->dev->bd_contains->d_size != d_size)
-	{	
+	if ( pvext->dev->bd_contains && (pvext->dev->bd_contains->d_size != d_size) ) {	
 		pvext->dev->bd_contains->d_size = d_size;
-		pvext->dev->bd_disk->queue->max_hw_sectors =
-			d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
+		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
+    WDRBD_TRACE("d_size: %lld bytes bd_contains->d_size: %lld bytes max_hw_sectors: %lld sectors\n",d_size, pvext->dev->bd_contains->d_size, pvext->dev->bd_disk->queue->max_hw_sectors );
 }
 
 // DW-1105: refresh all volumes and handle changes.
@@ -2326,8 +2322,7 @@ void monitor_mnt_change(PVOID pParam)
 	RtlInitUnicodeString(&usMntMgr, MOUNTMGR_DEVICE_NAME);
 	InitializeObjectAttributes(&oaMntMgr, &usMntMgr, OBJ_CASE_INSENSITIVE, NULL, NULL);
 
-	do
-	{
+	do {
 		status = ZwCreateFile(&hMntMgr,
 			FILE_READ_DATA | FILE_WRITE_DATA,
 			&oaMntMgr,
@@ -2340,15 +2335,13 @@ void monitor_mnt_change(PVOID pParam)
 			NULL,
 			0);
 
-		if (!NT_SUCCESS(status))
-		{
+		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("could not open mount manager, status : 0x%x\n", status);
 			break;
 		}
 
 		status = ZwCreateEvent(&hEvent, GENERIC_ALL, 0, NotificationEvent, FALSE);
-		if (!NT_SUCCESS(status))
-		{
+		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("could not create event, status : 0x%x\n", status);
 			break;
 		}
@@ -2357,32 +2350,28 @@ void monitor_mnt_change(PVOID pParam)
 		atomic_set(&g_monitor_mnt_working, TRUE);
 
 		MOUNTMGR_CHANGE_NOTIFY_INFO mcni1 = { 0, }, mcni2 = { 0, };
-		while (TRUE == atomic_read(&g_monitor_mnt_working))
-		{
+
+		while (TRUE == atomic_read(&g_monitor_mnt_working)) {
+			
 			status = ZwDeviceIoControlFile(hMntMgr, hEvent, NULL, NULL, &iosb, IOCTL_MOUNTMGR_CHANGE_NOTIFY,
 				&mcni1, sizeof(mcni1), &mcni2, sizeof(mcni2));
 
-			if (!NT_SUCCESS(status))
-			{
+			if (!NT_SUCCESS(status)) {
 				WDRBD_ERROR("ZwDeviceIoControl with IOCTL_MOUNTMGR_CHANGE_NOTIFY has been failed, status : 0x%x\n", status);
 				break;
-			}
-			else if (STATUS_PENDING == status)
-			{
+			} else if (STATUS_PENDING == status) {
 				status = ZwWaitForSingleObject(hEvent, TRUE, NULL);
 			}
 
 			// we've got notification, refresh all volume and adjust changes if necessary.
 			HANDLE hVolRefresher = NULL;
 			status = PsCreateSystemThread(&hVolRefresher, THREAD_ALL_ACCESS, NULL, NULL, NULL, adjust_changes_to_volume, NULL);
-			if (!NT_SUCCESS(status))
-			{
+			if (!NT_SUCCESS(status)) {
 				WDRBD_ERROR("PsCreateSystemThread for adjust_changes_to_volume failed, status : 0x%x\n", status);
 				break;
 			}
 
-			if (NULL != hVolRefresher)
-			{
+			if (NULL != hVolRefresher) {
 				ZwClose(hVolRefresher);
 				hVolRefresher = NULL;
 			}
@@ -2395,8 +2384,7 @@ void monitor_mnt_change(PVOID pParam)
 
 	atomic_set(&g_monitor_mnt_working, FALSE);
 
-	if (NULL != hMntMgr)
-	{
+	if (NULL != hMntMgr) {
 		ZwClose(hMntMgr);
 		hMntMgr = NULL;
 	}
@@ -2409,14 +2397,12 @@ NTSTATUS start_mnt_monitor()
 	HANDLE	hVolMonitor = NULL;
 
 	status = PsCreateSystemThread(&hVolMonitor, THREAD_ALL_ACCESS, NULL, NULL, NULL, monitor_mnt_change, NULL);
-	if (!NT_SUCCESS(status))
-	{
+	if (!NT_SUCCESS(status)) {
 		WDRBD_ERROR("PsCreateSystemThread for monitor_mnt_change failed with status 0x%08X\n", status);
 		return status;
 	}
 
-	if (NULL != hVolMonitor)
-	{
+	if (NULL != hVolMonitor) {
 		ZwClose(hVolMonitor);
 		hVolMonitor = NULL;
 	}
@@ -2440,7 +2426,7 @@ void refresh_targetdev_list()
 
     MVOL_LOCK();
     for (PVOLUME_EXTENSION pvext = proot->Head; pvext; pvext = pvext->Next) {
-        query_targetdev(pvext);
+        update_targetdev(pvext, TRUE);
     }
     MVOL_UNLOCK();
 }
@@ -2448,12 +2434,11 @@ void refresh_targetdev_list()
 /**
  * @brief
  */
-PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
+PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev)
 {
 	char path[3] = { minor_to_letter(minor), ':', '\0' };
-	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL);
-	if (IS_ERR(dev))
-	{
+	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL, bUpdatetargetdev);
+	if (IS_ERR(dev)) {
 		return NULL;
 	}
 
@@ -2467,16 +2452,14 @@ PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor)
 LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION VolumeExtension)
 {
 	LARGE_INTEGER	volumeSize;
-	NTSTATUS	status;
+	NTSTATUS		status;
 
-	if (VolumeExtension->TargetDeviceObject == NULL)
-	{
+	if (VolumeExtension->TargetDeviceObject == NULL) {
 		WDRBD_ERROR("TargetDeviceObject is null!\n");
 		return (LONGLONG)0;
 	}
 	status = mvolGetVolumeSize(VolumeExtension->TargetDeviceObject, &volumeSize);
-	if (!NT_SUCCESS(status))
-	{
+	if (!NT_SUCCESS(status)) {
 		WDRBD_WARN("get volume size error = 0x%x\n", status);
 		volumeSize.QuadPart = 0;
 	}
@@ -2527,7 +2510,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf(dev->bd_disk->disk_name, "drbd", pvext->VolIndex);
+	sprintf(dev->bd_disk->disk_name, "drbd%d", pvext->Minor);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;
@@ -2629,8 +2612,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     PAGED_CODE();
 
     PWCHAR new_reg_buf = (PWCHAR)ExAllocatePoolWithTag(PagedPool, MAX_TEXT_BUF, '93DW');
-    if (!new_reg_buf)
-    {
+    if (!new_reg_buf) {
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag new_reg_buf\n", 0);
         return FALSE;
     }
@@ -2649,62 +2631,51 @@ BOOLEAN do_add_minor(unsigned int minor)
         NULL);
 
     status = ZwOpenKey(&hKey, KEY_READ, &attributes);
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
 
     status = ZwQueryKey(hKey, KeyFullInformation, NULL, 0, &size);
-    if (status != STATUS_BUFFER_TOO_SMALL)
-    {
+    if (status != STATUS_BUFFER_TOO_SMALL) {
         ASSERT(!NT_SUCCESS(status));
         goto cleanup;
     }
 
     keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, 'A3DW');
-    if (!keyInfo)
-    {
+    if (!keyInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%d)\n", size);
         goto cleanup;
     }
 
     status = ZwQueryKey(hKey, KeyFullInformation, keyInfo, size, &size);
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         goto cleanup;
     }
 
     count = keyInfo->Values;
 
     valueInfo = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, valueInfoSize, 'B3DW');
-    if (!valueInfo)
-    {
+    if (!valueInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         WDRBD_ERROR("Failed to ExAllocatePoolWithTag() valueInfoSize(%d)\n", valueInfoSize);
         goto cleanup;
     }
 
-    for (int i = 0; i < count; ++i)
-    {
+    for (int i = 0; i < count; ++i) {
         RtlZeroMemory(valueInfo, valueInfoSize);
 
         status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
 
-        if (!NT_SUCCESS(status))
-        {
-            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL)
-            {
+        if (!NT_SUCCESS(status)) {
+            if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
                 goto cleanup;
             }
         }
 
-        if (REG_BINARY == valueInfo->Type)
-        {
-            valueInfo->Name[0] &= ~0x20;
-
-            if (minor == valueInfo->Name[0] - L'C')
-            {
+        if (REG_BINARY == valueInfo->Type) {
+            WCHAR temp = toupper(valueInfo->Name[0]);
+            if (minor == temp - L'C') {
                 ret = true;
                 goto cleanup;
             }
@@ -2737,14 +2708,16 @@ bool is_equal_volume_link(
 	_In_ UNICODE_STRING * rhs,
 	_In_ bool case_sensitive)
 {
-	WCHAR * l = lhs->Buffer;
-	WCHAR * r = rhs->Buffer;
+	WCHAR* l = lhs->Buffer;
+	WCHAR* r = rhs->Buffer;
 	USHORT index = 0;
 	int gap = lhs->Length - rhs->Length;
 
-	if (abs(gap) > sizeof(WCHAR)) {
+	if ( !l || !r || (abs(gap) > sizeof(WCHAR)) ) {
 		return false;
 	}
+	
+
 
 	for (; index < min(lhs->Length, rhs->Length); ++l, ++r, index += sizeof(WCHAR)) {
 
@@ -2801,30 +2774,36 @@ static void _adjust_guid_name(char * dst, const char * src)
  *	- "c/vdrive" or "c\\vdrive"
  *	f no block_device allocated, then query
  */
-struct block_device *blkdev_get_by_link(UNICODE_STRING * name)
+struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev)
 {
-	ROOT_EXTENSION * proot = mvolRootDeviceObject->DeviceExtension;
-	VOLUME_EXTENSION * pvext = proot->Head;
-
+	ROOT_EXTENSION* pRoot = mvolRootDeviceObject->DeviceExtension;
+	VOLUME_EXTENSION* pVExt = pRoot->Head;
+	VOLUME_EXTENSION* pRetVExt = NULL;
+		
 	MVOL_LOCK();
-	for (; pvext; pvext = pvext->Next) {
-
-		// if no block_device instance yet,
-		query_targetdev(pvext);
+	for (; pVExt; pVExt = pVExt->Next) {
+		
+		if(IsEmptyUnicodeString(&pVExt->VolumeGuid)) { // DW-1728 update the volume's GUID information again for a volume without a GUID (VHD).
+			update_targetdev(pVExt, TRUE);
+		} else {
+			update_targetdev(pVExt, FALSE);
+		}
 
 		UNICODE_STRING * plink = MOUNTMGR_IS_VOLUME_NAME(name) ?
-			&pvext->VolumeGuid : &pvext->MountPoint;
-
+			&pVExt->VolumeGuid : &pVExt->MountPoint;
+		
 		if (plink && is_equal_volume_link(name, plink, false)) {
-			break;
+			// break;	
+			// DW-1702 fixup the logic to perform update_targetdev on all volumes at blkdev_get_by_link. Even if found VExt, no break;
+			pRetVExt = pVExt;
 		}
 	}
 	MVOL_UNLOCK();
 
-	return (pvext) ? pvext->dev : NULL;
+	return (pRetVExt) ? pRetVExt->dev : NULL;
 }
 
-struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder)
+struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev)
 {
 #ifdef _WIN32
 	UNREFERENCED_PARAMETER(mode);
@@ -2833,7 +2812,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	ANSI_STRING apath;
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
-
+	
 	_adjust_guid_name(cpath, path);
 
 	RtlInitAnsiString(&apath, cpath);
@@ -2843,7 +2822,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 		return ERR_PTR(-EINVAL);
 	}
 
-	struct block_device * dev = blkdev_get_by_link(&upath);
+	struct block_device * dev = blkdev_get_by_link(&upath, bUpdatetargetdev);
 	RtlFreeUnicodeString(&upath);
 
 	return dev ? dev : ERR_PTR(-ENODEV);
@@ -3367,4 +3346,32 @@ char *kvasprintf(int flags, const char *fmt, va_list args)
 	}
 
 	return NULL;
+}
+
+VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx) 
+{
+	PIO_STACK_LOCATION  pIrpStack = NULL;
+
+	WDRBD_WARN("ctx:%s error:%x bio->io_retry:%d\n", ctx, error, bio->io_retry);
+	
+	atomic_dec(&bio->io_retry);
+	pIrpStack = IoGetNextIrpStackLocation (Irp);
+	if(bio->MasterIrpStackFlags) 
+		pIrpStack->Flags = bio->MasterIrpStackFlags;
+	IoSetCompletionRoutine(Irp, (PIO_COMPLETION_ROUTINE)bio->bi_end_io, bio, TRUE, TRUE, TRUE);
+	IoCallDriver(bio->bi_bdev->bd_disk->pDeviceExtension->TargetDeviceObject, Irp);
+	return; 
+}
+
+bool IsDiskError()
+{
+	bool bErr = FALSE;
+	if( gSimulDiskIoError.ErrorFlag == SIMUL_DISK_IO_ERROR_FLAG1) {
+		bErr = TRUE;
+	}
+	if( (gSimulDiskIoError.ErrorFlag == SIMUL_DISK_IO_ERROR_FLAG2) && gSimulDiskIoError.ErrorCount) {
+		bErr = TRUE;
+		gSimulDiskIoError.ErrorCount--;
+	}
+	return bErr;
 }

@@ -216,7 +216,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 		goto out;
 	bio->bi_private = device;
 	bio->bi_end_io = drbd_md_endio;
-
+	bio->io_retry = device->resource->res_opts.io_error_retry_count;
 	bio_set_op_attrs(bio, op, op_flags);
 
 	if (op != REQ_OP_WRITE && device->disk_state[NOW] == D_DISKLESS && device->ldev == NULL)
@@ -249,8 +249,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
 	err = device->md_io.error;
 #ifdef _WIN32
-    if(err == STATUS_NO_SUCH_DEVICE)
-    {
+    if(err == STATUS_NO_SUCH_DEVICE) {
 		// DW-1396: referencing bio causes BSOD as long as bio has already been freed once it's been submitted, we don't need volume device name which is already removed also.
         drbd_err(device, "cannot find meta volume\n");
         return err;

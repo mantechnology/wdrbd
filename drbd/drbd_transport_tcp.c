@@ -123,7 +123,7 @@ static int dtt_add_path(struct drbd_transport *, struct drbd_path *path);
 static int dtt_remove_path(struct drbd_transport *, struct drbd_path *);
 
 #ifdef _WIN32_SEND_BUFFING
-static bool dtt_start_send_buffring(struct drbd_transport *, int size);
+static bool dtt_start_send_buffring(struct drbd_transport *, signed long long size);
 static void dtt_stop_send_buffring(struct drbd_transport *);
 #endif
 static struct drbd_transport_class tcp_transport_class = {
@@ -558,13 +558,9 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 		{
 			struct _buffering_attr *buffering_attr = &tcp_transport->stream[DATA_STREAM]->buffering_attr;
 			struct ring_buffer *bab = buffering_attr->bab;
-
-			if (bab)
-			{
+			if (bab) {
 				stats->send_buffer_used = bab->sk_wmem_queued;
-			}
-			else
-			{
+			} else {
 				stats->send_buffer_used = 0; // don't know how to get WSK tx buffer usage yet. Ignore it.
 			}
 		}
@@ -574,7 +570,7 @@ static void dtt_stats(struct drbd_transport *transport, struct drbd_transport_st
 	}
 }
 
-static void dtt_setbufsize(struct socket *socket, unsigned int snd,
+static void dtt_setbufsize(struct socket *socket, signed long long snd,
 			   unsigned int rcv)
 {
 #ifdef _WIN32
@@ -644,7 +640,9 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 #endif
 	struct net_conf *nc;
 	int err;
-	int sndbuf_size, rcvbuf_size, connect_int;
+	//int sndbuf_size, rcvbuf_size, connect_int;
+	int rcvbuf_size, connect_int; signed long long sndbuf_size;
+	
 	char sbuf[128] = {0,};
 	char dbuf[128] = {0,};
 	
@@ -1478,9 +1476,9 @@ static void dtt_destroy_listener(struct drbd_listener *generic_listener)
 
 	// DW-1483 : WSK_EVENT_ACCEPT disable	
 	NTSTATUS status = SetEventCallbacks(listener->s_listen, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
-	WDRBD_INFO("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
+	WDRBD_TRACE("WSK_EVENT_DISABLE (listener = 0x%p)\n", listener);
 	if (!NT_SUCCESS(status)) {
-		WDRBD_INFO("WSK_EVENT_DISABLE failed (listener = 0x%p)\n", listener);
+		WDRBD_TRACE("WSK_EVENT_DISABLE failed (listener = 0x%p)\n", listener);
 	}
 #else
 	unregister_state_change(listener->s_listen->sk, listener);
@@ -1508,7 +1506,8 @@ static int dtt_create_listener(struct drbd_transport *transport,
 			       struct drbd_listener **ret_listener)
 {
 #ifdef _WIN32
-	int err = 0, sndbuf_size, rcvbuf_size; 
+	//int err = 0, sndbuf_size, rcvbuf_size; 
+	int err = 0, rcvbuf_size; signed long long sndbuf_size;
 	struct sockaddr_storage_win my_addr;
 	NTSTATUS status;
 	SOCKADDR_IN ListenV4Addr = {0,};
@@ -2029,7 +2028,7 @@ randomize:
 #ifdef _WIN32 // release event callback before dtt_put_listener 
 	status = SetEventCallbacks(dttlistener->s_listen->sk, WSK_EVENT_ACCEPT | WSK_EVENT_DISABLE);
 	if (!NT_SUCCESS(status)) {
-		WDRBD_INFO("WSK_EVENT_DISABLE failed=0x%x\n", status);
+		WDRBD_TRACE("WSK_EVENT_DISABLE failed=0x%x\n", status);
 		//goto out; // just go to release listener 
 	}
 #endif
@@ -2452,9 +2451,10 @@ static void __exit dtt_cleanup(void)
 
 extern VOID NTAPI send_buf_thread(PVOID p);
 
-static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
+static bool dtt_start_send_buffring(struct drbd_transport *transport, signed long long size)
 {
-	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
+	struct drbd_tcp_transport* tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
+	struct drbd_connection* connection = container_of(transport, struct drbd_connection, transport);
 
 	if (size > 0 )
 	{
@@ -2482,7 +2482,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, int size)
 					size = 1024 * 5120; // meta bab is about 5MB
 				}
 
-				if ((attr->bab = create_ring_buffer(tcp_transport->stream[i]->name, size)) != NULL)
+				if ((attr->bab = create_ring_buffer(connection, tcp_transport->stream[i]->name, size, i)) != NULL)
 				{
 					KeInitializeEvent(&attr->send_buf_kill_event, SynchronizationEvent, FALSE);
 					KeInitializeEvent(&attr->send_buf_killack_event, SynchronizationEvent, FALSE);

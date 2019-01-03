@@ -103,7 +103,11 @@
   /* max number of write requests between write barriers */
 #define DRBD_MAX_EPOCH_SIZE_MIN 1
 #define DRBD_MAX_EPOCH_SIZE_MAX 20000
+#ifdef _WIN32 // DW-1695 Increase a max-epoch-size's default value by increasing the max-buffers'.
+#define DRBD_MAX_EPOCH_SIZE_DEF 16000
+#else
 #define DRBD_MAX_EPOCH_SIZE_DEF 2048
+#endif
 #define DRBD_MAX_EPOCH_SIZE_SCALE '1'
 
 
@@ -112,7 +116,7 @@
 #ifdef _WIN64 
 // DW-1422 set limit send buffer max size to be within 32-bit variable, since config treats it as 32-bit var also.
 // to have this over 32-bit, re-define this as '((unsigned long long)64 << 30) and modify all arguments(include read data from config) to 64-bit var. 
-#define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFF)
+#define DRBD_SNDBUF_SIZE_MAX  (0xFFFFFFFFFF)
 /* DW-1436 sndbuf-size default value is set to 0, minimum value is set to 10M when used */
 #define DRBD_SNDBUF_SIZE_DEF	0 
 #define DRBD_SNDBUF_SIZE_MIN  (1024*1024*10)
@@ -126,6 +130,7 @@
 #else
 #define DRBD_SNDBUF_SIZE_MAX  (10<<20)
 #define DRBD_SNDBUF_SIZE_DEF  0
+#define DRBD_SNDBUF_SIZE_MIN  0 // DW-1719 add missing definitions (support linux)
 #endif
 #define DRBD_SNDBUF_SIZE_SCALE '1'
 
@@ -137,7 +142,11 @@
   /* @4k PageSize -> 128kB - 512MB */
 #define DRBD_MAX_BUFFERS_MIN  32
 #define DRBD_MAX_BUFFERS_MAX  131072
+#ifdef _WIN32 // DW-1695 Takes the value of max-buffers sufficiently.
+#define DRBD_MAX_BUFFERS_DEF  16000
+#else
 #define DRBD_MAX_BUFFERS_DEF  2048
+#endif
 #define DRBD_MAX_BUFFERS_SCALE '1'
 
   /* @4k PageSize -> 4kB - 512MB */
@@ -265,9 +274,11 @@
 #define DRBD_C_MIN_RATE_SCALE	'k'  /* kilobytes */
 
 #define DRBD_CONG_FILL_MIN	0
-#define DRBD_CONG_FILL_MAX	(10<<21) /* 10GByte in sectors */
+//#define DRBD_CONG_FILL_MAX	(10<<21) /* 10GByte in sectors */
+#define DRBD_CONG_FILL_MAX 	(0xFFFFFFFFFF)
 #define DRBD_CONG_FILL_DEF	0
-#define DRBD_CONG_FILL_SCALE	's'  /* sectors */
+//#define DRBD_CONG_FILL_SCALE	's'  /* sectors */
+#define DRBD_CONG_FILL_SCALE	'1'
 
 #define DRBD_CONG_EXTENTS_MIN	DRBD_AL_EXTENTS_MIN
 #define DRBD_CONG_EXTENTS_MAX	DRBD_AL_EXTENTS_MAX
@@ -308,6 +319,11 @@
 
 #ifdef _WIN32 // DW-1249: auto-start by svc
 #define DRBD_SVC_AUTOSTART_DEF 1
+// DW-1716
+#define DRBD_IO_ERROR_RETRY_COUNT_MIN 		0
+#define DRBD_IO_ERROR_RETRY_COUNT_DEF		3
+#define DRBD_IO_ERROR_RETRY_COUNT_MAX		100
+#define DRBD_IO_ERROR_RETRY_COUNT_SCALE		'1'
 #endif
 
 #define DRBD_NR_REQUESTS_MIN	4

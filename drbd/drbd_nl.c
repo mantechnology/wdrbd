@@ -1261,8 +1261,8 @@ retry:
             {
                 struct drbd_peer_device *peer_device;
                 for_each_peer_device_ref(peer_device, im, device) {
-                    sector_t p_size = peer_device->max_size << 9;
-                    sector_t l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension);
+					unsigned long long p_size = peer_device->max_size << 9; // volume size in bytes
+                    unsigned long long l_size = get_targetdev_volsize(device->this_bdev->bd_disk->pDeviceExtension); // volume size in bytes
 					// DW-1323: abort initial full sync when target disk is smaller than source
 					// If p_size is nonzero, it was connected with the peer.
                     if ((drbd_current_uuid(device) == UUID_JUST_CREATED) && 
@@ -1694,7 +1694,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
-			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 			if (pvext)
 			{
 				SetDrbdlockIoBlock(pvext, FALSE);
@@ -1720,7 +1720,7 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		// DW-1327: 
 		idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 		{
-			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+			PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 			if (pvext)
 			{
 				SetDrbdlockIoBlock(pvext, TRUE);
@@ -2956,7 +2956,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 	int err = 0;
 
 	bdev = blkdev_get_by_path(bdev_path,
-				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr);
+				  FMODE_READ | FMODE_WRITE | FMODE_EXCL, claim_ptr, FALSE);
 	if (IS_ERR(bdev)) {
 		drbd_err(device, "open(\"%s\") failed with %ld\n",
 				bdev_path, PTR_ERR(bdev));
@@ -3303,7 +3303,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	struct drbd_genlmsghdr *dh = info->userhdr;
 	if (do_add_minor(dh->minor)) {
 		NTSTATUS status = STATUS_UNSUCCESSFUL;
-		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor);
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(dh->minor, FALSE);
 		if (pvext) {
 			// DW-1461: set volume protection when attaching.
 			SetDrbdlockIoBlock(pvext, resource->role[NOW] == R_PRIMARY ? FALSE : TRUE);
@@ -4440,6 +4440,13 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	}
 	mutex_unlock(&adm_ctx->resource->conf_update);
 
+	// 
+	// alloc_bab
+	//
+	if(alloc_bab(connection, connection->transport.net_conf)) {
+	} else {
+	}
+	
 	drbd_debugfs_connection_add(connection); /* after ->net_conf was assigned */
 	drbd_thread_start(&connection->sender);
 	*ret_conn = connection;
@@ -7005,7 +7012,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	// DW-1461: set volume protection when going down. 
 	idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
 	{
-		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor);
+		PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
 		if (pvext)
 		{
 			SetDrbdlockIoBlock(pvext, TRUE);
@@ -7126,6 +7133,7 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 			del_connection(connection);
 			mutex_unlock(&resource->conf_update);
 		} else {
+			drbd_info(connection, "conn_try_disconnect retcode : %d, connection ref : %d\n", retcode, connection->kref);
 			kref_debug_put(&connection->kref_debug, 13);
 			kref_put(&connection->kref, drbd_destroy_connection);
 			goto out;

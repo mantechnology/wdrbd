@@ -519,7 +519,8 @@ struct sock {
 #else
 	int sk_wmem_queued;
 #endif
-	int sk_sndbuf;
+	//int sk_sndbuf;
+	signed long long sk_sndbuf;
 	KSPIN_LOCK sk_callback_lock; 
 };
 
@@ -652,7 +653,7 @@ struct block_device {
 	struct block_device *	bd_parent;			// DW-1109: it points the block device whose bd_contains points me.
 	struct block_device *	bd_contains;
 	struct gendisk * bd_disk;
-	unsigned long long d_size;
+    unsigned long long d_size; // volume size in bytes
 	struct kref kref;
 };
 
@@ -721,6 +722,7 @@ struct bio {
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
+	unsigned int 			io_retry;
 };
 
 struct bio_set {
@@ -894,6 +896,7 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 
 extern LONG_PTR xchg(LONG_PTR *target, LONG_PTR value);
 extern void atomic_set(atomic_t *v, int i);
+extern void atomic_set64(atomic_t64* v, LONGLONG i);
 extern void atomic_add(int i, atomic_t *v);
 extern void atomic_add64(LONGLONG a, atomic_t64 *v);
 extern void atomic_sub(int i, atomic_t *v);
@@ -1261,8 +1264,8 @@ extern long PTR_ERR(const void *ptr);
 extern long IS_ERR_OR_NULL(const void *ptr);
 extern int IS_ERR(void *err);
 
-extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name);
-extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder);
+extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev);
+extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev);
 
 extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
 extern void hlist_del_init(struct hlist_node *entry);
@@ -1382,9 +1385,9 @@ extern void delete_drbd_block_device(struct kref *kref);
 extern struct drbd_device *get_device_with_vol_ext(PVOLUME_EXTENSION pvext, bool bCheckRemoveLock);
 extern BOOLEAN do_add_minor(unsigned int minor);
 extern void drbdFreeDev(PVOLUME_EXTENSION pDeviceExtension);
-extern void query_targetdev(PVOLUME_EXTENSION pvext);
+extern void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate);
 extern void refresh_targetdev_list();
-extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor);
+extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
 extern int WriteEventLogEntryData(
@@ -1672,6 +1675,7 @@ char		gLogBuf[LOGBUF_MAXCNT][MAX_DRBDLOG_BUF];
 int drbd_resize(struct drbd_device *device);
 
 extern char *kvasprintf(int flags, const char *fmt, va_list args);
-
+VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx);
+bool IsDiskError();
 
 #endif // DRBD_WINDOWS_H

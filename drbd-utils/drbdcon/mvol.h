@@ -44,15 +44,17 @@ DWORD MVOL_DismountVolume(CHAR DriveLetter, int Force);
 /**
 *      @brief  Simulate Disk I/O Error
 *      @param  SIMULATION_DISK_IO_ERROR structure's pointer
-*			bDiskErrorOn : Simulation flag
-*				true -  ON Simulation flag
-*				false - OFF Simulation flag
+*			ErrorFlag : Error Simulation flag
+*				#define SIMUL_DISK_IO_ERROR_FLAG0		0 // No Disk Error 
+*				#define SIMUL_DISK_IO_ERROR_FLAG1		1 // Continuous Disk Error Flag
+*				#define SIMUL_DISK_IO_ERROR_FLAG2		2 // Temporary Disk Error Flag
 *			ErrorType : Type of Disk I/O Error
 *				0 - generic_make_request fail
 *				1 - Local Disk I/O complete with error
 *				2 - Peer Request I/O complete with error
 *				3 - Meta Data I/O complete with error
 *				4 - Bitmap I/O complete with error
+* 			ErrorCount : Error Count when Disk Error Flag is 2(Temporary Disk Error). If Error Flag is 0 or 1, this filed is Ignored.
 *      @return if it success, return ERROR_SUCCESS, if failed, return value is GetLastError()'s return
 */
 DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);

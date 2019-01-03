@@ -101,7 +101,7 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 
     PAGED_CODE();
 
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, FALSE);
     if (!pvext) {
         return STATUS_UNSUCCESSFUL;
     }
@@ -204,7 +204,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 {
     PAGED_CODE();
 
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, FALSE);
     if (!pvext)
     {
         return STATUS_UNSUCCESSFUL;
@@ -288,7 +288,7 @@ NTSTATUS FsctlUnlockVolume(unsigned int minor)
 {
     PAGED_CODE();
 
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, FALSE);
     if (!pvext)
     {
         return STATUS_UNSUCCESSFUL;
@@ -329,7 +329,7 @@ NTSTATUS FsctlFlushVolume(unsigned int minor)
 {
     PAGED_CODE();
 
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, FALSE);
     if (!pvext)
     {
         return STATUS_UNSUCCESSFUL;
@@ -388,9 +388,8 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 {
     PAGED_CODE();
 
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-    if (!pvext)
-    {
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, TRUE);
+    if (!pvext) {
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -402,8 +401,7 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
-    __try
-    {
+    __try {
         InitializeObjectAttributes(&ObjectAttributes,
             &device_name,
             OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
@@ -422,16 +420,13 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
             NULL,
             0);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
             __leave;
         }
     }
-    __finally
-    {
-        if (hFile)
-        {
+    __finally {
+        if (hFile) {
             ZwClose(hFile);
         }
     }
@@ -441,9 +436,8 @@ NTSTATUS FsctlCreateVolume(unsigned int minor)
 
 HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 {
-	PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
-	if (!pvext)
-	{
+	PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, FALSE);
+	if (!pvext) {
 		WDRBD_ERROR("could not get volume extension from device minor(%u)\n", minor);
 		return NULL;
 	}
@@ -454,8 +448,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 	IO_STATUS_BLOCK ioStatus = { 0, };	
 	UNICODE_STRING usPath = { 0, };
 		
-	do
-	{
+	do {
 		RtlUnicodeStringInit(&usPath, pvext->PhysicalDeviceName);
 		InitializeObjectAttributes(&ObjectAttributes,
 			&usPath,
@@ -475,8 +468,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 			NULL,
 			0);
 
-		if (!NT_SUCCESS(status))
-		{
+		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
 			break;
 		}
@@ -1705,10 +1697,10 @@ ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 		return 0;
 	}
 
-    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size, '46DW');
+    dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size + sizeof(UNICODE_NULL), '46DW');
 	if (dst->Buffer) {
 		dst->Length = size;
-		dst->MaximumLength = size + sizeof(WCHAR);
+		dst->MaximumLength = size + sizeof(UNICODE_NULL);
 		RtlCopyMemory(dst->Buffer, src, size);
 		return size;
 	}
