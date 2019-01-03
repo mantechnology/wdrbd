@@ -1802,6 +1802,9 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	// MODIFIED_BY_MANTECH DW-1145: set UUID_FLAG_CONSISTENT_WITH_PRI if my disk is consistent with primary's
 	if (is_consistent_with_primary(device))
 		uuid_flags |= UUID_FLAG_CONSISTENT_WITH_PRI;
+	// DW-1285 If MDF_PEER_INIT_SYNCT_BEGIN is on, send UUID_FLAG_INIT_SYNCT_BEGIN flag.
+	if(drbd_md_test_peer_flag(peer_device, MDF_PEER_INIT_SYNCT_BEGIN))
+		uuid_flags |= UUID_FLAG_INIT_SYNCT_BEGIN;
 #endif
 
 	p->uuid_flags = cpu_to_be64(uuid_flags);
@@ -3444,6 +3447,8 @@ void drbd_destroy_device(struct kref *kref)
 	struct drbd_peer_device *peer_device, *tmp;
 
 
+	WDRBD_TRACE("%s\n", __FUNCTION__);
+
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 	if (device->this_bdev)
@@ -3500,6 +3505,8 @@ void drbd_destroy_device(struct kref *kref)
 void drbd_destroy_resource(struct kref *kref)
 {
 	struct drbd_resource *resource = container_of(kref, struct drbd_resource, kref);
+
+	WDRBD_TRACE("%s\n", __FUNCTION__);
 
 	idr_destroy(&resource->devices);
 #ifndef _WIN32
@@ -4175,7 +4182,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	INIT_LIST_HEAD(&connection->todo.work_list);
 	connection->todo.req = NULL;
 
-	atomic_set(&connection->ap_in_flight, 0);
+	atomic_set64(&connection->ap_in_flight, 0);
 	connection->send.seen_any_write_yet = false;
 	connection->send.current_epoch_nr = 0;
 	connection->send.current_epoch_writes = 0;
@@ -4211,6 +4218,7 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	INIT_LIST_HEAD(&connection->read_ee);
 	INIT_LIST_HEAD(&connection->net_ee);
 	INIT_LIST_HEAD(&connection->done_ee);
+	INIT_LIST_HEAD(&connection->inactive_ee);	//DW-1696
 	init_waitqueue_head(&connection->ee_wait);
 
 	kref_init(&connection->kref);
@@ -4300,7 +4308,9 @@ void drbd_destroy_connection(struct kref *kref)
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device;
 	int vnr;
-	
+
+	drbd_info(connection, "%s\n", __FUNCTION__);
+
 	if (atomic_read(&connection->current_epoch->epoch_size) !=  0)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
@@ -4318,12 +4328,30 @@ void drbd_destroy_connection(struct kref *kref)
 		kref_put(&peer_device->device->kref, drbd_destroy_device);
 		free_peer_device(peer_device);
 	}
+
+	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
+	struct drbd_peer_request *peer_req, *t;
+	spin_lock(&resource->req_lock);
+	if (!list_empty(&connection->inactive_ee)) {
+		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
+			list_del(&peer_req->w.list);
+			drbd_free_peer_req(peer_req);
+		}
+	}
+
+	spin_unlock(&resource->req_lock);
+
 	idr_destroy(&connection->peer_devices);
 
 	kfree(connection->transport.net_conf);
 	drbd_put_send_buffers(connection);
 	conn_free_crypto(connection);
 	kref_debug_destroy(&connection->kref_debug);
+	//
+	// destroy_bab
+	//
+	destroy_bab(connection);
+	
 	kfree(connection);
 	kref_debug_put(&resource->kref_debug, 3);
 	kref_put(&resource->kref, drbd_destroy_resource);
@@ -4528,7 +4556,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	init_waitqueue_head(&device->al_wait);
 	init_waitqueue_head(&device->seq_wait);
 #ifdef _WIN32
-    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor);
+	// DW-1698 Only when drbd_device is created, it requests to update information about target device To fixup the frequency of calls to update_targetdev
+    PVOLUME_EXTENSION pvext = get_targetdev_by_minor(minor, TRUE);
 	if (!pvext) {
 		err = ERR_NO_DISK;
 		drbd_err(device, "%d: Device has no disk.\n", err);
@@ -4569,7 +4598,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors:%x, device->this_bdev->d_size >> 9:%x\n",device ,q->max_hw_sectors,device->this_bdev->d_size >> 9);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;

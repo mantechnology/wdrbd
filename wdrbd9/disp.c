@@ -230,11 +230,10 @@ NTSTATUS _QueryVolumeNameRegistry(
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
 					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->VolIndex = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
-					RtlUnicodeStringInit(&pvext->VolumeGuid, key);
-					key = NULL;
+					ucsdup(&pvext->VolumeGuid, key, valueInfo->NameLength);
 				}
 			}
 
@@ -341,12 +340,10 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     MVOL_UNLOCK();
     
 #ifdef _WIN32_MVFL
-    if (do_add_minor(VolumeExtension->VolIndex))
-    {
+    if (do_add_minor(VolumeExtension->Minor)) {
 #ifndef _WIN32_MULTIVOL_THREAD
         status = mvolInitializeThread(VolumeExtension, &VolumeExtension->WorkThreadInfo, mvolWorkThread);
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
             WDRBD_ERROR("Failed to initialize WorkThread. status(0x%x)\n", status);
             //return status;
         }
@@ -360,12 +357,13 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 	// DW-1109: create block device in add device routine, it won't be destroyed at least we put ref in remove device routine.
 	VolumeExtension->dev = create_drbd_block_device(VolumeExtension);
 
-    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) VolIndex(%d) Active(%d) MountPoint(%wZ)\n",
+    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ) VolumeGUID(%wZ)\n",
         VolumeExtension,
         VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->VolIndex,
+        VolumeExtension->Minor,
         VolumeExtension->Active,
-        &VolumeExtension->MountPoint);
+        &VolumeExtension->MountPoint,
+        &VolumeExtension->VolumeGuid);
 
     return STATUS_SUCCESS;
 }
@@ -485,7 +483,7 @@ mvolFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         if (device) {
 #ifdef _WIN32_MULTIVOL_THREAD
 			IoMarkIrpPending(Irp);
-			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp); 
 #else
 			PMVOL_THREAD				pThreadInfo;
 			pThreadInfo = &VolumeExtension->WorkThreadInfo;
@@ -694,7 +692,22 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 #ifdef _WIN32_MULTIVOL_THREAD
 			IoMarkIrpPending(Irp);
-			mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+			//It is processed in 2 passes according to IRQL.
+			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
+			//2. Otherwise, Directly call mvolwritedispatch
+			if(KeGetCurrentIrql() < DISPATCH_LEVEL) {
+				status = mvolReadWriteDevice(VolumeExtension, Irp, IRP_MJ_WRITE);
+				if (status != STATUS_SUCCESS) {
+                	mvolLogError(VolumeExtension->DeviceObject, 111, MSG_WRITE_ERROR, status);
+
+                	Irp->IoStatus.Information = 0;
+                	Irp->IoStatus.Status = status;
+                	IoCompleteRequest(Irp, (CCHAR)(NT_SUCCESS(Irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT));
+                	return status;
+            	}	
+			} else {
+				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
+			}
 #else
 			PMVOL_THREAD	pThreadInfo = &VolumeExtension->WorkThreadInfo;
 

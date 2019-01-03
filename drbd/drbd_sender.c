@@ -80,8 +80,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_md_io_complete IRQL(%d) .............\n", current->comm, KeGetCurrentIrql());
 #endif
 
-    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG)
-    {
+    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
@@ -91,13 +90,21 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 3
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE3) {
-			WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE3) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Meta Data I/O Error type3.....ErrorFlag:%d ErrorCount:%d\n", gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
 		}
-    }
-    else
-    {
+		
+		if(NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_md_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
+		
+    } else {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
@@ -107,17 +114,18 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device = bio->bi_private;
 	device->md_io.error = error;
 
+	if(NT_ERROR(error)) {
+		drbd_err(device, "drbd_md_endio fail status %08X\n", error);
+	}
+	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
-		if (Irp->MdlAddress != NULL)
-		{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
-			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl)
-			{
+			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
 				nextMdl = mdl->Next;
 				MmUnlockPages(mdl);
 				IoFreeMdl(mdl); // This function will also unmap pages.
@@ -129,8 +137,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		bio_put(bio);
 	}
 #else
@@ -205,6 +212,21 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	sector_t sector;
 	int do_wake;
 	u64 block_id;
+
+	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
+	struct drbd_peer_request *p_req, *t_inative;
+	spin_lock_irqsave(&device->resource->req_lock, flags);
+	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
+		if (peer_req == p_req) {
+			drbd_info(connection, "write completed after reconnection, inactive_ee(%p)\n", peer_req);
+			list_del(&peer_req->recv_order);
+			list_del(&peer_req->w.list);
+			drbd_free_peer_req(peer_req);
+			spin_unlock_irqrestore(&device->resource->req_lock, flags);
+			return;
+		}
+	}
+	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
@@ -298,9 +320,19 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 2
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE2) {
-			WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE2) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Peer Request I/O Error type2.....ErrorFlag:%d ErrorCount:%d\n", gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
+		}
+
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_peer_request_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
 		}
 	} else {
 		error = (int)p3;
@@ -313,18 +345,25 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
 
 	BIO_ENDIO_FN_START;
+#ifdef _WIN32 
+	if (NT_ERROR(error) && drbd_ratelimit())
+#else
 	if (error && drbd_ratelimit())
-		drbd_warn(device, "%s: error=%d s=%llus\n",
+#endif
+		drbd_warn(device, "%s: error=0x%08X sec=%llus size:%d\n",
 				is_write ? (is_discard ? "discard" : "write")
 					: "read", error,
-				(unsigned long long)peer_req->i.sector);
+				(unsigned long long)peer_req->i.sector, peer_req->i.size);
 
+#ifdef _WIN32
+	if (NT_ERROR(error))
+#else
 	if (error)
+#endif
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-	{
+	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -333,9 +372,16 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				IoFreeMdl(mdl); // This function will also unmap pages.
 			}
 			Irp->MdlAddress = NULL;
+
+			// DW-1695 fix PFN_LIST_CORRUPT-9A bugcheck by releasing the peer_req_databuf when EE_WRITE peer_req is completed.
+			// for case, peer_req_databuf may be released before the write completion. 
+			if(peer_req->flags & EE_WRITE) {
+				kfree2 (peer_req->peer_req_databuf);
+			}
 		}
 		IoFreeIrp(Irp);
 	}
+
 #endif
 
 	bio_put(bio); /* no need for the bio anymore */
@@ -405,9 +451,19 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 1
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
-			WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE1) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Local I/O Error type1.....ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag,gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
+		}
+		
+		// DW-1716 retry if an write I/O error occurs.
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_request_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
 		}
 	
 	} else {
@@ -464,7 +520,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 
 	/* to avoid recursion in __req_mod */
+#ifdef _WIN32 // DW-1706 By NT_ERROR(), reduce the error sensitivity to I/O.
+	if (NT_ERROR(error)) {
+#else
 	if (unlikely(error)) {
+#endif
 		switch (bio_op(bio)) {
 		case REQ_OP_DISCARD:
 			if (error == -EOPNOTSUPP)
@@ -482,6 +542,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			what = WRITE_COMPLETED_WITH_ERROR;
 			break;
 		}
+		drbd_err(device, "drbd_request_endio what:%d error:0x%08X sector:%llus size:%d\n", what, error, bio->bi_sector, bio->bi_size);
 	}
 	else {
 		what = COMPLETED_OK;
@@ -708,6 +769,7 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 	struct drbd_device *device = peer_device->device;
 
 	mutex_lock(&device->bm_resync_fo_mutex);
+
 	switch (peer_device->repl_state[NOW]) {
 	case L_VERIFY_S:
 		make_ov_request(peer_device, cancel);
@@ -730,6 +792,7 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 	default:
 		break;
 	}
+
 	mutex_unlock(&device->bm_resync_fo_mutex);
 
 	return 0;
@@ -966,13 +1029,16 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (transport->ops->stream_ok(transport, DATA_STREAM)) {
 			struct drbd_transport_stats transport_stats;
+#ifdef _WIN32
+			signed long long queued, sndbuf;
+#else
 			int queued, sndbuf;
-
+#endif
 			transport->ops->stats(transport, &transport_stats);
 			queued = transport_stats.send_buffer_used;
 			sndbuf = transport_stats.send_buffer_size;
 #ifdef _WIN32
-			WDRBD_TRACE_TR("make_resync_request: %d/%d: queued=%d sndbuf=%d\n", i, number, queued, sndbuf);
+			WDRBD_TRACE_TR("make_resync_request: %d/%d: queued=%lld sndbuf=%lld\n", i, number, queued, sndbuf);
 #endif
 			if (queued > sndbuf / 2) {
 				requeue = 1;
@@ -2650,6 +2716,12 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	unlock_all_resources();
 
 	if (r == SS_SUCCESS) {
+#ifdef _WIN32 // DW-1285 set MDF_PEER_INIT_SYNCT_BEGIN 
+		if( (side == L_SYNC_TARGET) 
+			&& (peer_device->device->ldev->md.current_uuid == UUID_JUST_CREATED) ) { 
+			drbd_md_set_peer_flag (peer_device, MDF_PEER_INIT_SYNCT_BEGIN);
+		}
+#endif
 		drbd_info(peer_device, "Began resync as %s (will sync %lu KB [%lu bits set]).\n",
 		     drbd_repl_str(repl_state),
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),

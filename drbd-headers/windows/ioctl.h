@@ -76,7 +76,7 @@ typedef struct _MVOL_COUNT_INFO
 typedef struct _MVOL_SYNC_REQ
 {
 	WCHAR				PhysicalDeviceName[MAXDEVICENAME];
-	LARGE_INTEGER			Offset;
+	LARGE_INTEGER		Offset;
 	ULONG				BlockSize;
 	ULONG				Count;
 } MVOL_SYNC_REQ, *PMVOL_SYNC_REQ;
@@ -91,13 +91,17 @@ typedef struct _WDRBD_VOLUME_ENTRY
 	ULONGLONG	Size;
 	ULONGLONG	AgreedSize;
 
-	UCHAR		VolIndex;
+	UCHAR		Minor;
 	BOOLEAN		ExtensionActive;
 #ifndef _WIN32_MULTIVOL_THREAD
 	BOOLEAN		ThreadActive;
 	BOOLEAN		ThreadExit;
 #endif
 } WDRBD_VOLUME_ENTRY, *PWDRBD_VOLUME_ENTRY;
+
+#define SIMUL_DISK_IO_ERROR_FLAG0		0 // No Disk Error 
+#define SIMUL_DISK_IO_ERROR_FLAG1		1 // Continuous Disk Error Flag
+#define SIMUL_DISK_IO_ERROR_FLAG2		2 // Temporary Disk Error Flag
 
 #define SIMUL_DISK_IO_ERROR_TYPE0		0 // generic_make_request fail
 #define SIMUL_DISK_IO_ERROR_TYPE1		1 // Local I/O Completed with Error
@@ -106,8 +110,9 @@ typedef struct _WDRBD_VOLUME_ENTRY
 #define SIMUL_DISK_IO_ERROR_TYPE4		4 // Bitmap I/O Completed with Error
 
 typedef struct _SIMULATION_DISK_IO_ERROR {
-	BOOLEAN 	bDiskErrorOn;
-	UCHAR		ErrorType;
+	ULONG 		ErrorFlag;		// Global Disk Error Flag
+	ULONG		ErrorType;		// Global Disk Error Type
+	ULONG		ErrorCount;		// Global Disk Error Count when Disk Error Flag is 2(Temporary Disk Error)
 }SIMULATION_DISK_IO_ERROR, *PSIMULATION_DISK_IO_ERROR;
 
 typedef struct _LOGGING_MIN_LV {

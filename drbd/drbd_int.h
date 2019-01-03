@@ -850,22 +850,22 @@ enum {
 	/* Hold reference in activity log */
 	__EE_IN_ACTLOG,
 };
-#define EE_MAY_SET_IN_SYNC     (1<<__EE_MAY_SET_IN_SYNC)
-#define EE_IS_BARRIER          (1<<__EE_IS_BARRIER)
-#define EE_IS_TRIM             (1<<__EE_IS_TRIM)
-#define EE_IS_TRIM_USE_ZEROOUT (1<<__EE_IS_TRIM_USE_ZEROOUT)
-#define EE_RESUBMITTED         (1<<__EE_RESUBMITTED)
-#define EE_WAS_ERROR           (1<<__EE_WAS_ERROR)
-#define EE_HAS_DIGEST          (1<<__EE_HAS_DIGEST)
-#define EE_RESTART_REQUESTS	(1<<__EE_RESTART_REQUESTS)
-#define EE_SEND_WRITE_ACK	(1<<__EE_SEND_WRITE_ACK)
-#define EE_IN_INTERVAL_TREE	(1<<__EE_IN_INTERVAL_TREE)
-#define EE_SUBMITTED		(1<<__EE_SUBMITTED)
-#define EE_WRITE		(1<<__EE_WRITE)
-#define EE_WRITE_SAME		(1<<__EE_WRITE_SAME)
-#define EE_APPLICATION		(1<<__EE_APPLICATION)
-#define EE_RS_THIN_REQ		(1<<__EE_RS_THIN_REQ)
-#define EE_IN_ACTLOG		(1<<__EE_IN_ACTLOG)
+#define EE_MAY_SET_IN_SYNC     		(1<<__EE_MAY_SET_IN_SYNC)			//LSB bit field:0
+#define EE_IS_BARRIER          		(1<<__EE_IS_BARRIER)				//LSB bit field:1
+#define EE_IS_TRIM             		(1<<__EE_IS_TRIM)					//LSB bit field:2
+#define EE_IS_TRIM_USE_ZEROOUT 		(1<<__EE_IS_TRIM_USE_ZEROOUT)		//LSB bit field:3
+#define EE_RESUBMITTED         		(1<<__EE_RESUBMITTED)				//LSB bit field:4
+#define EE_WAS_ERROR           		(1<<__EE_WAS_ERROR)					//LSB bit field:5
+#define EE_HAS_DIGEST          		(1<<__EE_HAS_DIGEST)				//LSB bit field:6
+#define EE_RESTART_REQUESTS			(1<<__EE_RESTART_REQUESTS)			//LSB bit field:7
+#define EE_SEND_WRITE_ACK			(1<<__EE_SEND_WRITE_ACK)			//LSB bit field:8
+#define EE_IN_INTERVAL_TREE			(1<<__EE_IN_INTERVAL_TREE)			//LSB bit field:9
+#define EE_SUBMITTED				(1<<__EE_SUBMITTED)					//LSB bit field:10
+#define EE_WRITE					(1<<__EE_WRITE)						//LSB bit field:11
+#define EE_WRITE_SAME				(1<<__EE_WRITE_SAME)				//LSB bit field:12
+#define EE_APPLICATION				(1<<__EE_APPLICATION)				//LSB bit field:13
+#define EE_RS_THIN_REQ				(1<<__EE_RS_THIN_REQ)				//LSB bit field:14
+#define EE_IN_ACTLOG				(1<<__EE_IN_ACTLOG)					//LSB bit field:15
 
 /* flag bits per device */
 enum {
@@ -1353,7 +1353,7 @@ struct drbd_connection {
 #else
 	unsigned long last_received;	/* in jiffies, either socket */
 #endif
-	atomic_t ap_in_flight; /* App sectors in flight (waiting for ack) */
+	atomic_t64 ap_in_flight; /* App sectors in flight (waiting for ack) */
 
 	struct drbd_work connect_timer_work;
 	struct timer_list connect_timer;
@@ -1395,6 +1395,9 @@ struct drbd_connection {
 	struct list_head read_ee;   /* [RS]P_DATA_REQUEST being read */
 	struct list_head net_ee;    /* zero-copy network send in progress */
 	struct list_head done_ee;   /* need to send P_WRITE_ACK */
+
+	struct list_head inactive_ee;	//DW-1696 : List of active_ee, sync_ee not processed at the end of the connection
+
 	atomic_t done_ee_cnt;
 	struct work_struct send_acks_work;
 	wait_queue_head_t ee_wait;
@@ -1481,6 +1484,8 @@ struct drbd_connection {
 		u64 current_dagtag_sector;
 	} send;
 
+	ring_buffer* ptxbab[2];
+	
 	unsigned int peer_node_id;
 	struct list_head twopc_parent_list;
 	struct drbd_transport transport; /* The transport needs to be the last member. The acutal

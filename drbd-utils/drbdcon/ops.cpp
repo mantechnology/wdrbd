@@ -96,8 +96,7 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
     DWORD res = ERROR_SUCCESS;
 
 	HANDLE handle = OpenDevice(MVOL_DEVICE);
-	if (INVALID_HANDLE_VALUE == handle)
-	{
+	if (INVALID_HANDLE_VALUE == handle)	{
 		res = GetLastError();
 		fprintf(stderr, "%s: cannot open root device, err=%u\n", __FUNCTION__, res);
 		return res;
@@ -108,19 +107,14 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	PVOID buffer = malloc(mem_size);
 	memset(buffer, 0, mem_size);
 
-	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO,
-		NULL, 0, buffer, mem_size, &dwReturned, NULL))
-	{
+	while (!DeviceIoControl(handle, IOCTL_MVOL_GET_VOLUMES_INFO, NULL, 0, buffer, mem_size, &dwReturned, NULL)) {
 		res = GetLastError();
-		if (ERROR_INSUFFICIENT_BUFFER == res)
-		{
+		if (ERROR_INSUFFICIENT_BUFFER == res) {
 			mem_size <<= 1;
 			free(buffer);
 			buffer = malloc(mem_size);
 			memset(buffer, 0, mem_size);
-		}
-		else
-		{
+		} else {
 			fprintf(stderr, "%s: ioctl err. GetLastError(%d)\n", __FUNCTION__, res);
 			goto out;
 		}
@@ -129,53 +123,35 @@ MVOL_GetVolumesInfo(BOOLEAN verbose)
 	res = ERROR_SUCCESS;
 	int count = dwReturned / sizeof(WDRBD_VOLUME_ENTRY);
 	//printf("size(%d) count(%d) sizeof(WDRBD_VOLUME_ENTRY)(%d)\n", dwReturned, count, sizeof(WDRBD_VOLUME_ENTRY));
-	
-	if (verbose)
-	{
-		printf("=====================================================================================\n");
-#ifdef _WIN32_MULTIVOL_THREAD
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock AgreedSize Size\n");
-#else
-		printf(" PhysicalDeviceName MountPoint VolumeGuid Minor Lock ThreadActive ThreadExit AgreedSize Size\n");
-#endif
-		printf("=====================================================================================\n");
-	}
-	else
-	{
-		printf("================================\n");
-		printf(" PhysicalDeviceName Minor MountPoint Replication Volume\n");
-		printf("================================\n");
-	}
-	
-	for (int i = 0; i < count; ++i)
-	{
-		PWDRBD_VOLUME_ENTRY pEntry = ((PWDRBD_VOLUME_ENTRY)buffer) + i;
 
-		if (verbose)
-		{
-			printf("%ws, %3ws, %ws, %2d, %d, %d, %d, %llu, %llu\n",
+	for (int i = 0; i < count; ++i) {
+		PWDRBD_VOLUME_ENTRY pEntry = ((PWDRBD_VOLUME_ENTRY)buffer) + i;
+		printf("--------------------------------------------------------------------------------------\n");
+		printf( "   Physical Device Name| %ws\n"
+				"                  Minor| %d\n"
+				"            Mount Point| %ws\n"
+				"     Replication Volume| %d\n"
+				"    Disk Partition Size| %llu bytes (%llu kibytes)\n"
+				"       Replication Size| %llu bytes (%llu kibytes)\n"
+#ifndef _WIN32_MULTIVOL_THREAD
+				"           ThreadActive| %d\n"
+				"             ThreadExit| %d\n"
+#endif
+				"            Volume GUID| %ws\n",
 				pEntry->PhysicalDeviceName,
+				pEntry->Minor,
 				pEntry->MountPoint,
-				pEntry->VolumeGuid,
-				pEntry->VolIndex,
 				pEntry->ExtensionActive,
+				pEntry->Size, (pEntry->Size/1024),
+				pEntry->AgreedSize, (pEntry->AgreedSize/1024),
 #ifndef _WIN32_MULTIVOL_THREAD
 				pEntry->ThreadActive,
 				pEntry->ThreadExit,
 #endif
-				pEntry->AgreedSize,
-				pEntry->Size
-			);
-		}
-		else
-		{
-			printf("%ws, %2d, %3ws, %d\n",
-				pEntry->PhysicalDeviceName,
-				pEntry->VolIndex,
-				pEntry->MountPoint,
-				pEntry->ExtensionActive
-			);
-		}
+				pEntry->VolumeGuid
+		);
+		printf("--------------------------------------------------------------------------------------\n\n");
+
 	}
 out:
 	if (INVALID_HANDLE_VALUE != handle)

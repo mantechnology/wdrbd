@@ -77,6 +77,7 @@ struct deferred_cmd {
 struct option general_admopt[] = {
 	{"stacked", no_argument, 0, 'S'},
 	{"dry-run", no_argument, 0, 'd'},
+	{"ignore-hostname", no_argument, 0, 'i'}, // DW-1719
 	{"verbose", no_argument, 0, 'v'},
 	{"config-file", required_argument, 0, 'c'},
 	{"config-to-test", required_argument, 0, 't'},
@@ -166,6 +167,7 @@ int config_from_stdin = 0;
 int config_valid = 1;
 int no_tty;
 int dry_run = 0;
+int ignore_hostname = 0; // DW-1719: Added option to ignore hostname check
 int verbose = 0;
 int adjust_with_progress = 0;
 bool help;
@@ -2153,6 +2155,8 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 	}
 
 	if (!path->my_proxy) {
+		return 0;
+#if 0 // DW-1719: Ignore connections that do not use proxy
 		if (all_resources)
 			return 0;
 		err("%s:%d: In resource '%s',no proxy config for connection %sfrom '%s' to '%s'%s.\n",
@@ -2162,6 +2166,7 @@ static int check_proxy(const struct cfg_ctx *ctx, int do_up)
 		    names_to_str(&conn->peer->on_hosts),
 		    conn->name ? ")" : "");
 		exit(E_CONFIG_INVALID);
+#endif
 	}
 
 	if (!hostname_in_list(hostname, &path->my_proxy->on_hosts)) {
@@ -2375,7 +2380,8 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 		*conn_or_hostname++ = '\0';
 
 	res = res_by_name(res_name);
-	if (!res || res->ignore)
+	// DW-1719: Added option to ignore hostname check
+	if (!res || (!ignore_hostname && res->ignore))
 		return -ENOENT;
 	ctx->res = res;
 
@@ -3171,6 +3177,9 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 			break;
 		case 'd':
 			dry_run = 1;
+			break;
+		case 'i': // DW-1719: Added option to ignore hostname check
+			ignore_hostname = 1;
 			break;
 		case 'c':
 			if (!strcmp(optarg, "-")) {

@@ -1289,8 +1289,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
     int error = 0;
     PIRP Irp = NULL;
 
-    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG)
-    {
+    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
         Irp = p2;
         error = Irp->IoStatus.Status;
         bio = (struct bio *)p3;
@@ -1300,13 +1299,19 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 4
 		//
-		if(gSimulDiskIoError.bDiskErrorOn && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE4) {
-			WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....\n");
-			error = STATUS_UNSUCCESSFUL;
+		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE4) {
+			if(IsDiskError()) {
+				WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				error = STATUS_UNSUCCESSFUL;
+			}
 		}
-    }
-    else
-    {
+		if (NT_ERROR(error)) {
+			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
+				RetryAsyncWriteRequest(bio, Irp, error, "drbd_bm_endio");
+				return STATUS_MORE_PROCESSING_REQUIRED;
+			}
+		}
+    } else {
         error = (int)p3;
         bio = (struct bio *)p2;
     }
@@ -1441,6 +1446,7 @@ static void bm_page_io_async(struct drbd_bm_aio_ctx *ctx, int page_nr) __must_ho
 	bio->bi_private = ctx;
 	bio->bi_end_io = drbd_bm_endio;
 	bio_set_op_attrs(bio, op, 0);
+	bio->io_retry = device->resource->res_opts.io_error_retry_count;
 
 	if (drbd_insert_fault(device, (op == REQ_OP_WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD)) {
 		bio_endio(bio, -EIO);
