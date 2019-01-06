@@ -182,15 +182,27 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// DW-1277: check volume type we marked when drbd attaches.
 	// for normal volume.
 	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) && !test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
 		WDRBD_INFO("Volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
+#else
+		WDRBD_INFO("Volume:%p was removed\n", VolumeExtension);
+#endif
 	}
 	// for replication volume.
 	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag)) {
+#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
 		WDRBD_INFO("Replication volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
+#else
+		WDRBD_INFO("Replication volume:%p was removed\n", VolumeExtension);
+#endif
 	}
 	// for meta volume.
 	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
+#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
 		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
+#else
+		WDRBD_INFO("Meta volume:%p was removed\n", VolumeExtension);
+#endif
 	}
 	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
@@ -471,6 +483,11 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 	PCHAR inbuf = kmalloc(mplen, 0, '56DW');
 	PCHAR otbuf = kmalloc(mpslen, 0, '56DW');
 	if (!inbuf || !otbuf) {
+		if (inbuf)
+			kfree(inbuf);
+		if (otbuf)
+			kfree(otbuf);
+
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
 
@@ -501,7 +518,9 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 			.Length = p->SymbolicLinkNameLength,
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
+#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
 		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,name);
+#endif
 
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 
