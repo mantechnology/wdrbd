@@ -182,7 +182,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// DW-1277: check volume type we marked when drbd attaches.
 	// for normal volume.
 	if (!test_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag) && !test_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 		WDRBD_INFO("Volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 #else
 		WDRBD_INFO("Volume:%p was removed\n", VolumeExtension);
@@ -190,7 +190,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	// for replication volume.
 	if (test_and_clear_bit(VOLUME_TYPE_REPL, &VolumeExtension->Flag)) {
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 		WDRBD_INFO("Replication volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 #else
 		WDRBD_INFO("Replication volume:%p was removed\n", VolumeExtension);
@@ -198,7 +198,7 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	// for meta volume.
 	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 #else
 		WDRBD_INFO("Meta volume:%p was removed\n", VolumeExtension);
@@ -518,7 +518,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 			.Length = p->SymbolicLinkNameLength,
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,name);
 #endif
 

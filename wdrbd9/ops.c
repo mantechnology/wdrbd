@@ -135,7 +135,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 
     if (!pvext->Active)
 	{
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 		sprintf(Message, "%wZ volume is not dismounted", &pvext->MountPoint);
 		*ReturnLength = strlen(Message);
 		WDRBD_ERROR("%s\n", Message);
@@ -156,7 +156,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	if (pvext->WorkThreadInfo.Active && device)
 #endif
 	{
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
     	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
 		*ReturnLength = strlen(Message);

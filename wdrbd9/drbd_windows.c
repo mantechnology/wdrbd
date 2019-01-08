@@ -2267,7 +2267,7 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		status = mvolUpdateMountPointInfoByExtension(pvext);
 		if(NT_SUCCESS(status)) {
 
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 			WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
 #else
 			WDRBD_TRACE("update_targetdev new mount");

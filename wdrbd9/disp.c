@@ -357,7 +357,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 	// DW-1109: create block device in add device routine, it won't be destroyed at least we put ref in remove device routine.
 	VolumeExtension->dev = create_drbd_block_device(VolumeExtension);
 
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 	WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ) VolumeGUID(%wZ)\n",
 		VolumeExtension,
 		VolumeExtension->PhysicalDeviceName,
@@ -676,7 +676,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			// then allow to lower device, so not try to send to peer
 			if (offset_sector + size_sector > vol_size_sector) {
 
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 				WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 #else
@@ -700,7 +700,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 
 #ifdef DRBD_TRACE
-#if (WINVER == _WIN32_WINNT_WS08) && (!defined(_WIN64))
+#if WINVER == _WIN32_WINNT_WS08
 			WDRBD_TRACE("Upper driver WRITE sect(0x%llx+%u) ................Queuing(%d)!\n",
 				offset_sector, size_sector, VolumeExtension->IrpCount);
 #else
@@ -746,7 +746,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			// DW-1300: put device reference count when no longer use.
 			if (device)
 				kref_put(&device->kref, drbd_destroy_device);
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 #else
@@ -853,7 +853,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
             status = IOCTL_MountVolume(DeviceObject, Irp, &size);
 			if (!NT_SUCCESS(status))
 			{
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 				WDRBD_WARN("IOCTL_MVOL_MOUNT_VOLUME. %wZ Volume fail. status(0x%x)\n",
 					&VolumeExtension->MountPoint, status);
 #else
@@ -862,7 +862,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			}
 			else if (!size)
 			{	// ok
-#if (WINVER != _WIN32_WINNT_WS08) || (defined(_WIN64))
+#if WINVER != _WIN32_WINNT_WS08
 				WDRBD_INFO("IOCTL_MVOL_MOUNT_VOLUME. %wZ Volume is mounted\n",
 					&VolumeExtension->MountPoint);
 #else
