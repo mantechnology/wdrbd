@@ -174,7 +174,6 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
             WDRBD_INFO("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
             __leave;
         }
-
         WDRBD_INFO("volume(%wZ) dismounted\n", &device_name);
     }
     __finally
@@ -220,7 +219,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 
 	// DW-1303 No lock for already dismounted volume
 	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
-		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
+		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
 			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
 			return STATUS_UNSUCCESSFUL;
 		}
@@ -269,6 +268,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
         hFile = NULL;
 
         WDRBD_INFO("volume(%wZ) locked. handle(0x%p)\n", &device_name, pvext->LockHandle);
+
     }
     __finally
     {

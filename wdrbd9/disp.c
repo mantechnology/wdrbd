@@ -357,13 +357,13 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 	// DW-1109: create block device in add device routine, it won't be destroyed at least we put ref in remove device routine.
 	VolumeExtension->dev = create_drbd_block_device(VolumeExtension);
 
-    WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ) VolumeGUID(%wZ)\n",
-        VolumeExtension,
-        VolumeExtension->PhysicalDeviceName,
-        VolumeExtension->Minor,
-        VolumeExtension->Active,
-        &VolumeExtension->MountPoint,
-        &VolumeExtension->VolumeGuid);
+	WDRBD_INFO("VolumeExt(0x%p) Device(%ws) minor(%d) Active(%d) MountPoint(%wZ) VolumeGUID(%wZ)\n",
+		VolumeExtension,
+		VolumeExtension->PhysicalDeviceName,
+		VolumeExtension->Minor,
+		VolumeExtension->Active,
+		&VolumeExtension->MountPoint,
+		&VolumeExtension->VolumeGuid);
 
     return STATUS_SUCCESS;
 }
@@ -667,6 +667,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			// if io offset is larger than volume size oacassionally,
 			// then allow to lower device, so not try to send to peer
 			if (offset_sector + size_sector > vol_size_sector) {
+
 				WDRBD_TRACE("Upper driver WRITE vol(%wZ) sect(0x%llx+%u) VolumeExtension->IrpCount(%d) ......................Skipped Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, offset_sector, size_sector, VolumeExtension->IrpCount, Irp, Irp->Flags);	
 
@@ -730,7 +731,7 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 			WDRBD_TRACE("Upper driver WRITE vol(%wZ) VolumeExtension->IrpCount(%d) STATUS_INVALID_DEVICE_REQUEST return Irp:%p Irp->Flags:%x\n",
 					&VolumeExtension->MountPoint, VolumeExtension->IrpCount, Irp, Irp->Flags);	
-			
+	
             Irp->IoStatus.Information = 0;
             Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);

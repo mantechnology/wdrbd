@@ -2266,7 +2266,9 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		
 		status = mvolUpdateMountPointInfoByExtension(pvext);
 		if(NT_SUCCESS(status)) {
+
 			WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+
 			// DW-1105: detach volume when replicating volume letter is changed.
 			if (pvext->Active && bWasExist) {
 				if(IsEmptyUnicodeString(&pvext->MountPoint) || 

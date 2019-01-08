@@ -471,6 +471,11 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 	PCHAR inbuf = kmalloc(mplen, 0, '56DW');
 	PCHAR otbuf = kmalloc(mpslen, 0, '56DW');
 	if (!inbuf || !otbuf) {
+		if (inbuf)
+			kfree(inbuf);
+		if (otbuf)
+			kfree(otbuf);
+
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
 
@@ -501,7 +506,8 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 			.Length = p->SymbolicLinkNameLength,
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
-		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,name);
+
+		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,&name);
 
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 
