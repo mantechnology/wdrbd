@@ -3722,13 +3722,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
     } device_list;
     struct device_list *device_list_p, *p;
 
-#if WINVER != _WIN32_WINNT_WS08
     WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
         KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, &VolumeExtension->MountPoint);
-#else
-	WDRBD_INFO("Shutdown: IRQL(%d) device(%ws)\n",
-		KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName);
-#endif
 
     if (retry.wq)
         destroy_workqueue(retry.wq);

@@ -111,11 +111,7 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 	// DW-1303 No dismount for already dismounted volume
 	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
 		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
-#if WINVER != _WIN32_WINNT_WS08
 			WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
-#else
-			WDRBD_INFO("no dismount. volume already dismounted\n");
-#endif
 			return STATUS_SUCCESS;
 		}
 	}
@@ -178,11 +174,7 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
             WDRBD_INFO("ZwFsControlFile FSCTL_DISMOUNT_VOLUME Failed. status(0x%x)\n", status);
             __leave;
         }
-#if WINVER != _WIN32_WINNT_WS08
         WDRBD_INFO("volume(%wZ) dismounted\n", &device_name);
-#else
-		WDRBD_INFO("volume dismounted\n");
-#endif
     }
     __finally
     {
@@ -228,11 +220,7 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 	// DW-1303 No lock for already dismounted volume
 	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
 		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
-#if WINVER != _WIN32_WINNT_WS08
 			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
-#else
-			WDRBD_INFO("no lock. volume already dismounted\n");
-#endif
 			return STATUS_UNSUCCESSFUL;
 		}
 	}
@@ -278,11 +266,9 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
         
         pvext->LockHandle = hFile;
         hFile = NULL;
-#if WINVER != _WIN32_WINNT_WS08
+
         WDRBD_INFO("volume(%wZ) locked. handle(0x%p)\n", &device_name, pvext->LockHandle);
-#else
-		WDRBD_INFO("volume locked. handle(0x%p)\n", pvext->LockHandle);
-#endif
+
     }
     __finally
     {
@@ -1172,11 +1158,7 @@ NTSTATUS QueryMountPoint(
 		0); // no EA buffer size...
 	if (!NT_SUCCESS(status) ||
 		!NT_SUCCESS(iosb.Status)) {
-#if WINVER != _WIN32_WINNT_WS08
 		WDRBD_WARN("Unable to open %wZ, error = 0x%x\n", &mmgrObjectName, status);
-#else
-		WDRBD_WARN("Unable to open, error = 0x%x\n", status);
-#endif
 		return status;
 	}
 
@@ -1617,7 +1599,6 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	{
 		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
 	}
-#if WINVER != _WIN32_WINNT_WS08
 	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"
 		"bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
@@ -1630,17 +1611,6 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 		g_daemon_tcp_port,
 		g_ver
 		);
-#else
-	WDRBD_INFO("bypass_level=%d, read_filter=%d, use_volume_lock=%d, "
-		"netlink_tcp_port=%d, daemon_tcp_port=%d, ver=%ws\n",
-		g_bypass_level,
-		g_read_filter,
-		g_use_volume_lock,
-		g_netlink_tcp_port,
-		g_daemon_tcp_port,
-		g_ver
-		);
-#endif
 
 	return 0;
 }
