@@ -609,16 +609,16 @@ Send(
 																			Irp);
 
 	if (Status == STATUS_PENDING) {
-		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
+		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 		if(Status == STATUS_TIMEOUT) {
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
 			if(pSock->sk_state == WSK_INVALID_DEVICE) {
 				BytesSent = -ECONNRESET;
 			} else {
-				// FIXME: cancel & completion's race condition may be occurred.
-				// Status or Irp->IoStatus.Status  
-				IoCancelIrp(Irp);
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				// DW-1749 Modified to remove WSK I/O cancel logic for occasional WSK I/O hang issues
+				// The transmission timeout depends on the WSK kernel, Remove the I/O cancel logic at the existing timeout.
+				//IoCancelIrp(Irp);
+				//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 				BytesSent = -EAGAIN;
 			}
 			goto $Send_fail;
