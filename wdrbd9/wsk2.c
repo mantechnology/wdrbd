@@ -730,7 +730,7 @@ SendLocal(
 	if(pSock->sk_state <= WSK_DISCONNECTING) {
 		// DW-1749 
 		BytesSent = -ECONNRESET;
-		goto $Send_fail;
+		goto $SendLoacl_fail;
 	}
 	
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
