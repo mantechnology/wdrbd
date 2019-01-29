@@ -700,9 +700,9 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&my_addr), get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
 	}
 #ifdef _WSK_SOCKET_STATE
-	socket->sk = CreateSocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
+	socket->sk = CreateSocketConnect(socket, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
 #else
-	socket->sk = CreateSocketConnect(SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status);
+	socket->sk = CreateSocketConnect(socket, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status);
 #endif 
 	if (!NT_SUCCESS(status)) {
 		err = status;
@@ -914,34 +914,42 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
+	SIZE_T out = 0;
 	if (!*socket)
 		return false;
 
 #ifdef _WIN32 
-    SIZE_T out = 0;
-    NTSTATUS Status = ControlSocket(*socket, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
-	if (!NT_SUCCESS(Status)) {
-        WDRBD_ERROR("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
-		kernel_sock_shutdown(*socket, SHUT_RDWR);
-		sock_release(*socket);
-        *socket = NULL;
-        return false;
+#ifdef _WSK_SOCKET_STATE
+	if ((*socket)->sk_state == WSK_ESTABLISHED) {
+		WDRBD_CONN_TRACE("socket->sk_state == WSK_ESTABLISHED wsk = %p\n", (*socket)->sk);
+		return true;
 	}
 
-#ifdef _WSK_SOCKET_STATE
-	if ((*socket)->sk_state <= WSK_DISCONNECTED){
-		WDRBD_CONN_TRACE("wsk = %p socket->sk_state = %d\n", (*socket)->sk, (*socket)->sk_state);
+	WDRBD_CONN_TRACE("wsk = %p socket->sk_state = %d\n", (*socket)->sk, (*socket)->sk_state);
+	
+	if ( ((*socket)->sk_state >= WSK_INITIALIZING) &&
+		((*socket)->sk_state >= WSK_CONNECTING) ) {
+	} {
 		kernel_sock_shutdown(*socket, SHUT_RDWR);
+	}
+
+	if ( (*socket)->sk_state >= WSK_DISCONNECTED ) {
 		sock_release(*socket);
 		*socket = NULL;
-		return false;
-	}else{
-		WDRBD_CONN_TRACE("socket->sk_state == WSK_ESTABLISHED wsk = %p\n", (*socket)->sk);
+	}
+
+	return false;
+#else
+    NTSTATUS Status = ControlSocket(*socket, WskIoctl, SIO_WSK_QUERY_RECEIVE_BACKLOG, 0, 0, NULL, sizeof(SIZE_T), &out, NULL );
+	if (!NT_SUCCESS(Status)) {
+       	WDRBD_CONN_TRACE("socket(0x%p), ControlSocket(%s): SIO_WSK_QUERY_RECEIVE_BACKLOG failed=0x%x\n", (*socket), (*socket)->name, Status); // _WIN32
+		kernel_sock_shutdown(*socket, SHUT_RDWR);
+		sock_release(*socket);
+       	*socket = NULL;
+        return false;
 	}
 #endif
 
-    WDRBD_TRACE_SK("socket(0x%p) wsk(0x%p) ControlSocket(%s): backlog=%d\n", (*socket), (*socket)->sk, (*socket)->name, out); // _WIN32
-    return true;
 #else
 	if ((*socket)->sk->sk_state == WSK_ESTABLISHED)
 		return true;
