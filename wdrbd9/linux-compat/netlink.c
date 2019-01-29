@@ -571,6 +571,7 @@ NetlinkWorkThread(PVOID context)
 	}
 
 	pSock->sk = socket;
+	pSock->sk_state = WSK_ESTABLISHED;
 	
     psock_buf = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
     if (!psock_buf) {
