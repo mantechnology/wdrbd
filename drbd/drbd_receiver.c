@@ -8835,7 +8835,24 @@ void conn_disconnect(struct drbd_connection *connection)
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
 	//DW-1696 : Add the incomplete active_ee, sync_ee
-	spin_lock(&resource->req_lock);
+	spin_lock(&resource->req_lock);	
+	//DW-1732 : Initialization active_ee(bitmap, al) 
+	struct drbd_peer_request *peer_req;
+	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->active_ee, w.list) {
+		struct drbd_peer_device *peer_device = peer_req->peer_device;
+		struct drbd_device *device = peer_device->device;
+		int bitmap_index = peer_device->bitmap_index;
+		u64 mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
+
+		if (get_ldev(device)) {
+			drbd_set_sync(device, peer_req->i.sector, peer_req->i.size,
+				mask, mask);
+			drbd_al_complete_io(device, &peer_req->i);
+			put_ldev(device);
+		}
+		list_del(&peer_req->recv_order);
+		drbd_info(connection, "add, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+	}
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
 	spin_unlock(&resource->req_lock);
@@ -10023,21 +10040,6 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 #else
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
-		//DW-1696 : If the same peer_request exists, remove it from the list.
-		is_inactive = false;
-		spin_lock(&resource->req_lock);
-		list_for_each_entry(struct drbd_peer_request, p_req, &connection->inactive_ee, w.list) {
-			if (p_req == peer_req) {
-				list_del(&peer_req->recv_order);
-				is_inactive = true;
-				break;
-			}
-		}
-		spin_unlock(&resource->req_lock);
-
-		if (is_inactive)
-			continue;
-
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		int bitmap_index = peer_device->bitmap_index;
