@@ -1055,6 +1055,7 @@ next_sector:
 
 		if (bit == DRBD_END_OF_BITMAP) {
 			device->bm_resync_fo = drbd_bm_bits(device);
+			drbd_info(device, "DRBD_END_OF_BITMAP, device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
 			put_ldev(device);
 			return 0;
 		}
@@ -1157,6 +1158,7 @@ next_sector:
 		 * resync data block, and the last bit is cleared.
 		 * until then resync "work" is "inactive" ...
 		 */
+		drbd_info(device, "P_RS_DATA_REPLY not received??,  device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
 		put_ldev(device);
 		return 0;
 	}
