@@ -369,6 +369,9 @@ CloseSocket(
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
+
+	pSock->sk_state = WSK_CLOSING;
+	
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
 
 	return STATUS_SUCCESS;
@@ -394,6 +397,9 @@ CloseSocket(
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
+
+	pSock->sk_state = WSK_CLOSING;
+	
 	Status = ((PWSK_PROVIDER_BASIC_DISPATCH) WskSocket->Dispatch)->WskCloseSocket(WskSocket, Irp);
 	if (Status == STATUS_PENDING) {
 		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, &nWaitTime);
@@ -465,6 +471,8 @@ Disconnect(
 	if (!NT_SUCCESS(Status)) {
 		return Status;
 	}
+
+	pSock->sk_state = WSK_DISCONNECTING;
 	
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskDisconnect(
 		WskSocket,
@@ -479,6 +487,7 @@ Disconnect(
 PWSK_SOCKET
 NTAPI
 CreateSocketConnect(
+	__in struct socket* pSock,
 	__in USHORT		SocketType,
 	__in ULONG		Protocol,
 	__in PSOCKADDR	LocalAddress, // address family desc. required
@@ -491,11 +500,12 @@ CreateSocketConnect(
 PWSK_SOCKET
 NTAPI
 CreateSocketConnect(
-__in USHORT		SocketType,
-__in ULONG		Protocol,
-__in PSOCKADDR	LocalAddress, // address family desc. required
-__in PSOCKADDR	RemoteAddress, // address family desc. required
-__inout  NTSTATUS* pStatus
+	__in struct socket* pSock,
+	__in USHORT		SocketType,
+	__in ULONG		Protocol,
+	__in PSOCKADDR	LocalAddress, // address family desc. required
+	__in PSOCKADDR	RemoteAddress, // address family desc. required
+	__inout  NTSTATUS* pStatus
 )
 #endif
 {
@@ -511,6 +521,7 @@ __inout  NTSTATUS* pStatus
 	if (!NT_SUCCESS(Status)) {
 		return NULL;
 	}
+
 #ifdef _WSK_SOCKET_STATE
 	Status = g_WskProvider.Dispatch->WskSocketConnect(
 				g_WskProvider.Client,
@@ -552,8 +563,15 @@ __inout  NTSTATUS* pStatus
 			*pStatus = Status = Irp->IoStatus.Status;
 		}
 	} 
-
-	WskSocket = (Status == STATUS_SUCCESS) ? (PWSK_SOCKET) Irp->IoStatus.Information : NULL;
+	
+	if(Status == STATUS_SUCCESS) {
+		// note: https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wsk/nc-wsk-pfn_wsk_socket_connect
+		// If the IRP is completed with success status, the IoStatus.Information field of the IRP contains a pointer to a socket object structure ( WSK_SOCKET) for the new socket.
+		WskSocket = (PWSK_SOCKET) Irp->IoStatus.Information;
+	} else {
+		WskSocket = NULL;
+	}
+	pSock->sk_state = WSK_INITIALIZING;
 
 	IoFreeIrp(Irp);
 	
@@ -601,6 +619,13 @@ Send(
 
 	nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
 	pTime = &nWaitTime;
+
+	if(pSock->sk_state <= WSK_DISCONNECTING) {
+		// DW-1749 Do not call WskSend if socket is being disconnected or closed. The operation context will not be used any more.
+		// Otherwise, a hang occurs.
+		BytesSent = -ECONNRESET;
+		goto $Send_fail;
+	}
 
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 																			WskSocket,
@@ -702,6 +727,12 @@ SendLocal(
 	nWaitTime = RtlConvertLongToLargeInteger(-1 * Timeout * 1000 * 10);
 	pTime = &nWaitTime;
 
+	if(pSock->sk_state <= WSK_DISCONNECTING) {
+		// DW-1749 
+		BytesSent = -ECONNRESET;
+		goto $SendLoacl_fail;
+	}
+	
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 																			WskSocket,
 																			&WskBuffer,

@@ -80,6 +80,7 @@ Disconnect(
 PWSK_SOCKET
 NTAPI
 CreateSocketConnect(
+__in struct socket* pSock,
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
@@ -92,6 +93,7 @@ __in PVOID socketContext
 PWSK_SOCKET
 NTAPI
 CreateSocketConnect(
+__in struct socket* pSock,
 __in USHORT		SocketType,
 __in ULONG		Protocol,
 __in PSOCKADDR	LocalAddress, // address family desc. required
