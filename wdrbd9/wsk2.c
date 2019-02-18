@@ -24,6 +24,13 @@ const WSK_CLIENT_LISTEN_DISPATCH ClientListenDispatch = {
     NULL  // WskAbortEvent is required only if conditional-accept is used.
 };
 
+struct SendParameter {
+	PKEVENT		Event;
+	PCHAR		DataBuffer;
+	PWSK_BUF	WskBuffer;
+	PNTSTATUS	Status;
+	PLONG		BytesSent;
+};
 
 char *GetSockErrorString(NTSTATUS status)
 {
@@ -579,6 +586,133 @@ CreateSocketConnect(
 }
 
 
+
+NTSTATUS
+NTAPI SendCompletionRoutine(
+__in PDEVICE_OBJECT	DeviceObject,
+__in PIRP			Irp,
+__in struct SendParameter* SendParam
+)
+{
+	FreeWskBuffer(SendParam->WskBuffer);
+	ExFreePool(SendParam->WskBuffer);
+	ExFreePool(SendParam->DataBuffer);
+
+	if (!Irp->Cancel)
+	{
+		*(SendParam->Status) = Irp->IoStatus.Status;
+
+		if (*(SendParam->Status) == STATUS_SUCCESS) {
+			*(SendParam->BytesSent) = (LONG)Irp->IoStatus.Information;
+		}
+
+		KeSetEvent(SendParam->Event, IO_NO_INCREMENT, FALSE);
+	}
+	else
+	{
+		ExFreePool(SendParam->Event);
+	}
+
+	IoFreeIrp(Irp);
+	ExFreePool(SendParam);
+
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+NTSTATUS
+InitWskSendBuffer(
+__out PCHAR*	DataBuffer,
+__in  PVOID		Buffer,
+__in  ULONG		BufferSize,
+__out PWSK_BUF	*WskBuffer,
+__in  BOOLEAN	bWriteAccess
+)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	ASSERT(Buffer);
+	ASSERT(BufferSize);
+
+	(*DataBuffer) = ExAllocatePoolWithTag(NonPagedPool, BufferSize, 'PSDW');
+	if (!(*DataBuffer)) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+
+	(*WskBuffer) = ExAllocatePoolWithTag(NonPagedPool, sizeof(WSK_BUF), 'PSDW');
+	if (!(*WskBuffer)) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	(*WskBuffer)->Offset = 0;
+	(*WskBuffer)->Length = BufferSize;
+
+	memcpy((*DataBuffer), Buffer, BufferSize);
+
+	(*WskBuffer)->Mdl = IoAllocateMdl((*DataBuffer), BufferSize, FALSE, FALSE, NULL);
+	if (!(*WskBuffer)->Mdl) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	try {
+		// DW-1223: Locking with 'IoWriteAccess' affects buffer, which causes infinite I/O from ntfs when the buffer is from mdl of write IRP.
+		// we need write access for receiver, since buffer will be filled.
+
+		MmProbeAndLockPages((*WskBuffer)->Mdl, KernelMode, bWriteAccess ? IoWriteAccess : IoReadAccess);
+	} except(EXCEPTION_EXECUTE_HANDLER) {
+		WDRBD_ERROR("MmProbeAndLockPages failed. exception code=0x%x\n", GetExceptionCode());
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	return Status;
+}
+
+NTSTATUS
+InitWskSendData(
+__out PIRP*		pIrp,
+__out PKEVENT	CompletionEvent,
+__in  PCHAR		DataBuffer,
+__in  WSK_BUF*	WskBuffer,
+__in  LONG*		BytesSent,
+__in  NTSTATUS*	SendStatus,
+__in  BOOLEAN	bRawIrp)
+{
+	ASSERT(pIrp);
+	ASSERT(CompletionEvent);
+
+	struct SendParameter *param = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct SendParameter), 'PSDW');
+
+	if (!param) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	if (bRawIrp) {
+		*pIrp = ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(1), 'FFDW');
+		if (!*pIrp) {
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		IoInitializeIrp(*pIrp, IoSizeOfIrp(1), 1);
+	}
+	else {
+		*pIrp = IoAllocateIrp(1, FALSE);
+	}
+
+	if (!*pIrp) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	param->DataBuffer = DataBuffer;
+	param->BytesSent = BytesSent;
+	param->Event = CompletionEvent;
+	param->Status = SendStatus;
+	param->WskBuffer = WskBuffer;
+
+	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(*pIrp, SendCompletionRoutine, param, TRUE, TRUE, TRUE);
+
+	return STATUS_SUCCESS;
+}
+
+
 LONG
 NTAPI
 Send(
@@ -593,26 +727,44 @@ Send(
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
-	KEVENT			CompletionEvent = { 0 };
+	PKEVENT			CompletionEvent = NULL;
 	PIRP			Irp = NULL;
-	WSK_BUF			WskBuffer = { 0 };
+	PWSK_BUF		WskBuffer = NULL;
 	LONG			BytesSent = SOCKET_ERROR; // DRBC_CHECK_WSK: SOCKET_ERROR be mixed EINVAL?
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 	LARGE_INTEGER	nWaitTime; LARGE_INTEGER	*pTime;
+	NTSTATUS		SendStatus = STATUS_UNSUCCESSFUL;
+	PCHAR			DataBuffer = NULL;
 
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || ((int)BufferSize <= 0) || (pSock->sk_state == WSK_INVALID_DEVICE)) {
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
-	if (!NT_SUCCESS(Status)) {
+	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
+	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'PSDW');	
+	if (!CompletionEvent) {
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
+	//DW-1758 : Dynamic allocation of 'WskBuffer', for resource management in completion routine
+	//Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
+	Status = InitWskSendBuffer(&DataBuffer, Buffer, BufferSize, &WskBuffer, FALSE); 
 	if (!NT_SUCCESS(Status)) {
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
+		BytesSent = SOCKET_ERROR;
+		goto $Send_fail;
+	}
+
+	//Status = InitWskData(&Irp, &CompletionEvent, FALSE);
+	Status = InitWskSendData(&Irp,
+								CompletionEvent,
+								DataBuffer,
+								WskBuffer,
+								&BytesSent, //DW-1758 : Get BytesSent (Irp->IoStatus.Information)
+								&SendStatus, //DW-1758 : Get SendStatus (Irp->IoStatus.Status)
+								FALSE);
+	if (!NT_SUCCESS(Status)) {
+		BytesSent = SOCKET_ERROR;
+		goto $Send_fail;
 	}
 
 	Flags |= WSK_FLAG_NODELAY;
@@ -623,18 +775,20 @@ Send(
 	if(pSock->sk_state <= WSK_DISCONNECTING) {
 		// DW-1749 Do not call WskSend if socket is being disconnected or closed. The operation context will not be used any more.
 		// Otherwise, a hang occurs.
+		WDRBD_INFO("%s, No Connect, Current state : %d(0x%p)\n", __FUNCTION__, pSock->sk_state, WskSocket);
 		BytesSent = -ECONNRESET;
 		goto $Send_fail;
 	}
 
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 																			WskSocket,
-																			&WskBuffer,
+																			WskBuffer,
 																			Flags,
 																			Irp);
 
 	if (Status == STATUS_PENDING) {
-		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		//Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		Status = KeWaitForSingleObject(CompletionEvent, Executive, KernelMode, FALSE, NULL);
 		if(Status == STATUS_TIMEOUT) {
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
 			if(pSock->sk_state == WSK_INVALID_DEVICE) {
@@ -644,37 +798,55 @@ Send(
 				// The transmission timeout depends on the WSK kernel, Remove the I/O cancel logic at the existing timeout.
 				//IoCancelIrp(Irp);
 				//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				BytesSent = -EAGAIN;
+
+				// DW-1758 : release resource from the completion routine if IRP is cancelled 
+				WDRBD_INFO("%s, Timeout(%dms), Current state : %d(0x%p)\n", __FUNCTION__, Timeout, pSock->sk_state, WskSocket);
+				IoCancelIrp(Irp);
+
+				return -EAGAIN;
 			}
 			goto $Send_fail;
 		}
 	}
 
-	Status = Irp->IoStatus.Status;
-
-	if(Status == STATUS_SUCCESS) {
-		BytesSent = (LONG)Irp->IoStatus.Information;
-	} else {
-		switch (Irp->IoStatus.Status) {
+	if (SendStatus != STATUS_SUCCESS) {
+		switch (SendStatus) {
 		case STATUS_IO_TIMEOUT:
-			BytesSent = -EAGAIN;
 			WDRBD_INFO("Send timeout... wsk(0x%p)\n", WskSocket);
+			BytesSent = -EAGAIN;
 			break;
 		case STATUS_INVALID_DEVICE_STATE:
 		case STATUS_FILE_FORCED_CLOSED:
-			BytesSent = -ECONNRESET;
-			WDRBD_INFO("Send invalid WSK Socket state (%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+			WDRBD_INFO("Send invalid WSK Socket state (%s) wsk(0x%p)\n", GetSockErrorString(SendStatus), WskSocket);
 			pSock->sk_state = WSK_INVALID_DEVICE;
-			break;	
+			BytesSent = -ECONNRESET;
+			break;
 		default:
-			WDRBD_INFO("Send error, default state(%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+			WDRBD_INFO("Send error, default state(%s) wsk(0x%p)\n", GetSockErrorString(SendStatus), WskSocket);
 			BytesSent = -ECONNRESET;
 			break;
 		}
 	}
+
+	ExFreePool(CompletionEvent);
+
+	return BytesSent;
+
 $Send_fail:		
-	FreeWskBuffer(&WskBuffer);
-	IoFreeIrp(Irp);
+	if (WskBuffer) {
+		if (WskBuffer->Mdl)
+			FreeWskBuffer(WskBuffer);
+		ExFreePool(WskBuffer);
+	}
+
+	if (DataBuffer)
+		ExFreePool(DataBuffer);
+
+	if (CompletionEvent)
+		ExFreePool(CompletionEvent);
+
+	if (Irp)
+		IoFreeIrp(Irp);
 	
 	return BytesSent;
 }
@@ -691,35 +863,52 @@ SendLocal(
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
-	KEVENT		CompletionEvent = { 0 };
-	PIRP		Irp = NULL;
-	WSK_BUF		WskBuffer = { 0 };
+	PKEVENT			CompletionEvent = NULL;
+	PIRP			Irp = NULL;
+	PWSK_BUF		WskBuffer = NULL;
 	LONG		BytesSent = SOCKET_ERROR;
 	NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 	LARGE_INTEGER	nWaitTime; LARGE_INTEGER	*pTime;
+	NTSTATUS		SendStatus = STATUS_UNSUCCESSFUL;
+	PCHAR			DataBuffer = NULL;
 
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || ((int) BufferSize <= 0) || (pSock->sk_state == WSK_INVALID_DEVICE)) {
 		WDRBD_INFO("pSock->sk_state == WSK_INVALID_DEVICE WskSocket:%p\n",WskSocket);
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
-	if (!NT_SUCCESS(Status)) {
+	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
+	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'PSDW');
+	if (!CompletionEvent) {
 		return SOCKET_ERROR;
 	}
 
-	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
+	//DW-1758 : Dynamic allocation of 'WskBuffer', for resource management in completion routine
+	//Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
+	Status = InitWskSendBuffer(&DataBuffer, Buffer, BufferSize, &WskBuffer, FALSE);
 	if (!NT_SUCCESS(Status)) {
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
+		BytesSent = SOCKET_ERROR;
+		goto $SendLoacl_fail;
+	}
+
+	//Status = InitWskData(&Irp, &CompletionEvent, FALSE);
+	Status = InitWskSendData(&Irp,
+								CompletionEvent,
+								DataBuffer,
+								WskBuffer,
+								&BytesSent, //DW-1758 : Get BytesSent (Irp->IoStatus.Information)
+								&SendStatus, //DW-1758 : Get SendStatus (Irp->IoStatus.Status)
+		FALSE);
+	if (!NT_SUCCESS(Status)) {
+		BytesSent = SOCKET_ERROR;
+		goto $SendLoacl_fail;
 	}
 
 	// DW-1015 fix crash. WskSocket->Dispatch)->WskSend is NULL while machine is shutdowning
 	// DW-1029 to prevent possible contingency, check if dispatch table is valid.
 	if(gbShutdown || !WskSocket->Dispatch) { 
-		IoFreeIrp(Irp);
-		FreeWskBuffer(&WskBuffer);
-		return SOCKET_ERROR;
+		BytesSent = SOCKET_ERROR;
+		goto $SendLoacl_fail;
 	}
 
 	Flags |= WSK_FLAG_NODELAY;
@@ -729,18 +918,18 @@ SendLocal(
 
 	if(pSock->sk_state <= WSK_DISCONNECTING) {
 		// DW-1749 
+		WDRBD_INFO("%s, No Connect, Current state : %d(0x%p)\n", __FUNCTION__, pSock->sk_state, WskSocket);
 		BytesSent = -ECONNRESET;
 		goto $SendLoacl_fail;
 	}
 	
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 																			WskSocket,
-																			&WskBuffer,
+																			WskBuffer,
 																			Flags,
 																			Irp);
 	if (Status == STATUS_PENDING) {
-
-		Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, pTime);
+		Status = KeWaitForSingleObject(CompletionEvent, Executive, KernelMode, FALSE, pTime);
 
 		if(Status == STATUS_TIMEOUT) {
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
@@ -750,41 +939,55 @@ SendLocal(
 			} else {
 				// FIXME: cancel & completion's race condition may be occurred.
 				// Status or Irp->IoStatus.Status  
+
+				//DW-1758 : release resource from the completion routine if IRP is cancelled 
+				WDRBD_INFO("%s, Timeout(%dms), Current state : %d(0x%p)\n", __FUNCTION__, Timeout, pSock->sk_state, WskSocket);
 				IoCancelIrp(Irp);
-				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				BytesSent = -EAGAIN;
+				//KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
+				return -EAGAIN;
 			}
 			goto $SendLoacl_fail;
 		}
 	}
 
-	Status = Irp->IoStatus.Status;
-	
-	if(Status == STATUS_SUCCESS) {
-		BytesSent = (LONG)Irp->IoStatus.Information;
-	} else {
-		switch (Irp->IoStatus.Status) {
+	if (SendStatus != STATUS_SUCCESS) {
+		switch (SendStatus) {
 		case STATUS_IO_TIMEOUT:
+			WDRBD_INFO("Send timeout... wsk(0x%p)\n", WskSocket);
 			BytesSent = -EAGAIN;
-			WDRBD_INFO("SendLocal timeout... wsk(0x%p)\n", WskSocket);
 			break;
 		case STATUS_INVALID_DEVICE_STATE:
 		case STATUS_FILE_FORCED_CLOSED:
-			BytesSent = -ECONNRESET;
-			WDRBD_INFO("SendLocal invalid WSK Socket state (%s) wsk(0x%p)\n", GetSockErrorString(Irp->IoStatus.Status), WskSocket);
+			WDRBD_INFO("Send invalid WSK Socket state (%s) wsk(0x%p)\n", GetSockErrorString(SendStatus), WskSocket);
 			pSock->sk_state = WSK_INVALID_DEVICE;
-			break;	
+			BytesSent = -ECONNRESET;
+			break;
 		default:
-			WDRBD_INFO("SendLocal fail(0x%p)\n", WskSocket);
+			WDRBD_INFO("Send error, default state(%s) wsk(0x%p)\n", GetSockErrorString(SendStatus), WskSocket);
 			BytesSent = -ECONNRESET;
 			break;
 		}
 	}
+
+	ExFreePool(CompletionEvent);
+
+	return BytesSent;
 	
 $SendLoacl_fail:	
+	if (WskBuffer) {
+		if (WskBuffer->Mdl)
+			FreeWskBuffer(WskBuffer);
+		ExFreePool(WskBuffer);
+	}
 
-	IoFreeIrp(Irp);
-	FreeWskBuffer(&WskBuffer);
+	if (DataBuffer)
+		ExFreePool(DataBuffer);
+
+	if (CompletionEvent)
+		ExFreePool(CompletionEvent);
+
+	if (Irp)
+		IoFreeIrp(Irp);
 
 	return BytesSent;
 }
