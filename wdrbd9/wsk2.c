@@ -633,13 +633,13 @@ __in  BOOLEAN	bWriteAccess
 	ASSERT(Buffer);
 	ASSERT(BufferSize);
 
-	(*DataBuffer) = ExAllocatePoolWithTag(NonPagedPool, BufferSize, 'PSDW');
+	(*DataBuffer) = ExAllocatePoolWithTag(NonPagedPool, BufferSize, 'DFDW');
 	if (!(*DataBuffer)) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 
-	(*WskBuffer) = ExAllocatePoolWithTag(NonPagedPool, sizeof(WSK_BUF), 'PSDW');
+	(*WskBuffer) = ExAllocatePoolWithTag(NonPagedPool, sizeof(WSK_BUF), 'DFDW');
 	if (!(*WskBuffer)) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -679,7 +679,7 @@ __in  BOOLEAN	bRawIrp)
 	ASSERT(pIrp);
 	ASSERT(CompletionEvent);
 
-	struct SendParameter *param = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct SendParameter), 'PSDW');
+	struct SendParameter *param = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct SendParameter), 'DFDW');
 
 	if (!param) {
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -741,7 +741,7 @@ Send(
 	}
 
 	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
-	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'PSDW');	
+	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'DFDW');	
 	if (!CompletionEvent) {
 		return SOCKET_ERROR;
 	}
@@ -878,7 +878,7 @@ SendLocal(
 	}
 
 	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
-	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'PSDW');
+	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'DFDW');
 	if (!CompletionEvent) {
 		return SOCKET_ERROR;
 	}
