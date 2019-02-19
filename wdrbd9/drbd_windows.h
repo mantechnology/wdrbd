@@ -531,10 +531,16 @@ struct sock {
 
 #ifdef _WSK_SOCKET_STATE
 enum sock_state {
-	WSK_INIT = 0,	
-	WSK_DISCONNECTED,
-	WSK_ESTABLISHED,
-	WSK_INVALID_DEVICE
+	WSK_NONE = 0,			// The socket structure is created but the WSK socket is not created
+	WSK_INVALID_DEVICE,		// invalid socket state
+	WSK_CLOSED,				// closed
+	WSK_CLOSING,			// closing
+	WSK_DISCONNECTED,		// disconnected
+	WSK_DISCONNECTING,		// disconnecting
+	WSK_INITIALIZING,		// WSK socket is created and try to connect
+	WSK_CONNECTING,			// connecting
+	//
+	WSK_ESTABLISHED,		// WSK socket's connection is established
 };
 //#define	TCP_DISCONNECTED	0
 //#define	TCP_ESTABLISHED	1
