@@ -611,9 +611,9 @@ __in struct SendParameter* SendParam
 	else
 	{
 		ExFreePool(SendParam->Event);
+		IoFreeIrp(Irp);
 	}
 
-	IoFreeIrp(Irp);
 	ExFreePool(SendParam);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
@@ -828,6 +828,7 @@ Send(
 	}
 
 	ExFreePool(CompletionEvent);
+	IoFreeIrp(Irp);
 
 	return BytesSent;
 
@@ -963,6 +964,7 @@ SendLocal(
 	}
 
 	ExFreePool(CompletionEvent);
+	IoFreeIrp(Irp);
 
 	return BytesSent;
 	
