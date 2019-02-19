@@ -787,7 +787,7 @@ Send(
 
 	if (Status == STATUS_PENDING) {
 		//Status = KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-		Status = KeWaitForSingleObject(CompletionEvent, Executive, KernelMode, FALSE, NULL);
+		Status = KeWaitForSingleObject(CompletionEvent, Executive, KernelMode, FALSE, pTime);
 		if(Status == STATUS_TIMEOUT) {
 			// DW-1679 if WSK_INVALID_DEVICE, we goto fail.
 			if(pSock->sk_state == WSK_INVALID_DEVICE) {
