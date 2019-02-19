@@ -669,7 +669,7 @@ __in  BOOLEAN	bWriteAccess
 NTSTATUS
 InitWskSendData(
 __out PIRP*		pIrp,
-__out PKEVENT	CompletionEvent,
+__out PKEVENT*	CompletionEvent,
 __in  PCHAR		DataBuffer,
 __in  WSK_BUF*	WskBuffer,
 __in  LONG*		BytesSent,
@@ -677,9 +677,8 @@ __in  NTSTATUS*	SendStatus,
 __in  BOOLEAN	bRawIrp)
 {
 	ASSERT(pIrp);
-	ASSERT(CompletionEvent);
 
-	struct SendParameter *param = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct SendParameter), 'DFDW');
+	struct SendParameter *param = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct SendParameter), 'CFDW');
 
 	if (!param) {
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -700,13 +699,19 @@ __in  BOOLEAN	bRawIrp)
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
+	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
+	*CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'CFDW');
+	if (!*CompletionEvent) {
+		return SOCKET_ERROR;
+	}
+
 	param->DataBuffer = DataBuffer;
 	param->BytesSent = BytesSent;
-	param->Event = CompletionEvent;
+	param->Event = *CompletionEvent;
 	param->Status = SendStatus;
 	param->WskBuffer = WskBuffer;
 
-	KeInitializeEvent(CompletionEvent, SynchronizationEvent, FALSE);
+	KeInitializeEvent(*CompletionEvent, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(*pIrp, SendCompletionRoutine, param, TRUE, TRUE, TRUE);
 
 	return STATUS_SUCCESS;
@@ -740,12 +745,6 @@ Send(
 		return SOCKET_ERROR;
 	}
 
-	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
-	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'DFDW');	
-	if (!CompletionEvent) {
-		return SOCKET_ERROR;
-	}
-
 	//DW-1758 : Dynamic allocation of 'WskBuffer', for resource management in completion routine
 	//Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	Status = InitWskSendBuffer(&DataBuffer, Buffer, BufferSize, &WskBuffer, FALSE); 
@@ -756,7 +755,7 @@ Send(
 
 	//Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	Status = InitWskSendData(&Irp,
-								CompletionEvent,
+								&CompletionEvent,
 								DataBuffer,
 								WskBuffer,
 								&BytesSent, //DW-1758 : Get BytesSent (Irp->IoStatus.Information)
@@ -877,12 +876,6 @@ SendLocal(
 		return SOCKET_ERROR;
 	}
 
-	//DW-1758 : Dynamic allocation of 'CompletionEvet', for resource management in completion routine
-	CompletionEvent = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), 'DFDW');
-	if (!CompletionEvent) {
-		return SOCKET_ERROR;
-	}
-
 	//DW-1758 : Dynamic allocation of 'WskBuffer', for resource management in completion routine
 	//Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, FALSE);
 	Status = InitWskSendBuffer(&DataBuffer, Buffer, BufferSize, &WskBuffer, FALSE);
@@ -893,7 +886,7 @@ SendLocal(
 
 	//Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	Status = InitWskSendData(&Irp,
-								CompletionEvent,
+								&CompletionEvent,
 								DataBuffer,
 								WskBuffer,
 								&BytesSent, //DW-1758 : Get BytesSent (Irp->IoStatus.Information)
