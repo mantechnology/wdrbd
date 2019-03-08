@@ -982,7 +982,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 #endif
 	sector_t sector;
 	const sector_t capacity = drbd_get_capacity(device->this_bdev);
-	int max_bio_size;
+	unsigned int max_bio_size;
 	int number, rollback_i, size;
 	int align, requeue = 0;
 	int i = 0;
@@ -1015,7 +1015,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		rcu_read_unlock();
 	}
 
-	max_bio_size = queue_max_hw_sectors(device->rq_queue) << 9;
+	max_bio_size = (unsigned int)(min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE));
 	number = drbd_rs_number_requests(peer_device);
 #ifdef _WIN32
     WDRBD_TRACE_TR("number(%d)\n", number);
