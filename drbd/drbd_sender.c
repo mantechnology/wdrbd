@@ -596,6 +596,8 @@ void drbd_csum_pages(struct crypto_hash *tfm, struct drbd_peer_request *peer_req
 void drbd_csum_pages(struct crypto_hash *tfm, struct page *page, void *digest)
 #endif
 {
+	UNREFERENCED_PARAMETER(tfm);
+
 #ifdef _WIN32
 	*(uint32_t *)digest = crc32c(0, peer_req->peer_req_databuf, peer_req->i.size);
 #else
@@ -624,6 +626,7 @@ void drbd_csum_bio(struct crypto_hash *tfm, struct drbd_request *req, void *dige
 void drbd_csum_bio(struct crypto_hash *tfm, struct bio *bio, void *digest)
 #endif
 {
+	UNREFERENCED_PARAMETER(tfm);
 #ifdef _WIN32
 	struct hash_desc desc;
 #else
@@ -799,6 +802,8 @@ int w_resync_timer(struct drbd_work *w, int cancel)
 
 int w_send_uuids(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_peer_device *peer_device =
 		container_of(w, struct drbd_peer_device, propagate_uuids_work);
 
@@ -817,6 +822,10 @@ void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemA
 void resync_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(SystemArgument1);
+	UNREFERENCED_PARAMETER(SystemArgument2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
 
 	drbd_queue_work_if_unqueued(
@@ -1230,6 +1239,8 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 
 int w_ov_finished(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_peer_device_work *dw =
 		container_of(w, struct drbd_peer_device_work, w);
 	struct drbd_peer_device *peer_device = dw->peer_device;
@@ -1247,6 +1258,8 @@ struct resync_finished_work {
 
 static int w_resync_finished(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct resync_finished_work *rfw = container_of(
 		container_of(w, struct drbd_peer_device_work, w),
 		struct resync_finished_work, pdw);
@@ -1767,6 +1780,7 @@ int w_e_end_data_req(struct drbd_work *w, int cancel)
 
 static bool all_zero(struct drbd_peer_request *peer_req)
 {
+	UNREFERENCED_PARAMETER(peer_req);
 #ifdef _WIN32
 	return false;
 #else
@@ -2099,6 +2113,8 @@ static int drbd_send_barrier(struct drbd_connection *connection)
 
 static bool need_unplug(struct drbd_connection *connection)
 {
+	UNREFERENCED_PARAMETER(connection);
+
 #ifndef _WIN32
 	unsigned i = connection->todo.unplug_slot;
 	return dagtag_newer_eq(connection->send.current_dagtag_sector,
@@ -2110,6 +2126,9 @@ static bool need_unplug(struct drbd_connection *connection)
 
 static void maybe_send_unplug_remote(struct drbd_connection *connection, bool send_anyways)
 {
+	UNREFERENCED_PARAMETER(connection);
+	UNREFERENCED_PARAMETER(send_anyways);
+
 #ifndef _WIN32
 	if (need_unplug(connection)) {
 		/* Yes, this is non-atomic wrt. its use in drbd_unplug_fn.
@@ -2179,6 +2198,8 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
  */
 static bool drbd_pause_after(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 	struct drbd_device *other_device;
 	bool changed = false;
 	int vnr;
@@ -2225,6 +2246,8 @@ static bool drbd_pause_after(struct drbd_device *device)
  */
 static bool drbd_resume_next(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 	struct drbd_device *other_device;
 	bool changed = false;
 	int vnr;
@@ -2365,6 +2388,10 @@ void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID S
 void start_resync_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(SystemArgument1);
+	UNREFERENCED_PARAMETER(SystemArgument2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_peer_device *peer_device = (struct drbd_peer_device *) data;
 	drbd_info(peer_device, "post RS_START to the peer_device work\n"); // DW-1518
 	drbd_peer_device_post_work(peer_device, RS_START);
@@ -2892,6 +2919,10 @@ void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
 void repost_up_to_date_fn(unsigned long data)
 #endif 
 {
+	UNREFERENCED_PARAMETER(arg1);
+	UNREFERENCED_PARAMETER(arg2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 
 	drbd_post_work(resource, TRY_BECOME_UP_TO_DATE);

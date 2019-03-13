@@ -33,7 +33,7 @@
 
 #include "disp.h"
 
-#pragma warning (disable : 4100 4146 4221)
+#pragma warning (disable : 4146 4221)
 //#define DRBD_TRACE				    // trace replication flow(basic)
 //#define DRBD_TRACE1				    // trace replication flow(detail)
 
@@ -1606,6 +1606,11 @@ extern void up_read(KSPIN_LOCK* lock);
 static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 	sector_t nr_sects, gfp_t gfp_mask, bool discard)
 {
+	UNREFERENCED_PARAMETER(sector);
+	UNREFERENCED_PARAMETER(nr_sects);
+	UNREFERENCED_PARAMETER(bdev);
+	UNREFERENCED_PARAMETER(gfp_mask);
+	UNREFERENCED_PARAMETER(discard);
 	// WDRBD: Not support
 	return 0;
 }
@@ -1631,6 +1636,7 @@ extern int drbd_backing_bdev_events(struct drbd_device *device);
 
 static inline unsigned int queue_io_min(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 	return 0; // dummy: q->limits.io_min;
 }
 

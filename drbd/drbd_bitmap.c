@@ -574,6 +574,8 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 	 enum bitmap_operations op, __le32 *buffer, enum km_type km_type)
 #endif
 {
+	UNREFERENCED_PARAMETER(km_type);
+
 	struct drbd_bitmap *bitmap = device->bitmap;
 	unsigned int word32_skip = 32 * bitmap->bm_max_peers;
 #ifdef _WIN32
@@ -1686,6 +1688,7 @@ static int bm_rw(struct drbd_device *device, unsigned flags)
 int drbd_bm_read(struct drbd_device *device,
 		 struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	return bm_rw(device, BM_AIO_READ);
 }
 
@@ -1734,6 +1737,7 @@ void drbd_bm_mark_range_for_writeout(struct drbd_device *device, unsigned long s
 int drbd_bm_write(struct drbd_device *device,
 		  struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	return bm_rw(device, 0);
 }
 
@@ -1746,6 +1750,7 @@ int drbd_bm_write(struct drbd_device *device,
 int drbd_bm_write_all(struct drbd_device *device,
 		      struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	return bm_rw(device, BM_AIO_WRITE_ALL_PAGES);
 }
 
@@ -1773,6 +1778,7 @@ int drbd_bm_write_lazy(struct drbd_device *device, unsigned upper_idx) __must_ho
 int drbd_bm_write_copy_pages(struct drbd_device *device,
 			     struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	return bm_rw(device, BM_AIO_COPY_PAGES);
 }
 

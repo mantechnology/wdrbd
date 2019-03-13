@@ -209,6 +209,7 @@ struct drbd_transport *transport)
 
 static void dtt_nodelay(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 	int val = 1;
 #ifdef _WIN32
 	// nagle disable is supported (registry configuration)
@@ -347,6 +348,8 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 		      void *buf, size_t size, unsigned msg_flags)
 {
+	UNREFERENCED_PARAMETER(tcp_transport);
+	UNREFERENCED_PARAMETER(msg_flags);
 #ifdef _WIN32
 	size_t iov_len = size;
 	char* DataBuffer = (char*)buf;
@@ -892,6 +895,8 @@ out:
 static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 			     enum drbd_packet cmd, enum drbd_stream stream)
 {
+	UNREFERENCED_PARAMETER(stream);
+
 	struct p_header80 h;
 	int msg_flags = 0;
 	int err;
@@ -1036,6 +1041,9 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 
 static void unregister_state_change(struct sock *sock, struct dtt_listener *listener)
 {
+	UNREFERENCED_PARAMETER(sock);
+	UNREFERENCED_PARAMETER(listener);
+
 #ifdef _WIN32
 	// not support 
 #else 
@@ -1310,6 +1318,8 @@ dtt_incoming_connection (
 static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
+	UNREFERENCED_PARAMETER(Flags);
+
 #ifdef _WIN32
 	struct drbd_resource *resource = (struct drbd_resource *) SocketContext;
 	struct drbd_listener *listener = NULL;
@@ -2160,6 +2170,7 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
+	UNREFERENCED_PARAMETER(tcp_transport);
 #ifdef _WIN32
 #if 0 
 	// not support data socket congestion
@@ -2294,6 +2305,7 @@ static int dtt_send_zc_bio(struct drbd_transport *transport, struct bio *bio)
 
 static void dtt_cork(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 1;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
@@ -2302,6 +2314,7 @@ static void dtt_cork(struct socket *socket)
 
 static void dtt_uncork(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 0;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
@@ -2310,6 +2323,7 @@ static void dtt_uncork(struct socket *socket)
 
 static void dtt_quickack(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 2;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_QUICKACK, (char *)&val, sizeof(val));
@@ -2355,6 +2369,9 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 
 static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
+	UNREFERENCED_PARAMETER(m);
+
 #ifndef _WIN32 
 	struct sock *sk = socket->sk;
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -2370,6 +2387,9 @@ static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 
 static void dtt_debugfs_show(struct drbd_transport *transport, struct seq_file *m)
 {
+	UNREFERENCED_PARAMETER(transport);
+	UNREFERENCED_PARAMETER(m);
+
 #ifndef _WIN32 
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);

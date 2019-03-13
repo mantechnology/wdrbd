@@ -27,7 +27,7 @@
 #define _DRBD_INT_H
 
 #ifdef _WIN32
-#pragma warning (disable : 4221 4706)
+//#pragma warning (disable : 4221 4706)
 #include "stddef.h"
 #include "windows/types.h"
 #include "linux-compat/list.h"
@@ -2706,6 +2706,8 @@ static inline void drbd_set_my_capacity(struct drbd_device *device,
 
 static inline void drbd_kobject_uevent(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 #ifdef _WIN32
 	// required refactring for debugfs
 #else
@@ -2840,6 +2842,7 @@ extern int drbd_open_ro_count(struct drbd_resource *resource);
 
 static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_req)
 {
+	UNREFERENCED_PARAMETER(peer_req);
 #ifdef _WIN32
 	// not support.
 #else	
@@ -3556,6 +3559,8 @@ static inline u64 drbd_history_uuid(struct drbd_device *device, int i)
 
 static inline int drbd_queue_order_type(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 	/* sorry, we currently have no working implementation
 	 * of distributed TCQ stuff */
 #ifndef QUEUE_ORDERED_NONE
@@ -3585,9 +3590,11 @@ static inline void drbd_kick_lo(struct drbd_device *device)
 #else
 static inline void drbd_blk_run_queue(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 }
 static inline void drbd_kick_lo(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
 }
 #endif
 

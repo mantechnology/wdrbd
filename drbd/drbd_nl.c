@@ -61,6 +61,7 @@
 #ifdef _WIN32
 bool capable(int cap)
 {
+	UNREFERENCED_PARAMETER(cap);
     // not supported
     return false;
 }
@@ -227,6 +228,8 @@ static struct drbd_path *first_path(struct drbd_connection *connection)
 static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	struct sk_buff *skb, struct genl_info *info, unsigned flags)
 {
+	UNREFERENCED_PARAMETER(skb);
+
 	struct drbd_genlmsghdr *d_in = info->userhdr;
 	const u8 cmd = info->genlhdr->cmd;
 	int err;
@@ -2570,6 +2573,7 @@ static void decide_on_write_same_support(struct drbd_device *device,
 static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backing_dev *bdev,
 				   unsigned int max_bio_size, struct o_qlim *o)
 {
+	UNREFERENCED_PARAMETER(o);
 	struct request_queue * const q = device->rq_queue;
 	unsigned int max_hw_sectors = max_bio_size >> 9;
 	struct request_queue *b = NULL;
@@ -2992,6 +2996,7 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 
 bool want_bitmap(struct drbd_peer_device *peer_device)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	struct peer_device_conf *pdc;
 #ifndef _WIN32 
 	bool want_bitmap = false;
@@ -3053,6 +3058,8 @@ static int open_backing_devices(struct drbd_device *device,
 static void close_backing_dev(struct drbd_device *device, struct block_device *bdev,
 	bool do_bd_unlink)
 {
+	UNREFERENCED_PARAMETER(device);
+
 	if (!bdev)
 		return;
 	if (do_bd_unlink) {
@@ -6542,7 +6549,7 @@ int drbd_adm_start_ov(struct sk_buff *skb, struct genl_info *info)
 			retcode = ERR_MANDATORY_TAG;
 			drbd_msg_put_info(adm_ctx.reply_skb, from_attrs_err_to_txt(err));
 			goto out;
-		}
+		} 
 	}
 	mutex_lock(&adm_ctx.resource->adm_mutex);
 

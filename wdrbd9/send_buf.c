@@ -317,6 +317,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 
 int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 {
+	UNREFERENCED_PARAMETER(send_buf_kill_event);
 	int ret = 0;
 
 	if (bab == NULL) {

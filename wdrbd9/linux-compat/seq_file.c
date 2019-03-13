@@ -2,11 +2,15 @@
 
 int seq_putc(struct seq_file *m, char c)
 {
+	UNREFERENCED_PARAMETER(m);
+	UNREFERENCED_PARAMETER(c);
     return 0;
 }
 
 int seq_puts(struct seq_file *m, const char *s)
 {
+	UNREFERENCED_PARAMETER(m);
+	UNREFERENCED_PARAMETER(s);
     return 0;
 }
 

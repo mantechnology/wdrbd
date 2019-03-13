@@ -255,6 +255,8 @@ cleanup:
 NTSTATUS
 mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
+	UNREFERENCED_PARAMETER(DriverObject);
+
     NTSTATUS            status;
     PDEVICE_OBJECT      AttachedDeviceObject = NULL;
     PDEVICE_OBJECT      ReferenceDeviceObject = NULL;

@@ -520,6 +520,9 @@ void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
 #endif
 {
+	UNREFERENCED_PARAMETER(func);
+	UNREFERENCED_PARAMETER(line);
+
 #ifdef _WIN32
 	struct bio* master_bio = NULL;
 #endif
@@ -1927,6 +1930,9 @@ struct drbd_plug_cb {
 #endif
 static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 {
+	UNREFERENCED_PARAMETER(cb);
+	UNREFERENCED_PARAMETER(from_schedule);
+
 #ifndef _WIN32
 	struct drbd_plug_cb *plug = container_of(cb, struct drbd_plug_cb, cb);
 	struct drbd_resource *resource = plug->cb.data;
@@ -1949,6 +1955,7 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 
 static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 {
+	UNREFERENCED_PARAMETER(resource);
 #ifndef _WIN32
 	/* A lot of text to say
 	 * return (struct drbd_plug_cb*)blk_check_plugged(); */
@@ -1965,6 +1972,9 @@ static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 
 static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req)
 {
+	UNREFERENCED_PARAMETER(req);
+	UNREFERENCED_PARAMETER(plug);
+
 #ifndef _WIN32
 	struct drbd_request *tmp = plug->most_recent_req;
 	/* Will be sent to some peer.

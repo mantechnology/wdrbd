@@ -181,6 +181,8 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
 */
 int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 {
+	UNREFERENCED_PARAMETER(sib);
+
     int ret = 0;
 
     if (!skb) {
@@ -337,6 +339,8 @@ void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 
 struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 {
+	UNREFERENCED_PARAMETER(flags);
+
     struct sk_buff *skb;
 
     if (NLMSG_GOODSIZE == payload) {
@@ -369,6 +373,8 @@ __inline void nlmsg_free(struct sk_buff *skb)
 void
 InitWskNetlink(void * pctx)
 {
+	UNREFERENCED_PARAMETER(pctx);
+
     NTSTATUS    status;
     PWSK_SOCKET netlink_socket = NULL;
     SOCKADDR_IN LocalAddress = {0};
@@ -729,7 +735,10 @@ _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
-    UNREFERENCED_PARAMETER(Flags);
+	UNREFERENCED_PARAMETER(AcceptSocketDispatch);
+	UNREFERENCED_PARAMETER(AcceptSocketContext);
+	UNREFERENCED_PARAMETER(Flags);
+	UNREFERENCED_PARAMETER(SocketContext);
 
     if (AcceptSocket == NULL)
     {

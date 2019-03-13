@@ -430,15 +430,19 @@ void * kmalloc(int size, int flag, ULONG Tag)
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(flag); 
+
 	return kzalloc(size * count, 0, Tag);
 }
 
 void * kzalloc(int size, int flag, ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(flag); 
+
 	void *mem;
     static int fail_count = 0;
 
-	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
+	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag); 
 	if (!mem)
 	{
 		return NULL;
@@ -470,6 +474,8 @@ void *page_address(const struct page *page)
 
 struct page  *alloc_page(int flag)
 {
+	UNREFERENCED_PARAMETER(flag);
+
 	struct page *p = kmalloc(sizeof(struct page),0, 'D3DW'); 
 	if (!p)	{
 		WDRBD_INFO("alloc_page struct page failed\n");
@@ -501,6 +507,8 @@ void * kmem_cache_alloc(struct kmem_cache *cache, int flag, ULONG Tag)
 
 void kmem_cache_free(struct kmem_cache *cache, void * x)
 {
+	UNREFERENCED_PARAMETER(cache);
+
 	kfree(x);
 }
 
@@ -527,6 +535,10 @@ __inline void kvfree(void * x)
 
 mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_data)
 {
+	UNREFERENCED_PARAMETER(alloc_fn);
+	UNREFERENCED_PARAMETER(min_nr);
+	UNREFERENCED_PARAMETER(free_fn);
+
 	mempool_t *p_pool;
 	if (!pool_data)
 	{
@@ -544,6 +556,9 @@ mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_
 
 mempool_t *mempool_create_page_pool(int min_nr, int order)
 {
+	UNREFERENCED_PARAMETER(order);
+	UNREFERENCED_PARAMETER(min_nr);
+
 	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
 	if (!p_pool) {
 		return 0;
@@ -610,6 +625,7 @@ void mempool_free(void *p, mempool_t *pool)
 
 void mempool_destroy(void *p)
 {
+	UNREFERENCED_PARAMETER(p);
 	// we don't need to free mempool. wdrbd is static loading driver.
 }
 
@@ -622,6 +638,11 @@ void kmem_cache_destroy(struct kmem_cache *s)
 struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
                   unsigned long flags, void (*ctor)(void *), ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(align);
+	UNREFERENCED_PARAMETER(flags);
+	UNREFERENCED_PARAMETER(ctor);
+
+
 	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, Tag);	
 	if (!p)
 	{
@@ -672,6 +693,10 @@ struct request_queue *bdev_get_queue(struct block_device *bdev)
 
 struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
+	UNREFERENCED_PARAMETER(gfp_mask);
+	UNREFERENCED_PARAMETER(nr_iovecs);
+	UNREFERENCED_PARAMETER(bs);
+
 	return NULL;
 }
 
@@ -795,7 +820,9 @@ void wake_up_process(struct drbd_thread *thi)
 }
 
 void _wake_up(wait_queue_head_t *q, char *__func, int __line)
-{		
+{
+	UNREFERENCED_PARAMETER(__func);
+	UNREFERENCED_PARAMETER(__line);
     KeSetEvent(&q->wqh_event, 0, FALSE);
 }
 
@@ -833,6 +860,9 @@ static  void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 
 long schedule(wait_queue_head_t *q, long timeout, char *func, int line) 
 {
+	UNREFERENCED_PARAMETER(line);
+	UNREFERENCED_PARAMETER(func);
+
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 	unsigned long expire;
@@ -1332,11 +1362,13 @@ void get_random_bytes(void *buf, int nbytes)
 
 unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm)
 {
+	UNREFERENCED_PARAMETER(tfm);
 	return 4; // 4byte in constant
 }
 
 int page_count(struct page *page)
 {
+	UNREFERENCED_PARAMETER(page);
 	return 1;
 }
 
@@ -1352,7 +1384,9 @@ void init_timer(struct timer_list *t)
 void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
-    UNREFERENCED_PARAMETER(key);
+	UNREFERENCED_PARAMETER(key);
+	UNREFERENCED_PARAMETER(name);
+
     init_timer(timer);
 #ifdef DBG
     strcpy(timer->name, name);
@@ -1536,11 +1570,14 @@ void kobject_get(struct kobject *kobj)
 
 void drbd_unregister_blkdev(unsigned int major, const char *name)
 {
+	UNREFERENCED_PARAMETER(major);
+	UNREFERENCED_PARAMETER(name);
 
 }
 
 void del_gendisk(struct gendisk *disk)
 {
+	UNREFERENCED_PARAMETER(disk);
 	// free disk
 }
 
@@ -1611,7 +1648,8 @@ void del_gendisk(struct gendisk *disk)
 //Linux/block/genhd.c
 void set_disk_ro(struct gendisk *disk, int flag)
 {
-
+	UNREFERENCED_PARAMETER(disk);
+	UNREFERENCED_PARAMETER(flag);
 }
 
 #define CT_MAX_THREAD_LIST          40
@@ -1733,6 +1771,8 @@ void flush_signals(struct task_struct *task)
 
 void *crypto_alloc_tfm(char *name, u32 mask)
 {
+	UNREFERENCED_PARAMETER(mask);
+
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
 	return (void *)1;
 }
@@ -2014,6 +2054,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 
 struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
 {
+	UNREFERENCED_PARAMETER(gfp_mask);
  	return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
 }
 
@@ -2023,7 +2064,8 @@ void blk_cleanup_queue(struct request_queue *q)
 }
 
 struct gendisk *alloc_disk(int minors)
-{	
+{
+	UNREFERENCED_PARAMETER(minors);
 	struct gendisk *p = kzalloc(sizeof(struct gendisk), 0, '44DW');
 	return p;
 }
@@ -2035,15 +2077,21 @@ void put_disk(struct gendisk *disk)
 
 void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn)
 {
+	UNREFERENCED_PARAMETER(q);
+	UNREFERENCED_PARAMETER(mfn);
 	// not support
 }
 
 void blk_queue_flush(struct request_queue *q, unsigned int flush)
 {
+	UNREFERENCED_PARAMETER(q);
+	UNREFERENCED_PARAMETER(flush);
 }
 
 struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 {
+	UNREFERENCED_PARAMETER(pool_size);
+	UNREFERENCED_PARAMETER(front_pad);
 	// not support
 	return NULL;
 }
@@ -2101,6 +2149,8 @@ void *genlmsg_put_reply(struct msg_buff *skb,
 
 void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 {
+	UNREFERENCED_PARAMETER(skb);
+	UNREFERENCED_PARAMETER(hdr);
 
 }
 
@@ -2308,12 +2358,15 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 // DW-1105: refresh all volumes and handle changes.
 void adjust_changes_to_volume(PVOID pParam)
 {
+	UNREFERENCED_PARAMETER(pParam);
 	refresh_targetdev_list();
 }
 
 // DW-1105: request mount manager to notify us whenever there is a change in the mount manager's persistent symbolic link name database.
 void monitor_mnt_change(PVOID pParam)
 {
+	UNREFERENCED_PARAMETER(pParam);
+
 	OBJECT_ATTRIBUTES oaMntMgr = { 0, };
 	UNICODE_STRING usMntMgr = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -2778,6 +2831,8 @@ static void _adjust_guid_name(char * dst, const char * src)
  */
 struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev)
 {
+	UNREFERENCED_PARAMETER(bUpdatetargetdev);
+
 	ROOT_EXTENSION* pRoot = mvolRootDeviceObject->DeviceExtension;
 	VOLUME_EXTENSION* pVExt = pRoot->Head;
 	VOLUME_EXTENSION* pRetVExt = NULL;
@@ -2898,6 +2953,9 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 
 int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait)
 {
+	UNREFERENCED_PARAMETER(wait);
+	UNREFERENCED_PARAMETER(envp);
+
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 	//PWSK_SOCKET		Socket = NULL;
@@ -3151,6 +3209,10 @@ char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
 struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 				      int size)
 {
+	UNREFERENCED_PARAMETER(size);
+	UNREFERENCED_PARAMETER(unplug);
+	UNREFERENCED_PARAMETER(data);
+
 #ifndef _WIN32
 	struct blk_plug *plug = current->plug;
 	struct blk_plug_cb *cb;

@@ -3220,6 +3220,8 @@ static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode)
 /* need to hold resource->req_lock */
 void drbd_queue_unplug(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 #ifndef _WIN32
 	struct drbd_resource *resource = device->resource;
 	struct drbd_connection *connection;
@@ -3741,6 +3743,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
  */
 static int drbd_congested(void *congested_data, int bdi_bits)
 {
+	UNREFERENCED_PARAMETER(bdi_bits);
+
 	struct drbd_device *device = congested_data;
 #ifndef _WIN32
 	struct request_queue *q;
@@ -3828,6 +3832,8 @@ struct completion_work {
 
 static int w_complete(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct completion_work *completion_work =
 		container_of(w, struct completion_work, w);
 
@@ -3955,6 +3961,10 @@ static void peer_ack_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
 static void peer_ack_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(arg1);
+	UNREFERENCED_PARAMETER(arg2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 
 	drbd_flush_peer_acks(resource);
@@ -6167,6 +6177,7 @@ int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_devic
 int drbd_bmio_set_all_n_write(struct drbd_device *device,
 			      struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
@@ -6435,6 +6446,7 @@ out:
 int drbd_bmio_clear_all_n_write(struct drbd_device *device,
 			    struct drbd_peer_device *peer_device) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(peer_device);
 	drbd_resume_al(device);
 	drbd_bm_clear_all(device);
 	return drbd_bm_write(device, NULL);
@@ -6442,6 +6454,8 @@ int drbd_bmio_clear_all_n_write(struct drbd_device *device,
 
 static int w_bitmap_io(struct drbd_work *w, int unused)
 {
+	UNREFERENCED_PARAMETER(unused);
+
 	struct bm_io_work *work =
 		container_of(w, struct bm_io_work, w);
 	struct drbd_device *device = work->device;
@@ -6666,6 +6680,10 @@ static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID
 static void md_sync_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(SystemArgument1);
+	UNREFERENCED_PARAMETER(SystemArgument2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_device *device = (struct drbd_device *) data;
 	drbd_device_post_work(device, MD_SYNC);
 }

@@ -115,6 +115,9 @@ NTAPI CompletionRoutine(
 	__in PKEVENT		CompletionEvent
 )
 {
+	UNREFERENCED_PARAMETER(Irp);
+	UNREFERENCED_PARAMETER(DeviceObject);
+
 	ASSERT(CompletionEvent);
 	
 	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
@@ -130,6 +133,9 @@ NTAPI NoWaitCompletionRoutine(
 	__in PVOID		Context
 )
 {
+	UNREFERENCED_PARAMETER(DeviceObject);
+	UNREFERENCED_PARAMETER(Context);
+
 	IoFreeIrp(Irp);
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
@@ -594,6 +600,8 @@ __in PIRP			Irp,
 __in struct SendParameter* SendParam
 )
 {
+	UNREFERENCED_PARAMETER(DeviceObject);
+
 	FreeWskBuffer(SendParam->WskBuffer);
 	ExFreePool(SendParam->WskBuffer);
 	ExFreePool(SendParam->DataBuffer);
@@ -731,6 +739,10 @@ Send(
 	__in enum			drbd_stream stream
 )
 {
+	UNREFERENCED_PARAMETER(send_buf_kill_event);
+	UNREFERENCED_PARAMETER(transport);
+	UNREFERENCED_PARAMETER(stream);
+
 	PWSK_SOCKET		WskSocket = pSock->sk;
 	PKEVENT			CompletionEvent = NULL;
 	PIRP			Irp = NULL;
@@ -1000,6 +1012,9 @@ SendAsync(
 	__in enum			drbd_stream stream
 )
 {
+	UNREFERENCED_PARAMETER(transport);
+	UNREFERENCED_PARAMETER(stream);
+
 	PWSK_SOCKET		WskSocket = pSock->sk;
 	KEVENT		CompletionEvent = { 0 };
 	PIRP		Irp = NULL;
@@ -1746,8 +1761,13 @@ _In_opt_  PWSK_SOCKET AcceptSocket,
 _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
-{   
-    UNREFERENCED_PARAMETER(Flags);
+{
+	UNREFERENCED_PARAMETER(AcceptSocketContext);
+	UNREFERENCED_PARAMETER(Flags);
+	UNREFERENCED_PARAMETER(RemoteAddress);
+	UNREFERENCED_PARAMETER(AcceptSocketDispatch);
+	UNREFERENCED_PARAMETER(LocalAddress);
+
     // Check for a valid new socket
     if (AcceptSocket != NULL) {
         WDRBD_INFO("incoming connection on a listening socket.\n");

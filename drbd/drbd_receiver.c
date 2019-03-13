@@ -313,6 +313,8 @@ static void reclaim_finished_net_peer_reqs(struct drbd_connection *connection,
 
 static void drbd_reclaim_net_peer_reqs(struct drbd_connection *connection)
 {
+	UNREFERENCED_PARAMETER(connection);
+
 #ifndef _WIN32   // No need to use in Windows
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
@@ -539,6 +541,8 @@ You must not have the req_lock:
 struct drbd_peer_request *
 drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must_hold(local)
 {
+	UNREFERENCED_PARAMETER(gfp_mask);
+
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_request *peer_req;
 
@@ -789,6 +793,10 @@ void connect_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
 void connect_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(arg1);
+	UNREFERENCED_PARAMETER(arg2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_connection *connection = (struct drbd_connection *) data;
 	struct drbd_resource *resource = connection->resource;
 	unsigned long irq_flags;
@@ -826,6 +834,8 @@ void conn_disconnect(struct drbd_connection *connection);
 
 int connect_work(struct drbd_work *work, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_connection *connection =
 		container_of(work, struct drbd_connection, connect_timer_work);
 	enum drbd_state_rv rv;
@@ -1126,6 +1136,8 @@ static void drbd_unplug_all_devices(struct drbd_connection *connection)
 #else
 static void drbd_unplug_all_devices(struct drbd_connection *connection)
 {
+	UNREFERENCED_PARAMETER(connection);
+
 #ifndef _WIN32
 	if (current->plug == &connection->receiver_plug) {
 		blk_finish_plug(&connection->receiver_plug);
@@ -1381,6 +1393,8 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 static int w_flush(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct flush_work *fw = container_of(w, struct flush_work, w);
 	struct drbd_epoch *epoch = fw->epoch;
 	struct drbd_connection *connection = epoch->connection;
@@ -1607,6 +1621,10 @@ void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backin
  */
 int drbd_issue_discard_or_zero_out(struct drbd_device *device, sector_t start, unsigned int nr_sectors, bool discard)
 {
+	UNREFERENCED_PARAMETER(start);
+	UNREFERENCED_PARAMETER(nr_sectors);
+	UNREFERENCED_PARAMETER(discard);
+
 	struct block_device *bdev = device->ldev->backing_bdev;
 #ifdef QUEUE_FLAG_DISCARD
 	struct request_queue *q = bdev_get_queue(bdev);
@@ -1966,6 +1984,8 @@ static void drbd_remove_peer_req_interval(struct drbd_device *device,
  */
 int w_e_reissue(struct drbd_work *w, int cancel) __releases(local)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_peer_request *peer_req =
 		container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
@@ -2248,6 +2268,8 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_request *req,
 			   sector_t sector, int data_size)
 {
+	UNREFERENCED_PARAMETER(sector);
+
 	DRBD_BIO_VEC_TYPE bvec;
 	DRBD_ITER_TYPE iter;
 	struct bio *bio;
@@ -2320,6 +2342,8 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
  */
 static int e_end_resync_block(struct drbd_work *w, int unused)
 {
+	UNREFERENCED_PARAMETER(unused);
+
 	struct drbd_peer_request *peer_req =
 		container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
@@ -2650,11 +2674,15 @@ static int e_send_ack(struct drbd_work *w, enum drbd_packet ack)
 
 static int e_send_discard_write(struct drbd_work *w, int unused)
 {
+	UNREFERENCED_PARAMETER(unused);
+
 	return e_send_ack(w, P_SUPERSEDED); 
 }
 
 static int e_send_retry_write(struct drbd_work *w, int unused)
 {
+
+	UNREFERENCED_PARAMETER(unused);
 
 	struct drbd_peer_request *peer_request =
 		container_of(w, struct drbd_peer_request, w);
@@ -4240,6 +4268,8 @@ static bool is_resync_running(struct drbd_device *device)
 
 static int bitmap_mod_after_handshake(struct drbd_peer_device *peer_device, int hg, int peer_node_id)
 {
+	UNREFERENCED_PARAMETER(peer_node_id);
+
 	struct drbd_device *device = peer_device->device;
 
 	if (hg == 4) {
@@ -5182,6 +5212,8 @@ disconnect:
 
 static void drbd_setup_order_type(struct drbd_device *device, int peer)
 {
+	UNREFERENCED_PARAMETER(device);
+	UNREFERENCED_PARAMETER(peer);
 	/* sorry, we currently have no working implementation
 	 * of distributed TCQ */
 }
@@ -6065,6 +6097,8 @@ __change_connection_state(struct drbd_connection *connection,
 			  union drbd_state mask, union drbd_state val,
 			  enum chg_state_flags flags)
 {
+	UNREFERENCED_PARAMETER(flags);
+
 	struct drbd_resource *resource = connection->resource;
 
 	if (mask.role) {
@@ -6336,6 +6370,8 @@ static int receive_req_state(struct drbd_connection *connection, struct packet_i
 
 int abort_nested_twopc_work(struct drbd_work *work, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_resource *resource =
 		container_of(work, struct drbd_resource, twopc_work);
 	bool prepared = false;
@@ -6692,6 +6728,10 @@ void queued_twopc_timer_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2)
 void queued_twopc_timer_fn(unsigned long data)
 #endif
 {
+	UNREFERENCED_PARAMETER(arg1);
+	UNREFERENCED_PARAMETER(arg2);
+	UNREFERENCED_PARAMETER(Dpc);
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	struct queued_twopc *q;
 	unsigned long irq_flags;
@@ -8244,6 +8284,8 @@ static int receive_skip(struct drbd_connection *connection, struct packet_info *
 
 static int receive_UnplugRemote(struct drbd_connection *connection, struct packet_info *pi)
 {
+	UNREFERENCED_PARAMETER(pi);
+
 	struct drbd_transport *transport = &connection->transport;
 
 	/* Make sure we've acked all the data associated
@@ -9514,12 +9556,14 @@ void twopc_connection_down(struct drbd_connection *connection)
 
 static int got_Ping(struct drbd_connection *connection, struct packet_info *pi)
 {
+	UNREFERENCED_PARAMETER(pi);
 	return drbd_send_ping_ack(connection);
 
 }
 
 static int got_PingAck(struct drbd_connection *connection, struct packet_info *pi)
 {
+	UNREFERENCED_PARAMETER(pi);
 	if (!test_and_set_bit(GOT_PING_ACK, &connection->flags))
 		wake_up(&connection->ping_wait);
 
@@ -9848,6 +9892,8 @@ static int got_OVResult(struct drbd_connection *connection, struct packet_info *
 
 static int got_skip(struct drbd_connection *connection, struct packet_info *pi)
 {
+	UNREFERENCED_PARAMETER(pi);
+	UNREFERENCED_PARAMETER(connection);
 	return 0;
 }
 
@@ -9878,6 +9924,8 @@ static bool is_sync_source(struct drbd_peer_device *peer_device)
 
 static int w_send_out_of_sync(struct drbd_work *w, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_peer_request *peer_req =
 		container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->send_oos_peer_device;
