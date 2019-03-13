@@ -2,6 +2,7 @@
 #define __DRBD_INTERVAL_H
 
 #ifdef _WIN32
+#pragma warning (disable : 4067)
 #include "windows/types.h"
 #include "linux-compat/rbtree.h"
 #define inline __inline
@@ -21,18 +22,10 @@
  *
  * RHEL5 kernels until at least 2.6.18-238.12.1.el5 have the broken definition.
  */
-#ifndef _WIN32
-
 #if !defined(RB_EMPTY_NODE) || LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,19)
-#undef RB_EMPTY_NODE														
-#define RB_EMPTY_NODE(node)     (rb_parent(node) == node)																						
-#endif
 
-#else
-#if !defined(RB_EMPTY_NODE)
-#undef RB_EMPTY_NODE														
-#define RB_EMPTY_NODE(node)     (rb_parent(node) == node)					
-#endif
+#undef RB_EMPTY_NODE
+#define RB_EMPTY_NODE(node)     (rb_parent(node) == node)
 
 #endif
 
