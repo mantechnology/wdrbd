@@ -4406,7 +4406,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%lu bits)\n",
 				  drbd_bm_total_weight(peer_device));
 			drbd_uuid_set_bitmap(peer_device, 0);
-			drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+			drbd_bm_clear_many_bits(peer_device, 0, ~0UL);
 		} else if (drbd_bm_total_weight(peer_device)) {
 			drbd_info(device, "No resync, but %lu bits in bitmap!\n",
 				  drbd_bm_total_weight(peer_device));
@@ -8501,7 +8501,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			// DW-1365 : fixup secondary's diskless case for crashed primary.
 			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
 			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
-				drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+				drbd_bm_clear_many_bits(peer_device, 0, ~0UL);
 				put_ldev (peer_device->device);
 			} else {
 				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d peer disk_state:%d\n",

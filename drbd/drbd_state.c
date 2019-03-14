@@ -1039,7 +1039,7 @@ enum drbd_disk_state conn_highest_pdsk(struct drbd_connection *connection)
 
 static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *connection)
 {
-	unsigned int repl_state = -1U;
+	unsigned int repl_state = ~0U;
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
@@ -1048,13 +1048,13 @@ static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *conne
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
-#endif
+#endif 
 		if (peer_device->repl_state[NOW] < repl_state)
 			repl_state = peer_device->repl_state[NOW];
 	}
 	rcu_read_unlock();
 
-	if (repl_state == -1U)
+	if (repl_state == ~0U)
 		return L_OFF;
 
 	return repl_state;
