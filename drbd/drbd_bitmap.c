@@ -517,7 +517,7 @@ static __inline ULONG_PTR last_bit_on_page(struct drbd_bitmap *bitmap,
 {
     ULONG_PTR word = interleaved_word32(bitmap, bitmap_index, bit);
 
-	return (bit | 31) + ((word32_in_page(-(word + 1)) / bitmap->bm_max_peers) << 5);
+	return (bit | 31) + ((word32_in_page(~word) / bitmap->bm_max_peers) << 5);
 }
 
 static __inline ULONG_PTR bit_to_page_interleaved(struct drbd_bitmap *bitmap,
@@ -1112,12 +1112,12 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		for (bitmap_index = 0; bitmap_index < b->bm_max_peers; bitmap_index++) {
 			unsigned long bm_set = b->bm_set[bitmap_index];
 
-			if (set_new_bits) {
-				___bm_op(device, bitmap_index, obits, -1UL, BM_OP_SET, NULL, KM_IRQ1);
+			if (set_new_bits) { 
+				___bm_op(device, bitmap_index, obits, device->bitmap->bm_bits, BM_OP_SET, NULL, KM_IRQ1);
 				bm_set += bits - obits;
 			}
 			else
-				___bm_op(device, bitmap_index, obits, -1UL, BM_OP_CLEAR, NULL, KM_IRQ1);
+				___bm_op(device, bitmap_index, obits, device->bitmap->bm_bits, BM_OP_CLEAR, NULL, KM_IRQ1);
 
 			b->bm_set[bitmap_index] = bm_set;
 		}
@@ -1678,7 +1678,7 @@ static int bm_rw_range(struct drbd_device *device,
 
 static int bm_rw(struct drbd_device *device, unsigned flags)
 {
-	return bm_rw_range(device, 0, -1U, flags);
+	return bm_rw_range(device, 0, device->bitmap->bm_number_of_pages, flags);
 }
 
 /**
@@ -1796,7 +1796,7 @@ ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *peer_device, ULONG_PTR star
 unsigned long drbd_bm_find_next(struct drbd_peer_device *peer_device, unsigned long start)
 #endif
 {
-	return bm_op(peer_device->device, peer_device->bitmap_index, start, -1UL,
+	return bm_op(peer_device->device, peer_device->bitmap_index, start, peer_device->device->bitmap->bm_bits,
 		     BM_OP_FIND_BIT, NULL);
 }
 
@@ -1818,7 +1818,7 @@ unsigned long _drbd_bm_find_next(struct drbd_peer_device *peer_device, unsigned 
 #endif
 {
 	/* WARN_ON(!(device->b->bm_flags & BM_LOCK_SET)); */
-	return ____bm_op(peer_device->device, peer_device->bitmap_index, start, -1UL,
+	return ____bm_op(peer_device->device, peer_device->bitmap_index, start, peer_device->device->bitmap->bm_bits,
 		    BM_OP_FIND_BIT, NULL, KM_USER0);
 }
 #ifdef _WIN32
@@ -1828,7 +1828,7 @@ unsigned long _drbd_bm_find_next_zero(struct drbd_peer_device *peer_device, unsi
 #endif
 {
 	/* WARN_ON(!(device->b->bm_flags & BM_LOCK_SET)); */
-	return ____bm_op(peer_device->device, peer_device->bitmap_index, start, -1UL,
+	return ____bm_op(peer_device->device, peer_device->bitmap_index, start, peer_device->device->bitmap->bm_bits,
 		    BM_OP_FIND_ZERO_BIT, NULL, KM_USER0);
 }
 #ifdef _WIN32

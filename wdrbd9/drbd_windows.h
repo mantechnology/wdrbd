@@ -33,7 +33,9 @@
 
 #include "disp.h"
 
-#pragma warning (disable : 4146 4221)
+//#pragma warning (disable : 4100 4146 4221)
+#pragma warning (disable : 4221)
+
 //#define DRBD_TRACE				    // trace replication flow(basic)
 //#define DRBD_TRACE1				    // trace replication flow(detail)
 
