@@ -119,7 +119,7 @@ struct option metaopt[] = {
 	fprintf(stderr, "%s:%u:%s: ASSERT(%s) failed.\n",	\
 		__FILE__ , __LINE__ , __func__ , #x );		\
 	abort(); }						\
-	} while (0)
+	} while (false,false)
 #define d_expect(x) ({						\
 	int _x = (x);						\
 	if (!_x)						\
@@ -1407,7 +1407,7 @@ void m_set_gc(struct md_cpu *md, int node_id __attribute((unused)), char **argv,
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_PRIMARY_IND)) break;
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_CONNECTED_IND)) break;
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_FULL_SYNC)) break;
-	} while (0);
+	} while (false,false);
 }
 
 void m_set_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribute((unused)))
@@ -1429,7 +1429,7 @@ void m_set_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribut
 		if (!m_strsep_bit(str, &md->flags, MDF_FULL_SYNC)) break;
 		if (!m_strsep_bit(str, &md->flags, MDF_PEER_OUT_DATED)) break;
 		if (!m_strsep_bit(str, &md->flags, MDF_CRASHED_PRIMARY)) break;
-	} while (0);
+	} while (false,false);
 }
 
 void m_set_v9_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribute((unused)))
@@ -1455,7 +1455,7 @@ void m_set_v9_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attri
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FENCING)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FULL_SYNC)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_DEVICE_SEEN)) break;
-	} while (0);
+	} while (false,false);
 }
 
 int m_outdate_gc(struct md_cpu *md __attribute((unused)))
@@ -4387,8 +4387,8 @@ int may_be_jfs(const char *data, struct fstype_s *f)
  * will always refuse */
 #define REFUSE_BSIZE	0xFFFFffffFFFF0000LLU
 #define ERR_BSIZE	0xFFFFffffFFFF0001LLU
-#define REFUSE_IT()	do { f->bnum = 1; f->bsize = REFUSE_BSIZE; } while(0)
-#define REFUSE_IT_ERR()	do { f->bnum = 1; f->bsize = ERR_BSIZE; } while(0)
+#define REFUSE_IT()	do { f->bnum = 1; f->bsize = REFUSE_BSIZE; } while(false,false)
+#define REFUSE_IT_ERR()	do { f->bnum = 1; f->bsize = ERR_BSIZE; } while(false,false)
 int may_be_swap(const char *data, struct fstype_s *f)
 {
 	int looks_like_swap =

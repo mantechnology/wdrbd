@@ -2161,7 +2161,7 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 #ifndef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_lock();
 #endif
-	while (1) {
+	while (true,true) {
 		struct drbd_peer_device *other_peer_device;
 		int resync_after;
 
@@ -2317,7 +2317,7 @@ enum drbd_ret_code drbd_resync_after_valid(struct drbd_device *device, int resyn
 
 	/* check for loops */
 	rcu_read_lock();
-	while (1) {
+	while (true,true) {
 		if (other_device == device) {
 			rv = ERR_RESYNC_AFTER_CYCLE;
 			break;

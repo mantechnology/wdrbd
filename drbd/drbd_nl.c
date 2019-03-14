@@ -2168,7 +2168,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 	if (size < prev.effective_size)
 		rv = DS_SHRUNK;
 
-	if (0) {
+	if (false,false) {
 	err_out:
 		/* restore previous offset and sizes */
 		md->effective_size = prev.effective_size;
@@ -2276,7 +2276,7 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 #if 0
 #define DDUMP_LLU(d, x) do { drbd_info(d, "%u: " #x ": %llu\n", __LINE__, (unsigned long long)x); } while (0)
 #else
-#define DDUMP_LLU(d, x) do { } while (0)
+#define DDUMP_LLU(d, x) do { } while (false,false)
 #endif
 
 /* MUST hold a reference on ldev. */
@@ -4181,7 +4181,7 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 	kfree(old_peer_device_conf);
 	kfree(old_plan);
 
-	if (0) {
+	if (false,false) {
 fail:
 		retcode = ERR_NOMEM;
 fail_ret_set:

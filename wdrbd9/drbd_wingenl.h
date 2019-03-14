@@ -548,13 +548,13 @@ static __inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 	do { \
 		if (unlikely(nla_put(msg, attrtype, attrlen, data) < 0)) \
 			goto nla_put_failure; \
-    	} while(0)
+    	} while(false,false)
 
 #define NLA_PUT_TYPE(msg, type, attrtype, value) \
 	do { \
 		type __tmp = value; \
 		NLA_PUT(msg, attrtype, sizeof(type), &__tmp); \
-    	} while(0)
+	    	} while(false,false)
 
 #define NLA_PUT_U8(msg, attrtype, value) \
 	NLA_PUT_TYPE(msg, __u8, attrtype, value)

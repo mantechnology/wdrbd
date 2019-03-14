@@ -598,7 +598,7 @@ struct d_volume *new_to_be_deleted_minor_from_template(struct d_volume *kern)
 	err("%s:%u:%s: ASSERT(%s) failed.\n", __FILE__,		\
 	     __LINE__, __func__, #x);				\
 	abort(); }						\
-	} while (0)
+	} while (false,false)
 
 /* Both conf and kern are single linked lists
  * supposed to be ordered by ->vnr;

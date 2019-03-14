@@ -48,7 +48,7 @@ extern int __build_bug_on_failed;
 	do {                                                    \
 		((void)sizeof(char[1 - 2*!!(condition)]));      \
 		if (condition) __build_bug_on_failed = 1;       \
-	} while(0)
+		} while(false,false)
 #endif
 
 /* Flags which used to be in enum mdf_flag before version 09 */

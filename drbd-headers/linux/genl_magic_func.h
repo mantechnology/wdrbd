@@ -124,9 +124,9 @@ static void dprint_array(const char *dir, int nla_type,
 					nla_data(nla), nla_len(nla));	\
 	} while (0)
 #else
-#define DPRINT_TLA(a, op, b) do {} while (0)
-#define DPRINT_FIELD(dir, nla_type, name, s, nla) do {} while (0)
-#define	DPRINT_ARRAY(dir, nla_type, name, s, nla) do {} while (0)
+#define DPRINT_TLA(a, op, b) do {} while (false,false)
+#define DPRINT_FIELD(dir, nla_type, name, s, nla) do {} while (false,false)
+#define	DPRINT_ARRAY(dir, nla_type, name, s, nla) do {} while (false,false)
 #endif
 
 /*

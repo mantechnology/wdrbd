@@ -91,10 +91,10 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
  * it catches concurrent access (lack of locking on the users part) */
 #ifdef WIN_AL_BUG_ON
 #define PARANOIA_ENTRY() do {		\
-	AL_BUG_ON(!lc, "!lc", NULL, NULL);			\
-	AL_BUG_ON(!lc->nr_elements, "!lc->nr_elements", lc, NULL);	\
-	AL_BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags), "test_and_set_bit(__LC_PARANOIA, &lc->flags)", lc, NULL); \
-	} while (0)
+	AL_BUG_ON(!lc, "!lc", (false,false), (false,false));			\
+	AL_BUG_ON(!lc->nr_elements, "!lc->nr_elements", lc,  (false,false));	\
+	AL_BUG_ON(test_and_set_bit(__LC_PARANOIA, &lc->flags), "test_and_set_bit(__LC_PARANOIA, &lc->flags)", lc,  (false,false)); \
+	} while (false,false)
 #else 
 #define PARANOIA_ENTRY() do {		\
 	BUG_ON(!lc);			\
@@ -107,13 +107,13 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 #ifdef _WIN32
 #define RETURN_VOID()     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
-	return; } while (0)
+	return; } while (false,false)
 #endif
 
 #ifdef _WIN32
 #define RETURN(x)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
-	return x ; } while (0)
+	return x ; } while (false,false)
 #else
 #define RETURN(x...)     do { \
 	clear_bit_unlock(__LC_PARANOIA, &lc->flags); \
@@ -126,7 +126,7 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 	struct lc_element *e_ = (e);	\
 	unsigned i = e_->lc_index;	\
 	AL_BUG_ON(i >= lc_->nr_elements, "i >= lc_->nr_elements", lc, e);	\
-	AL_BUG_ON(lc_->lc_element[i] != e_, "lc_->lc_element[i] != e_", lc, e); } while (0)
+	AL_BUG_ON(lc_->lc_element[i] != e_, "lc_->lc_element[i] != e_", lc, e); } while (false,false)
 #else 
 #define PARANOIA_LC_ELEMENT(lc, e) do {	\
 	struct lru_cache *lc_ = (lc);	\

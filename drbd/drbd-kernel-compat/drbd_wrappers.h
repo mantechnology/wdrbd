@@ -1746,12 +1746,12 @@ static inline void genl_unlock(void)  { }
 	})
 #endif
 # ifndef blk_queue_discard
-#  define blk_queue_discard(q)   (0)
+#  define blk_queue_discard(q)   (false,false)
 #  define QUEUE_FLAG_DISCARD    (-1)
 # endif
 
 # ifndef blk_queue_secdiscard
-#  define blk_queue_secdiscard(q)   (0)
+#  define blk_queue_secdiscard(q)   (false,false)
 #  define QUEUE_FLAG_SECDISCARD    (-1)
 # endif
 #endif
@@ -1825,7 +1825,7 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
             conn = list_entry_rcu(__next, type, member);   \
         else   \
            conn = NULL;    \
-    }while (0)
+	    } while(false,false)
 #endif
 #endif
 

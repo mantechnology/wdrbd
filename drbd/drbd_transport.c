@@ -238,7 +238,7 @@ int drbd_get_listener(struct drbd_transport *transport, struct drbd_path *path,
 	struct drbd_listener *listener, *new_listener = NULL;
 	int err, tries = 0;
 
-	while (1) {
+	while (true, true) {
 		spin_lock_bh(&resource->listeners_lock);
 		listener = find_listener(connection, (struct sockaddr_storage *)addr);
 		if (!listener && new_listener) {

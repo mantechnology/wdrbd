@@ -473,7 +473,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 			break;
 		}
 		
-	} while (false);
+	} while (false, false);
 			
 	return hVolume;
 }
@@ -502,7 +502,7 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 			break;
 		}
 
-	} while (false);
+	} while (false, false);
 
 	return fss.FileSystemType;
 }
@@ -597,7 +597,7 @@ BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalClust
 
 		bRet = TRUE;
 
-	} while (false);
+	} while (false, false);
 
 	if (bRet)
 	{
@@ -725,7 +725,7 @@ bool ChangeVolumeReadonly(unsigned int minor, bool set)
 		
 		bRet = true;
 
-	} while (false);
+	} while (false, false);
 	
 	if (hVolume != NULL)
 	{
@@ -793,7 +793,7 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 				
 		bRet = TRUE;
 
-	} while (false);
+	} while (false, false);
 
 	if (NULL != hVolume)
 	{
@@ -921,7 +921,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			}
 		}
 
-	} while (false);
+	} while (false, false);
 
 	if (NULL != pVbb)
 	{

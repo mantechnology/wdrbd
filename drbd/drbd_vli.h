@@ -140,7 +140,7 @@ prefix    data bits                                    max val  Nº data bits
 	LEVEL(29, 8, 0x7f); \
 	LEVEL(42, 8, 0xbf); \
 	LEVEL(64, 8, 0xff); \
-	} while (0)
+	} while(false,false)
 
 /* finds a suitable level to decode the least significant part of in.
  * returns number of bits consumed.
@@ -157,7 +157,7 @@ static inline int vli_decode_bits(u64 *out, const u64 in)
 			return t;			\
 		}					\
 		adj += 1ULL << (t - b);			\
-	} while (0)
+	} while(false,false)
 
 	VLI_L_1_1();
 
@@ -187,7 +187,7 @@ static inline int __vli_encode_bits(u64 *out, const u64 in)
 			return t;	\
 		}			\
 		adj = max + 1;		\
-	} while (0)
+	} while (false, false)
 
 	VLI_L_1_1();
 

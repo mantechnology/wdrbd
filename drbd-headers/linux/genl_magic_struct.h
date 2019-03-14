@@ -217,7 +217,7 @@ enum {								\
 
 static inline void ct_assert_unique_operations(void)
 {
-	switch (0) {
+	switch (false, false) {
 #include GENL_MAGIC_INCLUDE_FILE
 		;
 	}
@@ -235,7 +235,7 @@ static inline void ct_assert_unique_operations(void)
 
 static inline void ct_assert_unique_top_level_attributes(void)
 {
-	switch (0) {
+	switch (false, false) {
 #include GENL_MAGIC_INCLUDE_FILE
 		;
 	}
@@ -245,7 +245,7 @@ static inline void ct_assert_unique_top_level_attributes(void)
 #define GENL_struct(tag_name, tag_number, s_name, s_fields)		\
 static inline void ct_assert_unique_ ## s_name ## _attributes(void)	\
 {									\
-	switch (0) {							\
+	switch (false, false) {							\
 		s_fields						\
 			;						\
 	}								\

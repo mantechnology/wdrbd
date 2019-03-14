@@ -900,7 +900,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
             wObjCount = 2;
         }
 
-        while (1)
+        while (true, true)
         {
             status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 
@@ -2434,7 +2434,7 @@ void monitor_mnt_change(PVOID pParam)
 			mcni1.EpicNumber = mcni2.EpicNumber;
 		}
 
-	} while (false);
+	} while (false, false);
 
 	atomic_set(&g_monitor_mnt_working, FALSE);
 
@@ -3270,7 +3270,7 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 			break;
 		}
 
-	} while (FALSE);
+	} while (false,false);
 
 	if (NULL != hKey)
 	{

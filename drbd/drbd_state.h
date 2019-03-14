@@ -93,7 +93,7 @@ extern union drbd_state drbd_get_connection_state(struct drbd_connection *, enum
 			rv = SS_TIMEOUT;				\
 		else if (err == -DRBD_SIGKILL)		\
 			rv = SS_INTERRUPTED;			\
-	}while(0)
+	}while(false,false)
 #else
 #define stable_state_change(resource, change_state) ({				\
 		enum drbd_state_rv rv;						\

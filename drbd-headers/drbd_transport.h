@@ -38,7 +38,7 @@
 	       rcu_dereference((transport)->net_conf)->name,	\
 	       __VA_ARGS__);					\
 	rcu_read_unlock();					\
-	}while (0)
+	}while (false,false)
 
 #define tr_err(transport, fmt, ...) \
 	tr_printk(KERN_ERR, transport, fmt, ## __VA_ARGS__)
@@ -69,7 +69,7 @@
 		if (!(exp))							\
 			tr_err(x, "ASSERTION %s FAILED in %s\n", 		\
 				 #exp, __func__);				\
-	} while (0)
+	} while (false,false)
 
 struct drbd_resource;
 struct drbd_connection;

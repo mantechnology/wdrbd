@@ -2219,11 +2219,11 @@ static void wfa_init(struct waiting_for_act_log *wfa)
 #define wfa_splice_init(_wfa, from, to) do { \
 	list_splice_init(&(_wfa)->requests.from, &(_wfa)->requests.to); \
 	list_splice_init(&(_wfa)->peer_requests.from, &(_wfa)->peer_requests.to); \
-	} while (0)
+	} while (false,false)
 #define wfa_splice_tail_init(_wfa, from, to) do { \
 	list_splice_tail_init(&(_wfa)->requests.from, &(_wfa)->requests.to); \
 	list_splice_tail_init(&(_wfa)->peer_requests.from, &(_wfa)->peer_requests.to); \
-	} while (0)
+	} while (false,false)
 
 static void __drbd_submit_peer_request(struct drbd_peer_request *peer_req)
 {

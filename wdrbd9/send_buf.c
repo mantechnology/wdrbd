@@ -81,7 +81,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		
 		connection->ptxbab[CONTROL_STREAM] = ring;
 		
-	} while(FALSE);
+	} while (false, false);
 	
 	WDRBD_INFO("alloc_bab ok connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 	return TRUE;
@@ -325,7 +325,7 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 		return 0;
 	}
 
-	while (1) {
+	while (true, true) {
 		signed long long tx_sz = 0;
 
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
@@ -378,7 +378,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
 
-	while (TRUE) {
+	while (true, true) {
 		status = KeWaitForMultipleObjects(MAX_EVT, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 		switch (status) {
 		case STATUS_TIMEOUT:

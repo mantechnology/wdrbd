@@ -585,7 +585,7 @@ NetlinkWorkThread(PVOID context)
         goto cleanup;
     }
 
-    while (TRUE) {
+    while (true, true) {
         readcount = Receive(pSock, psock_buf, NLMSG_GOODSIZE, 0, 0);
 
         if (readcount == 0) {

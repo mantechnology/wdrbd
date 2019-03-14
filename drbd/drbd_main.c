@@ -1228,7 +1228,7 @@ static void prepare_header(struct drbd_connection *connection, int vnr,
 
 static void new_or_recycle_send_buffer_page(struct drbd_send_buffer *sbuf)
 {
-	while (1) {
+	while (true, true) {
 		struct page *page;
 		int count = page_count(sbuf->page);
 
@@ -6390,7 +6390,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			mutex_unlock(&att_mod_mutex);
 		}
 
-	} while (false);
+	} while (false, false);
 
 	// DW-1495: Change location due to deadlock(bm_change)
 	// Set out-of-sync for allocated cluster.

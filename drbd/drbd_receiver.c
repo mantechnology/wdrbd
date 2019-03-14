@@ -1508,7 +1508,7 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *connectio
 			break;
 
 		epoch = next_epoch;
-	} while (1);
+	} while (true,true);
 
 	spin_unlock(&connection->epoch_lock);
 
@@ -6679,7 +6679,7 @@ static int queued_twopc_work(struct drbd_work *w, int cancel)
 	spin_unlock_irq(&resource->queued_twopc_lock); 
 
 
-	while (true){
+	while (true, true){
 		if (jiffies - q->start_jif >= t || cancel) {
 			if (!cancel)
 				drbd_info(connection, "Rejecting concurrent "
@@ -7636,7 +7636,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 							bm_resync_fo = bit + 1;
 
-						} while (TRUE);
+						} while (true, true);
 					}
 				}
 #else
@@ -10384,11 +10384,11 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		}
 	}
 
-	if (0) {
+	if (false, false) {
 reconnect:
 		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
-	if (0) {
+	if (false,false) {
 disconnect:
 		change_cstate(connection, C_DISCONNECTING, CS_HARD);
 	}

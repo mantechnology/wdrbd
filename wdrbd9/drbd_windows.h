@@ -613,7 +613,7 @@ static __inline void setup_timer_key(_In_ struct timer_list * timer,
 #define setup_timer(timer, fn, data)                            \
     do {                                                        \
         setup_timer_key((timer), #timer, NULL, (fn), (data));   \
-    } while (0)
+	    } while(false,false)
 #endif
 struct work_struct {
 	struct list_head entry;
@@ -853,7 +853,7 @@ extern void set_disk_ro(struct gendisk *disk, int flag);
 #define PREPARE_WORK(_work, _func)                                      \
 	do {                                                            \
 		(_work)->func = (_func);                                \
-	} while (0)
+		} while(false,false)
 
 #define __INIT_WORK(_work, _func, _onstack)                             \
 	 do {                                                           \
@@ -861,7 +861,7 @@ extern void set_disk_ro(struct gendisk *disk, int flag);
 	       /*  (_work)->data = (atomic_long_t) WORK_DATA_INIT(); */ \
 		INIT_LIST_HEAD(&(_work)->entry);                        \
 		PREPARE_WORK((_work), (_func));                         \
-	} while (0)
+	 	} while(false,false)
 
 #define INIT_WORK(_work, _func)                                         \
 	 __INIT_WORK((_work), (_func), 0);  
@@ -1007,11 +1007,12 @@ struct scatterlist {
 #endif
 
 #define BUG_ON(_condition)	\
-    do {	\
-        if(_condition) { \
-            WDRBD_FATAL("BUG: failure [ %s ]\n", #_condition); \
-		}\
-	} while (0)
+	do {		\
+		if (_condition) {	\
+			\
+				WDRBD_FATAL("BUG: failure [ %s ]\n", #_condition); \
+		}	\
+	} while (false,false)
 
 #ifdef WIN_AL_BUG_ON
 #define AL_BUG_ON(_condition, str_condition, lc, e)	\
@@ -1022,7 +1023,7 @@ struct scatterlist {
 				lc_printf_stats(lc, e);	\
 							}\
 			}\
-			    } while (0)
+	} while (false,false)
 #endif
 
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
@@ -1082,14 +1083,14 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 						} \
 			schedule(&wq, 1, __func, __line); /*  DW105: workaround: 1 ms polling  */ \
 				} \
-		} while (0)
+		} while(false,false)
 
 #define wait_event(wq, condition) \
 	do {\
 		if (condition) \
 			break; \
 		__wait_event(wq, condition, __FUNCTION__, __LINE__); \
-		} while (0)
+		} while(false,false)
 
 
 #define __wait_event_timeout(wq, condition, ret)  \
@@ -1111,7 +1112,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 						}\
 			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
 				}  \
-		} while (0)
+			} while(false,false)
 
 #define wait_event_timeout(t, wq, condition, timeout) \
 	do { \
@@ -1119,7 +1120,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		if (!(condition)) \
 			__wait_event_timeout(wq, condition, __ret);  \
 		t = __ret; \
-        		} while (0)
+	        		} while(false,false)
 
 #define __wait_event_interruptible(wq, condition, sig)   \
     do { \
@@ -1131,14 +1132,14 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
             sig = schedule(&wq, 1, __FUNCTION__, __LINE__);   \
             if (-DRBD_SIGKILL == sig) { break; }    \
         } \
-    } while (0)
+	    } while(false,false)
 
 #define wait_event_interruptible(sig, wq, condition) \
     do {\
         int __ret = 0;  \
         __wait_event_interruptible(wq, condition, __ret); \
         sig = __ret; \
-    } while (0)
+	    } while(false,false)
 
 #ifdef _WIN32  // DW_552
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
@@ -1156,7 +1157,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	        ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
-    } while (0)
+	    } while(false,false)
 #endif
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)
@@ -1422,7 +1423,7 @@ extern void list_del_rcu(struct list_head *entry);
 	do { \
 		/*smp_mb();*/ \
 		(_p) = (_v); \
-	} while (0)
+		} while(false,false)
 
 #define rcu_assign_pointer(p, v) 	__rcu_assign_pointer((p), (v))
 #define list_next_rcu(list)		(*((struct list_head **)(&(list)->next)))
