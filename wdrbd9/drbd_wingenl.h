@@ -43,6 +43,8 @@ struct netlink_callback
     ULONG_PTR               args[6];
 };
 
+typedef struct genl_info  genl_info;
+
 struct genl_ops
 {
     u8    cmd;
@@ -772,6 +774,8 @@ static __inline struct nlmsghdr *
 
 	return nlh;
 }
+
+typedef struct msg_buff  msg_buff;
 
 static __inline struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32 seq,
 	int type, int payload, int flags)

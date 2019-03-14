@@ -1025,8 +1025,7 @@ static const char *drbd_change_sync_fname[] = {
  * TODO will be obsoleted once we have a caching lru of the on disk bitmap
  */
 static bool update_rs_extent(struct drbd_peer_device *peer_device,
-		unsigned int enr, int count,
-		enum update_sync_bits_mode mode)
+		unsigned int enr, int count, update_sync_bits_mode mode)
 {
 	struct drbd_device *device = peer_device->device;
 	struct lc_element *e;
@@ -1203,7 +1202,7 @@ static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_d
 // DW-844
 int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long sbnr, unsigned long ebnr,
-		enum update_sync_bits_mode mode)
+		update_sync_bits_mode mode)
 #else
 static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long sbnr, unsigned long ebnr,
@@ -1276,7 +1275,7 @@ static bool plausible_request_size(int size)
  *
  */
 int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		enum update_sync_bits_mode mode)
+		update_sync_bits_mode mode)
 {
 	/* Is called from worker and receiver context _only_ */
 	struct drbd_device *device = peer_device->device;

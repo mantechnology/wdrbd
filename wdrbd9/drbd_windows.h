@@ -380,7 +380,7 @@ extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
 #ifdef _WIN32_DEBUG_OOS
-extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, unsigned int mode);
 #endif
 
 #ifdef _WIN32_EVENTLOG
@@ -624,6 +624,8 @@ struct work_struct_wrapper {
     struct work_struct * w;
     LIST_ENTRY  element;
 };
+
+typedef struct gendisk  gendisk;
 
 struct block_device_operations {
 	int (*open) (struct block_device *, fmode_t);
@@ -1261,11 +1263,13 @@ struct retry_worker {
 
 #define MAX_PROC_BUF	2048
 
+typedef struct crypto_tfm  crypto_tfm;
+
 extern void *crypto_alloc_tfm(char *name, u32 mask);
 extern unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm);
 extern int generic_make_request(struct bio *bio); // return value is changed for error handling 2015.12.08(DW-649)
 
-extern int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait);
+extern int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait);
 
 extern void * ERR_PTR(long error);
 extern long PTR_ERR(const void *ptr);
@@ -1279,6 +1283,8 @@ extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
 extern void hlist_del_init(struct hlist_node *entry);
 extern int hlist_unhashed(const struct hlist_node *h);
 extern void __hlist_del(struct hlist_node *n);
+
+typedef struct sk_buff sk_buff;
 
 extern uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length);
 extern bool lc_is_used(struct lru_cache *lc, unsigned int enr);
@@ -1622,6 +1628,8 @@ static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 #endif
 
 #define snprintf(a, b, c,...) memset(a, 0, b); sprintf(a, c, ##__VA_ARGS__)
+
+typedef struct sib_info sib_info;
 
 int drbd_genl_multicast_events(void *mdev, const struct sib_info *sib);
 

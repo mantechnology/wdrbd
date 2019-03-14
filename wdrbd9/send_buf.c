@@ -295,7 +295,7 @@ bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long
 	return 1;
 }
 
-int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
+int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, ULONG size)
 {
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;

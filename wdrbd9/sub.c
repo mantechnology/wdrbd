@@ -1002,7 +1002,7 @@ static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 }
 
 // DW-1153: Write Out-of-sync trace specific log. it includes stack frame.
-VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
+VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, unsigned int mode)
 {
 	PVOID* stackFrames = NULL;
 	USHORT frameCount = STACK_FRAME_CAPTURE_COUNT;

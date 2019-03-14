@@ -2950,7 +2950,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 	kfree(sLine);
 }
 
-int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait)
+int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 {
 	UNREFERENCED_PARAMETER(wait);
 	UNREFERENCED_PARAMETER(envp);

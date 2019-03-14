@@ -72,7 +72,13 @@ struct _buffering_attr {
 	bool quit;
 };
 
+typedef struct net_conf net_conf;
 typedef struct ring_buffer  ring_buffer;
+typedef struct socket  socket;
+typedef struct drbd_transport  drbd_transport;
+typedef enum drbd_stream  drbd_stream;
+typedef struct drbd_connection  drbd_connection;
+
 extern bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf);
 extern void destroy_bab(struct drbd_connection* connection);
 extern ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, signed long long length, enum drbd_stream stream);
@@ -81,5 +87,5 @@ extern signed long long get_ring_buffer_size(ring_buffer *ring);
 //extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
 extern bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long* pLen);
 extern signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, signed long long len, signed long long highwater, int retry);
-extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size);
+extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, ULONG size);
 #endif

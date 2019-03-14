@@ -169,6 +169,9 @@ struct drbd_page_chain_head {
 	unsigned int nr_pages;
 };
 
+
+typedef struct seq_file seq_file;
+
 struct drbd_transport_ops {
 	void (*free)(struct drbd_transport *, enum drbd_tr_free_op free_op);
 	int (*connect)(struct drbd_transport *);
