@@ -1535,7 +1535,9 @@ typedef struct _PTR_ENTRY
 
 // linux-2.6.24 define 
 // kernel.h 
+#ifndef UINT_MAX
 #define UINT_MAX	(~0U)
+#endif
 
 // socket.h 
 #define MSG_DONTROUTE	4

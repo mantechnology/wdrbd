@@ -1145,9 +1145,6 @@ restart:
 #endif
 }
 
-#ifdef _WIN32
-#define try try_val
-#endif
 enum drbd_state_rv
 drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force, struct sk_buff *reply_skb)
 {
@@ -1155,7 +1152,7 @@ drbd_set_role(struct drbd_resource *resource, enum drbd_role role, bool force, s
 	int vnr;
 	const int max_tries = 4;
 	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
-	int try = 0;
+	int try_val = 0;
 	int forced = 0;
 	bool with_force = false;
 #ifdef _WIN32
@@ -1222,8 +1219,8 @@ retry:
 		drbd_flush_peer_acks(resource);
 	}
 
-	while (try++ < max_tries) {
-		if (try == max_tries - 1)
+	while (try_val++ < max_tries) {
+		if (try_val == max_tries - 1)
 			flags |= CS_VERBOSE;
 
 		if (err_str) {
@@ -1242,7 +1239,7 @@ retry:
 			continue;
 
 		if (rv == SS_TIMEOUT) {
-			long timeout = twopc_retry_timeout(resource, try);
+			long timeout = twopc_retry_timeout(resource, try_val);
 			/* It might be that the receiver tries to start resync, and
 			   sleeps on state_sem. Give it up, and retry in a short
 			   while */
@@ -1359,8 +1356,8 @@ retry:
 				timeout = 1;
 
 			schedule_timeout_interruptible(timeout);
-			if (try < max_tries)
-				try = max_tries - 1;
+			if (try_val < max_tries)
+				try_val = max_tries - 1;
 			continue;
 		}
 
@@ -1485,9 +1482,6 @@ out:
 	}
 	return rv;
 }
-#ifdef _WIN32
-#undef try
-#endif
 
 #ifdef _WIN32 // DW-1103 down from kernel with timeout
 enum drbd_state_rv
@@ -1497,7 +1491,7 @@ drbd_set_secondary_from_shutdown(struct drbd_resource *resource)
 	int vnr;
 	const int max_tries = 1;
 	enum drbd_state_rv rv = SS_UNKNOWN_ERROR;
-	int try = 0;
+	int try_val = 0;
 	bool with_force = true;
 	long time_out = 1000;
 
@@ -1540,7 +1534,7 @@ retry:
 	drbd_flush_peer_acks(resource);
 	
 	// step 5 : change role with timeout , just retry 1 time.
-	while (try++ < max_tries) {
+	while (try_val++ < max_tries) {
 		// step 5-1 : change role with timeout
 #if _WIN32 // DW-1605
 		stable_state_change(rv, resource,
@@ -1558,7 +1552,7 @@ retry:
 			continue;
 
 		if (rv == SS_TIMEOUT) {
-			long timeout = twopc_retry_timeout(resource, try);
+			long timeout = twopc_retry_timeout(resource, try_val);
 			/* It might be that the receiver tries to start resync, and
 			   sleeps on state_sem. Give it up, and retry in a short
 			   while */

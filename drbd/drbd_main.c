@@ -988,8 +988,6 @@ void drbd_thread_current_set_cpu(struct drbd_thread *thi)
 	thi->reset_cpu_mask = 0;
 	set_cpus_allowed_ptr(p, resource->cpu_mask);
 }
-#else
-#define drbd_calc_cpu_mask(A) ({})
 #endif
 
 static bool drbd_all_neighbor_secondary(struct drbd_resource *resource, u64 *authoritative_ptr)
