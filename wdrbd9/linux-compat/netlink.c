@@ -658,7 +658,6 @@ NetlinkWorkThread(PVOID context)
             }
         }
 
-        int i;
         u8 cmd = pinfo->genlhdr->cmd;
         struct genl_ops * pops = get_drbd_genl_ops(cmd);
 

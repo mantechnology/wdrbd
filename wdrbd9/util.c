@@ -1644,7 +1644,6 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 	OBJECT_ATTRIBUTES cboa = { 0, };
 	UNICODE_STRING usCbName;
 	PCALLBACK_OBJECT pCallbackObj;
-	PVOID pCallbackReg;
 
 	if (pszCallbackName == NULL)
 	{

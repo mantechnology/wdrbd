@@ -1022,8 +1022,6 @@ static int _try_outdate_peer_async(void *data)
 
 void conn_try_outdate_peer_async(struct drbd_connection *connection)
 {
-	struct task_struct *opa;
-
 	kref_get(&connection->kref);
 	kref_debug_get(&connection->kref_debug, 4);
 #ifdef _WIN32
@@ -2991,7 +2989,6 @@ static struct block_device *open_backing_dev(struct drbd_device *device,
 bool want_bitmap(struct drbd_peer_device *peer_device)
 {
 	UNREFERENCED_PARAMETER(peer_device);
-	struct peer_device_conf *pdc;
 #ifndef _WIN32 
 	bool want_bitmap = false;
 

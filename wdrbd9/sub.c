@@ -682,7 +682,6 @@ void _printk(const char * func, const char * format, ...)
 #endif
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
-	KIRQL		oldirql;
 	LONGLONG	totallogcnt = 0;
 	long 		offset = 0;
 	ASSERT((level_index >= 0) && (level_index < 8));

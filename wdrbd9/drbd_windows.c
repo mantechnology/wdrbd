@@ -317,7 +317,6 @@ int test_and_change_bit(int nr, const ULONG_PTR *addr)
 	ULONG_PTR mask = BIT_MASK(nr);
 	ULONG_PTR *p = ((ULONG_PTR *) addr);
 	ULONG_PTR old;
-	ULONG_PTR flags;
 
 	if (!g_test_and_change_bit_flag)
 	{

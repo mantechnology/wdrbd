@@ -1628,9 +1628,6 @@ int drbd_issue_discard_or_zero_out(struct drbd_device *device, sector_t start, u
 	struct block_device *bdev = device->ldev->backing_bdev;
 #ifdef QUEUE_FLAG_DISCARD
 	struct request_queue *q = bdev_get_queue(bdev);
-	sector_t tmp, nr;
-	unsigned int max_discard_sectors, granularity;
-	int alignment;
 #endif
 	int err = 0;
 
@@ -2270,10 +2267,7 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 {
 	UNREFERENCED_PARAMETER(sector);
 
-	DRBD_BIO_VEC_TYPE bvec;
-	DRBD_ITER_TYPE iter;
-	struct bio *bio;
-	int digest_size, err, expect;
+	int digest_size, err;
 	void *dig_in = peer_device->connection->int_dig_in;
 	void *dig_vv = peer_device->connection->int_dig_vv;
 
@@ -4347,9 +4341,6 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	struct drbd_device *device = peer_device->device;
 	enum drbd_role role = peer_device->device->resource->role[NOW];
 	enum drbd_repl_state rv;
-#ifdef _WIN32
-	unsigned long irq_flags;
-#endif
 
 	if (hg == 1 || hg == -1) {
 		if (role == R_PRIMARY || peer_role == R_PRIMARY) {
@@ -10075,7 +10066,6 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_request *peer_req, *tmp;
-	struct drbd_peer_request *p_req;
 	bool is_inactive = false;
 
 	LIST_HEAD(work_list);

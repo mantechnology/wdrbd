@@ -2665,8 +2665,6 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 
 static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 {
-	DRBD_BIO_VEC_TYPE bvec;
-	DRBD_ITER_TYPE iter;
 	bool no_zc = disable_sendpage;
 
 	/* e.g. XFS meta- & log-data is in slab pages, which have a
@@ -3714,14 +3712,6 @@ static void drbd_cleanup(void)
 #ifdef _WIN32
 void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 {
-    int i;
-
-    struct device_list {
-        struct drbd_device *device;
-        struct list_head list;
-    } device_list;
-    struct device_list *device_list_p, *p;
-
     WDRBD_INFO("Shutdown: IRQL(%d) device(%ws) Name(%wZ)\n",
         KeGetCurrentIrql(), VolumeExtension->PhysicalDeviceName, &VolumeExtension->MountPoint);
 
@@ -5968,7 +5958,6 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 		if (peer_device->bitmap_uuids[node_id] == 0 && peer_md[node_id].bitmap_uuid != 0) {
 #endif
 			u64 peer_current_uuid = peer_device->current_uuid & ~UUID_PRIMARY;
-			int from_node_id;
 
 			if (peer_current_uuid == (drbd_current_uuid(device) & ~UUID_PRIMARY)) {
 

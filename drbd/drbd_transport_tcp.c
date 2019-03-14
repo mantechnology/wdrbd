@@ -1059,14 +1059,14 @@ static int dtt_wait_for_connect(struct drbd_transport *transport,
 				struct dtt_path **ret_path)
 {
 #ifdef _WIN32
-	struct sockaddr_storage_win my_addr, peer_addr;
+	struct sockaddr_storage_win peer_addr;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PWSK_SOCKET paccept_socket = NULL;
 #else
 	struct dtt_socket_container *socket_c;
 	struct sockaddr_storage peer_addr;
 #endif
-	int connect_int, peer_addr_len, err = 0;
+	int connect_int, err = 0;
 	long timeo;
 	struct socket *s_estab = NULL;
 	struct net_conf *nc;
@@ -2486,7 +2486,6 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, signed lon
 
 	if (size > 0 )
 	{
-		int i;
 		for (int i = 0; i < 2; i++)
 		{
 			if (tcp_transport->stream[i] != NULL)
@@ -2566,7 +2565,6 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
 	struct _buffering_attr *attr;
 	int err_ret = 0;
-	int i;
 
 	for (int i = 0; i < 2; i++)
 	{

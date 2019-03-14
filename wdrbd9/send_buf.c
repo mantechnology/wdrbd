@@ -360,7 +360,6 @@ VOID NTAPI send_buf_thread(PVOID p)
 {
 	struct _buffering_attr *buffering_attr = (struct _buffering_attr *)p;
 	struct socket *socket = container_of(buffering_attr, struct socket, buffering_attr);
-	LONG readcount;
 	NTSTATUS status;
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
