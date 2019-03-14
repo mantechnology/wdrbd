@@ -979,7 +979,6 @@ start:
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
-		struct drbd_device *device = peer_device->device;
 
 		if (discard_my_data)
 			set_bit(DISCARD_MY_DATA, &peer_device->flags);
@@ -1624,10 +1623,9 @@ int drbd_issue_discard_or_zero_out(struct drbd_device *device, sector_t start, u
 	UNREFERENCED_PARAMETER(start);
 	UNREFERENCED_PARAMETER(nr_sectors);
 	UNREFERENCED_PARAMETER(discard);
+	UNREFERENCED_PARAMETER(device);
 
-	struct block_device *bdev = device->ldev->backing_bdev;
 #ifdef QUEUE_FLAG_DISCARD
-	struct request_queue *q = bdev_get_queue(bdev);
 #endif
 	int err = 0;
 
@@ -2285,7 +2283,6 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 	peer_device->recv_cnt += data_size >> 9;
 
 #ifdef _WIN32
-    struct drbd_device * device = peer_device->device;
 	if (req->master_bio->bio_databuf) {
 #ifdef _WIN32
         err = drbd_recv_into(peer_device->connection, req->master_bio->bio_databuf, data_size);
@@ -2341,7 +2338,6 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	struct drbd_peer_request *peer_req =
 		container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
-	struct drbd_device *device = peer_device->device;
 	sector_t sector = peer_req->i.sector;
 	int err;
 
@@ -4469,7 +4465,6 @@ static void various_states_to_goodness(struct drbd_device *device,
 						int *hg)
 {
 	enum drbd_disk_state disk_state = device->disk_state[NOW];
-	enum drbd_repl_state peer_last_repl_state = peer_device->last_repl_state;
 	int syncReason = 0;
 
 	if (*hg != 0 || (drbd_bm_total_weight(peer_device) == 0 && peer_device->dirty_bits == 0))
@@ -7619,7 +7614,6 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 						ULONG_PTR bit = 0;
 						sector_t sector = 0;
 						ULONG_PTR bm_resync_fo = 0;
-						int size = BM_BLOCK_SIZE;
 
 						do
 						{
@@ -9808,7 +9802,6 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
-		struct drbd_device *device = peer_device->device;
 		if (peer_device->repl_state[NOW] == L_AHEAD &&
 		    atomic_read64(&connection->ap_in_flight) == 0 &&
 #ifdef _WIN32
@@ -10066,7 +10059,6 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 {
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_request *peer_req, *tmp;
-	bool is_inactive = false;
 
 	LIST_HEAD(work_list);
 

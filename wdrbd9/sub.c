@@ -636,7 +636,6 @@ void save_to_system_event(char * buf, int length, int level_index)
 {
 	int offset = 3;
 	char *p = buf + offset;
-	int i = 0;
 
 	while (offset < length)
 	{
@@ -671,8 +670,6 @@ void _printk(const char * func, const char * format, ...)
 	va_list args;
 	char* buf = NULL;
 	long logcnt = 0;
-
-	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
 	BOOLEAN bEventLog = FALSE;

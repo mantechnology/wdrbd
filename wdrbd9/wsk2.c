@@ -471,7 +471,6 @@ Disconnect(
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
-	KEVENT			CompletionEvent = { 0 };
 	PIRP			Irp = NULL;
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 	LARGE_INTEGER	nWaitTime;

@@ -210,7 +210,6 @@ struct drbd_transport *transport)
 static void dtt_nodelay(struct socket *socket)
 {
 	UNREFERENCED_PARAMETER(socket);
-	int val = 1;
 #ifdef _WIN32
 	// nagle disable is supported (registry configuration)
 #else
@@ -635,8 +634,6 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 	struct socket *socket;
 #ifdef _WIN32
 	struct sockaddr_storage_win my_addr, peer_addr;
-	SOCKADDR_IN		LocalAddressV4 = { 0, };
-	SOCKADDR_IN6	LocalAddressV6 = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
@@ -919,7 +916,6 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
-	SIZE_T out = 0;
 	if (!*socket)
 		return false;
 
@@ -1061,7 +1057,6 @@ static int dtt_wait_for_connect(struct drbd_transport *transport,
 #ifdef _WIN32
 	struct sockaddr_storage_win peer_addr;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	PWSK_SOCKET paccept_socket = NULL;
 #else
 	struct dtt_socket_container *socket_c;
 	struct sockaddr_storage peer_addr;
@@ -2413,7 +2408,6 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
-	struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 	bool active;
 
 	drbd_path->established = false;
@@ -2564,7 +2558,6 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 {
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
 	struct _buffering_attr *attr;
-	int err_ret = 0;
 
 	for (int i = 0; i < 2; i++)
 	{

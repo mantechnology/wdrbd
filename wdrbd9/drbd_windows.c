@@ -1778,7 +1778,6 @@ void *crypto_alloc_tfm(char *name, u32 mask)
 
 int generic_make_request(struct bio *bio)
 {
-	int err = 0;
 	NTSTATUS status = STATUS_SUCCESS;
 
 	PIRP newIrp = NULL;

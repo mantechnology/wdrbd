@@ -267,7 +267,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
         HANDLE		hNetLinkThread = NULL;
-		HANDLE		hLogLinkThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
@@ -404,7 +403,6 @@ mvolSendToNextDriver(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -445,7 +443,6 @@ mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -463,7 +460,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
 	drbd_cleanup_by_win_shutdown(VolumeExtension);

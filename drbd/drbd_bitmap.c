@@ -990,7 +990,6 @@ static u64 drbd_md_on_disk_bits(struct drbd_device *device)
 	 * we round on 64bit words.  FIXME do we still need this? */
 	word64_on_disk = bitmap_sectors << (9 - 3); /* x * (512/8) */
 #ifdef _WIN32
-	u64 tmp = word64_on_disk;
 	word64_on_disk = word64_on_disk / device->bitmap->bm_max_peers;
 #else
 	do_div(word64_on_disk, device->bitmap->bm_max_peers);

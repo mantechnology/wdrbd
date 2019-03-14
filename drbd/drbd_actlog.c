@@ -363,7 +363,6 @@ set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 {
 	struct drbd_peer_device *peer_device;
 	struct lc_element *tmp;
-	int wake = 0;
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, al_ctx->device) {

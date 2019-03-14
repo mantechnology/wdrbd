@@ -5095,7 +5095,6 @@ int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 
 #ifdef _WIN32
 	// DW-1469 disable drbd_adm_resize
-	struct drbd_resource *resource = adm_ctx.device->resource;
 	drbd_msg_put_info(adm_ctx.reply_skb, "cmd(drbd_adm_resize) error: not support.\n");
 	drbd_adm_finish(&adm_ctx, info, ERR_INVALID_REQUEST);
 	return 0;
@@ -5335,8 +5334,11 @@ static enum drbd_state_rv invalidate_resync(struct drbd_peer_device *peer_device
 		rv = stable_change_repl_state(peer_device, L_STARTING_SYNC_T,
 			CS_VERBOSE | CS_SERIALIZE);
 #ifdef _WIN32
-    wait_event_interruptible(int t, resource->state_wait,
+	int t;
+    wait_event_interruptible(t, resource->state_wait,
         peer_device->repl_state[NOW] != L_STARTING_SYNC_T);
+
+	UNREFERENCED_PARAMETER(t);
 #else
 	wait_event_interruptible(resource->state_wait,
 				 peer_device->repl_state[NOW] != L_STARTING_SYNC_T);
@@ -7802,7 +7804,6 @@ void nl_policy_init_by_manual()
 
 struct genl_ops * get_drbd_genl_ops(u8 cmd)
 {
-    struct genl_ops * pops = NULL;
     for (int i = 0; i < sizeof(drbd_genl_ops) / sizeof((drbd_genl_ops)[0]); i++)
     {
         if (drbd_genl_ops[i].cmd == cmd)

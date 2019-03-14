@@ -2161,7 +2161,7 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 #ifndef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_lock();
 #endif
-	while (true,true) {
+	while (true, true) {
 		struct drbd_peer_device *other_peer_device;
 		int resync_after;
 
@@ -2446,7 +2446,6 @@ bool drbd_stable_sync_source_present(struct drbd_peer_device *except_peer_device
 
 static void do_start_resync(struct drbd_peer_device *peer_device)
 {
-	struct drbd_device *device = peer_device->device;
 
 	if (atomic_read(&peer_device->unacked_cnt) ||
 	    atomic_read(&peer_device->rs_pending_cnt)) {

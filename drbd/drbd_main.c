@@ -1974,7 +1974,6 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 
 	memset(p, 0, packet_size);
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
-		struct request_queue *q = bdev_get_queue(device->ldev->backing_bdev);
 		
 		d_size = drbd_get_max_capacity(device->ldev);
 		rcu_read_lock();
@@ -2665,7 +2664,6 @@ static int _drbd_send_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 
 static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *bio)
 {
-	bool no_zc = disable_sendpage;
 
 	/* e.g. XFS meta- & log-data is in slab pages, which have a
 	 * page_count of 0 and/or have PageSlab() set.
@@ -2712,7 +2710,6 @@ static int _drbd_send_zc_bio(struct drbd_peer_device *peer_device, struct bio *b
 static int _drbd_send_zc_ee(struct drbd_peer_device *peer_device,
 			    struct drbd_peer_request *peer_req)
 {
-	struct page *page = peer_req->page_chain.head;
 	unsigned len = peer_req->i.size;
 	int err;
 
@@ -3732,8 +3729,8 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension)
 static int drbd_congested(void *congested_data, int bdi_bits)
 {
 	UNREFERENCED_PARAMETER(bdi_bits);
+	UNREFERENCED_PARAMETER(congested_data);
 
-	struct drbd_device *device = congested_data;
 #ifndef _WIN32
 	struct request_queue *q;
 #endif
@@ -6283,7 +6280,6 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 {
 	bool bRet = false;
 	PVOLUME_BITMAP_BUFFER pBitmap = NULL;
-	ULONG ulBitmapSize = 0;
 	ULONG_PTR count = 0;
 	// DW-1317: to support fast sync from secondary sync source whose volume is NOT mounted.
 	bool bSecondary = false;
@@ -6733,7 +6729,6 @@ int drbd_wait_misc(struct drbd_device *device, struct drbd_peer_device *peer_dev
 void lock_all_resources(void)
 {
 	struct drbd_resource *resource;
-	int __maybe_unused i = 0;
 
 	mutex_lock(&resources_mutex);
 
