@@ -134,7 +134,7 @@ extern char usermode_helper[];
 
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
-#define ID_SYNCER (-1ULL)
+#define ID_SYNCER (~0ULL)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
@@ -1797,9 +1797,9 @@ struct drbd_config_context {
 	unsigned int minor;
 	/* assigned from request attributes, if present */
 	unsigned int volume;
-#define VOLUME_UNSPECIFIED		(-1U)
+#define VOLUME_UNSPECIFIED		(~0U)
 	unsigned int peer_node_id;
-#define PEER_NODE_ID_UNSPECIFIED	(-1U)
+#define PEER_NODE_ID_UNSPECIFIED	(~0U)
 	/* pointer into the request skb,
 	 * limited lifetime! */
 	char *resource_name;

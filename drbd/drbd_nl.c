@@ -755,7 +755,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	if (strstr(cmd, "fence")) {
 		bool op_is_fence = strcmp(cmd, "fence-peer") == 0;
 		struct drbd_peer_device *peer_device;
-		u64 mask = -1ULL;
+		u64 mask = ~0ULL;
 		int vnr;
 #ifdef _WIN32
 		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -1908,7 +1908,7 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 		break;
 	case DRBD_MD_INDEX_INTERNAL:
 	case DRBD_MD_INDEX_FLEX_INT:
-		bdev->md.al_offset = -al_size_sect;
+		bdev->md.al_offset = (~al_size_sect + 1);
 
 		/* enough bitmap to cover the storage,
 		 * plus the "drbd meta data super block",
@@ -1920,7 +1920,7 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 
 		bdev->md.md_size_sect = md_size_sect;
 		/* bitmap offset is adjusted by 'super' block size */
-		bdev->md.bm_offset   = -md_size_sect + (4096 >> 9);
+		bdev->md.bm_offset   = (~md_size_sect + 1) + (4096 >> 9);
 		break;
 	}
 }
@@ -5895,7 +5895,7 @@ put_result:
 	err = -ENOMEM;
 	if (!dh)
 		goto out;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL);
 	if (err)
@@ -6058,7 +6058,7 @@ put_result:
 	if (!dh)
 		goto out;
 	dh->ret_code = retcode;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	if (retcode == NO_ERROR) {
 		dh->minor = device->minor;
 		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL);
@@ -6266,7 +6266,7 @@ put_result:
 	if (!dh)
 		goto out;
 	dh->ret_code = retcode;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	if (retcode == NO_ERROR) {
 		struct net_conf *net_conf;
 
@@ -6449,7 +6449,7 @@ put_result:
 	if (!dh)
 		goto out;
 	dh->ret_code = retcode;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	if (retcode == NO_ERROR) {
 		struct peer_device_info peer_device_info;
 		struct peer_device_statistics peer_device_statistics;
@@ -7244,7 +7244,7 @@ void notify_resource_state(struct sk_buff *skb,
 	
 	if (!dh)
 		goto nla_put_failure;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	if (nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL) ||
 	    nla_put_notification_header(skb, type) ||
@@ -7355,7 +7355,7 @@ void notify_connection_state(struct sk_buff *skb,
 	
 	if (!dh)
 		goto nla_put_failure;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	if (nla_put_drbd_cfg_context(skb, connection->resource, connection, NULL, NULL) ||
 	    nla_put_notification_header(skb, type) ||
@@ -7411,7 +7411,7 @@ void notify_peer_device_state(struct sk_buff *skb,
 	
 	if (!dh)
 		goto nla_put_failure;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	if (nla_put_drbd_cfg_context(skb, resource, peer_device->connection, peer_device->device, NULL) ||
 	    nla_put_notification_header(skb, type) ||
@@ -7463,7 +7463,7 @@ void notify_path(struct drbd_connection *connection, struct drbd_path *path,
 	if (!dh)
 		goto fail;
 
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	mutex_lock(&notification_mutex);
 	if (nla_put_drbd_cfg_context(skb, resource, connection, NULL, path) ||
@@ -7570,7 +7570,7 @@ static void notify_initial_state_done(struct sk_buff *skb, unsigned int seq)
 	
 	if (!dh)
 		goto nla_put_failure;
-	dh->minor = -1U;
+	dh->minor = ~0U;
 	dh->ret_code = NO_ERROR;
 	if (nla_put_notification_header(skb, NOTIFY_EXISTS))
 		goto nla_put_failure;

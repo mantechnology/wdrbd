@@ -2247,7 +2247,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
 				    : _drbd_bm_find_next(peer_device, c->bit_offset);
 #ifdef _WIN64
-		if (tmp == -1ULL)
+		if (tmp == ~0ULL)
 #else
 		if (tmp == -1UL)
 #endif
@@ -2416,7 +2416,7 @@ static int _drbd_send_bitmap(struct drbd_device *device,
 	if (get_ldev(device)) {
 		if (drbd_md_test_peer_flag(peer_device, MDF_PEER_FULL_SYNC)) {
 			drbd_info(device, "Writing the whole bitmap, MDF_FullSync was set.\n");
-			drbd_bm_set_many_bits(peer_device, 0, -1UL);
+			drbd_bm_set_many_bits(peer_device, 0, ~0UL);
 			if (drbd_bm_write(device, NULL)) {
 				/* write_bm did fail! Leave full sync flag set in Meta P_DATA
 				 * but otherwise process as per normal - need to tell other
@@ -5813,7 +5813,7 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
 	drbd_bm_lock(device, "forget_bitmap()", BM_LOCK_TEST | BM_LOCK_SET);
-	_drbd_bm_clear_many_bits(device, bitmap_index, 0, -1UL);
+	_drbd_bm_clear_many_bits(device, bitmap_index, 0, ~0UL);
 	drbd_bm_unlock(device);
 	drbd_resume_io(device);
 	drbd_md_mark_dirty(device);
@@ -6185,7 +6185,7 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 		if (!update_sync_bits(p, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
-			drbd_bm_set_many_bits(p, 0, -1UL);
+			drbd_bm_set_many_bits(p, 0, ~0UL);
 		}
 	}
 #else
@@ -6212,7 +6212,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 	if (!update_sync_bits(peer_device, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC))
 	{
 		drbd_err(peer_device, "no sync bit has been set, set whole bits without updating resync extent instead.\n");
-		drbd_bm_set_many_bits(peer_device, 0, -1UL);
+		drbd_bm_set_many_bits(peer_device, 0, ~0UL);
 	}
 #else
 	drbd_bm_set_many_bits(peer_device, 0, -1UL);
@@ -6328,7 +6328,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	if (bitmap_lock)
 		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
-	drbd_bm_clear_many_bits(peer_device, 0, -1UL);
+	drbd_bm_clear_many_bits(peer_device, 0, ~0UL);
 	drbd_bm_write(device, NULL);
 	if (bitmap_lock)
 		drbd_bm_slot_unlock(peer_device);
