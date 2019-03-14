@@ -1049,7 +1049,7 @@ static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *conne
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif 
-		if (peer_device->repl_state[NOW] < repl_state)
+		if ((unsigned int)peer_device->repl_state[NOW] < repl_state)
 			repl_state = peer_device->repl_state[NOW];
 	}
 	rcu_read_unlock();
@@ -2849,7 +2849,7 @@ int drbd_bitmap_io_from_worker(struct drbd_device *device,
 static inline bool state_change_is_susp_fen(struct drbd_state_change *state_change,
 					    enum which_state which)
 {
-	int n_connection;
+	unsigned int n_connection;
 
 	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
 		struct drbd_connection_state_change *connection_state_change =
@@ -2865,7 +2865,7 @@ static inline bool state_change_is_susp_fen(struct drbd_state_change *state_chan
 static inline bool state_change_is_susp_quorum(struct drbd_state_change *state_change,
 					       enum which_state which)
 {
-	int n_device;
+	unsigned int n_device;
 
 	for (n_device = 0; n_device < state_change->n_devices; n_device++) {
 		struct drbd_device_state_change *device_state_change =
@@ -3107,7 +3107,7 @@ static void send_role_to_all_peers(struct drbd_state_change *state_change)
 	}
 }
 
-static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_change, int n_device)
+static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_change, unsigned int n_device)
 {
 	unsigned int n_connection;
 
@@ -3160,7 +3160,7 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
    Nodes further away from a primary are stable! Do no confuse with "weak".*/
 static bool calc_device_stable(struct drbd_state_change *state_change, int n_device, enum which_state which)
 {
-	int n_connection;
+	unsigned int n_connection;
 
 	if (state_change->resource->role[which] == R_PRIMARY)
 		return true;
@@ -3194,7 +3194,7 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
    We need to notify peer when keeping unstable device and authoritative node's changed as long as it is the criterion of operating resync. */
 static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_device, enum which_state which, u64* authoritative)
 {
-	int n_connection;
+	unsigned int n_connection;
 		
 	if (state_change->resource->role[which] == R_PRIMARY)
 		return true;
@@ -3339,7 +3339,8 @@ static void check_may_resume_io_after_fencing(struct drbd_state_change *state_ch
 	bool all_peer_disks_connected = true;
 	struct drbd_peer_device *peer_device;
 	unsigned long irq_flags;
-	int vnr, n_device;
+	int vnr;
+	unsigned int n_device;
 
 	for (n_device = 0; n_device < state_change->n_devices; n_device++) {
 		struct drbd_peer_device_state_change *peer_device_state_change =
@@ -3406,7 +3407,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 	enum drbd_role *role = resource_state_change->role;
 	struct drbd_peer_device *send_state_others = NULL;
 	bool *susp_nod = resource_state_change->susp_nod;
-	int n_device, n_connection;
+	unsigned int n_device, n_connection;
 	bool still_connected = false;
 	bool try_become_up_to_date = false;
 	bool resync_finished = false;

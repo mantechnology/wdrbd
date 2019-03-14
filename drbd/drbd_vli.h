@@ -279,7 +279,7 @@ static inline int bitstream_put_bits(struct bitstream *bs, u64 val, const unsign
 	if (bits == 0)
 		return 0;
 
-	if ((bs->cur.b + ((bs->cur.bit + bits -1) >> 3)) - bs->buf >= bs->buf_len)
+	if ((size_t)((bs->cur.b + ((bs->cur.bit + bits -1) >> 3)) - bs->buf) >= bs->buf_len)
 		return -ENOBUFS;
 
 	/* paranoia: strip off hi bits; they should not be set anyways. */
@@ -312,7 +312,7 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
 	if (bits > 64)
 		return -EINVAL;
 
-	if (bs->cur.b + ((bs->cur.bit + bs->pad_bits + bits -1) >> 3) - bs->buf >= bs->buf_len)
+	if ((size_t)(bs->cur.b + ((bs->cur.bit + bs->pad_bits + bits -1) >> 3) - bs->buf) >= bs->buf_len)
 		bits = ((bs->buf_len - (bs->cur.b - bs->buf)) << 3)
 			- bs->cur.bit - bs->pad_bits;
 

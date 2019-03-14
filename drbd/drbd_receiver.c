@@ -285,7 +285,7 @@ static void maybe_kick_lo(struct drbd_device *device)
 			min_not_zero(dc->unplug_watermark, watermark);
 		rcu_read_unlock();
 
-		if (atomic_read(&device->local_cnt) >= watermark)
+		if (atomic_read(&device->local_cnt) >= (int)watermark)
 			drbd_kick_lo(device);
 		put_ldev(device);
 	}
@@ -378,10 +378,10 @@ void* drbd_alloc_pages(struct drbd_transport *transport, unsigned int number, bo
 	mxb = rcu_dereference(transport->net_conf)->max_buffers;
 	rcu_read_unlock();
 
-	if (atomic_read(&connection->pp_in_use) < mxb)
+	if ((unsigned int)atomic_read(&connection->pp_in_use) < mxb)
 		mem = __drbd_alloc_pages(number);
 	while (mem == NULL) {
-		if (atomic_read(&connection->pp_in_use) < mxb) {
+		if ((unsigned int)atomic_read(&connection->pp_in_use) < mxb) {
 			mem = __drbd_alloc_pages(number);
 			if (mem)
 				break;

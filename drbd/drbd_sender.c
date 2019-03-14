@@ -835,7 +835,7 @@ void resync_timer_fn(unsigned long data)
 
 static void fifo_set(struct fifo_buffer *fb, int value)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < fb->size; i++)
 		fb->values[i] = value;
@@ -856,7 +856,7 @@ static int fifo_push(struct fifo_buffer *fb, int value)
 
 static void fifo_add_val(struct fifo_buffer *fb, int value)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < fb->size; i++)
 		fb->values[i] += value;
@@ -1092,7 +1092,7 @@ next_sector:
 		align = 1;
 		rollback_i = i;
 		while (i < number) {
-			if (size + BM_BLOCK_SIZE > max_bio_size)
+			if ((unsigned int)(size + BM_BLOCK_SIZE) > max_bio_size)
 				break;
 
 			/* Be always aligned */

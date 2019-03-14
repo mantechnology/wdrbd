@@ -498,7 +498,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 	pvext->Minor = 0;
 	
 	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p\n",pvext);
-	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
+	for (ULONG i = 0; i < pmps->NumberOfMountPoints; i++) {
 
 		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
 		PUNICODE_STRING link = NULL;

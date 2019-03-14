@@ -802,7 +802,7 @@ void lc_set(struct lru_cache *lc, unsigned int enr, int index)
 	struct lc_element *e;
 	struct list_head *lh;
 
-	if (index < 0 || index >= lc->nr_elements)
+	if (index < 0 || (unsigned int)index >= lc->nr_elements)
 		return;
 
 	e = lc_element_by_index(lc, index);
@@ -839,7 +839,7 @@ void lc_seq_dump_details(struct seq_file *seq, struct lru_cache *lc, char *utext
 {
 	unsigned int nr_elements = lc->nr_elements;
 	struct lc_element *e;
-	int i;
+	unsigned int i;
 
 	seq_printf(seq, "\tnn: lc_number (new nr) refcnt %s\n ", utext);
 	for (i = 0; i < nr_elements; i++) {

@@ -857,7 +857,7 @@ static int _try_lc_del(struct drbd_device *device, struct lc_element *al_ext)
 void drbd_al_shrink(struct drbd_device *device)
 {
 	struct lc_element *al_ext;
-	int i;
+	unsigned int i;
 
 	D_ASSERT(device, test_bit(__LC_LOCKED, &device->act_log->flags));
 
@@ -1803,7 +1803,7 @@ int drbd_rs_del_all(struct drbd_peer_device *peer_device)
 	struct drbd_device *device = peer_device->device;
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
-	int i;
+	unsigned int i;
 
 	spin_lock_irq(&device->al_lock);
 

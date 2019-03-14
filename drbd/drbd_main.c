@@ -5189,7 +5189,7 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 	} else {
 		if (in_core->al_offset != (4096 >> 9))
 			goto err;
-		if (in_core->bm_offset < in_core->al_offset + in_core->al_size_4k * (4096 >> 9))
+		if (in_core->bm_offset < in_core->al_offset + (s32)in_core->al_size_4k * (4096 >> 9))
 			goto err;
 
 		on_disk_al_sect = in_core->bm_offset - (4096 >> 9);
@@ -5349,7 +5349,7 @@ int drbd_md_read(struct drbd_device *device, struct drbd_backing_dev *bdev)
 		peer_md->flags = be32_to_cpu(buffer->peers[i].flags);
 		peer_md->bitmap_index = be32_to_cpu(buffer->peers[i].bitmap_index);
 
-		if (peer_md->bitmap_index == -1)
+		if (peer_md->bitmap_index == ~0)
 			continue;
 		if (i == my_node_id) {
 			drbd_warn(device, "my own node id (%d) should not have a bitmap index (%d)\n",
@@ -6859,7 +6859,7 @@ _drbd_insert_fault(struct drbd_device *device, unsigned int type)
 	unsigned int ret = (
 		(fault_devs == 0 ||
 			((1 << device_to_minor(device)) & fault_devs) != 0) &&
-		(((_drbd_fault_random(&rrs) % 100) + 1) <= fault_rate));
+		((int)((_drbd_fault_random(&rrs) % 100) + 1) <= fault_rate));
 
 	if (ret) {
 		fault_count++;

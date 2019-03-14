@@ -1133,8 +1133,8 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 {
 	struct drbd_device *device = req->device;
 	struct net_conf *nc;
-	int p, rv = 0;
-	int idx;
+	unsigned int p;
+	int idx, rv = 0;
 
 	if (m)
 		m->bio = NULL;
@@ -1613,7 +1613,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 		return;
 
 	if (nc->cong_fill &&
-	    atomic_read64(&connection->ap_in_flight) >= nc->cong_fill) {
+	    (__u64)atomic_read64(&connection->ap_in_flight) >= nc->cong_fill) {
 		drbd_info(device, "Congestion-fill threshold reached\n");
 		congested = true;
 	}

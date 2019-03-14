@@ -1030,7 +1030,7 @@ struct drbd_peer_md {
 	u64 bitmap_uuid;
 	u64 bitmap_dagtag;
 	u32 flags;
-	s32 bitmap_index;
+	u32 bitmap_index;
 };
 
 struct drbd_md {
@@ -1227,7 +1227,7 @@ struct drbd_resource {
 	struct list_head connections;
 	struct list_head resources;
 	struct res_opts res_opts;
-	int max_node_id;
+	unsigned int max_node_id;
 	struct mutex conf_update;	/* for ready-copy-update of net_conf and disk_conf
 					   and devices, connection and peer_devices lists */
 	struct mutex adm_mutex;		/* mutex to serialize administrative requests */
@@ -1754,7 +1754,7 @@ struct drbd_device {
 	wait_queue_head_t al_wait;
 	struct lru_cache *act_log;	/* activity log */
 	unsigned int al_tr_number;
-	int al_tr_cycle;
+	unsigned int al_tr_cycle;
 	wait_queue_head_t seq_wait;
 	u64 exposed_data_uuid; /* UUID of the exposed data */
 	u64 next_exposed_data_uuid;
@@ -3473,7 +3473,7 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 
 	spin_lock_irq(&device->resource->req_lock);
 	nr_requests = device->resource->res_opts.nr_requests;
-	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
+	rv = may_inc_ap_bio(device) && (unsigned int)atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.

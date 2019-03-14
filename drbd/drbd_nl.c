@@ -1336,7 +1336,7 @@ retry:
 		if (rv == SS_TWO_PRIMARIES) {
 			struct drbd_connection *connection;
 			struct net_conf *nc;
-			int timeout = 0;
+			unsigned int timeout = 0;
 
 			/*
 			 * Catch the case where we discover that the other
@@ -2364,7 +2364,7 @@ static int drbd_check_al_size(struct drbd_device *device, struct disk_conf *dc)
 	struct lru_cache *n, *t;
 	struct lc_element *e;
 	unsigned int in_use;
-	int i;
+	unsigned int i;
 
 	if (device->act_log &&
 	    device->act_log->nr_elements == dc->al_extents)
@@ -2931,7 +2931,7 @@ struct drbd_backing_dev *nbc)
 {
 	struct drbd_device *device = peer_device->device;
 	const int peer_node_id = peer_device->connection->peer_node_id;
-	int bitmap_index;
+	unsigned int bitmap_index;
 
 	for (bitmap_index = 0; bitmap_index < device->bitmap->bm_max_peers; bitmap_index++) {
 		if (bitmap_index_vacant(nbc, bitmap_index)) {
@@ -3389,7 +3389,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 			slots_needed++;
 	}
 	if (slots_needed) {
-		int slots_available = device->bitmap->bm_max_peers - used_bitmap_slots(nbc);
+		unsigned int slots_available = device->bitmap->bm_max_peers - used_bitmap_slots(nbc);
 
 		if (slots_needed > slots_available) {
 			drbd_err(device, "Not enough free bitmap "
