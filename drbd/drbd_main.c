@@ -2193,7 +2193,7 @@ int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd_connec
 static void dcbp_set_code(struct p_compressed_bm *p, enum drbd_bitmap_code code)
 {
 	BUG_ON(code & ~0xf);
-	p->encoding = (p->encoding & ~0xf) | code;
+	p->encoding = (uint8_t)((p->encoding & ~0xf) | code);
 }
 
 static void dcbp_set_start(struct p_compressed_bm *p, int set)
@@ -2204,7 +2204,7 @@ static void dcbp_set_start(struct p_compressed_bm *p, int set)
 static void dcbp_set_pad_bits(struct p_compressed_bm *p, int n)
 {
 	BUG_ON(n & ~0x7);
-	p->encoding = (p->encoding & (~0x7 << 4)) | (n << 4);
+	p->encoding = (uint8_t)((p->encoding & (~0x7 << 4)) | (n << 4));
 }
 
 static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,

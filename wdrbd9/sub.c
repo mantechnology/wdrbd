@@ -513,7 +513,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 
 			name.Length = strlen(" :") * sizeof(WCHAR);
 			name.Buffer += strlen("\\DosDevices\\");
-			pvext->Minor = name.Buffer[0] - 'C';
+			pvext->Minor = (UCHAR)(name.Buffer[0] - 'C');
 
 			link = &pvext->MountPoint;
 			//FreeUnicodeString(link);

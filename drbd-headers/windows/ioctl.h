@@ -130,7 +130,7 @@ typedef struct _LOGGING_MIN_LV {
 #endif
 
 #ifdef _WIN32_DEBUG_OOS
-#pragma warning (disable : 4055)
+//#pragma warning (disable : 4055)
 #define FRAME_DELIMITER		"@"
 #define OOS_TRACE_STRING	"oos_trace"
 #define STACK_FRAME_CAPTURE_COUNT	(10)

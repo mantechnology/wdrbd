@@ -2491,7 +2491,7 @@ void refresh_targetdev_list()
  */
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev)
 {
-	char path[3] = { minor_to_letter(minor), ':', '\0' };
+	char path[3] = { (char)(minor_to_letter(minor)), ':', '\0' };
 	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL, bUpdatetargetdev);
 	if (IS_ERR(dev)) {
 		return NULL;

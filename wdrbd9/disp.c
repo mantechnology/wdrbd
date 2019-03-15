@@ -230,7 +230,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
 					pvext->MountPoint.Buffer[0] = (WCHAR)toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->Minor = (UCHAR)(pvext->MountPoint.Buffer[0] - 'C');
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					ucsdup(&pvext->VolumeGuid, key, valueInfo->NameLength);
