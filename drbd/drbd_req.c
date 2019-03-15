@@ -332,7 +332,7 @@ void drbd_req_destroy(struct kref *kref)
 		    req->i.size && get_ldev_if_state(device, D_DETACHING)) {
 			struct drbd_peer_md *peer_md = device->ldev->md.peers;
 #ifdef _WIN32
-			ULONG_PTR bits = -1, mask = -1;
+			ULONG_PTR bits = UINT64_MAX, mask = UINT64_MAX;
 #else
 			unsigned long bits = -1, mask = -1;
 #endif

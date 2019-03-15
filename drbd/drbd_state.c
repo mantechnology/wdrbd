@@ -4951,7 +4951,7 @@ retry:
 
 	request.tid = cpu_to_be32(reply->tid);
 	request.initiator_node_id = cpu_to_be32(resource->res_opts.node_id);
-	request.target_node_id = -1;
+	request.target_node_id = UINT32_MAX;
 	request.nodes_to_reach = cpu_to_be64(
 		~(reach_immediately | NODE_MASK(resource->res_opts.node_id)));
 	request.dds_flags = cpu_to_be16(dds_flags);

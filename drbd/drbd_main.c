@@ -1717,7 +1717,7 @@ static u64 __bitmap_uuid(struct drbd_device *device, int node_id) __must_hold(lo
 		if (peer_device->connection->cstate[NOW] == C_CONNECTED)
 			peer_md[node_id].flags |= MDF_PEER_DIFF_CUR_UUID;
 
-		bitmap_uuid = -1;
+		bitmap_uuid = UINT64_MAX;
 	}
 #else
 		bitmap_uuid = -1;
@@ -6241,7 +6241,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 		NULL == peer_device)
 	{
 		WDRBD_ERROR("Invalid parameter, pBitmap(0x%p), pBitmap->Buffer(0x%p) peer_device(0x%p)\n", pBitmap, pBitmap ? pBitmap->Buffer:NULL, peer_device);
-		return -1;
+		return UINT64_MAX;
 	}
 
 	pByte = (PCHAR)pBitmap->Buffer;

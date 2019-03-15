@@ -664,7 +664,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 				break;
 			case BM_OP_SET:
 				count += hweight32(~*p);
-				*p = -1;
+				*p = UINT32_MAX;
 				break;
 			case BM_OP_TEST:
 				BUG();
@@ -1923,7 +1923,7 @@ void drbd_bm_set_all(struct drbd_device *device)
        unsigned int bitmap_index;
 
        for (bitmap_index = 0; bitmap_index < bitmap->bm_max_peers; bitmap_index++)
-	       __bm_many_bits_op(device, bitmap_index, 0, -1, BM_OP_SET);
+		   __bm_many_bits_op(device, bitmap_index, 0, UINT64_MAX, BM_OP_SET);
 }
 
 /* clear all bits in the bitmap */
@@ -1933,7 +1933,7 @@ void drbd_bm_clear_all(struct drbd_device *device)
 	unsigned int bitmap_index;
 
 	for (bitmap_index = 0; bitmap_index < bitmap->bm_max_peers; bitmap_index++)
-		__bm_many_bits_op(device, bitmap_index, 0, -1, BM_OP_CLEAR);
+		__bm_many_bits_op(device, bitmap_index, 0, UINT64_MAX, BM_OP_CLEAR);
 }
 #ifdef _WIN32
 unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
@@ -1971,11 +1971,12 @@ int drbd_bm_test_bit(struct drbd_peer_device *peer_device, const unsigned long b
 
 	spin_lock_irqsave(&bitmap->bm_lock, irq_flags);
 	if (bitnr >= bitmap->bm_bits)
-		ret = -1;
-	else
+		ret = UINT64_MAX;
+	else {
 		ret = __bm_op(peer_device->device, peer_device->bitmap_index, bitnr, bitnr,
-			      BM_OP_COUNT, NULL);
-	BUG_ON(INT32_MAX < ret);
+			BM_OP_COUNT, NULL);
+		BUG_ON(INT32_MAX < ret);
+	}
 	spin_unlock_irqrestore(&bitmap->bm_lock, irq_flags);
 	return (int)ret;
 }

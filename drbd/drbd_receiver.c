@@ -1787,7 +1787,7 @@ static void conn_wait_ee_empty_or_disconnect(struct drbd_connection *connection,
 /* TODO allocate from our own bio_set. */
 int drbd_submit_peer_request(struct drbd_device *device,
 			     struct drbd_peer_request *peer_req,
-				 const unsigned op, const unsigned op_flags,
+				 const int op, const unsigned op_flags,
 				 const int fault_type)
 {
 	struct bio *bios = NULL;
@@ -2849,7 +2849,7 @@ static unsigned long wire_flags_to_bio_flags(struct drbd_connection *connection,
 	return dpf & DP_RW_SYNC ? (DRBD_REQ_SYNC | DRBD_REQ_UNPLUG) : 0;
 }
 
-static unsigned long wire_flags_to_bio_op(u32 dpf)
+static int wire_flags_to_bio_op(u32 dpf)
 {
 	if (dpf & DP_DISCARD)
 		return REQ_OP_DISCARD;
@@ -10012,7 +10012,7 @@ found:
 		u64 in_sync_b;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
-		ULONG_PTR set_sync_mask = -1;
+		ULONG_PTR set_sync_mask = UINT64_MAX;
 #endif    
 
 		if (get_ldev(device)) {

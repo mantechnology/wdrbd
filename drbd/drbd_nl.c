@@ -2408,7 +2408,7 @@ static int drbd_check_al_size(struct drbd_device *device, struct disk_conf *dc)
 static u32 common_connection_features(struct drbd_resource *resource)
 {
 	struct drbd_connection *connection;
-	u32 features = -1;
+	u32 features = UINT32_MAX;
 
 	rcu_read_lock();
 	for_each_connection_rcu(connection, resource) {

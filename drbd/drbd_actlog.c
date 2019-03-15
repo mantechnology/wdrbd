@@ -519,7 +519,7 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 
 	buffer->n_updates = cpu_to_be16(i);
 	for ( ; i < AL_UPDATES_PER_TRANSACTION; i++) {
-		buffer->update_slot_nr[i] = cpu_to_be16(-1);
+		buffer->update_slot_nr[i] = cpu_to_be16(UINT16_MAX);
 		buffer->update_extent_nr[i] = cpu_to_be32(LC_FREE);
 	}
 
@@ -1369,7 +1369,7 @@ out:
 
 bool drbd_set_all_out_of_sync(struct drbd_device *device, sector_t sector, int size)
 {
-	return drbd_set_sync(device, sector, size, -1, -1);
+	return drbd_set_sync(device, sector, size, UINT64_MAX, UINT64_MAX);
 }
 
 /**
