@@ -309,7 +309,7 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *
 	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
-	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
+	size = (ULONG)write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
 
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
 	return size;
@@ -326,15 +326,17 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 	}
 
 	while (true, true) {
-		signed long long tx_sz = 0;
+		long long tx_sz = 0;
 
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
 		}
 		
+		BUG_ON(UINT32_MAX < tx_sz);
+
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
 		//ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
-		ret = Send(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, NULL, 0);
+		ret = Send(socket, bab->static_big_buf, (ULONG)tx_sz, 0, timeout, NULL, NULL, 0);
 		if (ret != tx_sz) {
 			if (ret < 0) {
 				if (ret != -EINTR) {

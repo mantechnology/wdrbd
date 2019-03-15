@@ -129,7 +129,8 @@ int idr_pre_get(struct idr *idp, gfp_t gfp_mask)
 
 static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 {
-	int n, m, sh;
+	int n, sh;
+	ULONG_PTR m;
 	struct idr_layer *p, *new;
 	struct idr_layer *pa[MAX_LEVEL];
 	int l, id;
@@ -163,7 +164,7 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 		}
 		if (m != n) {
 			sh = IDR_BITS*l;
-			id = ((id >> sh) ^ n ^ m) << sh;
+			id = (int)((id >> sh) ^ n ^ m) << sh;
 		}
 		if ((id >= MAX_ID_BIT) || (id < 0))
 			return -3;
@@ -186,7 +187,8 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 	* users pointer and return the raw id.
 	*/
 	p->ary[m] = (struct idr_layer *)ptr;
-	__set_bit(m, &p->bitmap);
+	BUG_ON(UINT32_MAX < m);
+	__set_bit((int)m, &p->bitmap);
 	p->count++;
 	/*
 	* If this layer is full mark the bit in the layer above

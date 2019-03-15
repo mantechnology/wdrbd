@@ -1153,7 +1153,7 @@ static int scnprintf_resync_suspend_flags(char *buffer, size_t size,
 		b += scnprintf(b, end - b, "connection dependency,");
 	*(--b) = 0;
 
-	return b - buffer;
+	return (int)(b - buffer);
 }
 
 static int scnprintf_io_suspend_flags(char *buffer, size_t size,
@@ -1175,7 +1175,7 @@ static int scnprintf_io_suspend_flags(char *buffer, size_t size,
 		b += scnprintf(b, end - b, "quorum,");
 	*(--b) = 0;
 
-	return b - buffer;
+	return (int)(b - buffer);
 }
 
 static void print_state_change(struct drbd_resource *resource, const char *prefix)
@@ -2251,7 +2251,7 @@ static void set_ov_position(struct drbd_peer_device *peer_device,
 		 * first P_OV_REQUEST is received */
 		peer_device->ov_start_sector = ~(sector_t)0;
 	} else {
-		unsigned long bit = BM_SECT_TO_BIT(peer_device->ov_start_sector);
+		ULONG_PTR bit = BM_SECT_TO_BIT(peer_device->ov_start_sector);
 		if (bit >= peer_device->rs_total) {
 			peer_device->ov_start_sector =
 				BM_BIT_TO_SECT(peer_device->rs_total - 1);
@@ -4926,7 +4926,7 @@ enum determine_dev_size
 	struct drbd_resource *resource = device->resource;
 	struct twopc_reply *reply = &resource->twopc_reply;
 	struct p_twopc_request request;
-	unsigned long start_time;
+	ULONG_PTR start_time;
 	unsigned long irq_flags;
 	enum drbd_state_rv rv;
 	enum determine_dev_size dd;

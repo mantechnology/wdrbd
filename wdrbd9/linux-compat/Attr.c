@@ -144,7 +144,7 @@ int nla_parse(struct nlattr *tb[], int maxtype, struct nlattr *head, int len,
 
     nla_for_each_attr(nla, head, len, rem)
     {
-        u16 type = nla_type(nla);
+        u16 type = (u16)nla_type(nla);
 
         if (type > 0 && type <= maxtype)
         {
@@ -289,8 +289,11 @@ struct nlattr *__nla_reserve(struct sk_buff *skb, int attrtype, int attrlen)
     struct nlattr *nla;
 
     nla = (struct nlattr *) skb_put(skb, nla_total_size(attrlen));
-    nla->nla_type = attrtype;
-    nla->nla_len = nla_attr_size(attrlen);
+
+	BUG_ON(UINT16_MAX < attrtype);
+	nla->nla_type = (u16)attrtype;
+	BUG_ON(UINT16_MAX < nla_attr_size(attrlen));
+	nla->nla_len = (u16)nla_attr_size(attrlen);
 
     memset((unsigned char *)nla + nla->nla_len, 0, nla_padlen(attrlen));
 

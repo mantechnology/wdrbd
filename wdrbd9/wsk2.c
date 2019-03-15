@@ -1292,7 +1292,7 @@ LONG NTAPI Receive(
 		KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
 		if (Irp->IoStatus.Information > 0) {
 			//WDRBD_INFO("rx canceled but rx data(%d) avaliable.\n", Irp->IoStatus.Information);
-			BytesReceived = Irp->IoStatus.Information;
+			BytesReceived = (LONG)Irp->IoStatus.Information;
 		}
 	}
 

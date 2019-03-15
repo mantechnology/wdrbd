@@ -421,8 +421,8 @@ bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval 
 {
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
-	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 	
 	D_ASSERT(device, first <= last);
 	D_ASSERT(device, atomic_read(&device->local_cnt) > 0);
@@ -431,7 +431,9 @@ bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval 
 	if (first != last)
 		return false;
 
-	return _al_get_nonblock(device, first) != NULL;
+	BUG_ON(UINT32_MAX < first);
+
+	return _al_get_nonblock(device, (unsigned int)first) != NULL;
 }
 
 
@@ -471,10 +473,11 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 {
 	struct lc_element *e;
 	sector_t sector;
-	int i, mx;
+	int mx;
 	unsigned extent_nr;
 	unsigned crc = 0;
 	int err = 0;
+	unsigned short i;
 
 	memset(buffer, 0, sizeof(*buffer));
 	buffer->magic = cpu_to_be32(DRBD_AL_MAGIC);
@@ -498,8 +501,10 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 			i++;
 			break;
 		}
-		buffer->update_slot_nr[i] = cpu_to_be16(e->lc_index);
-		buffer->update_extent_nr[i] = cpu_to_be32(e->lc_new_number);
+		BUG_ON(UINT16_MAX < e->lc_index || UINT16_MAX < e->lc_new_number);
+
+		buffer->update_slot_nr[i] = cpu_to_be16((u16)e->lc_index);
+		buffer->update_extent_nr[i] = cpu_to_be32((u16)e->lc_new_number);
 		if (e->lc_number != LC_FREE) {
 			unsigned long start, end;
 
@@ -518,8 +523,9 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 		buffer->update_extent_nr[i] = cpu_to_be32(LC_FREE);
 	}
 
-	buffer->context_size = cpu_to_be16(device->act_log->nr_elements);
-	buffer->context_start_slot_nr = cpu_to_be16(device->al_tr_cycle);
+	BUG_ON(UINT16_MAX < device->act_log->nr_elements || UINT16_MAX < device->al_tr_cycle);
+	buffer->context_size = cpu_to_be16((u16)device->act_log->nr_elements);
+	buffer->context_start_slot_nr = cpu_to_be16((u16)device->al_tr_cycle);
 
 	mx = min_t(int, AL_CONTEXT_PER_TRANSACTION,
 		   device->act_log->nr_elements - device->al_tr_cycle);
@@ -696,22 +702,24 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i)
 {
 	struct drbd_device *device = peer_device->device;
-	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
-	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
-	unsigned enr;
+	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR enr;
 	bool need_transaction = false;
 
 	D_ASSERT(peer_device, first <= last);
 	D_ASSERT(peer_device, atomic_read(&device->local_cnt) > 0);
 
+	BUG_ON(UINT32_MAX < first || UINT32_MAX < last);
+
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
 		wait_event(device->al_wait,
-				(al_ext = _al_get(device, enr)) != NULL ||
+				(al_ext = _al_get(device, (unsigned int)enr)) != NULL ||
 				peer_device->connection->cstate[NOW] < C_CONNECTED);
 		if (al_ext == NULL) {
 			if (enr > first)
-				put_actlog(device, first, enr-1);
+				put_actlog(device, (unsigned int)first, (unsigned int)(enr - 1));
 			return -ECONNABORTED;
 		}
 		if (al_ext->lc_number != enr)
@@ -730,14 +738,16 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	struct bm_extent *bm_ext;
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
-	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
-	unsigned nr_al_extents;
+	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR nr_al_extents;
 	unsigned available_update_slots;
 	struct get_activity_log_ref_ctx al_ctx = { .device = device, };
-	unsigned enr;
+	ULONG_PTR enr;
 
 	D_ASSERT(device, first <= last);
+
+	BUG_ON(UINT32_MAX < first || UINT32_MAX < last);
 
 	nr_al_extents = 1 + last - first; /* worst case: all touched extends are cold. */
 
@@ -776,7 +786,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 
 	/* Is resync active in this area? */
 	for (enr = first; enr <= last; enr++) {
-		al_ctx.enr = enr;
+		al_ctx.enr = (unsigned int)enr;
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
@@ -799,10 +809,10 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	 * this has to be successful. */
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
-		al_ext = lc_get_cumulative(device->act_log, enr);
+		al_ext = lc_get_cumulative(device->act_log, (unsigned int)enr);
 		if (!al_ext)
 #ifdef _WIN32
-			drbd_err(device, "LOGIC BUG for enr=%u (LC_STARVING=%d LC_LOCKED=%d used=%u pending_changes=%u lc->free=%d lc->lru=%d)\n", 
+			drbd_err(device, "LOGIC BUG for enr=%I64u (LC_STARVING=%d LC_LOCKED=%d used=%u pending_changes=%u lc->free=%d lc->lru=%d)\n", 
 						enr, 
 						test_bit(__LC_STARVING, &device->act_log->flags),
 						test_bit(__LC_LOCKED, &device->act_log->flags),
@@ -824,11 +834,14 @@ bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 {
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
-	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
+	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 
-	WDRBD_TRACE_AL("first = %lu last = %lu i->size = %lu\n", first, last, i->size);
-	return put_actlog(device, first, last);
+	BUG_ON(UINT32_MAX < first || UINT32_MAX < last);
+
+	WDRBD_TRACE_AL("first = %I64u last = %I64u i->size = %lu\n", first, last, i->size);
+
+	return put_actlog(device, (unsigned int)first, (unsigned int)last);
 }
 
 static int _try_lc_del(struct drbd_device *device, struct lc_element *al_ext)
@@ -922,8 +935,8 @@ consider_sending_peers_in_sync(struct drbd_peer_device *peer_device, unsigned in
 			mask |= NODE_MASK(p->node_id);
 	}
 
-	size_sect = min(BM_SECT_PER_EXT,
-			drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr));
+	size_sect = (int)(min(BM_SECT_PER_EXT,
+			drbd_get_capacity(device->this_bdev) - BM_EXT_TO_SECT(rs_enr)));
 
 	for_each_peer_device_ref(p, im, device) {
 		if (mask & NODE_MASK(p->node_id))
@@ -1247,7 +1260,7 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 	}
 	if (count) {
 		if (mode == SET_IN_SYNC) {
-			unsigned long still_to_go = drbd_bm_total_weight(peer_device);
+			ULONG_PTR still_to_go = drbd_bm_total_weight(peer_device);
 			bool rs_is_done = (still_to_go <= peer_device->rs_failed);
 			drbd_advance_rs_marks(peer_device, still_to_go);
 			if (cleared || rs_is_done)
@@ -1278,7 +1291,7 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 {
 	/* Is called from worker and receiver context _only_ */
 	struct drbd_device *device = peer_device->device;
-	unsigned long sbnr, ebnr, lbnr;
+	unsigned long long sbnr, ebnr, lbnr;
 	unsigned long count = 0;
 	sector_t esector, nr_sectors;
 
@@ -1347,7 +1360,8 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 		ebnr = BM_SECT_TO_BIT(esector);
 	}
 
-	count = update_sync_bits(peer_device, sbnr, ebnr, mode);
+	BUG_ON(UINT32_MAX < sbnr || UINT32_MAX < ebnr);
+	count = update_sync_bits(peer_device, (unsigned long)sbnr, (unsigned long)ebnr, mode);
 out:
 	put_ldev(device);
 	return count;
@@ -1375,7 +1389,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   unsigned long bits, unsigned long mask)
 #endif
 {
-	long set_start, set_end, clear_start, clear_end;
+	unsigned long long set_start, set_end, clear_start, clear_end;
 	sector_t esector, nr_sectors;
 #ifdef _WIN32
 	unsigned long set_bits = 0;
@@ -1425,6 +1439,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	set_start = BM_SECT_TO_BIT(sector);
 	set_end = BM_SECT_TO_BIT(esector);
 
+	BUG_ON(UINT32_MAX < set_start || UINT32_MAX < set_end);
+
 	/* For marking sectors as in sync, we need to round down except when we
 	 * reach the end of the device: The last bit in the bitmap does not
 	 * account for sectors past the end of the device.
@@ -1434,6 +1450,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		clear_end = BM_SECT_TO_BIT(esector);
 	else
 		clear_end = BM_SECT_TO_BIT(esector + 1) - 1;
+
+	BUG_ON(UINT32_MAX < clear_start || UINT32_MAX < clear_end);
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
@@ -1449,7 +1467,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1191: caller needs to know if the bits has been set at least.
 		{
-			if (update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC) > 0)
+			if (update_sync_bits(peer_device, (unsigned int)set_start, (unsigned int)set_end, SET_OUT_OF_SYNC) > 0)
 				set_bits |= (1 << bitmap_index);
 		}
 #else
@@ -1457,22 +1475,24 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #endif
 
 		else if (clear_start <= clear_end)
-			update_sync_bits(peer_device, clear_start, clear_end, SET_IN_SYNC);
+			update_sync_bits(peer_device, (unsigned int)clear_start, (unsigned int)clear_end, SET_IN_SYNC);
 	}
 	rcu_read_unlock();
 	if (mask) {
-		int bitmap_index;
+		ULONG_PTR bitmap_index;
 #ifdef _WIN32
 		for_each_set_bit(bitmap_index, (ULONG_PTR*)&mask, BITS_PER_LONG) {
 #else 
 		for_each_set_bit(bitmap_index, &mask, BITS_PER_LONG) {
 #endif
-			if (test_bit(bitmap_index, &bits))
-				drbd_bm_set_bits(device, bitmap_index,
-						 set_start, set_end);
+			BUG_ON(UINT32_MAX < bitmap_index);
+
+			if (test_bit((unsigned int)bitmap_index, &bits))
+				drbd_bm_set_bits(device, (unsigned int)bitmap_index,
+				(unsigned int)set_start, (unsigned int)set_end);
 			else if (clear_start <= clear_end)
-				drbd_bm_clear_bits(device, bitmap_index,
-						   clear_start, clear_end);
+				drbd_bm_clear_bits(device, (unsigned int)bitmap_index,
+				(unsigned int)clear_start, (unsigned int)clear_end);
 		}
 	}
 
@@ -1493,7 +1513,7 @@ struct bm_extent *_bme_get(struct drbd_peer_device *peer_device, unsigned int en
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
 	int wakeup = 0;
-	unsigned long rs_flags;
+	ULONG_PTR rs_flags;
 
 	spin_lock_irq(&device->al_lock);
 	if (peer_device->resync_locked > peer_device->resync_lru->nr_elements/2) {
@@ -1547,15 +1567,16 @@ static int _is_in_al(struct drbd_device *device, unsigned int enr)
 int drbd_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector)
 {
 	struct drbd_device *device = peer_device->device;
-	unsigned int enr = BM_SECT_TO_EXT(sector);
+	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
 	struct bm_extent *bm_ext;
 	int i, sig;
 	bool sa;
 
+	BUG_ON(UINT32_MAX < (enr * AL_EXT_PER_BM_SECT + AL_EXT_PER_BM_SECT));
 retry:
 #ifdef _WIN32
     wait_event_interruptible(sig, device->al_wait,
-        (bm_ext = _bme_get(peer_device, enr)));
+        (bm_ext = _bme_get(peer_device, (unsigned int)enr)));
 #else
 	sig = wait_event_interruptible(device->al_wait,
 			(bm_ext = _bme_get(peer_device, enr)));
@@ -1572,7 +1593,7 @@ retry:
 	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
 #ifdef _WIN32
         wait_event_interruptible(sig, device->al_wait,
-            !_is_in_al(device, enr * AL_EXT_PER_BM_SECT + i) ||
+            !_is_in_al(device, (unsigned int)(enr * AL_EXT_PER_BM_SECT + i)) ||
             (sa && test_bit(BME_PRIORITY, &bm_ext->flags)));
 #else
 		sig = wait_event_interruptible(device->al_wait,
@@ -1608,8 +1629,8 @@ retry:
 int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, bool throttle)
 {
 	struct drbd_device *device = peer_device->device;
-	unsigned int enr = BM_SECT_TO_EXT(sector);
-	const unsigned int al_enr = enr*AL_EXT_PER_BM_SECT;
+	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
+	const ULONG_PTR al_enr = enr * AL_EXT_PER_BM_SECT;
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
 	int i;
@@ -1624,6 +1645,9 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	if (throttle && peer_device->resync_wenr != enr)
 		return -EAGAIN;
+
+	BUG_ON(UINT32_MAX < enr);
+	BUG_ON(UINT32_MAX < al_enr);
 
 	spin_lock_irq(&device->al_lock);
 	if (peer_device->resync_wenr != LC_FREE && peer_device->resync_wenr != enr) {
@@ -1658,7 +1682,7 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 		}
 	}
 	/* TRY. */
-	e = lc_try_get(peer_device->resync_lru, enr);
+	e = lc_try_get(peer_device->resync_lru, (unsigned int)enr);
 	bm_ext = e ? lc_entry(e, struct bm_extent, lce) : NULL;
 	if (bm_ext) {
 		if (test_bit(BME_LOCKED, &bm_ext->flags))
@@ -1679,10 +1703,10 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 		if (peer_device->resync_locked > peer_device->resync_lru->nr_elements-3)
 			goto try_again;
 		/* Do or do not. There is no try. -- Yoda */
-		e = lc_get(peer_device->resync_lru, enr);
+		e = lc_get(peer_device->resync_lru, (unsigned int)enr);
 		bm_ext = e ? lc_entry(e, struct bm_extent, lce) : NULL;
 		if (!bm_ext) {
-			const unsigned long rs_flags = peer_device->resync_lru->flags;
+			const ULONG_PTR rs_flags = peer_device->resync_lru->flags;
 			if (rs_flags & LC_STARVING)
 				drbd_warn(device, "Have to wait for element"
 				     " (resync LRU too small?)\n");
@@ -1690,7 +1714,7 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 			goto try_again;
 		}
 		if (bm_ext->lce.lc_number != enr) {
-			bm_ext->rs_left = bm_e_weight(peer_device, enr);
+			bm_ext->rs_left = bm_e_weight(peer_device, (unsigned long)enr);
 			bm_ext->rs_failed = 0;
 			lc_committed(peer_device->resync_lru);
 			wake_up(&device->al_wait);
@@ -1703,15 +1727,15 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 	}
 check_al:
 	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
-		if (lc_is_used(device->act_log, al_enr + i)){
-			WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n",
+		if (lc_is_used(device->act_log, (unsigned int)(al_enr + i))){
+			WDRBD_TRACE_AL("check_al sector = %lu, enr = %I64u, al_enr + 1 = %lu and goto try_again\n",
 				sector, enr, al_enr + i); 
 			goto try_again;
 		}
 	}
 	set_bit(BME_LOCKED, &bm_ext->flags);
 proceed:
-	WDRBD_TRACE_AL("proceed sector = %lu, enr = %lu\n", sector, enr);
+	WDRBD_TRACE_AL("proceed sector = %lu, enr = %I64u\n", sector, enr);
 	peer_device->resync_wenr = LC_FREE;
 	spin_unlock_irq(&device->al_lock);
 	return 0;
@@ -1731,7 +1755,7 @@ try_again:
 			}
 			wake_up(&device->al_wait);
 		} else
-			peer_device->resync_wenr = enr;
+			peer_device->resync_wenr = (unsigned int)enr;
 	}
 	spin_unlock_irq(&device->al_lock);
 	return -EAGAIN;
@@ -1740,13 +1764,15 @@ try_again:
 void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 {
 	struct drbd_device *device = peer_device->device;
-	unsigned int enr = BM_SECT_TO_EXT(sector);
+	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
 	unsigned long flags;
 
+	BUG_ON(UINT32_MAX < enr);
+
 	spin_lock_irqsave(&device->al_lock, flags);
-	e = lc_find(peer_device->resync_lru, enr);
+	e = lc_find(peer_device->resync_lru, (unsigned int)enr);
 	bm_ext = e ? lc_entry(e, struct bm_extent, lce) : NULL;
 	if (!bm_ext) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
@@ -1759,7 +1785,7 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 		spin_unlock_irqrestore(&device->al_lock, flags);
 		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u]) called, "
 		    "but refcnt is 0!?\n",
-		    (unsigned long long)sector, enr);
+			(unsigned long long)sector, (unsigned int)enr);
 		return;
 	}
 
@@ -1848,8 +1874,9 @@ bool drbd_sector_has_priority(struct drbd_peer_device *peer_device, sector_t sec
 	struct lc_element *tmp;
 	bool has_priority = false;
 
+	BUG_ON(UINT32_MAX < BM_SECT_TO_EXT(sector));
 	spin_lock_irq(&device->al_lock);
-	tmp = lc_find(peer_device->resync_lru, BM_SECT_TO_EXT(sector));
+	tmp = lc_find(peer_device->resync_lru, (unsigned int)BM_SECT_TO_EXT(sector));
 	if (tmp) {
 		struct bm_extent *bm_ext = lc_entry(tmp, struct bm_extent, lce);
 		has_priority = test_bit(BME_PRIORITY, &bm_ext->flags);

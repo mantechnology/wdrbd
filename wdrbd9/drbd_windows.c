@@ -280,13 +280,13 @@ ULONG_PTR find_first_zero_bit(const ULONG_PTR *addr, ULONG_PTR size)
 	 return result + ffz(tmp);
  }
 
-int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset)
+ULONG_PTR find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset)
 {
 	const ULONG_PTR *p;
 	ULONG_PTR bit, set;
  
     if (offset >= size)
-            return size;
+        return size;
     bit = offset & (BITS_PER_LONG - 1);
     offset -= bit;
     size -= offset;
@@ -864,7 +864,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
-	unsigned long expire;
+	ULONG_PTR expire;
 
 	expire = timeout + jiffies;
 	nWaitTime.QuadPart = 0;
@@ -932,7 +932,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
         }
 	}
 
-	timeout = expire - jiffies;
+	timeout = (long)(expire - jiffies);
 	return timeout < 0 ? 0 : timeout;
 }
 #ifdef _WIN32
@@ -1453,6 +1453,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     timer->expires = expires;
 
+	BUG_ON(UINT32_MAX < expires);
+
     if (current_milisec >= expires)
     {
 		nWaitTime.QuadPart = -1;
@@ -1460,7 +1462,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 	else
 	{
 		expires -= current_milisec;
-		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(expires)));
+		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS((LONG)expires)));
 	}
 
 #ifdef DBG
@@ -2127,7 +2129,7 @@ void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
 
 	hdr = nlmsg_data(nlh);
 	hdr->cmd = cmd;
-	hdr->version = family->version;
+	hdr->version = (u8)family->version;
 	hdr->reserved = 0;
 
 	return (char *) hdr + GENL_HDRLEN;
@@ -2727,7 +2729,7 @@ BOOLEAN do_add_minor(unsigned int minor)
         }
 
         if (REG_BINARY == valueInfo->Type) {
-            WCHAR temp = toupper(valueInfo->Name[0]);
+            WCHAR temp = (WCHAR)toupper(valueInfo->Name[0]);
             if (minor == temp - L'C') {
                 ret = true;
                 goto cleanup;

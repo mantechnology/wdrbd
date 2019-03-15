@@ -234,7 +234,7 @@ static __inline void *nlmsg_data(const struct nlmsghdr *nlh)
 * nlmsg_len - length of message payload
 * @nlh: netlink message header
 */
-static __inline int nlmsg_len(const struct nlmsghdr *nlh)
+static __inline u32 nlmsg_len(const struct nlmsghdr *nlh)
 {
     return nlh->nlmsg_len - NLMSG_HDRLEN;
 }
@@ -256,7 +256,7 @@ static __inline struct nlattr *nlmsg_attrdata(const struct nlmsghdr *nlh,
 * @nlh: netlink message header
 * @hdrlen: length of family specific header
 */
-static __inline int nlmsg_attrlen(const struct nlmsghdr *nlh, int hdrlen)
+static __inline u32 nlmsg_attrlen(const struct nlmsghdr *nlh, int hdrlen)
 {
     return nlmsg_len(nlh) - NLMSG_ALIGN(hdrlen);
 }
@@ -396,7 +396,7 @@ static __inline int nla_padlen(int payload)
 * nla_type - attribute type
 * @nla: netlink attribute
 */
-static __inline int nla_type(const struct nlattr *nla)
+static __inline u16 nla_type(const struct nlattr *nla)
 {
     return nla->nla_type & NLA_TYPE_MASK;
 }
@@ -416,7 +416,7 @@ static __inline void *nla_data(const struct nlattr *nla)
 * @nla: netlink attribute
 */
 
-static __inline int nla_len(const struct nlattr *nla)
+static __inline u16 nla_len(const struct nlattr *nla)
 {
     return nla->nla_len - NLA_HDRLEN;
 }
@@ -554,7 +554,7 @@ static __inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 	do { \
 		type __tmp = value; \
 		NLA_PUT(msg, attrtype, sizeof(type), &__tmp); \
-	    	} while(false,false)
+    	} while(false,false)
 
 #define NLA_PUT_U8(msg, attrtype, value) \
 	NLA_PUT_TYPE(msg, __u8, attrtype, value)
@@ -710,7 +710,8 @@ static __inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
  */
 static __inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
 {
-	start->nla_len = skb_tail_pointer(msg) - (unsigned char *)start;
+	BUG_ON(UINT16_MAX < skb_tail_pointer(msg) - (unsigned char *)start);
+	start->nla_len = (u16)(skb_tail_pointer(msg) - (unsigned char *)start);
 	return msg->len;
 }
 
@@ -760,9 +761,9 @@ static __inline struct nlmsghdr *
 	int size = nlmsg_msg_size(len);
 
 	nlh = (struct nlmsghdr*)skb_put(skb, NLMSG_ALIGN(size));
-	nlh->nlmsg_type = type;
+	nlh->nlmsg_type = (u16)type;
 	nlh->nlmsg_len = size;
-	nlh->nlmsg_flags = flags;
+	nlh->nlmsg_flags = (u16)flags;
 	nlh->nlmsg_pid = portid;
 	nlh->nlmsg_seq = seq;
 
@@ -785,7 +786,9 @@ static __inline struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32
 
 static __inline int nlmsg_end(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
-    nlh->nlmsg_len = skb_tail_pointer(skb) - (unsigned char *)nlh;
+	BUG_ON(UINT32_MAX < skb_tail_pointer(skb) - (unsigned char *)nlh);
+
+    nlh->nlmsg_len = (u32)(skb_tail_pointer(skb) - (unsigned char *)nlh);
     return skb->len;
 }
 

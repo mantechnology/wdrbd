@@ -1172,7 +1172,7 @@ extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
 extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //reference linux 3.x kernel. 64bit compatible
 #endif
 extern ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
-extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
+extern ULONG_PTR find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
 
 __inline
 int test_and_set_bit(int bit, ULONG_PTR * base)
@@ -1234,7 +1234,7 @@ static __inline int __test_and_clear_bit(int nr, volatile ULONG_PTR *addr)
 	return (old & mask) != 0;
 }
 
-static __inline int test_bit(int nr, const ULONG_PTR *addr)
+static __inline BOOLEAN test_bit(int nr, const ULONG_PTR *addr)
 {
 #ifdef _WIN64
 	return _bittest64((LONG64 *)addr, nr);

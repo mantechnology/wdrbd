@@ -150,9 +150,9 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 #endif
 
 #ifdef _WIN32
-static inline unsigned short queue_logical_block_size(struct request_queue *q)
+static inline unsigned int queue_logical_block_size(struct request_queue *q)
 {
-	int retval = 512;
+	unsigned int retval = 512;
 	if (q && q->logical_block_size)
 		retval = q->logical_block_size;
 	return retval;
@@ -1858,7 +1858,7 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 }
 
 static inline void generic_end_io_acct(int rw, struct hd_struct *part,
-				  unsigned long start_time)
+				  ULONG_PTR start_time)
 {
 	UNREFERENCED_PARAMETER(start_time);
 	UNREFERENCED_PARAMETER(rw);

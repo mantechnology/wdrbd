@@ -38,10 +38,10 @@
 
 // MODIFIED_BY_MANTECH DW-1513 : Output LRU status like lc_seq_printf_stats function
 #ifdef WIN_AL_BUG_ON
-void private_strcat(char* buf, char* string, unsigned int string_value){
+void private_strcat(char* buf, char* string, ULONG_PTR string_value){
 	char tmp[256] = { 0, }; 
 	strcat(buf, string);
-	sprintf(tmp, "%u", string_value);
+	sprintf(tmp, "%I64u", string_value);
 	strcat(buf, tmp); 
 }
 

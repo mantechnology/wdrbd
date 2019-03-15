@@ -229,7 +229,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
-	if (is_failed_barrier(peer_req->flags)) {
+	BUG_ON(UINT32_MAX < peer_req->flags);
+	if (is_failed_barrier((int)peer_req->flags)) {
 		drbd_bump_write_ordering(device->resource, device->ldev, WO_BDEV_FLUSH);
 		spin_lock_irqsave(&device->resource->req_lock, flags);
 		list_del(&peer_req->w.list);
@@ -991,8 +992,8 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 #endif
 	sector_t sector;
 	const sector_t capacity = drbd_get_capacity(device->this_bdev);
-	unsigned int max_bio_size;
-	int number, rollback_i, size;
+	unsigned int max_bio_size, size;
+	int number, rollback_i;
 	int align, requeue = 0;
 	int i = 0;
 	int discard_granularity = 0;
@@ -1092,7 +1093,7 @@ next_sector:
 		align = 1;
 		rollback_i = i;
 		while (i < number) {
-			if ((unsigned int)(size + BM_BLOCK_SIZE) > max_bio_size)
+			if (size + BM_BLOCK_SIZE > max_bio_size)
 				break;
 
 			/* Be always aligned */
@@ -1114,7 +1115,7 @@ next_sector:
 				break;
 			bit++;
 			size += BM_BLOCK_SIZE;
-			if ((BM_BLOCK_SIZE << align) <= size)
+			if ((unsigned int)(BM_BLOCK_SIZE << align) <= size)
 				align++;
 			i++;
 		}
@@ -1126,7 +1127,7 @@ next_sector:
 
 		/* adjust very last sectors, in case we are oddly sized */
 		if (sector + (size>>9) > capacity)
-			size = (capacity-sector)<<9;
+			size = (unsigned int)(capacity-sector)<<9;
 
 		if (peer_device->use_csums) {
 			switch (read_for_csum(peer_device, sector, size)) {
@@ -1218,8 +1219,10 @@ static int make_ov_request(struct drbd_peer_device *peer_device, int cancel)
 			goto requeue;
 		}
 
-		if (sector + (size>>9) > capacity)
-			size = (capacity-sector)<<9;
+		if (sector + (size >> 9) > capacity) {
+			BUG_ON(UINT_MAX < (capacity - sector) << 9);
+			size = (unsigned int)(capacity - sector) << 9;
+		}
 
 		inc_rs_pending(peer_device);
 		if (drbd_send_ov_request(peer_device, sector, size)) {
@@ -1561,10 +1564,10 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			const unsigned long s = peer_device->rs_same_csum;
 			const unsigned long t = peer_device->rs_total;
 #endif
-			const int ratio =
+			const ULONG_PTR ratio =
 				(t == 0)     ? 0 :
 			(t < 100000) ? ((s*100)/t) : (s/(t/100));
-			drbd_info(peer_device, "%u %% had equal checksums, eliminated: %luK; "
+			drbd_info(peer_device, "%I64u %% had equal checksums, eliminated: %luK; "
 			     "transferred %luK total %luK\n",
 			     ratio,
 			     Bit2KB(peer_device->rs_same_csum),
@@ -3025,7 +3028,7 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 
 {
 #ifdef _WIN32
-	LONG_PTR old, new;
+	ULONG_PTR old, new;
 #else
 	unsigned long old, new;
 #endif
@@ -3033,7 +3036,8 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 		old = *flags;
 		new = old & ~mask;
 #ifdef _WIN32
-	} while (atomic_cmpxchg((atomic_t *)flags, old, new) != old);
+		BUG_ON(UINT32_MAX < old || UINT32_MAX < new);
+	} while (atomic_cmpxchg((atomic_t *)flags, (int)old, (int)new) != old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
 #endif

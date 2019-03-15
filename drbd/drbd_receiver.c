@@ -2135,7 +2135,7 @@ static void p_req_detail_from_pi(struct drbd_connection *connection,
 
 	d->sector = be64_to_cpu(p->p_data.sector);
 	d->block_id = p->p_data.block_id;
-	d->peer_seq = be64_to_cpu(p->p_data.seq_num);
+	d->peer_seq = be32_to_cpu(p->p_data.seq_num);
 	d->dp_flags = be32_to_cpu(p->p_data.dp_flags);
 	d->length = pi->size;
 	d->bi_size = is_trim_or_wsame ? be32_to_cpu(p->size) : pi->size - digest_size;
@@ -3358,7 +3358,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 #endif
 
 	if (atomic_read(&device->ap_actlog_cnt) || curr_events - peer_device->rs_last_events > 64) {
-		unsigned long rs_left;
+		u64 rs_left;
 		int i;
 
 		peer_device->rs_last_events = curr_events;
@@ -3375,7 +3375,10 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 		dt = ((long)jiffies - (long)peer_device->rs_mark_time[i]) / HZ;
 		if (!dt)
 			dt++;
-		db = peer_device->rs_mark_left[i] - rs_left;
+
+		BUG_ON(UINT32_MAX < peer_device->rs_mark_left[i] - rs_left);
+
+		db = (unsigned long)(peer_device->rs_mark_left[i] - rs_left);
 		dbdt = Bit2KB(db/dt);
 
 		if (dbdt > c_min_rate)
@@ -3670,7 +3673,7 @@ static int drbd_asb_recover_0p(struct drbd_peer_device *peer_device) __must_hold
 {
 	const int node_id = peer_device->device->resource->res_opts.node_id;
 	int self, peer, rv = -100;
-	unsigned long ch_self, ch_peer;
+	unsigned long long ch_self, ch_peer;
 	enum drbd_after_sb_p after_sb_0p;
 
 	self = drbd_bitmap_uuid(peer_device) & UUID_PRIMARY;
@@ -4880,7 +4883,7 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 	new_net_conf->after_sb_0p = convert_after_sb(p_after_sb_0p);
 	new_net_conf->after_sb_1p = convert_after_sb(p_after_sb_1p);
 	new_net_conf->after_sb_2p = convert_after_sb(p_after_sb_2p);
-	new_net_conf->two_primaries = p_two_primaries;
+	new_net_conf->two_primaries = (char)p_two_primaries;
 
 #ifdef _WIN32 
 	synchronize_rcu_w32_wlock();
@@ -5862,7 +5865,9 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	bitmap_uuids_mask = be64_to_cpu(p->bitmap_uuids_mask);
 	if (bitmap_uuids_mask & ~(NODE_MASK(DRBD_PEERS_MAX) - 1))
 		return -EIO;
-	bitmap_uuids = hweight64(bitmap_uuids_mask);
+
+	BUG_ON(INT32_MAX < hweight64(bitmap_uuids_mask));
+	bitmap_uuids = (int)hweight64(bitmap_uuids_mask);
 
 	if (pi->size / sizeof(p->other_uuids[0]) < bitmap_uuids)
 		return -EIO;
@@ -8091,16 +8096,15 @@ void INFO_bm_xfer_stats(struct drbd_peer_device *peer_device,
 	unsigned int header_size = drbd_header_size(peer_device->connection);
 	unsigned int data_size = DRBD_SOCKET_BUFFER_SIZE - header_size;
 #ifdef _WIN32
-	unsigned int plain =
-		header_size * (DIV_ROUND_UP(c->bm_words, data_size) + 1) +
-		c->bm_words * sizeof(ULONG_PTR);
+	unsigned long long plain =
+		header_size * (DIV_ROUND_UP(c->bm_words, data_size) + 1) + c->bm_words * sizeof(ULONG_PTR);
 #else
 	unsigned int plain =
 		header_size * (DIV_ROUND_UP(c->bm_words, data_size) + 1) +
 		c->bm_words * sizeof(unsigned long);
 #endif
-	unsigned int total = c->bytes[0] + c->bytes[1];
-	unsigned int r;
+	unsigned long long total = c->bytes[0] + c->bytes[1];
+	unsigned long long r;
 
 	/* total can not be zero. but just in case: */
 	if (total == 0)
@@ -8289,7 +8293,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct drbd_device *device;
 	struct p_block_desc *p = pi->data;
 	sector_t sector; 
-	unsigned long bit; 
+	unsigned long long bit; 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1354
 	bool bResetTimer = false;
@@ -9747,7 +9751,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 	sector_t sector;
 	int size;
 	struct p_block_ack *p = pi->data;
-	unsigned long bit;
+	unsigned long long bit;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -9885,7 +9889,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 {
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
 	u64 bitmap_bits = 0;
-	int node_id;
+	u64 node_id;
 
 #ifdef _WIN32
 	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, DRBD_NODE_ID_MAX) {

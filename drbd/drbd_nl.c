@@ -1891,7 +1891,7 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 	case DRBD_MD_INDEX_FLEX_EXT:
 		/* just occupy the full device; unit: sectors */
 #ifdef _WIN32 // DW-1607
-		bdev->md.md_size_sect = drbd_get_md_capacity(bdev->md_bdev);
+		bdev->md.md_size_sect = (u32)drbd_get_md_capacity(bdev->md_bdev);
 #else
 		bdev->md.md_size_sect = drbd_get_capacity(bdev->md_bdev);
 #endif
@@ -1910,9 +1910,9 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 				max_peers)
 			+ (4096 >> 9) + al_size_sect;
 
-		bdev->md.md_size_sect = md_size_sect;
+		bdev->md.md_size_sect = (u32)md_size_sect;
 		/* bitmap offset is adjusted by 'super' block size */
-		bdev->md.bm_offset   = (~md_size_sect + 1) + (4096 >> 9);
+		bdev->md.bm_offset   = (s32)(~md_size_sect + 1) + (4096 >> 9);
 		break;
 	}
 }
@@ -2576,7 +2576,7 @@ static void drbd_setup_queue_param(struct drbd_device *device, struct drbd_backi
 	if (bdev) {
 		b = bdev->backing_bdev->bd_disk->queue;
 
-		max_hw_sectors = min(queue_max_hw_sectors(b), max_bio_size >> 9);
+		max_hw_sectors = (unsigned int)(min(queue_max_hw_sectors(b), max_bio_size >> 9));
 		rcu_read_lock();
 		dc = rcu_dereference(device->ldev->disk_conf);
 		discard_zeroes_if_aligned = dc->discard_zeroes_if_aligned;
@@ -2607,8 +2607,8 @@ void drbd_reconsider_queue_parameters(struct drbd_device *device, struct drbd_ba
 	struct drbd_peer_device *peer_device;
 
 	if (bdev) {
-		max_bio_size = min(max_bio_size,
-			queue_max_hw_sectors(bdev->backing_bdev->bd_disk->queue) << 9);
+		max_bio_size = (unsigned int)(min(max_bio_size,
+			queue_max_hw_sectors(bdev->backing_bdev->bd_disk->queue) << 9));
 	}
 
 	spin_lock_irq(&device->resource->req_lock);
@@ -4563,7 +4563,7 @@ adm_add_path(struct drbd_config_context *adm_ctx,  struct genl_info *info)
 	if (!path)
 		return ERR_NOMEM;
 
-	path->my_addr_len = nla_len(my_addr);
+	path->my_addr_len = (int)nla_len(my_addr);
 	memcpy(&path->my_addr, nla_data(my_addr), path->my_addr_len);
 	path->peer_addr_len = nla_len(peer_addr);
 	memcpy(&path->peer_addr, nla_data(peer_addr), path->peer_addr_len);
@@ -6017,8 +6017,8 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 		}
 	}
-
-	minor = cb->args[1];
+	BUG_ON(INT32_MAX < cb->args[1]);
+	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_get_next(idr_to_search, &minor);
 	if (!device) {
@@ -6390,7 +6390,8 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 	}
 
-	minor = cb->args[1];
+	BUG_ON(INT32_MAX < cb->args[1]);
+	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_find(idr_to_search, minor);
 	if (!device) {
@@ -7596,43 +7597,44 @@ static unsigned int notifications_for_state_change(struct drbd_state_change *sta
 static int get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct drbd_state_change *state_change = (struct drbd_state_change *)cb->args[0];
-	unsigned int seq = cb->args[2];
-	unsigned int n;
+	ULONG_PTR seq = cb->args[2];
+	ULONG_PTR n;
 	enum drbd_notification_type flags = 0;
 
 	/* There is no need for taking notification_mutex here: it doesn't
 	   matter if the initial state events mix with later state chage
 	   events; we can always tell the events apart by the NOTIFY_EXISTS
 	   flag. */
+	BUG_ON(UINT32_MAX < seq);
 
 	cb->args[5]--;
 	if (cb->args[5] == 1) {
-		notify_initial_state_done(skb, seq);
+		notify_initial_state_done(skb, (unsigned int)seq);
 		goto out;
 	}
 	n = cb->args[4]++;
 	if (cb->args[4] < cb->args[3])
 		flags |= NOTIFY_CONTINUES;
 	if (n < 1) {
-		notify_resource_state_change(skb, seq, state_change,
+		notify_resource_state_change(skb, (unsigned int)seq, state_change,
 					     NOTIFY_EXISTS | flags);
 		goto next;
 	}
 	n--;
 	if (n < state_change->n_connections) {
-		notify_connection_state_change(skb, seq, &state_change->connections[n],
+		notify_connection_state_change(skb, (unsigned int)seq, &state_change->connections[n],
 					       NOTIFY_EXISTS | flags);
 		goto next;
 	}
 	n -= state_change->n_connections;
 	if (n < state_change->n_devices) {
-		notify_device_state_change(skb, seq, &state_change->devices[n],
+		notify_device_state_change(skb, (unsigned int)seq, &state_change->devices[n],
 					   NOTIFY_EXISTS | flags);
 		goto next;
 	}
 	n -= state_change->n_devices;
 	if (n < state_change->n_devices * state_change->n_connections) {
-		notify_peer_device_state_change(skb, seq, &state_change->peer_devices[n],
+		notify_peer_device_state_change(skb, (unsigned int)seq, &state_change->peer_devices[n],
 						NOTIFY_EXISTS | flags);
 		goto next;
 	}

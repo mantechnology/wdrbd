@@ -26,10 +26,10 @@ static struct dentry *drbd_debugfs_version;
 static struct dentry *drbd_debugfs_resources;
 static struct dentry *drbd_debugfs_minors;
 
-static void seq_print_age_or_dash(struct seq_file *m, bool valid, unsigned long dt)
+static void seq_print_age_or_dash(struct seq_file *m, bool valid, ULONG_PTR dt)
 {
 	if (valid)
-		seq_printf(m, "\t%d", jiffies_to_msecs(dt));
+		seq_printf(m, "\t%I64u", jiffies_to_msecs(dt));
 	else
 		seq_puts(m, "\t-");
 }
@@ -122,7 +122,7 @@ static void print_one_age_or_dash(struct seq_file *m, struct drbd_request *req,
 	seq_puts(m, "\t-");
 }
 
-static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, unsigned long now)
+static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, ULONG_PTR now)
 {
 	/* change anything here, fixup header below! */
 	unsigned int s = req->rq_state[0];
@@ -134,7 +134,7 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 		(s & RQ_WRITE) ? "W" : "R");
 
 #define RQ_HDR_2 "\tstart\tin AL\tsubmit"
-	seq_printf(m, "\t%d", jiffies_to_msecs(now - req->start_jif));
+	seq_printf(m, "\t%I64u", jiffies_to_msecs(now - req->start_jif));
 	seq_print_age_or_dash(m, s & RQ_IN_ACT_LOG, now - req->in_actlog_jif);
 	seq_print_age_or_dash(m, s & RQ_LOCAL_PENDING, now - req->pre_submit_jif);
 
@@ -150,13 +150,13 @@ static void seq_print_one_request(struct seq_file *m, struct drbd_request *req, 
 }
 #define RQ_HDR RQ_HDR_1 RQ_HDR_2 RQ_HDR_3 RQ_HDR_4
 
-static void seq_print_minor_vnr_req(struct seq_file *m, struct drbd_request *req, unsigned long now)
+static void seq_print_minor_vnr_req(struct seq_file *m, struct drbd_request *req, ULONG_PTR now)
 {
 	seq_printf(m, "%u\t%u\t", req->device->minor, req->device->vnr);
 	seq_print_one_request(m, req, now);
 }
 
-static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
+static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_resource *resource, ULONG_PTR now)
 {
 	struct drbd_device *device;
 	int i;
@@ -175,20 +175,20 @@ static void seq_print_resource_pending_meta_io(struct seq_file *m, struct drbd_r
 		 * between accessing these members here.  */
 		tmp = device->md_io;
 		if (atomic_read(&tmp.in_use)) {
-			seq_printf(m, "%u\t%u\t%d\t",
+			seq_printf(m, "%u\t%u\t%I64u\t",
 				device->minor, device->vnr,
 				jiffies_to_msecs(now - tmp.start_jif));
 			if (time_before(tmp.submit_jif, tmp.start_jif))
 				seq_puts(m, "-\t");
 			else
-				seq_printf(m, "%d\t", jiffies_to_msecs(now - tmp.submit_jif));
+				seq_printf(m, "%I64u\t", jiffies_to_msecs(now - tmp.submit_jif));
 			seq_printf(m, "%s\n", tmp.current_use);
 		}
 	}
 	rcu_read_unlock();
 }
 
-static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
+static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *resource, ULONG_PTR now)
 {
 	struct drbd_device *device;
 	int i;
@@ -200,7 +200,7 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 #else
 	idr_for_each_entry(&resource->devices, device, i) {
 #endif
-		unsigned long jif;
+		ULONG_PTR jif;
 		struct drbd_request *req;
 		int n = atomic_read(&device->ap_actlog_cnt);
 		if (n) {
@@ -218,7 +218,7 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 		if (n) {
 			seq_printf(m, "%u\t%u\t", device->minor, device->vnr);
 			if (req)
-				seq_printf(m, "%u\t", jiffies_to_msecs(now - jif));
+				seq_printf(m, "%I64u\t", jiffies_to_msecs(now - jif));
 			else
 				seq_puts(m, "-\t");
 			seq_printf(m, "%u\n", n);
@@ -227,10 +227,10 @@ static void seq_print_waiting_for_AL(struct seq_file *m, struct drbd_resource *r
 	rcu_read_unlock();
 }
 
-static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *device, unsigned long now)
+static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *device, ULONG_PTR now)
 {
 	struct drbd_bm_aio_ctx *ctx;
-	unsigned long start_jif;
+	ULONG_PTR start_jif;
 	unsigned int in_flight;
 	unsigned int flags;
 	spin_lock_irq(&device->resource->req_lock);
@@ -244,7 +244,7 @@ static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *d
 	}
 	spin_unlock_irq(&device->resource->req_lock);
 	if (ctx) {
-		seq_printf(m, "%u\t%u\t%c\t%u\t%u\n",
+		seq_printf(m, "%u\t%u\t%c\t%I64u\t%u\n",
 			device->minor, device->vnr,
 			(flags & BM_AIO_READ) ? 'R' : 'W',
 			jiffies_to_msecs(now - start_jif),
@@ -252,7 +252,7 @@ static void seq_print_device_bitmap_io(struct seq_file *m, struct drbd_device *d
 	}
 }
 
-static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd_resource *resource, unsigned long now)
+static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd_resource *resource, ULONG_PTR now)
 {
 	struct drbd_device *device;
 	int i;
@@ -272,7 +272,7 @@ static void seq_print_resource_pending_bitmap_io(struct seq_file *m, struct drbd
 /* pretty print enum peer_req->flags */
 static void seq_print_peer_request_flags(struct seq_file *m, struct drbd_peer_request *peer_req)
 {
-	unsigned long f = peer_req->flags;
+	ULONG_PTR f = peer_req->flags;
 	char sep = ' ';
 
 	__seq_print_rq_state_bit(m, f & EE_SUBMITTED, &sep, "submitted", "preparing");
@@ -290,7 +290,7 @@ static void seq_print_peer_request_flags(struct seq_file *m, struct drbd_peer_re
 
 static void seq_print_peer_request(struct seq_file *m,
 	struct drbd_connection *connection, struct list_head *lh,
-	unsigned long now)
+	ULONG_PTR now)
 {
 	UNREFERENCED_PARAMETER(connection);
 
@@ -311,7 +311,7 @@ static void seq_print_peer_request(struct seq_file *m,
 		if (device)
 			seq_printf(m, "%u\t%u\t", device->minor, device->vnr);
 
-		seq_printf(m, "%llu\t%u\t%c\t%u\t",
+		seq_printf(m, "%llu\t%u\t%c\t%I64u\t",
 			(unsigned long long)peer_req->i.sector, peer_req->i.size >> 9,
 			(peer_req->flags & EE_WRITE) ? 'W' : 'R',
 			jiffies_to_msecs(now - peer_req->submit_jif));
@@ -324,7 +324,7 @@ static void seq_print_peer_request(struct seq_file *m,
 }
 
 static void seq_print_connection_peer_requests(struct seq_file *m,
-	struct drbd_connection *connection, unsigned long now)
+	struct drbd_connection *connection, ULONG_PTR now)
 {
 	seq_puts(m, "minor\tvnr\tsector\tsize\trw\tage\tflags\n");
 	spin_lock_irq(&connection->resource->req_lock);
@@ -335,17 +335,17 @@ static void seq_print_connection_peer_requests(struct seq_file *m,
 }
 
 static void seq_print_device_peer_flushes(struct seq_file *m,
-	struct drbd_device *device, unsigned long now)
+	struct drbd_device *device, ULONG_PTR now)
 {
 	if (test_bit(FLUSH_PENDING, &device->flags)) {
-		seq_printf(m, "%u\t%u\t-\t-\tF\t%u\tflush\n",
+		seq_printf(m, "%u\t%u\t-\t-\tF\t%I64u\tflush\n",
 			device->minor, device->vnr,
 			jiffies_to_msecs(now - device->flush_jif));
 	}
 }
 
 static void seq_print_resource_pending_peer_requests(struct seq_file *m,
-	struct drbd_resource *resource, unsigned long now)
+	struct drbd_resource *resource, ULONG_PTR now)
 {
 	struct drbd_connection *connection;
 	struct drbd_device *device;
@@ -368,7 +368,7 @@ static void seq_print_resource_pending_peer_requests(struct seq_file *m,
 static void seq_print_resource_transfer_log_summary(struct seq_file *m,
 	struct drbd_resource *resource,
 	struct drbd_connection *connection,
-	unsigned long now)
+	ULONG_PTR now)
 {
 	UNREFERENCED_PARAMETER(connection);
 
@@ -449,7 +449,7 @@ static int resource_in_flight_summary_show(struct seq_file *m, void *pos)
 	struct drbd_connection *connection;
 	struct drbd_transport *transport;
 	struct drbd_transport_stats transport_stats;
-	unsigned long jif = jiffies;
+	ULONG_PTR jif = jiffies;
 
 	connection = first_connection(resource);
 	transport = &connection->transport;
@@ -508,7 +508,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 	struct drbd_resource *resource = m->private;
 	struct twopc_reply twopc;
 	bool active = false;
-	unsigned long jif;
+	ULONG_PTR jif;
 	struct queued_twopc *q;
 
 	spin_lock_irq(&resource->req_lock);
