@@ -147,7 +147,8 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 	ULONG_PTR tmp;
 
 	while (size & ~(BITS_PER_LONG - 1)) {
-		if ((tmp = *(p++)))
+		tmp = *(p++);
+		if (tmp)
 			goto found;
 		result += BITS_PER_LONG;
 		size -= BITS_PER_LONG;
@@ -192,7 +193,8 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 		result += BITS_PER_LONG;
 	}
 	while (size & ~(BITS_PER_LONG - 1)) {
-		if ((tmp = *(p++)))
+		tmp = *(p++);
+		if (tmp)
 			goto found_middle;
 		result += BITS_PER_LONG;
 		size -= BITS_PER_LONG;

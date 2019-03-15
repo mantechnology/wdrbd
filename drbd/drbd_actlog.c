@@ -636,11 +636,10 @@ bool drbd_al_try_lock_for_transaction(struct drbd_device *device)
 
 void drbd_al_begin_io_commit(struct drbd_device *device)
 {
-	bool locked = false;
+	bool locked = drbd_al_try_lock_for_transaction(device);
 
 	wait_event(device->al_wait,
-		device->act_log->pending_changes == 0 ||
-		(locked = drbd_al_try_lock_for_transaction(device)));
+		device->act_log->pending_changes == 0 || locked);
 
 	if (locked) {
 		/* Double check: it may have been committed by someone else

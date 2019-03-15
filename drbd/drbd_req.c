@@ -2322,8 +2322,9 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 	/* Don't even try, if someone has it locked right now. */
 	if (test_bit(__LC_LOCKED, &device->act_log->flags))
 		goto out;
-
-	while ((peer_req = wfa_next_peer_request(wfa))) {
+	
+	peer_req = wfa_next_peer_request(wfa);
+	while (peer_req) {
 		err = drbd_al_begin_io_nonblock(device, &peer_req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -2335,8 +2336,11 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 			list_move_tail(&peer_req->wait_for_actlog, &wfa->peer_requests.pending);
 			made_progress = true;
 		}
+		peer_req = wfa_next_peer_request(wfa);
 	}
-	while ((req = wfa_next_request(wfa))) {
+
+	req = wfa_next_request(wfa);
+	while (req) {
 		err = drbd_al_begin_io_nonblock(device, &req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -2348,6 +2352,7 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 			list_move_tail(&req->tl_requests, &wfa->requests.pending);
 			made_progress = true;
 		}
+		req = wfa_next_request(wfa);
 	}
 out:
 	spin_unlock_irq(&device->al_lock);

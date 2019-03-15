@@ -1086,21 +1086,25 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 
 #define __wait_event(wq, condition, __func, __line) \
 	do {\
+		bool _res = false;						\
 		for (;;) {\
-			if (condition) \
-						{ \
+			_res = condition;				\
+			if (_res) \
+																											{ \
 				break; \
-						} \
+																											} \
 			schedule(&wq, 1, __func, __line); /*  DW105: workaround: 1 ms polling  */ \
-				} \
-		} while(false,false)
+																		} \
+									} while(false,false)
 
 #define wait_event(wq, condition) \
 	do {\
-		if (condition) \
+		bool _res = false;						\
+		_res = condition;				\
+		if (_res) \
 			break; \
 		__wait_event(wq, condition, __FUNCTION__, __LINE__); \
-		} while(false,false)
+						} while(false,false)
 
 
 #define __wait_event_timeout(wq, condition, ret)  \
@@ -1111,18 +1115,18 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		for (;;) {\
 			i++; \
 			if (condition)   \
-						{\
+																		{\
 				break;     \
-						}\
+																		}\
 			/*ret = schedule(&wq, ret, __FUNC__, __LINE__);*/\
 			if (++t > real_timeout) \
-						{\
+																		{\
 				ret = 0;\
 				break;\
-						}\
+																		}\
 			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
-				}  \
-			} while(false,false)
+												}  \
+							} while(false,false)
 
 #define wait_event_timeout(t, wq, condition, timeout) \
 	do { \
@@ -1130,34 +1134,39 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		if (!(condition)) \
 			__wait_event_timeout(wq, condition, __ret);  \
 		t = __ret; \
-	        		} while(false,false)
+					        		} while(false,false)
 
 #define __wait_event_interruptible(wq, condition, sig)   \
     do { \
+		bool _res = false;	\
         for (;;) { \
-            if (condition) {   \
+			_res = condition;	\
+				if (_res) {		\
+								\
                 sig = 0;    \
                 break;      \
-            } \
+						            } \
             sig = schedule(&wq, 1, __FUNCTION__, __LINE__);   \
             if (-DRBD_SIGKILL == sig) { break; }    \
-        } \
-	    } while(false,false)
+				        } \
+			    } while(false,false)
 
 #define wait_event_interruptible(sig, wq, condition) \
     do {\
         int __ret = 0;  \
         __wait_event_interruptible(wq, condition, __ret); \
         sig = __ret; \
-	    } while(false,false)
+			    } while(false,false)
 
 #ifdef _WIN32  // DW_552
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
         int real_timeout = to/100; /*divide*/\
+		bool _res = false;					\
         for (;;) { \
-            if (condition) {   \
+			_res = condition;	\
+            if (_res) {   \
                 break;      \
             } \
 	        if (++t > real_timeout) {\

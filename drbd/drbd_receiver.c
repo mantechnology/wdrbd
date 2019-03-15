@@ -1193,7 +1193,7 @@ static int drbd_recv_header_maybe_unplug(struct drbd_connection *connection, str
 		}
 
 		err = drbd_recv(connection, &buffer, size, rflags);
-		if (err != size) {
+		if (err != (int)size) {
 			if (err >= 0)
 				err = -EIO;
 		} else
@@ -10235,7 +10235,8 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		if (test_and_clear_bit(SEND_PING, &connection->flags)) {
 #ifdef _WIN32
 			int ping_ret;
-			if (ping_ret = drbd_send_ping(connection)) {
+			ping_ret = drbd_send_ping(connection);
+			if (ping_ret) {
 				if (ping_ret == -EINTR && current->sig == SIGXCPU)
 				{
 					WDRBD_INFO("got SIGXCPU during ping\n");

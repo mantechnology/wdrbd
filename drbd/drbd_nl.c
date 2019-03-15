@@ -5074,20 +5074,20 @@ sector_t drbd_local_max_size(struct drbd_device *device) __must_hold(local)
 int drbd_adm_resize(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
-	struct disk_conf *old_disk_conf, *new_disk_conf = NULL;
-	struct resize_parms rs;
-	struct drbd_device *device;
+////	struct disk_conf *old_disk_conf, *new_disk_conf = NULL;
+//	struct resize_parms rs;
+//	struct drbd_device *device;
 	enum drbd_ret_code retcode;
-	enum determine_dev_size dd;
-	bool change_al_layout = false;
-	enum dds_flags ddsf;
-	sector_t u_size;
-	int err;
-	struct drbd_peer_device *peer_device;
-	bool resolve_by_node_id = true;
-	bool has_up_to_date_primary;
-	bool traditional_resize = false;
-	sector_t local_max_size;
+//	enum determine_dev_size dd;
+//	bool change_al_layout = false;
+//	enum dds_flags ddsf;
+//	sector_t u_size;
+//	int err;
+//	struct drbd_peer_device *peer_device;
+//	bool resolve_by_node_id = true;
+//	bool has_up_to_date_primary;
+//	bool traditional_resize = false;
+//	sector_t local_max_size;
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
 	if (!adm_ctx.reply_skb)
@@ -5711,10 +5711,10 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 int drbd_adm_resume_io(struct sk_buff *skb, struct genl_info *info)
 {
 	struct drbd_config_context adm_ctx;
-	struct drbd_connection *connection;
+//	struct drbd_connection *connection;
 	struct drbd_resource *resource;
-	struct drbd_device *device;
-	unsigned long irq_flags;
+//	struct drbd_device *device;
+//	unsigned long irq_flags;
 	int retcode; /* enum drbd_ret_code rsp. enum drbd_state_rv */
 
 	retcode = drbd_adm_prepare(&adm_ctx, skb, info, DRBD_ADM_NEED_MINOR);
