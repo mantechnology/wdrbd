@@ -5346,14 +5346,15 @@ int drbd_md_read(struct drbd_device *device, struct drbd_backing_dev *bdev)
 		peer_md->flags = be32_to_cpu(buffer->peers[i].flags);
 		peer_md->bitmap_index = be32_to_cpu(buffer->peers[i].bitmap_index);
 
-		if (peer_md->bitmap_index == ~0)
+		if (peer_md->bitmap_index == -1)
 			continue;
 		if (i == my_node_id) {
 			drbd_warn(device, "my own node id (%d) should not have a bitmap index (%d)\n",
 				my_node_id, peer_md->bitmap_index);
 			goto err;
 		}
-		if (peer_md->bitmap_index < -1 || peer_md->bitmap_index >= max_peers) {
+
+		if (peer_md->bitmap_index < -1 || peer_md->bitmap_index >= (int)max_peers) {
 			drbd_warn(device, "peer node id %d: bitmap index (%d) exceeds allocated bitmap slots (%d)\n",
 				i, peer_md->bitmap_index, max_peers);
 			goto err;

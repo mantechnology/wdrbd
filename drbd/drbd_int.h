@@ -1028,7 +1028,7 @@ struct drbd_peer_md {
 	u64 bitmap_uuid;
 	u64 bitmap_dagtag;
 	u32 flags;
-	u32 bitmap_index;
+	s32 bitmap_index;
 };
 
 struct drbd_md {
