@@ -531,7 +531,7 @@ static __inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 static __inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
-	BUG_ON(INT32_MAX < strlen(str)); 
+	BUG_ON_INT32_OVER(strlen(str)); 
     return nla_put(msg, attrtype, (int)strlen(str) + 1, str);
 }
 
@@ -711,7 +711,7 @@ static __inline struct nlattr *nla_nest_start(struct sk_buff *msg, int attrtype)
  */
 static __inline int nla_nest_end(struct sk_buff *msg, struct nlattr *start)
 {
-	BUG_ON(UINT16_MAX < skb_tail_pointer(msg) - (unsigned char *)start);
+	BUG_ON_UINT16_OVER(skb_tail_pointer(msg) - (unsigned char *)start);
 	start->nla_len = (u16)(skb_tail_pointer(msg) - (unsigned char *)start);
 	return msg->len;
 }
@@ -787,7 +787,7 @@ static __inline struct nlmsghdr *nlmsg_put(struct msg_buff *skb, u32 portid, u32
 
 static __inline int nlmsg_end(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
-	BUG_ON(UINT32_MAX < skb_tail_pointer(skb) - (unsigned char *)nlh);
+	BUG_ON_UINT32_OVER(skb_tail_pointer(skb) - (unsigned char *)nlh);
 
     nlh->nlmsg_len = (u32)(skb_tail_pointer(skb) - (unsigned char *)nlh);
     return skb->len;

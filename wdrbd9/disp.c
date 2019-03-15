@@ -329,7 +329,7 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
         return status;
     }
 
-	BUG_ON(UINT16_MAX < wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
+	BUG_ON_UINT16_OVER(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
     VolumeExtension->PhysicalDeviceNameLength = (USHORT)(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
 
 	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);

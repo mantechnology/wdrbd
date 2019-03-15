@@ -332,7 +332,7 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 			break;
 		}
 		
-		BUG_ON(UINT32_MAX < tx_sz);
+		BUG_ON_UINT32_OVER(tx_sz);
 
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
 		//ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);

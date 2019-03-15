@@ -526,7 +526,8 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 			   "  target_node_id: %d\n",
 			   twopc.tid, twopc.initiator_node_id,
 			   twopc.target_node_id);
-		if (twopc.initiator_node_id == resource->res_opts.node_id) {
+
+		if (twopc.initiator_node_id == (int)resource->res_opts.node_id) {
 			struct drbd_connection *connection;
 
 			seq_puts(m, "  peers reply's: ");

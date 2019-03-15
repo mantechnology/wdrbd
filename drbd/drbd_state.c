@@ -4751,7 +4751,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			{			
 				rcu_read_lock();
 				for_each_connection_rcu(connection, resource) {
-					if (connection->peer_node_id != context->target_node_id) {
+					if (connection->peer_node_id != (unsigned int)context->target_node_id) {
 						if (connection->peer_role[NOW] == R_PRIMARY)
 						{
 							rv = SS_TWO_PRIMARIES;

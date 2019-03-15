@@ -248,7 +248,7 @@ int nla_memcpy(void *dest, const struct nlattr *src, int count)
 int nla_memcmp(const struct nlattr *nla, const void *data,
     size_t size)
 {
-	BUG_ON(UINT16_MAX < size);
+	BUG_ON_UINT16_OVER(size);
     int d = nla_len(nla) - (u16)size;
 
     if (d == 0)
@@ -268,8 +268,8 @@ int nla_strcmp(const struct nlattr *nla, const char *str)
     int len = (int)strlen(str) + 1;
     int d = nla_len(nla) - len;
 
-	BUG_ON(INT32_MAX < strlen(str) + 1);
-	BUG_ON(UINT16_MAX < len);
+	BUG_ON_INT32_OVER(strlen(str) + 1);
+	BUG_ON_UINT16_OVER(len);
 
     if (d == 0)
         d = memcmp(nla_data(nla), str, len);
@@ -295,9 +295,9 @@ struct nlattr *__nla_reserve(struct sk_buff *skb, int attrtype, int attrlen)
 
     nla = (struct nlattr *) skb_put(skb, nla_total_size(attrlen));
 
-	BUG_ON(UINT16_MAX < attrtype);
+	BUG_ON_UINT16_OVER(attrtype);
 	nla->nla_type = (u16)attrtype;
-	BUG_ON(UINT16_MAX < nla_attr_size(attrlen));
+	BUG_ON_UINT16_OVER(nla_attr_size(attrlen));
 	nla->nla_len = (u16)nla_attr_size(attrlen);
 
     memset((unsigned char *)nla + nla->nla_len, 0, nla_padlen(attrlen));

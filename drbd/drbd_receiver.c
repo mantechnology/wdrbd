@@ -1177,7 +1177,7 @@ static int drbd_recv_header_maybe_unplug(struct drbd_connection *connection, str
 			   size, MSG_NOSIGNAL | MSG_DONTWAIT);
 #endif
 	
-	if (err != size) {
+	if (err != (int)size) {
 		int rflags = 0;
 
 		/* If we have nothing in the receive buffer now, to reduce
@@ -3376,7 +3376,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 		if (!dt)
 			dt++;
 
-		BUG_ON(UINT32_MAX < peer_device->rs_mark_left[i] - rs_left);
+		BUG_ON_UINT32_OVER(peer_device->rs_mark_left[i] - rs_left);
 
 		db = (unsigned long)(peer_device->rs_mark_left[i] - rs_left);
 		dbdt = Bit2KB(db/dt);
@@ -4778,22 +4778,22 @@ static int receive_protocol(struct drbd_connection *connection, struct packet_in
 #endif
 		nc = rcu_dereference(connection->transport.net_conf);
 
-		if (p_proto != nc->wire_protocol) {
+		if (p_proto != (int)nc->wire_protocol) {
 			drbd_err(connection, "incompatible %s settings\n", "protocol");
 			goto disconnect_rcu_unlock;
 		}
 
-		if (convert_after_sb(p_after_sb_0p) != nc->after_sb_0p) {
+		if (convert_after_sb(p_after_sb_0p) != (int)nc->after_sb_0p) {
 			drbd_err(connection, "incompatible %s settings\n", "after-sb-0pri");
 			goto disconnect_rcu_unlock;
 		}
 
-		if (convert_after_sb(p_after_sb_1p) != nc->after_sb_1p) {
+		if (convert_after_sb(p_after_sb_1p) != (int)nc->after_sb_1p) {
 			drbd_err(connection, "incompatible %s settings\n", "after-sb-1pri");
 			goto disconnect_rcu_unlock;
 		}
 
-		if (convert_after_sb(p_after_sb_2p) != nc->after_sb_2p) {
+		if (convert_after_sb(p_after_sb_2p) != (int)nc->after_sb_2p) {
 			drbd_err(connection, "incompatible %s settings\n", "after-sb-2pri");
 			goto disconnect_rcu_unlock;
 		}
@@ -5104,7 +5104,7 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 			fifo_size = (new_peer_device_conf->c_plan_ahead * 10 * SLEEP_TIME) / HZ;
 			old_plan = rcu_dereference_protected(peer_device->rs_plan_s,
 				lockdep_is_held(&resource->conf_update));
-			if (!old_plan || fifo_size != old_plan->size) {
+			if (!old_plan || fifo_size != (int)old_plan->size) {
 #ifdef _WIN32
                 new_plan = fifo_alloc(fifo_size, 'B2DW');
 #else
@@ -5866,7 +5866,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	if (bitmap_uuids_mask & ~(NODE_MASK(DRBD_PEERS_MAX) - 1))
 		return -EIO;
 
-	BUG_ON(INT32_MAX < hweight64(bitmap_uuids_mask));
+	BUG_ON_INT32_OVER(hweight64(bitmap_uuids_mask));
 	bitmap_uuids = (int)hweight64(bitmap_uuids_mask);
 
 	if (pi->size / sizeof(p->other_uuids[0]) < bitmap_uuids)
@@ -6523,7 +6523,7 @@ check_concurrent_transactions(struct drbd_resource *resource, struct twopc_reply
 		return CSC_CLEAR;
 
 	if (new_r->initiator_node_id < ongoing->initiator_node_id) {
-		if (ongoing->initiator_node_id == resource->res_opts.node_id)
+		if ((unsigned int)ongoing->initiator_node_id == resource->res_opts.node_id)
 		{
 #ifdef _WIN32_TWOPC
 			drbd_info(resource, "[TWOPC] CSC_ABORT_LOCAL! new_r->initiator_node_id (%d) ongoing->initiator_node_id (%d)\n",
@@ -7228,7 +7228,7 @@ static int process_twopc(struct drbd_connection *connection,
 		return 0;
 	}
 
-	if (reply->initiator_node_id != connection->peer_node_id) {
+	if (reply->initiator_node_id != (int)connection->peer_node_id) {
 		/*
 		 * This is an indirect request.  Unless we are directly
 		 * connected to the initiator as well as indirectly, we don't
@@ -7236,8 +7236,7 @@ static int process_twopc(struct drbd_connection *connection,
 		 */
 		for_each_connection(affected_connection, resource) {
 			/* for_each_connection() protected by holding req_lock here */
-			if (reply->initiator_node_id ==
-			    affected_connection->peer_node_id)
+			if (reply->initiator_node_id == (int)affected_connection->peer_node_id)
 				goto directly_connected;
 		}
 		/* only indirectly connected */
@@ -7246,7 +7245,7 @@ static int process_twopc(struct drbd_connection *connection,
 
     directly_connected:
 	if (reply->target_node_id != -1 &&
-	    reply->target_node_id != resource->res_opts.node_id) {
+		reply->target_node_id != (int)resource->res_opts.node_id) {
 		affected_connection = NULL;
 	}
 
@@ -8359,7 +8358,7 @@ struct drbd_connection *drbd_connection_by_node_id(struct drbd_resource *resourc
 	struct drbd_connection *connection;
 
 	for_each_connection_rcu(connection, resource) {
-		if (connection->peer_node_id == node_id)
+		if (connection->peer_node_id == (unsigned int)node_id)
 			return connection;
 	}
 
@@ -9038,7 +9037,7 @@ int drbd_do_features(struct drbd_connection *connection)
 		return -1;
 	}
 
-	if (pi.size != expect) {
+	if (pi.size != (unsigned int)expect) {
 		drbd_err(connection, "expected ConnectionFeatures length: %u, received: %u\n",
 		     expect, pi.size);
 		return -1;
@@ -9446,7 +9445,7 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 	struct p_twopc_reply *p = pi->data;
 
 	spin_lock_irq(&resource->req_lock);
-	if (resource->twopc_reply.initiator_node_id == be32_to_cpu(p->initiator_node_id) &&
+	if ((unsigned int)resource->twopc_reply.initiator_node_id == be32_to_cpu(p->initiator_node_id) &&
 	    resource->twopc_reply.tid == be32_to_cpu(p->tid)) {
 		drbd_debug(connection, "Got a %s reply for state change %u\n",
 			   drbd_packet_name(pi->cmd),
@@ -9463,9 +9462,9 @@ static int got_twopc_reply(struct drbd_connection *connection, struct packet_inf
 					be64_to_cpu(p->reachable_nodes);
 
 				if (resource->res_opts.node_id ==
-					resource->twopc_reply.initiator_node_id &&
+					(unsigned int)resource->twopc_reply.initiator_node_id &&
 					connection->peer_node_id ==
-					resource->twopc_reply.target_node_id) {
+					(unsigned int)resource->twopc_reply.target_node_id) {
 					resource->twopc_reply.target_reachable_nodes |=
 						reachable_nodes;
 				}

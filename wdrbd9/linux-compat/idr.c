@@ -187,7 +187,7 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 	* users pointer and return the raw id.
 	*/
 	p->ary[m] = (struct idr_layer *)ptr;
-	BUG_ON(UINT32_MAX < m);
+	BUG_ON_UINT32_OVER(m);
 	__set_bit((int)m, &p->bitmap);
 	p->count++;
 	/*

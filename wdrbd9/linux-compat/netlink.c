@@ -333,7 +333,7 @@ void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 {
     RtlZeroMemory(pmsg, size);
 
-	BUG_ON(UINT32_MAX < size - sizeof(*pmsg));
+	BUG_ON_UINT32_OVER(size - sizeof(*pmsg));
 
     pmsg->tail = 0;
     pmsg->end = (unsigned int)(size - sizeof(*pmsg));
@@ -350,7 +350,7 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
 	}
 	else {
-		BUG_ON(INT32_MAX < sizeof(*skb) + payload);
+		BUG_ON_INT32_OVER(sizeof(*skb) + payload);
         skb = kmalloc((int)(sizeof(*skb) + payload), GFP_KERNEL, '67DW');
     }
 
@@ -620,7 +620,7 @@ NetlinkWorkThread(PVOID context)
 
 		// DW-1701 Performs a sanity check on the netlink command, enhancing security.
 		// verify nlh header field
-		if( (readcount != nlh->nlmsg_len) 
+		if( ((unsigned int)readcount != nlh->nlmsg_len) 
 			|| (nlh->nlmsg_type < NLMSG_MIN_TYPE) 
 			|| (nlh->nlmsg_pid != 0x5744) ) {
 			WDRBD_WARN("Unrecognizable netlink command arrives and doesn't process...\n");

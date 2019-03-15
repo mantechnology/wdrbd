@@ -229,7 +229,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
-	BUG_ON(UINT32_MAX < peer_req->flags);
+	BUG_ON_UINT32_OVER(peer_req->flags);
 	if (is_failed_barrier((int)peer_req->flags)) {
 		drbd_bump_write_ordering(device->resource, device->ldev, WO_BDEV_FLUSH);
 		spin_lock_irqsave(&device->resource->req_lock, flags);
@@ -1100,7 +1100,7 @@ next_sector:
 			if (sector & ((1<<(align+3))-1))
 				break;
 
-			if (discard_granularity && size == discard_granularity)
+			if (discard_granularity && size == (unsigned int)discard_granularity)
 				break;
 
 			/* do not cross extent boundaries */
@@ -1150,7 +1150,7 @@ next_sector:
 
 			inc_rs_pending(peer_device);
 			err = drbd_send_drequest(peer_device,
-						 size == discard_granularity ? P_RS_THIN_REQ : P_RS_DATA_REQUEST,
+						 size == (unsigned int)(discard_granularity ? P_RS_THIN_REQ : P_RS_DATA_REQUEST),
 						 sector, size, ID_SYNCER);
 			if (err) {
 				drbd_err(device, "drbd_send_drequest() failed, aborting...\n");
@@ -3036,7 +3036,8 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 		old = *flags;
 		new = old & ~mask;
 #ifdef _WIN32
-		BUG_ON(UINT32_MAX < old || UINT32_MAX < new);
+		BUG_ON_UINT32_OVER(old);
+		BUG_ON_UINT32_OVER(new);
 	} while (atomic_cmpxchg((atomic_t *)flags, (int)old, (int)new) != old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
@@ -3427,7 +3428,7 @@ static void maybe_send_barrier(struct drbd_connection *connection, unsigned int 
 	/* re-init if first write on this connection */
 	if (!connection->send.seen_any_write_yet)
 		return;
-	if (connection->send.current_epoch_nr != epoch) {
+	if (connection->send.current_epoch_nr != (int)epoch) {
 		if (connection->send.current_epoch_writes)
 			drbd_send_barrier(connection);
 		connection->send.current_epoch_nr = epoch;

@@ -358,7 +358,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	int rv, sent = 0;
 
-	BUG_ON(UINT32_MAX < iov_len);
+	BUG_ON_UINT32_OVER(iov_len);
 	/* THINK  if (signal_pending) return ... ? */
 #ifdef _WIN32 
 	// not support. 
@@ -446,7 +446,7 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 #ifdef _WIN32
 	flags = WSK_FLAG_WAITALL;
 
-	BUG_ON(UINT32_MAX < size);
+	BUG_ON_UINT32_OVER(size);
 
 	return Receive(socket, buf, (unsigned int)size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
@@ -500,7 +500,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 	struct page *page;
 	int err;
 
-	BUG_ON(UINT32_MAX < DIV_ROUND_UP(size, PAGE_SIZE));
+	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
 	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
 	if (!page)
@@ -1290,7 +1290,7 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 #ifdef _WIN32
     WDRBD_TRACE_SK("socket(0x%p) err(%d) header_size(%d)\n", socket, err, header_size);
 #endif
-	if (err != header_size) {
+	if (err != (int)header_size) {
 		if (err >= 0)
 			err = -EIO;
 		return err;
@@ -2219,7 +2219,7 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
 #endif
-	BUG_ON(INT32_MAX < size);
+	BUG_ON_INT32_OVER(size);
 	int len = (int)size;
 	int err = -EIO;
 

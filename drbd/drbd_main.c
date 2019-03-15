@@ -496,8 +496,8 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_request *r;
 	struct drbd_request *req = NULL;
-	int expect_epoch = 0;
-	int expect_size = 0;
+	unsigned int expect_epoch = 0;
+	unsigned int expect_size = 0;
 
 	spin_lock_irq(&connection->resource->req_lock);
 
@@ -569,7 +569,7 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 #else
 	list_for_each_entry(req, &resource->transfer_log, tl_requests)
 #endif
-		if (req->epoch == expect_epoch)
+	if (req->epoch == expect_epoch)
 			break;
 	tl_for_each_req_ref_from(req, r, &resource->transfer_log) {
 		struct drbd_peer_device *peer_device;
@@ -582,7 +582,7 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 	}
 	spin_unlock_irq(&connection->resource->req_lock);
 
-	if (barrier_nr == connection->send.last_sent_epoch_nr) {
+	if ((int)(barrier_nr) == connection->send.last_sent_epoch_nr) {
 		clear_bit(BARRIER_ACK_PENDING, &connection->flags);
 		wake_up(&resource->barrier_wait);
 	}
@@ -1195,7 +1195,7 @@ static void prepare_header80(struct p_header80 *h, enum drbd_packet cmd, int siz
 	h->magic   = cpu_to_be32(DRBD_MAGIC);
 	h->command = cpu_to_be16(cmd);
 
-	BUG_ON(UINT16_MAX < (__be16)size - sizeof(struct p_header80));
+	BUG_ON_UINT16_OVER((__be16)size - sizeof(struct p_header80));
 
 	h->length  = cpu_to_be16((__be16)size - sizeof(struct p_header80));
 }
@@ -1211,7 +1211,7 @@ static void prepare_header100(struct p_header100 *h, enum drbd_packet cmd,
 				      int size, int vnr)
 {
 	h->magic = cpu_to_be32(DRBD_MAGIC_100);
-	BUG_ON(UINT16_MAX < vnr);
+	BUG_ON_UINT16_OVER(vnr);
 	h->volume = cpu_to_be16((uint16_t)vnr);
 	h->command = cpu_to_be16(cmd);
 	h->length = cpu_to_be32(size - sizeof(struct p_header100));
@@ -1371,7 +1371,8 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 #ifdef _WIN32
-	BUG_ON(UINT32_MAX < offset || UINT32_MAX < size);
+	BUG_ON_UINT32_OVER(offset);
+	BUG_ON_UINT32_OVER(size);
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, (int)offset, (size_t)size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
@@ -1770,7 +1771,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1253: sizeof(bitmap_uuids_mask) is 8, it cannot be found all nodes. so, change it to DRBD_NODE_ID_MAX. 
 	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, DRBD_NODE_ID_MAX) {
-		BUG_ON(INT32_MAX < i);
+		BUG_ON_INT32_OVER(i);
 #else
 	for_each_set_bit(i, (unsigned long *)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
 #endif
@@ -1821,7 +1822,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 
 	put_ldev(device);
 
-	BUG_ON(INT32_MAX < sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
+	BUG_ON_INT32_OVER(sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
 	p_size = (int)(sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
 	resize_prepared_command(peer_device->connection, DATA_STREAM, p_size);
 	return drbd_send_command(peer_device, P_UUIDS110, DATA_STREAM);
@@ -2040,7 +2041,7 @@ int drbd_send_sizes(struct drbd_peer_device *peer_device,
 	p->c_size = cpu_to_be64(drbd_get_capacity(device->this_bdev));
 #endif
 	p->max_bio_size = cpu_to_be32(max_bio_size);
-	BUG_ON(UINT16_MAX < q_order_type);
+	BUG_ON_UINT16_OVER(q_order_type);
 	p->queue_order_type = cpu_to_be16((uint16_t)q_order_type);
 	p->dds_flags = cpu_to_be16(flags);
 
@@ -5223,7 +5224,7 @@ static int check_offsets_and_sizes(struct drbd_device *device,
 
 	/* should fit (for now: exactly) into the available on-disk space;
 	 * overflow prevention is in check_activity_log_stripe_size() above. */
-	if (on_disk_al_sect != in_core->al_size_4k * (4096 >> 9))
+	if (on_disk_al_sect != (int)(in_core->al_size_4k * (4096 >> 9)))
 		goto err;
 
 	/* again, should be aligned */
@@ -6182,7 +6183,7 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
 	for_each_peer_device_rcu(p, device) {
-		BUG_ON(UINT32_MAX < drbd_bm_bits(device));
+		BUG_ON_UINT32_OVER(drbd_bm_bits(device));
 		if (!update_sync_bits(p, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
@@ -6209,7 +6210,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 	drbd_md_set_peer_flag(peer_device, MDF_PEER_FULL_SYNC);
 	drbd_md_sync(device);
 #ifdef _WIN32
-	BUG_ON(UINT32_MAX < drbd_bm_bits(device));
+	BUG_ON_UINT32_OVER(drbd_bm_bits(device));
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	if (!update_sync_bits(peer_device, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
 	{
@@ -6271,7 +6272,8 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 				pBit == 0)
 			{
 				llEndBit = GetBitPos(llBytePos, llBitPosInByte) - 1;
-				BUG_ON(UINT32_MAX < llStartBit || UINT32_MAX < llEndBit);
+				BUG_ON_UINT32_OVER(llStartBit);
+				BUG_ON_UINT32_OVER(llEndBit);
 				count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 				llStartBit = -1;
@@ -6285,7 +6287,8 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	if (llStartBit != -1)
 	{
 		llEndBit = pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
-		BUG_ON(UINT32_MAX < llStartBit || UINT32_MAX < llEndBit);
+		BUG_ON_UINT32_OVER(llStartBit);
+		BUG_ON_UINT32_OVER(llEndBit);
 		count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 		llStartBit = -1;
@@ -6625,7 +6628,7 @@ int drbd_bitmap_io(struct drbd_device *device,
 
 void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
-	if ((device->ldev->md.flags & flag) != flag) {
+	if (((int)(device->ldev->md.flags) & flag) != flag) {
 		drbd_md_mark_dirty(device);
 		device->ldev->md.flags |= flag;
 	}

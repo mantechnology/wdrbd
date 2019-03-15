@@ -460,7 +460,7 @@ char *kstrdup(const char *s, int gfp)
 		return NULL;
 
 	len = strlen(s) + 1;
-	BUG_ON(INT32_MAX < len);
+	BUG_ON_INT32_OVER(len);
 	buf = kzalloc((int)len, gfp, 'C3DW');
 	if (buf)
 		memcpy(buf, s, len);
@@ -650,7 +650,7 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 		return 0;
 	}
 
-	BUG_ON(INT32_MAX < size);
+	BUG_ON_INT32_OVER(size);
 	p->size = (int)size;
 	p->name = name;
 	return p;
@@ -1456,7 +1456,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     timer->expires = expires;
 
-	BUG_ON(UINT32_MAX < expires);
+	BUG_ON_UINT32_OVER(expires);
 
     if (current_milisec >= expires)
     {
@@ -2733,7 +2733,7 @@ BOOLEAN do_add_minor(unsigned int minor)
 
         if (REG_BINARY == valueInfo->Type) {
             WCHAR temp = (WCHAR)toupper(valueInfo->Name[0]);
-            if (minor == temp - L'C') {
+            if (minor == (unsigned int)(temp - L'C')) {
                 ret = true;
                 goto cleanup;
             }
@@ -2912,7 +2912,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 	const size_t  sCharAreaStartPos = sAddrAreaSize + sHexAreaSize;
 	sLineSize = sAddrAreaSize + sHexAreaSize + aWidth + 1; /* Null terminator */
 
-	BUG_ON(INT32_MAX < sLineSize);
+	BUG_ON_INT32_OVER(sLineSize);
 	sLine = (char *) kmalloc((int)sLineSize, 0, '54DW');
 	if (!sLine)
 	{
@@ -2978,7 +2978,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 	
-	BUG_ON(INT32_MAX < strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
+	BUG_ON_INT32_OVER(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
 	leng = (int)(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line) {

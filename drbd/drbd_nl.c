@@ -2729,7 +2729,7 @@ static void sanitize_disk_conf(struct drbd_device *device, struct disk_conf *dis
 		if (disk_conf->rs_discard_granularity > q->limits.max_discard_sectors << 9)
 			disk_conf->rs_discard_granularity = q->limits.max_discard_sectors << 9;
 
-		if (disk_conf->rs_discard_granularity != orig_value)
+		if (disk_conf->rs_discard_granularity != (unsigned int)orig_value)
 			drbd_info(device, "rs_discard_granularity changed to %d\n",
 				  disk_conf->rs_discard_granularity);
 	}
@@ -3357,7 +3357,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	have_conf_update = true;
 
 	/* Make sure the local node id matches or is unassigned */
-	if (nbc->md.node_id != -1 && nbc->md.node_id != resource->res_opts.node_id) {
+	if (nbc->md.node_id != -1 && (unsigned int)nbc->md.node_id != resource->res_opts.node_id) {
 		drbd_err(device, "Local node id %d differs from local "
 			 "node id %d on device\n",
 			 resource->res_opts.node_id,
@@ -4107,7 +4107,7 @@ static int adjust_resync_fifo(struct drbd_peer_device *peer_device,
 
 	old_plan = rcu_dereference_protected(peer_device->rs_plan_s,
 			     lockdep_is_held(&peer_device->connection->resource->conf_update));
-	if (!old_plan || fifo_size != old_plan->size) {
+	if (!old_plan || (unsigned int)fifo_size != old_plan->size) {
 #ifdef _WIN32
         new_plan = fifo_alloc(fifo_size, '81DW');
 #else
@@ -6017,7 +6017,7 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 		}
 	}
-	BUG_ON(INT32_MAX < cb->args[1]);
+	BUG_ON_INT32_OVER(cb->args[1]);
 	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_get_next(idr_to_search, &minor);
@@ -6390,7 +6390,7 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 	}
 
-	BUG_ON(INT32_MAX < cb->args[1]);
+	BUG_ON_INT32_OVER(cb->args[1]);
 	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_find(idr_to_search, minor);
@@ -7605,7 +7605,7 @@ static int get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 	   matter if the initial state events mix with later state chage
 	   events; we can always tell the events apart by the NOTIFY_EXISTS
 	   flag. */
-	BUG_ON(UINT32_MAX < seq);
+	BUG_ON_UINT32_OVER(seq);
 
 	cb->args[5]--;
 	if (cb->args[5] == 1) {

@@ -717,7 +717,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	 * and reset the transfer log epoch write_cnt.
 	 */
 	if (bio_data_dir(req->master_bio) == WRITE &&
-	    req->epoch == atomic_read(&device->resource->current_tle_nr))
+	    (int)req->epoch == atomic_read(&device->resource->current_tle_nr))
 		start_new_tl_epoch(device->resource);
 
 	/* Update disk stats */
@@ -2679,7 +2679,7 @@ static bool net_timeout_reached(struct drbd_request *net_req,
 	 * but are waiting for the epoch closing barrier ack.
 	 * Check if we sent the barrier already.  We should not blame the peer
 	 * for being unresponsive, if we did not even ask it yet. */
-	if (net_req->epoch == connection->send.current_epoch_nr) {
+	if (net_req->epoch == (unsigned int)connection->send.current_epoch_nr) {
 		drbd_warn(device,
 			"We did not send a P_BARRIER for %ums > ko-count (%u) * timeout (%u * 0.1s); drbd kernel thread blocked?\n",
 			jiffies_to_msecs(now - net_req->pre_send_jif[peer_node_id]), ko_count, timeout);
