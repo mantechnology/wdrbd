@@ -191,7 +191,7 @@ static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const stru
 		return v4a1->sin_port == v4a2->sin_port;
 	}
 
-	return false;
+	//return false;
 }
 
 static struct drbd_listener *find_listener(struct drbd_connection *connection,
