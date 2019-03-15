@@ -511,7 +511,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 
-			name.Length = strlen(" :") * sizeof(WCHAR);
+			name.Length = (USHORT)(strlen(" :") * sizeof(WCHAR));
 			name.Buffer += strlen("\\DosDevices\\");
 			pvext->Minor = (UCHAR)(name.Buffer[0] - 'C');
 
@@ -751,7 +751,9 @@ void _printk(const char * func, const char * format, ...)
 	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 
-	int length = strlen(buf);
+	BUG_ON(INT32_MAX < strlen(buf));
+
+	int length = (int)strlen(buf);
 	if (length > MAX_DRBDLOG_BUF) {
 		length = MAX_DRBDLOG_BUF - 1;
 		buf[MAX_DRBDLOG_BUF - 1] = 0;

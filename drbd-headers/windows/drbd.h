@@ -32,7 +32,7 @@
 //#ifdef WINNT
 #ifdef _WIN32 //DW-1507 remove unmeaning build warnings(2008 platform)
 //#pragma warning (disable : 4005 4018 4101 4115 4121 4127 4131 4152 4189 4200 4201 4204 4212 4218 4242 4244 4245 4267 4307 4389 4702 4706)
-#pragma warning (disable : 4267 4307 4389 4702 4706 4121 4152 4200 4201 4204)
+#pragma warning (disable : 4307 4389 4702 4706 4121 4152 4200 4201 4204)
 
 /* warning disable list
 // drbd.h

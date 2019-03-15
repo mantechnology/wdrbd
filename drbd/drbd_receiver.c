@@ -5132,14 +5132,14 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 
 			if (verify_tfm) {
 				strcpy(new_net_conf->verify_alg, p->verify_alg);
-				new_net_conf->verify_alg_len = strlen(p->verify_alg) + 1;
+				new_net_conf->verify_alg_len = (__u32)(strlen(p->verify_alg) + 1);
 				crypto_free_hash(connection->verify_tfm);
 				connection->verify_tfm = verify_tfm;
 				drbd_info(device, "using verify-alg: \"%s\"\n", p->verify_alg);
 			}
 			if (csums_tfm) {
 				strcpy(new_net_conf->csums_alg, p->csums_alg);
-				new_net_conf->csums_alg_len = strlen(p->csums_alg) + 1;
+				new_net_conf->csums_alg_len = (__u32)(strlen(p->csums_alg) + 1);
 				crypto_free_hash(connection->csums_tfm);
 				connection->csums_tfm = csums_tfm;
 				drbd_info(device, "using csums-alg: \"%s\"\n", p->csums_alg);
@@ -7951,10 +7951,11 @@ receive_bitmap_plain(struct drbd_peer_device *peer_device, unsigned int size,
 #endif
 	unsigned int data_size = DRBD_SOCKET_BUFFER_SIZE -
 				 drbd_header_size(peer_device->connection);
-	unsigned int num_words = min_t(size_t, data_size / sizeof(*p),
+	ULONG_PTR num_words = min_t(size_t, data_size / (unsigned int)sizeof(*p),
 				       c->bm_words - c->word_offset);
-	unsigned int want = num_words * sizeof(*p);
+	ULONG_PTR want = num_words * sizeof(*p);
 	int err;
+
 
 	if (want != size) {
 		drbd_err(peer_device, "%s:want (%u) != size (%u)\n", __func__, want, size);
@@ -8713,7 +8714,7 @@ static void drbdd(struct drbd_connection *connection)
 			err = drbd_recv_all_warn(connection, &pi.data, shs);
 			if (err)
 				goto err_out;
-			pi.size -= shs;
+			pi.size -= (unsigned int)shs;
 		}
 
 		update_receiver_timing_details(connection, cmd->fn);
@@ -10329,7 +10330,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 					 drbd_packet_name(pi.cmd), pi.cmd);
 				goto disconnect;
 			}
-			expect = header_size + cmd->pkt_size;
+			expect = (int)(header_size + cmd->pkt_size);
 			if (pi.size != expect - header_size) {
 				drbd_err(connection, "Wrong packet size on meta (c: %d, l: %d)\n",
 					pi.cmd, pi.size);

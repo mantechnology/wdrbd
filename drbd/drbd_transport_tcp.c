@@ -358,6 +358,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	int rv, sent = 0;
 
+	BUG_ON(UINT32_MAX < iov_len);
 	/* THINK  if (signal_pending) return ... ? */
 #ifdef _WIN32 
 	// not support. 
@@ -385,7 +386,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #ifdef _WIN32
 #ifdef _WIN32_SEND_BUFFING
 		 // _dtt_send is only used when dtt_connect is processed(dtt_send_first_packet), at this time send buffering is not done yet.
-		rv = Send(socket, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
+		rv = Send(socket, DataBuffer, (ULONG)iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
 #else
 #if 1 
 		rv = Send(socket, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, &tcp_transport->transport, 0);
@@ -444,7 +445,10 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 
 #ifdef _WIN32
 	flags = WSK_FLAG_WAITALL;
-	return Receive(socket, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
+
+	BUG_ON(UINT32_MAX < size);
+
+	return Receive(socket, buf, (unsigned int)size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
 	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags);
 #endif
@@ -496,7 +500,8 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 	struct page *page;
 	int err;
 
-	drbd_alloc_page_chain(transport, chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+	BUG_ON(UINT32_MAX < DIV_ROUND_UP(size, PAGE_SIZE));
+	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
 	if (!page)
 		return -ENOMEM;
@@ -2214,7 +2219,8 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
 #endif
-	int len = size;
+	BUG_ON(INT32_MAX < size);
+	int len = (int)size;
 	int err = -EIO;
 
 	msg_flags |= MSG_NOSIGNAL;

@@ -460,7 +460,8 @@ char *kstrdup(const char *s, int gfp)
 		return NULL;
 
 	len = strlen(s) + 1;
-	buf = kzalloc(len, gfp, 'C3DW');
+	BUG_ON(INT32_MAX < len);
+	buf = kzalloc((int)len, gfp, 'C3DW');
 	if (buf)
 		memcpy(buf, s, len);
 	return buf;
@@ -648,7 +649,9 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 		WDRBD_ERROR("kzalloc failed\n");
 		return 0;
 	}
-	p->size = size;
+
+	BUG_ON(INT32_MAX < size);
+	p->size = (int)size;
 	p->name = name;
 	return p;
 }
@@ -2720,7 +2723,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     for (int i = 0; i < count; ++i) {
         RtlZeroMemory(valueInfo, valueInfoSize);
 
-        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, (ULONG)valueInfoSize, &size);
 
         if (!NT_SUCCESS(status)) {
             if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
@@ -2908,7 +2911,9 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 
 	const size_t  sCharAreaStartPos = sAddrAreaSize + sHexAreaSize;
 	sLineSize = sAddrAreaSize + sHexAreaSize + aWidth + 1; /* Null terminator */
-	sLine = (char *) kmalloc(sLineSize, 0, '54DW');
+
+	BUG_ON(INT32_MAX < sLineSize);
+	sLine = (char *) kmalloc((int)sLineSize, 0, '54DW');
 	if (!sLine)
 	{
 		WDRBD_ERROR("sLine:kzalloc failed\n");
@@ -2973,7 +2978,8 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 	
-	leng = strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1;
+	BUG_ON(INT32_MAX < strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
+	leng = (int)(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line) {
 		WDRBD_ERROR("malloc(%d) failed\n", leng);
@@ -3047,7 +3053,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		}
 
 
-		if ((Status = SendLocal(pSock, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line)) {
+		if ((Status = SendLocal(pSock, cmd_line, (unsigned int)strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line)) {
 			WDRBD_ERROR("send command fail stat=0x%x\n", Status);
 			ret = -1;
 			goto error;
@@ -3108,7 +3114,8 @@ int scnprintf(char * buf, size_t size, const char *fmt, ...)
 	va_start(args, fmt);
     i = _vsnprintf_s(buf, size, _TRUNCATE, fmt, args);
 	va_end(args);
-	return (-1 == i) ? (size - 1) : i;
+
+	return (int)((-1 == i) ? (size - 1) : i);
 }
 
 int list_is_singular(const struct list_head *head)

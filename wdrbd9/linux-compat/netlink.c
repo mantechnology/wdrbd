@@ -333,8 +333,10 @@ void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 {
     RtlZeroMemory(pmsg, size);
 
+	BUG_ON(UINT32_MAX < size - sizeof(*pmsg));
+
     pmsg->tail = 0;
-    pmsg->end = size - sizeof(*pmsg);
+    pmsg->end = (unsigned int)(size - sizeof(*pmsg));
 }
 
 struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
@@ -346,8 +348,10 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
     if (NLMSG_GOODSIZE == payload) {
         payload = NLMSG_GOODSIZE - sizeof(*skb);
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
-    } else {
-        skb = kmalloc(sizeof(*skb) + payload, GFP_KERNEL, '67DW');
+	}
+	else {
+		BUG_ON(INT32_MAX < sizeof(*skb) + payload);
+        skb = kmalloc((int)(sizeof(*skb) + payload), GFP_KERNEL, '67DW');
     }
 
     if (!skb)
@@ -608,7 +612,7 @@ NetlinkWorkThread(PVOID context)
 
 			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount) {
 				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
-				readcount -= strlen(DRBD_EVENT_SOCKET_STRING);
+				readcount -= (LONG)strlen(DRBD_EVENT_SOCKET_STRING);
 			} else {
 				continue;
 			}

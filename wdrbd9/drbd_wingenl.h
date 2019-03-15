@@ -531,7 +531,8 @@ static __inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 static __inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
-    return nla_put(msg, attrtype, strlen(str) + 1, str);
+	BUG_ON(INT32_MAX < strlen(str)); 
+    return nla_put(msg, attrtype, (int)strlen(str) + 1, str);
 }
 
 /**

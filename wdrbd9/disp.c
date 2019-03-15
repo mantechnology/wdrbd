@@ -211,7 +211,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 	for (int i = 0; i < Count; ++i) {
 		RtlZeroMemory(valueInfo, valueInfoSize);
 
-		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, (ULONG)valueInfoSize, &size);
 		if (!NT_SUCCESS(status)) {
 			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
 				goto cleanup;
@@ -328,7 +328,9 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
-    VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
+
+	BUG_ON(UINT16_MAX < wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
+    VolumeExtension->PhysicalDeviceNameLength = (USHORT)(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
 
 	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
 	if (pmuid) {

@@ -136,7 +136,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
     if (!pvext->Active)
 	{
 		sprintf(Message, "%wZ volume is not dismounted", &pvext->MountPoint);
-		*ReturnLength = strlen(Message);
+		*ReturnLength = (ULONG)strlen(Message);
 		WDRBD_ERROR("%s\n", Message);
         //status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
@@ -152,7 +152,7 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	{
     	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
-		*ReturnLength = strlen(Message);
+		*ReturnLength = (ULONG)strlen(Message);
 		WDRBD_ERROR("%s\n", Message);
         //status = STATUS_VOLUME_DISMOUNTED;
         goto out;

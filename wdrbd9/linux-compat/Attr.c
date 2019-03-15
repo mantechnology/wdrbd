@@ -248,7 +248,8 @@ int nla_memcpy(void *dest, const struct nlattr *src, int count)
 int nla_memcmp(const struct nlattr *nla, const void *data,
     size_t size)
 {
-    int d = nla_len(nla) - size;
+	BUG_ON(UINT16_MAX < size);
+    int d = nla_len(nla) - (u16)size;
 
     if (d == 0)
         d = memcmp(nla_data(nla), data, size);
@@ -263,8 +264,12 @@ int nla_memcmp(const struct nlattr *nla, const void *data,
 */
 int nla_strcmp(const struct nlattr *nla, const char *str)
 {
-    int len = strlen(str) + 1;
+
+    int len = (int)strlen(str) + 1;
     int d = nla_len(nla) - len;
+
+	BUG_ON(INT32_MAX < strlen(str) + 1);
+	BUG_ON(UINT16_MAX < len);
 
     if (d == 0)
         d = memcmp(nla_data(nla), str, len);

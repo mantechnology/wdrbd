@@ -1194,7 +1194,10 @@ static void prepare_header80(struct p_header80 *h, enum drbd_packet cmd, int siz
 {
 	h->magic   = cpu_to_be32(DRBD_MAGIC);
 	h->command = cpu_to_be16(cmd);
-	h->length  = cpu_to_be16(size - sizeof(struct p_header80));
+
+	BUG_ON(UINT16_MAX < (__be16)size - sizeof(struct p_header80));
+
+	h->length  = cpu_to_be16((__be16)size - sizeof(struct p_header80));
 }
 
 static void prepare_header95(struct p_header95 *h, enum drbd_packet cmd, int size)
@@ -1539,11 +1542,11 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 	rcu_read_lock();
 	nc = rcu_dereference(peer_device->connection->transport.net_conf);
 
-	size = apv <= 87 ? sizeof(struct p_rs_param)
-		: apv == 88 ? sizeof(struct p_rs_param)
-			+ strlen(nc->verify_alg) + 1
-		: apv <= 94 ? sizeof(struct p_rs_param_89)
-		: /* apv >= 95 */ sizeof(struct p_rs_param_95);
+	size = apv <= 87 ? (int)sizeof(struct p_rs_param)
+		: apv == 88 ? (int)sizeof(struct p_rs_param)
+		+ (int)(strlen(nc->verify_alg) + 1)
+			: apv <= 94 ? (int)sizeof(struct p_rs_param_89)
+		: /* apv >= 95 */ (int)sizeof(struct p_rs_param_95);
 
 	cmd = apv >= 89 ? P_SYNC_PARAM89 : P_SYNC_PARAM;
 	rcu_read_unlock();
@@ -1601,8 +1604,9 @@ int __drbd_send_protocol(struct drbd_connection *connection, enum drbd_packet cm
 	size = sizeof(*p);
 	rcu_read_lock();
 	nc = rcu_dereference(connection->transport.net_conf);
-	if (connection->agreed_pro_version >= 87)
-		size += strlen(nc->integrity_alg) + 1;
+	if (connection->agreed_pro_version >= 87) {
+		size += (int)(strlen(nc->integrity_alg) + 1);
+	}
 	rcu_read_unlock();
 
 	p = __conn_prepare_command(connection, size, DATA_STREAM);
@@ -1817,8 +1821,8 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 
 	put_ldev(device);
 
-	p_size = sizeof(*p) +
-		(hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]);
+	BUG_ON(INT32_MAX < sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
+	p_size = (int)(sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
 	resize_prepared_command(peer_device->connection, DATA_STREAM, p_size);
 	return drbd_send_command(peer_device, P_UUIDS110, DATA_STREAM);
 }
@@ -2584,8 +2588,9 @@ static int _drbd_send_page(struct drbd_peer_device *peer_device, struct page *pa
 #else
 	err = tr_ops->send_page(transport, DATA_STREAM, page, offset, size, msg_flags);
 #endif
-	if (!err)
-		peer_device->send_cnt += size >> 9;
+	if (!err) {
+		peer_device->send_cnt += (unsigned int)(size >> 9);
+	}
 
 	return err;
 }
@@ -2602,9 +2607,9 @@ int _drbd_no_send_page(struct drbd_peer_device *peer_device, void * buffer,
 	WDRBD_TRACE_RS("offset(%d) size(%d)\n", offset, size);
 	flush_send_buffer(connection, DATA_STREAM); 
 	err = tr_ops->send_page(transport, DATA_STREAM, buffer, offset, size, msg_flags);
-	if (!err)
-		peer_device->send_cnt += size >> 9;
-
+	if (!err) {
+		peer_device->send_cnt += (unsigned int)(size >> 9);
+	}
 	return err;
 }
 #else

@@ -403,12 +403,14 @@ static struct page **bm_realloc_pages(struct drbd_bitmap *b, unsigned long want)
 	if (have == want)
 		return old_pages;
 
+
+	BUG_ON(UINT32_MAX < sizeof(struct page *)*want);
 	/* Trying kmalloc first, falling back to vmalloc.
 	 * GFP_NOIO, as this is called while drbd IO is "suspended",
 	 * and during resize or attach on diskless Primary,
 	 * we must not block on IO to ourselves.
 	 * Context is receiver thread or dmsetup. */
-	bytes = sizeof(struct page *)*want;
+	bytes = (unsigned int)(sizeof(struct page *)*want);
 #ifdef _WIN32
     new_pages = kzalloc(bytes, GFP_NOIO | __GFP_NOWARN, '60DW');
 #else
@@ -1496,12 +1498,12 @@ no_memory :
  * we may want to change this again to do 4k aligned 4k pieces.
  */
 static int bm_rw_range(struct drbd_device *device,
-	unsigned int start_page, unsigned int end_page,
+	ULONG_PTR start_page, ULONG_PTR end_page,
 	unsigned flags) __must_hold(local)
 {
 	struct drbd_bm_aio_ctx *ctx;
 	struct drbd_bitmap *b = device->bitmap;
-	unsigned int i, count = 0;
+	ULONG_PTR i, count = 0;
 #ifdef _WIN32
 	ULONG_PTR now;
 #else
@@ -1552,8 +1554,9 @@ static int bm_rw_range(struct drbd_device *device,
 	if (0 == (ctx->flags & ~BM_AIO_READ))
 		WARN_ON(!(b->bm_flags & BM_LOCK_ALL));
 
-	if (end_page >= b->bm_number_of_pages)
-		end_page = b->bm_number_of_pages -1;
+	if (end_page >= b->bm_number_of_pages) {
+		end_page = b->bm_number_of_pages - 1;
+	}
 
 	spin_lock_irq(&device->resource->req_lock);
 	list_add_tail(&ctx->list, &device->pending_bitmap_io);
@@ -1561,13 +1564,13 @@ static int bm_rw_range(struct drbd_device *device,
 
 	now = jiffies;
 
+	BUG_ON(INT32_MAX < start_page || INT32_MAX < end_page);
 	/* let the layers below us try to merge these bios... */
-
 	if (flags & BM_AIO_READ) {
 		for (i = start_page; i <= end_page; i++) {
 			atomic_inc(&ctx->in_flight);
 #ifdef _WIN32 // DW-938 
-			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+			if(-ENOMEM == bm_page_io_async(ctx, (int)i)) {
 				ctx->error = -ENOMEM;
 				break;
 			}
@@ -1594,7 +1597,7 @@ static int bm_rw_range(struct drbd_device *device,
 				continue;
 			atomic_inc(&ctx->in_flight);
 #ifdef _WIN32 // DW-938 
-			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+			if(-ENOMEM == bm_page_io_async(ctx, (int)i)) {
 				ctx->error = -ENOMEM;
 				break;
 			}
@@ -1621,7 +1624,7 @@ static int bm_rw_range(struct drbd_device *device,
 			}
 			atomic_inc(&ctx->in_flight);
 #ifdef _WIN32 // DW-938
-			if(-ENOMEM == bm_page_io_async(ctx, i)) {
+			if(-ENOMEM == bm_page_io_async(ctx, (int)i)) {
 				ctx->error = -ENOMEM;
 				break;
 			}
@@ -1679,6 +1682,7 @@ static int bm_rw_range(struct drbd_device *device,
 
 static int bm_rw(struct drbd_device *device, unsigned flags)
 {
+	BUG_ON(UINT32_MAX < device->bitmap->bm_number_of_pages);
 	return bm_rw_range(device, 0, device->bitmap->bm_number_of_pages, flags);
 }
 
