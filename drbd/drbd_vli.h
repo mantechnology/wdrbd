@@ -153,7 +153,7 @@ static inline int vli_decode_bits(u64 *out, const u64 in)
 #define LEVEL(t,b,v)					\
 	do {						\
 		if ((in & ((1 << b) -1)) == v) {	\
-			*out = ((in & ((~0ULL) >> (64-t))) >> b) + adj;	\
+			*out = ((in & ((UINT64_MAX) >> (64-t))) >> b) + adj;	\
 			return t;			\
 		}					\
 		adj += 1ULL << (t - b);			\
@@ -284,7 +284,7 @@ static inline int bitstream_put_bits(struct bitstream *bs, u64 val, const unsign
 
 	/* paranoia: strip off hi bits; they should not be set anyways. */
 	if (bits < 64)
-		val &= ~0ULL >> (64 - bits);
+		val &= UINT64_MAX >> (64 - bits);
 
 	*b++ |= (val & 0xff) << bs->cur.bit;
 
@@ -335,7 +335,7 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
 	val |= bs->cur.b[0] >> bs->cur.bit;
 
 	/* and mask out bits we don't want */
-	val &= ~0ULL >> (64 - bits);
+	val &= UINT64_MAX >> (64 - bits);
 
 	bitstream_cursor_advance(&bs->cur, bits);
 	*out = val;

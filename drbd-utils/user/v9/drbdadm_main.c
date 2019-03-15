@@ -2370,7 +2370,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 	char *input = strdupa(id);
 	char *vol_id;
 	char *res_name, *conn_or_hostname;
-	unsigned vol_nr = ~0U;
+	unsigned vol_nr = UINT32_MAX;
 
 	res_name = input;
 	vol_id = strrchr(input, '/');
@@ -2477,7 +2477,7 @@ found:
 	}
 
 	vol = volume_by_vnr(&res->me->volumes, vol_nr);
-	if (vol_nr != ~0U) {
+	if (vol_nr != UINT32_MAX) {
 		if (vol) {
 			ctx->vol = vol;
 			return 0;

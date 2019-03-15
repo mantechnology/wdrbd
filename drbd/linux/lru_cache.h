@@ -217,7 +217,7 @@ struct lc_element {
 	 * it needs to become arch independend u64 */
 	unsigned lc_number;
 	/* special label when on free list */
-#define LC_FREE (~0U)
+#define LC_FREE (UINT32_MAX)
 
 	/* for pending changes */
 	unsigned lc_new_number;

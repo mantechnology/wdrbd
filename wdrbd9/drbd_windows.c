@@ -155,8 +155,8 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 	if (!size)
 		return result;
 #ifdef _WIN64
-	tmp = (*p) & (~0ULL >> (BITS_PER_LONG - size));
-	if (tmp == 0ULL)	{	/* Are any bits set? */
+	tmp = (*p) & (UINT64_MAX >> (BITS_PER_LONG - size));
+	if (tmp == UINT64_MAX)	{	/* Are any bits set? */
 #else
 	tmp = (*p) & (~0UL >> (BITS_PER_LONG - size));
 	if (tmp == 0UL)	{	/* Are any bits set? */
@@ -180,7 +180,7 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 	if (offset) {
 		tmp = *(p++);
 #ifdef _WIN64
-		tmp &= (~0ULL << offset);
+		tmp &= (UINT64_MAX << offset);
 #else
 		tmp &= (~0UL << offset);
 #endif
@@ -203,7 +203,7 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 
 found_first:
 #ifdef _WIN64
-	tmp &= (~0ULL >> (BITS_PER_LONG - size));
+	tmp &= (UINT64_MAX >> (BITS_PER_LONG - size));
 	if (tmp == 0ULL)	/* Are any bits set? */
 #else
 	tmp &= (~0UL >> (BITS_PER_LONG - size));
@@ -269,8 +269,8 @@ ULONG_PTR find_first_zero_bit(const ULONG_PTR *addr, ULONG_PTR size)
 		 return result;
 
 #ifdef _WIN64
-	 tmp = (*p) | (~0ULL << size);
-	 if (tmp == ~0ULL)        /* Are any bits zero? */
+	 tmp = (*p) | (UINT64_MAX << size);
+	 if (tmp == UINT64_MAX)        /* Are any bits zero? */
 #else
 	 tmp = (*p) | (~0UL << size);
 	 if (tmp == ~0UL)        /* Are any bits zero? */

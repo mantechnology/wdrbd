@@ -134,7 +134,7 @@ extern char usermode_helper[];
 
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
-#define ID_SYNCER (~0ULL)
+#define ID_SYNCER (UINT64_MAX)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
@@ -1795,9 +1795,9 @@ struct drbd_config_context {
 	unsigned int minor;
 	/* assigned from request attributes, if present */
 	unsigned int volume;
-#define VOLUME_UNSPECIFIED		(~0U)
+#define VOLUME_UNSPECIFIED			UINT32_MAX	//volume type unsigned int
 	unsigned int peer_node_id;
-#define PEER_NODE_ID_UNSPECIFIED	(~0U)
+#define PEER_NODE_ID_UNSPECIFIED	UINT32_MAX	//peer_node_id type unsigned int
 	/* pointer into the request skb,
 	 * limited lifetime! */
 	char *resource_name;
@@ -2278,7 +2278,7 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 #endif
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
-#define DRBD_END_OF_BITMAP	(~(ULONG_PTR)0)
+#define DRBD_END_OF_BITMAP	UINT64_MAX
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
 extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);

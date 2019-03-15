@@ -1940,7 +1940,7 @@ void printf_al_84(struct format *cfg, struct al_4k_transaction_on_disk *al_disk,
 		printf("# \tupdates: %u\n", al_cpu.n_updates);
 		for (i = 0; i < AL_UPDATES_PER_TRANSACTION; i++) {
 			if (i >= al_cpu.n_updates &&
-			    al_cpu.update_slot_nr[i] == (uint16_t)(~0U))
+				al_cpu.update_slot_nr[i] == UINT16_MAX)
 				continue;
 			printf("# \t%2u: %10u %10u\n", i,
 				al_cpu.update_slot_nr[i],
@@ -2230,7 +2230,7 @@ int replay_al_84(struct format *cfg, uint32_t *hot_extent)
 
 		for (i = 0; i < AL_CONTEXT_PER_TRANSACTION; i++) {
 			unsigned slot = al_cpu[idx].context_start_slot_nr + i;
-			if (al_cpu[idx].context[i] == ~0U && slot >= al_cpu[idx].context_size)
+			if (al_cpu[idx].context[i] == UINT16_MAX && slot >= al_cpu[idx].context_size)
 				continue;
 			if (slot >= AL_EXTENTS_MAX) {
 				fprintf(stderr, "slot number out of range: tr:%u slot:%u\n",
@@ -2241,7 +2241,7 @@ int replay_al_84(struct format *cfg, uint32_t *hot_extent)
 		}
 		for (i = 0; i < AL_UPDATES_PER_TRANSACTION; i++) {
 			unsigned slot = al_cpu[idx].update_slot_nr[i];
-			if (i >= al_cpu[idx].n_updates && slot == (uint16_t)(~0U))
+			if (i >= al_cpu[idx].n_updates && slot == UINT16_MAX)
 				continue;
 			if (slot >= AL_EXTENTS_MAX) {
 				fprintf(stderr, "update slot number out of range: tr:%u slot:%u\n",
@@ -2298,7 +2298,7 @@ void apply_al(struct format *cfg, uint32_t *hot_extent)
 	for (i = 0; i < AL_EXTENTS_MAX; i++) {
 		size_t bm_pos;
 		unsigned bits_set = 0;
-		if (hot_extent[i] == ~0U)
+		if (hot_extent[i] == UINT32_MAX)
 			break;
 
 		ASSERT(cfg->md.bm_bytes_per_bit == 4096);

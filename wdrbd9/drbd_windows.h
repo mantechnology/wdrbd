@@ -276,7 +276,7 @@ enum rq_flag_bits {
 #ifdef LONG_MAX
 #undef LONG_MAX
 #endif
-#define LONG_MAX				((long)(~0UL>>1)) 
+#define LONG_MAX				((long)(UINT32_MAX >> 1)) 
 #define MAX_SCHEDULE_TIMEOUT	LONG_MAX	
 #define AL_WAIT_TIMEOUT			100 * HZ // DW-1513
 #define SENDER_SCHEDULE_TIMEOUT	5 * HZ
@@ -295,7 +295,7 @@ enum rq_flag_bits {
 
 #define cond_resched()		    __noop
 
-#define U32_MAX		((u32)~0U)
+#define U32_MAX		(UINT32_MAX)
 #define S32_MAX		((s32)(U32_MAX>>1))
 
 enum km_type {
@@ -1543,7 +1543,7 @@ typedef struct _PTR_ENTRY
 // linux-2.6.24 define 
 // kernel.h 
 #ifndef UINT_MAX
-#define UINT_MAX	(~0U)
+#define UINT_MAX	(UINT32_MAX)
 #endif
 
 // socket.h 
