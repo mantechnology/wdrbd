@@ -532,7 +532,7 @@ static __inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
 	BUG_ON_INT32_OVER(strlen(str)); 
-    return nla_put(msg, attrtype, (int)strlen(str) + 1, str);
+    return nla_put(msg, attrtype, (int)(strlen(str) + 1), str);
 }
 
 /**
@@ -547,14 +547,14 @@ static __inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 
 #define NLA_PUT(msg, attrtype, attrlen, data) \
 	do { \
-		if (unlikely(nla_put(msg, attrtype, attrlen, data) < 0)) \
+		if (unlikely(nla_put(msg, attrtype, (int)attrlen, data) < 0)) \
 			goto nla_put_failure; \
     	} while(false,false)
 
 #define NLA_PUT_TYPE(msg, type, attrtype, value) \
 	do { \
 		type __tmp = value; \
-		NLA_PUT(msg, attrtype, sizeof(type), &__tmp); \
+		NLA_PUT(msg, attrtype, (int)sizeof(type), &__tmp); \
     	} while(false,false)
 
 #define NLA_PUT_U8(msg, attrtype, value) \
@@ -582,7 +582,7 @@ static __inline int nla_put_flag(struct sk_buff *msg, int attrtype)
 	NLA_PUT_TYPE(msg, __be64, attrtype, value)
 
 #define NLA_PUT_STRING(msg, attrtype, value) \
-	NLA_PUT(msg, attrtype, strlen(value) + 1, value)
+	NLA_PUT(msg, attrtype, (int)strlen(value) + 1, value)
 
 #define NLA_PUT_FLAG(msg, attrtype) \
 	NLA_PUT(msg, attrtype, 0, NULL)

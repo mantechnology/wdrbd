@@ -40,7 +40,7 @@ static struct nla_policy s_name ## _nl_policy[] __read_mostly =		\
 #define __array(attr_nr, attr_flag, name, nla_type, _type, maxlen,	\
 		__get, __put, __is_signed)				\
 	[attr_nr] = { .type = nla_type,					\
-		      .len = maxlen - (nla_type == NLA_NUL_STRING) },
+		      .len = (u16)(maxlen - (nla_type == NLA_NUL_STRING)) },
 
 #include GENL_MAGIC_INCLUDE_FILE
 
@@ -178,9 +178,9 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 			if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
 				pr_info("<< must not change invariant attr: %s\n", #name);	\
 				return -EEXIST;				\
-			}						\
+						}						\
 			assignment;					\
-		} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
+				} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
 			/* attribute missing from payload, */		\
 			/* which was expected */			\
 		} else if ((attr_flag) & DRBD_F_REQUIRED) {		\
@@ -199,7 +199,7 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 		} else if (exclude_invariants && !!((attr_flag) & DRBD_F_INVARIANT)) {		\
 			/* attribute missing from payload, */		\
 			/* which was expected */			\
-		} else if ((attr_flag) & DRBD_F_REQUIRED) {		\
+		} else if (((attr_flag) & DRBD_F_REQUIRED, (attr_flag) & DRBD_F_REQUIRED)) {		\
 			pr_info("<< missing attr: %s\n", #name);	\
 			return -ENOMSG;					\
 		}
@@ -208,7 +208,7 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 #undef __field
 #define __field(attr_nr, attr_flag, name, nla_type, type, __get, __put,	\
 		__is_signed)						\
-	__assign(attr_nr, attr_flag, name, nla_type, type,		\
+		__assign(attr_nr, attr_flag, name, nla_type, type,		\
 			if (s)						\
 				s->name = __get(nla);			\
 			DPRINT_FIELD("<<", nla_type, name, s, nla))
@@ -220,7 +220,7 @@ static int s_name ## _from_attrs_for_change(struct s_name *s,		\
 	__assign(attr_nr, attr_flag, name, nla_type, type,		\
 			if (s)						\
 				s->name ## _len =			\
-					__get(s->name, nla, maxlen);	\
+					(int)__get(s->name, nla, maxlen);	\
 			DPRINT_ARRAY("<<", nla_type, name, s, nla))
 
 #include GENL_MAGIC_INCLUDE_FILE
@@ -399,10 +399,12 @@ static inline int s_name ## _to_unpriv_skb(struct sk_buff *skb,		\
 
 #undef __field
 #define __field(attr_nr, attr_flag, name, nla_type, type, __get, __put,	\
-		__is_signed)
+		__is_signed)													\
+		UNREFERENCED_PARAMETER(x);
 #undef __array
 #define __array(attr_nr, attr_flag, name, nla_type, type, maxlen,	\
-		__get, __put, __is_signed)
+		__get, __put, __is_signed)									\
+		UNREFERENCED_PARAMETER(x);
 #undef __u32_field_def
 #define __u32_field_def(attr_nr, attr_flag, name, default)		\
 	x->name = default;

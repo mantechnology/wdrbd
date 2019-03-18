@@ -208,6 +208,7 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
     if (srclen > 0 && src[srclen - 1] == '\0')
         srclen--;
 
+
     if (dstsize > 0)
     {
         size_t len = (srclen >= dstsize) ? dstsize - 1 : srclen;
@@ -215,6 +216,9 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
         memset(dst, 0, dstsize);
         memcpy(dst, src, len);
     }
+
+	BUG_ON_INT32_OVER(dstsize);
+	BUG_ON_INT32_OVER(srclen);
 
     return srclen;
 }
