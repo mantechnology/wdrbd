@@ -54,7 +54,7 @@ int genl_join_mc_group(struct genl_sock *s, const char *name) {
 				#x, err, strerror(errno));	\
 			goto fail;				\
 		}						\
-		} while(false,false)
+		} while(false)
 
 #ifdef _WIN32
 int get_netlink_port()

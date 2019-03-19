@@ -1256,13 +1256,13 @@ static void add_setup_options(char **argv, int *argcp, const struct context_def 
          else                                  \
              ARG = ssprintf("--%s", OPT->name);            \
      }                                    \
-} while (false,false)
+} while (false)
 
 #define make_options(ARG, OPTIONS) do {					\
 	struct d_option *option;					\
 	STAILQ_FOREACH(option, OPTIONS, link) 				\
 		make_option(ARG, option);				\
-} while (false,false)
+} while (false)
 
 #define ssprintf_addr(A)					\
 ssprintf(strcmp((A)->af, "ipv6") ? "%s:%s:%s" : "%s:[%s]:%s",	\
@@ -1837,7 +1837,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 			}							\
 			name ## _len -= n;					\
 			pos_ ## name += n;					\
-			} while (false,false)
+			} while (false)
 
 			append(minor, "%d", vol->device_minor);
 			append(volume, "%d", vol->vnr);
@@ -2457,7 +2457,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 	if (check != SETUP_MULTI)
 		return 0;
 
-	if (false,false) {
+	if (false) {
 found:
 		if (conn->ignore) {
 			err("Connection '%s' has the ignore flag set\n",
