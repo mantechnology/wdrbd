@@ -1798,7 +1798,6 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	unsigned n_bios = 0;
 	unsigned nr_pages = peer_req->page_chain.nr_pages;
 	int err = -ENOMEM;
-
 #ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
 	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
 		return 0; 
@@ -3358,7 +3357,7 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 #endif
 
 	if (atomic_read(&device->ap_actlog_cnt) || curr_events - peer_device->rs_last_events > 64) {
-		u64 rs_left;
+		ULONG_PTR rs_left;
 		int i;
 
 		peer_device->rs_last_events = curr_events;
@@ -3673,7 +3672,8 @@ static int drbd_asb_recover_0p(struct drbd_peer_device *peer_device) __must_hold
 {
 	const int node_id = peer_device->device->resource->res_opts.node_id;
 	int self, peer, rv = -100;
-	unsigned long long ch_self, ch_peer;
+	u64 ch_peer;
+	ULONG_PTR ch_self;
 	enum drbd_after_sb_p after_sb_0p;
 
 	self = drbd_bitmap_uuid(peer_device) & UUID_PRIMARY;
@@ -4396,7 +4396,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%lu bits)\n",
 				  drbd_bm_total_weight(peer_device));
 			drbd_uuid_set_bitmap(peer_device, 0);
-			drbd_bm_clear_many_bits(peer_device, 0, device->bitmap->bm_bits);
+			drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 		} else if (drbd_bm_total_weight(peer_device)) {
 			drbd_info(device, "No resync, but %lu bits in bitmap!\n",
 				  drbd_bm_total_weight(peer_device));
@@ -8293,7 +8293,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct drbd_device *device;
 	struct p_block_desc *p = pi->data;
 	sector_t sector; 
-	unsigned long long bit; 
+	ULONG_PTR bit; 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1354
 	bool bResetTimer = false;
@@ -8490,7 +8490,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			// DW-1365 : fixup secondary's diskless case for crashed primary.
 			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
 			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
-				drbd_bm_clear_many_bits(peer_device, 0, peer_device->device->bitmap->bm_bits);
+				drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 				put_ldev (peer_device->device);
 			} else {
 				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d peer disk_state:%d\n",
@@ -9751,7 +9751,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 	sector_t sector;
 	int size;
 	struct p_block_ack *p = pi->data;
-	unsigned long long bit;
+	ULONG_PTR bit;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -9892,7 +9892,7 @@ static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_h
 	u64 node_id;
 
 #ifdef _WIN32
-	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, DRBD_NODE_ID_MAX) {
+	for_each_set_bit(node_id, (u64 *)&node_ids, DRBD_NODE_ID_MAX) {
 #else
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, DRBD_NODE_ID_MAX) {
 #endif

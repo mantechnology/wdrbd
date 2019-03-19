@@ -1355,8 +1355,8 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	struct drbd_transport *transport = &connection->transport;
 	struct drbd_transport_ops *tr_ops = transport->ops;
 	int msg_flags, err;
-	unsigned long long size;
-	unsigned long long offset;
+	ULONG_PTR size;
+	ULONG_PTR offset;
 
 	size = sbuf->pos - sbuf->unsent + sbuf->allocated_size;
 	if (size == 0)
@@ -1372,7 +1372,6 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
 #ifdef _WIN32
 	BUG_ON_UINT32_OVER(offset);
-	BUG_ON_UINT32_OVER(size);
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, (int)offset, (size_t)size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
@@ -1738,8 +1737,8 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_md *peer_md;
 	struct p_uuids110 *p;
-	ULONG_PTR i, pos = 0;
-	u64 bitmap_uuids_mask = 0;
+	ULONG_PTR pos = 0;
+	u64 i, bitmap_uuids_mask = 0;
 #ifdef _WIN32
 	u64 authoritative_mask = 0;
 #else
@@ -2258,13 +2257,12 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
 				    : _drbd_bm_find_next(peer_device, c->bit_offset);
 #ifdef _WIN64
-		if (tmp == UINT_MAX)
+		if (tmp == DRBD_END_OF_BITMAP)
 #else
 		if (tmp == -1UL)
 #endif
 			tmp = c->bm_bits;
 		rl = tmp - c->bit_offset;
-
 		if (toggle == 2) { /* first iteration */
 			if (rl == 0) {
 				/* the first checked bit was set,
@@ -2428,7 +2426,7 @@ static int _drbd_send_bitmap(struct drbd_device *device,
 	if (get_ldev(device)) {
 		if (drbd_md_test_peer_flag(peer_device, MDF_PEER_FULL_SYNC)) {
 			drbd_info(device, "Writing the whole bitmap, MDF_FullSync was set.\n");
-			drbd_bm_set_many_bits(peer_device, 0, peer_device->device->bitmap->bm_bits);
+			drbd_bm_set_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 			if (drbd_bm_write(device, NULL)) {
 				/* write_bm did fail! Leave full sync flag set in Meta P_DATA
 				 * but otherwise process as per normal - need to tell other
@@ -3623,7 +3621,7 @@ static void do_retry(struct work_struct *ws)
 #endif
 		struct drbd_device *device = req->device;
 		struct bio *bio = req->master_bio;
-		unsigned long start_jif = (unsigned long)req->start_jif;
+		ULONG_PTR start_jif = req->start_jif;
 		bool expected;
 
 		expected =
@@ -5815,7 +5813,7 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
 	drbd_bm_lock(device, "forget_bitmap()", BM_LOCK_TEST | BM_LOCK_SET);
-	_drbd_bm_clear_many_bits(device, bitmap_index, 0, device->bitmap->bm_bits);
+	_drbd_bm_clear_many_bits(device, bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_unlock(device);
 	drbd_resume_io(device);
 	drbd_md_mark_dirty(device);
@@ -6183,11 +6181,10 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
 	for_each_peer_device_rcu(p, device) {
-		BUG_ON_UINT32_OVER(drbd_bm_bits(device));
 		if (!update_sync_bits(p, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
-			drbd_bm_set_many_bits(p, 0, peer_device->device->bitmap->bm_bits);
+			drbd_bm_set_many_bits(p, 0, DRBD_END_OF_BITMAP);
 		}
 	}
 #else
@@ -6210,12 +6207,11 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 	drbd_md_set_peer_flag(peer_device, MDF_PEER_FULL_SYNC);
 	drbd_md_sync(device);
 #ifdef _WIN32
-	BUG_ON_UINT32_OVER(drbd_bm_bits(device));
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	if (!update_sync_bits(peer_device, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
 	{
 		drbd_err(peer_device, "no sync bit has been set, set whole bits without updating resync extent instead.\n");
-		drbd_bm_set_many_bits(peer_device, 0, peer_device->device->bitmap->bm_bits);
+		drbd_bm_set_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 	}
 #else
 	drbd_bm_set_many_bits(peer_device, 0, -1UL);
@@ -6238,7 +6234,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 // set out-of-sync from provided bitmap
 ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
 {
-	LONGLONG llStartBit = -1, llEndBit = -1;
+	LONG_PTR llStartBit = -1, llEndBit = -1;
 	ULONG_PTR count = 0;
 	PCHAR pByte = NULL;
 	
@@ -6272,8 +6268,6 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 				pBit == 0)
 			{
 				llEndBit = GetBitPos(llBytePos, llBitPosInByte) - 1;
-				BUG_ON_UINT32_OVER(llStartBit);
-				BUG_ON_UINT32_OVER(llEndBit);
 				count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 				llStartBit = -1;
@@ -6287,8 +6281,6 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	if (llStartBit != -1)
 	{
 		llEndBit = pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
-		BUG_ON_UINT32_OVER(llStartBit);
-		BUG_ON_UINT32_OVER(llEndBit);
 		count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 		llStartBit = -1;
@@ -6334,7 +6326,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	if (bitmap_lock)
 		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
-	drbd_bm_clear_many_bits(peer_device, 0, device->bitmap->bm_bits);
+	drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_write(device, NULL);
 	if (bitmap_lock)
 		drbd_bm_slot_unlock(peer_device);
@@ -6425,7 +6417,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		bRet = false;
 	}
 	else{
-		drbd_info(peer_device, "%Iu bits(%Iu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		drbd_info(peer_device, "%lu bits(%lu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
 		bRet = true;
 	}
 		

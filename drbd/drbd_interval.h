@@ -28,9 +28,6 @@
 #undef RB_EMPTY_NODE                                                        
 #define RB_EMPTY_NODE(node)     (rb_parent(node) == node)                                                                                        
 #endif
-
-#undef RB_EMPTY_NODE
-#define RB_EMPTY_NODE(node)     (rb_parent(node) == node)
 #else
 #if !defined(RB_EMPTY_NODE)
 #undef RB_EMPTY_NODE                                                        

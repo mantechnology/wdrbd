@@ -2244,7 +2244,7 @@ extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULO
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
-extern int drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
+extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
 #else
 /* set/clear/test only a few bits at a time */
 extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, unsigned long, unsigned long);
@@ -2278,7 +2278,7 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 #endif
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
-#define DRBD_END_OF_BITMAP	UINT64_MAX
+#define DRBD_END_OF_BITMAP	UINTPTR_MAX
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
 extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);

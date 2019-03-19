@@ -1745,7 +1745,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 #ifdef _WIN32_DEBUG_OOS
 		// DW-1153: Write log when process I/O
-		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%Iu ~ %Iu)\n", KERN_DEBUG_OOS,
+		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_DEBUG_OOS,
 			peer_device->node_id, peer_device->bitmap_index, req, remote, send_oos, req->i.sector, req->i.sector + (req->i.size / 512));
 #endif
 

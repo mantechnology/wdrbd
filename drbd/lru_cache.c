@@ -41,7 +41,7 @@
 void private_strcat(char* buf, char* string, ULONG_PTR string_value){
 	char tmp[256] = { 0, }; 
 	strcat(buf, string);
-	sprintf(tmp, "%I64u", string_value);
+	sprintf(tmp, "%lu", string_value);
 	strcat(buf, tmp); 
 }
 
@@ -377,7 +377,7 @@ void lc_seq_printf_stats(struct seq_file *seq, struct lru_cache *lc)
 	 * update of the cache.
 	 */
 #if defined(_WIN64)
-	seq_printf(seq, "\t%s: used:%u/%u hits:%I64u misses:%I64u starving:%I64u locked:%I64u changed:%I64u\n\n",
+	seq_printf(seq, "\t%s: used:%u/%u hits:%lu misses:%lu starving:%lu locked:%lu changed:%lu\n\n",
 		   lc->name, lc->used, lc->nr_elements,
 		   lc->hits, lc->misses, lc->starving, lc->locked, lc->changed);
 #else

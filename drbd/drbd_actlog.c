@@ -844,7 +844,7 @@ bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 	BUG_ON_UINT32_OVER(first);
 	BUG_ON_UINT32_OVER(last);
 
-	WDRBD_TRACE_AL("first = %I64u last = %I64u i->size = %lu\n", first, last, i->size);
+	WDRBD_TRACE_AL("first = %lu last = %lu i->size = %lu\n", first, last, i->size);
 
 	return put_actlog(device, (unsigned int)first, (unsigned int)last);
 }
@@ -1396,7 +1396,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		   unsigned long bits, unsigned long mask)
 #endif
 {
-	unsigned long long set_start, set_end, clear_start, clear_end;
+	ULONG_PTR set_start, set_end, clear_start, clear_end;
 	sector_t esector, nr_sectors;
 #ifdef _WIN32
 	unsigned long set_bits = 0;
@@ -1446,8 +1446,6 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	set_start = BM_SECT_TO_BIT(sector);
 	set_end = BM_SECT_TO_BIT(esector);
 
-	BUG_ON_UINT32_OVER(set_start);
-	BUG_ON_UINT32_OVER(set_end);
 
 	/* For marking sectors as in sync, we need to round down except when we
 	 * reach the end of the device: The last bit in the bitmap does not
@@ -1459,8 +1457,6 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	else
 		clear_end = BM_SECT_TO_BIT(esector + 1) - 1;
 
-	BUG_ON_UINT32_OVER(clear_start);
-	BUG_ON_UINT32_OVER(clear_end);
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
@@ -1476,7 +1472,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1191: caller needs to know if the bits has been set at least.
 		{
-			if (update_sync_bits(peer_device, (unsigned int)set_start, (unsigned int)set_end, SET_OUT_OF_SYNC) > 0)
+			if (update_sync_bits(peer_device, (unsigned long)set_start, (unsigned long)set_end, SET_OUT_OF_SYNC) > 0)
 				set_bits |= (1 << bitmap_index);
 		}
 #else
@@ -1484,7 +1480,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #endif
 
 		else if (clear_start <= clear_end)
-			update_sync_bits(peer_device, (unsigned int)clear_start, (unsigned int)clear_end, SET_IN_SYNC);
+			update_sync_bits(peer_device, (unsigned long)clear_start, (unsigned long)clear_end, SET_IN_SYNC);
 	}
 	rcu_read_unlock();
 	if (mask) {
@@ -1498,10 +1494,10 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 
 			if (test_bit((unsigned int)bitmap_index, &bits))
 				drbd_bm_set_bits(device, (unsigned int)bitmap_index,
-				(unsigned int)set_start, (unsigned int)set_end);
+				(unsigned long)set_start, (unsigned long)set_end);
 			else if (clear_start <= clear_end)
 				drbd_bm_clear_bits(device, (unsigned int)bitmap_index,
-				(unsigned int)clear_start, (unsigned int)clear_end);
+				(unsigned long)clear_start, (unsigned long)clear_end);
 		}
 	}
 
@@ -1737,14 +1733,14 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 check_al:
 	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
 		if (lc_is_used(device->act_log, (unsigned int)(al_enr + i))){
-			WDRBD_TRACE_AL("check_al sector = %lu, enr = %I64u, al_enr + 1 = %lu and goto try_again\n",
+			WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n",
 				sector, enr, al_enr + i); 
 			goto try_again;
 		}
 	}
 	set_bit(BME_LOCKED, &bm_ext->flags);
 proceed:
-	WDRBD_TRACE_AL("proceed sector = %lu, enr = %I64u\n", sector, enr);
+	WDRBD_TRACE_AL("proceed sector = %lu, enr = %lu\n", sector, enr);
 	peer_device->resync_wenr = LC_FREE;
 	spin_unlock_irq(&device->al_lock);
 	return 0;

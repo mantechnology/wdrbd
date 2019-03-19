@@ -87,5 +87,5 @@ extern signed long long get_ring_buffer_size(ring_buffer *ring);
 //extern void read_ring_buffer(ring_buffer *ring, char *data, int len);
 extern bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long* pLen);
 extern signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_stream stream, ring_buffer *ring, const char *data, signed long long len, signed long long highwater, int retry);
-extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, ULONG size);
+extern int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, LONG size);
 #endif

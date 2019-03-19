@@ -1150,7 +1150,7 @@ next_sector:
 
 			inc_rs_pending(peer_device);
 			err = drbd_send_drequest(peer_device,
-						 size == (unsigned int)(discard_granularity ? P_RS_THIN_REQ : P_RS_DATA_REQUEST),
+						(size == (unsigned int)discard_granularity) ? P_RS_THIN_REQ : P_RS_DATA_REQUEST,
 						 sector, size, ID_SYNCER);
 			if (err) {
 				drbd_err(device, "drbd_send_drequest() failed, aborting...\n");
@@ -1567,7 +1567,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			const ULONG_PTR ratio =
 				(t == 0)     ? 0 :
 			(t < 100000) ? ((s*100)/t) : (s/(t/100));
-			drbd_info(peer_device, "%I64u %% had equal checksums, eliminated: %luK; "
+			drbd_info(peer_device, "%lu %% had equal checksums, eliminated: %luK; "
 			     "transferred %luK total %luK\n",
 			     ratio,
 			     Bit2KB(peer_device->rs_same_csum),

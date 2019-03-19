@@ -295,7 +295,7 @@ bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long
 	return 1;
 }
 
-int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, ULONG size)
+int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, LONG size)
 {
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
@@ -309,10 +309,10 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *
 	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
-	size = (ULONG)write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
+	size = (LONG)write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
 
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
-	return size;
+	return (int)size;
 }
 
 int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
