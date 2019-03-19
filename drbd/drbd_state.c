@@ -2251,7 +2251,7 @@ static void set_ov_position(struct drbd_peer_device *peer_device,
 		 * first P_OV_REQUEST is received */
 		peer_device->ov_start_sector = ~(sector_t)0;
 	} else {
-		ULONG_PTR bit = BM_SECT_TO_BIT(peer_device->ov_start_sector);
+		ULONG_PTR bit = (ULONG_PTR)BM_SECT_TO_BIT(peer_device->ov_start_sector);
 		if (bit >= peer_device->rs_total) {
 			peer_device->ov_start_sector =
 				BM_BIT_TO_SECT(peer_device->rs_total - 1);

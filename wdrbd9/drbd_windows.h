@@ -964,7 +964,7 @@ static __inline ULONG_PTR JIFFIES()
 	KeQueryTickCount(&Tick);
 	Elapse.QuadPart = Tick.QuadPart * KeQueryTimeIncrement();
 	Elapse.QuadPart /= (10000);
-	return Elapse.QuadPart;
+	return (ULONG_PTR)Elapse.QuadPart;
 }
 
 #define jiffies				JIFFIES()

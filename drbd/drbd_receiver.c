@@ -90,7 +90,7 @@ static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *, struct 
 static int e_end_block(struct drbd_work *, int);
 static void cleanup_unacked_peer_requests(struct drbd_connection *connection);
 static void cleanup_peer_ack_list(struct drbd_connection *connection);
-static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids);
+static ULONG_PTR node_ids_to_bitmap(struct drbd_device *device, u64 node_ids);
 #ifdef _WIN32
 static int process_twopc(struct drbd_connection *, struct twopc_reply *, struct packet_info *, ULONG_PTR);
 static void drbd_resync(struct drbd_peer_device *, enum resync_reason) __must_hold(local);
@@ -715,7 +715,7 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 		drbd_info(connection, "sock was shut down by peer\n");
 	}
 
-	if (rv != size)
+	if (rv != (int)size)
 		change_cstate(connection, C_BROKEN_PIPE, CS_HARD);
 
 out:
@@ -728,7 +728,7 @@ static int drbd_recv_into(struct drbd_connection *connection, void *buf, size_t 
 
 	err = drbd_recv(connection, &buf, size, CALLER_BUFFER);
 
-	if (err != size) {
+	if (err != (int)size) {
 		if (err >= 0)
 			err = -EIO;
 	} else
@@ -742,7 +742,7 @@ static int drbd_recv_all(struct drbd_connection *connection, void **buf, size_t 
 
 	err = drbd_recv(connection, buf, size, 0);
 
-	if (err != size) {
+	if (err != (int)size) {
 		if (err >= 0)
 			err = -EIO;
 	} else
@@ -3547,7 +3547,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 			int i;
 			peer_device->ov_start_sector = sector;
 			peer_device->ov_position = sector;
-			peer_device->ov_left = drbd_bm_bits(device) - BM_SECT_TO_BIT(sector);
+			peer_device->ov_left = (ULONG_PTR)(drbd_bm_bits(device) - BM_SECT_TO_BIT(sector));
 			peer_device->rs_total = peer_device->ov_left;
 			for (i = 0; i < DRBD_SYNC_MARKS; i++) {
 				peer_device->rs_mark_left[i] = peer_device->ov_left;
@@ -5869,7 +5869,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	BUG_ON_INT32_OVER(hweight64(bitmap_uuids_mask));
 	bitmap_uuids = (int)hweight64(bitmap_uuids_mask);
 
-	if (pi->size / sizeof(p->other_uuids[0]) < bitmap_uuids)
+	if (pi->size / sizeof(p->other_uuids[0]) < (unsigned int)bitmap_uuids)
 		return -EIO;
 	history_uuids = pi->size / sizeof(p->other_uuids[0]) - bitmap_uuids;
 	if (history_uuids > ARRAY_SIZE(peer_device->history_uuids))
@@ -8024,13 +8024,13 @@ recv_bm_rle_bits(struct drbd_peer_device *peer_device,
 	if (bits < 0)
 		return -EIO;
 
-	for (have = bits; have > 0; s += rl, toggle = !toggle) {
-		bits = vli_decode_bits(&rl, look_ahead);
+	for (have = bits; have > 0; s += (ULONG_PTR)rl, toggle = !toggle) {
+		bits = (int)vli_decode_bits(&rl, look_ahead);
 		if (bits <= 0)
 			return -EIO;
 
 		if (toggle) {
-			e = s + rl -1;
+			e = s + (ULONG_PTR)rl -1;
 			if (e >= c->bm_bits) {
 				drbd_err(peer_device, "bitmap overflow (e:%lu) while decoding bm RLE packet\n", e);
 				return -EIO;
@@ -8316,7 +8316,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 		// MODIFIED_BY_MANTECH DW-1354: I am a sync target and find offset points the end, does mean no more requeueing resync timer.
 		bResetTimer = (device->bm_resync_fo == drbd_bm_bits(device));
 #endif
-		bit = BM_SECT_TO_BIT(sector);
+		bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 		if (bit < device->bm_resync_fo)
 			device->bm_resync_fo = bit; 
 		mutex_unlock(&device->bm_resync_fo_mutex);
@@ -8877,7 +8877,7 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		if (get_ldev(device)) {
 			drbd_set_sync(device, peer_req->i.sector, peer_req->i.size,
-				mask, mask);
+				(ULONG_PTR)mask, (ULONG_PTR)mask);
 			drbd_al_complete_io(device, &peer_req->i);
 			put_ldev(device);
 		}
@@ -9413,7 +9413,7 @@ static int got_peers_in_sync(struct drbd_connection *connection, struct packet_i
 		size = be32_to_cpu(p->size);
 		in_sync_b = node_ids_to_bitmap(device, be64_to_cpu(p->mask));
 
-		drbd_set_sync(device, sector, size, 0, in_sync_b);
+		drbd_set_sync(device, sector, size, 0, (ULONG_PTR)in_sync_b);
 		put_ldev(device);
 	}
 
@@ -9772,7 +9772,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			drbd_rs_failed_io(peer_device, sector, size);
 			break;
 		case P_RS_CANCEL:
-			bit = BM_SECT_TO_BIT(sector);
+			bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = min(device->bm_resync_fo, bit);
 			mutex_unlock(&device->bm_resync_fo_mutex);
@@ -9885,14 +9885,14 @@ static int got_skip(struct drbd_connection *connection, struct packet_info *pi)
 	return 0;
 }
 
-static u64 node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_hold(local)
+static ULONG_PTR node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __must_hold(local)
 {
 	struct drbd_peer_md *peer_md = device->ldev->md.peers;
-	u64 bitmap_bits = 0;
-	u64 node_id;
+	ULONG_PTR bitmap_bits = 0;
+	ULONG_PTR node_id;
 
 #ifdef _WIN32
-	for_each_set_bit(node_id, (u64 *)&node_ids, DRBD_NODE_ID_MAX) {
+	for_each_set_bit(node_id, (ULONG_PTR *)&node_ids, DRBD_NODE_ID_MAX) {
 #else
 	for_each_set_bit(node_id, (unsigned long *)&node_ids, DRBD_NODE_ID_MAX) {
 #endif
@@ -10009,10 +10009,10 @@ found:
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
-		u64 in_sync_b;
+		ULONG_PTR in_sync_b;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
-		ULONG_PTR set_sync_mask = UINT64_MAX;
+		ULONG_PTR set_sync_mask = INTPTR_MAX;
 #endif    
 
 		if (get_ldev(device)) {
@@ -10021,7 +10021,7 @@ found:
 			// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 			clear_bit(peer_device->bitmap_index, &set_sync_mask);
 			drbd_set_sync(device, peer_req->i.sector,
-				peer_req->i.size, ~in_sync_b, set_sync_mask);
+				peer_req->i.size, ~in_sync_b, (ULONG_PTR)set_sync_mask);
 #ifdef _WIN32_TRACE_PEER_DAGTAG			
 			WDRBD_INFO("got_peer_ack drbd_set_sync device:%p, peer_req->i.sector:%llx, peer_req->i.size:%d, in_sync_b:%llx, set_sync_mask:%llx\n", 
 				device, peer_req->i.sector, peer_req->i.size, in_sync_b, set_sync_mask);
@@ -10052,7 +10052,7 @@ void apply_unacked_peer_requests(struct drbd_connection *connection)
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		int bitmap_index = peer_device->bitmap_index;
-		u64 mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
+		ULONG_PTR mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
 
 		drbd_set_sync(device, peer_req->i.sector, peer_req->i.size,
 			      mask, mask);
@@ -10077,7 +10077,7 @@ static void cleanup_unacked_peer_requests(struct drbd_connection *connection)
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
 		int bitmap_index = peer_device->bitmap_index;
-		u64 mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
+		ULONG_PTR mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
 
 		if (get_ldev(device)) {
 			drbd_set_sync(device, peer_req->i.sector, peer_req->i.size,

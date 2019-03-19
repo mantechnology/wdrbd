@@ -162,7 +162,7 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 			}
 			continue;
 		}
-		if (m != n) {
+		if (n != (int)m) {
 			sh = IDR_BITS*l;
 			id = (int)((id >> sh) ^ n ^ m) << sh;
 		}

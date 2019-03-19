@@ -1738,7 +1738,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	struct drbd_peer_md *peer_md;
 	struct p_uuids110 *p;
 	ULONG_PTR pos = 0;
-	u64 i, bitmap_uuids_mask = 0;
+	ULONG_PTR i, bitmap_uuids_mask = 0;
 #ifdef _WIN32
 	u64 authoritative_mask = 0;
 #else
@@ -2256,12 +2256,10 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	do {
 		tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
 				    : _drbd_bm_find_next(peer_device, c->bit_offset);
-#ifdef _WIN64
+
 		if (tmp == DRBD_END_OF_BITMAP)
-#else
-		if (tmp == -1UL)
-#endif
 			tmp = c->bm_bits;
+
 		rl = tmp - c->bit_offset;
 		if (toggle == 2) { /* first iteration */
 			if (rl == 0) {
@@ -6259,7 +6257,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 			if (llStartBit == -1 &&
 				pBit == 1)
 			{
-				llStartBit = GetBitPos(llBytePos, llBitPosInByte);
+				llStartBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
 				continue;
 			}
 
@@ -6267,7 +6265,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 			if (llStartBit != -1 &&
 				pBit == 0)
 			{
-				llEndBit = GetBitPos(llBytePos, llBitPosInByte) - 1;
+				llEndBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
 				count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 				llStartBit = -1;
@@ -6280,7 +6278,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	// met last bit while finding zero bit.
 	if (llStartBit != -1)
 	{
-		llEndBit = pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		llEndBit = (LONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
 		count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
 
 		llStartBit = -1;

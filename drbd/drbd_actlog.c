@@ -421,8 +421,8 @@ bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval 
 {
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
-	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR first = (ULONG_PTR)i->sector >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR last = i->size == 0 ? first : (ULONG_PTR)(i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 	
 	D_ASSERT(device, first <= last);
 	D_ASSERT(device, atomic_read(&device->local_cnt) > 0);
@@ -704,8 +704,8 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i)
 {
 	struct drbd_device *device = peer_device->device;
-	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
-	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR first = (ULONG_PTR)i->sector >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR last = i->size == 0 ? first : (ULONG_PTR)(i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 	ULONG_PTR enr;
 	bool need_transaction = false;
 
@@ -741,8 +741,8 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 	struct bm_extent *bm_ext;
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
-	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR first = (ULONG_PTR)i->sector >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR last = i->size == 0 ? first : (ULONG_PTR)(i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 	ULONG_PTR nr_al_extents;
 	unsigned available_update_slots;
 	struct get_activity_log_ref_ctx al_ctx = { .device = device, };
@@ -838,8 +838,8 @@ bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 {
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
-	ULONG_PTR first = i->sector >> (AL_EXTENT_SHIFT-9);
-	ULONG_PTR last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR first = (ULONG_PTR)i->sector >> (AL_EXTENT_SHIFT - 9);
+	ULONG_PTR last = i->size == 0 ? first : (ULONG_PTR)(i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 
 	BUG_ON_UINT32_OVER(first);
 	BUG_ON_UINT32_OVER(last);
@@ -1443,19 +1443,19 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 		esector = nr_sectors - 1;
 
 	/* For marking sectors as out of sync, we need to round up. */
-	set_start = BM_SECT_TO_BIT(sector);
-	set_end = BM_SECT_TO_BIT(esector);
+	set_start = (ULONG_PTR)BM_SECT_TO_BIT(sector);
+	set_end = (ULONG_PTR)BM_SECT_TO_BIT(esector);
 
 
 	/* For marking sectors as in sync, we need to round down except when we
 	 * reach the end of the device: The last bit in the bitmap does not
 	 * account for sectors past the end of the device.
 	 * CLEAR_END can become negative here. */
-	clear_start = BM_SECT_TO_BIT(sector + BM_SECT_PER_BIT - 1);
+	clear_start = (ULONG_PTR)BM_SECT_TO_BIT(sector + BM_SECT_PER_BIT - 1);
 	if (esector == nr_sectors - 1)
-		clear_end = BM_SECT_TO_BIT(esector);
+		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector);
 	else
-		clear_end = BM_SECT_TO_BIT(esector + 1) - 1;
+		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1) - 1;
 
 
 	rcu_read_lock();
@@ -1572,7 +1572,7 @@ static int _is_in_al(struct drbd_device *device, unsigned int enr)
 int drbd_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector)
 {
 	struct drbd_device *device = peer_device->device;
-	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
+	ULONG_PTR enr = (ULONG_PTR)BM_SECT_TO_EXT(sector);
 	struct bm_extent *bm_ext;
 	int i, sig;
 	bool sa;
@@ -1634,7 +1634,7 @@ retry:
 int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, bool throttle)
 {
 	struct drbd_device *device = peer_device->device;
-	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
+	ULONG_PTR enr = (ULONG_PTR)BM_SECT_TO_EXT(sector);
 	const ULONG_PTR al_enr = enr * AL_EXT_PER_BM_SECT;
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
@@ -1769,7 +1769,7 @@ try_again:
 void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 {
 	struct drbd_device *device = peer_device->device;
-	ULONG_PTR enr = BM_SECT_TO_EXT(sector);
+	ULONG_PTR enr = (ULONG_PTR)BM_SECT_TO_EXT(sector);
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
 	unsigned long flags;

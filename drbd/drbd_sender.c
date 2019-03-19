@@ -1136,7 +1136,7 @@ next_sector:
 				return -EIO;
 			case -EAGAIN: /* allocation failed, or ldev busy */
 				drbd_rs_complete_io(peer_device, sector);
-				device->bm_resync_fo = BM_SECT_TO_BIT(sector);
+				device->bm_resync_fo = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 				i = rollback_i;
 				goto requeue;
 			case 0:
@@ -3038,7 +3038,7 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 #ifdef _WIN32
 		BUG_ON_UINT32_OVER(old);
 		BUG_ON_UINT32_OVER(new);
-	} while (atomic_cmpxchg((atomic_t *)flags, (int)old, (int)new) != old);
+	} while (atomic_cmpxchg((atomic_t *)flags, (int)old, (int)new) != (int)old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
 #endif

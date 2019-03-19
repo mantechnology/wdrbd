@@ -648,7 +648,7 @@ static char **make_envp(struct env *env)
 	env->buffer[env->pos++] = 0;
 	for (b = env->buffer, n = 1; *b; n++)
 		b = strchr(b, 0) + 1;
-	if (env->size - env->pos < sizeof(envp) * n)
+	if (env->size - env->pos < (int)(sizeof(envp) * n))
 		goto out_nomem;
 	envp = (char **)(env->buffer + env->size) - n;
 

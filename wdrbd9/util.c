@@ -911,7 +911,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			pDrbdBitmap->StartingLcn.QuadPart = 0;
 			pDrbdBitmap->BitmapSize.QuadPart = ulConvertedBitmapSize;
 
-			RtlZeroMemory(pDrbdBitmap->Buffer, pDrbdBitmap->BitmapSize.QuadPart);
+			RtlZeroMemory(pDrbdBitmap->Buffer, (size_t)(pDrbdBitmap->BitmapSize.QuadPart));
 			if (FALSE == ConvertVolumeBitmap(pVbb, (PCHAR)pDrbdBitmap->Buffer, ulBytesPerCluster, ulDrbdBitmapUnit))
 			{
 				WDRBD_ERROR("Could not convert bitmap, ulBytesPerCluster(%u), ulDrbdBitmapUnit(%u)\n", ulBytesPerCluster, ulDrbdBitmapUnit);

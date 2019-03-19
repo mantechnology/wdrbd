@@ -423,7 +423,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 		iov.iov_base += rv;
 		iov.iov_len  -= rv;
 #endif
-	} while (sent < size);
+	} while (sent < (int)size);
 
 	if (rv <= 0)
 		return rv;
@@ -502,7 +502,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 
 	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
 	WDRBD_INFO("DIV_ROUND_UP : %u\n", DIV_ROUND_UP(size, PAGE_SIZE));
-	drbd_alloc_page_chain(transport, chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
 	if (!page)
 		return -ENOMEM;
@@ -512,7 +512,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
     if (err < 0) {
 		goto fail;
 	}
-	else if (err != size) 
+	else if (err != (int)size) 
 	{
 		// DW-1502 : If the size of the received data differs from the expected size, the consistency will be broken.
 		WDRBD_ERROR("Wrong data (expected size:%d, received size:%d)\n", size, err);

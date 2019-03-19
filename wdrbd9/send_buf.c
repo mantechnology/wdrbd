@@ -49,7 +49,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		}
 		__try {
 			sz = sizeof(*ring) + nconf->sndbuf_size;
-			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
 			if(!ring) {
 				WDRBD_INFO("alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				goto $ALLOC_FAIL;
@@ -65,7 +65,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		connection->ptxbab[DATA_STREAM] = ring;
 		__try {
 			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
-			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '2ADW');
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool | POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '2ADW');
 			if(!ring) {
 				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
@@ -238,10 +238,10 @@ $GO_BUFFERING:
 	if (len > 0) {
 		remain = ring->length - ring->write_pos;
 		if (remain < len) {
-			memcpy(ring->mem + (ring->write_pos), data, remain);
-			memcpy(ring->mem, data + remain, len - remain);
+			memcpy(ring->mem + (ring->write_pos), data, (size_t)remain);
+			memcpy(ring->mem, data + remain, (size_t)(len - remain));
 		} else {
-			memcpy(ring->mem + ring->write_pos, data, len);
+			memcpy(ring->mem + ring->write_pos, data, (size_t)len);
 		}
 
 		ring->write_pos += len;
@@ -279,11 +279,11 @@ bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long
 
 	remain = ring->length - ring->read_pos;
 	if (remain < tx_sz) {
-		memcpy(data, ring->mem + ring->read_pos, remain);
-		memcpy(data + remain, ring->mem, tx_sz - remain);
+		memcpy(data, ring->mem + ring->read_pos, (size_t)remain);
+		memcpy(data + remain, ring->mem, (size_t)(tx_sz - remain));
 	}
 	else {
-		memcpy(data, ring->mem + ring->read_pos, tx_sz);
+		memcpy(data, ring->mem + ring->read_pos, (size_t)tx_sz);
 	}
 
 	ring->read_pos += tx_sz;

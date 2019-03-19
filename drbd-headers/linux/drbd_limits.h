@@ -121,7 +121,7 @@
 #define DRBD_SNDBUF_SIZE_DEF	0 
 #define DRBD_SNDBUF_SIZE_MIN  (1024*1024*10)
 #else
-#define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
+#define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2LLU)
 #define DRBD_SNDBUF_SIZE_DEF  0
 /* I don't think that a tcp send buffer of more than 10M is useful */
 #define DRBD_SNDBUF_SIZE_MIN   (1024*1024*10)

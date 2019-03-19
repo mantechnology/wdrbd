@@ -784,7 +784,7 @@ static int _char_to_wchar(wchar_t * dst, size_t buf_size, char * src)
     wchar_t * t = dst;
     int c = 0;
 
-    for (; *p && c < buf_size; ++c)
+    for (; *p && c < (int)buf_size; ++c)
     {
         *t++ = (wchar_t)*p++;
     }

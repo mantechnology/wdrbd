@@ -610,7 +610,7 @@ NetlinkWorkThread(PVOID context)
 				goto cleanup;
 			}
 
-			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount) {
+			if (strlen(DRBD_EVENT_SOCKET_STRING) < (size_t)readcount) {
 				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
 				readcount -= (LONG)strlen(DRBD_EVENT_SOCKET_STRING);
 			} else {
