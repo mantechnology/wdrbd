@@ -209,7 +209,7 @@ struct drbd_transport *transport)
 
 static void dtt_nodelay(struct socket *socket)
 {
-	int val = 1;
+	UNREFERENCED_PARAMETER(socket);
 #ifdef _WIN32
 	// nagle disable is supported (registry configuration)
 #else
@@ -347,6 +347,8 @@ static void dtt_free(struct drbd_transport *transport, enum drbd_tr_free_op free
 static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 		      void *buf, size_t size, unsigned msg_flags)
 {
+	UNREFERENCED_PARAMETER(tcp_transport);
+	UNREFERENCED_PARAMETER(msg_flags);
 #ifdef _WIN32
 	size_t iov_len = size;
 	char* DataBuffer = (char*)buf;
@@ -356,6 +358,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #endif
 	int rv, sent = 0;
 
+	BUG_ON_UINT32_OVER(iov_len);
 	/* THINK  if (signal_pending) return ... ? */
 #ifdef _WIN32 
 	// not support. 
@@ -383,7 +386,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 #ifdef _WIN32
 #ifdef _WIN32_SEND_BUFFING
 		 // _dtt_send is only used when dtt_connect is processed(dtt_send_first_packet), at this time send buffering is not done yet.
-		rv = Send(socket, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
+		rv = Send(socket, DataBuffer, (ULONG)iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, NULL, 0);
 #else
 #if 1 
 		rv = Send(socket, DataBuffer, iov_len, 0, socket->sk_linux_attr->sk_sndtimeo, NULL, &tcp_transport->transport, 0);
@@ -420,7 +423,7 @@ static int _dtt_send(struct drbd_tcp_transport *tcp_transport, struct socket *so
 		iov.iov_base += rv;
 		iov.iov_len  -= rv;
 #endif
-	} while (sent < size);
+	} while (sent < (int)size);
 
 	if (rv <= 0)
 		return rv;
@@ -442,7 +445,10 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 
 #ifdef _WIN32
 	flags = WSK_FLAG_WAITALL;
-	return Receive(socket, buf, size, flags, socket->sk_linux_attr->sk_rcvtimeo);
+#ifdef _WIN64
+	BUG_ON_UINT32_OVER(size);
+#endif
+	return Receive(socket, buf, (unsigned int)size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
 	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags);
 #endif
@@ -494,7 +500,11 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 	struct page *page;
 	int err;
 
-	drbd_alloc_page_chain(transport, chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
+#ifdef _WIN64
+	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
+#endif
+	WDRBD_INFO("DIV_ROUND_UP : %u\n", DIV_ROUND_UP(size, PAGE_SIZE));
+	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
 	if (!page)
 		return -ENOMEM;
@@ -504,7 +514,7 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
     if (err < 0) {
 		goto fail;
 	}
-	else if (err != size) 
+	else if (err != (int)size) 
 	{
 		// DW-1502 : If the size of the received data differs from the expected size, the consistency will be broken.
 		WDRBD_ERROR("Wrong data (expected size:%d, received size:%d)\n", size, err);
@@ -632,8 +642,6 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 	struct socket *socket;
 #ifdef _WIN32
 	struct sockaddr_storage_win my_addr, peer_addr;
-	SOCKADDR_IN		LocalAddressV4 = { 0, };
-	SOCKADDR_IN6	LocalAddressV6 = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 #else
 	struct sockaddr_storage my_addr, peer_addr;
@@ -892,6 +900,8 @@ out:
 static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struct socket *socket,
 			     enum drbd_packet cmd, enum drbd_stream stream)
 {
+	UNREFERENCED_PARAMETER(stream);
+
 	struct p_header80 h;
 	int msg_flags = 0;
 	int err;
@@ -914,7 +924,6 @@ static int dtt_send_first_packet(struct drbd_tcp_transport *tcp_transport, struc
  */
 static bool dtt_socket_ok_or_free(struct socket **socket)
 {
-	SIZE_T out = 0;
 	if (!*socket)
 		return false;
 
@@ -1036,6 +1045,9 @@ static struct dtt_path *dtt_wait_connect_cond(struct drbd_transport *transport)
 
 static void unregister_state_change(struct sock *sock, struct dtt_listener *listener)
 {
+	UNREFERENCED_PARAMETER(sock);
+	UNREFERENCED_PARAMETER(listener);
+
 #ifdef _WIN32
 	// not support 
 #else 
@@ -1051,14 +1063,13 @@ static int dtt_wait_for_connect(struct drbd_transport *transport,
 				struct dtt_path **ret_path)
 {
 #ifdef _WIN32
-	struct sockaddr_storage_win my_addr, peer_addr;
+	struct sockaddr_storage_win peer_addr;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	PWSK_SOCKET paccept_socket = NULL;
 #else
 	struct dtt_socket_container *socket_c;
 	struct sockaddr_storage peer_addr;
 #endif
-	int connect_int, peer_addr_len, err = 0;
+	int connect_int, err = 0;
 	long timeo;
 	struct socket *s_estab = NULL;
 	struct net_conf *nc;
@@ -1282,7 +1293,7 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 #ifdef _WIN32
     WDRBD_TRACE_SK("socket(0x%p) err(%d) header_size(%d)\n", socket, err, header_size);
 #endif
-	if (err != header_size) {
+	if (err != (int)header_size) {
 		if (err >= 0)
 			err = -EIO;
 		return err;
@@ -1310,6 +1321,8 @@ dtt_incoming_connection (
 static void dtt_incoming_connection(struct sock *sock)
 #endif
 {
+	UNREFERENCED_PARAMETER(Flags);
+
 #ifdef _WIN32
 	struct drbd_resource *resource = (struct drbd_resource *) SocketContext;
 	struct drbd_listener *listener = NULL;
@@ -2160,6 +2173,7 @@ static bool dtt_stream_ok(struct drbd_transport *transport, enum drbd_stream str
 
 static void dtt_update_congested(struct drbd_tcp_transport *tcp_transport)
 {
+	UNREFERENCED_PARAMETER(tcp_transport);
 #ifdef _WIN32
 #if 0 
 	// not support data socket congestion
@@ -2208,7 +2222,10 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
 #endif
-	int len = size;
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(size);
+#endif
+	int len = (int)size;
 	int err = -EIO;
 
 	msg_flags |= MSG_NOSIGNAL;
@@ -2294,6 +2311,7 @@ static int dtt_send_zc_bio(struct drbd_transport *transport, struct bio *bio)
 
 static void dtt_cork(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 1;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
@@ -2302,6 +2320,7 @@ static void dtt_cork(struct socket *socket)
 
 static void dtt_uncork(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 0;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_CORK, (char *)&val, sizeof(val));
@@ -2310,6 +2329,7 @@ static void dtt_uncork(struct socket *socket)
 
 static void dtt_quickack(struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
 #ifndef _WIN32 // not support.
 	int val = 2;
 	(void) kernel_setsockopt(socket, SOL_TCP, TCP_QUICKACK, (char *)&val, sizeof(val));
@@ -2355,6 +2375,9 @@ static bool dtt_hint(struct drbd_transport *transport, enum drbd_stream stream,
 
 static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 {
+	UNREFERENCED_PARAMETER(socket);
+	UNREFERENCED_PARAMETER(m);
+
 #ifndef _WIN32 
 	struct sock *sk = socket->sk;
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -2370,6 +2393,9 @@ static void dtt_debugfs_show_stream(struct seq_file *m, struct socket *socket)
 
 static void dtt_debugfs_show(struct drbd_transport *transport, struct seq_file *m)
 {
+	UNREFERENCED_PARAMETER(transport);
+	UNREFERENCED_PARAMETER(m);
+
 #ifndef _WIN32 
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
@@ -2393,7 +2419,6 @@ static int dtt_add_path(struct drbd_transport *transport, struct drbd_path *drbd
 {
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
-	struct dtt_path *path = container_of(drbd_path, struct dtt_path, path);
 	bool active;
 
 	drbd_path->established = false;
@@ -2466,7 +2491,6 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, signed lon
 
 	if (size > 0 )
 	{
-		int i;
 		for (int i = 0; i < 2; i++)
 		{
 			if (tcp_transport->stream[i] != NULL)
@@ -2545,8 +2569,6 @@ static void dtt_stop_send_buffring(struct drbd_transport *transport)
 {
 	struct drbd_tcp_transport *tcp_transport = container_of(transport, struct drbd_tcp_transport, transport);
 	struct _buffering_attr *attr;
-	int err_ret = 0;
-	int i;
 
 	for (int i = 0; i < 2; i++)
 	{

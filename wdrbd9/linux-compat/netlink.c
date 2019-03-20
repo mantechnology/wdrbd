@@ -181,6 +181,8 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
 */
 int drbd_genl_multicast_events(struct sk_buff * skb, const struct sib_info *sib)
 {
+	UNREFERENCED_PARAMETER(sib);
+
     int ret = 0;
 
     if (!skb) {
@@ -330,20 +332,28 @@ __inline
 void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 {
     RtlZeroMemory(pmsg, size);
-
+#ifdef _WIN64
+	BUG_ON_UINT32_OVER(size - sizeof(*pmsg));
+#endif
     pmsg->tail = 0;
-    pmsg->end = size - sizeof(*pmsg);
+    pmsg->end = (unsigned int)(size - sizeof(*pmsg));
 }
 
 struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
 {
+	UNREFERENCED_PARAMETER(flags);
+
     struct sk_buff *skb;
 
     if (NLMSG_GOODSIZE == payload) {
         payload = NLMSG_GOODSIZE - sizeof(*skb);
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
-    } else {
-        skb = kmalloc(sizeof(*skb) + payload, GFP_KERNEL, '67DW');
+	}
+	else {
+#ifdef _WIN64
+		BUG_ON_INT32_OVER(sizeof(*skb) + payload);
+#endif
+        skb = kmalloc((int)(sizeof(*skb) + payload), GFP_KERNEL, '67DW');
     }
 
     if (!skb)
@@ -369,6 +379,8 @@ __inline void nlmsg_free(struct sk_buff *skb)
 void
 InitWskNetlink(void * pctx)
 {
+	UNREFERENCED_PARAMETER(pctx);
+
     NTSTATUS    status;
     PWSK_SOCKET netlink_socket = NULL;
     SOCKADDR_IN LocalAddress = {0};
@@ -579,7 +591,7 @@ NetlinkWorkThread(PVOID context)
         goto cleanup;
     }
 
-    while (TRUE) {
+    while (true, true) {
         readcount = Receive(pSock, psock_buf, NLMSG_GOODSIZE, 0, 0);
 
         if (readcount == 0) {
@@ -600,9 +612,9 @@ NetlinkWorkThread(PVOID context)
 				goto cleanup;
 			}
 
-			if (strlen(DRBD_EVENT_SOCKET_STRING) < readcount) {
+			if (strlen(DRBD_EVENT_SOCKET_STRING) < (size_t)readcount) {
 				nlh = (struct nlmsghdr *)((char*)psock_buf + strlen(DRBD_EVENT_SOCKET_STRING));
-				readcount -= strlen(DRBD_EVENT_SOCKET_STRING);
+				readcount -= (LONG)strlen(DRBD_EVENT_SOCKET_STRING);
 			} else {
 				continue;
 			}
@@ -610,7 +622,7 @@ NetlinkWorkThread(PVOID context)
 
 		// DW-1701 Performs a sanity check on the netlink command, enhancing security.
 		// verify nlh header field
-		if( (readcount != nlh->nlmsg_len) 
+		if( ((unsigned int)readcount != nlh->nlmsg_len) 
 			|| (nlh->nlmsg_type < NLMSG_MIN_TYPE) 
 			|| (nlh->nlmsg_pid != 0x5744) ) {
 			WDRBD_WARN("Unrecognizable netlink command arrives and doesn't process...\n");
@@ -652,7 +664,6 @@ NetlinkWorkThread(PVOID context)
             }
         }
 
-        int i;
         u8 cmd = pinfo->genlhdr->cmd;
         struct genl_ops * pops = get_drbd_genl_ops(cmd);
 
@@ -729,7 +740,10 @@ _Outptr_result_maybenull_ PVOID *AcceptSocketContext,
 _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
-    UNREFERENCED_PARAMETER(Flags);
+	UNREFERENCED_PARAMETER(AcceptSocketDispatch);
+	UNREFERENCED_PARAMETER(AcceptSocketContext);
+	UNREFERENCED_PARAMETER(Flags);
+	UNREFERENCED_PARAMETER(SocketContext);
 
     if (AcceptSocket == NULL)
     {

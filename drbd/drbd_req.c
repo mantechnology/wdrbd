@@ -332,7 +332,7 @@ void drbd_req_destroy(struct kref *kref)
 		    req->i.size && get_ldev_if_state(device, D_DETACHING)) {
 			struct drbd_peer_md *peer_md = device->ldev->md.peers;
 #ifdef _WIN32
-			ULONG_PTR bits = -1, mask = -1;
+			ULONG_PTR bits = UINT64_MAX, mask = UINT64_MAX;
 #else
 			unsigned long bits = -1, mask = -1;
 #endif
@@ -520,6 +520,9 @@ void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
 #endif
 {
+	UNREFERENCED_PARAMETER(func);
+	UNREFERENCED_PARAMETER(line);
+
 #ifdef _WIN32
 	struct bio* master_bio = NULL;
 #endif
@@ -714,7 +717,7 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 	 * and reset the transfer log epoch write_cnt.
 	 */
 	if (bio_data_dir(req->master_bio) == WRITE &&
-	    req->epoch == atomic_read(&device->resource->current_tle_nr))
+	    (int)req->epoch == atomic_read(&device->resource->current_tle_nr))
 		start_new_tl_epoch(device->resource);
 
 	/* Update disk stats */
@@ -1130,8 +1133,8 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 {
 	struct drbd_device *device = req->device;
 	struct net_conf *nc;
-	int p, rv = 0;
-	int idx;
+	unsigned int p;
+	int idx, rv = 0;
 
 	if (m)
 		m->bio = NULL;
@@ -1479,8 +1482,8 @@ static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, 
 	D_ASSERT(device, sector  < nr_sectors);
 	D_ASSERT(device, esector < nr_sectors);
 
-	sbnr = BM_SECT_TO_BIT(sector);
-	ebnr = BM_SECT_TO_BIT(esector);
+	sbnr = (ULONG_PTR)BM_SECT_TO_BIT(sector);
+	ebnr = (ULONG_PTR)BM_SECT_TO_BIT(esector);
 
 	for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++) {
 		struct drbd_peer_md *peer_md = &md->peers[node_id];
@@ -1610,7 +1613,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 		return;
 
 	if (nc->cong_fill &&
-	    atomic_read64(&connection->ap_in_flight) >= nc->cong_fill) {
+	    (__u64)atomic_read64(&connection->ap_in_flight) >= nc->cong_fill) {
 		drbd_info(device, "Congestion-fill threshold reached\n");
 		congested = true;
 	}
@@ -1742,7 +1745,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 #ifdef _WIN32_DEBUG_OOS
 		// DW-1153: Write log when process I/O
-		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%Iu ~ %Iu)\n", KERN_DEBUG_OOS,
+		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_DEBUG_OOS,
 			peer_device->node_id, peer_device->bitmap_index, req, remote, send_oos, req->i.sector, req->i.sector + (req->i.size / 512));
 #endif
 
@@ -1927,6 +1930,9 @@ struct drbd_plug_cb {
 #endif
 static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 {
+	UNREFERENCED_PARAMETER(cb);
+	UNREFERENCED_PARAMETER(from_schedule);
+
 #ifndef _WIN32
 	struct drbd_plug_cb *plug = container_of(cb, struct drbd_plug_cb, cb);
 	struct drbd_resource *resource = plug->cb.data;
@@ -1949,6 +1955,7 @@ static void drbd_unplug(struct blk_plug_cb *cb, bool from_schedule)
 
 static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 {
+	UNREFERENCED_PARAMETER(resource);
 #ifndef _WIN32
 	/* A lot of text to say
 	 * return (struct drbd_plug_cb*)blk_check_plugged(); */
@@ -1965,6 +1972,9 @@ static struct drbd_plug_cb* drbd_check_plugged(struct drbd_resource *resource)
 
 static void drbd_update_plug(struct drbd_plug_cb *plug, struct drbd_request *req)
 {
+	UNREFERENCED_PARAMETER(req);
+	UNREFERENCED_PARAMETER(plug);
+
 #ifndef _WIN32
 	struct drbd_request *tmp = plug->most_recent_req;
 	/* Will be sent to some peer.
@@ -2209,11 +2219,11 @@ static void wfa_init(struct waiting_for_act_log *wfa)
 #define wfa_splice_init(_wfa, from, to) do { \
 	list_splice_init(&(_wfa)->requests.from, &(_wfa)->requests.to); \
 	list_splice_init(&(_wfa)->peer_requests.from, &(_wfa)->peer_requests.to); \
-	} while (0)
+	} while (false,false)
 #define wfa_splice_tail_init(_wfa, from, to) do { \
 	list_splice_tail_init(&(_wfa)->requests.from, &(_wfa)->requests.to); \
 	list_splice_tail_init(&(_wfa)->peer_requests.from, &(_wfa)->peer_requests.to); \
-	} while (0)
+	} while (false,false)
 
 static void __drbd_submit_peer_request(struct drbd_peer_request *peer_req)
 {
@@ -2312,8 +2322,9 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 	/* Don't even try, if someone has it locked right now. */
 	if (test_bit(__LC_LOCKED, &device->act_log->flags))
 		goto out;
-
-	while ((peer_req = wfa_next_peer_request(wfa))) {
+	
+	peer_req = wfa_next_peer_request(wfa);
+	while (peer_req) {
 		err = drbd_al_begin_io_nonblock(device, &peer_req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -2325,8 +2336,11 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 			list_move_tail(&peer_req->wait_for_actlog, &wfa->peer_requests.pending);
 			made_progress = true;
 		}
+		peer_req = wfa_next_peer_request(wfa);
 	}
-	while ((req = wfa_next_request(wfa))) {
+
+	req = wfa_next_request(wfa);
+	while (req) {
 		err = drbd_al_begin_io_nonblock(device, &req->i);
 		if (err == -ENOBUFS)
 			break;
@@ -2338,6 +2352,7 @@ static bool prepare_al_transaction_nonblock(struct drbd_device *device,
 			list_move_tail(&req->tl_requests, &wfa->requests.pending);
 			made_progress = true;
 		}
+		req = wfa_next_request(wfa);
 	}
 out:
 	spin_unlock_irq(&device->al_lock);
@@ -2669,7 +2684,7 @@ static bool net_timeout_reached(struct drbd_request *net_req,
 	 * but are waiting for the epoch closing barrier ack.
 	 * Check if we sent the barrier already.  We should not blame the peer
 	 * for being unresponsive, if we did not even ask it yet. */
-	if (net_req->epoch == connection->send.current_epoch_nr) {
+	if (net_req->epoch == (unsigned int)connection->send.current_epoch_nr) {
 		drbd_warn(device,
 			"We did not send a P_BARRIER for %ums > ko-count (%u) * timeout (%u * 0.1s); drbd kernel thread blocked?\n",
 			jiffies_to_msecs(now - net_req->pre_send_jif[peer_node_id]), ko_count, timeout);

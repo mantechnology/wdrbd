@@ -138,7 +138,6 @@ void rb_insert_color(struct rb_node *node, struct rb_root *root)
  
     rb_set_black(root->rb_node);
 }
-EXPORT_SYMBOL(rb_insert_color);
  
 static void __rb_erase_color(struct rb_node *node, struct rb_node *parent,
                  struct rb_root *root)
@@ -219,7 +218,7 @@ static void __rb_erase_color(struct rb_node *node, struct rb_node *parent,
     if (node)
         rb_set_black(node);
 }
- 
+
 void rb_erase(struct rb_node *node, struct rb_root *root)
 {
     struct rb_node *child, *parent;
@@ -286,8 +285,8 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
     if (color == RB_BLACK)
         __rb_erase_color(child, parent, root);
 }
-EXPORT_SYMBOL(rb_erase);
- 
+
+
 static void rb_augment_path(struct rb_node *node, rb_augment_f func, void *data)
 {
     struct rb_node *parent;
@@ -320,7 +319,6 @@ void rb_augment_insert(struct rb_node *node, rb_augment_f func, void *data)
  
     rb_augment_path(node, func, data);
 }
-EXPORT_SYMBOL(rb_augment_insert);
  
 /*
  * before removing the node, find the deepest node on the rebalance path
@@ -346,7 +344,6 @@ struct rb_node *rb_augment_erase_begin(struct rb_node *node)
  
     return deepest;
 }
-EXPORT_SYMBOL(rb_augment_erase_begin);
  
 /*
  * after removal, update the tree to account for the removed entry
@@ -357,7 +354,6 @@ void rb_augment_erase_end(struct rb_node *node, rb_augment_f func, void *data)
     if (node)
         rb_augment_path(node, func, data);
 }
-EXPORT_SYMBOL(rb_augment_erase_end);
  
 /*
  * This function returns the first node (in sort order) of the tree.
@@ -373,7 +369,6 @@ struct rb_node *rb_first(const struct rb_root *root)
         n = n->rb_left;
     return n;
 }
-EXPORT_SYMBOL(rb_first);
  
 struct rb_node *rb_last(const struct rb_root *root)
 {
@@ -386,7 +381,6 @@ struct rb_node *rb_last(const struct rb_root *root)
         n = n->rb_right;
     return n;
 }
-EXPORT_SYMBOL(rb_last);
  
 struct rb_node *rb_next(const struct rb_node *node)
 {
@@ -415,7 +409,6 @@ struct rb_node *rb_next(const struct rb_node *node)
  
     return parent;
 }
-EXPORT_SYMBOL(rb_next);
  
 struct rb_node *rb_prev(const struct rb_node *node)
 {
@@ -440,7 +433,6 @@ struct rb_node *rb_prev(const struct rb_node *node)
  
     return parent;
 }
-EXPORT_SYMBOL(rb_prev);
  
 void rb_replace_node(struct rb_node *victim, struct rb_node *new,
              struct rb_root *root)
@@ -464,5 +456,4 @@ void rb_replace_node(struct rb_node *victim, struct rb_node *new,
     /* Copy the pointers/colour from the victim to the replacement */
     *new = *victim;
 }
-EXPORT_SYMBOL(rb_replace_node);
  

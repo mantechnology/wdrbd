@@ -191,7 +191,7 @@ static bool addr_and_port_equal(const struct sockaddr_storage *addr1, const stru
 		return v4a1->sin_port == v4a2->sin_port;
 	}
 
-	return false;
+	//return false;
 }
 
 static struct drbd_listener *find_listener(struct drbd_connection *connection,
@@ -238,7 +238,7 @@ int drbd_get_listener(struct drbd_transport *transport, struct drbd_path *path,
 	struct drbd_listener *listener, *new_listener = NULL;
 	int err, tries = 0;
 
-	while (1) {
+	while (true, true) {
 		spin_lock_bh(&resource->listeners_lock);
 		listener = find_listener(connection, (struct sockaddr_storage *)addr);
 		if (!listener && new_listener) {

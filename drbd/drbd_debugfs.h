@@ -30,16 +30,32 @@ static inline int __init drbd_debugfs_init(void) { return -ENODEV; }
 #endif
 static inline void drbd_debugfs_cleanup(void) { }
 
-static inline void drbd_debugfs_resource_add(struct drbd_resource *resource) { }
-static inline void drbd_debugfs_resource_cleanup(struct drbd_resource *resource) { }
+static inline void drbd_debugfs_resource_add(struct drbd_resource *resource) {
+	UNREFERENCED_PARAMETER(resource);
+}
+static inline void drbd_debugfs_resource_cleanup(struct drbd_resource *resource) {
+	UNREFERENCED_PARAMETER(resource);
+}
 
-static inline void drbd_debugfs_connection_add(struct drbd_connection *connection) { }
-static inline void drbd_debugfs_connection_cleanup(struct drbd_connection *connection) { }
+static inline void drbd_debugfs_connection_add(struct drbd_connection *connection) {
+	UNREFERENCED_PARAMETER(connection);
+}
+static inline void drbd_debugfs_connection_cleanup(struct drbd_connection *connection) {
+	UNREFERENCED_PARAMETER(connection);
+}
 
-static inline void drbd_debugfs_device_add(struct drbd_device *device) { }
-static inline void drbd_debugfs_device_cleanup(struct drbd_device *device) { }
+static inline void drbd_debugfs_device_add(struct drbd_device *device) {
+	UNREFERENCED_PARAMETER(device);
+}
+static inline void drbd_debugfs_device_cleanup(struct drbd_device *device) {
+	UNREFERENCED_PARAMETER(device);
+}
 
-static inline void drbd_debugfs_peer_device_add(struct drbd_peer_device *peer_device) { }
-static inline void drbd_debugfs_peer_device_cleanup(struct drbd_peer_device *peer_device) { }
+static inline void drbd_debugfs_peer_device_add(struct drbd_peer_device *peer_device) {
+	UNREFERENCED_PARAMETER(peer_device);
+}
+static inline void drbd_debugfs_peer_device_cleanup(struct drbd_peer_device *peer_device) {
+	UNREFERENCED_PARAMETER(peer_device);
+}
 
 #endif

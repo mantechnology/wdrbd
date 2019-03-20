@@ -1039,7 +1039,7 @@ enum drbd_disk_state conn_highest_pdsk(struct drbd_connection *connection)
 
 static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *connection)
 {
-	unsigned int repl_state = -1U;
+	unsigned int repl_state = UINT32_MAX;
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
@@ -1048,13 +1048,13 @@ static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *conne
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 #else
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
-#endif
-		if (peer_device->repl_state[NOW] < repl_state)
+#endif 
+		if ((unsigned int)peer_device->repl_state[NOW] < repl_state)
 			repl_state = peer_device->repl_state[NOW];
 	}
 	rcu_read_unlock();
 
-	if (repl_state == -1U)
+	if (repl_state == UINT32_MAX)
 		return L_OFF;
 
 	return repl_state;
@@ -1153,7 +1153,7 @@ static int scnprintf_resync_suspend_flags(char *buffer, size_t size,
 		b += scnprintf(b, end - b, "connection dependency,");
 	*(--b) = 0;
 
-	return b - buffer;
+	return (int)(b - buffer);
 }
 
 static int scnprintf_io_suspend_flags(char *buffer, size_t size,
@@ -1175,7 +1175,7 @@ static int scnprintf_io_suspend_flags(char *buffer, size_t size,
 		b += scnprintf(b, end - b, "quorum,");
 	*(--b) = 0;
 
-	return b - buffer;
+	return (int)(b - buffer);
 }
 
 static void print_state_change(struct drbd_resource *resource, const char *prefix)
@@ -2251,7 +2251,7 @@ static void set_ov_position(struct drbd_peer_device *peer_device,
 		 * first P_OV_REQUEST is received */
 		peer_device->ov_start_sector = ~(sector_t)0;
 	} else {
-		unsigned long bit = BM_SECT_TO_BIT(peer_device->ov_start_sector);
+		ULONG_PTR bit = (ULONG_PTR)BM_SECT_TO_BIT(peer_device->ov_start_sector);
 		if (bit >= peer_device->rs_total) {
 			peer_device->ov_start_sector =
 				BM_BIT_TO_SECT(peer_device->rs_total - 1);
@@ -2849,7 +2849,7 @@ int drbd_bitmap_io_from_worker(struct drbd_device *device,
 static inline bool state_change_is_susp_fen(struct drbd_state_change *state_change,
 					    enum which_state which)
 {
-	int n_connection;
+	unsigned int n_connection;
 
 	for (n_connection = 0; n_connection < state_change->n_connections; n_connection++) {
 		struct drbd_connection_state_change *connection_state_change =
@@ -2865,7 +2865,7 @@ static inline bool state_change_is_susp_fen(struct drbd_state_change *state_chan
 static inline bool state_change_is_susp_quorum(struct drbd_state_change *state_change,
 					       enum which_state which)
 {
-	int n_device;
+	unsigned int n_device;
 
 	for (n_device = 0; n_device < state_change->n_devices; n_device++) {
 		struct drbd_device_state_change *device_state_change =
@@ -3107,7 +3107,7 @@ static void send_role_to_all_peers(struct drbd_state_change *state_change)
 	}
 }
 
-static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_change, int n_device)
+static void send_new_state_to_all_peer_devices(struct drbd_state_change *state_change, unsigned int n_device)
 {
 	unsigned int n_connection;
 
@@ -3160,7 +3160,7 @@ static void notify_peers_lost_primary(struct drbd_connection *lost_peer)
    Nodes further away from a primary are stable! Do no confuse with "weak".*/
 static bool calc_device_stable(struct drbd_state_change *state_change, int n_device, enum which_state which)
 {
-	int n_connection;
+	unsigned int n_connection;
 
 	if (state_change->resource->role[which] == R_PRIMARY)
 		return true;
@@ -3194,7 +3194,7 @@ static bool calc_device_stable(struct drbd_state_change *state_change, int n_dev
    We need to notify peer when keeping unstable device and authoritative node's changed as long as it is the criterion of operating resync. */
 static bool calc_device_stable_ex(struct drbd_state_change *state_change, int n_device, enum which_state which, u64* authoritative)
 {
-	int n_connection;
+	unsigned int n_connection;
 		
 	if (state_change->resource->role[which] == R_PRIMARY)
 		return true;
@@ -3339,7 +3339,8 @@ static void check_may_resume_io_after_fencing(struct drbd_state_change *state_ch
 	bool all_peer_disks_connected = true;
 	struct drbd_peer_device *peer_device;
 	unsigned long irq_flags;
-	int vnr, n_device;
+	int vnr;
+	unsigned int n_device;
 
 	for (n_device = 0; n_device < state_change->n_devices; n_device++) {
 		struct drbd_peer_device_state_change *peer_device_state_change =
@@ -3396,6 +3397,8 @@ static void check_may_resume_io_after_fencing(struct drbd_state_change *state_ch
  */
 static int w_after_state_change(struct drbd_work *w, int unused)
 {
+	UNREFERENCED_PARAMETER(unused);
+
 	struct after_state_change_work *work =
 		container_of(w, struct after_state_change_work, w);
 	struct drbd_state_change *state_change = work->state_change;
@@ -3404,7 +3407,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 	enum drbd_role *role = resource_state_change->role;
 	struct drbd_peer_device *send_state_others = NULL;
 	bool *susp_nod = resource_state_change->susp_nod;
-	int n_device, n_connection;
+	unsigned int n_device, n_connection;
 	bool still_connected = false;
 	bool try_become_up_to_date = false;
 	bool resync_finished = false;
@@ -4748,7 +4751,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			{			
 				rcu_read_lock();
 				for_each_connection_rcu(connection, resource) {
-					if (connection->peer_node_id != context->target_node_id) {
+					if (connection->peer_node_id != (unsigned int)context->target_node_id) {
 						if (connection->peer_role[NOW] == R_PRIMARY)
 						{
 							rv = SS_TWO_PRIMARIES;
@@ -4923,7 +4926,7 @@ enum determine_dev_size
 	struct drbd_resource *resource = device->resource;
 	struct twopc_reply *reply = &resource->twopc_reply;
 	struct p_twopc_request request;
-	unsigned long start_time;
+	ULONG_PTR start_time;
 	unsigned long irq_flags;
 	enum drbd_state_rv rv;
 	enum determine_dev_size dd;
@@ -4948,7 +4951,7 @@ retry:
 
 	request.tid = cpu_to_be32(reply->tid);
 	request.initiator_node_id = cpu_to_be32(resource->res_opts.node_id);
-	request.target_node_id = -1;
+	request.target_node_id = UINT32_MAX;
 	request.nodes_to_reach = cpu_to_be64(
 		~(reach_immediately | NODE_MASK(resource->res_opts.node_id)));
 	request.dds_flags = cpu_to_be16(dds_flags);
@@ -5158,6 +5161,8 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 
 int nested_twopc_work(struct drbd_work *work, int cancel)
 {
+	UNREFERENCED_PARAMETER(cancel);
+
 	struct drbd_resource *resource =
 		container_of(work, struct drbd_resource, twopc_work);
 	enum drbd_state_rv rv;

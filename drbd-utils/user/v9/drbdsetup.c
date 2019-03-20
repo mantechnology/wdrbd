@@ -120,7 +120,7 @@ int main(void)
 	sum_total += sum;					\
 	printf("%-30s %4u [%4u]\n",				\
 			#policy ":", sum, sum_total);		\
-} while (0)
+} while (false)
 #define LEN_(p) LEN__(p ## _nl_policy)
 	LEN_(disk_conf);
 	LEN_(syncer_conf);
@@ -803,7 +803,7 @@ static void resolv6(const char *name, struct sockaddr_in6 *addr)
 		break;
 	}
 	freeaddrinfo(res);
-	if (0) { /* debug output */
+	if (false) { /* debug output */
 		char ip[INET6_ADDRSTRLEN];
 		inet_ntop(AF_INET6, &addr->sin6_addr, ip, sizeof(ip));
 		fprintf(stderr, "%s -> %02x %04x %08x %s %08x\n",
@@ -3446,7 +3446,7 @@ found:
 	}
 	if (device->info.dev_disk_state == D_DISKLESS) {
 		/* XXX we could print the exposed_data_uuid anyways: */
-		if (0)
+		if (false)
 			printf(X64(016)"\n", (uint64_t)device->statistics.dev_exposed_data_uuid);
 		fprintf(stderr, "Device has no disk\n");
 		ret = 1;
@@ -3517,7 +3517,7 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
     pos += ret; \
     if (size && checksize) \
         size -= ret; \
-} while(0)
+} while(false)
 #define EVPRINT(...) _EVPRINT(1, __VA_ARGS__)
 /* for llvm static analyzer */
 #define EVPRINT_NOSIZE(...) _EVPRINT(0, __VA_ARGS__)

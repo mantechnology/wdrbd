@@ -33,7 +33,9 @@
 
 #include "disp.h"
 
-#pragma warning (disable : 4100 4146 4221)
+//#pragma warning (disable : 4100 4146 4221)
+#pragma warning (disable : 4221)
+
 //#define DRBD_TRACE				    // trace replication flow(basic)
 //#define DRBD_TRACE1				    // trace replication flow(detail)
 
@@ -274,7 +276,7 @@ enum rq_flag_bits {
 #ifdef LONG_MAX
 #undef LONG_MAX
 #endif
-#define LONG_MAX				((long)(~0UL>>1)) 
+#define LONG_MAX				((long)(UINT32_MAX >> 1)) 
 #define MAX_SCHEDULE_TIMEOUT	LONG_MAX	
 #define AL_WAIT_TIMEOUT			100 * HZ // DW-1513
 #define SENDER_SCHEDULE_TIMEOUT	5 * HZ
@@ -293,7 +295,7 @@ enum rq_flag_bits {
 
 #define cond_resched()		    __noop
 
-#define U32_MAX		((u32)~0U)
+#define U32_MAX		(UINT32_MAX)
 #define S32_MAX		((s32)(U32_MAX>>1))
 
 enum km_type {
@@ -378,7 +380,7 @@ extern void printk_cleanup(void);
 extern void _printk(const char * func, const char * format, ...);
 
 #ifdef _WIN32_DEBUG_OOS
-extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode);
+extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, unsigned int mode);
 #endif
 
 #ifdef _WIN32_EVENTLOG
@@ -611,7 +613,7 @@ static __inline void setup_timer_key(_In_ struct timer_list * timer,
 #define setup_timer(timer, fn, data)                            \
     do {                                                        \
         setup_timer_key((timer), #timer, NULL, (fn), (data));   \
-    } while (0)
+	    } while(false,false)
 #endif
 struct work_struct {
 	struct list_head entry;
@@ -622,6 +624,8 @@ struct work_struct_wrapper {
     struct work_struct * w;
     LIST_ENTRY  element;
 };
+
+typedef struct gendisk  gendisk;
 
 struct block_device_operations {
 	int (*open) (struct block_device *, fmode_t);
@@ -849,7 +853,7 @@ extern void set_disk_ro(struct gendisk *disk, int flag);
 #define PREPARE_WORK(_work, _func)                                      \
 	do {                                                            \
 		(_work)->func = (_func);                                \
-	} while (0)
+		} while(false,false)
 
 #define __INIT_WORK(_work, _func, _onstack)                             \
 	 do {                                                           \
@@ -857,7 +861,7 @@ extern void set_disk_ro(struct gendisk *disk, int flag);
 	       /*  (_work)->data = (atomic_long_t) WORK_DATA_INIT(); */ \
 		INIT_LIST_HEAD(&(_work)->entry);                        \
 		PREPARE_WORK((_work), (_func));                         \
-	} while (0)
+	 	} while(false,false)
 
 #define INIT_WORK(_work, _func)                                         \
 	 __INIT_WORK((_work), (_func), 0);  
@@ -960,7 +964,7 @@ static __inline ULONG_PTR JIFFIES()
 	KeQueryTickCount(&Tick);
 	Elapse.QuadPart = Tick.QuadPart * KeQueryTimeIncrement();
 	Elapse.QuadPart /= (10000);
-	return Elapse.QuadPart;
+	return (ULONG_PTR)Elapse.QuadPart;
 }
 
 #define jiffies				JIFFIES()
@@ -1003,11 +1007,12 @@ struct scatterlist {
 #endif
 
 #define BUG_ON(_condition)	\
-    do {	\
-        if(_condition) { \
-            WDRBD_FATAL("BUG: failure [ %s ]\n", #_condition); \
-		}\
-	} while (0)
+	do {		\
+		if (_condition) {	\
+			\
+				WDRBD_FATAL("BUG: failure [ %s ]\n", #_condition); \
+		}	\
+	} while (false,false)
 
 #ifdef WIN_AL_BUG_ON
 #define AL_BUG_ON(_condition, str_condition, lc, e)	\
@@ -1018,8 +1023,18 @@ struct scatterlist {
 				lc_printf_stats(lc, e);	\
 							}\
 			}\
-			    } while (0)
+	} while (false,false)
 #endif
+
+
+#define BUG_ON_INT16_OVER(_value) BUG_ON(INT16_MAX < _value)
+#define BUG_ON_UINT16_OVER(_value) BUG_ON(UINT16_MAX < _value)
+
+#define BUG_ON_INT32_OVER(_value) BUG_ON(INT32_MAX < _value)
+#define BUG_ON_UINT32_OVER(_value) BUG_ON(UINT32_MAX < _value)
+
+#define BUG_ON_INT64_OVER(_value) BUG_ON(INT64_MAX < _value)
+#define BUG_ON_UINT64_OVER(_value) BUG_ON(UINT64_MAX < _value)
 
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32
@@ -1071,21 +1086,25 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 
 #define __wait_event(wq, condition, __func, __line) \
 	do {\
+		bool _res = false;						\
 		for (;;) {\
-			if (condition) \
-						{ \
+			_res = condition;				\
+			if (_res) \
+																											{ \
 				break; \
-						} \
+																											} \
 			schedule(&wq, 1, __func, __line); /*  DW105: workaround: 1 ms polling  */ \
-				} \
-		} while (0)
+																		} \
+									} while(false,false)
 
 #define wait_event(wq, condition) \
 	do {\
-		if (condition) \
+		bool _res = false;						\
+		_res = condition;				\
+		if (_res) \
 			break; \
 		__wait_event(wq, condition, __FUNCTION__, __LINE__); \
-		} while (0)
+						} while(false,false)
 
 
 #define __wait_event_timeout(wq, condition, ret)  \
@@ -1096,18 +1115,18 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		for (;;) {\
 			i++; \
 			if (condition)   \
-						{\
+																		{\
 				break;     \
-						}\
+																		}\
 			/*ret = schedule(&wq, ret, __FUNC__, __LINE__);*/\
 			if (++t > real_timeout) \
-						{\
+																		{\
 				ret = 0;\
 				break;\
-						}\
+																		}\
 			schedule(&wq, 100, __FUNCTION__, __LINE__); /*  DW105: workaround: 1 ms polling  */ \
-				}  \
-		} while (0)
+												}  \
+							} while(false,false)
 
 #define wait_event_timeout(t, wq, condition, timeout) \
 	do { \
@@ -1115,34 +1134,39 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 		if (!(condition)) \
 			__wait_event_timeout(wq, condition, __ret);  \
 		t = __ret; \
-        		} while (0)
+					        		} while(false,false)
 
 #define __wait_event_interruptible(wq, condition, sig)   \
     do { \
+		bool _res = false;	\
         for (;;) { \
-            if (condition) {   \
+			_res = condition;	\
+				if (_res) {		\
+								\
                 sig = 0;    \
                 break;      \
-            } \
+						            } \
             sig = schedule(&wq, 1, __FUNCTION__, __LINE__);   \
             if (-DRBD_SIGKILL == sig) { break; }    \
-        } \
-    } while (0)
+				        } \
+			    } while(false,false)
 
 #define wait_event_interruptible(sig, wq, condition) \
     do {\
         int __ret = 0;  \
         __wait_event_interruptible(wq, condition, __ret); \
         sig = __ret; \
-    } while (0)
+			    } while(false,false)
 
 #ifdef _WIN32  // DW_552
 #define wait_event_interruptible_timeout(ret, wq, condition, to) \
     do {\
         int t = 0;\
         int real_timeout = to/100; /*divide*/\
+		bool _res = false;					\
         for (;;) { \
-            if (condition) {   \
+			_res = condition;	\
+            if (_res) {   \
                 break;      \
             } \
 	        if (++t > real_timeout) {\
@@ -1152,7 +1176,7 @@ extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
 	        ret = schedule(&wq, 100, __FUNCTION__, __LINE__);  /* real_timeout = 0.1 sec*/ \
             if (-DRBD_SIGKILL == ret) { break; } \
         }\
-    } while (0)
+	    } while(false,false)
 #endif
 
 #define wake_up(q) _wake_up(q, __FUNCTION__, __LINE__)
@@ -1167,7 +1191,7 @@ extern int test_and_change_bit(int nr, const ULONG_PTR *vaddr);
 extern ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size); //reference linux 3.x kernel. 64bit compatible
 #endif
 extern ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset);
-extern int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
+extern ULONG_PTR find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset);
 
 __inline
 int test_and_set_bit(int bit, ULONG_PTR * base)
@@ -1229,7 +1253,7 @@ static __inline int __test_and_clear_bit(int nr, volatile ULONG_PTR *addr)
 	return (old & mask) != 0;
 }
 
-static __inline int test_bit(int nr, const ULONG_PTR *addr)
+static __inline BOOLEAN test_bit(int nr, const ULONG_PTR *addr)
 {
 #ifdef _WIN64
 	return _bittest64((LONG64 *)addr, nr);
@@ -1259,11 +1283,13 @@ struct retry_worker {
 
 #define MAX_PROC_BUF	2048
 
+typedef struct crypto_tfm  crypto_tfm;
+
 extern void *crypto_alloc_tfm(char *name, u32 mask);
 extern unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm);
 extern int generic_make_request(struct bio *bio); // return value is changed for error handling 2015.12.08(DW-649)
 
-extern int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait);
+extern int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait);
 
 extern void * ERR_PTR(long error);
 extern long PTR_ERR(const void *ptr);
@@ -1277,6 +1303,8 @@ extern void hlist_add_head(struct hlist_node *n, struct hlist_head *h);
 extern void hlist_del_init(struct hlist_node *entry);
 extern int hlist_unhashed(const struct hlist_node *h);
 extern void __hlist_del(struct hlist_node *n);
+
+typedef struct sk_buff sk_buff;
 
 extern uint32_t crc32c(uint32_t crc, const uint8_t *data, unsigned int length);
 extern bool lc_is_used(struct lru_cache *lc, unsigned int enr);
@@ -1414,7 +1442,7 @@ extern void list_del_rcu(struct list_head *entry);
 	do { \
 		/*smp_mb();*/ \
 		(_p) = (_v); \
-	} while (0)
+		} while(false,false)
 
 #define rcu_assign_pointer(p, v) 	__rcu_assign_pointer((p), (v))
 #define list_next_rcu(list)		(*((struct list_head **)(&(list)->next)))
@@ -1533,7 +1561,9 @@ typedef struct _PTR_ENTRY
 
 // linux-2.6.24 define 
 // kernel.h 
-#define UINT_MAX	(~0U)
+#ifndef UINT_MAX
+#define UINT_MAX	(UINT32_MAX)
+#endif
 
 // socket.h 
 #define MSG_DONTROUTE	4
@@ -1606,6 +1636,11 @@ extern void up_read(KSPIN_LOCK* lock);
 static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 	sector_t nr_sects, gfp_t gfp_mask, bool discard)
 {
+	UNREFERENCED_PARAMETER(sector);
+	UNREFERENCED_PARAMETER(nr_sects);
+	UNREFERENCED_PARAMETER(bdev);
+	UNREFERENCED_PARAMETER(gfp_mask);
+	UNREFERENCED_PARAMETER(discard);
 	// WDRBD: Not support
 	return 0;
 }
@@ -1613,6 +1648,8 @@ static int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 #endif
 
 #define snprintf(a, b, c,...) memset(a, 0, b); sprintf(a, c, ##__VA_ARGS__)
+
+typedef struct sib_info sib_info;
 
 int drbd_genl_multicast_events(void *mdev, const struct sib_info *sib);
 
@@ -1631,6 +1668,7 @@ extern int drbd_backing_bdev_events(struct drbd_device *device);
 
 static inline unsigned int queue_io_min(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 	return 0; // dummy: q->limits.io_min;
 }
 

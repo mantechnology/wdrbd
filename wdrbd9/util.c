@@ -473,7 +473,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 			break;
 		}
 		
-	} while (false);
+	} while (false, false);
 			
 	return hVolume;
 }
@@ -502,7 +502,7 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 			break;
 		}
 
-	} while (false);
+	} while (false, false);
 
 	return fss.FileSystemType;
 }
@@ -597,7 +597,7 @@ BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalClust
 
 		bRet = TRUE;
 
-	} while (false);
+	} while (false, false);
 
 	if (bRet)
 	{
@@ -725,7 +725,7 @@ bool ChangeVolumeReadonly(unsigned int minor, bool set)
 		
 		bRet = true;
 
-	} while (false);
+	} while (false, false);
 	
 	if (hVolume != NULL)
 	{
@@ -793,7 +793,7 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 				
 		bRet = TRUE;
 
-	} while (false);
+	} while (false, false);
 
 	if (NULL != hVolume)
 	{
@@ -842,7 +842,7 @@ BOOLEAN ConvertVolumeBitmap(PVOLUME_BITMAP_BUFFER pVbb, PCHAR pConverted, ULONG 
 	
 	PCHAR pByte = (PCHAR)pVbb->Buffer;
 
-	for (ULONGLONG ullBytePos = 0; ullBytePos < (pVbb->BitmapSize.QuadPart + 1) / BITS_PER_BYTE; ullBytePos += 1)
+	for (LONGLONG ullBytePos = 0; ullBytePos < (pVbb->BitmapSize.QuadPart + 1) / BITS_PER_BYTE; ullBytePos += 1)
 	{
 		for (ULONGLONG ullBitPos = 0; ullBitPos < BITS_PER_BYTE; ullBitPos += readCount)
 		{
@@ -911,7 +911,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			pDrbdBitmap->StartingLcn.QuadPart = 0;
 			pDrbdBitmap->BitmapSize.QuadPart = ulConvertedBitmapSize;
 
-			RtlZeroMemory(pDrbdBitmap->Buffer, pDrbdBitmap->BitmapSize.QuadPart);
+			RtlZeroMemory(pDrbdBitmap->Buffer, (size_t)(pDrbdBitmap->BitmapSize.QuadPart));
 			if (FALSE == ConvertVolumeBitmap(pVbb, (PCHAR)pDrbdBitmap->Buffer, ulBytesPerCluster, ulDrbdBitmapUnit))
 			{
 				WDRBD_ERROR("Could not convert bitmap, ulBytesPerCluster(%u), ulDrbdBitmapUnit(%u)\n", ulBytesPerCluster, ulDrbdBitmapUnit);
@@ -921,7 +921,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			}
 		}
 
-	} while (false);
+	} while (false, false);
 
 	if (NULL != pVbb)
 	{
@@ -1208,7 +1208,7 @@ NTSTATUS QueryMountPoint(
 		return status;
 	}
 
-	*MountPointInfoLength = iosb.Information;
+	*MountPointInfoLength = (ULONG)iosb.Information;
 
 	return STATUS_SUCCESS;
 }
@@ -1644,7 +1644,6 @@ NTSTATUS NotifyCallbackObject(PWSTR pszCallbackName, PVOID pParam)
 	OBJECT_ATTRIBUTES cboa = { 0, };
 	UNICODE_STRING usCbName;
 	PCALLBACK_OBJECT pCallbackObj;
-	PVOID pCallbackReg;
 
 	if (pszCallbackName == NULL)
 	{
@@ -1699,8 +1698,8 @@ ULONG ucsdup(_Out_ UNICODE_STRING * dst, _In_ WCHAR * src, ULONG size)
 
     dst->Buffer = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, size + sizeof(UNICODE_NULL), '46DW');
 	if (dst->Buffer) {
-		dst->Length = size;
-		dst->MaximumLength = size + sizeof(UNICODE_NULL);
+		dst->Length = (USHORT)size;
+		dst->MaximumLength = (USHORT)(size + sizeof(UNICODE_NULL));
 		RtlCopyMemory(dst->Buffer, src, size);
 		return size;
 	}

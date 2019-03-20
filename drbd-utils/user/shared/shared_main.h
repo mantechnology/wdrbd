@@ -33,7 +33,7 @@
     do {						\
 		if(trace_print)				\
 			printf("%s() : " fmt, __FUNCTION__, __VA_ARGS__);	\
-	} while (0)
+	} while (false)
 
 const char *token_to_string(int token);
 

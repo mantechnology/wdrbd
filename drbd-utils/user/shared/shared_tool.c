@@ -1007,7 +1007,7 @@ new_strtoll(const char *s, const char def_unit, unsigned long long *rv)
 	}
 
 	/* if shift is positive, first check for overflow */
-	if (*rv > (~0ULL >> shift))
+	if (*rv > (UINT64_MAX >> shift))
 		return MSE_OUT_OF_RANGE;
 
 	/* then convert */

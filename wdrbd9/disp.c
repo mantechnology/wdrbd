@@ -211,7 +211,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 	for (int i = 0; i < Count; ++i) {
 		RtlZeroMemory(valueInfo, valueInfoSize);
 
-		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, (ULONG)valueInfoSize, &size);
 		if (!NT_SUCCESS(status)) {
 			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
 				goto cleanup;
@@ -229,8 +229,8 @@ NTSTATUS _QueryVolumeNameRegistry(
 			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
-					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->MountPoint.Buffer[0] = (WCHAR)toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					pvext->Minor = (UCHAR)(pvext->MountPoint.Buffer[0] - 'C');
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					ucsdup(&pvext->VolumeGuid, key, valueInfo->NameLength);
@@ -255,6 +255,8 @@ cleanup:
 NTSTATUS
 mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
+	UNREFERENCED_PARAMETER(DriverObject);
+
     NTSTATUS            status;
     PDEVICE_OBJECT      AttachedDeviceObject = NULL;
     PDEVICE_OBJECT      ReferenceDeviceObject = NULL;
@@ -265,7 +267,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
         HANDLE		hNetLinkThread = NULL;
-		HANDLE		hLogLinkThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
@@ -327,7 +328,9 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
-    VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
+
+	BUG_ON_UINT16_OVER(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
+    VolumeExtension->PhysicalDeviceNameLength = (USHORT)(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
 
 	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
 	if (pmuid) {
@@ -402,7 +405,6 @@ mvolSendToNextDriver(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -443,7 +445,6 @@ mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -461,7 +462,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
 	drbd_cleanup_by_win_shutdown(VolumeExtension);

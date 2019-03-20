@@ -119,7 +119,7 @@ struct option metaopt[] = {
 	fprintf(stderr, "%s:%u:%s: ASSERT(%s) failed.\n",	\
 		__FILE__ , __LINE__ , __func__ , #x );		\
 	abort(); }						\
-	} while (0)
+	} while (false)
 #define d_expect(x) ({						\
 	int _x = (x);						\
 	if (!_x)						\
@@ -1407,7 +1407,7 @@ void m_set_gc(struct md_cpu *md, int node_id __attribute((unused)), char **argv,
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_PRIMARY_IND)) break;
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_CONNECTED_IND)) break;
 		if (!m_strsep_bit(str, &md->gc[Flags], MDF_FULL_SYNC)) break;
-	} while (0);
+	} while (false);
 }
 
 void m_set_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribute((unused)))
@@ -1429,7 +1429,7 @@ void m_set_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribut
 		if (!m_strsep_bit(str, &md->flags, MDF_FULL_SYNC)) break;
 		if (!m_strsep_bit(str, &md->flags, MDF_PEER_OUT_DATED)) break;
 		if (!m_strsep_bit(str, &md->flags, MDF_CRASHED_PRIMARY)) break;
-	} while (0);
+	} while (false);
 }
 
 void m_set_v9_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attribute((unused)))
@@ -1455,7 +1455,7 @@ void m_set_v9_uuid(struct md_cpu *md, int node_id, char **argv, int argc __attri
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FENCING)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_FULL_SYNC)) break;
 		if (!m_strsep_bit(str, &md->peers[node_id].flags, MDF_PEER_DEVICE_SEEN)) break;
-	} while (0);
+	} while (false);
 }
 
 int m_outdate_gc(struct md_cpu *md __attribute((unused)))
@@ -1940,7 +1940,7 @@ void printf_al_84(struct format *cfg, struct al_4k_transaction_on_disk *al_disk,
 		printf("# \tupdates: %u\n", al_cpu.n_updates);
 		for (i = 0; i < AL_UPDATES_PER_TRANSACTION; i++) {
 			if (i >= al_cpu.n_updates &&
-			    al_cpu.update_slot_nr[i] == (uint16_t)(~0U))
+				al_cpu.update_slot_nr[i] == UINT16_MAX)
 				continue;
 			printf("# \t%2u: %10u %10u\n", i,
 				al_cpu.update_slot_nr[i],
@@ -2230,7 +2230,7 @@ int replay_al_84(struct format *cfg, uint32_t *hot_extent)
 
 		for (i = 0; i < AL_CONTEXT_PER_TRANSACTION; i++) {
 			unsigned slot = al_cpu[idx].context_start_slot_nr + i;
-			if (al_cpu[idx].context[i] == ~0U && slot >= al_cpu[idx].context_size)
+			if (al_cpu[idx].context[i] == UINT32_MAX && slot >= al_cpu[idx].context_size)
 				continue;
 			if (slot >= AL_EXTENTS_MAX) {
 				fprintf(stderr, "slot number out of range: tr:%u slot:%u\n",
@@ -2241,7 +2241,7 @@ int replay_al_84(struct format *cfg, uint32_t *hot_extent)
 		}
 		for (i = 0; i < AL_UPDATES_PER_TRANSACTION; i++) {
 			unsigned slot = al_cpu[idx].update_slot_nr[i];
-			if (i >= al_cpu[idx].n_updates && slot == (uint16_t)(~0U))
+			if (i >= al_cpu[idx].n_updates && slot == UINT16_MAX)
 				continue;
 			if (slot >= AL_EXTENTS_MAX) {
 				fprintf(stderr, "update slot number out of range: tr:%u slot:%u\n",
@@ -2298,7 +2298,7 @@ void apply_al(struct format *cfg, uint32_t *hot_extent)
 	for (i = 0; i < AL_EXTENTS_MAX; i++) {
 		size_t bm_pos;
 		unsigned bits_set = 0;
-		if (hot_extent[i] == ~0U)
+		if (hot_extent[i] == UINT32_MAX)
 			break;
 
 		ASSERT(cfg->md.bm_bytes_per_bit == 4096);
@@ -4387,8 +4387,8 @@ int may_be_jfs(const char *data, struct fstype_s *f)
  * will always refuse */
 #define REFUSE_BSIZE	0xFFFFffffFFFF0000LLU
 #define ERR_BSIZE	0xFFFFffffFFFF0001LLU
-#define REFUSE_IT()	do { f->bnum = 1; f->bsize = REFUSE_BSIZE; } while(0)
-#define REFUSE_IT_ERR()	do { f->bnum = 1; f->bsize = ERR_BSIZE; } while(0)
+#define REFUSE_IT()	do { f->bnum = 1; f->bsize = REFUSE_BSIZE; } while(false)
+#define REFUSE_IT_ERR()	do { f->bnum = 1; f->bsize = ERR_BSIZE; } while(false)
 int may_be_swap(const char *data, struct fstype_s *f)
 {
 	int looks_like_swap =

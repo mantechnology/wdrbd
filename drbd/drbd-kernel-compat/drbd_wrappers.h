@@ -150,9 +150,9 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 #endif
 
 #ifdef _WIN32
-static inline unsigned short queue_logical_block_size(struct request_queue *q)
+static inline unsigned int queue_logical_block_size(struct request_queue *q)
 {
-	int retval = 512;
+	unsigned int retval = 512;
 	if (q && q->logical_block_size)
 		retval = q->logical_block_size;
 	return retval;
@@ -183,6 +183,7 @@ static inline void blk_queue_logical_block_size(struct request_queue *q, unsigne
 #ifndef COMPAT_QUEUE_LIMITS_HAS_DISCARD_ZEROES_DATA
 static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 	return 0;
 }
 #endif
@@ -190,6 +191,8 @@ static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)
 #ifndef COMPAT_HAVE_BDEV_DISCARD_ALIGNMENT
 static inline int bdev_discard_alignment(struct block_device *bdev)
 {
+	UNREFERENCED_PARAMETER(bdev);
+
 #ifdef _WIN32
 	return 0;
 #else
@@ -239,6 +242,9 @@ typedef unsigned __bitwise__ fmode_t;
 static inline
 struct block_device *open_bdev_exclusive(const char *path, fmode_t mode, void *holder)
 {
+	UNREFERENCED_PARAMETER(path);
+	UNREFERENCED_PARAMETER(mode);
+	UNREFERENCED_PARAMETER(holder);
 #ifndef _WIN32
 	/* drbd does not open readonly, but try to be correct, anyways */
 	return open_bdev_excl(path, (mode & FMODE_WRITE) ? 0 : MS_RDONLY, holder);
@@ -247,6 +253,8 @@ struct block_device *open_bdev_exclusive(const char *path, fmode_t mode, void *h
 static inline
 void close_bdev_exclusive(struct block_device *bdev, fmode_t mode)
 {
+	UNREFERENCED_PARAMETER(mode);
+	UNREFERENCED_PARAMETER(bdev);
 #ifndef _WIN32
 	/* mode ignored. */
 	close_bdev_excl(bdev);
@@ -262,6 +270,8 @@ static inline struct block_device *blkdev_get_by_path(const char *path,
 #endif
 static inline int drbd_blkdev_put(struct block_device *bdev, fmode_t mode)
 {
+	UNREFERENCED_PARAMETER(mode);
+
 #ifdef _WIN32
 	// DW-1109: put ref count and delete bdev if ref gets 0
 	struct block_device *b = bdev->bd_parent?bdev->bd_parent:bdev;
@@ -369,6 +379,7 @@ static inline void drbd_plug_device(struct request_queue *q)
 #else
 static inline void drbd_plug_device(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 }
 #endif
 
@@ -444,6 +455,9 @@ static inline struct crypto_hash *
 crypto_alloc_hash(char *alg_name, u32 type, u32 mask)
 #endif
 {
+	UNREFERENCED_PARAMETER(type);
+	UNREFERENCED_PARAMETER(mask);
+
 	struct crypto_hash *ch;
 	char *closing_bracket;
 
@@ -500,6 +514,11 @@ static inline int
 crypto_hash_digest(struct hash_desc *desc, struct scatterlist *sg,
 		   unsigned int nbytes, u8 *out)
 {
+	UNREFERENCED_PARAMETER(sg);
+	UNREFERENCED_PARAMETER(out);
+	UNREFERENCED_PARAMETER(nbytes);
+	UNREFERENCED_PARAMETER(desc);
+
 #ifdef _WIN32
 #else
 
@@ -534,6 +553,8 @@ static inline struct crypto_tfm *crypto_hash_tfm(struct crypto_hash *tfm)
 
 static inline int crypto_hash_init(struct hash_desc *desc)
 {
+	UNREFERENCED_PARAMETER(desc);
+
 #ifndef _WIN32
 	crypto_digest_init(desc->tfm->base);
 #endif
@@ -789,6 +810,9 @@ static inline void blk_queue_max_hw_sectors(struct request_queue *q, unsigned in
 #ifndef COMPAT_HAVE_BLK_QUEUE_MAX_SEGMENTS
 static inline void blk_queue_max_segments(struct request_queue *q, unsigned short max_segments)
 {
+	UNREFERENCED_PARAMETER(q);
+	UNREFERENCED_PARAMETER(max_segments);
+
 #ifndef _WIN32
 	blk_queue_max_phys_segments(q, max_segments);
 	blk_queue_max_hw_segments(q, max_segments);
@@ -1481,6 +1505,9 @@ struct genl_multicast_group {
 static inline int genl_register_mc_group(struct genl_family *family,
 					 struct genl_multicast_group *grp)
 {
+	UNREFERENCED_PARAMETER(family);
+	UNREFERENCED_PARAMETER(grp);
+
 	grp->id = 1;
 	return 0;
 }
@@ -1488,6 +1515,8 @@ static inline int genl_register_mc_group(struct genl_family *family,
 static inline void genl_unregister_mc_group(struct genl_family *family,
 					    struct genl_multicast_group *grp)
 {
+	UNREFERENCED_PARAMETER(family);
+	UNREFERENCED_PARAMETER(grp);
 }
 
 #endif
@@ -1557,6 +1586,8 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 #else
 static __inline int kref_get_unless_zero(struct kref *kref)
 {
+	UNREFERENCED_PARAMETER(kref);
+
     return 0;
 }
 #endif
@@ -1715,12 +1746,12 @@ static inline void genl_unlock(void)  { }
 	})
 #endif
 # ifndef blk_queue_discard
-#  define blk_queue_discard(q)   (0)
+#  define blk_queue_discard(q)   (false,false)
 #  define QUEUE_FLAG_DISCARD    (-1)
 # endif
 
 # ifndef blk_queue_secdiscard
-#  define blk_queue_secdiscard(q)   (0)
+#  define blk_queue_secdiscard(q)   (false,false)
 #  define QUEUE_FLAG_SECDISCARD    (-1)
 # endif
 #endif
@@ -1728,6 +1759,8 @@ static inline void genl_unlock(void)  { }
 #ifndef COMPAT_HAVE_BLK_SET_STACKING_LIMITS
 static inline void blk_set_stacking_limits(struct queue_limits *lim)
 {
+	UNREFERENCED_PARAMETER(lim);
+
 # ifdef COMPAT_QUEUE_LIMITS_HAS_DISCARD_ZEROES_DATA
 	lim->discard_zeroes_data = 1;
 # endif
@@ -1792,15 +1825,20 @@ static inline void blk_set_stacking_limits(struct queue_limits *lim)
             conn = list_entry_rcu(__next, type, member);   \
         else   \
            conn = NULL;    \
-    }while (0)
+	    } while(false,false)
 #endif
 #endif
+
+typedef struct hd_struct  hd_struct;
 
 #ifndef COMPAT_HAVE_GENERIC_START_IO_ACCT
 #ifndef __disk_stat_inc
 static inline void generic_start_io_acct(int rw, unsigned long sectors,
 					 struct hd_struct *part)
 {
+	UNREFERENCED_PARAMETER(sectors);
+	UNREFERENCED_PARAMETER(rw);
+	UNREFERENCED_PARAMETER(part);
 #ifndef _WIN32
 	int cpu;
 	BUILD_BUG_ON(sizeof(atomic_t) != sizeof(part->in_flight[0]));
@@ -1820,8 +1858,11 @@ static inline void generic_start_io_acct(int rw, unsigned long sectors,
 }
 
 static inline void generic_end_io_acct(int rw, struct hd_struct *part,
-				  unsigned long start_time)
+				  ULONG_PTR start_time)
 {
+	UNREFERENCED_PARAMETER(start_time);
+	UNREFERENCED_PARAMETER(rw);
+	UNREFERENCED_PARAMETER(part);
 #ifndef _WIN32
 	unsigned long duration = jiffies - start_time;
 	int cpu;
@@ -1880,6 +1921,9 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 #ifndef COMPAT_HAVE_IDR_IS_EMPTY
 static int idr_has_entry(int id, void *p, void *data)
 {
+	UNREFERENCED_PARAMETER(id);
+	UNREFERENCED_PARAMETER(p);
+	UNREFERENCED_PARAMETER(data);
 	return 1;
 }
 
