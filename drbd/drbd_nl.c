@@ -6019,7 +6019,9 @@ int drbd_adm_dump_devices(struct sk_buff *skb, struct netlink_callback *cb)
 #endif
 		}
 	}
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(cb->args[1]);
+#endif
 	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_get_next(idr_to_search, &minor);
@@ -6423,8 +6425,9 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 		cb->args[0] = (long)resource;
 #endif
 	}
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(cb->args[1]);
+#endif
 	minor = (int)cb->args[1];
 	idr_to_search = resource ? &resource->devices : &drbd_devices;
 	device = idr_find(idr_to_search, minor);
@@ -7647,7 +7650,9 @@ static int get_initial_state(struct sk_buff *skb, struct netlink_callback *cb)
 	   matter if the initial state events mix with later state chage
 	   events; we can always tell the events apart by the NOTIFY_EXISTS
 	   flag. */
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(seq);
+#endif
 
 	cb->args[5]--;
 	if (cb->args[5] == 1) {

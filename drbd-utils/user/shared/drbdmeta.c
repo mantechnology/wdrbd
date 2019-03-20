@@ -2230,7 +2230,7 @@ int replay_al_84(struct format *cfg, uint32_t *hot_extent)
 
 		for (i = 0; i < AL_CONTEXT_PER_TRANSACTION; i++) {
 			unsigned slot = al_cpu[idx].context_start_slot_nr + i;
-			if (al_cpu[idx].context[i] == UINT16_MAX && slot >= al_cpu[idx].context_size)
+			if (al_cpu[idx].context[i] == UINT32_MAX && slot >= al_cpu[idx].context_size)
 				continue;
 			if (slot >= AL_EXTENTS_MAX) {
 				fprintf(stderr, "slot number out of range: tr:%u slot:%u\n",

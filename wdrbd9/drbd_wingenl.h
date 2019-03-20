@@ -531,7 +531,9 @@ static __inline int nla_put_u64(struct sk_buff *msg, int attrtype, __u64 value)
 static __inline int nla_put_string(struct sk_buff *msg, int attrtype,
     const char *str)
 {
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(str)); 
+#endif
     return nla_put(msg, attrtype, (int)(strlen(str) + 1), str);
 }
 

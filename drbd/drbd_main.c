@@ -1370,8 +1370,10 @@ static int flush_send_buffer(struct drbd_connection *connection, enum drbd_strea
 
 	msg_flags = sbuf->additional_size ? MSG_MORE : 0;
 	offset = sbuf->unsent - (char *)page_address(sbuf->page);
-#ifdef _WIN32
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(offset);
+#endif
+#ifdef _WIN32
     err = tr_ops->send_page(transport, drbd_stream, sbuf->page->addr, (int)offset, (size_t)size, msg_flags);
 #else
 	err = tr_ops->send_page(transport, drbd_stream, sbuf->page, offset, size, msg_flags);
@@ -1770,7 +1772,9 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1253: sizeof(bitmap_uuids_mask) is 8, it cannot be found all nodes. so, change it to DRBD_NODE_ID_MAX. 
 	for_each_set_bit(i, (ULONG_PTR*)&bitmap_uuids_mask, DRBD_NODE_ID_MAX) {
+#ifdef _WIN64
 		BUG_ON_INT32_OVER(i);
+#endif
 #else
 	for_each_set_bit(i, (unsigned long *)&bitmap_uuids_mask, sizeof(bitmap_uuids_mask))
 #endif
@@ -1820,8 +1824,9 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
 	put_ldev(device);
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
+#endif
 	p_size = (int)(sizeof(*p) + (hweight64(bitmap_uuids_mask) + HISTORY_UUIDS) * sizeof(p->other_uuids[0]));
 	resize_prepared_command(peer_device->connection, DATA_STREAM, p_size);
 	return drbd_send_command(peer_device, P_UUIDS110, DATA_STREAM);

@@ -445,9 +445,9 @@ static int dtt_recv_short(struct socket *socket, void *buf, size_t size, int fla
 
 #ifdef _WIN32
 	flags = WSK_FLAG_WAITALL;
-
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(size);
-
+#endif
 	return Receive(socket, buf, (unsigned int)size, flags, socket->sk_linux_attr->sk_rcvtimeo);
 #else
 	return kernel_recvmsg(socket, &msg, &iov, 1, size, msg.msg_flags);
@@ -500,7 +500,9 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 	struct page *page;
 	int err;
 
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
+#endif
 	WDRBD_INFO("DIV_ROUND_UP : %u\n", DIV_ROUND_UP(size, PAGE_SIZE));
 	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
@@ -2220,7 +2222,9 @@ static int dtt_send_page(struct drbd_transport *transport, enum drbd_stream stre
 #ifndef _WIN32
 	mm_segment_t oldfs = get_fs();
 #endif
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(size);
+#endif
 	int len = (int)size;
 	int err = -EIO;
 

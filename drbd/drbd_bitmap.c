@@ -403,8 +403,9 @@ static struct page **bm_realloc_pages(struct drbd_bitmap *b, unsigned long want)
 	if (have == want)
 		return old_pages;
 
-
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(sizeof(struct page *)*want);
+#endif
 	/* Trying kmalloc first, falling back to vmalloc.
 	 * GFP_NOIO, as this is called while drbd IO is "suspended",
 	 * and during resize or attach on diskless Primary,
@@ -1325,9 +1326,9 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	ULONG_PTR idx = bm_page_to_idx(bio->bi_io_vec[0].bv_page);
 
 	BIO_ENDIO_FN_START;
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(idx);
-
+#endif
 	if ((ctx->flags & BM_AIO_COPY_PAGES) == 0 &&
 	    !bm_test_page_unchanged(b->bm_pages[idx]))
 		drbd_warn(device, "bitmap page idx %lu changed during IO!\n", idx);
@@ -1563,9 +1564,11 @@ static int bm_rw_range(struct drbd_device *device,
 	spin_unlock_irq(&device->resource->req_lock);
 
 	now = jiffies;
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(start_page);
 	BUG_ON_INT32_OVER(end_page);
+#endif
+
 	/* let the layers below us try to merge these bios... */
 	if (flags & BM_AIO_READ) {
 		for (i = start_page; i <= end_page; i++) {
@@ -1683,7 +1686,9 @@ static int bm_rw_range(struct drbd_device *device,
 
 static int bm_rw(struct drbd_device *device, unsigned flags)
 {
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(device->bitmap->bm_number_of_pages);
+#endif
 	return bm_rw_range(device, 0, device->bitmap->bm_number_of_pages, flags);
 }
 
@@ -1730,9 +1735,9 @@ void drbd_bm_mark_range_for_writeout(struct drbd_device *device, unsigned long s
 
 	page_nr = bit_to_page_interleaved(bitmap, 0, start);
 	last_page = bit_to_page_interleaved(bitmap, bitmap->bm_max_peers - 1, end);
-	
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(page_nr);
-
+#endif
 	for (; page_nr <= last_page; page_nr++) 
 		push_al_bitmap_hint(device, (unsigned int)page_nr);
 }
@@ -1850,7 +1855,9 @@ unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_in
 #endif
 {
 	ULONG_PTR count = bm_op(device, bitmap_index, start, end, BM_OP_SET, NULL);
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
+#endif
 	return (unsigned int)count;
 }
 #ifdef _WIN32
@@ -1949,7 +1956,9 @@ unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_
 #endif
 {
 	ULONG_PTR count = bm_op(device, bitmap_index, start, end, BM_OP_CLEAR, NULL);
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
+#endif
 	return (unsigned int)count;
 }
 
@@ -1993,7 +2002,9 @@ int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, un
 #endif
 {
 	ULONG_PTR count = bm_op(device, bitmap_index, s, e, BM_OP_COUNT, NULL);
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(count);
+#endif
 	return (int)count;
 }
 

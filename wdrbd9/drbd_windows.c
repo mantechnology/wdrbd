@@ -462,7 +462,9 @@ char *kstrdup(const char *s, int gfp)
 		return NULL;
 
 	len = strlen(s) + 1;
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(len);
+#endif
 	buf = kzalloc((int)len, gfp, 'C3DW');
 	if (buf)
 		memcpy(buf, s, len);
@@ -651,8 +653,9 @@ struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
 		WDRBD_ERROR("kzalloc failed\n");
 		return 0;
 	}
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(size);
+#endif
 	p->size = (int)size;
 	p->name = name;
 	return p;
@@ -2913,8 +2916,9 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 
 	const size_t  sCharAreaStartPos = sAddrAreaSize + sHexAreaSize;
 	sLineSize = sAddrAreaSize + sHexAreaSize + aWidth + 1; /* Null terminator */
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(sLineSize);
+#endif
 	sLine = (char *) kmalloc((int)sLineSize, 0, '54DW');
 	if (!sLine)
 	{
@@ -2979,8 +2983,9 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		WDRBD_ERROR("call_usermodehelper kzalloc failed\n");
 		return -1;
 	}
-	
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
+#endif
 	leng = (int)(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line) {

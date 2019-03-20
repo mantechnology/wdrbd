@@ -750,9 +750,9 @@ void _printk(const char * func, const char * format, ...)
 	va_start(args, format);
 	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
-
+#endif
 	int length = (int)strlen(buf);
 	if (length > MAX_DRBDLOG_BUF) {
 		length = MAX_DRBDLOG_BUF - 1;

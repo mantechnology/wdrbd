@@ -216,10 +216,10 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
         memset(dst, 0, dstsize);
         memcpy(dst, src, len);
     }
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(dstsize);
 	BUG_ON_INT32_OVER(srclen);
-
+#endif
     return srclen;
 }
 
@@ -269,10 +269,11 @@ int nla_memcmp(const struct nlattr *nla, const void *data,
 int nla_strcmp(const struct nlattr *nla, const char *str)
 {
 
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(strlen(str) + 1);
+#endif
     int len = (int)strlen(str) + 1;
     int d = nla_len(nla) - len;
-
-	BUG_ON_INT32_OVER(strlen(str) + 1);
 	BUG_ON_UINT16_OVER(len);
 
     if (d == 0)

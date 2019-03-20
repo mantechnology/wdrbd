@@ -5865,8 +5865,9 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 	bitmap_uuids_mask = be64_to_cpu(p->bitmap_uuids_mask);
 	if (bitmap_uuids_mask & ~(NODE_MASK(DRBD_PEERS_MAX) - 1))
 		return -EIO;
-
+#ifdef _WIN64
 	BUG_ON_INT32_OVER(hweight64(bitmap_uuids_mask));
+#endif
 	bitmap_uuids = (int)hweight64(bitmap_uuids_mask);
 
 	if (pi->size / sizeof(p->other_uuids[0]) < (unsigned int)bitmap_uuids)

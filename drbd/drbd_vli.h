@@ -313,7 +313,9 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
 		return -EINVAL;
 
 	if ((size_t)(bs->cur.b + ((bs->cur.bit + bs->pad_bits + bits - 1) >> 3) - bs->buf) >= bs->buf_len) {
-		BUG_ON_INT32_OVER(((bs->buf_len - (bs->cur.b - bs->buf)) << 3) - bs->cur.bit - bs->pad_bits);
+#ifdef _WIN64
+		BUG_ON_UINT32_OVER(((bs->buf_len - (bs->cur.b - bs->buf)) << 3) - bs->cur.bit - bs->pad_bits);
+#endif
 		bits = (int)((bs->buf_len - (bs->cur.b - bs->buf)) << 3) - bs->cur.bit - bs->pad_bits;
 	}
 

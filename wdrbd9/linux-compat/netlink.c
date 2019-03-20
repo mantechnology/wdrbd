@@ -332,9 +332,9 @@ __inline
 void _genlmsg_init(struct sk_buff * pmsg, size_t size)
 {
     RtlZeroMemory(pmsg, size);
-
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(size - sizeof(*pmsg));
-
+#endif
     pmsg->tail = 0;
     pmsg->end = (unsigned int)(size - sizeof(*pmsg));
 }
@@ -350,7 +350,9 @@ struct sk_buff *genlmsg_new(size_t payload, gfp_t flags)
         skb = ExAllocateFromNPagedLookasideList(&genl_msg_mempool);
 	}
 	else {
+#ifdef _WIN64
 		BUG_ON_INT32_OVER(sizeof(*skb) + payload);
+#endif
         skb = kmalloc((int)(sizeof(*skb) + payload), GFP_KERNEL, '67DW');
     }
 

@@ -229,7 +229,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
+#ifdef _WIN64
 	BUG_ON_UINT32_OVER(peer_req->flags);
+#endif
 	if (is_failed_barrier((int)peer_req->flags)) {
 		drbd_bump_write_ordering(device->resource, device->ldev, WO_BDEV_FLUSH);
 		spin_lock_irqsave(&device->resource->req_lock, flags);
@@ -3035,9 +3037,11 @@ static unsigned long get_work_bits(const unsigned long mask, unsigned long *flag
 	do {
 		old = *flags;
 		new = old & ~mask;
-#ifdef _WIN32
+#ifdef _WIN64
 		BUG_ON_UINT32_OVER(old);
 		BUG_ON_UINT32_OVER(new);
+#endif
+#ifdef _WIN32
 	} while (atomic_cmpxchg((atomic_t *)flags, (int)old, (int)new) != (int)old);
 #else
 	} while (cmpxchg(flags, old, new) != old);
