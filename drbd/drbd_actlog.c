@@ -325,7 +325,8 @@ struct get_activity_log_ref_ctx {
 	/* out: do we need to wake_up(&device->al_wait)? */
 	bool wake_up;
 };
-
+//DW-1601 Not used to remove act_log and resync_lu associations
+/*
 static struct bm_extent*
 find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 {
@@ -357,7 +358,10 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 	WDRBD_TRACE_AL("return NULL\n");
 	return NULL;
 }
+*/
 
+//DW-1601 Not used to remove act_log and resync_lu associations
+/*
 void
 set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 {
@@ -376,25 +380,28 @@ set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 	}
 	rcu_read_unlock();
 }
+*/
 
 static
 struct lc_element *__al_get(struct get_activity_log_ref_ctx *al_ctx)
 {
 	struct drbd_device *device = al_ctx->device;
 	struct lc_element *al_ext = NULL;
-	struct bm_extent *bm_ext;
+	//struct bm_extent *bm_ext;
 
 	spin_lock_irq(&device->al_lock);
-	bm_ext = find_active_resync_extent(al_ctx);
-	if (bm_ext) {
-		set_bme_priority(al_ctx);
-		goto out;
-	}
+	//DW-1601 Not used to remove act_log and resync_lu associations
+	//bm_ext = find_active_resync_extent(al_ctx);
+	//if (bm_ext) {
+	//	set_bme_priority(al_ctx);
+	//	goto out;
+	//}
+
 	if (al_ctx->nonblock)
 		al_ext = lc_try_get(device->act_log, al_ctx->enr);
 	else
 		al_ext = lc_get(device->act_log, al_ctx->enr);
-out: 
+//out: 
 	spin_unlock_irq(&device->al_lock);
 	if (al_ctx->wake_up)
 		wake_up(&device->al_wait);
@@ -739,14 +746,14 @@ int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_
 int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *i)
 {
 	struct lru_cache *al = device->act_log;
-	struct bm_extent *bm_ext;
+	//struct bm_extent *bm_ext;
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
 	ULONG_PTR first = (ULONG_PTR)i->sector >> (AL_EXTENT_SHIFT - 9);
 	ULONG_PTR last = i->size == 0 ? first : (ULONG_PTR)(i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT - 9);
 	ULONG_PTR nr_al_extents;
 	unsigned available_update_slots;
-	struct get_activity_log_ref_ctx al_ctx = { .device = device, };
+	//struct get_activity_log_ref_ctx al_ctx = { .device = device, };
 	ULONG_PTR enr;
 
 	D_ASSERT(device, first <= last);
@@ -789,17 +796,18 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		return -ENOBUFS;
 	}
 
+	//DW-1601 Not used to remove act_log and resync_lu associations
 	/* Is resync active in this area? */
-	for (enr = first; enr <= last; enr++) {
-		al_ctx.enr = (unsigned int)enr;
-		bm_ext = find_active_resync_extent(&al_ctx);
-		if (unlikely(bm_ext != NULL)) {
-			set_bme_priority(&al_ctx);
-			if (al_ctx.wake_up)
-				return -EBUSY;
-			return -EWOULDBLOCK;
-		}
-	}
+	//for (enr = first; enr <= last; enr++) {
+	//	al_ctx.enr = (unsigned int)enr;
+	//	bm_ext = find_active_resync_extent(&al_ctx);
+	//	if (unlikely(bm_ext != NULL)) {
+	//		set_bme_priority(&al_ctx);
+	//		if (al_ctx.wake_up)
+	//			return -EBUSY;
+	//		return -EWOULDBLOCK;
+	//	}
+	//}
 
 
 #ifdef _WIN32 // DW-1513 : At this point, LC_STARVING flag should be cleared. Otherwise, LOGIC BUG occurs.
@@ -1276,7 +1284,7 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		wake_up(&device->al_wait);
 	}
 	else {
-		//DW-1761 : calls wake_up() to resolve the al_wait timeout when duplicate "SET_OUT_OF_SYNC"
+		//DW-1601 calls wake_up() to resolve the al_wait timeout when duplicate "SET_OUT_OF_SYNC"
 		if (mode == SET_OUT_OF_SYNC)
 			wake_up(&device->al_wait);
 	}
@@ -1648,7 +1656,7 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 	const ULONG_PTR al_enr = enr * AL_EXT_PER_BM_SECT;
 	struct lc_element *e;
 	struct bm_extent *bm_ext;
-	int i;
+	//int i;
 
 	if (throttle)
 		throttle = drbd_rs_should_slow_down(peer_device, sector, true);
@@ -1743,13 +1751,13 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 		goto check_al;
 	}
 check_al:
-	for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
-		if (lc_is_used(device->act_log, (unsigned int)(al_enr + i))){
-			WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n",
-				sector, enr, al_enr + i); 
-			goto try_again;
-		}
-	}
+	//DW-1601 Not used to remove act_log and resync_lu associations
+	//for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
+	//	if (lc_is_used(device->act_log, (unsigned int)(al_enr + i))){
+	//		WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n", sector, enr, al_enr + i);
+	//		goto try_again;
+	//	}
+	//}
 	set_bit(BME_LOCKED, &bm_ext->flags);
 proceed:
 	WDRBD_TRACE_AL("proceed sector = %lu, enr = %lu\n", sector, enr);
@@ -1803,7 +1811,7 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
 		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u]) called, "
-		    "but refcnt is 0!?\n",
+		    "but refcnt is 0!?\n", 
 			(unsigned long long)sector, (unsigned int)enr);
 		return;
 	}

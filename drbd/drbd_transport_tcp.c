@@ -503,7 +503,6 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
 #endif
-	WDRBD_INFO("DIV_ROUND_UP : %u\n", DIV_ROUND_UP(size, PAGE_SIZE));
 	drbd_alloc_page_chain(transport, chain, (unsigned int)DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
 	page = chain->head;
 	if (!page)

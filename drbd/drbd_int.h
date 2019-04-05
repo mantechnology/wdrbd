@@ -135,6 +135,8 @@ extern char usermode_helper[];
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
 #define ID_SYNCER (UINT64_MAX)
+//DW-1601
+#define ID_SYNCER_SPLIT (ID_SYNCER - 1)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
@@ -784,6 +786,12 @@ struct drbd_peer_request {
 	};
 #ifdef _WIN32
 	void* peer_req_databuf;
+
+	struct {
+		ULONG_PTR first;		/* DW-1601 first bitmap bit of split data */
+		ULONG_PTR last;		/* DW-1601 last bitmap bit of split data  */
+		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
+	};
 #endif
 };
 
@@ -847,6 +855,14 @@ enum {
 
 	/* Hold reference in activity log */
 	__EE_IN_ACTLOG,
+
+	//DW-1601
+	/* split request */
+	__EE_SPLIT_REQUEST,
+
+	//DW-1601
+	/* last split request */
+	__EE_SPLIT_LAST_REQUEST,
 };
 #define EE_MAY_SET_IN_SYNC     		(1<<__EE_MAY_SET_IN_SYNC)			//LSB bit field:0
 #define EE_IS_BARRIER          		(1<<__EE_IS_BARRIER)				//LSB bit field:1
@@ -864,6 +880,9 @@ enum {
 #define EE_APPLICATION				(1<<__EE_APPLICATION)				//LSB bit field:13
 #define EE_RS_THIN_REQ				(1<<__EE_RS_THIN_REQ)				//LSB bit field:14
 #define EE_IN_ACTLOG				(1<<__EE_IN_ACTLOG)					//LSB bit field:15
+//DW-1601
+#define EE_SPLIT_REQUEST			(1<<__EE_SPLIT_REQUEST)				//LSB bit field:16 
+#define EE_SPLIT_LAST_REQUEST		(1<<__EE_SPLIT_LAST_REQUEST)				//LSB bit field:17
 
 /* flag bits per device */
 enum {
