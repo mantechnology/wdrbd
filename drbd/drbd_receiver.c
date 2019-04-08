@@ -2552,7 +2552,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 	drbd_info(peer_device, "##sector(%u), size(%u), first(%u) ~ last(%u), (last - first) : %u, split_cnt : %d, last_oss : %u\n", d->sector, d->bi_size, first, last, last - first, atomic_read(split_cnt), last_oos);
 
-	if (find_sync_bit) {
+	if (find_sync_bit && peer_device->connection->agreed_pro_version >= 113) {
 		prev_index_sync = false;
 
 		for (ULONG_PTR index = first; index < last; index++) {
@@ -9999,17 +9999,31 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		return -EIO;
 	device = peer_device->device;
 
-	//DW-1601
-	if (p->block_id != ID_SYNCER_SPLIT)
+	if (connection->agreed_pro_version >= 113) {
+		//DW-1601
+		if (p->block_id != ID_SYNCER_SPLIT)
+			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
+
+		//DW-1601
+		if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
+			drbd_set_in_sync(peer_device, sector, blksize);
+			if (p->block_id == ID_SYNCER)
+				dec_rs_pending(peer_device);
+			return 0;
+		}
+	}
+	else {
 		update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
-	//DW-1601
-	if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
-		drbd_set_in_sync(peer_device, sector, blksize);
-		if (p->block_id == ID_SYNCER)
+		//DW-1601
+		if (p->block_id == ID_SYNCER) {
+			drbd_set_in_sync(peer_device, sector, blksize);
 			dec_rs_pending(peer_device);
-		return 0;
+
+			return 0;
+		}
 	}
+
 
 	switch (pi->cmd) {
 	case P_RS_WRITE_ACK:
@@ -10050,19 +10064,33 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		return -EIO;
 	device = peer_device->device;
 
+
 	//DW-1601
-	if (p->block_id != ID_SYNCER_SPLIT)
+	if (connection->agreed_pro_version >= 113) {
+		if (p->block_id != ID_SYNCER_SPLIT)
+			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
+
+		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
+			set_bit(GOT_NEG_ACK, &peer_device->flags);
+
+		if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
+			if (p->block_id == ID_SYNCER)
+				dec_rs_pending(peer_device);
+			drbd_rs_failed_io(peer_device, sector, size);
+			return 0;
+		}
+	}
+	else {
 		update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
-	if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
-		set_bit(GOT_NEG_ACK, &peer_device->flags);
+		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
+			set_bit(GOT_NEG_ACK, &peer_device->flags);
 
-	//DW-1601
-	if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
-		if (p->block_id == ID_SYNCER)
+		if (p->block_id == ID_SYNCER) {
 			dec_rs_pending(peer_device);
-		drbd_rs_failed_io(peer_device, sector, size);
-		return 0;
+			drbd_rs_failed_io(peer_device, sector, size);
+			return 0;
+		}
 	}
 
 	err = validate_req_change_req_state(peer_device, p->block_id, sector,
