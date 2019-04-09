@@ -377,9 +377,10 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 
 			// DW-1695 fix PFN_LIST_CORRUPT-9A bugcheck by releasing the peer_req_databuf when EE_WRITE peer_req is completed.
 			// for case, peer_req_databuf may be released before the write completion. 
-			if(peer_req->flags & EE_WRITE) {
-				kfree2 (peer_req->peer_req_databuf);
-			}
+			// DW-1773 peer_request is managed as inactive_ee, so peer_req_databuf is modified to be released from drbd_free_peer_req()
+			//if(peer_req->flags & EE_WRITE) {
+			//	kfree2 (peer_req->peer_req_databuf);
+			//}
 		}
 		IoFreeIrp(Irp);
 	}
