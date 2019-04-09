@@ -2347,18 +2347,19 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+
 		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
 			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 	}
 	else {
+		drbd_rs_failed_io(peer_device, peer_req->i.sector, peer_req->i.size);
 		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST)) {
-			drbd_rs_failed_io(peer_device, peer_req->i.sector, peer_req->i.size);
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
 	}
 
 	if (peer_req->flags & EE_SPLIT_REQUEST || peer_req->flags & EE_SPLIT_LAST_REQUEST) {
-		if (!peer_req->count || (peer_req->count && 0 == atomic_dec_return(peer_req->count))) {
+		if (peer_req->count && 0 == atomic_dec_return(peer_req->count)) {
 			dec_unacked(peer_device);
 			bool bit_state = false;	//true : sync, false : out of sync
 			ULONG_PTR begin_index = peer_req->first;
@@ -2473,8 +2474,10 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 	split_peer_request->flags |= EE_WRITE;
 
 	drbd_alloc_page_chain(transport, &split_peer_request->page_chain, DIV_ROUND_UP(split_peer_request->i.size, PAGE_SIZE), GFP_TRY);
-	if (split_peer_request->page_chain.head == NULL)
+	if (split_peer_request->page_chain.head == NULL) {
+		drbd_free_peer_req(split_peer_request);
 		return NULL;
+	}
 
 	split_peer_request->peer_req_databuf = split_peer_request->page_chain.head;
 	memcpy(split_peer_request->peer_req_databuf, (char*)peer_request->peer_req_databuf + offset, split_peer_request->i.size);
@@ -2495,6 +2498,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	struct drbd_peer_request *peer_req;
 
 	unsigned size_oos;
+	int err = 0;
 
 	ULONG_PTR first, last, last_oos, offset;
 	int submit_cnt = 0;
@@ -2534,12 +2538,12 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				prev_index_sync = false;
 			}
 			else {
-				//if ((first + 2) < last && (first + 1) == i) {
-				//	find_sync_bit = true;
-				//	drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
-				//	atomic_inc(split_cnt);
-				//	WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
-				//}
+				if ((first + 2) < last && (first + 1) == i) {
+					find_sync_bit = true;
+					drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
+					atomic_inc(split_cnt);
+					WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
+				}
 			}
 
 			last_oos = i;
@@ -2561,15 +2565,16 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			submit_peer:
 				if (first == last) {
 					//DW-1601 when the resync area is sync, set to "out of sync" to keep up-to-date data.
-					drbd_debug(peer_device, "##fast path, set out of sync bitmap(%d), first : %u, last :%u\n", index, first, last);
+					drbd_info(peer_device, "##fast path, set out of sync bitmap(%d), first : %u, last :%u\n", index, first, last);
 
 					drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
 					drbd_rs_failed_io(peer_device, peer_req->i.sector, peer_req->i.size);
 
 					dec_unacked(peer_device);
+					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 					drbd_free_peer_req(peer_req);
 
-					return drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+					return err;
 				}
 
 				//DW-1601 if offset is set to "out of sync" previously, write request to split_peer_req for data in index now from the corresponding offset.
@@ -2589,6 +2594,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							kfree2(split_cnt);
 
 						drbd_free_peer_req(peer_req);
+						drbd_err(device, "split_peer_req alloc failed\n");
 						return -EIO;
 					}
 
