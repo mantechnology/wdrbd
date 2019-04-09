@@ -1284,7 +1284,7 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		wake_up(&device->al_wait);
 	}
 	else {
-		//DW-1601 calls wake_up() to resolve the al_wait timeout when duplicate "SET_OUT_OF_SYNC"
+		//DW-1761 calls wake_up() to resolve the al_wait timeout when duplicate "SET_OUT_OF_SYNC"
 		if (mode == SET_OUT_OF_SYNC)
 			wake_up(&device->al_wait);
 	}
