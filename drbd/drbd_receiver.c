@@ -8887,6 +8887,8 @@ void conn_disconnect(struct drbd_connection *connection)
 	}
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
+	//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
+	list_splice_init(&connection->read_ee, &connection->inactive_ee);
 	spin_unlock(&resource->req_lock);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
@@ -8930,16 +8932,16 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	i = drbd_free_peer_reqs(resource, &connection->read_ee, true);
 	if (i)
-		drbd_info(connection, "read_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "read_ee not empty, killed %u entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->active_ee, true);
 	if (i)
-		drbd_info(connection, "active_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "active_ee not empty, killed %u entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->sync_ee, true);
 	if (i)
-		drbd_info(connection, "sync_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "sync_ee not empty, killed %u entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->net_ee, true);
 	if (i)
-		drbd_info(connection, "net_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "net_ee not empty, killed %u entries\n", i);
 
 	cleanup_unacked_peer_requests(connection);
 	cleanup_peer_ack_list(connection);
