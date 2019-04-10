@@ -2539,14 +2539,15 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				atomic_inc(split_cnt);
 				prev_index_sync = false;
 			}
-			else {
-				if ((first + 2) < last && (first + 1) == i) {
-					find_sync_bit = true;
-					drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
-					atomic_inc(split_cnt);
-					WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
-				}
-			}
+			//DW-1601 "Test Code!!!!!", forced sync bit setting code
+			//else {
+			//	if ((first + 2) < last && (first + 1) == i) {
+			//		find_sync_bit = true;
+			//		drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
+			//		atomic_inc(split_cnt);
+			//		WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
+			//	}
+			//}
 
 			last_oos = i;
 		}
