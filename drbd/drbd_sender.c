@@ -183,6 +183,19 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
+	//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
+	struct drbd_peer_request *p_req, *t_inative;
+	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
+		if (peer_req == p_req) {
+			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			list_del(&peer_req->w.list);
+			drbd_free_peer_req(peer_req);
+			spin_unlock_irqrestore(&device->resource->req_lock, flags);
+			return;
+			
+		}
+	}
+
 	device->read_cnt += peer_req->i.size >> 9;
 	list_del(&peer_req->w.list);
 	if (list_empty(&connection->read_ee))
@@ -380,9 +393,10 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 
 			// DW-1695 fix PFN_LIST_CORRUPT-9A bugcheck by releasing the peer_req_databuf when EE_WRITE peer_req is completed.
 			// for case, peer_req_databuf may be released before the write completion. 
-			if(peer_req->flags & EE_WRITE) {
-				kfree2 (peer_req->peer_req_databuf);
-			}
+			// DW-1773 peer_request is managed as inactive_ee, so peer_req_databuf is modified to be released from drbd_free_peer_req()
+			//if(peer_req->flags & EE_WRITE) {
+			//	kfree2 (peer_req->peer_req_databuf);
+			//}
 		}
 		IoFreeIrp(Irp);
 	}
