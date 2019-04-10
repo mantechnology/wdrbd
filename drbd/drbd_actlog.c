@@ -1252,7 +1252,8 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long c;
 		int bmi = peer_device->bitmap_index;
 
-		if (mode == RECORD_RS_FAILED)
+		//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
+		if (mode == RECORD_RS_FAILED || mode == RECORD_RS_ALREADY_SYNC)
 			/* Only called from drbd_rs_failed_io(), bits
 			 * supposedly still set.  Recount, maybe some
 			 * of the bits have been successfully cleared
@@ -1272,15 +1273,22 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		}
 		sbnr = tbnr + 1;
 	}
+
 	if (count) {
 		if (mode == SET_IN_SYNC) {
 			ULONG_PTR still_to_go = drbd_bm_total_weight(peer_device);
-			bool rs_is_done = (still_to_go <= peer_device->rs_failed);
+			//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
+			bool rs_is_done = (still_to_go <= (peer_device->rs_failed + peer_device->rs_already_sync));
 			drbd_advance_rs_marks(peer_device, still_to_go);
 			if (cleared || rs_is_done)
 				maybe_schedule_on_disk_bitmap_update(peer_device, rs_is_done);
-		} else if (mode == RECORD_RS_FAILED)
+		}
+		else if (mode == RECORD_RS_FAILED)
 			peer_device->rs_failed += count;
+		//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
+		else if (mode == RECORD_RS_ALREADY_SYNC)
+			peer_device->rs_already_sync += count;
+
 		wake_up(&device->al_wait);
 	}
 	else {

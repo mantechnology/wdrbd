@@ -2372,7 +2372,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(index - begin_index) << 9;
 						drbd_info(peer_device, "--set in sync, bitmap first : %u, range : %u ~ %u, size %u\n", peer_req->first, begin_index, index, (BM_BIT_TO_SECT(index - begin_index) << 9));
 						if (index == last)
-							peer_req->block_id = ID_SYNCER;
+							peer_req->block_id = ID_SYNCER_SPLIT_DONE;
 						else
 							peer_req->block_id = ID_SYNCER_SPLIT;
 
@@ -2394,11 +2394,11 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 						//DW-1601 If out of sync is found within range, it is set as a failure.
 						peer_req->i.sector = BM_BIT_TO_SECT(begin_index);
 						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(index - begin_index) << 9;
-						drbd_rs_failed_io(peer_device, peer_req->i.sector, peer_req->i.size);
 						drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+						drbd_rs_already_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 						drbd_info(peer_device, "--set failed io, bitmap first : %u, range : %u ~ %u, size %u\n", peer_req->first, begin_index, index, (BM_BIT_TO_SECT(index - begin_index) << 9));
 						if (index == last)
-							peer_req->block_id = ID_SYNCER;
+							peer_req->block_id = ID_SYNCER_ALREADY_DONE;
 						else
 							peer_req->block_id = ID_SYNCER_SPLIT;
 
@@ -10012,10 +10012,12 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		if (p->block_id != ID_SYNCER_SPLIT)
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
-		if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
+		if (p->block_id == ID_SYNCER_SPLIT_DONE) {
+			dec_rs_pending(peer_device);
+		}
+		if (p->block_id == ID_SYNCER_SPLIT ||
+			p->block_id == ID_SYNCER_SPLIT_DONE) {
 			drbd_set_in_sync(peer_device, sector, blksize);
-			if (p->block_id == ID_SYNCER)
-				dec_rs_pending(peer_device);
 			return 0;
 		}
 	}
@@ -10070,8 +10072,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		return -EIO;
 	device = peer_device->device;
 
-
-	//DW-1601
+	//DW-1601 
 	if (connection->agreed_pro_version >= 113) {
 		if (p->block_id != ID_SYNCER_SPLIT)
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
@@ -10079,9 +10080,17 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
 			set_bit(GOT_NEG_ACK, &peer_device->flags);
 
-		if (p->block_id == ID_SYNCER || p->block_id == ID_SYNCER_SPLIT) {
-			if (p->block_id == ID_SYNCER)
-				dec_rs_pending(peer_device);
+		if (p->block_id == ID_SYNCER_SPLIT_DONE || 
+			p->block_id == ID_SYNCER_ALREADY_DONE) {
+			dec_rs_pending(peer_device);
+		}
+
+		if (p->block_id == ID_SYNCER_SPLIT || 
+			p->block_id == ID_SYNCER_ALREADY_DONE) {
+			drbd_rs_already_sync(peer_device, sector, size);
+			return 0;
+		}
+		else if (p->block_id == ID_SYNCER_SPLIT_DONE) {
 			drbd_rs_failed_io(peer_device, sector, size);
 			return 0;
 		}

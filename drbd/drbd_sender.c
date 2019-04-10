@@ -1591,7 +1591,22 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_disk_state(device, D_UP_TO_DATE);
 			__change_peer_disk_state(peer_device, D_INCONSISTENT);
 		}
-	} else {
+	}
+	//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
+	else if (peer_device->rs_already_sync > 0) {
+		drbd_info(peer_device, "            %lu already sync blocks\n", peer_device->rs_already_sync);
+
+		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
+			__change_disk_state(device, D_INCONSISTENT);
+			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
+		}
+		else {
+			__change_disk_state(device, D_UP_TO_DATE);
+			__change_peer_disk_state(peer_device, D_INCONSISTENT);
+		}
+		peer_device->resync_again++;
+	}
+	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)
@@ -1673,6 +1688,7 @@ out_unlock:
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
+	peer_device->rs_already_sync = 0;
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =
