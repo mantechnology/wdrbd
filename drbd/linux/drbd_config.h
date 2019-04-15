@@ -35,7 +35,8 @@ extern const char *drbd_buildtag(void);
 #define REL_VERSION "9.0.6"
 #define PRO_VERSION_MIN 86
 // DW-1293: protocol version 112 starts to support fast invalidate(remote)
-#define PRO_VERSION_MAX 112
+// DW-1601: protocol version 113 remove association to act_log and resync_lru
+#define PRO_VERSION_MAX 113
 
 #ifndef __CHECKER__   /* for a sparse run, we need all STATICs */
 #define DBG_ALL_SYMBOLS /* no static functs, improves quality of OOPS traces */

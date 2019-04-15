@@ -218,7 +218,8 @@ static int is_failed_barrier(int ee_flags)
  * "submitted" by the receiver, final stage.  */
 void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(local)
 {
-	unsigned long flags = 0;
+	long lock_flags = 0;
+	ULONG_PTR flags = 0;
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
@@ -228,17 +229,17 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
 	struct drbd_peer_request *p_req, *t_inative;
-	spin_lock_irqsave(&device->resource->req_lock, flags);
+	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
 			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
-			spin_unlock_irqrestore(&device->resource->req_lock, flags);
+			spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
 			return;
 		}
 	}
-	spin_unlock_irqrestore(&device->resource->req_lock, flags);
+	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
@@ -247,13 +248,13 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 #endif
 	if (is_failed_barrier((int)peer_req->flags)) {
 		drbd_bump_write_ordering(device->resource, device->ldev, WO_BDEV_FLUSH);
-		spin_lock_irqsave(&device->resource->req_lock, flags);
+		spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 		list_del(&peer_req->w.list);
 		peer_req->flags = (peer_req->flags & ~EE_WAS_ERROR) | EE_RESUBMITTED;
 		peer_req->w.cb = w_e_reissue;
 		/* put_ldev actually happens below, once we come here again. */
 		__release(local);
-		spin_unlock_irqrestore(&device->resource->req_lock, flags);
+		spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
 		drbd_queue_work(&connection->sender_work, &peer_req->w);
 		return;
 	}
@@ -264,8 +265,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * (as soon as we release the req_lock) */
 	sector = peer_req->i.sector;
 	block_id = peer_req->block_id;
+	flags = peer_req->flags;
 
-	if (peer_req->flags & EE_WAS_ERROR) {
+	if (flags & EE_WAS_ERROR) {
         /* In protocol != C, we usually do not send write acks.
 		* In case of a write error, send the neg ack anyways. */
 		if (!__test_and_set_bit(__EE_SEND_WRITE_ACK, &peer_req->flags))
@@ -273,7 +275,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
     }
 
-	spin_lock_irqsave(&device->resource->req_lock, flags);
+	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	device->writ_cnt += peer_req->i.size >> 9;
 	atomic_inc(&connection->done_ee_cnt);
 	list_move_tail(&peer_req->w.list, &connection->done_ee);
@@ -293,14 +295,15 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	/* FIXME do we want to detach for failed REQ_DISCARD?
 	* ((peer_req->flags & (EE_WAS_ERROR|EE_IS_TRIM)) == EE_WAS_ERROR) */
-	if (peer_req->flags & EE_WAS_ERROR)
+	if (flags & EE_WAS_ERROR)
 		__drbd_chk_io_error(device, DRBD_WRITE_ERROR);
 
 	if (connection->cstate[NOW] == C_CONNECTED)
 		queue_work(connection->ack_sender, &connection->send_acks_work);
-	spin_unlock_irqrestore(&device->resource->req_lock, flags);
-
-	if (block_id == ID_SYNCER)
+	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
+	
+	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
+	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector);
 
 	if (do_wake)
@@ -1602,7 +1605,22 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_disk_state(device, D_UP_TO_DATE);
 			__change_peer_disk_state(peer_device, D_INCONSISTENT);
 		}
-	} else {
+	}
+	//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
+	else if (peer_device->rs_already_sync > 0) {
+		drbd_info(peer_device, "            %lu already sync blocks\n", peer_device->rs_already_sync);
+
+		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
+			__change_disk_state(device, D_INCONSISTENT);
+			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
+		}
+		else {
+			__change_disk_state(device, D_UP_TO_DATE);
+			__change_peer_disk_state(peer_device, D_INCONSISTENT);
+		}
+		peer_device->resync_again++;
+	}
+	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)
@@ -1684,6 +1702,7 @@ out_unlock:
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
+	peer_device->rs_already_sync = 0;
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =
