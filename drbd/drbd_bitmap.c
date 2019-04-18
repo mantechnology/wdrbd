@@ -172,15 +172,16 @@ _drbd_bm_lock(struct drbd_device *device, struct drbd_peer_device *peer_device,
 	}
 
 	if (trylock_failed) {
-#ifdef _WIN32
-		// DW-962 fix. bm_task can be NULL
+#ifdef _WIN32=
+		//DW-962, DW-1778 fix. bm_task can be NULL
+		struct task_struct *bm_task = b->bm_task;
         drbd_warn(device, "%s[0x%p] going to '%s' but bitmap already locked for '%s' by %s[0x%p]\n",
             current->comm, 
             current->pid,
             why, 
             b->bm_why ? b->bm_why : "?",
-            b->bm_task ? b->bm_task->comm : "?", 
-            b->bm_task ? b->bm_task->pid : NULL);		
+			bm_task ? bm_task->comm : "?", 
+			bm_task ? bm_task->pid : NULL);		
 #else
 		drbd_warn(device, "%s[%d] going to '%s' but bitmap already locked for '%s' by %s[%d]\n",
 			  current->comm, task_pid_nr(current),
