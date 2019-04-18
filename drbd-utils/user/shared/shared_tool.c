@@ -529,36 +529,21 @@ out:
 
 bool random_by_dev_urandom(void *buffer, size_t len)
 {
-	//int fd;
-	//bool ok = true;
-	//
-	//fd = open("/dev/urandom", O_RDONLY);
-	//if (fd == -1) {
-	//	perror("Open of /dev/urandom failed");
-	//	return false;
-	//}
-	//if (read(fd, buffer, len) != len) {
-	//	ok = false;
-	//	fprintf(stderr, "Reading from /dev/urandom failed\n");
-	//}
-	//close(fd);
+	int fd;
+	bool ok = true;
 
-	//DW-1779 create random values for 32-bit and 64-bit
-	if (len == sizeof(uint64_t)) {
-		uint64_t *ptr_random = buffer;
-		srand(time(NULL));
-		*ptr_random = rand();
-		*ptr_random |= rand();
-	}
-	else if (len == sizeof(uint32_t)) {
-		uint32_t *ptr_random = buffer;
-		srand(time(NULL));
-		*ptr_random = rand();
-	}
-	else
+	fd = open("/dev/urandom", O_RDONLY);
+	if (fd == -1) {
+		perror("Open of /dev/urandom failed");
 		return false;
+	}
+	if (read(fd, buffer, len) != len) {
+		ok = false;
+		fprintf(stderr, "Reading from /dev/urandom failed\n");
+	}
+	close(fd);
 
-	return true;
+	return ok;
 }
 
 void get_random_bytes(void *buffer, size_t len)
