@@ -5306,9 +5306,10 @@ int is_attached(int minor)
 		exit(20);
 	}
 	if (pid == 0) {
-		FILE *f = freopen("/dev/null", "w", stderr);
-		if (!f)
-			fprintf(stderr, "freopen(/dev/null) failed\n");
+		//DW-1777 remove /dev/null (windows "nul") opening code
+		//FILE *f = freopen("/dev/null", "w", stderr);
+		//if (!f)
+		//	fprintf(stderr, "freopen(/dev/null) failed\n");
 
 		close(pipes[0]);
 		dup2(pipes[1], 1);
