@@ -5306,7 +5306,7 @@ int is_attached(int minor)
 		exit(20);
 	}
 	if (pid == 0) {
-		//DW-1777 remove /dev/null (windows "nul") opening code
+		//DW-1777 remove stderr redirection /dev/null(windows "nul")
 		//FILE *f = freopen("/dev/null", "w", stderr);
 		//if (!f)
 		//	fprintf(stderr, "freopen(/dev/null) failed\n");

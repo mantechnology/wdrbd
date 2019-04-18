@@ -339,7 +339,7 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 		close(pipe_fds[1]);
 
 		if (flags & SUPRESS_STDERR) {
-			//DW-1777 remove /dev/null (windows "nul") opening code
+			//DW-1777 remove stderr redirection /dev/null(windows "nul")
 			//FILE *f = freopen("/dev/null", "w", stderr);
 			//if (!f)
 			//	fprintf(stderr, "freopen(/dev/null) failed\n");

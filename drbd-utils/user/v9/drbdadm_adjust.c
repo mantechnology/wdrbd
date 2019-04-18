@@ -59,7 +59,7 @@ static FILE *m_popen(int *pid, char * const* argv)
 		exit(E_EXEC_ERROR);
 	}
 
-	//DW-1777 remove /dev/null (windows "nul") opening code
+	//DW-1777 remove stderr redirection /dev/null(windows "nul")
 	//dev_null = open("/dev/null", O_WRONLY);
 	//if (dev_null == -1) {
 	//	err("Opening /dev/null failed: %m\n");
