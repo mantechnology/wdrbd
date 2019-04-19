@@ -538,28 +538,32 @@ void complete_master_bio(struct drbd_device *device,
     if(m->bio->pMasterIrp) {
 
 		master_bio = m->bio; // if pMasterIrp is exist, bio is master bio.
-		NTSTATUS status = STATUS_SUCCESS;
+		NTSTATUS status = m->error;
 
 		// In diskless mode, if irp was sent to peer,
 		// then would be completed success,
 		// The others should be converted to the Windows error status.
-		if (-EIO == m->error) {
+		if (m->error) {
 			status = (D_DISKLESS == device->disk_state[NOW]) ?
 				STATUS_SUCCESS : STATUS_INVALID_DEVICE_REQUEST;
 		}
 
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
-	            WDRBD_ERROR("szie 0x%x ERROR!\n", master_bio->bi_size);
+	            WDRBD_ERROR("size 0x%x ERROR!\n", master_bio->bi_size);
 	            BUG();
 	        }
+			
+			if (NT_ERROR(status)) {
+				drbd_err(device, "error:%d\n", m->error);
+				master_bio->pMasterIrp->IoStatus.Status = m->error;
+				master_bio->pMasterIrp->IoStatus.Information = 0;
+			}
+			else {
+				master_bio->pMasterIrp->IoStatus.Status = 0;
+				master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
+			}
 
-			if (NT_SUCCESS(status)) {
-	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
-	        } else {
-	            master_bio->pMasterIrp->IoStatus.Status = status;
-	            master_bio->pMasterIrp->IoStatus.Information = 0;
-	        }
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
 	        if (NT_SUCCESS(status) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
@@ -742,10 +746,20 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 		!(req->master_bio->bi_opf & REQ_RAHEAD) &&
 		!list_empty(&req->tl_requests))
 		req->rq_state[0] |= RQ_POSTPONED;
-
+	
 	if (!(req->rq_state[0] & RQ_POSTPONED)) {
 #ifdef _WIN32
-        m->error = ok ? 0 : (error ? error : -EIO);
+		// DW-1755 
+		// for the "passthrough" policy, all local errors are returned to the file system.
+		enum drbd_io_error_p eh;
+		rcu_read_lock();
+		eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+		rcu_read_unlock();
+
+		if (eh == EP_PASSTHROUGH)
+			m->error = error;
+		else
+			m->error = ok ? 0 : (error ? error : -EIO);
 #else
 		m->error = ok ? 0 : (error ?: -EIO);
 #endif

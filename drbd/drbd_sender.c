@@ -1605,6 +1605,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_disk_state(device, D_UP_TO_DATE);
 			__change_peer_disk_state(peer_device, D_INCONSISTENT);
 		}
+		peer_device->resync_again++;
 	}
 	//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
 	else if (peer_device->rs_already_sync > 0) {

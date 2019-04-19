@@ -2968,6 +2968,20 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				"Local IO failed in %s. Detaching...\n", where);
 		}
 		break;
+	// DW-1755
+	case EP_PASSTHROUGH:
+		drbd_err(device,
+			"Local IO failed in %s. Passthrough... \n", where);
+	
+		// if the metadisk fails, replication should be stopped immediately.
+		if (df == DRBD_META_IO_ERROR) {
+			struct drbd_peer_device* peer_device;
+			for_each_peer_device(peer_device, device) {
+				change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+			}
+		}
+
+		break;
 	}
 }
 
