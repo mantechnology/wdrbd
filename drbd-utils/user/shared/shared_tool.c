@@ -543,20 +543,17 @@ bool random_by_dev_urandom(void *buffer, size_t len)
 	//}
 	//close(fd);
 
-	//DW-1779 create random values for 32-bit and 64-bit
-	if (len == sizeof(uint64_t)) {
-		uint64_t *ptr_random = buffer;
-		srand(time(NULL));
-		*ptr_random = rand();
-		*ptr_random |= rand();
-	}
-	else if (len == sizeof(uint32_t)) {
-		uint32_t *ptr_random = buffer;
-		srand(time(NULL));
-		*ptr_random = rand();
-	}
-	else
+	if (len == 0)
 		return false;
+
+	//DW-1779 generate random numbers based on length.
+	uint8_t *r;
+
+	srand(time(NULL));
+	for (int i = 0; i < len; i++) {
+		r = buffer + i;
+		*r = rand() % 256;
+	}
 
 	return true;
 }
