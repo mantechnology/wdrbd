@@ -342,7 +342,7 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 			FILE *f = freopen("/dev/null", "w", stderr);
 			if (!f)
 				//DW-1777 revert source and change error message
-				fprintf(stderr, "reopne null service failed\n");
+				fprintf(stderr, "reopen null service failed\n");
 		}
 		if (argv[0])
 		{
