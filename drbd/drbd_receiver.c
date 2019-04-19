@@ -2358,6 +2358,10 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST)) {
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
+
+		// DW-1755: used in PASSTHROUGH policy.
+		// passing to the events2 for event notification and registered handler processing
+		drbd_khelper(peer_device->device, NULL, "local-io-error");
 	}
 
 	if (peer_req->flags & EE_SPLIT_REQUEST || peer_req->flags & EE_SPLIT_LAST_REQUEST) {
@@ -2450,8 +2454,11 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	} else {
 		/* Record failure to sync */
 		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-
 		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+
+		// DW-1755: used in PASSTHROUGH policy.
+		// passing to the events2 for event notification and registered handler processing
+		drbd_khelper(peer_device->device, NULL, "local-io-error");
 	}
 	dec_unacked(peer_device);
 
@@ -2987,6 +2994,10 @@ static int e_end_block(struct drbd_work *w, int cancel)
 			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
 			drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
 #endif
+			// DW-1755: used in PASSTHROUGH policy.
+			// passing to the events2 for event notification and registered handler processing
+			drbd_khelper(device, NULL, "local-io-error");
+
 			/* we expect it to be marked out of sync anyways...
 			 * maybe assert this?  */
 		}

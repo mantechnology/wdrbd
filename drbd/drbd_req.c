@@ -558,6 +558,10 @@ void complete_master_bio(struct drbd_device *device,
 				drbd_err(device, "error:%d\n", m->error);
 				master_bio->pMasterIrp->IoStatus.Status = m->error;
 				master_bio->pMasterIrp->IoStatus.Information = 0;
+
+				// DW-1755: used in PASSTHROUGH policy.
+				// passing to the events2 for event notification and registered handler processing
+				drbd_khelper(device, NULL, "local-io-error");
 			}
 			else {
 				master_bio->pMasterIrp->IoStatus.Status = 0;
