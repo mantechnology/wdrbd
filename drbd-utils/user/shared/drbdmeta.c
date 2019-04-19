@@ -5306,10 +5306,10 @@ int is_attached(int minor)
 		exit(20);
 	}
 	if (pid == 0) {
-		//DW-1777 remove stderr redirection /dev/null(windows "nul")
-		//FILE *f = freopen("/dev/null", "w", stderr);
-		//if (!f)
-		//	fprintf(stderr, "freopen(/dev/null) failed\n");
+		FILE *f = freopen("/dev/null", "w", stderr);
+		if (!f)
+			//DW-1777 revert source and change error message
+			fprintf(stderr, "open null service failed\n");
 
 		close(pipes[0]);
 		dup2(pipes[1], 1);
