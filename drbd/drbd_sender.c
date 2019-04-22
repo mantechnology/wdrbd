@@ -773,7 +773,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 		DRBD_FAULT_RS_RD) == 0)
 		return 0;
 
-	drbd_err(peer_device, "failed to sumit peer request\n");
+	drbd_err(peer_device, "failed to submit peer request\n");
 	/* If it failed because of ENOMEM, retry should help.  If it failed
 	 * because bio_add_page failed (probably broken lower level driver),
 	 * retry may or may not help.
