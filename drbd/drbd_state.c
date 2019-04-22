@@ -1200,7 +1200,7 @@ static void print_state_change(struct drbd_resource *resource, const char *prefi
 	}
 	if (b != buffer) {
 		*(b-1) = 0;
-		drbd_info(resource, "%s, %s%s\n", prefix, buffer, caller);
+		drbd_info(resource, "%s, %s%s\n", caller, prefix, buffer);
 	}
 
 	for_each_connection(connection, resource) {
@@ -1219,7 +1219,7 @@ static void print_state_change(struct drbd_resource *resource, const char *prefi
 
 		if (b != buffer) {
 			*(b-1) = 0;
-			drbd_info(connection, "%s, %s%s\n", prefix, buffer, caller);
+			drbd_info(connection, "%s, %s%s\n", caller, prefix, buffer);
 		}
 	}
 
@@ -1263,7 +1263,7 @@ static void print_state_change(struct drbd_resource *resource, const char *prefi
 
 			if (b != buffer) {
 				*(b-1) = 0;
-				drbd_info(peer_device, "%s %s%s\n", caller, prefix, buffer);
+				drbd_info(peer_device, "%s, %s%s\n", caller, prefix, buffer);
 			}
 		}
 	}
