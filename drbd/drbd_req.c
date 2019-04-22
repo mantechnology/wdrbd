@@ -1635,7 +1635,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
 #ifdef _WIN32_RCU_LOCKED
-		end_state_change_locked(resource, false);
+		end_state_change_locked(resource, false, __FUNCTION__);
 #else
 		end_state_change_locked(resource);
 #endif
@@ -2429,6 +2429,8 @@ void do_submit(struct work_struct *ws)
 {
 	struct drbd_device *device = container_of(ws, struct drbd_device, submit.worker);
 	struct waiting_for_act_log wfa;
+	//DW-1780 retry the same request with al_timeout
+	ULONG_PTR al_wait_count = 0; 
 	wfa_init(&wfa);
 
 	grab_new_incoming_requests(device, &wfa, false);
@@ -2474,15 +2476,20 @@ void do_submit(struct work_struct *ws)
 
 			wfa_splice_init(&wfa, later, incoming);
 			prepare_al_transaction_nonblock(device, &wfa);
-			if (!wfa_lists_empty(&wfa, pending))
+			if (!wfa_lists_empty(&wfa, pending)) {
+				if(al_wait_count)
+					drbd_debug(device, "al_wait retry count : %lu\n", al_wait_count);
+				al_wait_count = 0;
 				break;
+			}
+			al_wait_count += 1;
 #ifndef _WIN32	// Skipped 3d552f8 commit(linux drbd)
 			drbd_kick_lo(device);
 #endif
 #ifdef _WIN32 // DW-1513, DW-1546 : If al_wait event is not received during AL_WAIT_TIMEOUT, disconnect.
 			if(!schedule(&device->al_wait, AL_WAIT_TIMEOUT, __FUNCTION__, __LINE__))
 			{
-				drbd_err(device, "al_wait timeout... disconnect\n");
+				drbd_err(device, "al_wait timeout... disconnect, retry %lu\n", al_wait_count);
 
 				struct drbd_peer_device *peer_device;
 				for_each_peer_device_rcu(peer_device, device) {
@@ -2858,7 +2865,7 @@ void request_timer_fn(unsigned long data)
 			begin_state_change_locked(device->resource, CS_VERBOSE | CS_HARD);
 			__change_cstate(connection, C_TIMEOUT);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif

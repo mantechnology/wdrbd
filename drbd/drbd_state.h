@@ -56,17 +56,17 @@ extern void state_change_lock(struct drbd_resource *, unsigned long *, enum chg_
 extern void state_change_unlock(struct drbd_resource *, unsigned long *);
 
 extern void begin_state_change(struct drbd_resource *, unsigned long *, enum chg_state_flags);
-extern enum drbd_state_rv end_state_change(struct drbd_resource *, unsigned long *);
-extern void abort_state_change(struct drbd_resource *, unsigned long *);
+extern enum drbd_state_rv end_state_change(struct drbd_resource *, unsigned long *, const char*);
+extern void abort_state_change(struct drbd_resource *, unsigned long *, const char*);
 #ifdef _WIN32_RCU_LOCKED
-extern void abort_state_change_locked(struct drbd_resource *resource, bool locked);
+extern void abort_state_change_locked(struct drbd_resource *resource, bool locked, const char* caller);
 #else
 extern void abort_state_change_locked(struct drbd_resource *resource);
 #endif
 
 extern void begin_state_change_locked(struct drbd_resource *, enum chg_state_flags);
 #ifdef _WIN32_RCU_LOCKED
-extern enum drbd_state_rv end_state_change_locked(struct drbd_resource *, bool locked);
+extern enum drbd_state_rv end_state_change_locked(struct drbd_resource *, bool locked, const char* caller);
 #else
 extern enum drbd_state_rv end_state_change_locked(struct drbd_resource *);
 #endif

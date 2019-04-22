@@ -1298,12 +1298,18 @@ void *__conn_prepare_command(struct drbd_connection *connection, int size,
 	struct drbd_transport *transport = &connection->transport;
 	int header_size;
 
-	if (!transport->ops->stream_ok(transport, drbd_stream))
+	if (!transport->ops->stream_ok(transport, drbd_stream)) {
+		drbd_err(connection, "socket not allocate\n");
 		return NULL;
+	}
 
 	header_size = drbd_header_size(connection);
 #ifdef _WIN32
-    return (char *)alloc_send_buffer(connection, header_size + size, drbd_stream) + header_size;
+	void *p = (char *)alloc_send_buffer(connection, header_size + size, drbd_stream) + header_size;
+	if(!p) {
+		drbd_err(connection, "failed allocate send buffer\n");
+	}
+	return p;
 #else
 	return alloc_send_buffer(connection, header_size + size, drbd_stream) + header_size;
 #endif

@@ -138,7 +138,7 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 			HZ * 10);
 #endif
 	if (t == 0)
-		drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?\n");
+		drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?, %s\n", intent);
 
 	if (r)
 		return NULL;
@@ -792,6 +792,8 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		 * or requests to "cold" extents could be starved. */
 		if (!al->pending_changes)
 			set_bit(__LC_STARVING, &device->act_log->flags);
+
+		drbd_info(device, "insufficient al_extent slots. nr_al_extents : %lu, available_update_slots : %lu\n", nr_al_extents, available_update_slots);
 		return -ENOBUFS;
 	}
 
@@ -801,6 +803,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
+			drbd_info(device, "active resync extent enr : %lu\n", enr);
 			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;

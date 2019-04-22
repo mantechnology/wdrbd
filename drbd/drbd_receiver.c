@@ -2543,7 +2543,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			//else {
 			//	if ((first + 2) < last && (first + 1) == i) {
 			//		find_sync_bit = true;
-			//		drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
+			//		drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9), false);
 			//		atomic_inc(split_cnt);
 			//		WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
 			//	}
@@ -3342,7 +3342,7 @@ static int handle_write_conflicts(struct drbd_peer_request *peer_req)
                     			begin_state_change_locked(connection->resource, CS_HARD);
 					__change_cstate(connection, C_TIMEOUT);
 #ifdef _WIN32_RCU_LOCKED
-					end_state_change_locked(connection->resource, false);
+					end_state_change_locked(connection->resource, false, __FUNCTION__);
 #else
 					end_state_change_locked(connection->resource);
 #endif
@@ -5521,6 +5521,9 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	synchronize_rcu_w32_wlock();
 #endif
 	if (new_peer_device_conf) {
+		drbd_info(peer_device, "sync, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n",
+			new_peer_device_conf->resync_rate, new_peer_device_conf->c_plan_ahead, new_peer_device_conf->c_delay_target,
+			new_peer_device_conf->c_fill_target, new_peer_device_conf->c_max_rate, new_peer_device_conf->c_min_rate);
 		rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
 		put_ldev(device);
 	}
@@ -6115,7 +6118,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 			/* FIXME: Note that req_lock was not taken here before! */
 			__change_disk_state(device, D_UP_TO_DATE);
 			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
-			end_state_change(device->resource, &irq_flags);
+			end_state_change(device->resource, &irq_flags, __FUNCTION__);
 			updated_uuids = 1;
 		}
 
@@ -6135,7 +6138,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 				begin_state_change(resource, &irq_flags, CS_VERBOSE);
 				if (device->disk_state[NEW] > D_OUTDATED)
 					__change_disk_state(device, D_OUTDATED);
-				end_state_change(resource, &irq_flags);
+				end_state_change(resource, &irq_flags, __FUNCTION__);
 			}
 		}
 
@@ -6379,7 +6382,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 			unsigned long irq_flags;
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			__change_repl_state(peer_device, L_ESTABLISHED);
-			end_state_change(device->resource, &irq_flags);
+			end_state_change(device->resource, &irq_flags, __FUNCTION__);
 		}
 	}
 
@@ -6584,7 +6587,7 @@ retry:
 			__outdate_myself(resource);
 	}
 
-	rv = end_state_change(resource, &irq_flags);
+	rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 out:
 
 	if (rv == SS_NO_UP_TO_DATE_DISK && resource->role[NOW] != R_PRIMARY) {
@@ -6610,7 +6613,7 @@ out:
 
 	return rv;
 fail:
-	abort_state_change(resource, &irq_flags);
+	abort_state_change(resource, &irq_flags, __FUNCTION__);
 	goto out;
 }
 
@@ -6640,11 +6643,11 @@ change_peer_device_state(struct drbd_peer_device *peer_device,
 	rv = __change_connection_state(connection, mask, val, flags);
 	if (rv < SS_SUCCESS)
 		goto fail;
-	rv = end_state_change(connection->resource, &irq_flags);
+	rv = end_state_change(connection->resource, &irq_flags, __FUNCTION__);
 out:
 	return rv;
 fail:
-	abort_state_change(connection->resource, &irq_flags);
+	abort_state_change(connection->resource, &irq_flags, __FUNCTION__);
 	goto out;
 }
 
@@ -6796,7 +6799,7 @@ static enum drbd_state_rv outdate_if_weak(struct drbd_resource *resource,
 
 		begin_state_change(resource, &irq_flags, flags);
 		__outdate_myself(resource);
-		return end_state_change(resource, &irq_flags);
+		return end_state_change(resource, &irq_flags, __FUNCTION__);
 	}
 
 	return SS_NOTHING_TO_DO;
@@ -6846,7 +6849,7 @@ far_away_change(struct drbd_connection *connection, union drbd_state mask,
 
 			begin_state_change(resource, &irq_flags, flags);
 			__change_peer_disk_states(affected_connection, D_OUTDATED);
-			rv = end_state_change(resource, &irq_flags);
+			rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 			kref_put(&affected_connection->kref, drbd_destroy_connection);
 			return rv;
 		}
@@ -7904,7 +7907,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 			begin_state_change(resource, &irq_flags, CS_HARD | CS_VERBOSE);
 			__change_peer_role(connection, R_SECONDARY);
-			rv = end_state_change(resource, &irq_flags);
+			rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 			if (rv < SS_SUCCESS)
 				goto fail;
 		}
@@ -8139,7 +8142,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	if (old_peer_state.i != drbd_get_peer_device_state(peer_device, NOW).i) {
 		old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
 #ifdef _WIN32_RCU_LOCKED
-		abort_state_change_locked(resource, false);
+		abort_state_change_locked(resource, false, __FUNCTION__);
 #else
 		abort_state_change_locked(resource);
 #endif
@@ -8167,7 +8170,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		/* Do not allow RESEND for a rebooted peer. We can only allow this
 		   for temporary network outages! */
 #ifdef _WIN32_RCU_LOCKED
-		abort_state_change_locked(resource, false);
+		abort_state_change_locked(resource, false, __FUNCTION__);
 #else
 		abort_state_change_locked(resource);
 #endif
@@ -8181,7 +8184,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		begin_state_change(resource, &irq_flags, CS_HARD);
 		__change_cstate(connection, C_PROTOCOL_ERROR);
 		__change_io_susp_user(resource, false);
-		end_state_change(resource, &irq_flags);
+		end_state_change(resource, &irq_flags, __FUNCTION__);
 		return -EIO;
 	}
 
@@ -8191,7 +8194,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 	
 #ifdef _WIN32_RCU_LOCKED
-	rv = end_state_change_locked(resource, false);
+	rv = end_state_change_locked(resource, false, __FUNCTION__);
 #else
 	rv = end_state_change_locked(resource);
 #endif
@@ -8821,7 +8824,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 		}
 #ifdef _WIN32 // DW-1632: If the RECONCILIATION_RESYNC flag is set, it will not be updated with the new UUID after resynchronization.
 			  // If the change to WFBitMapS fails, disable the RECONCILIATION_RESYNC flag.
-		enum drbd_status_rv rv = end_state_change(resource, &irq_flags);
+		enum drbd_status_rv rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 		idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
 			if (new_repl_state == L_WF_BITMAP_S && test_bit(RECONCILIATION_RESYNC, &peer_device->flags)){
 				if(rv != SS_SUCCESS){
@@ -9334,7 +9337,7 @@ void conn_disconnect(struct drbd_connection *connection)
 		/* drbd_receiver() has to be restarted after it returns */
 		drbd_thread_restart_nowait(&connection->receiver);
 	}
-	end_state_change(resource, &irq_flags);
+	end_state_change(resource, &irq_flags, __FUNCTION__);
 
 	if (oc == C_DISCONNECTING)
 		change_cstate(connection, C_STANDALONE, CS_VERBOSE | CS_HARD | CS_LOCAL_ONLY);
