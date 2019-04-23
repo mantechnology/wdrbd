@@ -1253,7 +1253,6 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long c;
 		int bmi = peer_device->bitmap_index;
 
-		//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
 		if (mode == RECORD_RS_FAILED)
 			/* Only called from drbd_rs_failed_io(), bits
 			 * supposedly still set.  Recount, maybe some
@@ -1282,7 +1281,6 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 				peer_device->rs_failed += count;
 
 			ULONG_PTR still_to_go = drbd_bm_total_weight(peer_device);
-			//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
 			bool rs_is_done = (still_to_go <= peer_device->rs_failed);
 
 			if (mode == SET_IN_SYNC) 

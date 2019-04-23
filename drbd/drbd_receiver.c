@@ -2142,7 +2142,7 @@ static void p_req_detail_from_pi(struct drbd_connection *connection,
 	d->bi_size = is_trim_or_wsame ? be32_to_cpu(p->size) : pi->size - digest_size;
 	d->digest_size = digest_size;
 
-	WDRBD_TRACE("sector: %lld block_id: %lld peer_seq: %d dp_flags:%d length:%d bi_size:%d digest_size: %d\n",d->sector,d->block_id,d->peer_seq, d->dp_flags, d->length, d->bi_size, d->digest_size);
+	WDRBD_TRACE("sector: %llu block_id: %llu peer_seq: %u dp_flags:%u length:%u bi_size:%u digest_size: %u\n",d->sector,d->block_id,d->peer_seq, d->dp_flags, d->length, d->bi_size, d->digest_size);
 }
 
 /* used from receive_RSDataReply (recv_resync_read)
@@ -2369,7 +2369,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 				if (drbd_bm_test_bit(peer_device, index) == 1) {
 					if (bit_state == true && index != peer_req->first) {
 					sync:
-						//DW-1601 If all of the data are sync, then "P_RS_WRITE_ACK transmit.
+						//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
 						peer_req->i.sector = BM_BIT_TO_SECT(begin_index);
 						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(index - begin_index) << 9;
 						drbd_info(peer_device, "--set in sync, bitmap first : %lu, range : %lu ~ %lu, size %lu\n", peer_req->first, begin_index, index, (BM_BIT_TO_SECT(index - begin_index) << 9));

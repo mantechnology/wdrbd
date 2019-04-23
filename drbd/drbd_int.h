@@ -2780,7 +2780,6 @@ extern const struct file_operations drbd_proc_fops;
 #endif
 
 
-//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
 typedef enum { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC } update_sync_bits_mode;
 
 /* drbd_actlog.c */
