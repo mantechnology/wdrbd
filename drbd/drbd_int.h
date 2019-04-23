@@ -2922,7 +2922,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
 #ifdef _WIN32_RCU_LOCKED
-				end_state_change_locked(device->resource, false);
+				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 				end_state_change_locked(device->resource);
 #endif
@@ -2960,7 +2960,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 			begin_state_change_locked(device->resource, CS_HARD);
 			__change_disk_state(device, D_FAILED);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif

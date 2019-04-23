@@ -923,7 +923,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 		if (!resource_is_suspended(resource, NOW))
 			_tl_restart(connection, CONNECTION_LOST_WHILE_PENDING);
 #ifdef _WIN32_RCU_LOCKED
-		end_state_change_locked(resource, false);
+		end_state_change_locked(resource, false, __FUNCTION__);
 #else
 		end_state_change_locked(resource);
 #endif
@@ -978,7 +978,7 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	default:
 		/* The script is broken ... */
 		drbd_err(connection, "fence-peer helper broken, returned %d\n", (r>>8)&0xff);
-		abort_state_change(resource, &irq_flags);
+		abort_state_change(resource, &irq_flags, __FUNCTION__);
 		return false; /* Eventually leave IO frozen */
 	}
 
@@ -997,11 +997,11 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 		goto abort;
 	}
 
-	end_state_change(resource, &irq_flags);
+	end_state_change(resource, &irq_flags, __FUNCTION__);
 
 	goto out;
  abort:
-	abort_state_change(resource, &irq_flags);
+	abort_state_change(resource, &irq_flags, __FUNCTION__);
  out:
 	return conn_highest_pdsk(connection) <= D_OUTDATED;
 }
@@ -4175,6 +4175,10 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
 	synchronize_rcu_w32_wlock();
 #endif
+	drbd_info(peer_device, "new, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n", 
+		new_peer_device_conf->resync_rate, new_peer_device_conf->c_plan_ahead, new_peer_device_conf->c_delay_target, 
+		new_peer_device_conf->c_fill_target, new_peer_device_conf->c_max_rate, new_peer_device_conf->c_min_rate);
+
 	rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
 
 	synchronize_rcu();
@@ -4212,6 +4216,10 @@ int drbd_create_peer_device_default_config(struct drbd_peer_device *peer_device)
 	err = adjust_resync_fifo(peer_device, conf, NULL);
 	if (err)
 		return err;
+
+	drbd_info(peer_device, "default, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n",
+		conf->resync_rate, conf->c_plan_ahead, conf->c_delay_target,
+		conf->c_fill_target, conf->c_max_rate, conf->c_min_rate);
 
 	peer_device->conf = conf;
 
@@ -5357,12 +5365,12 @@ static enum drbd_state_rv invalidate_no_resync(struct drbd_device *device) __mus
 	for_each_connection(connection, resource) {
 		peer_device = conn_peer_device(connection, device->vnr);
 		if (peer_device->repl_state[NOW] >= L_ESTABLISHED) {
-			abort_state_change(resource, &irq_flags);
+			abort_state_change(resource, &irq_flags, __FUNCTION__);
 			return SS_UNKNOWN_ERROR;
 		}
 	}
 	__change_disk_state(device, D_INCONSISTENT);
-	rv = end_state_change(resource, &irq_flags);
+	rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 
 	if (rv >= SS_SUCCESS) {
 		drbd_bitmap_io(device, &drbd_bmio_set_all_n_write,
@@ -6692,7 +6700,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 			if (NODE_MASK(peer_device->node_id) & diskfull)
 				__change_peer_disk_state(peer_device, D_UP_TO_DATE);
 		}
-		end_state_change(device->resource, &irq_flags);
+		end_state_change(device->resource, &irq_flags, __FUNCTION__);
 	}
 
 	drbd_md_sync_if_dirty(device);
