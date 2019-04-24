@@ -2362,9 +2362,12 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	if (peer_req->flags & EE_SPLIT_REQUEST || peer_req->flags & EE_SPLIT_LAST_REQUEST) {
 		if (peer_req->count && 0 == atomic_dec_return(peer_req->count)) {
-			dec_unacked(peer_device);
+
 			bool bit_state = false;	//true : sync, false : out of sync
 			ULONG_PTR begin_index = peer_req->first;
+
+			dec_unacked(peer_device);
+
 			for (ULONG_PTR index = peer_req->first; index < last; index++) {
 				if (drbd_bm_test_bit(peer_device, index) == 1) {
 					if (bit_state == true && index != peer_req->first) {
@@ -2559,11 +2562,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	drbd_debug(peer_device, "##sector(%llu), size(%u), first(%lu) ~ last(%lu), (last - first) : %lu, split_cnt : %d, last_oss : %lu\n", d->sector, d->bi_size, first, last, last - first, atomic_read(split_cnt), last_oos);
 
 	if (find_sync_bit && peer_device->connection->agreed_pro_version >= 113) {
-		prev_index_sync = false;
-
 		for (ULONG_PTR index = first; index < last; index++) {
 			if (drbd_bm_test_bit(peer_device, index) == 0) {
-			submit_peer:
 				if (first == last || atomic_read(split_cnt) == 0) {
 					//DW-1601 all data is synced.
 					drbd_info(peer_device, "##all, sync bitmap(%lu), first : %lu, last :%lu\n", index, first, last);
@@ -2571,13 +2571,13 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					//DW-1601 complete rs data here.
 					drbd_rs_complete_io(peer_device, peer_req->i.sector);
 					err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+					atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
 					drbd_free_peer_req(peer_req);
-
 					dec_unacked(peer_device);
 
 					return err;
 				}
-
+submit_peer:
 				//DW-1601 if offset is set to "out of sync" previously, write request to split_peer_req for data in index now from the corresponding offset.
 				if (split_start_offset) {
 					drbd_debug(peer_device, "##sync bitmap(%lu), %lu ~ %lu, size %lu\n", index, offset, index, (BM_BIT_TO_SECT(index - offset) << 9));
@@ -2619,7 +2619,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					list_add_tail(&split_peer_req->w.list, &peer_device->connection->sync_ee);
 					spin_unlock_irq(&device->resource->req_lock);
 
-					atomic_add((int)BM_BIT_TO_SECT(index - offset), &device->rs_sect_ev);
+					atomic_add((int)BM_BIT_TO_SECT(index - offset + 1), &device->rs_sect_ev);
 
 					size_oos = split_peer_req->i.size;
 
@@ -2646,17 +2646,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					//DW-1601 submit_cnt is used for the split_cnt value in case of failure..
 					submit_cnt += 1;
 				}
-				else {
-					//DW-1601 continuous sync data found
-					atomic_add(d->bi_size >> 9, &peer_device->rs_sect_in);
+				else
+					atomic_add((int)BM_BIT_TO_SECT(1), &device->rs_sect_ev);
 
-					/* Seting all peer out of sync here. Sync source peer will be set
-					in sync when the write completes. Other peers will be set in
-					sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-					drbd_set_all_out_of_sync(device, BM_BIT_TO_SECT(offset), (int)(BM_BIT_TO_SECT(index - offset + 1) << 9));
-				}
-				//DW-1601 the value is used for processing the last bitmap of resync request data.
-				prev_index_sync = true;
 				split_start_offset = false;
 			}
 			else {
@@ -2666,7 +2658,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					split_start_offset = true;
 				}
 
-				if (prev_index_sync == true && (index + 1) == last) {
+				if ((index + 1) == last) {
 					index += 1;
 					goto submit_peer;
 				}
