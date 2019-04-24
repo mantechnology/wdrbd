@@ -2541,7 +2541,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			//else {
 			//	if ((first + 2) < last && (first + 1) == i) {
 			//		find_sync_bit = true;
-			//		drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9), false);
+			//		drbd_set_in_sync(peer_device, BM_BIT_TO_SECT(i), (BM_BIT_TO_SECT(1) << 9));
 			//		atomic_inc(split_cnt);
 			//		WDRBD_INFO("##test find sync bitmap bit : %u\n", i);
 			//	}
@@ -2621,10 +2621,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 					atomic_add((int)BM_BIT_TO_SECT(index - offset), &device->rs_sect_ev);
 
-					if (index == last)
-						size_oos = split_peer_req->i.size;
-					else
-						size_oos = split_peer_req->i.size + (BM_BIT_TO_SECT(1) << 9);
+					size_oos = split_peer_req->i.size;
 
 					/* Seting all peer out of sync here. Sync source peer will be set
 					in sync when the write completes. Other peers will be set in
