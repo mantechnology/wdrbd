@@ -263,7 +263,13 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * we may no longer access it,
 	 * it may be freed/reused already!
 	 * (as soon as we release the req_lock) */
-	sector = peer_req->i.sector;
+
+	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
+	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
+		sector = BM_BIT_TO_SECT(peer_req->first);
+	else
+		sector = peer_req->i.sector;
+
 	block_id = peer_req->block_id;
 	flags = peer_req->flags;
 

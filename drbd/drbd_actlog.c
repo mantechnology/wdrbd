@@ -1809,7 +1809,6 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(enr);
 #endif
-
 	spin_lock_irqsave(&device->al_lock, flags);
 	e = lc_find(peer_device->resync_lru, (unsigned int)enr);
 	bm_ext = e ? lc_entry(e, struct bm_extent, lce) : NULL;
@@ -1822,9 +1821,9 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
-		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u]) called, "
+		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u], %lu) called, "
 		    "but refcnt is 0!?\n", 
-			(unsigned long long)sector, (unsigned int)enr);
+			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector));
 		return;
 	}
 
