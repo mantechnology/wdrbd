@@ -2317,8 +2317,6 @@ static void initialize_resync(struct drbd_peer_device *peer_device)
 
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
-	//DW-1601
-	peer_device->rs_already_sync = 0;
 	peer_device->rs_same_csum = 0;
 	peer_device->rs_last_sect_ev = 0;
 	peer_device->rs_total = tw;

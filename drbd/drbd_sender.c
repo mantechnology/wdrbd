@@ -263,7 +263,13 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * we may no longer access it,
 	 * it may be freed/reused already!
 	 * (as soon as we release the req_lock) */
-	sector = peer_req->i.sector;
+
+	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
+	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
+		sector = BM_BIT_TO_SECT(peer_req->first);
+	else
+		sector = peer_req->i.sector;
+
 	block_id = peer_req->block_id;
 	flags = peer_req->flags;
 
@@ -1611,20 +1617,6 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_peer_disk_state(peer_device, D_INCONSISTENT);
 		}
 	}
-	//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-	else if (peer_device->rs_already_sync > 0) {
-		drbd_info(peer_device, "            %lu already sync blocks\n", peer_device->rs_already_sync);
-
-		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
-			__change_disk_state(device, D_INCONSISTENT);
-			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
-		}
-		else {
-			__change_disk_state(device, D_UP_TO_DATE);
-			__change_peer_disk_state(peer_device, D_INCONSISTENT);
-		}
-		peer_device->resync_again++;
-	}
 	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
@@ -1707,7 +1699,6 @@ out_unlock:
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
-	peer_device->rs_already_sync = 0;
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =
