@@ -329,6 +329,12 @@ GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
 	__flg_field(1, 0, path_established)
 )
 
+GENL_struct(DRBD_NLA_DISK_ERROR, 31, drbd_disk_error_info,
+__s32_field(1, DRBD_GENLA_F_MANDATORY, error_code)
+__u32_field(2, DRBD_GENLA_F_MANDATORY, size)
+__u64_field(3, DRBD_GENLA_F_MANDATORY, sector)
+)
+
 /*
  * Notifications and commands (genlmsghdr->cmd)
  */
@@ -560,3 +566,7 @@ GENL_notification(
 	DRBD_PATH_STATE, 48, events,
 	GENL_tla_expected(DRBD_NLA_CFG_CONTEXT, DRBD_F_REQUIRED)
 	GENL_tla_expected(DRBD_NLA_PATH_INFO, DRBD_F_REQUIRED))
+
+GENL_notification(
+	DRBD_DISK_ERROR, 49, events,
+	GENL_tla_expected(DRBD_NLA_DISK_ERROR, DRBD_F_REQUIRED))

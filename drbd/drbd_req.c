@@ -512,6 +512,20 @@ bool start_new_tl_epoch(struct drbd_resource *resource)
 	wake_all_senders(resource);
 	return true;
 }
+
+int w_notify_disk_error(struct drbd_work *w, int cancel)
+{
+	UNREFERENCED_PARAMETER(cancel);
+	int ret = 0;
+	
+	struct drbd_disk_error_work *dw =
+		container_of(w, struct drbd_disk_error_work, w);
+	notify_disk_error(dw->disk_error);
+	kfree(dw);
+	kfree(dw->disk_error);
+	return ret;
+}
+
 #ifdef _WIN32
 void complete_master_bio(struct drbd_device *device,
     struct bio_and_error *m, char *func, int line)
@@ -544,8 +558,9 @@ void complete_master_bio(struct drbd_device *device,
 		// then would be completed success,
 		// The others should be converted to the Windows error status.
 		if (m->error) {
-			status = (D_DISKLESS == device->disk_state[NOW]) ?
-				STATUS_SUCCESS : STATUS_INVALID_DEVICE_REQUEST;
+			if (D_DISKLESS == device->disk_state[NOW]) {
+				status = STATUS_SUCCESS;
+			}
 		}
 
 		if (!master_bio->splitInfo) {
@@ -555,13 +570,11 @@ void complete_master_bio(struct drbd_device *device,
 	        }
 			
 			if (NT_ERROR(status)) {
-				drbd_err(device, "error:%d\n", m->error);
-				master_bio->pMasterIrp->IoStatus.Status = m->error;
-				master_bio->pMasterIrp->IoStatus.Information = 0;
 
-				// DW-1755: used in PASSTHROUGH policy.
-				// passing to the events2 for event notification and registered handler processing
-				drbd_khelper(device, NULL, "local-io-error");
+				drbd_queue_notify_disk_error(device, status, master_bio->bi_sector, master_bio->bi_size);
+
+				master_bio->pMasterIrp->IoStatus.Status = status;
+				master_bio->pMasterIrp->IoStatus.Information = 0;
 			}
 			else {
 				master_bio->pMasterIrp->IoStatus.Status = 0;
@@ -606,7 +619,7 @@ void complete_master_bio(struct drbd_device *device,
 #endif
 
 			if (!NT_SUCCESS(status)) {
-	        	master_bio->splitInfo->LastError = m->error;
+				master_bio->splitInfo->LastError = status;
 	        }
 			
 			if (atomic_inc_return((volatile LONG *)&master_bio->splitInfo->finished) == (long)master_bio->split_total_id) {
@@ -615,7 +628,9 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Status = STATUS_SUCCESS;
 					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
 				} else {
-					WDRBD_WARN("0x%x ERRROR! sec(0x%llx+%d)\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size >> 9);
+					drbd_queue_notify_disk_error(device, status, master_bio->bi_sector, master_bio->bi_size);
+
+					WDRBD_ERROR("WRITE ERROR error_code:0x%x, sector:%llu, size:%u, called_by:%s\n", status, master_bio->bi_sector, master_bio->bi_size);
 					master_bio->pMasterIrp->IoStatus.Status = master_bio->splitInfo->LastError;
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}

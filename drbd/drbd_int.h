@@ -533,6 +533,11 @@ struct drbd_work {
 	int (*cb)(struct drbd_work *, int cancel);
 };
 
+struct drbd_disk_error_work {
+	struct drbd_work w;
+	struct drbd_disk_error *disk_error;
+};
+
 struct drbd_peer_device_work {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
@@ -554,7 +559,7 @@ extern long twopc_timeout(struct drbd_resource *);
 extern long twopc_retry_timeout(struct drbd_resource *, int);
 extern void twopc_connection_down(struct drbd_connection *);
 extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
-
+extern int w_notify_disk_error(struct drbd_work *w, int cancel);
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
 #ifdef _WIN32
@@ -725,6 +730,12 @@ struct drbd_epoch {
 #else
 	unsigned long flags;
 #endif
+};
+
+struct drbd_disk_error {
+	NTSTATUS error_code;
+	unsigned int size;
+	sector_t sector;
 };
 
 /* drbd_epoch flag bits */
@@ -3159,6 +3170,32 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 			wake_up(&q->q_wait);
 	}
 }
+
+static inline void
+drbd_queue_notify_disk_error(struct drbd_device *device, NTSTATUS error_code, sector_t sector, unsigned int size)
+{
+	struct drbd_disk_error_work *w;
+#ifdef _WIN32
+	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
+#else
+	w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+	if (w) {
+#ifdef _WIN32
+		w->disk_error = kmalloc(sizeof(*(w->disk_error)), GFP_ATOMIC, 'W2DW');
+#else
+		w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+		if (w->disk_error) {
+			w->w.cb = w_notify_disk_error;
+			w->disk_error->error_code = error_code;
+			w->disk_error->sector = sector;
+			w->disk_error->size = size;
+			drbd_queue_work(&device->resource->work, &w->w);
+		}
+	}
+}
+
 
 
 #ifdef _WIN32

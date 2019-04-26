@@ -3615,6 +3615,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[NOTIFY_DESTROY] = "destroy",
 		[NOTIFY_CALL] = "call",
 		[NOTIFY_RESPONSE] = "response",
+		[NOTIFY_ERROR] = "notify"
 	};
 	static char *object_name[] = {
 		[DRBD_RESOURCE_STATE] = "resource",
@@ -3623,6 +3624,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
 		[DRBD_PATH_STATE] = "path",
+		[DRBD_DISK_ERROR] = "local_disk_error"
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;
@@ -3649,18 +3651,22 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	if (drbd_notification_header_from_attrs(&nh, info))
 		return 0;
 	action = nh.nh_type & ~NOTIFY_FLAGS;
+
 	if (action >= ARRAY_SIZE(action_name) ||
 	    !action_name[action]) {
 		dbg(1, "unknown notification type\n");
 		goto out;
 	}
 
-	if (opt_now && action != NOTIFY_EXISTS)
+	if (opt_now && action != NOTIFY_EXISTS) {
 		return 0;
-
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
-		if (drbd_cfg_context_from_attrs(&ctx, info))
+	}
+	
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
+		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
+		}
+
 		if (info->genlhdr->cmd >= ARRAY_SIZE(object_name) ||
 		    !object_name[info->genlhdr->cmd]) {
 			dbg(1, "unknown notification\n");
@@ -3694,7 +3700,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)(tm->tm_gmtoff / 3600),
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
 		const char *name = object_name[info->genlhdr->cmd];
 		int size;
 
@@ -3706,11 +3712,19 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			goto fail;
 		event_key(key, size + 1, name, dh->minor, &ctx);
 	}
-	printf("%s %s",
-	       action_name[action],
-	       key ? key : "-");
 
-	switch(info->genlhdr->cmd) {
+	if (info->genlhdr->cmd == DRBD_DISK_ERROR) {
+		printf("%s %s%s%s",
+			action_name[action], disk_error_color_start(), 
+			object_name[info->genlhdr->cmd], disk_error_color_stop());
+	}
+	else {
+		printf("%s %s",
+			action_name[action],
+			key ? key : "-");
+	}
+
+	switch (info->genlhdr->cmd) {
 	case DRBD_RESOURCE_STATE:
 		if (action != NOTIFY_DESTROY) {
 			struct {
@@ -3725,25 +3739,27 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			old = update_info(&key, &new, sizeof(new));
 			if (!old || new.i.res_role != old->i.res_role)
 				printf(" role:%s%s%s",
-						ROLE_COLOR_STRING(new.i.res_role, 1));
+				ROLE_COLOR_STRING(new.i.res_role, 1));
 			if (!old ||
-			    new.i.res_susp != old->i.res_susp ||
-			    new.i.res_susp_nod != old->i.res_susp_nod ||
+				new.i.res_susp != old->i.res_susp ||
+				new.i.res_susp_nod != old->i.res_susp_nod ||
 				new.i.res_susp_fen != old->i.res_susp_fen ||
 				new.i.res_susp_quorum != old->i.res_susp_quorum)
 				printf(" suspended:%s",
-				       susp_str(&new.i));
+				susp_str(&new.i));
 			if (opt_statistics) {
 				if (resource_statistics_from_attrs(&new.s, info)) {
 					dbg(1, "resource statistics missing\n");
 					if (old)
 						new.s = old->s;
-				} else
+				}
+				else
 					print_resource_statistics(0, old ? &old->s : NULL,
-								  &new.s, nowrap_printf);
+					&new.s, nowrap_printf);
 			}
 			free(old);
-		} else
+		}
+		else
 			update_info(&key, NULL, 0);
 		break;
 	case DRBD_DEVICE_STATE:
@@ -3770,12 +3786,14 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 					dbg(1, "device statistics missing\n");
 					if (old)
 						new.s = old->s;
-				} else
+				}
+				else
 					print_device_statistics(0, old ? &old->s : NULL,
-								&new.s, nowrap_printf);
+					&new.s, nowrap_printf);
 			}
 			free(old);
-		} else
+		}
+		else
 			update_info(&key, NULL, 0);
 		break;
 	case DRBD_CONNECTION_STATE:
@@ -3791,24 +3809,26 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			}
 			old = update_info(&key, &new, sizeof(new));
 			if (!old ||
-			    new.i.conn_connection_state != old->i.conn_connection_state)
+				new.i.conn_connection_state != old->i.conn_connection_state)
 				printf(" connection:%s%s%s",
-						CONN_COLOR_STRING(new.i.conn_connection_state));
+				CONN_COLOR_STRING(new.i.conn_connection_state));
 			if (!old ||
-			    new.i.conn_role != old->i.conn_role)
+				new.i.conn_role != old->i.conn_role)
 				printf(" role:%s%s%s",
-						ROLE_COLOR_STRING(new.i.conn_role, 0));
+				ROLE_COLOR_STRING(new.i.conn_role, 0));
 			if (opt_statistics) {
 				if (connection_statistics_from_attrs(&new.s, info)) {
 					dbg(1, "connection statistics missing\n");
 					if (old)
 						new.s = old->s;
-				} else
+				}
+				else
 					print_connection_statistics(0, old ? &old->s : NULL,
-								    &new.s, nowrap_printf);
+					&new.s, nowrap_printf);
 			}
 			free(old);
-		} else
+		}
+		else
 			update_info(&key, NULL, 0);
 		break;
 	case DRBD_PEER_DEVICE_STATE:
@@ -3826,7 +3846,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			old = update_info(&key, &new, sizeof(new));
 			if (!old || new.i.peer_repl_state != old->i.peer_repl_state)
 				printf(" replication:%s%s%s",
-						REPL_COLOR_STRING(new.i.peer_repl_state));
+				REPL_COLOR_STRING(new.i.peer_repl_state));
 			if (!old || new.i.peer_disk_state != old->i.peer_disk_state) {
 				bool intentional = new.i.peer_is_intentional_diskless == 1;
 				printf(" peer-disk:%s%s%s",
@@ -3834,22 +3854,24 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 				printf(" peer-client:%s", peer_intentional_diskless_str(&new.i));
 			}
 			if (!old ||
-			    new.i.peer_resync_susp_user != old->i.peer_resync_susp_user ||
-			    new.i.peer_resync_susp_peer != old->i.peer_resync_susp_peer ||
-			    new.i.peer_resync_susp_dependency != old->i.peer_resync_susp_dependency)
+				new.i.peer_resync_susp_user != old->i.peer_resync_susp_user ||
+				new.i.peer_resync_susp_peer != old->i.peer_resync_susp_peer ||
+				new.i.peer_resync_susp_dependency != old->i.peer_resync_susp_dependency)
 				printf(" resync-suspended:%s",
-				       resync_susp_str(&new.i));
+				resync_susp_str(&new.i));
 			if (opt_statistics) {
 				if (peer_device_statistics_from_attrs(&new.s, info)) {
 					dbg(1, "peer device statistics missing\n");
 					if (old)
 						new.s = old->s;
-				} else
+				}
+				else
 					print_peer_device_statistics(0, old ? &old->s : NULL,
-								     &new.s, nowrap_printf);
+					&new.s, nowrap_printf);
 			}
 			free(old);
-		} else
+		}
+		else
 			update_info(&key, NULL, 0);
 		break;
 	case DRBD_PATH_STATE:
@@ -3863,9 +3885,10 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			old = update_info(&key, &new, sizeof(new));
 			if (!old || old->path_established != new.path_established)
 				printf(" established:%s",
-				       new.path_established ? "yes" : "no");
+				new.path_established ? "yes" : "no");
 			free(old);
-		} else
+		}
+		else
 			update_info(&key, NULL, 0);
 		break;
 	case DRBD_HELPER: {
@@ -3875,11 +3898,23 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			printf(" helper:%s", helper_info.helper_name);
 			if (action == NOTIFY_RESPONSE)
 				printf(" status:%u", helper_info.helper_status);
-		} else {
+		}
+		else {
 			dbg(1, "helper info missing\n");
 			goto nl_out;
 		}
+	}
+		break;
+	case DRBD_DISK_ERROR: {
+		struct drbd_disk_error_info disk_error;
+		if (!drbd_disk_error_info_from_attrs(&disk_error, info)) {
+			printf(" error_code:0x%08X, sector:%llus, size:%u", disk_error.error_code, disk_error.sector, disk_error.size);
 		}
+		else {
+			dbg(1, "disk_error info missing\n");
+			goto nl_out;
+		}
+	}
 		break;
 	case DRBD_INITIAL_STATE_DONE:
 		break;
