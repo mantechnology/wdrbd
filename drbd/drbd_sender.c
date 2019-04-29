@@ -115,7 +115,8 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device->md_io.error = error;
 
 	if(NT_ERROR(error)) {
-		drbd_err(device, "drbd_md_endio fail status %08X\n", error);
+		WDRBD_ERROR("drbd_md_endio disk_error disk:meta_disk, io:%s, error_code:0x%08X, sector:%llus, size:%u\n", (bio->bi_rw & WRITE)?"WRITE":"READ", error, bio->bi_sector, bio->bi_size);
+		drbd_queue_notify_disk_error(device, DRBD_DISK_META, (bio->bi_rw & WRITE) ? DRBD_IO_WRITE : DRBD_IO_READ, error, bio->bi_sector, bio->bi_size);
 	}
 	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
@@ -374,11 +375,14 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				(unsigned long long)peer_req->i.sector, peer_req->i.size);
 
 #ifdef _WIN32
-	if (NT_ERROR(error))
+	if (NT_ERROR(error)) {
 #else
-	if (error)
+	if (error) {
 #endif
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
+		drbd_queue_notify_disk_error(device, DRBD_DISK_DATA, (bio->bi_rw & WRITE) ? DRBD_IO_WRITE : DRBD_IO_READ, error, bio->bi_sector, bio->bi_size);
+		WDRBD_ERROR("disk_error disk:data_disk, io:%s, error_code:0x%08X, sector:%llus, size:%u\n", (bio->bi_rw & WRITE) ? "WRITE" : "READ", error, bio->bi_sector, bio->bi_size);
+	}
 
 #ifdef _WIN32
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
@@ -561,7 +565,9 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			what = WRITE_COMPLETED_WITH_ERROR;
 			break;
 		}
-		drbd_err(device, "drbd_request_endio what:%d error:0x%08X sector:%llus size:%d\n", what, error, bio->bi_sector, bio->bi_size);
+
+		drbd_queue_notify_disk_error(device, DRBD_DISK_DATA, (bio->bi_rw & WRITE) ? DRBD_IO_WRITE : DRBD_IO_READ, error, bio->bi_sector, bio->bi_size);
+		WDRBD_ERROR("disk_error disk:data_disk, io:%s, error_code:0x%08X, sector:%llus, size:%u\n", (bio->bi_rw & WRITE) ? "WRITE" : "READ", error, bio->bi_sector, bio->bi_size);
 	}
 	else {
 		what = COMPLETED_OK;

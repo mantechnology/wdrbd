@@ -7481,7 +7481,9 @@ void notify_disk_error(struct drbd_disk_error *disk_error)
 	disk_error_info.error_code = disk_error->error_code;
 	disk_error_info.sector = disk_error->sector;
 	disk_error_info.size = disk_error->size;
-
+	disk_error_info.disk_type = disk_error->disk_type;
+	disk_error_info.io_type = disk_error->io_type;
+	
 	unsigned int seq = atomic_inc_return(&drbd_genl_seq);
 	struct sk_buff *skb = NULL;
 	struct drbd_genlmsghdr *dh;

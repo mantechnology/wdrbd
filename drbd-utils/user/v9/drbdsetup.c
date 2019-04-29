@@ -225,6 +225,26 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 	return "unknown argument";
 }
 
+const char *drbd_disk_type_name(enum drbd_disk_type type) {
+	switch (type) {
+	case DRBD_DISK_DATA:
+		return "data";
+	case DRBD_DISK_META:
+		return "meta";
+	}
+	return "unknown";
+}
+
+const char *drbd_io_type_name(enum drbd_io_type type) {
+	switch (type) {
+	case DRBD_IO_READ:
+		return "read";
+	case DRBD_IO_WRITE:
+		return "write";
+	}
+	return "unknown";
+}
+
 struct drbd_cmd {
 	const char* cmd;
 	enum cfg_ctx_key ctx_key;
@@ -670,6 +690,7 @@ static const char *error_messages[] = {
 	EM(ERR_CONG_CANT_CHANGE_SNDBUF_SIZE) = "Cannot change sndbuf-size when connected. Please disconnect first and change the attribute value with adjust command\n",
 };
 #define MAX_ERROR (sizeof(error_messages)/sizeof(*error_messages))
+
 const char * error_to_string(int err_no)
 {
 	const unsigned int idx = err_no - ERR_CODE_BASE;
@@ -3908,6 +3929,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	case DRBD_DISK_ERROR: {
 		struct drbd_disk_error_info disk_error;
 		if (!drbd_disk_error_info_from_attrs(&disk_error, info)) {
+			printf(" disk:%s, io:%s,", drbd_disk_type_name(disk_error.disk_type), drbd_io_type_name(disk_error.io_type));
 			printf(" error_code:0x%08X, sector:%llus, size:%u", disk_error.error_code, disk_error.sector, disk_error.size);
 		}
 		else {

@@ -330,9 +330,11 @@ GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
 )
 
 GENL_struct(DRBD_NLA_DISK_ERROR, 31, drbd_disk_error_info,
-__s32_field(1, DRBD_GENLA_F_MANDATORY, error_code)
-__u32_field(2, DRBD_GENLA_F_MANDATORY, size)
-__u64_field(3, DRBD_GENLA_F_MANDATORY, sector)
+__s32_field(3, DRBD_GENLA_F_MANDATORY, error_code)
+__u32_field(4, DRBD_GENLA_F_MANDATORY, size)
+__u64_field(5, DRBD_GENLA_F_MANDATORY, sector)
+__u8_field(1, DRBD_GENLA_F_MANDATORY, disk_type)
+__u8_field(2, DRBD_GENLA_F_MANDATORY, io_type)
 )
 
 /*

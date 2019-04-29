@@ -22,4 +22,5 @@ extern const char *drbd_set_st_err_str(enum drbd_state_rv);
 extern const char *drbd_packet_name(enum drbd_packet);
 
 
+
 #endif  /* __DRBD_STRINGS_H */

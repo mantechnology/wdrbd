@@ -732,12 +732,6 @@ struct drbd_epoch {
 #endif
 };
 
-struct drbd_disk_error {
-	NTSTATUS error_code;
-	unsigned int size;
-	sector_t sector;
-};
-
 /* drbd_epoch flag bits */
 enum {
 	DE_BARRIER_IN_NEXT_EPOCH_ISSUED,
@@ -806,6 +800,16 @@ struct drbd_peer_request {
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
 	};
 #endif
+};
+
+// DW-1755 passthrough policy
+// disk error structure to pass to events2
+struct drbd_disk_error {
+	unsigned char	disk_type;
+	unsigned char	io_type;
+	NTSTATUS		error_code;
+	sector_t		sector;
+	unsigned int	size;
 };
 
 /* ee flag bits.
@@ -3171,11 +3175,27 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 	}
 }
 
+
+/* DW-1755 passthrough policy
+ * Synchronization objects used in the process of forwarding events to events2 
+ * only work when irql is less than APC_LEVEL. 
+ * However, because the completion routine can operate in DISPATCH_LEVEL, 
+ * it must be handled through the work thread.*/
+
 static inline void
-drbd_queue_notify_disk_error(struct drbd_device *device, NTSTATUS error_code, sector_t sector, unsigned int size)
+drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
 {
+	enum drbd_io_error_p ep;
+
+	rcu_read_lock();
+	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
+
+	if (ep != EP_PASSTHROUGH)
+		return;
+
 	struct drbd_disk_error_work *w;
-#ifdef _WIN32
+#ifdef _WIN32 
 	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
 #else
 	w = kmalloc(sizeof(*w), GFP_ATOMIC);
@@ -3191,6 +3211,8 @@ drbd_queue_notify_disk_error(struct drbd_device *device, NTSTATUS error_code, se
 			w->disk_error->error_code = error_code;
 			w->disk_error->sector = sector;
 			w->disk_error->size = size;
+			w->disk_error->io_type = io_type;
+			w->disk_error->disk_type = disk_type;
 			drbd_queue_work(&device->resource->work, &w->w);
 		}
 	}

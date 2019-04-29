@@ -348,7 +348,8 @@ void drbd_req_destroy(struct kref *kref)
 					if (bitmap_index == -1)
 						continue;
 
-					if (rq_state & RQ_NET_SIS)
+					if ((rq_state & RQ_NET_SIS) ||
+						!(req->rq_state[0] & RQ_LOCAL_OK))
 						clear_bit(bitmap_index, &bits);
 					else
 						clear_bit(bitmap_index, &mask);
@@ -521,8 +522,8 @@ int w_notify_disk_error(struct drbd_work *w, int cancel)
 	struct drbd_disk_error_work *dw =
 		container_of(w, struct drbd_disk_error_work, w);
 	notify_disk_error(dw->disk_error);
-	kfree(dw);
 	kfree(dw->disk_error);
+	kfree(dw);
 	return ret;
 }
 
@@ -548,6 +549,8 @@ void complete_master_bio(struct drbd_device *device,
 	bio_endio(m->bio, m->error);
 #endif
 #ifdef _WIN32
+
+	struct drbd_peer_device *peer_device = NULL;
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
@@ -561,6 +564,11 @@ void complete_master_bio(struct drbd_device *device,
 			if (D_DISKLESS == device->disk_state[NOW]) {
 				status = STATUS_SUCCESS;
 			}
+
+			for_each_peer_device(peer_device, device) {
+				if (peer_device)
+					drbd_set_out_of_sync(peer_device, master_bio->bi_sector, master_bio->bi_size);
+			}
 		}
 
 		if (!master_bio->splitInfo) {
@@ -570,9 +578,6 @@ void complete_master_bio(struct drbd_device *device,
 	        }
 			
 			if (NT_ERROR(status)) {
-
-				drbd_queue_notify_disk_error(device, status, master_bio->bi_sector, master_bio->bi_size);
-
 				master_bio->pMasterIrp->IoStatus.Status = status;
 				master_bio->pMasterIrp->IoStatus.Information = 0;
 			}
@@ -628,9 +633,6 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Status = STATUS_SUCCESS;
 					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
 				} else {
-					drbd_queue_notify_disk_error(device, status, master_bio->bi_sector, master_bio->bi_size);
-
-					WDRBD_ERROR("WRITE ERROR error_code:0x%x, sector:%llu, size:%u, called_by:%s\n", status, master_bio->bi_sector, master_bio->bi_size);
 					master_bio->pMasterIrp->IoStatus.Status = master_bio->splitInfo->LastError;
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}
