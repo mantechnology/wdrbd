@@ -105,8 +105,8 @@
   </files>
   <launchers>
     <launcher name="drbdService" id="88" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\drbdService.exe" />
-    <launcher name="engine install" id="91" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\install.bat" />
-    <launcher name="engine uninstall" id="119" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\uninstall.bat" />
+    <launcher name="engine install" id="91" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\wdrbdInstall.bat" />
+    <launcher name="engine uninstall" id="119" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\wdrbdUninstall.bat" />
   </launchers>
   <installerGui installerType="1" addOnAppId="" suggestPreviousLocations="true" autoUpdateDescriptorUrl="" useAutoUpdateBaseUrl="false" autoUpdateBaseUrl="">
     <customCode />
@@ -788,7 +788,7 @@ else
                             </void>
                             <void property="target">
                               <object class="java.io.File">
-                                <string>bin/install.bat</string>
+                                <string>bin/wdrbdInstall.bat</string>
                               </object>
                             </void>
                           </object>
@@ -806,7 +806,7 @@ else
                             </void>
                             <void property="target">
                               <object class="java.io.File">
-                                <string>bin/uninstall.bat</string>
+                                <string>bin/wdrbdUninstall.bat</string>
                               </object>
                             </void>
                           </object>
@@ -1169,7 +1169,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                       </void>
                       <void property="executable">
                         <object class="java.io.File">
-                          <string>bin/install.bat</string>
+                          <string>bin/wdrbdInstall.bat</string>
                         </object>
                       </void>
                       <void property="workingDirectory">
@@ -1369,7 +1369,7 @@ return true;</string>
                     <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
                       <void property="executable">
                         <object class="java.io.File">
-                          <string>bin/uninstall.bat</string>
+                          <string>bin/wdrbdUninstall.bat</string>
                         </object>
                       </void>
                       <void property="wait">
