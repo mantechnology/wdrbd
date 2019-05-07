@@ -1009,7 +1009,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                     </object>
                   </java>
                 </serializedBean>
-                <condition>context.getLanguageId() == "kr"</condition>
+                <condition>context.getLanguageId() == "ko"</condition>
               </action>
               <action name="" id="2017" customizedId="" beanClass="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
