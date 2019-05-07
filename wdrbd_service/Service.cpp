@@ -28,6 +28,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName);
 DWORD UnInstall(const TCHAR * pName);
 DWORD KillService(const TCHAR * pName);
 DWORD RunService(const TCHAR * pName);
+DWORD UpdateDescription(const TCHAR * pName, const TCHAR * lang);
 
 VOID ExecuteSubProcess();
 VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv);
@@ -41,8 +42,11 @@ DWORD RcDrbdStop();
 BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
-//TCHAR * ServiceDescription = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다.");
-TCHAR * ServiceDescription = _T("Provides real-time block-level replication with a Windows version of the DRBD.");
+TCHAR * ServiceDisplayName = _T("DRBD for Windows");
+//DW-1741 kr
+TCHAR * DescriptionKR = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다.");
+//DW-1741 en
+TCHAR * DescriptionEN = _T("Provides real-time block-level replication with a Windows version of the DRBD.");
 
 SERVICE_TABLE_ENTRY		g_lpServiceStartTable[] =
 {
@@ -153,7 +157,9 @@ int _tmain(int argc, _TCHAR* argv[])
     else if (_tcsicmp(L"/u", argv[1]) == 0)
         return UnInstall(ServiceName);
     else if (_tcsicmp(L"/s", argv[1]) == 0)
-        return RunService(ServiceName);
+		return RunService(ServiceName);
+	else if (_tcsicmp(L"/d", argv[1]) == 0)
+		return UpdateDescription(ServiceName, argv[2]);
     else if (_tcsicmp(L"/t", argv[1]) == 0)
     {
         DWORD dwPID;
@@ -232,7 +238,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
     SC_HANDLE schService = CreateService(
         schSCManager,				/* SCManager database      */
         ServiceName,						/* name of service         */
-		ServiceDescription,						/* service name to display */
+		ServiceDisplayName,						/* service name to display */
         SERVICE_ALL_ACCESS,			/* desired access          */
         SERVICE_WIN32_OWN_PROCESS | SERVICE_INTERACTIVE_PROCESS, /* service type            */
         SERVICE_AUTO_START,			/* start type              */
@@ -252,9 +258,23 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
         WriteLog(pTemp);
     }
     else
-    {
+	{
+		SERVICE_DESCRIPTION sd;
+
+		sd.lpDescription = DescriptionEN;
+
+		if (!ChangeServiceConfig2(schService,
+									SERVICE_CONFIG_DESCRIPTION,
+									&sd))
+		{
+			err = GetLastError();
+			_stprintf_s(pTemp, _T("Failed to change service config %s, error code = %d\n"), ServiceName, err);
+			WriteLog(pTemp);
+		}
+		else
+			AddEventSource(L"Application", ServiceName);
+
         CloseServiceHandle(schService);
-		AddEventSource(L"Application", ServiceName);
     }
 
     CloseServiceHandle(schSCManager);
@@ -342,6 +362,56 @@ DWORD KillService(const TCHAR * pName)
     return err;
 }
 
+//DW-1741 add update service description
+DWORD UpdateDescription(const TCHAR * pName, const TCHAR * lang)
+{
+	wchar_t pTemp[1024];
+	DWORD err = ERROR_SUCCESS;
+
+	// run service with given name
+	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	if (schSCManager == 0)
+	{
+		err = GetLastError();
+		_stprintf_s(pTemp, _T("OpenSCManager failed, error code = %d\n"), err);
+		WriteLog(pTemp);
+	}
+	else
+	{
+		// open the service
+		SC_HANDLE schService = OpenService(schSCManager, pName, SERVICE_ALL_ACCESS);
+		if (schService == 0)
+		{
+			err = GetLastError();
+			_stprintf_s(pTemp, _T("OpenService failed, error code = %d\n"), err);
+			WriteLog(pTemp);
+		}
+		else
+		{
+			SERVICE_DESCRIPTION sd;
+
+			if (_tcsicmp(L"kr", lang) == 0)
+				sd.lpDescription = DescriptionKR;
+			else
+				sd.lpDescription = DescriptionEN;
+
+			if (!ChangeServiceConfig2(schService,
+				SERVICE_CONFIG_DESCRIPTION,
+				&sd))
+			{
+				err = GetLastError();
+				_stprintf_s(pTemp, _T("Failed to change service config %s, error code = %d\n"), ServiceName, err);
+				WriteLog(pTemp);
+			}
+
+			CloseServiceHandle(schService);
+		}
+
+		CloseServiceHandle(schSCManager);
+	}
+
+	return err;
+}
 DWORD RunService(const TCHAR * pName)
 {
     wchar_t pTemp[1024];
