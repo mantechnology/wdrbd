@@ -41,6 +41,7 @@ DWORD RcDrbdStop();
 BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
+TCHAR * ServiceDescription = _T("WDRBD is a software-based, shared-nothing, replicated storage solution mirroring the content of block devices (hard disks, partitions, logical volumes etc.) between hosts by network transport(TCP/IP).");
 
 SERVICE_TABLE_ENTRY		g_lpServiceStartTable[] =
 {
@@ -230,7 +231,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
     SC_HANDLE schService = CreateService(
         schSCManager,				/* SCManager database      */
         ServiceName,						/* name of service         */
-        ServiceName,						/* service name to display */
+		ServiceDescription,						/* service name to display */
         SERVICE_ALL_ACCESS,			/* desired access          */
         SERVICE_WIN32_OWN_PROCESS | SERVICE_INTERACTIVE_PROCESS, /* service type            */
         SERVICE_AUTO_START,			/* start type              */
