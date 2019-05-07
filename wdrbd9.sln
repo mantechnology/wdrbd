@@ -36,8 +36,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "linux", "linux", "{5C0D1E4A
 		drbd-headers\linux\genl_magic_struct.h = drbd-headers\linux\genl_magic_struct.h
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "drbdwutils", "drbdwutils\drbdwutils.vcxproj", "{D341D72D-5C7E-46DF-9EE6-181F1D064FAE}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "drbdlock", "drbdlock\drbdlock.vcxproj", "{22B0622A-0A02-43D9-A5E6-9CEC7A7E0E7E}"
 EndProject
 Global
