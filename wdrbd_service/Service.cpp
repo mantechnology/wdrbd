@@ -41,7 +41,8 @@ DWORD RcDrbdStop();
 BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
-TCHAR * ServiceDescription = _T("WDRBD is a software-based, shared-nothing, replicated storage solution mirroring the content of block devices (hard disks, partitions, logical volumes etc.) between hosts by network transport(TCP/IP).");
+//TCHAR * ServiceDescription = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다.");
+TCHAR * ServiceDescription = _T("Provides real-time block-level replication with a Windows version of the DRBD.");
 
 SERVICE_TABLE_ENTRY		g_lpServiceStartTable[] =
 {
