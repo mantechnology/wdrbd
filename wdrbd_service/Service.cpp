@@ -44,7 +44,7 @@ BOOL g_bProcessStarted = TRUE;
 TCHAR * ServiceName = _T("drbdService");
 TCHAR * ServiceDisplayName = _T("DRBD for Windows");
 //DW-1741 ko
-TCHAR * DescriptionKO = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다. 이 서비스를 중지하면 복제 서비스에 문제가 발생할 수 있습니다.");
+TCHAR * DescriptionKO = _T("DRBD의 Windows 버전으로 실시간 블럭레벨 복제를 제공합니다. 이 서비스를 중지하면 복제 서비스에 문제가 발생할 수 있습니다.");
 //DW-1741 en
 TCHAR * DescriptionEN = _T("Provides real-time block-level replication with a Windows version of the DRBD. Stopping this service can cause problems with the replication service.");
 
