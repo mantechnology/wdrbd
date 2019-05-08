@@ -982,17 +982,34 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                 </serializedBean>
                 <condition />
               </action>
-              <action name="Update drbdService Description" id="2473" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to update service">
+              <action name="[Language] get current language" id="2472" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>context.setVariable("currentLanguageId", context.getLanguageId());
+return true;</string>
+                          </void>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="Update drbdService Description" id="2471" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
                       <void property="arguments">
                         <array class="java.lang.String" length="2">
                           <void index="0">
-                            <string>/u</string>
+                            <string>/d</string>
                           </void>
                           <void index="1">
-                            <string>kr</string>
+                            <string>${installer:currentLanguageId}</string>
                           </void>
                         </array>
                       </void>
@@ -1009,7 +1026,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                     </object>
                   </java>
                 </serializedBean>
-                <condition>context.getLanguageId() == "ko"</condition>
+                <condition />
               </action>
               <action name="" id="2017" customizedId="" beanClass="com.install4j.runtime.beans.actions.registry.SetRegistryValueAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>

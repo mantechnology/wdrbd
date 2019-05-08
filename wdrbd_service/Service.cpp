@@ -43,8 +43,8 @@ BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
 TCHAR * ServiceDisplayName = _T("DRBD for Windows");
-//DW-1741 kr
-TCHAR * DescriptionKR = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다.");
+//DW-1741 ko
+TCHAR * DescriptionKO = _T("DRBD의 윈도우 버전으로 실시간 블럭레벨 복제를 제공합니다.");
 //DW-1741 en
 TCHAR * DescriptionEN = _T("Provides real-time block-level replication with a Windows version of the DRBD.");
 
@@ -390,8 +390,8 @@ DWORD UpdateDescription(const TCHAR * pName, const TCHAR * lang)
 		{
 			SERVICE_DESCRIPTION sd;
 
-			if (_tcsicmp(L"kr", lang) == 0)
-				sd.lpDescription = DescriptionKR;
+			if (_tcsicmp(L"ko", lang) == 0)
+				sd.lpDescription = DescriptionKO;
 			else
 				sd.lpDescription = DescriptionEN;
 
