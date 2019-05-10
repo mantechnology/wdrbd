@@ -486,16 +486,6 @@ enum drbd_notification_type {
 	NOTIFY_FLAGS = NOTIFY_CONTINUES,
 };
 
-enum drbd_io_type {
-	DRBD_IO_READ,
-	DRBD_IO_WRITE
-};
-
-enum drbd_disk_type {
-	DRBD_DISK_DATA,
-	DRBD_DISK_META
-};
-
 /* These values are part of the ABI! */
 enum drbd_peer_state {
 	P_INCONSISTENT = 3,

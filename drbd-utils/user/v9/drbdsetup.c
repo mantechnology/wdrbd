@@ -227,9 +227,9 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 
 const char *drbd_disk_type_name(enum drbd_disk_type type) {
 	switch (type) {
-	case DRBD_DISK_DATA:
+	case VOLUME_TYPE_REPL:
 		return "data";
-	case DRBD_DISK_META:
+	case VOLUME_TYPE_META:
 		return "meta";
 	}
 	return "unknown";
@@ -237,9 +237,9 @@ const char *drbd_disk_type_name(enum drbd_disk_type type) {
 
 const char *drbd_io_type_name(enum drbd_io_type type) {
 	switch (type) {
-	case DRBD_IO_READ:
+	case READ:
 		return "read";
-	case DRBD_IO_WRITE:
+	case WRITE:
 		return "write";
 	}
 	return "unknown";

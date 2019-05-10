@@ -46,7 +46,7 @@
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
 static void maybe_send_barrier(struct drbd_connection *, unsigned int);
-static void process_disk_error(struct bio *bio, struct drbd_device *device, enum drbd_disk_type disk_type, int error);
+static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error);
 /* endio handlers:
  *   drbd_md_endio (defined here)
  *   drbd_request_endio (defined here)
@@ -115,7 +115,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device->md_io.error = error;
 
 	if(NT_ERROR(error)) {
-		process_disk_error(bio, device, DRBD_DISK_META, error);
+		process_disk_error(bio, device, VOLUME_TYPE_META, error);
 	}
 	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
@@ -385,7 +385,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (error) {
 #endif
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
-		process_disk_error(bio, device, DRBD_DISK_DATA, error);
+		process_disk_error(bio, device, VOLUME_TYPE_REPL, error);
 	}
 
 #ifdef _WIN32
@@ -570,7 +570,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			break;
 		}
 
-		process_disk_error(bio, device, DRBD_DISK_DATA, error);
+		process_disk_error(bio, device, VOLUME_TYPE_REPL, error);
 	}
 	else {
 		what = COMPLETED_OK;
@@ -3814,15 +3814,15 @@ int drbd_worker(struct drbd_thread *thi)
 /* DW-1755 When a disk error occurs, it writes the log 
  * and transfers the event to the work thread queue.
  */
-static void process_disk_error(struct bio *bio, struct drbd_device *device, enum drbd_disk_type disk_type, int error)
+static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
 {
 	WDRBD_ERROR_NO_EVENTLOG("disk_error disk:%s, io:%s, error_code:0x%08X, sector:%llus, size:%u\n",
-			disk_type == DRBD_DISK_META ? "meta_disk" : "data_disk",
+			disk_type == VOLUME_TYPE_META ? "meta_disk" : "data_disk",
 			(bio->bi_rw & WRITE) ? "WRITE" : "READ", 
 			error, 
 			bio->bi_sector, 
 			bio->bi_size);
 
-	drbd_queue_notify_disk_error(device, DRBD_DISK_DATA, (bio->bi_rw & WRITE) ? DRBD_IO_WRITE : DRBD_IO_READ, error, bio->bi_sector, bio->bi_size);
+	drbd_queue_notify_disk_error(device, VOLUME_TYPE_REPL, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
 
