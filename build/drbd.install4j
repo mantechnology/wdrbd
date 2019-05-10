@@ -105,8 +105,8 @@
   </files>
   <launchers>
     <launcher name="drbdService" id="88" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\drbdService.exe" />
-    <launcher name="engine install" id="91" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\install.bat" />
-    <launcher name="engine uninstall" id="119" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\uninstall.bat" />
+    <launcher name="engine install" id="91" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\wdrbdInstall.bat" />
+    <launcher name="engine uninstall" id="119" customizedId="" external="true" excludeFromMenu="true" unixMode="755" menuName="" externalFile="bin\wdrbdUninstall.bat" />
   </launchers>
   <installerGui installerType="1" addOnAppId="" suggestPreviousLocations="true" autoUpdateDescriptorUrl="" useAutoUpdateBaseUrl="false" autoUpdateBaseUrl="">
     <customCode />
@@ -701,7 +701,7 @@ else
               <action name="" id="10" customizedId="" beanClass="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction" enabled="false" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
-					<object class="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction">
+                    <object class="com.install4j.runtime.beans.actions.desktop.CreateProgramGroupAction">
                       <void property="programGroupEntryConfigs">
                         <void method="add">
                           <object class="com.install4j.runtime.beans.screens.components.ProgramGroupFileConfig">
@@ -788,7 +788,7 @@ else
                             </void>
                             <void property="target">
                               <object class="java.io.File">
-                                <string>bin/install.bat</string>
+                                <string>bin/wdrbdInstall.bat</string>
                               </object>
                             </void>
                           </object>
@@ -806,7 +806,7 @@ else
                             </void>
                             <void property="target">
                               <object class="java.io.File">
-                                <string>bin/uninstall.bat</string>
+                                <string>bin/wdrbdUninstall.bat</string>
                               </object>
                             </void>
                           </object>
@@ -964,6 +964,52 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                         <array class="java.lang.String" length="1">
                           <void index="0">
                             <string>/i</string>
+                          </void>
+                        </array>
+                      </void>
+                      <void property="executable">
+                        <object class="java.io.File">
+                          <string>bin/drbdService.exe</string>
+                        </object>
+                      </void>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="[Language] get current language" id="2472" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>context.setVariable("currentLanguageId", context.getLanguageId());
+return true;</string>
+                          </void>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="Update drbdService Description" id="2471" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="2" errorMessage="Failed to install service">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="2">
+                          <void index="0">
+                            <string>/d</string>
+                          </void>
+                          <void index="1">
+                            <string>${installer:currentLanguageId}</string>
                           </void>
                         </array>
                       </void>
@@ -1169,7 +1215,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
                       </void>
                       <void property="executable">
                         <object class="java.io.File">
-                          <string>bin/install.bat</string>
+                          <string>bin/wdrbdInstall.bat</string>
                         </object>
                       </void>
                       <void property="workingDirectory">
@@ -1195,7 +1241,7 @@ return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE
           </screen>
         </screens>
       </application>
-	  <application name="" id="uninstaller" customizedId="" beanClass="com.install4j.runtime.beans.applications.UninstallerApplication" enabled="true" commentSet="false" comment="" actionElevationType="elevated" fileset="" customIcnsFile="" customIcoFile="" macEntitlementsFile="" automaticLauncherIntegration="false" launchMode="startupFirstWindow" launchInNewProcess="false" launchSchedule="updateSchedule" allLaunchers="true">
+      <application name="" id="uninstaller" customizedId="" beanClass="com.install4j.runtime.beans.applications.UninstallerApplication" enabled="true" commentSet="false" comment="" actionElevationType="elevated" fileset="" customIcnsFile="" customIcoFile="" macEntitlementsFile="" automaticLauncherIntegration="false" launchMode="startupFirstWindow" launchInNewProcess="false" launchSchedule="updateSchedule" allLaunchers="true">
         <serializedBean>
           <java class="java.beans.XMLDecoder">
             <object class="com.install4j.runtime.beans.applications.UninstallerApplication" />
@@ -1369,7 +1415,7 @@ return true;</string>
                     <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
                       <void property="executable">
                         <object class="java.io.File">
-                          <string>bin/uninstall.bat</string>
+                          <string>bin/wdrbdUninstall.bat</string>
                         </object>
                       </void>
                       <void property="wait">

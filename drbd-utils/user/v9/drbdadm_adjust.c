@@ -52,19 +52,19 @@ static FILE *m_popen(int *pid, char * const* argv)
 {
 	int mpid;
 	int pipes[2];
-	//int dev_null;
+	int dev_null;
 
 	if(pipe(pipes)) {
 		err("Creation of pipes failed: %m\n");
 		exit(E_EXEC_ERROR);
 	}
 
-	//DW-1777 remove stderr redirection /dev/null(windows "nul")
-	//dev_null = open("/dev/null", O_WRONLY);
-	//if (dev_null == -1) {
-	//	err("Opening /dev/null failed: %m\n");
-	//	exit(E_EXEC_ERROR);
-	//}
+	dev_null = open("/dev/null", O_WRONLY);
+	if (dev_null == -1) {
+		//DW-1777 revert source and change error message
+		err("Opening null service failed: %m\n");
+		exit(E_EXEC_ERROR);
+	}
 
 	mpid = fork();
 	if(mpid == -1) {
@@ -75,15 +75,15 @@ static FILE *m_popen(int *pid, char * const* argv)
 		close(pipes[0]); // close reading end
 		dup2(pipes[1], fileno(stdout));
 		close(pipes[1]);
-		//dup2(dev_null, fileno(stderr));
-		//close(dev_null);
+		dup2(dev_null, fileno(stderr));
+		close(dev_null);
 		execvp(argv[0],argv);
 		err("Can not exec");
 		exit(E_EXEC_ERROR);
 	}
 
 	close(pipes[1]); // close writing end
-	//close(dev_null);
+	close(dev_null);
 	*pid=mpid;
 	return fdopen(pipes[0],"r");
 }

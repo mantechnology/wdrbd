@@ -263,7 +263,13 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * we may no longer access it,
 	 * it may be freed/reused already!
 	 * (as soon as we release the req_lock) */
-	sector = peer_req->i.sector;
+
+	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
+	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
+		sector = BM_BIT_TO_SECT(peer_req->first);
+	else
+		sector = peer_req->i.sector;
+
 	block_id = peer_req->block_id;
 	flags = peer_req->flags;
 
@@ -738,14 +744,18 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	/* Do not wait if no memory is immediately available.  */
 	peer_req = drbd_alloc_peer_req(peer_device, GFP_TRY & ~__GFP_RECLAIM);
-	if (!peer_req)
+	if (!peer_req) {
+		drbd_err(peer_device, "failed to allocate peer request\n");
 		goto defer;
+	}
 #ifdef _WIN32
     if (size) {
         drbd_alloc_page_chain(&peer_device->connection->transport,
             &peer_req->page_chain, DIV_ROUND_UP(size, PAGE_SIZE), GFP_TRY);
-        if (!peer_req->page_chain.head)
-            goto defer2;        
+		if (!peer_req->page_chain.head) {
+			drbd_err(peer_device, "failed to allocate page chain\n");
+			goto defer2;
+		}
         peer_req->peer_req_databuf = peer_req->page_chain.head;
     } else  {
         peer_req->peer_req_databuf = NULL;
@@ -772,6 +782,7 @@ static int read_for_csum(struct drbd_peer_device *peer_device, sector_t sector, 
 		DRBD_FAULT_RS_RD) == 0)
 		return 0;
 
+	drbd_err(peer_device, "failed to submit peer request\n");
 	/* If it failed because of ENOMEM, retry should help.  If it failed
 	 * because bio_add_page failed (probably broken lower level driver),
 	 * retry may or may not help.
@@ -1610,20 +1621,6 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		}
 		peer_device->resync_again++;
 	}
-	//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-	else if (peer_device->rs_already_sync > 0) {
-		drbd_info(peer_device, "            %lu already sync blocks\n", peer_device->rs_already_sync);
-
-		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
-			__change_disk_state(device, D_INCONSISTENT);
-			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
-		}
-		else {
-			__change_disk_state(device, D_UP_TO_DATE);
-			__change_peer_disk_state(peer_device, D_INCONSISTENT);
-		}
-		peer_device->resync_again++;
-	}
 	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
@@ -1696,7 +1693,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 
 out_unlock:
 #ifdef _WIN32_RCU_LOCKED
-	end_state_change_locked(device->resource, false);
+	end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 	end_state_change_locked(device->resource);
 #endif
@@ -1706,7 +1703,6 @@ out_unlock:
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
-	peer_device->rs_already_sync = 0;
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =
@@ -1720,7 +1716,7 @@ out_unlock:
 			begin_state_change_locked(device->resource, CS_VERBOSE);
 			__change_repl_state(peer_device, new_repl_state);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif
@@ -1923,6 +1919,7 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 	int err, eq = 0;
 
 	if (unlikely(cancel)) {
+		drbd_info(peer_device, "cancel csum rs req, sector : %lu\n", peer_req->i.sector);
 		drbd_free_peer_req(peer_req);
 		dec_unacked(peer_device);
 		return 0;
@@ -2257,7 +2254,7 @@ static bool drbd_pause_after(struct drbd_device *device)
 		begin_state_change_locked(other_device->resource, CS_HARD);
 		if (other_device->disk_state[NOW] == D_DISKLESS) {
 #ifdef _WIN32_RCU_LOCKED
-			abort_state_change_locked(other_device->resource, true);
+			abort_state_change_locked(other_device->resource, true, __FUNCTION__);
 #else
 			abort_state_change_locked(other_device->resource);
 #endif
@@ -2270,7 +2267,7 @@ static bool drbd_pause_after(struct drbd_device *device)
 				__change_resync_susp_dependency(other_peer_device, true);
 		}
 #ifdef _WIN32_RCU_LOCKED
-		if (end_state_change_locked(other_device->resource, true) != SS_NOTHING_TO_DO)
+		if (end_state_change_locked(other_device->resource, true, __FUNCTION__) != SS_NOTHING_TO_DO)
 #else
 		if (end_state_change_locked(other_device->resource) != SS_NOTHING_TO_DO)
 #endif
@@ -2305,7 +2302,7 @@ static bool drbd_resume_next(struct drbd_device *device)
 		begin_state_change_locked(other_device->resource, CS_HARD);
 		if (other_device->disk_state[NOW] == D_DISKLESS) {
 #ifdef _WIN32_RCU_LOCKED
-			abort_state_change_locked(other_device->resource, true);
+			abort_state_change_locked(other_device->resource, true, __FUNCTION__);
 #else
 			abort_state_change_locked(other_device->resource);
 #endif
@@ -2319,7 +2316,7 @@ static bool drbd_resume_next(struct drbd_device *device)
 				__change_resync_susp_dependency(other_peer_device, false);
 		}
 #ifdef _WIN32_RCU_LOCKED
-		if (end_state_change_locked(other_device->resource, true) != SS_NOTHING_TO_DO)
+		if (end_state_change_locked(other_device->resource, true, __FUNCTION__) != SS_NOTHING_TO_DO)
 #else
 		if (end_state_change_locked(other_device->resource) != SS_NOTHING_TO_DO)
 #endif
@@ -2734,7 +2731,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			begin_state_change_locked(device->resource, CS_VERBOSE);
 			__change_repl_state(peer_device, L_ESTABLISHED);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif
@@ -2761,7 +2758,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	finished_resync_pdsk = peer_device->resync_finished_pdsk;
 	peer_device->resync_finished_pdsk = D_UNKNOWN;
 #ifdef _WIN32_RCU_LOCKED
-	r = end_state_change_locked(device->resource, false);
+	r = end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 	r = end_state_change_locked(device->resource);
 #endif

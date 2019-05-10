@@ -26,7 +26,7 @@ goto wdrbd9 directory and open wdrbd9.sln, config 32 or 64 properly, finally bui
 - goto target host
 - open cmd.exe window with administrator privilege
 - chdir "install folder"/bin
-- install.bat
+- wdrbdInstall.bat
 - reboot
 
 ## Contributors

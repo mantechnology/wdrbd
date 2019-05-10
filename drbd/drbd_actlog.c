@@ -138,7 +138,7 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 			HZ * 10);
 #endif
 	if (t == 0)
-		drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?\n");
+		drbd_err(device, "Waited 10 Seconds for md_buffer! BUG?, %s\n", intent);
 
 	if (r)
 		return NULL;
@@ -792,6 +792,8 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		 * or requests to "cold" extents could be starved. */
 		if (!al->pending_changes)
 			set_bit(__LC_STARVING, &device->act_log->flags);
+
+		drbd_info(device, "insufficient al_extent slots. nr_al_extents : %lu, available_update_slots : %lu\n", nr_al_extents, available_update_slots);
 		return -ENOBUFS;
 	}
 
@@ -801,6 +803,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
+			drbd_info(device, "active resync extent enr : %lu\n", enr);
 			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;
@@ -1032,8 +1035,6 @@ static const char *drbd_change_sync_fname[] = {
 	[RECORD_RS_FAILED] = "drbd_rs_failed_io",
 	[SET_IN_SYNC] = "drbd_set_in_sync",
 	[SET_OUT_OF_SYNC] = "drbd_set_out_of_sync"
-	//DW-1775
-	, [RECORD_RS_ALREADY_SYNC] = "drbd_rs_already_sync"
 };
 
 
@@ -1252,8 +1253,7 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long c;
 		int bmi = peer_device->bitmap_index;
 
-		//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-		if (mode == RECORD_RS_FAILED || mode == RECORD_RS_ALREADY_SYNC)
+		if (mode == RECORD_RS_FAILED)
 			/* Only called from drbd_rs_failed_io(), bits
 			 * supposedly still set.  Recount, maybe some
 			 * of the bits have been successfully cleared
@@ -1279,13 +1279,9 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		if (mode != SET_OUT_OF_SYNC) {
 			if (mode == RECORD_RS_FAILED)
 				peer_device->rs_failed += count;
-			//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-			else if (mode == RECORD_RS_ALREADY_SYNC)
-				peer_device->rs_already_sync += count;
 
 			ULONG_PTR still_to_go = drbd_bm_total_weight(peer_device);
-			//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-			bool rs_is_done = (still_to_go <= (peer_device->rs_failed + peer_device->rs_already_sync));
+			bool rs_is_done = (still_to_go <= peer_device->rs_failed);
 
 			if (mode == SET_IN_SYNC) 
 				drbd_advance_rs_marks(peer_device, still_to_go);
@@ -1813,7 +1809,6 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(enr);
 #endif
-
 	spin_lock_irqsave(&device->al_lock, flags);
 	e = lc_find(peer_device->resync_lru, (unsigned int)enr);
 	bm_ext = e ? lc_entry(e, struct bm_extent, lce) : NULL;
@@ -1826,9 +1821,9 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
-		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u]) called, "
+		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u], %lu) called, "
 		    "but refcnt is 0!?\n", 
-			(unsigned long long)sector, (unsigned int)enr);
+			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector));
 		return;
 	}
 

@@ -137,8 +137,7 @@ extern char usermode_helper[];
 #define ID_SYNCER (UINT64_MAX)
 //DW-1601 Add define values for split peer request processing and already sync processing
 #define ID_SYNCER_SPLIT_DONE ID_SYNCER
-#define ID_SYNCER_ALREADY_DONE (ID_SYNCER - 1)
-#define ID_SYNCER_SPLIT (ID_SYNCER_ALREADY_DONE - 1)
+#define ID_SYNCER_SPLIT (ID_SYNCER - 1)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
@@ -1604,8 +1603,6 @@ struct drbd_peer_device {
     ULONG_PTR rs_paused;
     /* skipped because csum was equal [unit BM_BLOCK_SIZE] */
     ULONG_PTR rs_same_csum;
-	//DW-1601 If rs_already_sync is not 0, resync again. 
-	ULONG_PTR rs_already_sync;
 #else
 	/* blocks to resync in this run [unit BM_BLOCK_SIZE] */
 	unsigned long rs_total;
@@ -2816,8 +2813,7 @@ extern const struct file_operations drbd_proc_fops;
 #endif
 
 
-//DW-1601 Restart resync when the sync bit is found in the resync request bitmap
-typedef enum { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC, RECORD_RS_ALREADY_SYNC } update_sync_bits_mode;
+typedef enum { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC } update_sync_bits_mode;
 
 /* drbd_actlog.c */
 extern bool drbd_al_try_lock(struct drbd_device *device);
@@ -2855,9 +2851,6 @@ extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sec
 #define drbd_rs_failed_io(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED)
 
-//DW-1601 Restart resync when the sync bit is found in the resync request bitmap.
-#define drbd_rs_already_sync(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, RECORD_RS_ALREADY_SYNC)
 extern void drbd_al_shrink(struct drbd_device *device);
 extern bool drbd_sector_has_priority(struct drbd_peer_device *, sector_t);
 extern int drbd_al_initialize(struct drbd_device *, void *);
@@ -2955,7 +2948,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
 #ifdef _WIN32_RCU_LOCKED
-				end_state_change_locked(device->resource, false);
+				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 				end_state_change_locked(device->resource);
 #endif
@@ -2993,7 +2986,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 			begin_state_change_locked(device->resource, CS_HARD);
 			__change_disk_state(device, D_FAILED);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif
