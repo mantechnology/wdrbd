@@ -2430,31 +2430,31 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
  * e_end_resync_block() is called in ack_sender context via
  * drbd_finish_peer_reqs().
  */
-static int e_end_resync_block(struct drbd_work *w, int unused)
-{
-	UNREFERENCED_PARAMETER(unused);
-
-	struct drbd_peer_request *peer_req =
-		container_of(w, struct drbd_peer_request, w);
-	struct drbd_peer_device *peer_device = peer_req->peer_device;
-	sector_t sector = peer_req->i.sector;
-	int err;
-
-	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
-
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-	} else {
-		/* Record failure to sync */
-		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-
-		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-	}
-	dec_unacked(peer_device);
-
-	return err;
-}
+//static int e_end_resync_block(struct drbd_work *w, int unused)
+//{
+//	UNREFERENCED_PARAMETER(unused);
+//
+//	struct drbd_peer_request *peer_req =
+//		container_of(w, struct drbd_peer_request, w);
+//	struct drbd_peer_device *peer_device = peer_req->peer_device;
+//	sector_t sector = peer_req->i.sector;
+//	int err;
+//
+//	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
+//
+//	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+//		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+//		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+//	} else {
+//		/* Record failure to sync */
+//		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+//
+//		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+//	}
+//	dec_unacked(peer_device);
+//
+//	return err;
+//}
 
 static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request *peer_request, sector_t sector, 
 														ULONG_PTR offset, unsigned int size, u64 block_id, char* verify) __must_hold(local)
