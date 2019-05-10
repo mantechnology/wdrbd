@@ -1696,6 +1696,13 @@ struct submit_worker {
 	struct list_head peer_writes;
 };
 
+// DW-1755 Structure to store disk error information
+struct disk_error_info {
+	sector_t			sector;
+	unsigned int		size;
+	struct list_head	list;
+};
+
 struct drbd_device {
 #ifdef PARANOIA
 	long magic;
@@ -1806,6 +1813,17 @@ struct drbd_device {
 	 * are deferred to this single-threaded work queue */
 	struct submit_worker submit;
 	bool susp_quorum[2];		/* IO suspended quorum lost */
+
+	/* DW-1755 disk error information structure is managed as a list, 
+	* and the error count is stored separately for the status command.
+	Disk errors rarely occur, and even if they occur, 
+	the list counts will not increase in a large amount 
+	because they will occur only in a specific sector. */
+	struct disk_error_info_s {
+		struct list_head err_list;
+		unsigned int err_count;
+		spinlock_t err_lock;
+	} disk_error_info;
 };
 
 struct drbd_bm_aio_ctx {
@@ -2932,7 +2950,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
 		if (df == DRBD_READ_ERROR ||  df == DRBD_WRITE_ERROR) {
 			if (drbd_ratelimit())
-				drbd_err(device, "Local IO failed in %s.\n", where);
+				WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
@@ -2979,14 +2997,12 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 #else
 			end_state_change_locked(device->resource);
 #endif
-			drbd_err(device,
-				"Local IO failed in %s. Detaching...\n", where);
+			WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s. Detaching...\n", where);
 		}
 		break;
 	// DW-1755
 	case EP_PASSTHROUGH:
-		drbd_err(device,
-			"Local IO failed in %s. Passthrough... \n", where);
+		WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s. Passthrough... \n", where);
 	
 		// if the metadisk fails, replication should be stopped immediately.
 		if (df == DRBD_META_IO_ERROR) {
@@ -3214,6 +3230,9 @@ drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type
 			w->disk_error->io_type = io_type;
 			w->disk_error->disk_type = disk_type;
 			drbd_queue_work(&device->resource->work, &w->w);
+		}
+		else {
+			drbd_err(device, "kmalloc failed.\n");
 		}
 	}
 }

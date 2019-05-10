@@ -4526,6 +4526,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	atomic_set(&device->md_io.in_use, 0);
 
 	spin_lock_init(&device->al_lock);
+	spin_lock_init(&device->disk_error_info.err_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
 
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
@@ -4660,6 +4661,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	INIT_LIST_HEAD(&device->peer_devices);
 	INIT_LIST_HEAD(&device->pending_bitmap_io);
+	INIT_LIST_HEAD(&device->disk_error_info.err_list);
+	device->disk_error_info.err_count = 0;
 
 	locked = true;
 	spin_lock_irq(&resource->req_lock);

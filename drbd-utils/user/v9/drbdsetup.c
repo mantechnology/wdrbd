@@ -2587,6 +2587,18 @@ static void device_status(struct devices_list *device, bool single_device)
 	if (disk_state == D_DISKLESS && opt_verbose) {
 		wrap_printf(indent, " client:%s", intentional_diskless_str(&device->info));
 	}
+
+	/* DW-1755 In the passthrough policy,
+	 * the disk status is kept up_to_date in the event of a primary failure,
+	 * so disk error information should be displayed seperately.
+	 */
+	if (disk_state == D_UP_TO_DATE && device->info.disk_error_count) {
+		wrap_printf(indent, " %sdisk_error:%d%s", 
+			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
+			device->info.disk_error_count, 
+			disk_state_color_stop(D_DISKLESS, true));
+	}
+
 	indent = 6;
 	if (device->statistics.dev_size != -1) {
 		if (opt_statistics)

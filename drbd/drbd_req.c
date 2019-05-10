@@ -348,8 +348,7 @@ void drbd_req_destroy(struct kref *kref)
 					if (bitmap_index == -1)
 						continue;
 
-					if ((rq_state & RQ_NET_SIS) ||
-						!(req->rq_state[0] & RQ_LOCAL_OK))
+					if (rq_state & RQ_NET_SIS)
 						clear_bit(bitmap_index, &bits);
 					else
 						clear_bit(bitmap_index, &mask);
@@ -398,6 +397,42 @@ void drbd_req_destroy(struct kref *kref)
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
 #endif
 			put_ldev(device);
+		}
+
+		/* DW-1755 This is the last part of writing a bitmap for a single request.
+		 * If the disk error information remains in the list, 
+		 * check that the bitmap has been removed for the corresponding disk error sector information, 
+		 * and if so, remove the disk error information from the list as well.
+		 */
+		if (!list_empty(&device->disk_error_info.err_list)) {
+			struct disk_error_info *info = NULL;
+			bool all_cleared = true;
+			
+			spin_lock_irq(&device->disk_error_info.err_lock);
+			list_for_each_entry(struct disk_error_info, info, &device->disk_error_info.err_list, list) {
+				for_each_peer_device(peer_device, device) {
+					if (peer_device->connection->cstate[NOW] == C_CONNECTED) {
+						ULONG_PTR offset, first, last;
+
+						offset = first = BM_SECT_TO_BIT(info->sector);
+						last = info->size == 0 ? first : BM_SECT_TO_BIT(info->sector + (info->size >> 9));
+						for (ULONG_PTR i = first; i < last; i++) {
+							if (drbd_bm_test_bit(peer_device, i)) {
+								all_cleared = false;
+								break;
+							}
+						}
+						if (all_cleared) {
+							list_del(&info->list);
+							if (device->disk_error_info.err_count > 0)
+								--device->disk_error_info.err_count;
+							kfree(info);
+						}
+						break;
+					}
+				}
+			}
+			spin_unlock_irq(&device->disk_error_info.err_lock);
 		}
 
 		/* one might be tempted to move the drbd_al_complete_io
@@ -564,7 +599,46 @@ void complete_master_bio(struct drbd_device *device,
 			if (D_DISKLESS == device->disk_state[NOW]) {
 				status = STATUS_SUCCESS;
 			}
+			
 
+			/* DW-1755 When a disk error occurs, 
+			 * the related information is stored in the structure and stored in the list. 
+			 * Exclusion if already stored information. 
+			 * This is to express the exact number of disk errors in the status command. 
+			 */
+			struct disk_error_info *err_info;
+#ifdef _WIN32 
+			err_info = kmalloc(sizeof(*err_info), GFP_ATOMIC, 'W1DW');
+#else
+			err_info = kmalloc(sizeof(*err_info), GFP_ATOMIC);
+#endif
+			if (err_info) {
+				err_info->sector = master_bio->bi_sector;
+				err_info->size = master_bio->bi_size;
+
+				bool already_added = false;
+				struct disk_error_info *info;
+				spin_lock(&device->disk_error_info.err_lock);
+				list_for_each_entry(struct disk_error_info, info, &device->disk_error_info.err_list, list) {
+					if (info->sector == master_bio->bi_sector) {
+						already_added = true;
+						break;
+					}
+				}
+				if (already_added == false) {
+					list_add(&err_info->list, &device->disk_error_info.err_list);
+					++device->disk_error_info.err_count;
+				}
+				spin_unlock(&device->disk_error_info.err_lock);
+			}
+			else {
+				drbd_err(device, "kmalloc failed.\n");
+			}
+			
+			/* DW-1755 In the passthrough policy, 
+			 * when a disk error occurs on the primary node, 
+			 * write out_of_sync for all nodes.
+			 */
 			for_each_peer_device(peer_device, device) {
 				if (peer_device)
 					drbd_set_out_of_sync(peer_device, master_bio->bi_sector, master_bio->bi_size);

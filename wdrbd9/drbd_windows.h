@@ -87,6 +87,7 @@
 #ifdef _WIN32_DEBUG_OOS
 #define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
 #endif
+#define	KERN_ERR_NO_EVENT_LOG   "<9>"	/* error conditions without windows-event log */
 
 enum
 {
@@ -97,7 +98,9 @@ enum
 	KERN_WARNING_NUM,
 	KERN_NOTICE_NUM,
 	KERN_INFO_NUM,
-	KERN_DEBUG_NUM
+	KERN_DEBUG_NUM,
+	KERN_DEBUG_OOS_NUM,
+	KERN_ERR_NO_EVENT_LOG_NUM
 };
 
 
@@ -402,6 +405,13 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_ERROR(_m_, ...)   printk(KERN_ERR "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
 #define WDRBD_ERROR(_m_, ...)   printk(KERN_ERR ##_m_, __VA_ARGS__)
+#endif
+
+// This function prints to the debug log, but not to the Windows event log.
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_ERROR_NO_EVENTLOG(_m_, ...)   printk(KERN_ERR_NO_EVENT_LOG "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_ERROR_NO_EVENTLOG(_m_, ...)   printk(KERN_ERR_NO_EVENT_LOG ##_m_, __VA_ARGS__)
 #endif
 
 #if defined(WDRBD_THREAD_POINTER)
