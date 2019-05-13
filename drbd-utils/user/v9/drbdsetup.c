@@ -2593,7 +2593,7 @@ static void device_status(struct devices_list *device, bool single_device)
 	 * so disk error information should be displayed seperately.
 	 */
 	if (disk_state == D_UP_TO_DATE && device->info.disk_error_count) {
-		wrap_printf(indent, " %sdisk_error:%d%s", 
+		wrap_printf(indent, " %sdisk error:%d%s", 
 			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
 			device->info.disk_error_count, 
 			disk_state_color_stop(D_DISKLESS, true));

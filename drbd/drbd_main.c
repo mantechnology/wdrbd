@@ -4667,8 +4667,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	INIT_LIST_HEAD(&device->peer_devices);
 	INIT_LIST_HEAD(&device->pending_bitmap_io);
 
-	spin_lock_init(&device->disk_error_info.err_lock);
-	device->disk_error_info.err_count = 0;
+	atomic_set(&device->disk_error_count, 0);
 
 	locked = true;
 	spin_lock_irq(&resource->req_lock);

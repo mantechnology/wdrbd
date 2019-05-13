@@ -1126,14 +1126,29 @@ static void drbd_report_io_error(struct drbd_device *device, struct drbd_request
 #ifndef _WIN32
         char b[BDEVNAME_SIZE];
 #endif
-	if (!drbd_ratelimit())
-		return;
+	// DW-1755 Counts the error value only when it is a passthrough policy.
+	// Only the first error is logged.
+	bool write_log = true;
+	enum drbd_io_error_p eh;
+	rcu_read_lock();
+	eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
+	if (eh == EP_PASSTHROUGH) {
+		if (atomic_read(&device->disk_error_count) < INT32_MAX) {
+			if (atomic_inc(&device->disk_error_count) > 1)
+				write_log = true;
+		}
+	}
+	else if (!drbd_ratelimit())
+		write_log = false;
 
-	drbd_warn(device, "local %s IO error sector %llu+%u on %s\n",
-		  (req->rq_state[0] & RQ_WRITE) ? "WRITE" : "READ",
-		  (unsigned long long)req->i.sector,
-		  req->i.size >> 9,
-		  bdevname(device->ldev->backing_bdev, b));
+	if (write_log) {
+		drbd_warn(device, "local %s IO error sector %llu+%u on %s\n",
+			(req->rq_state[0] & RQ_WRITE) ? "WRITE" : "READ",
+			(unsigned long long)req->i.sector,
+			req->i.size >> 9,
+			bdevname(device->ldev->backing_bdev, b));
+	}
 }
 
 /* Helper for HANDED_OVER_TO_NETWORK.

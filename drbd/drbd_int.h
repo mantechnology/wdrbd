@@ -1811,10 +1811,7 @@ struct drbd_device {
 	Disk errors rarely occur, and even if they occur, 
 	the list counts will not increase in a large amount 
 	because they will occur only in a specific sector. */
-	struct disk_error_info_s {
-		unsigned int err_count;
-		spinlock_t err_lock;
-	} disk_error_info;
+	atomic_t disk_error_count;
 };
 
 struct drbd_bm_aio_ctx {
@@ -2937,7 +2934,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
 		if (df == DRBD_READ_ERROR ||  df == DRBD_WRITE_ERROR) {
 			if (drbd_ratelimit())
-				WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s.\n", where);
+				WDRBD_ERROR("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
@@ -2984,12 +2981,13 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 #else
 			end_state_change_locked(device->resource);
 #endif
-			WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s. Detaching...\n", where);
+			WDRBD_ERROR("Local IO failed in %s. Detaching...\n", where);
 		}
 		break;
 	// DW-1755
 	case EP_PASSTHROUGH:
-		WDRBD_ERROR_NO_EVENTLOG("Local IO failed in %s. Passthrough... \n", where);
+		if(atomic_read(&device->disk_error_count) == 1)
+			WDRBD_ERROR("Local IO failed in %s. Passthrough... \n", where);
 	
 		// if the metadisk fails, replication should be stopped immediately.
 		if (df == DRBD_META_IO_ERROR) {

@@ -3811,26 +3811,18 @@ int drbd_worker(struct drbd_thread *thi)
 	return 0;
 }
 
-/* DW-1755 When a disk error occurs, it writes the log 
- * and transfers the event to the work thread queue.
+/* DW-1755 When a disk error occurs, 
+ * transfers the event to the work thread queue.
  */
 static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
 {
-	spin_lock(&device->disk_error_info.err_lock);
-	if (device->disk_error_info.err_count < UINT32_MAX)
-		++device->disk_error_info.err_count;
+	enum drbd_io_error_p ep;
 
-	if ((device->disk_error_info.err_count % DISK_ERROR_RECORD_CYCLE) == 1) {
-		WDRBD_ERROR_NO_EVENTLOG("disk error disk:%s, io:%s, error_code:0x%08X, sector:%llu, size:%u (total count:%u)\n",
-			disk_type == VOLUME_TYPE_META ? "meta_disk" : "data_disk",
-			(bio->bi_rw & WRITE) ? "WRITE" : "READ",
-			error,
-			bio->bi_sector,
-			bio->bi_size,
-			device->disk_error_info.err_count);
-	}
-	spin_unlock(&device->disk_error_info.err_lock);
+	rcu_read_lock();
+	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
 
-	drbd_queue_notify_disk_error(device, VOLUME_TYPE_REPL, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
+	if (ep == EP_PASSTHROUGH)
+		drbd_queue_notify_disk_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
 

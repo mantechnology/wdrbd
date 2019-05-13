@@ -6834,7 +6834,7 @@ void device_to_info(struct device_info *info,
 {
 	info->dev_disk_state = device->disk_state[NOW];
 	info->is_intentional_diskless = device->device_conf.intentional_diskless;
-	info->disk_error_count = device->disk_error_info.err_count; /* DW-1755 Pass the value for use when outputting the disk error count at the status command. */
+	info->disk_error_count = atomic_read(&device->disk_error_count); /* DW-1755 Pass the value for use when outputting the disk error count at the status command. */
 }
 
 int drbd_adm_new_minor(struct sk_buff *skb, struct genl_info *info)
