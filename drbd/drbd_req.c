@@ -399,42 +399,6 @@ void drbd_req_destroy(struct kref *kref)
 			put_ldev(device);
 		}
 
-		/* DW-1755 This is the last part of writing a bitmap for a single request.
-		 * If the disk error information remains in the list, 
-		 * check that the bitmap has been removed for the corresponding disk error sector information, 
-		 * and if so, remove the disk error information from the list as well.
-		 */
-		if (!list_empty(&device->disk_error_info.err_list)) {
-			struct disk_error_info *info = NULL;
-			bool all_cleared = true;
-			
-			spin_lock_irq(&device->disk_error_info.err_lock);
-			list_for_each_entry(struct disk_error_info, info, &device->disk_error_info.err_list, list) {
-				for_each_peer_device(peer_device, device) {
-					if (peer_device->connection->cstate[NOW] == C_CONNECTED) {
-						ULONG_PTR offset, first, last;
-
-						offset = first = BM_SECT_TO_BIT(info->sector);
-						last = info->size == 0 ? first : BM_SECT_TO_BIT(info->sector + (info->size >> 9));
-						for (ULONG_PTR i = first; i < last; i++) {
-							if (drbd_bm_test_bit(peer_device, i)) {
-								all_cleared = false;
-								break;
-							}
-						}
-						if (all_cleared) {
-							list_del(&info->list);
-							if (device->disk_error_info.err_count > 0)
-								--device->disk_error_info.err_count;
-							kfree(info);
-						}
-						break;
-					}
-				}
-			}
-			spin_unlock_irq(&device->disk_error_info.err_lock);
-		}
-
 		/* one might be tempted to move the drbd_al_complete_io
 		 * to the local io completion callback drbd_request_endio.
 		 * but, if this was a mirror write, we may only
@@ -598,41 +562,6 @@ void complete_master_bio(struct drbd_device *device,
 		if (m->error) {
 			if (D_DISKLESS == device->disk_state[NOW]) {
 				status = STATUS_SUCCESS;
-			}
-			
-
-			/* DW-1755 When a disk error occurs, 
-			 * the related information is stored in the structure and stored in the list. 
-			 * Exclusion if already stored information. 
-			 * This is to express the exact number of disk errors in the status command. 
-			 */
-			struct disk_error_info *err_info;
-#ifdef _WIN32 
-			err_info = kmalloc(sizeof(*err_info), GFP_ATOMIC, 'W1DW');
-#else
-			err_info = kmalloc(sizeof(*err_info), GFP_ATOMIC);
-#endif
-			if (err_info) {
-				err_info->sector = master_bio->bi_sector;
-				err_info->size = master_bio->bi_size;
-
-				bool already_added = false;
-				struct disk_error_info *info;
-				spin_lock(&device->disk_error_info.err_lock);
-				list_for_each_entry(struct disk_error_info, info, &device->disk_error_info.err_list, list) {
-					if (info->sector == master_bio->bi_sector) {
-						already_added = true;
-						break;
-					}
-				}
-				if (already_added == false) {
-					list_add(&err_info->list, &device->disk_error_info.err_list);
-					++device->disk_error_info.err_count;
-				}
-				spin_unlock(&device->disk_error_info.err_lock);
-			}
-			else {
-				drbd_err(device, "kmalloc failed.\n");
 			}
 			
 			/* DW-1755 In the passthrough policy, 

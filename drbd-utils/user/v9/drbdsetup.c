@@ -3657,7 +3657,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
 		[DRBD_PATH_STATE] = "path",
-		[DRBD_DISK_ERROR] = "local_disk_error"
+		[DRBD_DISK_ERROR] = "local disk error"
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;

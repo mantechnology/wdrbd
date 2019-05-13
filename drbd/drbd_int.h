@@ -140,6 +140,8 @@ extern char usermode_helper[];
 #define ID_SYNCER_SPLIT (ID_SYNCER - 1)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
+//DW-1755 to record an error once every n times
+#define DISK_ERROR_RECORD_CYCLE 1000
 
 struct drbd_device;
 struct drbd_connection;
@@ -1693,13 +1695,6 @@ struct submit_worker {
 	struct list_head peer_writes;
 };
 
-// DW-1755 Structure to store disk error information
-struct disk_error_info {
-	sector_t			sector;
-	unsigned int		size;
-	struct list_head	list;
-};
-
 struct drbd_device {
 #ifdef PARANOIA
 	long magic;
@@ -1817,7 +1812,6 @@ struct drbd_device {
 	the list counts will not increase in a large amount 
 	because they will occur only in a specific sector. */
 	struct disk_error_info_s {
-		struct list_head err_list;
 		unsigned int err_count;
 		spinlock_t err_lock;
 	} disk_error_info;

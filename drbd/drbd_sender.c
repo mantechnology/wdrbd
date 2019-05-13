@@ -3816,12 +3816,17 @@ int drbd_worker(struct drbd_thread *thi)
  */
 static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
 {
-	WDRBD_ERROR_NO_EVENTLOG("disk_error disk:%s, io:%s, error_code:0x%08X, sector:%llus, size:%u\n",
+	spin_lock(&device->disk_error_info.err_lock);
+	if ((++device->disk_error_info.err_count % DISK_ERROR_RECORD_CYCLE) == 0) {
+		WDRBD_ERROR_NO_EVENTLOG("disk error disk:%s, io:%s, error_code:0x%08X, sector:%llu, size:%u (total count:%u)\n",
 			disk_type == VOLUME_TYPE_META ? "meta_disk" : "data_disk",
-			(bio->bi_rw & WRITE) ? "WRITE" : "READ", 
-			error, 
-			bio->bi_sector, 
-			bio->bi_size);
+			(bio->bi_rw & WRITE) ? "WRITE" : "READ",
+			error,
+			bio->bi_sector,
+			bio->bi_size,
+			device->disk_error_info.err_count);
+	}
+	spin_unlock(&device->disk_error_info.err_lock);
 
 	drbd_queue_notify_disk_error(device, VOLUME_TYPE_REPL, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
