@@ -407,13 +407,6 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_ERROR(_m_, ...)   printk(KERN_ERR ##_m_, __VA_ARGS__)
 #endif
 
-// This function prints to the debug log, but not to the Windows event log.
-#if defined (WDRBD_THREAD_POINTER)
-#define WDRBD_ERROR_NO_EVENTLOG(_m_, ...)   printk(KERN_ERR_NO_EVENT_LOG "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
-#else
-#define WDRBD_ERROR_NO_EVENTLOG(_m_, ...)   printk(KERN_ERR_NO_EVENT_LOG ##_m_, __VA_ARGS__)
-#endif
-
 #if defined(WDRBD_THREAD_POINTER)
 #define WDRBD_WARN(_m_, ...)    printk(KERN_WARNING "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else

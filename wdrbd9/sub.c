@@ -694,11 +694,6 @@ void _printk(const char * func, const char * format, ...)
 		bOosLog = TRUE;
 #endif
 	
-	if (level_index == KERN_ERR_NO_EVENT_LOG_NUM) {
-		if (KERN_ERR_NUM <= atomic_read(&g_dbglog_lv_min))
-			bDbgLog = TRUE;
-	}
-
 	// nothing to log.
 #ifdef _WIN32_DEBUG_OOS
 	if (!bEventLog && !bDbgLog && !bOosLog) {
@@ -748,10 +743,6 @@ void _printk(const char * func, const char * format, ...)
 		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
 	case KERN_DEBUG_NUM: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
-	case KERN_ERR_NO_EVENT_LOG_NUM:
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf + offset, "WDRBD_ERRO", LEVEL_OFFSET); 
-		bEventLog = FALSE;
-		break;
 	default: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
 	}
