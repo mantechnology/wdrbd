@@ -140,8 +140,6 @@ extern char usermode_helper[];
 #define ID_SYNCER_SPLIT (ID_SYNCER - 1)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
-//DW-1755 to record an error once every n times
-#define DISK_ERROR_RECORD_CYCLE 1000
 
 struct drbd_device;
 struct drbd_connection;

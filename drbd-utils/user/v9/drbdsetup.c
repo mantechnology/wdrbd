@@ -3757,7 +3757,6 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 
 	switch (info->genlhdr->cmd) {
 	case DRBD_RESOURCE_STATE:
-	case DRBD_RESOURCE_STATE:
 		if (action != NOTIFY_DESTROY) {
 			struct {
 				struct resource_info i;
