@@ -87,7 +87,6 @@
 #ifdef _WIN32_DEBUG_OOS
 #define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
 #endif
-#define	KERN_ERR_NO_EVENT_LOG   "<9>"	/* error conditions without windows-event log */
 
 enum
 {
