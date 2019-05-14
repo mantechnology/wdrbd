@@ -5737,7 +5737,7 @@ static bool do_change_cstate(struct change_context *context, enum change_phase p
 }
 
 /**
- * change_cstate_ex()  -  change the connection state of a connection
+ * change_cstate()  -  change the connection state of a connection
  *
  * When disconnecting from a peer, we may also need to outdate the local or
  * peer disks depending on the fencing policy.  This cannot easily be split
