@@ -580,7 +580,8 @@ struct workqueue_struct {
 struct timer_list {
     KTIMER ktimer;
     KDPC dpc;
-    void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
+    //void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
+	PKDEFERRED_ROUTINE function;
     PVOID data;             
     ULONG_PTR expires; 
 #ifdef DBG
@@ -601,8 +602,9 @@ extern void init_timer_key(struct timer_list *timer, const char *name, struct lo
 
 static __inline void setup_timer_key(_In_ struct timer_list * timer,
     const char *name,
-    struct lock_class_key *key,
-	void(*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2),
+struct lock_class_key *key,
+	//void(*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2),
+	PKDEFERRED_ROUTINE function,
     void * data)
 {
     timer->function = function;
@@ -727,7 +729,8 @@ struct bio {
 	Drbd_receiver.c (drbd):	bio->bi_end_io = drbd_peer_request_endio;
 	Drbd_req.h (drbd):	bio->bi_end_io   = drbd_request_endio;
 	*/
-	BIO_END_IO_CALLBACK*	bi_end_io; 
+	//BIO_END_IO_CALLBACK*	bi_end_io; 
+	PIO_COMPLETION_ROUTINE  bi_end_io;
 	void*					bi_private; 
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
@@ -1380,10 +1383,8 @@ extern NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlo
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
-extern
-void InitWskNetlink(void * pctx);
-
-extern void monitor_mnt_change(PVOID pParam);
+extern KSTART_ROUTINE InitWskNetlink;
+extern KSTART_ROUTINE monitor_mnt_change;
 extern NTSTATUS start_mnt_monitor();
 
 extern

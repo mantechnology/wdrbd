@@ -3,6 +3,11 @@
 #include "wsk2.h"
 
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+IO_COMPLETION_ROUTINE CompletionRoutine;
+IO_COMPLETION_ROUTINE SendCompletionRoutine;
+#ifdef _WIN32_NOWAIT_COMPLETION
+IO_COMPLETION_ROUTINE NoWaitCompletionRoutine;
+#endif
 
 WSK_REGISTRATION			g_WskRegistration;
 static WSK_PROVIDER_NPI		g_WskProvider;

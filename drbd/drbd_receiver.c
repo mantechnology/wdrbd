@@ -83,6 +83,8 @@ enum resync_reason {
 extern atomic_t64 g_total_req_buf_bytes;
 #endif
 
+IO_COMPLETION_ROUTINE one_flush_endio;
+
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 
@@ -1225,27 +1227,25 @@ struct one_flush_context {
 	struct issue_flush_context *ctx;
 };
 #ifdef _WIN32
-BIO_ENDIO_TYPE one_flush_endio(void *p1, void *p2, void *p3)
+NTSTATUS one_flush_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
 	struct bio *bio = NULL;
-	PIRP Irp = NULL;
 	int error = 0;
 
-	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
-		Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		error = Irp->IoStatus.Status;
-		bio = (struct bio *)p3;
+		bio = (struct bio *)Context;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
 	}
 	else {
-		error = (int) p3;
-		bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
 	}
 #endif
 	struct one_flush_context *octx = bio->bi_private;
@@ -1264,7 +1264,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 
 #ifdef _WIN32 // DW-1117 patch flush io memory leak
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {

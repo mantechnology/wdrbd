@@ -67,7 +67,8 @@ WCHAR g_ver[64];
 /* Number of id_layer structs to leave in free list */
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
-
+KSTART_ROUTINE run_singlethread_workqueue;
+KSTART_ROUTINE adjust_changes_to_volume;
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 
 // DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)

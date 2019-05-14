@@ -2481,7 +2481,7 @@ static void __exit dtt_cleanup(void)
 
 #ifdef _WIN32_SEND_BUFFING
 
-extern VOID NTAPI send_buf_thread(PVOID p);
+extern KSTART_ROUTINE send_buf_thread;
 
 static bool dtt_start_send_buffring(struct drbd_transport *transport, signed long long size)
 {

@@ -341,7 +341,7 @@ extern void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m);
 #endif
 #ifdef _WIN32
-		extern void request_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+		extern KDEFERRED_ROUTINE request_timer_fn;
 #else
 extern void request_timer_fn(unsigned long data);
 #endif

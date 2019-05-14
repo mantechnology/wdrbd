@@ -115,6 +115,10 @@ int drbd_adm_dump_peer_devices_done(struct netlink_callback *cb);
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb);
 int drbd_adm_get_initial_state_done(struct netlink_callback *cb);
 
+#ifdef _WIN32
+KSTART_ROUTINE _try_outdate_peer_async;
+#endif
+
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"
 #include <linux/genl_magic_func.h>
@@ -1006,7 +1010,11 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	return conn_highest_pdsk(connection) <= D_OUTDATED;
 }
 
+#ifdef _WIN32
+void _try_outdate_peer_async(void *data)
+#else
 static int _try_outdate_peer_async(void *data)
+#endif
 {
 	struct drbd_connection *connection = (struct drbd_connection *)data;
 
@@ -1016,8 +1024,9 @@ static int _try_outdate_peer_async(void *data)
 	kref_put(&connection->kref, drbd_destroy_connection);
 #ifdef _WIN32
 	PsTerminateSystemThread(STATUS_SUCCESS); 
-#endif
+#else
 	return 0;
+#endif
 }
 
 void conn_try_outdate_peer_async(struct drbd_connection *connection)

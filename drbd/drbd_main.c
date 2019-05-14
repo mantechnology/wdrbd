@@ -90,7 +90,9 @@
 static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
 #ifdef _WIN32
-static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+static KDEFERRED_ROUTINE md_sync_timer_fn;
+static KDEFERRED_ROUTINE peer_ack_timer_fn;
+KSTART_ROUTINE drbd_thread_setup;
 extern void nl_policy_init_by_manual(void);
 #else
 static void md_sync_timer_fn(unsigned long data);

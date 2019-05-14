@@ -56,6 +56,7 @@ extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
+WORKER_THREAD_ROUTINE NetlinkWorkThread;
 /*
 static struct genl_ops drbd_genl_ops[] = {
 { .doit = drbd_adm_new_minor, .flags = 0x01, .cmd = DRBD_ADM_NEW_MINOR, .policy = drbd_tla_nl_policy, },

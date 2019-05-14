@@ -25,6 +25,7 @@
 
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
+CALLBACK_FUNCTION drbdCallbackFunc;
 PCALLBACK_OBJECT g_pCallbackObj;
 PVOID g_pCallbackReg;
 

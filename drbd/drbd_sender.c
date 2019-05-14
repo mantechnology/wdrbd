@@ -47,6 +47,7 @@ static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
 static void maybe_send_barrier(struct drbd_connection *, unsigned int);
 static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error);
+
 /* endio handlers:
  *   drbd_md_endio (defined here)
  *   drbd_request_endio (defined here)
@@ -66,7 +67,7 @@ struct mutex resources_mutex;
  * submitted by drbd_md_sync_page_io()
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_md_endio(void *p1, void *p2, void *p3) 
+NTSTATUS drbd_md_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else 
 BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -75,15 +76,13 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
     struct bio *bio = NULL;
     int error = 0;
-    PIRP Irp = NULL;
 #ifdef DRBD_TRACE
     WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_md_io_complete IRQL(%d) .............\n", current->comm, KeGetCurrentIrql());
 #endif
 
-    if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
-        Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
-        bio = (struct bio *)p3;
+		bio = (struct bio *)Context;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -105,8 +104,8 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		}
 		
     } else {
-        error = (int)p3;
-        bio = (struct bio *)p2;
+        error = (int)Context;
+        bio = (struct bio *)Irp;
     }
 #endif
 	BIO_ENDIO_FN_START;
@@ -122,7 +121,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		put_ldev(device);
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -137,7 +136,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		bio_put(bio);
 	}
 #else
@@ -322,22 +321,20 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
  * "submitted" by the receiver.
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_peer_request_endio(void *p1, void *p2, void *p3)
+BIO_ENDIO_TYPE drbd_peer_request_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
 	struct bio *bio = NULL;
-	PIRP Irp = NULL;
 	int error = 0;
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_peer_request_endio: IRQL(%d) ..............\n",  current->comm, KeGetCurrentIrql());
 #endif
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		error = Irp->IoStatus.Status;
-		bio = (struct bio *)p3;
+		bio = (struct bio *)Context;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -359,8 +356,8 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 			}
 		}
 	} else {
-		error = (int)p3;
-		bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
 	}
 #endif
 	struct drbd_peer_request *peer_req = bio->bi_private;
@@ -389,7 +386,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	}
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -449,7 +446,7 @@ void drbd_panic_after_delayed_completion_of_aborted_request(struct drbd_device *
 /* read, readA or write requests on R_PRIMARY coming from drbd_make_request
  */
 #ifdef _WIN32
-BIO_ENDIO_TYPE drbd_request_endio(void *p1, void *p2, void *p3)
+NTSTATUS drbd_request_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -463,14 +460,12 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	int uptodate = 0; 
 	struct bio *bio = NULL;
 	int error = 0;
-	PIRP Irp = NULL;
 #ifdef DRBD_TRACE
 	WDRBD_TRACE("BIO_ENDIO_FN_START:Thread(%s) drbd_request_endio: IRQL(%d) ................\n", current->comm, KeGetCurrentIrql());
 #endif
 
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-		Irp = p2;
-		bio = (struct bio *)p3;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
+		bio = (struct bio *)Context;
 		error = Irp->IoStatus.Status;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
@@ -494,8 +489,8 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		}
 	
 	} else {
-		error = (int)p3;
-		bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
 	}
 
 	req = bio->bi_private; 
@@ -577,7 +572,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 
 #ifdef _WIN32
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {

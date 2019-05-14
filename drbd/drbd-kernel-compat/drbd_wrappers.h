@@ -313,9 +313,19 @@ typedef NTSTATUS BIO_ENDIO_TYPE;
 #endif
 
 /* bi_end_io handlers */
+//extern BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
+
+#ifdef _WIN32
+extern IO_COMPLETION_ROUTINE drbd_md_endio;
+extern IO_COMPLETION_ROUTINE drbd_peer_request_endio;
+extern IO_COMPLETION_ROUTINE drbd_request_endio;
+extern IO_COMPLETION_ROUTINE drbd_bm_endio;
+#else
 extern BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
 extern BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
+extern BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error);
+#endif
 
 #ifdef COMPAT_HAVE_BIO_BI_ERROR
 #define bio_endio(B,E) do { (B)->bi_error = E; bio_endio(B); } while (0)

@@ -57,6 +57,8 @@
 #define BITS_PER_BM_WORD	(BYTES_PER_BM_WORD << 3)
 #endif
 
+IO_COMPLETION_ROUTINE drbd_bm_endio;
+
 /* OPAQUE outside this file!
  * interface defined in drbd_int.h
 
@@ -1284,7 +1286,7 @@ static void drbd_bm_aio_ctx_destroy(struct kref *kref)
 
 /* bv_page may be a copy, or may be the original */
 #ifdef _WIN32
-static BIO_ENDIO_TYPE drbd_bm_endio(void *p1, void *p2, void *p3)
+NTSTATUS drbd_bm_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -1292,12 +1294,10 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
     struct bio *bio = NULL;
     int error = 0;
-    PIRP Irp = NULL;
 
-    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-        Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
-        bio = (struct bio *)p3;
+		bio = (struct bio *)Context;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -1317,8 +1317,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			}
 		}
     } else {
-        error = (int)p3;
-        bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
     }
 #endif
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
