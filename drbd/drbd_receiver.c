@@ -2969,6 +2969,7 @@ static int e_end_block(struct drbd_work *w, int cancel)
 			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
 			drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
 #endif
+
 			/* we expect it to be marked out of sync anyways...
 			 * maybe assert this?  */
 		}

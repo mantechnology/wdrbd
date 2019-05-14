@@ -512,6 +512,20 @@ bool start_new_tl_epoch(struct drbd_resource *resource)
 	wake_all_senders(resource);
 	return true;
 }
+
+int w_notify_disk_error(struct drbd_work *w, int cancel)
+{
+	UNREFERENCED_PARAMETER(cancel);
+	int ret = 0;
+	
+	struct drbd_disk_error_work *dw =
+		container_of(w, struct drbd_disk_error_work, w);
+	notify_disk_error(dw->disk_error);
+	kfree(dw->disk_error);
+	kfree(dw);
+	return ret;
+}
+
 #ifdef _WIN32
 void complete_master_bio(struct drbd_device *device,
     struct bio_and_error *m, char *func, int line)
@@ -534,32 +548,47 @@ void complete_master_bio(struct drbd_device *device,
 	bio_endio(m->bio, m->error);
 #endif
 #ifdef _WIN32
+
+	struct drbd_peer_device *peer_device = NULL;
     // if bio has pMasterIrp, process to complete master bio.
     if(m->bio->pMasterIrp) {
 
 		master_bio = m->bio; // if pMasterIrp is exist, bio is master bio.
-		NTSTATUS status = STATUS_SUCCESS;
+		NTSTATUS status = m->error;
 
 		// In diskless mode, if irp was sent to peer,
 		// then would be completed success,
 		// The others should be converted to the Windows error status.
-		if (-EIO == m->error) {
-			status = (D_DISKLESS == device->disk_state[NOW]) ?
-				STATUS_SUCCESS : STATUS_INVALID_DEVICE_REQUEST;
+		if (m->error) {
+			if (D_DISKLESS == device->disk_state[NOW]) {
+				status = STATUS_SUCCESS;
+			}
+			
+			/* DW-1755 In the passthrough policy, 
+			 * when a disk error occurs on the primary node, 
+			 * write out_of_sync for all nodes.
+			 */
+			for_each_peer_device(peer_device, device) {
+				if (peer_device)
+					drbd_set_out_of_sync(peer_device, master_bio->bi_sector, master_bio->bi_size);
+			}
 		}
 
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
-	            WDRBD_ERROR("szie 0x%x ERROR!\n", master_bio->bi_size);
+	            WDRBD_ERROR("size 0x%x ERROR!\n", master_bio->bi_size);
 	            BUG();
 	        }
+			
+			if (NT_ERROR(status)) {
+				master_bio->pMasterIrp->IoStatus.Status = status;
+				master_bio->pMasterIrp->IoStatus.Information = 0;
+			}
+			else {
+				master_bio->pMasterIrp->IoStatus.Status = 0;
+				master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
+			}
 
-			if (NT_SUCCESS(status)) {
-	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
-	        } else {
-	            master_bio->pMasterIrp->IoStatus.Status = status;
-	            master_bio->pMasterIrp->IoStatus.Information = 0;
-	        }
 #ifdef _WIN32_TMP_Win8_BUG_0x1a_61946
 	        if (NT_SUCCESS(status) && (bio_rw(master_bio) == READ) && master_bio->bio_databuf) {
 	            PVOID	buffer = NULL;
@@ -598,7 +627,7 @@ void complete_master_bio(struct drbd_device *device,
 #endif
 
 			if (!NT_SUCCESS(status)) {
-	        	master_bio->splitInfo->LastError = m->error;
+				master_bio->splitInfo->LastError = status;
 	        }
 			
 			if (atomic_inc_return((volatile LONG *)&master_bio->splitInfo->finished) == (long)master_bio->split_total_id) {
@@ -607,7 +636,6 @@ void complete_master_bio(struct drbd_device *device,
 					master_bio->pMasterIrp->IoStatus.Status = STATUS_SUCCESS;
 					master_bio->pMasterIrp->IoStatus.Information = master_bio->split_total_length;
 				} else {
-					WDRBD_WARN("0x%x ERRROR! sec(0x%llx+%d)\n", master_bio->splitInfo->LastError, master_bio->bi_sector, master_bio->bi_size >> 9);
 					master_bio->pMasterIrp->IoStatus.Status = master_bio->splitInfo->LastError;
 					master_bio->pMasterIrp->IoStatus.Information = 0;
 				}
@@ -742,10 +770,20 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 		!(req->master_bio->bi_opf & REQ_RAHEAD) &&
 		!list_empty(&req->tl_requests))
 		req->rq_state[0] |= RQ_POSTPONED;
-
+	
 	if (!(req->rq_state[0] & RQ_POSTPONED)) {
 #ifdef _WIN32
-        m->error = ok ? 0 : (error ? error : -EIO);
+		// DW-1755 
+		// for the "passthrough" policy, all local errors are returned to the file system.
+		enum drbd_io_error_p eh;
+		rcu_read_lock();
+		eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+		rcu_read_unlock();
+
+		if (eh == EP_PASSTHROUGH)
+			m->error = error;
+		else
+			m->error = ok ? 0 : (error ? error : -EIO);
 #else
 		m->error = ok ? 0 : (error ?: -EIO);
 #endif
@@ -1088,14 +1126,29 @@ static void drbd_report_io_error(struct drbd_device *device, struct drbd_request
 #ifndef _WIN32
         char b[BDEVNAME_SIZE];
 #endif
-	if (!drbd_ratelimit())
-		return;
+	// DW-1755 Counts the error value only when it is a passthrough policy.
+	// Only the first error is logged.
+	bool write_log = true;
+	enum drbd_io_error_p eh;
+	rcu_read_lock();
+	eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
+	if (eh == EP_PASSTHROUGH) {
+		if (atomic_read(&device->disk_error_count) < INT32_MAX) {
+			if (atomic_inc(&device->disk_error_count) > 1)
+				write_log = true;
+		}
+	}
+	else if (!drbd_ratelimit())
+		write_log = false;
 
-	drbd_warn(device, "local %s IO error sector %llu+%u on %s\n",
-		  (req->rq_state[0] & RQ_WRITE) ? "WRITE" : "READ",
-		  (unsigned long long)req->i.sector,
-		  req->i.size >> 9,
-		  bdevname(device->ldev->backing_bdev, b));
+	if (write_log) {
+		drbd_warn(device, "local %s IO error sector %llu+%u on %s\n",
+			(req->rq_state[0] & RQ_WRITE) ? "WRITE" : "READ",
+			(unsigned long long)req->i.sector,
+			req->i.size >> 9,
+			bdevname(device->ldev->backing_bdev, b));
+	}
 }
 
 /* Helper for HANDED_OVER_TO_NETWORK.

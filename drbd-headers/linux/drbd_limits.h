@@ -216,7 +216,7 @@
 #ifdef _WIN32
 // WDRBD_DOC: when Disk I/O fail on Windows, A continous retry I/O occured in EP_PASS_ON config.(DW-463) so, EP_DETACH is suitable for WDRBD
 #endif
-#define DRBD_ON_IO_ERROR_DEF EP_DETACH 
+#define DRBD_ON_IO_ERROR_DEF EP_PASSTHROUGH 
 #define DRBD_FENCING_DEF FP_DONT_CARE
 #define DRBD_AFTER_SB_0P_DEF ASB_DISCONNECT
 #define DRBD_AFTER_SB_1P_DEF ASB_DISCONNECT

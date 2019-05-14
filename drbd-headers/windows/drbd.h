@@ -104,7 +104,8 @@
 enum drbd_io_error_p {
 	EP_PASS_ON, /* FIXME should the better be named "Ignore"? */
 	EP_CALL_HELPER,
-	EP_DETACH
+	EP_DETACH,
+	EP_PASSTHROUGH
 };
 
 enum drbd_fencing_policy {
@@ -479,6 +480,7 @@ enum drbd_notification_type {
 	NOTIFY_DESTROY,
 	NOTIFY_CALL,
 	NOTIFY_RESPONSE,
+	NOTIFY_ERROR,
 
 	NOTIFY_CONTINUES = 0x8000,
 	NOTIFY_FLAGS = NOTIFY_CONTINUES,

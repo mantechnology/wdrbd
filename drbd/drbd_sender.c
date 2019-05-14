@@ -46,7 +46,7 @@
 static int make_ov_request(struct drbd_peer_device *, int);
 static int make_resync_request(struct drbd_peer_device *, int);
 static void maybe_send_barrier(struct drbd_connection *, unsigned int);
-
+static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error);
 /* endio handlers:
  *   drbd_md_endio (defined here)
  *   drbd_request_endio (defined here)
@@ -115,7 +115,7 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	device->md_io.error = error;
 
 	if(NT_ERROR(error)) {
-		drbd_err(device, "drbd_md_endio fail status %08X\n", error);
+		process_disk_error(bio, device, VOLUME_TYPE_META, error);
 	}
 	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
@@ -380,11 +380,13 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				(unsigned long long)peer_req->i.sector, peer_req->i.size);
 
 #ifdef _WIN32
-	if (NT_ERROR(error))
+	if (NT_ERROR(error)) {
 #else
-	if (error)
+	if (error) {
 #endif
 		set_bit(__EE_WAS_ERROR, &peer_req->flags);
+		process_disk_error(bio, device, VOLUME_TYPE_REPL, error);
+	}
 
 #ifdef _WIN32
 	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
@@ -567,7 +569,8 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			what = WRITE_COMPLETED_WITH_ERROR;
 			break;
 		}
-		drbd_err(device, "drbd_request_endio what:%d error:0x%08X sector:%llus size:%d\n", what, error, bio->bi_sector, bio->bi_size);
+
+		process_disk_error(bio, device, VOLUME_TYPE_REPL, error);
 	}
 	else {
 		what = COMPLETED_OK;
@@ -1616,6 +1619,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_disk_state(device, D_UP_TO_DATE);
 			__change_peer_disk_state(peer_device, D_INCONSISTENT);
 		}
+		peer_device->resync_again++;
 	}
 	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
@@ -3587,8 +3591,10 @@ static int process_sender_todo(struct drbd_connection *connection)
 	}
 
 	else if (list_empty(&connection->todo.work_list)) {
+		int ret = 0;
+		ret = process_one_request(connection);
 		update_sender_timing_details(connection, process_one_request);
-		return process_one_request(connection);
+		return ret;
 	}
 
 	while (!list_empty(&connection->todo.work_list)) {
@@ -3804,3 +3810,19 @@ int drbd_worker(struct drbd_thread *thi)
 
 	return 0;
 }
+
+/* DW-1755 When a disk error occurs, 
+ * transfers the event to the work thread queue.
+ */
+static void process_disk_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
+{
+	enum drbd_io_error_p ep;
+
+	rcu_read_lock();
+	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
+
+	if (ep == EP_PASSTHROUGH)
+		drbd_queue_notify_disk_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
+}
+

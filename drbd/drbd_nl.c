@@ -6834,6 +6834,7 @@ void device_to_info(struct device_info *info,
 {
 	info->dev_disk_state = device->disk_state[NOW];
 	info->is_intentional_diskless = device->device_conf.intentional_diskless;
+	info->disk_error_count = atomic_read(&device->disk_error_count); /* DW-1755 Pass the value for use when outputting the disk error count at the status command. */
 }
 
 int drbd_adm_new_minor(struct sk_buff *skb, struct genl_info *info)
@@ -7481,6 +7482,62 @@ nla_put_failure:
 failed:
 	drbd_err(peer_device, "Error %d while broadcasting event. Event seq:%u\n",
 		 err, seq);
+}
+				  
+void notify_disk_error(struct drbd_disk_error *disk_error)
+{
+	struct drbd_disk_error_info disk_error_info;
+	disk_error_info.error_code = disk_error->error_code;
+	disk_error_info.sector = disk_error->sector;
+	disk_error_info.size = disk_error->size;
+	disk_error_info.disk_type = disk_error->disk_type;
+	disk_error_info.io_type = disk_error->io_type;
+	
+	unsigned int seq = atomic_inc_return(&drbd_genl_seq);
+	struct sk_buff *skb = NULL;
+	struct drbd_genlmsghdr *dh;
+	int err;
+
+	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_NOIO);
+	err = -ENOMEM;
+	if (!skb)
+		goto fail;
+
+	err = -EMSGSIZE;
+#ifdef _WIN32
+	dh = genlmsg_put((struct msg_buff*)skb, 0, seq, &drbd_genl_family, 0, DRBD_DISK_ERROR);
+#else
+	dh = genlmsg_put(skb, 0, seq, &drbd_genl_family, 0, DRBD_PATH_STATE);
+#endif
+	
+	if (!dh)
+		goto fail;
+
+	dh->minor = UINT32_MAX;
+	dh->ret_code = NO_ERROR;
+	mutex_lock(&notification_mutex);
+	if (nla_put_notification_header(skb, NOTIFY_ERROR) ||
+		drbd_disk_error_info_to_skb(skb, &disk_error_info, true))
+		goto unlock_fail;
+
+	genlmsg_end(skb, dh);
+	err = drbd_genl_multicast_events(skb, GFP_NOWAIT);
+	skb = NULL;
+	/* skb has been consumed or freed in netlink_broadcast() */
+	if (err && err != -ESRCH)
+		goto unlock_fail;
+	mutex_unlock(&notification_mutex);
+	return;
+
+unlock_fail:
+	mutex_unlock(&notification_mutex);
+fail:
+#ifdef _WIN32 // DW-1556 fix DV crash, NULL dereference
+	if(skb)
+		nlmsg_free(skb);
+#else 
+	nlmsg_free(skb);
+#endif
 }
 
 void notify_path(struct drbd_connection *connection, struct drbd_path *path,

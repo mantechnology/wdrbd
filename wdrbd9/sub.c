@@ -681,7 +681,7 @@ void _printk(const char * func, const char * format, ...)
     TIME_FIELDS timeFields = {0,};
 	LONGLONG	totallogcnt = 0;
 	long 		offset = 0;
-	ASSERT((level_index >= 0) && (level_index < 8));
+	ASSERT((level_index >= 0) && (level_index < 9));
 
 	// to write system event log.
 	if (level_index <= atomic_read(&g_eventlog_lv_min))

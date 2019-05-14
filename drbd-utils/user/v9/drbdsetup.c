@@ -225,6 +225,26 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 	return "unknown argument";
 }
 
+const char *drbd_disk_type_name(enum drbd_disk_type type) {
+	switch (type) {
+	case VOLUME_TYPE_REPL:
+		return "data";
+	case VOLUME_TYPE_META:
+		return "meta";
+	}
+	return "unknown";
+}
+
+const char *drbd_io_type_name(enum drbd_io_type type) {
+	switch (type) {
+	case READ:
+		return "read";
+	case WRITE:
+		return "write";
+	}
+	return "unknown";
+}
+
 struct drbd_cmd {
 	const char* cmd;
 	enum cfg_ctx_key ctx_key;
@@ -670,6 +690,7 @@ static const char *error_messages[] = {
 	EM(ERR_CONG_CANT_CHANGE_SNDBUF_SIZE) = "Cannot change sndbuf-size when connected. Please disconnect first and change the attribute value with adjust command\n",
 };
 #define MAX_ERROR (sizeof(error_messages)/sizeof(*error_messages))
+
 const char * error_to_string(int err_no)
 {
 	const unsigned int idx = err_no - ERR_CODE_BASE;
@@ -2566,6 +2587,18 @@ static void device_status(struct devices_list *device, bool single_device)
 	if (disk_state == D_DISKLESS && opt_verbose) {
 		wrap_printf(indent, " client:%s", intentional_diskless_str(&device->info));
 	}
+
+	/* DW-1755 In the passthrough policy,
+	 * the disk status is kept up_to_date in the event of a primary failure,
+	 * so disk error information should be displayed seperately.
+	 */
+	if (disk_state == D_UP_TO_DATE && device->info.disk_error_count) {
+		wrap_printf(indent, " %sdisk error:%d%s", 
+			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
+			device->info.disk_error_count, 
+			disk_state_color_stop(D_DISKLESS, true));
+	}
+
 	indent = 6;
 	if (device->statistics.dev_size != -1) {
 		if (opt_statistics)
@@ -3615,6 +3648,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[NOTIFY_DESTROY] = "destroy",
 		[NOTIFY_CALL] = "call",
 		[NOTIFY_RESPONSE] = "response",
+		[NOTIFY_ERROR] = "notify"
 	};
 	static char *object_name[] = {
 		[DRBD_RESOURCE_STATE] = "resource",
@@ -3623,6 +3657,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
 		[DRBD_PATH_STATE] = "path",
+		[DRBD_DISK_ERROR] = "local disk error"
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;
@@ -3657,10 +3692,12 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 
 	if (opt_now && action != NOTIFY_EXISTS)
 		return 0;
-
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
-		if (drbd_cfg_context_from_attrs(&ctx, info))
+	
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
+		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
+		}
+
 		if (info->genlhdr->cmd >= ARRAY_SIZE(object_name) ||
 		    !object_name[info->genlhdr->cmd]) {
 			dbg(1, "unknown notification\n");
@@ -3694,7 +3731,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)(tm->tm_gmtoff / 3600),
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
 		const char *name = object_name[info->genlhdr->cmd];
 		int size;
 
@@ -3706,11 +3743,19 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			goto fail;
 		event_key(key, size + 1, name, dh->minor, &ctx);
 	}
-	printf("%s %s",
-	       action_name[action],
-	       key ? key : "-");
 
-	switch(info->genlhdr->cmd) {
+	if (info->genlhdr->cmd == DRBD_DISK_ERROR) {
+		printf("%s %s%s%s",
+			action_name[action], disk_error_color_start(), 
+			object_name[info->genlhdr->cmd], disk_error_color_stop());
+	}
+	else {
+		printf("%s %s",
+			action_name[action],
+			key ? key : "-");
+	}
+
+	switch (info->genlhdr->cmd) {
 	case DRBD_RESOURCE_STATE:
 		if (action != NOTIFY_DESTROY) {
 			struct {
@@ -3729,8 +3774,8 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old ||
 			    new.i.res_susp != old->i.res_susp ||
 			    new.i.res_susp_nod != old->i.res_susp_nod ||
-				new.i.res_susp_fen != old->i.res_susp_fen ||
-				new.i.res_susp_quorum != old->i.res_susp_quorum)
+			    new.i.res_susp_fen != old->i.res_susp_fen ||
+			    new.i.res_susp_quorum != old->i.res_susp_quorum)
 				printf(" suspended:%s",
 				       susp_str(&new.i));
 			if (opt_statistics) {
@@ -3875,11 +3920,24 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			printf(" helper:%s", helper_info.helper_name);
 			if (action == NOTIFY_RESPONSE)
 				printf(" status:%u", helper_info.helper_status);
-		} else {
+		}
+		else {
 			dbg(1, "helper info missing\n");
 			goto nl_out;
 		}
+	}
+		break;
+	case DRBD_DISK_ERROR: {
+		struct drbd_disk_error_info disk_error;
+		if (!drbd_disk_error_info_from_attrs(&disk_error, info)) {
+			printf(" disk:%s, io:%s,", drbd_disk_type_name(disk_error.disk_type), drbd_io_type_name(disk_error.io_type));
+			printf(" error_code:0x%08X, sector:%llus, size:%u", disk_error.error_code, disk_error.sector, disk_error.size);
 		}
+		else {
+			dbg(1, "disk_error info missing\n");
+			goto nl_out;
+		}
+	}
 		break;
 	case DRBD_INITIAL_STATE_DONE:
 		break;

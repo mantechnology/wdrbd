@@ -4667,6 +4667,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	INIT_LIST_HEAD(&device->peer_devices);
 	INIT_LIST_HEAD(&device->pending_bitmap_io);
 
+	atomic_set(&device->disk_error_count, 0);
+
 	locked = true;
 	spin_lock_irq(&resource->req_lock);
 	id = idr_alloc(&drbd_devices, device, minor, minor + 1, GFP_NOWAIT);

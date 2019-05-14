@@ -532,6 +532,11 @@ struct drbd_work {
 	int (*cb)(struct drbd_work *, int cancel);
 };
 
+struct drbd_disk_error_work {
+	struct drbd_work w;
+	struct drbd_disk_error *disk_error;
+};
+
 struct drbd_peer_device_work {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
@@ -553,7 +558,7 @@ extern long twopc_timeout(struct drbd_resource *);
 extern long twopc_retry_timeout(struct drbd_resource *, int);
 extern void twopc_connection_down(struct drbd_connection *);
 extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
-
+extern int w_notify_disk_error(struct drbd_work *w, int cancel);
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
 #ifdef _WIN32
@@ -794,6 +799,16 @@ struct drbd_peer_request {
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
 	};
 #endif
+};
+
+// DW-1755 passthrough policy
+// disk error structure to pass to events2
+struct drbd_disk_error {
+	unsigned char	disk_type;
+	unsigned char	io_type;
+	NTSTATUS		error_code;
+	sector_t		sector;
+	unsigned int	size;
 };
 
 /* ee flag bits.
@@ -1788,6 +1803,13 @@ struct drbd_device {
 	 * are deferred to this single-threaded work queue */
 	struct submit_worker submit;
 	bool susp_quorum[2];		/* IO suspended quorum lost */
+
+	/* DW-1755 disk error information structure is managed as a list, 
+	* and the error count is stored separately for the status command.
+	Disk errors rarely occur, and even if they occur, 
+	the list counts will not increase in a large amount 
+	because they will occur only in a specific sector. */
+	atomic_t disk_error_count;
 };
 
 struct drbd_bm_aio_ctx {
@@ -2910,7 +2932,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
 		if (df == DRBD_READ_ERROR ||  df == DRBD_WRITE_ERROR) {
 			if (drbd_ratelimit())
-				drbd_err(device, "Local IO failed in %s.\n", where);
+				WDRBD_ERROR("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
@@ -2957,9 +2979,22 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 #else
 			end_state_change_locked(device->resource);
 #endif
-			drbd_err(device,
-				"Local IO failed in %s. Detaching...\n", where);
+			WDRBD_ERROR("Local IO failed in %s. Detaching...\n", where);
 		}
+		break;
+	// DW-1755
+	case EP_PASSTHROUGH:
+		if(atomic_read(&device->disk_error_count) == 1)
+			WDRBD_ERROR("Local IO failed in %s. Passthrough... \n", where);
+	
+		// if the metadisk fails, replication should be stopped immediately.
+		if (df == DRBD_META_IO_ERROR) {
+			struct drbd_peer_device* peer_device;
+			for_each_peer_device(peer_device, device) {
+				change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+			}
+		}
+
 		break;
 	}
 }
@@ -3138,6 +3173,53 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 			wake_up(&q->q_wait);
 	}
 }
+
+
+/* DW-1755 passthrough policy
+ * Synchronization objects used in the process of forwarding events to events2 
+ * only work when irql is less than APC_LEVEL. 
+ * However, because the completion routine can operate in DISPATCH_LEVEL, 
+ * it must be handled through the work thread.*/
+
+static inline void
+drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
+{
+	enum drbd_io_error_p ep;
+
+	rcu_read_lock();
+	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+	rcu_read_unlock();
+
+	if (ep != EP_PASSTHROUGH)
+		return;
+
+	struct drbd_disk_error_work *w;
+#ifdef _WIN32 
+	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
+#else
+	w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+	if (w) {
+#ifdef _WIN32
+		w->disk_error = kmalloc(sizeof(*(w->disk_error)), GFP_ATOMIC, 'W2DW');
+#else
+		w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+		if (w->disk_error) {
+			w->w.cb = w_notify_disk_error;
+			w->disk_error->error_code = error_code;
+			w->disk_error->sector = sector;
+			w->disk_error->size = size;
+			w->disk_error->io_type = io_type;
+			w->disk_error->disk_type = disk_type;
+			drbd_queue_work(&device->resource->work, &w->w);
+		}
+		else {
+			drbd_err(device, "kmalloc failed.\n");
+		}
+	}
+}
+
 
 
 #ifdef _WIN32
