@@ -1597,7 +1597,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 	else
 	{
-		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
+		RtlCopyMemory(g_ver, L"DRBD", 4 * 2); 
 	}
 	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"

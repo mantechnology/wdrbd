@@ -79,7 +79,7 @@ static int validate_nla(struct nlattr *nla, int maxtype,
         default:
             if (pt->len)
                 minlen = pt->len;
-            else if (pt->type != NLA_UNSPEC)
+			else if (pt->type != NLA_UNSPEC && pt->type <= NLA_TYPE_MAX)
                 minlen = nla_attr_minlen[pt->type];
 
             if (attrlen < minlen)
