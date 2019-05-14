@@ -2694,16 +2694,16 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 		enum drbd_role *peer_role = connection->peer_role;
 
 		/* Receiver should clean up itself */
-		if (cstate[OLD] != C_DISCONNECTING && cstate[NEW] == C_DISCONNECTING)
+		if (cstate[OLD] != C_DISCONNECTING && cstate[NEW] == C_DISCONNECTING) 
 			drbd_thread_stop_nowait(&connection->receiver);
 
 		/* Now the receiver finished cleaning up itself, it should die */
-		if (cstate[OLD] != C_STANDALONE && cstate[NEW] == C_STANDALONE)
+		if (cstate[OLD] != C_STANDALONE && cstate[NEW] == C_STANDALONE) 
 			drbd_thread_stop_nowait(&connection->receiver);
 
 		/* Upon network failure, we need to restart the receiver. */
 		if (cstate[OLD] >= C_CONNECTING &&
-		    cstate[NEW] <= C_TEAR_DOWN && cstate[NEW] >= C_TIMEOUT) {
+			cstate[NEW] <= C_TEAR_DOWN && cstate[NEW] >= C_TIMEOUT) {
 			drbd_thread_restart_nowait(&connection->receiver);
 			twopc_connection_down(connection);
 		}
@@ -4066,7 +4066,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 		bool *susp_fen = connection_state_change->susp_fen;
 
 		/* Upon network configuration, we need to start the receiver */
-		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED)
+		if (cstate[OLD] == C_STANDALONE && cstate[NEW] == C_UNCONNECTED) 
 			drbd_thread_start(&connection->receiver);
 
 		if (susp_fen[NEW])
@@ -4505,7 +4505,7 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
  */
 static enum drbd_state_rv
 change_cluster_wide_state(bool (*change)(struct change_context *, enum change_phase),
-			  struct change_context *context)
+						struct change_context *context, const char* caller)
 {
 	struct drbd_resource *resource = context->resource;
 	unsigned long irq_flags;
@@ -4534,11 +4534,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	if (local_state_change(context->flags)) {
 		/* Not a cluster-wide state change. */       
 		change(context, PH_LOCAL_COMMIT);
-		return end_state_change(resource, &irq_flags, __FUNCTION__);
+		return end_state_change(resource, &irq_flags, caller);
 	} else {
 		if (!change(context, PH_PREPARE)) {
 			/* Not a cluster-wide state change. */
-			return end_state_change(resource, &irq_flags, __FUNCTION__);
+			return end_state_change(resource, &irq_flags, caller);
 		}
 		rv = try_state_change(resource);
 		if (rv != SS_SUCCESS) {
@@ -4546,7 +4546,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 			/* abort_state_change(resource, &irq_flags); */
 			if (rv == SS_NOTHING_TO_DO)
 				resource->state_change_flags &= ~CS_VERBOSE;
-			return __end_state_change(resource, &irq_flags, rv, __FUNCTION__);
+			return __end_state_change(resource, &irq_flags, rv, caller);
 		}
 		/* Really a cluster-wide state change. */
 	}
@@ -4562,12 +4562,12 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		}
 		if (rv >= SS_SUCCESS)
 			change(context, PH_84_COMMIT);
-		return __end_state_change(resource, &irq_flags, rv, __FUNCTION__);
+		return __end_state_change(resource, &irq_flags, rv, caller);
 	}
 
 	if (!expect(resource, context->flags & CS_SERIALIZE)) {
 		rv = SS_CW_FAILED_BY_PEER;
-		return __end_state_change(resource, &irq_flags, rv, __FUNCTION__);
+		return __end_state_change(resource, &irq_flags, rv, caller);
 	}
 
 	rcu_read_lock();
@@ -4586,7 +4586,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 
 	if (current == resource->worker.task && resource->remote_state_change)
 	{
-		return __end_state_change(resource, &irq_flags, SS_CONCURRENT_ST_CHG, __FUNCTION__);
+		return __end_state_change(resource, &irq_flags, SS_CONCURRENT_ST_CHG, caller);
 	}
 
 	complete_remote_state_change(resource, &irq_flags);
@@ -4601,7 +4601,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		connection = drbd_get_connection_by_node_id(resource, context->target_node_id);
 		if (!connection) {
 			rv = SS_CW_FAILED_BY_PEER;
-			return __end_state_change(resource, &irq_flags, rv, __FUNCTION__);
+			return __end_state_change(resource, &irq_flags, rv, caller);
 		}
 		kref_debug_get(&connection->kref_debug, 8);
 
@@ -4613,7 +4613,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 
 			kref_debug_put(&connection->kref_debug, 8);
 			kref_put(&connection->kref, drbd_destroy_connection);
-			return __end_state_change(resource, &irq_flags, rv, __FUNCTION__);
+			return __end_state_change(resource, &irq_flags, rv, caller);
 		}
 		target_connection = connection;
 
@@ -4814,7 +4814,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 		end_remote_state_change(resource, &irq_flags, context->flags);
 		context->flags |= CS_HARD;
 		change(context, PH_COMMIT);
-		return end_state_change(resource, &irq_flags, __FUNCTION__);
+		return end_state_change(resource, &irq_flags, caller);
 	}
 #endif
 	if ((rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG) &&
@@ -4843,7 +4843,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #ifdef _WIN32_SIMPLE_TWOPC // DW-1408
 		clear_remote_state_change(resource);
 		end_remote_state_change(resource, &irq_flags, context->flags | CS_TWOPC);
-		abort_state_change(resource, &irq_flags, __FUNCTION__);
+		abort_state_change(resource, &irq_flags, caller);
 		// DW-1545: Modified to not display error messages and errors to users
 		rv = SS_NOTHING_TO_DO; 
 		return rv;
@@ -4903,9 +4903,9 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 				R_PRIMARY : R_SECONDARY;
 			__change_peer_role(target_connection, target_role);
 		}
-		rv = end_state_change(resource, &irq_flags, __FUNCTION__);
+		rv = end_state_change(resource, &irq_flags, caller);
 	} else {
-		abort_state_change(resource, &irq_flags, __FUNCTION__);
+		abort_state_change(resource, &irq_flags, caller);
 	}
 	if (have_peers && !context->change_local_state_last)
 		twopc_phase2(resource, context->vnr, rv >= SS_SUCCESS, &request, reach_immediately);
@@ -5312,7 +5312,7 @@ enum drbd_state_rv change_role_timeout(struct drbd_resource *resource,
 			}
         }
 	}
-	rv = change_cluster_wide_state(do_change_role, &role_context.context);
+	rv = change_cluster_wide_state(do_change_role, &role_context.context, __FUNCTION__);
 	if (got_state_sem)
 		up(&resource->state_sem);
 	return rv;
@@ -5360,7 +5360,7 @@ enum drbd_state_rv change_role(struct drbd_resource *resource,
 #endif
 			wait_event(device->misc_wait, !atomic_read(&device->ap_bio_cnt[WRITE]));
 	}
-	rv = change_cluster_wide_state(do_change_role, &role_context.context);
+	rv = change_cluster_wide_state(do_change_role, &role_context.context, __FUNCTION__);
 	if (got_state_sem)
 		up(&resource->state_sem);
 	return rv;
@@ -5549,7 +5549,7 @@ enum drbd_state_rv change_from_consistent(struct drbd_resource *resource,
 	/* The other nodes get the request for an empty state change. I.e. they
 	   will agree to this change request. At commit time we know where to
 	   go from the D_CONSISTENT, since we got the primary mask. */
-	return change_cluster_wide_state(do_change_from_consistent, &context);
+	return change_cluster_wide_state(do_change_from_consistent, &context, __FUNCTION__);
 }
 
 struct change_disk_state_context {
@@ -5607,7 +5607,7 @@ enum drbd_state_rv change_disk_state(struct drbd_device *device,
 		.device = device,
 	};
 	return change_cluster_wide_state(do_change_disk_state,
-					 &disk_state_context.context);
+										&disk_state_context.context, __FUNCTION__);
 }
 
 void __change_cstate(struct drbd_connection *connection, enum drbd_conn_state cstate)
@@ -5737,7 +5737,7 @@ static bool do_change_cstate(struct change_context *context, enum change_phase p
 }
 
 /**
- * change_cstate()  -  change the connection state of a connection
+ * change_cstate_ex()  -  change the connection state of a connection
  *
  * When disconnecting from a peer, we may also need to outdate the local or
  * peer disks depending on the fencing policy.  This cannot easily be split
@@ -5746,7 +5746,8 @@ static bool do_change_cstate(struct change_context *context, enum change_phase p
 enum drbd_state_rv change_cstate_es(struct drbd_connection *connection,
 				    enum drbd_conn_state cstate,
 				    enum chg_state_flags flags,
-				    const char **err_str
+				    const char **err_str,
+					const char *caller
 	)
 {
 	struct change_cstate_context cstate_context = {
@@ -5777,7 +5778,7 @@ enum drbd_state_rv change_cstate_es(struct drbd_connection *connection,
 	if (!(flags & CS_HARD))
 		cstate_context.context.flags |= CS_SERIALIZE;
 
-	return change_cluster_wide_state(do_change_cstate, &cstate_context.context);
+	return change_cluster_wide_state(do_change_cstate, &cstate_context.context, caller);
 }
 
 void __change_peer_role(struct drbd_connection *connection, enum drbd_role peer_role)
@@ -5834,7 +5835,7 @@ enum drbd_state_rv change_repl_state(struct drbd_peer_device *peer_device,
 		.peer_device = peer_device
 	};
 
-	return change_cluster_wide_state(do_change_repl_state, &repl_context.context);
+	return change_cluster_wide_state(do_change_repl_state, &repl_context.context, __FUNCTION__);
 }
 
 enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device,
