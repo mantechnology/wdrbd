@@ -1709,7 +1709,7 @@ static void push_al_bitmap_hint(struct drbd_device *device, unsigned int page_nr
 	struct drbd_bitmap *b = device->bitmap;
 	struct page *page = b->bm_pages[page_nr];
 	BUG_ON(b->n_bitmap_hints >= ARRAY_SIZE(b->al_bitmap_hints));
-	if (!test_and_set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page)))
+	if (!test_and_set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page)) && (b->n_bitmap_hints < ARRAY_SIZE(b->al_bitmap_hints)))
 		b->al_bitmap_hints[b->n_bitmap_hints++] = page_nr;
 }
 

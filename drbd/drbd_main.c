@@ -1564,7 +1564,7 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 		return -EIO;
 
 	/* initialize verify_alg and csums_alg */
-	memset(p->verify_alg, 0, 2 * SHARED_SECRET_MAX);
+	memset(p->verify_alg, 0, SHARED_SECRET_MAX);
 #ifdef _WIN32
     rcu_read_lock_w32_inner();
 #else
