@@ -618,11 +618,12 @@ void complete_master_bio(struct drbd_device *device,
 	                WDRBD_ERROR("splitIO: MmGetSystemAddressForMdlSafe ERROR!\n");
 	                BUG();
 	            }
+				else {
+					// get offset and copy
+					memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
+				}
 
 	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
-
-	            // get offset and copy
-	            memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
 	        }
 #endif
 

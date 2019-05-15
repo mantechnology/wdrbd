@@ -1016,7 +1016,7 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	RtlStringCbPrintfA(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %lu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	RtlStringCbPrintfA(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 

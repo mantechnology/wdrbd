@@ -2823,7 +2823,8 @@ static void _adjust_guid_name(char * dst, size_t dst_len, const char * src)
 		RtlStringCbCopyA(dst, dst_len, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
 		char * end = strstr(src, "}");
 		char * t3 = strstr(dst, token);
-		memcpy(t3, start, (int)(end - start));
+		if (t3 && end)
+			memcpy(t3, start, (int)(end - start));
 	}
  	else {
 		RtlStringCbCopyA(dst, dst_len, src);
