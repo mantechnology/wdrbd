@@ -39,15 +39,15 @@
 // MODIFIED_BY_MANTECH DW-1513 : Output LRU status like lc_seq_printf_stats function
 #ifdef WIN_AL_BUG_ON
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
-	char tmp[256] = { 0, }; 
+	char tmp[64] = { 0, }; 
 	RtlStringCbCatA(buf, buf_len, string);
 	RtlStringCbPrintfA(tmp, sizeof(tmp), "%Iu", string_value);
 	RtlStringCbCatA(buf, buf_len, tmp);
 }
 
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
-	char print_lru[1024] = { 0, };
-	char print_ele[1024] = { 0, }; 
+	char print_lru[512] = { 0, };
+	char print_ele[128] = { 0, };
 
 	if (lc){
 		if (lc->name)

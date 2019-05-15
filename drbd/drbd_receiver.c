@@ -10865,13 +10865,13 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 
 	while (&send_oos->oos_list_head != &peer_device->send_oos_list)
 	{
-		struct drbd_request req;
-		req.i.sector = send_oos->sector;
-		req.i.size = send_oos->size;
+		struct drbd_interval interval;
+		interval.sector = send_oos->sector;
+		interval.size = send_oos->size;
 
 		spin_unlock_irq(&peer_device->send_oos_lock);
 
-		drbd_send_out_of_sync(peer_device, &req.i);
+		drbd_send_out_of_sync(peer_device, &interval);
 
 		spin_lock_irq(&peer_device->send_oos_lock);
 		
