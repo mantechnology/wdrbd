@@ -2991,7 +2991,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		if (df == DRBD_META_IO_ERROR) {
 			struct drbd_peer_device* peer_device;
 			for_each_peer_device(peer_device, device) {
-				change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+				change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 			}
 		}
 
