@@ -225,26 +225,6 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 	return "unknown argument";
 }
 
-const char *drbd_disk_type_name(enum drbd_disk_type type) {
-	switch (type) {
-	case VOLUME_TYPE_REPL:
-		return "data";
-	case VOLUME_TYPE_META:
-		return "meta";
-	}
-	return "unknown";
-}
-
-const char *drbd_io_type_name(enum drbd_io_type type) {
-	switch (type) {
-	case READ:
-		return "read";
-	case WRITE:
-		return "write";
-	}
-	return "unknown";
-}
-
 struct drbd_cmd {
 	const char* cmd;
 	enum cfg_ctx_key ctx_key;

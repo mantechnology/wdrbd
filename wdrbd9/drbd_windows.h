@@ -265,9 +265,6 @@ enum rq_flag_bits {
 #define MAX_ERRNO				4095
 #define IS_ERR_VALUE(_x)		((_x) >= (unsigned long) -MAX_ERRNO)
 
-
-#define READ					0
-#define WRITE					1
 #define WRITE_SYNC				WRITE	// REQ_SYNC | REQ_NOIDLE not used.
 
 // for drbd_actlog.c

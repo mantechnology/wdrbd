@@ -522,6 +522,16 @@ enum drbd_peer_state {
 #define QOU_MAJORITY 1024
 #define QOU_ALL 1025
 
+/* flag bits per volume extension
+DW-1277: volume type is marked when drbd attaches */
+enum {
+	VOLUME_TYPE_REPL,		// for replicating volume.
+	VOLUME_TYPE_META,		// for meta volume.
+};
+
+#define READ					0
+#define WRITE					1
+
 #define _WIN32_MVFL
 #define _WIN32_MULTI_VOLUME
 
