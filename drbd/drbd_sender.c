@@ -1578,7 +1578,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 #ifdef _WIN32
 		if (!((n_oos - peer_device->rs_failed) == 0))
 		{
-			DbgPrint("_WIN32_v9_CHECK: n_oos=%d rs_failed=%d. Ignore assert ##########\n", n_oos, peer_device->rs_failed);
+			DbgPrint("_WIN32_v9_CHECK: n_oos=%Iu rs_failed=%Iu. Ignore assert ##########\n", n_oos, peer_device->rs_failed);
 		}
 #else
 		D_ASSERT(peer_device, (n_oos - peer_device->rs_failed) == 0);

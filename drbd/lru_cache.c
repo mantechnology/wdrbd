@@ -41,7 +41,7 @@
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[256] = { 0, }; 
 	RtlStringCbCatA(buf, buf_len, string);
-	RtlStringCbPrintfA(tmp, sizeof(tmp), "%lu", string_value);
+	RtlStringCbPrintfA(tmp, sizeof(tmp), "%Iu", string_value);
 	RtlStringCbCatA(buf, buf_len, tmp);
 }
 
