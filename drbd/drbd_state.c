@@ -5115,7 +5115,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	}
 
 	// allocate memory for connection pointers.
-	connections = (struct drbd_connection**)ExAllocatePool(NonPagedPool, sizeof(struct drbd_connection*) * connectionCount);
+	connections = (struct drbd_connection**)ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_connection*) * connectionCount, '21DW');
 	if (connections == NULL) {
 		spin_unlock_irq(&resource->req_lock);
 		drbd_err(resource, "failed to allocate memory for connections, size : %u\n", sizeof(struct drbd_connection*) * connectionCount);

@@ -776,7 +776,7 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 
 		ULONG ulBitmapSize = sizeof(VOLUME_BITMAP_BUFFER) + (ULONG)(*pullTotalCluster / BITS_PER_BYTE);
 		
-		pVbb = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, ulBitmapSize);
+		pVbb = (PVOLUME_BITMAP_BUFFER)ExAllocatePoolWithTag(NonPagedPool, ulBitmapSize, '16DW');
 		if (NULL == pVbb)
 		{
 			WDRBD_ERROR("pVbb allocation failed\n");
@@ -901,7 +901,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			ullTotalCluster = (ullTotalCluster * ulBytesPerCluster) / ulDrbdBitmapUnit;
 			ulConvertedBitmapSize = (ULONG)(ullTotalCluster / BITS_PER_BYTE);
 
-			pDrbdBitmap = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, sizeof(VOLUME_BITMAP_BUFFER) +  ulConvertedBitmapSize);
+			pDrbdBitmap = (PVOLUME_BITMAP_BUFFER)ExAllocatePoolWithTag(NonPagedPool, sizeof(VOLUME_BITMAP_BUFFER) +  ulConvertedBitmapSize, '56DW');
 			if (NULL == pDrbdBitmap)
 			{
 				WDRBD_ERROR("pConvertedBitmap allocation failed\n");
