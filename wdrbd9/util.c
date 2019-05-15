@@ -32,11 +32,14 @@
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
+#pragma alloc_text(PAGE, DeleteRegistryValueKey)
 #ifdef _WIN32_MVFL
 //#pragma alloc_text(PAGE, FsctlFlsuhDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
 #pragma alloc_text(PAGE, FsctlCreateVolume)
+#pragma alloc_text(PAGE, FsctlFlushDismountVolume)
+#pragma alloc_text(PAGE, FsctlFlushVolume)
 #endif
 #endif
 

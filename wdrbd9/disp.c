@@ -52,6 +52,7 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
+#pragma alloc_text(PAGE, _QueryVolumeNameRegistry)
 #endif
 
 NTSTATUS
@@ -152,7 +153,6 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WskPutNPI();
 }
 
-static
 NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
 	_Out_ PVOLUME_EXTENSION pvext)

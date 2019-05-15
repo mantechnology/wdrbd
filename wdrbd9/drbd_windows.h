@@ -1415,6 +1415,7 @@ extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);
 extern int initRegistry(__in PUNICODE_STRING RegistryPath);
 extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name);
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
+extern NTSTATUS _QueryVolumeNameRegistry(_In_ PMOUNTDEV_UNIQUE_ID pmuid, _Out_ PVOLUME_EXTENSION pvext);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
 extern void delete_drbd_block_device(struct kref *kref);
