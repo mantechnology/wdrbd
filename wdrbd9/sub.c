@@ -708,7 +708,7 @@ void _printk(const char * func, const char * format, ...)
 	
 	logcnt = InterlockedIncrement(&gLogCnt);
 	if(logcnt >= LOGBUF_MAXCNT) {
-		gLogCnt = 0;
+		InterlockedExchange(&gLogCnt, 0);
 		logcnt = 0;
 	}
 	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
