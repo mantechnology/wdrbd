@@ -560,8 +560,8 @@ struct socket {
 #endif 
 };
 
-char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr);
+char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr);
 	
 #define WQNAME_LEN	16	
 struct workqueue_struct {

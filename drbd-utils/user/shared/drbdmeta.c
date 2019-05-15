@@ -2352,7 +2352,7 @@ void apply_al(struct format *cfg, uint32_t *hot_extent)
 				bm_on_disk_off + bm_on_disk_pos,
 				"apply_al");
 		fprintf(stderr, "Marked additional %s as out-of-sync based on AL.\n",
-		     ppsize(ppb, additional_bits_set * 4));
+			ppsize(ppb, sizeof(ppb), additional_bits_set * 4));
 	} else
 		fprintf(stderr, "Nothing to do.\n");
 }
@@ -3376,14 +3376,14 @@ int meta_show_gi(struct format *cfg, char **argv __attribute((unused)), int argc
 
 	if (cfg->md.effective_size) {
 		printf("last agreed size: %s (%llu sectors)\n",
-		       ppsize(ppb, cfg->md.effective_size >> 1),
+			ppsize(ppb, sizeof(ppb), cfg->md.effective_size >> 1),
 		       (unsigned long long)cfg->md.effective_size);
 		printf("last agreed max bio size: %u Byte\n",
 			       cfg->md.la_peer_max_bio_size);
 #if 0
 		/* FIXME implement count_bits() */
 		printf("%u bits set in the bitmap [ %s out of sync ]\n",
-		       cfg->bits_set, ppsize(ppb, cfg->bits_set * 4));
+			cfg->bits_set, ppsize(ppb, sizeof(ppb), cfg->bits_set * 4));
 #endif
 	} else {
 		printf("zero size device -- never seen peer yet?\n");

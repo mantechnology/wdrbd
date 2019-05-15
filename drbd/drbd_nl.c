@@ -597,7 +597,7 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 		return pos;
 	va_start(args, fmt);
 #ifdef _WIN32
-    ret = _vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
+	ret = RtlStringCchVPrintfA(env->buffer + pos, env->size - pos, fmt, args);
 #else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #endif
@@ -1933,7 +1933,7 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 }
 
 /* input size is expected to be in KB */
-char *ppsize(char *buf, unsigned long long size)
+char *ppsize(char *buf, size_t len, unsigned long long size)
 {
 	/* Needs 9 bytes at max including trailing NUL:
 	 * -1ULL ==> "16384 EB" */
@@ -1944,7 +1944,8 @@ char *ppsize(char *buf, unsigned long long size)
 		size = (size >> 10) + !!(size & (1<<9));
 		base++;
 	}
-	sprintf(buf, "%u %cB", (unsigned)size, units[base]);
+
+	RtlStringCchPrintfA(buf, len, "%u %cB", (unsigned)size, units[base]);
 
 	return buf;
 }
@@ -2115,7 +2116,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 		drbd_set_my_capacity(device, size);
 		if (effective_disk_size_determined(device)) {
 			md->effective_size = size;
-			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), size >> 1),
 			     (unsigned long long)size >> 1);
 		}
 	}
@@ -3942,7 +3943,7 @@ alloc_crypto(struct crypto *crypto, struct net_conf *new_net_conf)
 	if (rv != NO_ERROR)
 		return rv;
 	if (new_net_conf->cram_hmac_alg[0] != 0) {
-		snprintf(hmac_name, CRYPTO_MAX_ALG_NAME, "hmac(%s)",
+		RtlStringCchPrintfA(hmac_name, sizeof(hmac_name), "hmac(%s)",
 			 new_net_conf->cram_hmac_alg);
 
 		rv = alloc_hash(&crypto->cram_hmac_tfm, hmac_name,
@@ -7624,7 +7625,7 @@ void notify_helper(enum drbd_notification_type type,
 	int err;
 
 #ifdef _WIN32
-    strncpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));
+	RtlStringCbCopyNA(helper_info.helper_name, sizeof(helper_info.helper_name), name, sizeof(helper_info.helper_name));
     helper_info.helper_name[sizeof(helper_info.helper_name) - 1] = '\0';
 #else
 	strlcpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));

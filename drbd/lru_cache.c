@@ -38,11 +38,11 @@
 
 // MODIFIED_BY_MANTECH DW-1513 : Output LRU status like lc_seq_printf_stats function
 #ifdef WIN_AL_BUG_ON
-void private_strcat(char* buf, char* string, ULONG_PTR string_value){
+void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[256] = { 0, }; 
-	strcat(buf, string);
-	sprintf(tmp, "%lu", string_value);
-	strcat(buf, tmp); 
+	RtlStringCbCatA(buf, buf_len, string);
+	RtlStringCbPrintfA(tmp, sizeof(tmp), "%lu", string_value);
+	RtlStringCbCatA(buf, buf_len, tmp);
 }
 
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
@@ -51,35 +51,35 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 
 	if (lc){
 		if (lc->name)
-			sprintf(print_lru, "name=%s ", lc->name);
+			RtlStringCbPrintfA(print_lru, sizeof(print_lru), "name=%s ", lc->name);
 		if (lc->nr_elements)
-			private_strcat(print_lru, " nr_elements= ", lc->nr_elements);
+			private_strcat(print_lru, sizeof(print_lru), " nr_elements= ", lc->nr_elements);
 		if (lc->max_pending_changes)
-			private_strcat(print_lru, " max_pending_changes= ", lc->max_pending_changes);
+			private_strcat(print_lru, sizeof(print_lru), " max_pending_changes= ", lc->max_pending_changes);
 		if (lc->pending_changes)
-			private_strcat(print_lru, " pending_changes= ", lc->pending_changes);
+			private_strcat(print_lru, sizeof(print_lru), " pending_changes= ", lc->pending_changes);
 		if (lc->used){
-			private_strcat(print_lru, " used= ", lc->used);
-			private_strcat(print_lru, " hits= ", lc->hits);
-			private_strcat(print_lru, " misses= ", lc->misses);
-			private_strcat(print_lru, " starving= ", lc->starving);
-			private_strcat(print_lru, " locked= ", lc->locked);
-			private_strcat(print_lru, " changed= ", lc->changed);
+			private_strcat(print_lru, sizeof(print_lru), " used= ", lc->used);
+			private_strcat(print_lru, sizeof(print_lru), " hits= ", lc->hits);
+			private_strcat(print_lru, sizeof(print_lru), " misses= ", lc->misses);
+			private_strcat(print_lru, sizeof(print_lru), " starving= ", lc->starving);
+			private_strcat(print_lru, sizeof(print_lru), " locked= ", lc->locked);
+			private_strcat(print_lru, sizeof(print_lru), " changed= ", lc->changed);
 		}
 		if (lc->flags)
-			private_strcat(print_lru, " flags= ", lc->flags);
+			private_strcat(print_lru, sizeof(print_lru), " flags= ", lc->flags);
 		WDRBD_FATAL("lru : %s\n", print_lru);
 	}
 
 	if (e){
 		if (e->lc_index)
-			sprintf(print_ele, "lc_index=%u ", e->lc_index);
+			RtlStringCbPrintfA(print_ele, sizeof(print_ele), "lc_index=%u ", e->lc_index);
 		if (e->refcnt)
-			private_strcat(print_ele, " refcnt= ", e->refcnt);
+			private_strcat(print_ele, sizeof(print_ele), " refcnt= ", e->refcnt);
 		if (e->lc_number)
-			private_strcat(print_ele, " lc_number= ", e->lc_number);
+			private_strcat(print_ele, sizeof(print_ele), " lc_number= ", e->lc_number);
 		if (e->lc_new_number)
-			private_strcat(print_ele, " lc_new_number= ", e->lc_new_number);
+			private_strcat(print_ele, sizeof(print_ele), " lc_new_number= ", e->lc_new_number);
 
 		WDRBD_FATAL("element : %s\n", print_ele);
 	}

@@ -611,9 +611,9 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
 	if( RootExtension != NULL )
-		wcscpy(wp, RootExtension->PhysicalDeviceName);
+		RtlStringCbCopyW(wp, sizeof(wp), RootExtension->PhysicalDeviceName);
 	else if (VolumeExtension != NULL)
-		wcscpy(wp, VolumeExtension->PhysicalDeviceName);
+		RtlStringCbCopyW(wp, sizeof(wp), VolumeExtension->PhysicalDeviceName);
 	wp += deviceNameLength / sizeof(WCHAR);
 	*wp = 0;
 
@@ -722,7 +722,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ", 
+	offset = RtlStringCbPrintfA(buf, MAX_DRBDLOG_BUF, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -751,7 +751,7 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = RtlStringCbVPrintfA(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
@@ -1016,7 +1016,7 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	sprintf(buf, "%s["OOS_TRACE_STRING"] %s %lu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	RtlStringCbPrintfA(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %lu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 
@@ -1031,11 +1031,11 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		sprintf(temp, FRAME_DELIMITER"%p", stackFrames[i]);
-		strcat(buf, temp);
+		RtlStringCbPrintfA(temp, sizeof(temp), FRAME_DELIMITER"%p", stackFrames[i]);
+		RtlStringCbCatA(buf, sizeof(buf), temp);
 	}
 
-	strcat(buf, "\n");
+	RtlStringCbCatA(buf, sizeof(buf), "\n");
 	
 	printk(buf);
 

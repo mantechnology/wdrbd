@@ -2458,7 +2458,7 @@ enum suspend_scope {
 };
 extern void drbd_suspend_io(struct drbd_device *device, enum suspend_scope);
 extern void drbd_resume_io(struct drbd_device *device);
-extern char *ppsize(char *buf, unsigned long long size);
+extern char *ppsize(char *buf, size_t len, unsigned long long size);
 extern sector_t drbd_new_dev_size(struct drbd_device *,
 	sector_t current_size, /* need at least this much */
 	sector_t user_capped_size, /* want (at most) this much */

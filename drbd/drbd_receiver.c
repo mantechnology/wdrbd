@@ -5487,14 +5487,14 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 			*new_net_conf = *old_net_conf;
 
 			if (verify_tfm) {
-				strcpy(new_net_conf->verify_alg, p->verify_alg);
+				RtlStringCbCopyA(new_net_conf->verify_alg, sizeof(new_net_conf->verify_alg), p->verify_alg);
 				new_net_conf->verify_alg_len = (__u32)(strlen(p->verify_alg) + 1);
 				crypto_free_hash(connection->verify_tfm);
 				connection->verify_tfm = verify_tfm;
 				drbd_info(device, "using verify-alg: \"%s\"\n", p->verify_alg);
 			}
 			if (csums_tfm) {
-				strcpy(new_net_conf->csums_alg, p->csums_alg);
+				RtlStringCbCopyA(new_net_conf->csums_alg, sizeof(new_net_conf->csums_alg), p->csums_alg);
 				new_net_conf->csums_alg_len = (__u32)(strlen(p->csums_alg) + 1);
 				crypto_free_hash(connection->csums_tfm);
 				connection->csums_tfm = csums_tfm;
@@ -5839,7 +5839,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			char ppb[10];
 			should_send_sizes = true;
 			drbd_set_my_capacity(device, size);
-			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), size >> 1),
 				(unsigned long long)size >> 1);
 		}
 	}
@@ -7245,7 +7245,7 @@ drbd_commit_size_change(struct drbd_device *device, struct resize_parms *rs, u64
         char ppb[10];
 
 		drbd_set_my_capacity(device, tr->new_size);
-		drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, tr->new_size >> 1),
+		drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), tr->new_size >> 1),
 			(unsigned long long)tr->new_size >> 1);
         return DS_UNCHANGED; /* Not entirely true, but we are diskless... */
     }

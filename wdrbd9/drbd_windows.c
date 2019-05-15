@@ -837,7 +837,7 @@ void _wake_up(wait_queue_head_t *q, char *__func, int __line)
 void init_completion(struct completion *completion)
 {
 	memset(completion->wait.eventName, 0, Q_NAME_SZ);
-	strcpy(completion->wait.eventName, "completion");
+	RtlStringCbCopyA(completion->wait.eventName, sizeof(completion->wait.eventName), "completion");
 	init_waitqueue_head(&completion->wait);
 }
 
@@ -1009,7 +1009,7 @@ struct workqueue_struct *create_singlethread_workqueue(void * name)
     KeInitializeEvent(&wq->killEvent, SynchronizationEvent, FALSE);
     InitializeListHead(&wq->list_head);
     KeInitializeSpinLock(&wq->list_lock);
-    strcpy(wq->name, name);
+	RtlStringCbCopyA(wq->name, sizeof(wq->name), name);
     wq->run = TRUE;
 
     HANDLE hThread = NULL;
@@ -1385,7 +1385,7 @@ void init_timer(struct timer_list *t)
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
-    strcpy(t->name, "undefined");
+	RtlStringCbCopyA(t->name, sizeof(t->name), "undefined");
 #endif
 }
 
@@ -1397,7 +1397,7 @@ void init_timer_key(struct timer_list *timer, const char *name,
 
     init_timer(timer);
 #ifdef DBG
-    strcpy(timer->name, name);
+	RtlStringCbCopyA(timer->name, sizeof(timer->name), name);
 #endif
 }
 
@@ -1715,7 +1715,7 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
         KeInitializeEvent(&t->sig_event, SynchronizationEvent, FALSE);
         t->has_sig_event = TRUE;
     }
-    strcpy(t->comm, name);
+	RtlStringCbCopyA(t->comm, sizeof(t->comm), name);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
 	list_add(&t->list, &ct_thread_list);
 	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
@@ -1743,7 +1743,7 @@ struct task_struct* ct_find_thread(PKTHREAD id)
         t = &g_dummy_current;
         t->pid = 0;
         t->has_sig_event = FALSE;
-        strcpy(t->comm, "not_drbd_thread");
+		RtlStringCbCopyA(t->comm, sizeof(t->comm), "not_drbd_thread");
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -2574,7 +2574,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf(dev->bd_disk->disk_name, "drbd%d", pvext->Minor);
+	RtlStringCbPrintfA(dev->bd_disk->disk_name, sizeof(dev->bd_disk->disk_name), "drbd%d", pvext->Minor);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;
@@ -2815,18 +2815,18 @@ bool is_equal_volume_link(
  *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
  *	f no block_device allocated, then query
  */
-static void _adjust_guid_name(char * dst, const char * src)
+static void _adjust_guid_name(char * dst, size_t dst_len, const char * src)
 {
 	const char token[] = "Volume{";
 	char * start = strstr(src, token);
 	if (start) {
-		strcpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		RtlStringCbCopyA(dst, dst_len, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
 		char * end = strstr(src, "}");
 		char * t3 = strstr(dst, token);
 		memcpy(t3, start, (int)(end - start));
 	}
  	else {
-		strcpy(dst, src);
+		RtlStringCbCopyA(dst, dst_len, src);
 	}
 }
 
@@ -2879,7 +2879,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
 	
-	_adjust_guid_name(cpath, path);
+	_adjust_guid_name(cpath, sizeof(cpath), path);
 
 	RtlInitAnsiString(&apath, cpath);
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
@@ -2939,7 +2939,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		/* Address */
 		//snprintf(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t) (sPos & 0xFFFF));
 		memset(sHexBuffer, 0, 6);
-		sprintf(sHexBuffer, "%04X:", (uint16_t) (sPos & 0xFFFF));
+		RtlStringCbPrintfA(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t)(sPos & 0xFFFF));
 		memcpy(sLine, sHexBuffer, 5);
 
 		/* Hex part */
@@ -2947,7 +2947,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		{
 			//snprintf(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memset(sHexBuffer, 0, 6);
-			sprintf(sHexBuffer, "%02X", *(sBuffer + sPos + i));
+			RtlStringCbPrintfA(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memcpy(sLine + sAddrAreaSize + (i * 3) + (i / sColWidth), sHexBuffer, 2);
 		}
 
@@ -2997,7 +2997,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 
-    sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+	RtlStringCbPrintfA(cmd_line, leng, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 
     pSock->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
@@ -3184,9 +3184,9 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 #endif
 }
 
-char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
+char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr)
 {
-	sprintf(buf, "%u.%u.%u.%u:%u\0",
+	RtlStringCbPrintfA(buf, len, "%u.%u.%u.%u:%u\0",
 		sockaddr->sin_addr.S_un.S_un_b.s_b1,
 		sockaddr->sin_addr.S_un.S_un_b.s_b2,
 		sockaddr->sin_addr.S_un.S_un_b.s_b3,
@@ -3196,9 +3196,9 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 	return buf;
 }
 #ifdef _WIN32
-char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
+char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr)
 {
-	sprintf(buf, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0", 
+	RtlStringCbPrintfA(buf, len, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0",
 			sockaddr->sin6_addr.u.Byte[0],
 			sockaddr->sin6_addr.u.Byte[1],
 			sockaddr->sin6_addr.u.Byte[2],
