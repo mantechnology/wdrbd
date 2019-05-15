@@ -4671,7 +4671,7 @@ int drbd_adm_connect(struct sk_buff *skb, struct genl_info *info)
 		drbd_md_mark_dirty(device);
 	}
 
-	retcode = change_cstate(connection, C_UNCONNECTED, CS_VERBOSE);
+	retcode = change_cstate_ex(connection, C_UNCONNECTED, CS_VERBOSE);
 
 out:
 	drbd_adm_finish(&adm_ctx, info, retcode);
@@ -4844,7 +4844,7 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 #endif 
 
     repeat:
-	rv = change_cstate_es(connection, C_DISCONNECTING, flags, &err_str);
+	rv = change_cstate_es(connection, C_DISCONNECTING, flags, &err_str, __FUNCTION__);
 	switch (rv) {
 	case SS_CW_FAILED_BY_PEER:
 		spin_lock_irq(&resource->req_lock);
@@ -4875,7 +4875,7 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 		break;
 	case SS_IS_DISKLESS:
 	case SS_LOWER_THAN_OUTDATED:
-		rv = change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		rv = change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 		break;
 	case SS_NO_QUORUM:
 		if (!(flags & CS_VERBOSE)) {
@@ -4930,7 +4930,7 @@ void del_connection(struct drbd_connection *connection)
 	 * after drbd_receiver() returned.  Typically, we should be
 	 * C_STANDALONE already, now, and this becomes a no-op.
 	 */
-	rv2 = change_cstate(connection, C_STANDALONE, CS_VERBOSE | CS_HARD);
+	rv2 = change_cstate_ex(connection, C_STANDALONE, CS_VERBOSE | CS_HARD);
 	if (rv2 < SS_SUCCESS)
 		drbd_err(connection,
 			"unexpected rv2=%d in del_connection()\n",

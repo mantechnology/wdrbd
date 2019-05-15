@@ -1718,7 +1718,7 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
 	list_add(&t->list, &ct_thread_list);
 	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
-        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
+		WDRBD_WARN("ct_thread too big(%s, %d)\n", name, ct_thread_num);
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -3327,7 +3327,7 @@ int drbd_resize(struct drbd_device *device)
 		{
 			continue;
 		}
-		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 	}		
 
 	memset(&rs, 0, sizeof(struct resize_parms));
