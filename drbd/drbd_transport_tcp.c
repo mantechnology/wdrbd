@@ -1784,6 +1784,11 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32
 	NTSTATUS status;
 #endif
+	if (transport == NULL) {
+		WDRBD_ERROR("dtt_connect transport is null.\n");
+		return -EDESTADDRREQ;
+	}
+	
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_path *drbd_path;
@@ -1854,6 +1859,10 @@ static int dtt_connect(struct drbd_transport *transport)
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	
+	if (drbd_path == NULL) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto out;
+	}
 #ifdef _WIN32
         {
 		if (drbd_path->my_addr.ss_family == AF_INET6) {
@@ -1865,6 +1874,10 @@ static int dtt_connect(struct drbd_transport *transport)
 #endif
 
 	connect_to_path = container_of(drbd_path, struct dtt_path, path);
+	if (connect_to_path == NULL) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto out;
+	}
 #ifdef _WIN32
 	{
 		if(connect_to_path->path.my_addr.ss_family == AF_INET6) {

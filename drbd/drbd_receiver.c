@@ -801,6 +801,9 @@ void connect_timer_fn(unsigned long data)
 	UNREFERENCED_PARAMETER(arg2);
 	UNREFERENCED_PARAMETER(Dpc);
 
+	if (data == NULL)
+		return;
+
 	struct drbd_connection *connection = (struct drbd_connection *) data;
 	struct drbd_resource *resource = connection->resource;
 	unsigned long irq_flags;
@@ -1235,6 +1238,13 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
 	struct bio *bio = NULL;
 	int error = 0;
+
+	if (DeviceObject == NULL ||
+		Irp == NULL ||
+		Context == NULL) {
+		WDRBD_ERROR("one_flush_endio parameter is null.\n");
+		BIO_ENDIO_FN_RETURN;
+	}
 
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		error = Irp->IoStatus.Status;
@@ -6758,6 +6768,10 @@ void twopc_timer_fn(unsigned long data)
     UNREFERENCED_PARAMETER(arg1);
     UNREFERENCED_PARAMETER(arg2);
 #endif
+
+	if (data == NULL)
+		return;
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	unsigned long irq_flags;
 
@@ -7073,6 +7087,9 @@ void queued_twopc_timer_fn(unsigned long data)
 	UNREFERENCED_PARAMETER(arg2);
 	UNREFERENCED_PARAMETER(Dpc);
 
+	if (data == NULL)
+		return;
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	struct queued_twopc *q;
 	unsigned long irq_flags;
@@ -7370,6 +7387,10 @@ static int process_twopc(struct drbd_connection *connection,
 			 unsigned long receive_jif)
 #endif
 {
+	if (connection == NULL) {
+		WDRBD_ERROR("process_twopc connection is null\n");
+	}
+
 	struct drbd_connection *affected_connection = connection;
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device = NULL;
@@ -10727,16 +10748,18 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		}
 		if (received == expect) {
 #ifdef _WIN32
-			int err;
+			int err = 0;
 #else
 			bool err;
 #endif
-
 			pi.data = buffer;
-			err = cmd->fn(connection, &pi);
+			if (cmd) {
+				err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-			drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+				drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
 #endif
+			}
+
 			if (err) {
 #ifdef _WIN32
 				if (err == -EINTR && current->sig == SIGXCPU)

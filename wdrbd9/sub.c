@@ -204,6 +204,9 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolDeviceUsage(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	if (DeviceObject == NULL)
+		return STATUS_UNSUCCESSFUL;
+
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 	PDEVICE_OBJECT		attachedDeviceObject;
@@ -609,7 +612,7 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	if( RootExtension != NULL )
 		wcscpy(wp, RootExtension->PhysicalDeviceName);
-	else
+	else if (VolumeExtension != NULL)
 		wcscpy(wp, VolumeExtension->PhysicalDeviceName);
 	wp += deviceNameLength / sizeof(WCHAR);
 	*wp = 0;

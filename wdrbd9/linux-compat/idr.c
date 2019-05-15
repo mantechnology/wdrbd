@@ -377,11 +377,13 @@ static void sub_remove(struct idr *idp, int shift, int id)
 		__clear_bit(n, &p->bitmap);
 #endif
 		p->ary[n] = NULL;
-		while (*paa && !--((**paa)->count)){
-			free_layer(idp, **paa);
-			**paa-- = NULL;
+		if (**paa) {
+			while (*paa && !--((**paa)->count)){
+				free_layer(idp, **paa);
+				**paa-- = NULL;
+			}
 		}
-		if (!*paa)
+		if (!*paa && idp)
 			idp->layers = 0;
 	}
 	else

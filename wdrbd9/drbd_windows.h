@@ -1351,6 +1351,8 @@ __inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
 
 __inline bool IsEmptyUnicodeString(UNICODE_STRING * s)
 {
+	if (s == NULL)
+		return true;
 	return (s && (s->Length == 0) || !(s->Buffer));
 }
 

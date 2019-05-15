@@ -606,6 +606,9 @@ __in struct SendParameter* SendParam
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
+	if (SendParam == NULL)
+		return STATUS_MORE_PROCESSING_REQUIRED;
+
 	FreeWskBuffer(SendParam->WskBuffer);
 	ExFreePool(SendParam->WskBuffer);
 	ExFreePool(SendParam->DataBuffer);
@@ -1803,6 +1806,9 @@ NTSTATUS WskDisconnectEvent(
 	_In_     ULONG Flags
 	)
 {
+	if (SocketContext == NULL)
+		return STATUS_UNSUCCESSFUL;
+
 	UNREFERENCED_PARAMETER(Flags);
 	
 	WDRBD_CONN_TRACE("WskDisconnectEvent\n");
