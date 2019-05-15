@@ -225,34 +225,6 @@ const char *ctx_arg_string(enum cfg_ctx_key key, enum usage_type ut)
 	return "unknown argument";
 }
 
-enum {
-	VOLUME_TYPE_REPL,		// for replicating volume.
-	VOLUME_TYPE_META,		// for meta volume.
-};
-
-const char *drbd_disk_type_name(unsigned char type) {
-	switch (type) {
-	case VOLUME_TYPE_REPL:
-		return "data";
-	case VOLUME_TYPE_META:
-		return "meta";
-	}
-	return "unknown";
-}
-
-#define READ					0
-#define WRITE					1
-
-const char *drbd_io_type_name(unsigned char type) {
-	switch (type) {
-	case READ:
-		return "read";
-	case WRITE:
-		return "write";
-	}
-	return "unknown";
-}
-
 struct drbd_cmd {
 	const char* cmd;
 	enum cfg_ctx_key ctx_key;
