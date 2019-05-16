@@ -115,11 +115,12 @@ char *GetSockErrorString(NTSTATUS status)
 
 NTSTATUS
 NTAPI CompletionRoutine(
-	__in PDEVICE_OBJECT	DeviceObject,
-	__in PIRP			Irp,
-	__in PKEVENT		CompletionEvent
+	PDEVICE_OBJECT	DeviceObject,
+	PIRP			Irp,
+	PVOID			Context
 )
 {
+	PKEVENT			CompletionEvent = Context;
 	UNREFERENCED_PARAMETER(Irp);
 	UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -133,9 +134,9 @@ NTAPI CompletionRoutine(
 #ifdef _WIN32_NOWAIT_COMPLETION
 NTSTATUS
 NTAPI NoWaitCompletionRoutine(
-	__in PDEVICE_OBJECT	DeviceObject,
-	__in PIRP			Irp,
-	__in PVOID		Context
+	PDEVICE_OBJECT	DeviceObject,
+	PIRP			Irp,
+	PVOID			Context
 )
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
@@ -599,11 +600,12 @@ CreateSocketConnect(
 
 NTSTATUS
 NTAPI SendCompletionRoutine(
-__in PDEVICE_OBJECT	DeviceObject,
-__in PIRP			Irp,
-__in struct SendParameter* SendParam
+PDEVICE_OBJECT	DeviceObject,
+PIRP			Irp,
+PVOID			Context
 )
 {
+	struct SendParameter* SendParam = Context;
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	if (SendParam == NULL)

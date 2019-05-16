@@ -180,8 +180,8 @@ Accept(
 	__in struct socket* pSock,
 	__out_opt PSOCKADDR	LocalAddress,
 	__out_opt PSOCKADDR	RemoteAddress,
-	__out PNTSTATUS		Error,
-	int					timeout
+	__out_opt PNTSTATUS		Error,
+	__in int					timeout
    );
 
 NTSTATUS
