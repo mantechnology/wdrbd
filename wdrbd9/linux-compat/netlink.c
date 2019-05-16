@@ -745,8 +745,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+PVOID *AcceptSocketContext,
+CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
 	UNREFERENCED_PARAMETER(AcceptSocketDispatch);

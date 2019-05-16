@@ -1114,7 +1114,7 @@ NTSTATUS QueryMountPoint(
 	_In_ PVOID MountPoint,
 	_In_ ULONG MountPointLength,
 	_Inout_ PVOID MountPointInfo,
-	_Out_ PULONG MountPointInfoLength)
+	PULONG MountPointInfoLength)
 {
 	OBJECT_ATTRIBUTES mmgrObjectAttributes;
 	UNICODE_STRING mmgrObjectName;

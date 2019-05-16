@@ -155,7 +155,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 
 NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
-	_Out_ PVOLUME_EXTENSION pvext)
+	_In_ PVOLUME_EXTENSION pvext)
 {
 	OBJECT_ATTRIBUTES           attributes;
 	PKEY_FULL_INFORMATION       keyInfo = NULL;

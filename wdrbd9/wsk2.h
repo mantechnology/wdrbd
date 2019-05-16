@@ -163,8 +163,8 @@ ReceiveFrom(
 	__in struct socket* pSock,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
-	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt PULONG	ControlFlags
+	PSOCKADDR	RemoteAddress,
+	PULONG	ControlFlags
 	);
 
 NTSTATUS
@@ -178,10 +178,10 @@ PWSK_SOCKET
 NTAPI
 Accept(
 	__in struct socket* pSock,
-	__out_opt PSOCKADDR	LocalAddress,
-	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt PNTSTATUS		Error,
-	__in int					timeout
+	PSOCKADDR			LocalAddress,
+	PSOCKADDR			RemoteAddress,
+	PNTSTATUS			RetStatus,
+	__in int			timeout
    );
 
 NTSTATUS
@@ -251,8 +251,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+PVOID *AcceptSocketContext,
+CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
 
 char *GetSockErrorString(NTSTATUS status);

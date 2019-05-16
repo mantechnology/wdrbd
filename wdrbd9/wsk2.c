@@ -1319,8 +1319,8 @@ ReceiveFrom(
 	__in struct socket* pSock,
 	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
-	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt PULONG	ControlFlags
+	PSOCKADDR	RemoteAddress,
+	PULONG	ControlFlags
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
@@ -1403,10 +1403,10 @@ PWSK_SOCKET
 NTAPI
 Accept(
 	__in struct socket* pSock,
-	__out_opt PSOCKADDR	LocalAddress,
-	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt NTSTATUS* RetStaus,
-	__in int			timeout
+	PSOCKADDR	LocalAddress,
+	PSOCKADDR	RemoteAddress,
+	NTSTATUS*	RetStatus,
+	__in int	timeout
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
@@ -1419,13 +1419,13 @@ Accept(
     int wObjCount = 1;
 
 	if (g_WskState != INITIALIZED || !WskSocket) {
-		*RetStaus = SOCKET_ERROR;
+		*RetStatus = SOCKET_ERROR;
 		return NULL;
 	}
 
 	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
-		*RetStaus = Status;
+		*RetStatus = Status;
 		return NULL;
 	}
 
@@ -1464,13 +1464,13 @@ Accept(
 			case STATUS_WAIT_0 + 1:
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				*RetStaus = -EINTR;	
+				*RetStatus = -EINTR;
 				break;
 
 			case STATUS_TIMEOUT:
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				*RetStaus = STATUS_TIMEOUT;
+				*RetStatus = STATUS_TIMEOUT;
 				break;
 
 			default:
@@ -1767,8 +1767,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+PVOID *AcceptSocketContext,
+CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
 	UNREFERENCED_PARAMETER(AcceptSocketContext);
