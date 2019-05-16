@@ -611,9 +611,9 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
 	if( RootExtension != NULL )
-		RtlStringCbCopyW(wp, sizeof(wp), RootExtension->PhysicalDeviceName);
+		RtlStringCbCopyW(wp, deviceNameLength + sizeof(WCHAR), RootExtension->PhysicalDeviceName);
 	else if (VolumeExtension != NULL)
-		RtlStringCbCopyW(wp, sizeof(wp), VolumeExtension->PhysicalDeviceName);
+		RtlStringCbCopyW(wp, deviceNameLength + sizeof(WCHAR), VolumeExtension->PhysicalDeviceName);
 	wp += deviceNameLength / sizeof(WCHAR);
 	*wp = 0;
 
