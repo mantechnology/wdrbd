@@ -958,11 +958,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 {
     UNICODE_STRING reg_path, valuekey;
     wchar_t wszletter[] = L"A";
-
-    RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	NTSTATUS status;
+    status = RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	if (!NT_SUCCESS(status))
+		return status;
 
     wszletter[0] = (WCHAR)letter;
-    RtlUnicodeStringInit(&valuekey, wszletter);
+    status = RtlUnicodeStringInit(&valuekey, wszletter);
+	if (!NT_SUCCESS(status))
+		return status;
 
     return DeleteRegistryValueKey(&reg_path, &valuekey);
 }

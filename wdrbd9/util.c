@@ -35,8 +35,11 @@
 * Turns off the C6319 warning caused by code analysis.
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
+*
+* C6102 warning warns to access uninitialized variable,
+* but disables warnig because there is no problem in code
 */
-#pragma warning (disable: 6319)
+#pragma warning (disable: 6319 6102)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
@@ -481,7 +484,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 
 		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
-			break;
+			return NULL;
 		}
 		
 	} while (false, false);
@@ -502,20 +505,16 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 		return 0;
 	}
 	
-	do
+	status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
+	// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
+	if (fss.FileSystemType == 0 &&
+		!NT_SUCCESS(status))
 	{
-		status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
-		// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
-		if (fss.FileSystemType == 0 &&
-			!NT_SUCCESS(status))
-		{
-			WDRBD_ERROR("ZwFsControlFile with FSCTL_FILESYSTEM_GET_STATISTICS failed, status(0x%x)\n", status);
-			break;
-		}
-
-	} while (false, false);
-
-	return fss.FileSystemType;
+		WDRBD_ERROR("ZwFsControlFile with FSCTL_FILESYSTEM_GET_STATISTICS failed, status(0x%x)\n", status);
+		return 0;
+	}
+	else
+		return fss.FileSystemType;
 }
 
 // retrieves file system specified cluster information ( total cluster count, number of bytes per cluster )

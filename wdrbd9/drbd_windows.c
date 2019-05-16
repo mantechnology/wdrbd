@@ -34,8 +34,11 @@
 * Turns off the C6319 warning caused by code analysis.
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
+*
+* C6102 warning warns to access uninitialized variable,
+* but disables warnig because there is no problem in code
 */
-#pragma warning (disable: 6319)
+#pragma warning (disable: 6319 6102)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
@@ -2675,7 +2678,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
     NTSTATUS                    status;
     HANDLE                      hKey = NULL;
-    ULONG                       size;
+    ULONG                       size = 0;
     int                         count;
     bool                        ret = FALSE;
 
