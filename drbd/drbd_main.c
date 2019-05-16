@@ -28,6 +28,12 @@
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
+/* DW-1587 
+ * Turns off the C6319 warning caused by code analysis.
+ * The use of comma does not cause any performance problems or bugs, 
+ * but keep the code as it is written.
+ */
+#pragma warning (disable: 6319)
 #include <ntifs.h>
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"

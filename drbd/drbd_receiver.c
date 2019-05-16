@@ -23,9 +23,7 @@
  */
 
 #ifdef _WIN32
-
 #include "windows/drbd.h"
-
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"
@@ -58,6 +56,15 @@
 #include "drbd_req.h"
 #include "drbd_vli.h"
 #include <linux/scatterlist.h>
+#endif
+
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
 #endif
 
 #define PRO_FEATURES (DRBD_FF_TRIM|DRBD_FF_THIN_RESYNC|DRBD_FF_WSAME)

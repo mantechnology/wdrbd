@@ -5,6 +5,14 @@
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
+#endif
 NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
 NPAGED_LOOKASIDE_LIST netlink_ctx_mempool;
 NPAGED_LOOKASIDE_LIST genl_info_mempool;

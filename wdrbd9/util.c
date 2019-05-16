@@ -30,6 +30,14 @@
 #include "proto.h"
 #include "drbd_int.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
+#endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
 #pragma alloc_text(PAGE, DeleteRegistryValueKey)
