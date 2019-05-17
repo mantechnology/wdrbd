@@ -2,9 +2,16 @@
 #include "drbd_windows.h"
 #include "wsk2.h"
 
-// DW-1587 C6102 warning warns to access uninitialized variable, 
-// but disables warnig because there is no problem in code
-#pragma warning (disable: 6102)
+/* DW-1587 
+ * Turns off the C6102 warning.
+ * this warning warns to access uninitialized variable, 
+ * but disables warnig because there is no problem in code
+ *
+ * Turns off the C6387 warning.
+ * Even though pointer parameters need to contain NULLs,
+ * they are treated as warnings.
+ */
+#pragma warning (disable: 6102 6387)
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 IO_COMPLETION_ROUTINE CompletionRoutine;
 IO_COMPLETION_ROUTINE SendCompletionRoutine;

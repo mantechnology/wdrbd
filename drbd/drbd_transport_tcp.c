@@ -52,6 +52,13 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");
 #endif
 
+/* DW-1587
+ * Turns off the C6387 warning.
+ * Even though pointer parameters need to contain NULLs,
+ * they are treated as warnings.
+ */
+#pragma warning (disable: 6387)
+
 struct buffer {
 	void *base;
 	void *pos;

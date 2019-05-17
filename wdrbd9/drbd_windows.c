@@ -31,14 +31,19 @@
 
 #ifdef _WIN32
 /* DW-1587
-* Turns off the C6319 warning caused by code analysis.
+* Turns off the C6319 warning.
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
-*
-* C6102 warning warns to access uninitialized variable,
+* 
+* Turns off the C6102 warning.
+* this warning warns to access uninitialized variable,
 * but disables warnig because there is no problem in code
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs,
+* they are treated as warnings.
 */
-#pragma warning (disable: 6319 6102)
+#pragma warning (disable: 6102 6319 6387)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)

@@ -29,11 +29,15 @@
 
 #ifdef _WIN32
 /* DW-1587
-* Turns off the C6319 warning caused by code analysis.
+* Turns off the C6319 warning.
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs,
+* they are treated as warnings.
 */
-#pragma warning (disable: 6319)
+#pragma warning (disable: 6319 6387)
 #endif
 #ifdef _WIN32_SEND_BUFFING
 #define EnterCriticalSection mutex_lock
