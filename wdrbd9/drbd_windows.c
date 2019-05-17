@@ -1202,7 +1202,12 @@ void downup_rwlock_init(KSPIN_LOCK* lock)
 {
 	KeInitializeSpinLock(lock);
 }
-
+/* DW-1587 disable C28167 warning
+ * We've just called KeAcquireSpinLock and KeReleaseSpinLock in separate functions. 
+ * The lock and unlock code do not exist together in one stack, so they are recognized as an error.
+ * But there's nothing wrong with the code.
+ */ 
+#pragma warning (disable: 28167)
 KIRQL down_write(KSPIN_LOCK* lock)
 {
 	return KeAcquireSpinLock(lock, &du_OldIrql);
@@ -1330,7 +1335,7 @@ void spin_unlock_bh(spinlock_t *lock)
 		KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 	}
 }
-
+#pragma warning (default: 28167)
 spinlock_t g_irqLock;
 void local_irq_disable()
 {	
