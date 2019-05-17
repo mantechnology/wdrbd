@@ -340,16 +340,10 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	}
 	rcu_read_unlock();
 
-	if (!adm_ctx->device) {
-		if (flags & DRBD_ADM_NEED_MINOR) {
-			drbd_msg_put_info(adm_ctx->reply_skb, "unknown minor");
-			err = ERR_MINOR_INVALID;
-			goto finish;
-		}
-		else {
-			err = ERR_INVALID_REQUEST;
-			goto finish;
-		}
+	if (!adm_ctx->device && (flags & DRBD_ADM_NEED_MINOR)) {
+		drbd_msg_put_info(adm_ctx->reply_skb, "unknown minor");
+		err = ERR_MINOR_INVALID;
+		goto finish;
 	}
 	if (!adm_ctx->resource && (flags & DRBD_ADM_NEED_RESOURCE)) {
 		drbd_msg_put_info(adm_ctx->reply_skb, "unknown resource");
