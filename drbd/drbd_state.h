@@ -127,13 +127,20 @@ extern void __change_disk_states(struct drbd_resource *, enum drbd_disk_state);
 extern enum drbd_state_rv change_disk_state(struct drbd_device *, enum drbd_disk_state, enum chg_state_flags, const char **);
 
 extern void __change_cstate(struct drbd_connection *, enum drbd_conn_state);
-extern enum drbd_state_rv change_cstate_es(struct drbd_connection *, enum drbd_conn_state, enum chg_state_flags, const char **);
+extern enum drbd_state_rv change_cstate_es(struct drbd_connection *, enum drbd_conn_state, enum chg_state_flags, const char **, const char *);
+
+
+#define change_cstate_ex(connection, cstate, flags) \
+	change_cstate(connection, cstate, flags, __FUNCTION__)
+
 static inline enum drbd_state_rv change_cstate(struct drbd_connection *connection,
-enum drbd_conn_state cstate,
-enum chg_state_flags flags)
+												enum drbd_conn_state cstate,
+												enum chg_state_flags flags,
+												const char *caller)
 {
-	return change_cstate_es(connection, cstate, flags, NULL);
+	return change_cstate_es(connection, cstate, flags, NULL, caller);
 }
+
 
 extern void __change_peer_role(struct drbd_connection *, enum drbd_role);
 

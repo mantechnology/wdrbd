@@ -599,7 +599,7 @@ void tl_release(struct drbd_connection *connection, unsigned int barrier_nr,
 
 bail:
 	spin_unlock_irq(&connection->resource->req_lock);
-	change_cstate(connection, C_PROTOCOL_ERROR, CS_HARD);
+	change_cstate_ex(connection, C_PROTOCOL_ERROR, CS_HARD);
 }
 
 

@@ -261,3 +261,23 @@ const char *drbd_packet_name(enum drbd_packet cmd)
 		!__packet_names[cmd]) ?
 	       "?" : __packet_names[cmd];
 }
+
+const char *drbd_disk_type_name(unsigned char type) {
+	switch (type) {
+	case VOLUME_TYPE_REPL:
+		return "data";
+	case VOLUME_TYPE_META:
+		return "meta";
+	}
+	return "unknown";
+}
+
+const char *drbd_io_type_name(unsigned char type) {
+	switch (type) {
+	case READ:
+		return "read";
+	case WRITE:
+		return "write";
+	}
+	return "unknown";
+}

@@ -727,7 +727,7 @@ static int drbd_recv(struct drbd_connection *connection, void **buf, size_t size
 	}
 
 	if (rv != (int)size)
-		change_cstate(connection, C_BROKEN_PIPE, CS_HARD);
+		change_cstate_ex(connection, C_BROKEN_PIPE, CS_HARD);
 
 out:
 	return rv;
@@ -857,7 +857,7 @@ int connect_work(struct drbd_work *work, int cancel)
 	if (connection->cstate[NOW] != C_CONNECTING)
 		goto out_put;
 
-	rv = change_cstate(connection, C_CONNECTED, CS_SERIALIZE | CS_VERBOSE | CS_DONT_RETRY);
+	rv = change_cstate_ex(connection, C_CONNECTED, CS_SERIALIZE | CS_VERBOSE | CS_DONT_RETRY);
 
 	if (rv >= SS_SUCCESS) {
 		conn_connect2(connection);
@@ -869,13 +869,13 @@ int connect_work(struct drbd_work *work, int cancel)
 		return 0; /* Return early. Keep the reference on the connection! */
 #ifdef _WIN32_V9_DW_663_LINBIT_PATCH // _WIN32 // DW-663 from philipp.reisner@linbit.com 2016.05.03		
 	} else if (rv == SS_TWO_PRIMARIES) { 
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 		drbd_alert(connection, "Split-Brain since more primaries than allowed; dropping connection!\n");
 		drbd_khelper(NULL, connection, "split-brain");
 #endif		
 	} else {
 		drbd_info(connection, "Failure to connect; retrying\n");
-		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 
 out_put:
@@ -902,7 +902,7 @@ start:
 	have_mutex = false;
 
 	clear_bit(DISCONNECT_EXPECTED, &connection->flags);
-	if (change_cstate(connection, C_CONNECTING, CS_VERBOSE) < SS_SUCCESS) {
+	if (change_cstate_ex(connection, C_CONNECTING, CS_VERBOSE) < SS_SUCCESS) {
 		/* We do not have a network config. */
 		return false;
 	}
@@ -1058,7 +1058,7 @@ start:
 #endif
 	} else {
 		enum drbd_state_rv rv;
-		rv = change_cstate(connection, C_CONNECTED,
+		rv = change_cstate_ex(connection, C_CONNECTED,
 				   CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE | CS_LOCAL_ONLY);
 		if (rv < SS_SUCCESS || connection->cstate[NOW] != C_CONNECTED)
 			goto retry;
@@ -1085,7 +1085,7 @@ retry:
 abort:
 	if (have_mutex)
 		mutex_unlock(&connection->mutex[DATA_STREAM]);
-	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 	return false;
 }
 
@@ -3667,7 +3667,7 @@ void drbd_cleanup_after_failed_submit_peer_request(struct drbd_peer_request *pee
 	drbd_may_finish_epoch(connection, peer_req->epoch, EV_PUT + EV_CLEANUP);
 	put_ldev(device);
 	drbd_free_peer_req(peer_req);
-	change_cstate(connection, C_PROTOCOL_ERROR, CS_HARD);
+	change_cstate_ex(connection, C_PROTOCOL_ERROR, CS_HARD);
 }
 
 /* We may throttle resync, if the lower device seems to be busy,
@@ -5286,7 +5286,7 @@ disconnect:
 	crypto_free_hash(peer_integrity_tfm);
 	kfree(int_dig_in);
 	kfree(int_dig_vv);
-	change_cstate(connection, C_DISCONNECTING, CS_HARD); 
+	change_cstate_ex(connection, C_DISCONNECTING, CS_HARD); 
 	return -EIO;
 }
 
@@ -5561,7 +5561,7 @@ disconnect:
 	crypto_free_hash(csums_tfm);
 	/* but free the verify_tfm again, if csums_tfm did not work out */
 	crypto_free_hash(verify_tfm);
-	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 	return -EIO;
 }
 
@@ -5904,7 +5904,7 @@ out:
 disconnect:
 	/* don't let a rejected peer confuse future handshakes with different peers. */
 	peer_device->max_size = 0;
-	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 	err = -EIO;
 	goto out;
 }
@@ -5942,7 +5942,7 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 		drbd_info(peer_device, "Unexpected result of handshake() %d!\n", new_repl_state);
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1360: destroy connection for conflicted data.
-		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 #endif
 		return;
 	} else if (new_repl_state != L_ESTABLISHED) {
@@ -6035,7 +6035,7 @@ static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum
 	{
 		drbd_err(peer_device, "Can not start resync due to unexpected handshake result(%d)\n", hg);
 		// MODIFIED_BY_MANTECH DW-1360: destroy connection for conflicted data.
-		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 		return;
 	}
 
@@ -6095,7 +6095,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 	if (peer_device->connection->agreed_pro_version < 110 && bad_server) {
 		drbd_err(device, "Can only connect to data with current UUID=%016llX\n",
 		    (unsigned long long)device->exposed_data_uuid);
-		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 		return -EIO;
 	}
 
@@ -8267,12 +8267,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 #ifdef _WIN32 // DW-1529
 fail_network_failure: 
-	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+	change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	return -EIO;
 #endif 
 
 fail:
-	change_cstate(connection, C_DISCONNECTING, CS_HARD);
+	change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 	return -EIO;
 }
 
@@ -8463,7 +8463,7 @@ decode_bitmap_c(struct drbd_peer_device *peer_device,
 	 * during all our tests. */
 
 	drbd_err(peer_device, "receive_bitmap_c: unknown encoding %u\n", p->encoding);
-	change_cstate(peer_device->connection, C_PROTOCOL_ERROR, CS_HARD);
+	change_cstate_ex(peer_device->connection, C_PROTOCOL_ERROR, CS_HARD);
 	return -EIO;
 }
 
@@ -8630,7 +8630,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
 			drbd_repl_str(peer_device->repl_state[NOW]));
 		//DW-1613 : Reconnect the UUID because it might not be received properly due to a synchronization issue.
-		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 	err = 0;
 
@@ -9108,7 +9108,7 @@ static void drbdd(struct drbd_connection *connection)
 	return;
 
     err_out:
-	change_cstate(connection, C_PROTOCOL_ERROR, CS_HARD);
+	change_cstate_ex(connection, C_PROTOCOL_ERROR, CS_HARD);
 }
 
 static void cleanup_resync_leftovers(struct drbd_peer_device *peer_device)
@@ -9217,7 +9217,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	 * but just in case we are not, we fix it up here.
 	 */	
 
-	change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+	change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 
 #ifdef _WIN32
 	// DW-1398: closing listening socket busts accepted socket, put those sockets here instead.
@@ -9351,7 +9351,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	end_state_change(resource, &irq_flags, __FUNCTION__);
 
 	if (oc == C_DISCONNECTING)
-		change_cstate(connection, C_STANDALONE, CS_VERBOSE | CS_HARD | CS_LOCAL_ONLY);
+		change_cstate_ex(connection, C_STANDALONE, CS_VERBOSE | CS_HARD | CS_LOCAL_ONLY);
 }
 
 /*
@@ -10800,11 +10800,11 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 	if (false, false) {
 reconnect:
-		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD);
+		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 	if (false,false) {
 disconnect:
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 	}
 
 	drbd_info(connection, "ack_receiver terminated\n");
@@ -10837,10 +10837,10 @@ void drbd_send_acks_wf(struct work_struct *ws)
 
 #ifdef _WIN32
 	if (err)
-		change_cstate(connection, C_NETWORK_FAILURE, CS_HARD); // _WIN32 // DW-637 "change_state(C_DISCONNECTING)" is a problem that go to standalone status on disconnecting phase.
+		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD); // _WIN32 // DW-637 "change_state(C_DISCONNECTING)" is a problem that go to standalone status on disconnecting phase.
 #else
 	if (err)
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 #endif
 }
 
@@ -10851,10 +10851,13 @@ void drbd_send_peer_ack_wf(struct work_struct *ws)
 
 	if (process_peer_ack_list(connection)){
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-1301: avoid a connection to go Standalone.  	
-		drbd_debug(connection, "change the connection state to C_UNCONNECTED\n");
-		__change_cstate(connection, C_UNCONNECTED);
+		//DW-1785 If it is not already in C_DISCONNECTING state, change it.
+		if (connection->cstate[NOW] != C_DISCONNECTING) {
+			drbd_debug(connection, "change the connection state to C_UNCONNECTED\n");
+			__change_cstate(connection, C_UNCONNECTED);
+		}
 #else 
-		change_cstate(connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
 #endif 
 	}
 }
