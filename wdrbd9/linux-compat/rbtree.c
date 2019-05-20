@@ -203,7 +203,8 @@ struct rb_root *root)
 				{
 					rb_set_red(other);
 					node = parent;
-					parent = rb_parent(node);
+					if (node)
+						parent = rb_parent(node);
 				}
 				else
 				{
