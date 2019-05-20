@@ -1336,8 +1336,8 @@ void PrintVolumeDuid(PDEVICE_OBJECT devObj)
     for (i = 0; i < guid->UniqueIdLength; ++i)
     {
         _itoa_s(guid->UniqueId[i], temp, 8, 16);
-		RtlStringCbCatA(pguid_text, sizeof(pguid_text), temp);
-		RtlStringCbCatA(pguid_text, sizeof(pguid_text), " ");
+		strcat_s(pguid_text, sizeof(pguid_text), temp);
+		strcat_s(pguid_text, sizeof(pguid_text), " ");
     }
 
     WDRBD_TRACE("device object(0x%x), Volume GUID(%s)\n", devObj, pguid_text);

@@ -130,7 +130,7 @@ char *ppsize(char *buf, size_t len, unsigned long long size)
 		size = (size >> 10) + !!(size & (1<<9));
 		base++;
 	}
-	RtlStringCchPrintfA(buf, len, "%u %cB", (unsigned)size, units[base]);
+	sprintf(buf, "%u %cB", (unsigned)size, units[base]);
 
 	return buf;
 }

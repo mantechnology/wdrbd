@@ -40,9 +40,9 @@
 #ifdef WIN_AL_BUG_ON
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[64] = { 0, }; 
-	RtlStringCbCatA(buf, buf_len, string);
-	RtlStringCbPrintfA(tmp, sizeof(tmp), "%Iu", string_value);
-	RtlStringCbCatA(buf, buf_len, tmp);
+	strcat_s(buf, buf_len, string);
+	sprintf_s(tmp, sizeof(tmp), "%lu", string_value);
+	strcat_s(buf, buf_len, tmp);
 }
 
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
@@ -51,7 +51,7 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 
 	if (lc){
 		if (lc->name)
-			RtlStringCbPrintfA(print_lru, sizeof(print_lru), "name=%s ", lc->name);
+			sprintf_s(print_lru, sizeof(print_lru), "name=%s ", lc->name);
 		if (lc->nr_elements)
 			private_strcat(print_lru, sizeof(print_lru), " nr_elements= ", lc->nr_elements);
 		if (lc->max_pending_changes)
@@ -73,7 +73,7 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 
 	if (e){
 		if (e->lc_index)
-			RtlStringCbPrintfA(print_ele, sizeof(print_ele), "lc_index=%u ", e->lc_index);
+			sprintf_s(print_ele, sizeof(print_ele), "lc_index=%u ", e->lc_index);
 		if (e->refcnt)
 			private_strcat(print_ele, sizeof(print_ele), " refcnt= ", e->refcnt);
 		if (e->lc_number)

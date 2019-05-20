@@ -600,7 +600,7 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 		return pos;
 	va_start(args, fmt);
 #ifdef _WIN32
-	ret = RtlStringCchVPrintfA(env->buffer + pos, env->size - pos, fmt, args);
+	ret = _vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #endif
@@ -1949,7 +1949,7 @@ char *ppsize(char *buf, size_t len, unsigned long long size)
 		base++;
 	}
 
-	RtlStringCchPrintfA(buf, len, "%u %cB", (unsigned)size, units[base]);
+	sprintf_s(buf, len, "%u %cB", (unsigned)size, units[base]);
 
 	return buf;
 }
@@ -3948,7 +3948,7 @@ alloc_crypto(struct crypto *crypto, struct net_conf *new_net_conf)
 	if (rv != NO_ERROR)
 		return rv;
 	if (new_net_conf->cram_hmac_alg[0] != 0) {
-		RtlStringCchPrintfA(hmac_name, sizeof(hmac_name), "hmac(%s)",
+		sprintf_s(hmac_name, CRYPTO_MAX_ALG_NAME, "hmac(%s)",
 			 new_net_conf->cram_hmac_alg);
 
 		rv = alloc_hash(&crypto->cram_hmac_tfm, hmac_name,
@@ -7630,7 +7630,7 @@ void notify_helper(enum drbd_notification_type type,
 	int err;
 
 #ifdef _WIN32
-	RtlStringCbCopyNA(helper_info.helper_name, sizeof(helper_info.helper_name), name, sizeof(helper_info.helper_name));
+	strncpy_s(helper_info.helper_name, sizeof(helper_info.helper_name), name, sizeof(helper_info.helper_name));
     helper_info.helper_name[sizeof(helper_info.helper_name) - 1] = '\0';
 #else
 	strlcpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));

@@ -1796,7 +1796,7 @@ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
         	return STATUS_REQUEST_NOT_ACCEPTED;
         }
         ad->s_accept->sk = AcceptSocket;
-		RtlStringCbPrintfA(ad->s_accept->name, sizeof(ad->s_accept->name), "estab_sock");
+		sprintf_s(ad->s_accept->name, sizeof(ad->s_accept->name), "estab_sock");
         ad->s_accept->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
         if (!ad->s_accept->sk_linux_attr) {
             ExFreePool(ad->s_accept);

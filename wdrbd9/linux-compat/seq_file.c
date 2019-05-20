@@ -22,7 +22,7 @@ int seq_printf(struct seq_file *m, const char *f, ...)
 
     va_start(args, f);
 #ifdef _WIN32
-	ret = RtlStringCbVPrintfA(m->buf + seq_file_idx, sizeof(m->buf), f, args);
+	ret = vsprintf_s(m->buf + seq_file_idx, sizeof(m->buf), f, args);
 #else
     ret = seq_vprintf(m, f, args);
 #endif

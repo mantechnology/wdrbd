@@ -611,9 +611,9 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
 	if( RootExtension != NULL )
-		RtlStringCbCopyW(wp, deviceNameLength + sizeof(WCHAR), RootExtension->PhysicalDeviceName);
+		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, RootExtension->PhysicalDeviceName);
 	else if (VolumeExtension != NULL)
-		RtlStringCbCopyW(wp, deviceNameLength + sizeof(WCHAR), VolumeExtension->PhysicalDeviceName);
+		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, VolumeExtension->PhysicalDeviceName);
 	wp += deviceNameLength / sizeof(WCHAR);
 	*wp = 0;
 
@@ -684,7 +684,7 @@ void _printk(const char * func, const char * format, ...)
     TIME_FIELDS timeFields = {0,};
 	LONGLONG	totallogcnt = 0;
 	long 		offset = 0;
-	ASSERT((level_index >= 0) && (level_index < 9));
+//	ASSERT((level_index >= 0) && (level_index < 9));
 
 	// to write system event log.
 	if (level_index <= atomic_read(&g_eventlog_lv_min))
@@ -722,7 +722,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = RtlStringCbPrintfA(buf, MAX_DRBDLOG_BUF, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+	offset = sprintf_s(buf, logcnt, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -751,7 +751,7 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = RtlStringCbVPrintfA(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = vsprintf_s(buf + offset + LEVEL_OFFSET, logcnt, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
@@ -849,7 +849,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
     }
 #endif
 	if (mvolRootDeviceObject == NULL) {
-		ASSERT(mvolRootDeviceObject != NULL);
+	//	ASSERT(mvolRootDeviceObject != NULL);
 		return -2;
 	}
 
@@ -1020,7 +1020,7 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	RtlStringCbPrintfA(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	sprintf_s(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %lu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 
@@ -1035,11 +1035,11 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		RtlStringCbPrintfA(temp, sizeof(temp), FRAME_DELIMITER"%p", stackFrames[i]);
-		RtlStringCbCatA(buf, sizeof(buf), temp);
+		sprintf_s(temp, sizeof(temp), FRAME_DELIMITER"%p", stackFrames[i]);
+		strcat_s(buf, sizeof(buf), temp);
 	}
 
-	RtlStringCbCatA(buf, sizeof(buf), "\n");
+	strcat_s(buf, sizeof(buf), "\n");
 	
 	printk(buf);
 
