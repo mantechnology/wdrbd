@@ -1190,11 +1190,6 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 	unsigned int p;
 	int idx, rv = 0;
 
-	if (peer_device == NULL) {
-		drbd_err(device, "peer_device is null\n");
-		return rv;
-	}
-
 	if (m)
 		m->bio = NULL;
 

@@ -785,7 +785,6 @@ int lc_put(struct lru_cache *lc, struct lc_element *e)
 struct lc_element *lc_element_by_index(struct lru_cache *lc, unsigned i)
 {
 #ifdef WIN_AL_BUG_ON
-	AL_BUG_ON(lc, lc, lc, NULL);
 	if (lc == NULL)
 		return NULL;
 	AL_BUG_ON(i >= lc->nr_elements, "i >= lc->nr_elements", lc, NULL);
@@ -795,7 +794,6 @@ struct lc_element *lc_element_by_index(struct lru_cache *lc, unsigned i)
 
 	AL_BUG_ON(lc->lc_element[i]->lc_index != i, "lc->lc_element[i]->lc_index != i", lc, lc->lc_element[i]);
 #else
-	BUG_ON(lc);
 	if (lc == NULL)
 		return NULL;
 	BUG_ON(i >= lc->nr_elements);
