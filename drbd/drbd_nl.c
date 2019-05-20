@@ -600,7 +600,7 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 		return pos;
 	va_start(args, fmt);
 #ifdef _WIN32
-	ret = _vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
+	ret = _vsnprintf_s(env->buffer + pos, env->size, env->size - pos, fmt, args);
 #else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #endif
