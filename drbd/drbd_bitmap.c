@@ -523,7 +523,7 @@ static __inline ULONG_PTR last_bit_on_page(struct drbd_bitmap *bitmap,
 {
     ULONG_PTR word = interleaved_word32(bitmap, bitmap_index, bit);
 
-	return (bit | 31) + ((word32_in_page(~word) / bitmap->bm_max_peers) << 5);
+	return (bit | 31) + ((ULONG_PTR)(word32_in_page(~word) / bitmap->bm_max_peers) << 5);
 }
 
 static __inline ULONG_PTR bit_to_page_interleaved(struct drbd_bitmap *bitmap,
@@ -602,7 +602,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 
 	word = interleaved_word32(bitmap, bitmap_index, start);
 	page = word32_to_page(word);
-	bit_in_page = (word32_in_page(word) << 5) | (start & 31);
+	bit_in_page = (ULONG_PTR)(word32_in_page(word) << 5) | (start & 31);
 
 	for (; start <= end; page++) {
 		ULONG_PTR count = 0;
