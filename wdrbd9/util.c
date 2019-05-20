@@ -56,6 +56,22 @@
 
 //#define _WIN32_CHECK_PARTITION_STYLE // DW-1495
 
+__inline
+BOOLEAN
+IsVolumeAlreadyMounted(
+_In_ PDEVICE_OBJECT DeviceObject
+)
+{
+// DW-1587
+// there is no other way to check if there is volume mounted.
+// So 28175 warning disabled.
+#pragma warning (disable: 28175)
+	return (DeviceObject &&
+		(DeviceObject->Vpb != NULL) &&
+		((DeviceObject->Vpb->Flags & VPB_MOUNTED) != 0));
+#pragma warning (default: 28175)
+}
+
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
 {
@@ -123,11 +139,9 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 	RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 	
 	// DW-1303 No dismount for already dismounted volume
-	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
-		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
-			WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
-			return STATUS_SUCCESS;
-		}
+	if (!IsVolumeAlreadyMounted(pvext->PhysicalDeviceObject)) {
+		WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
+		return STATUS_SUCCESS;
 	}
 	
     __try
@@ -232,11 +246,9 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
 	// DW-1303 No lock for already dismounted volume
-	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
-		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
-			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
-			return STATUS_UNSUCCESSFUL;
-		}
+	if (!IsVolumeAlreadyMounted(pvext->PhysicalDeviceObject)) {
+		WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
+		return STATUS_UNSUCCESSFUL;
 	}
 	
     __try
