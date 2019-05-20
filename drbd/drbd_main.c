@@ -2316,7 +2316,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	BUG_ON(UINT_MAX < bs.cur.b - p->code + !!bs.cur.bit);
 	len = (unsigned int)(bs.cur.b - p->code + !!bs.cur.bit);
 
-	if (plain_bits < (ULONG_PTR)(len << 3)) {
+	if (plain_bits < ((ULONG_PTR)len << 3)) {
 		/* incompressible with this method.
 		 * we need to rewind both word and bit position. */
 		c->bit_offset -= plain_bits;

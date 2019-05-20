@@ -602,7 +602,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 
 	word = interleaved_word32(bitmap, bitmap_index, start);
 	page = word32_to_page(word);
-	bit_in_page = (ULONG_PTR)(word32_in_page(word) << 5) | (start & 31);
+	bit_in_page = ((ULONG_PTR)word32_in_page(word) << 5) | (start & 31);
 
 	for (; start <= end; page++) {
 		ULONG_PTR count = 0;
