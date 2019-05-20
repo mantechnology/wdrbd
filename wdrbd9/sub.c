@@ -612,7 +612,7 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	if( RootExtension != NULL )
 		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, RootExtension->PhysicalDeviceName);
-	else if (VolumeExtension != NULL)
+	else if (VolumeExtension != NULL && RootExtension != NULL)
 		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, VolumeExtension->PhysicalDeviceName);
 	wp += deviceNameLength / sizeof(WCHAR);
 	*wp = 0;

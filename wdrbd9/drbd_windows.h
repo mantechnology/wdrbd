@@ -1429,7 +1429,8 @@ extern void refresh_targetdev_list();
 extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
-extern int WriteEventLogEntryData(
+extern int 
+WriteEventLogEntryData(
 	ULONG	pi_ErrorCode,
 	ULONG	pi_UniqueErrorCode,
 	ULONG	pi_FinalStatus,

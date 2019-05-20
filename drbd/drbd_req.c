@@ -1187,7 +1187,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 {
 	struct drbd_device *device = req->device;
 	struct net_conf *nc;
-	unsigned int p;
+	unsigned int p = 0;
 	int idx, rv = 0;
 
 	if (m)
@@ -1211,9 +1211,12 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		 * and from w_read_retry_remote */
 		D_ASSERT(device, idx && !(req->rq_state[idx] & RQ_NET_MASK));
 		rcu_read_lock();
-		nc = rcu_dereference(peer_device->connection->transport.net_conf);
-		p = nc->wire_protocol;
+		if (peer_device && peer_device->connection) {
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			p = nc->wire_protocol;
+		}
 		rcu_read_unlock();
+		
 		req->rq_state[idx] |=
 			p == DRBD_PROT_C ? RQ_EXP_WRITE_ACK :
 			p == DRBD_PROT_B ? RQ_EXP_RECEIVE_ACK : 0;
@@ -1317,8 +1320,10 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 #else
 		rcu_read_lock();
 #endif
-		nc = rcu_dereference(peer_device->connection->transport.net_conf);
-		p = nc->max_epoch_size;
+		if (peer_device && peer_device->connection) {
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			p = nc->max_epoch_size;
+		}
 		rcu_read_unlock();
 		if (device->resource->current_tle_writes >= p)
 			start_new_tl_epoch(device->resource);
