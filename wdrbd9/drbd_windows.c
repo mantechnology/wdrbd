@@ -3067,6 +3067,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 	{
 		LONG readcount;
 		char hello[2];
+		memset(hello, 0, sizeof(hello));
 		WDRBD_TRACE("Wait Hi\n");
 		if ((readcount = Receive(pSock, &hello, 2, 0, g_handler_timeout)) == 2) {
 			WDRBD_TRACE("recv HI!!! \n");
