@@ -441,6 +441,7 @@ void drbd_req_destroy(struct kref *kref)
 					kfree2(peer_ack_req->req_databuf);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+				peer_ack_req = NULL;
 				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 				// DW-1539
 				atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);

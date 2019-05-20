@@ -159,9 +159,8 @@ static bool push_msocket_entry(void * ptr)
 /**
 * @brief: Pop the argument pointer from the socket pointer list
 */
-static PPTR_ENTRY pop_msocket_entry(void * ptr)
+static void pop_msocket_entry(void * ptr)
 {
-    PPTR_ENTRY ret = NULL;
     PSINGLE_LIST_ENTRY iter = &gSocketList.slink;
 
     MvfAcquireResourceExclusive(&genl_multi_socket_res_lock);
@@ -174,7 +173,7 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
             iter->Next = PopEntryList(iter->Next);
 
             ExFreePool(socket_entry);
-            ret = socket_entry;
+			socket_entry = NULL;
             break;
         }
         iter = iter->Next;
@@ -182,7 +181,7 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
 
     MvfReleaseResource(&genl_multi_socket_res_lock);
 
-    return NULL;
+    return;
 }
 
 /**

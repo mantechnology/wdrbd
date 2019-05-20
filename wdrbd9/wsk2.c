@@ -1223,6 +1223,7 @@ LONG NTAPI Receive(
 		return SOCKET_ERROR;
 	}
 
+	RtlZeroMemory(Buffer, BufferSize);
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
@@ -1343,6 +1344,7 @@ ReceiveFrom(
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
+	RtlZeroMemory(Buffer, BufferSize);
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
