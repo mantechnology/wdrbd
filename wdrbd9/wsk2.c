@@ -1199,7 +1199,7 @@ SendTo(
 
 LONG NTAPI Receive(
 	__in struct socket* pSock,
-	__out PVOID			Buffer,
+	__in PVOID			Buffer,
 	__in  ULONG			BufferSize,
 	__in  ULONG			Flags,
 	__in ULONG			Timeout
@@ -1328,7 +1328,7 @@ LONG
 NTAPI
 ReceiveFrom(
 	__in struct socket* pSock,
-	__out PVOID			Buffer,
+	__in PVOID			Buffer,
 	__in  ULONG			BufferSize,
 	PSOCKADDR	RemoteAddress,
 	PULONG	ControlFlags
