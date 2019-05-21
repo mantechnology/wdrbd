@@ -1250,18 +1250,13 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	struct bio *bio = NULL;
 	int error = 0;
 
-	if (DeviceObject == NULL ||
-		Irp == NULL ||
-		Context == NULL) {
-		WDRBD_ERROR("one_flush_endio parameter is null.\n");
-		BIO_ENDIO_FN_RETURN;
-	}
-
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
-		error = Irp->IoStatus.Status;
 		bio = (struct bio *)Context;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		error = Irp->IoStatus.Status;
+		if (bio) {
+			if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+				IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			}
 		}
 	}
 	else {
@@ -1269,6 +1264,9 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		bio = (struct bio *)Irp;
 	}
 #endif
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
 	struct one_flush_context *octx = bio->bi_private;
 	struct drbd_device *device = octx->device;
 	struct issue_flush_context *ctx = octx->ctx;

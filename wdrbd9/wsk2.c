@@ -136,7 +136,8 @@ NTAPI CompletionRoutine(
 
 	ASSERT(CompletionEvent);
 	
-	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
+	if (CompletionEvent)
+		KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }

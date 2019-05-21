@@ -685,7 +685,7 @@ void _printk(const char * func, const char * format, ...)
     TIME_FIELDS timeFields = {0,};
 	LONGLONG	totallogcnt = 0;
 	long 		offset = 0;
-//	ASSERT((level_index >= 0) && (level_index < 9));
+	ASSERT((level_index >= 0) && (level_index < 9));
 
 	// to write system event log.
 	if (level_index <= atomic_read(&g_eventlog_lv_min))
@@ -850,7 +850,7 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
     }
 #endif
 	if (mvolRootDeviceObject == NULL) {
-	//	ASSERT(mvolRootDeviceObject != NULL);
+		ASSERT(mvolRootDeviceObject != NULL);
 		return -2;
 	}
 
