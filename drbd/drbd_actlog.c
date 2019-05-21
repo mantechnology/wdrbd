@@ -350,11 +350,9 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 							peer_device->resync_locked--;
 							continue;
 						}
-						else { 
-							if (lc_put_result == -EINVAL) {
-								WDRBD_ERROR("lc_put return error.\n");
-								continue;
-							}
+						else if (lc_put_result < 0) {
+							WDRBD_ERROR("lc_put return error.\n");
+							continue;
 						}
 					}
 					rcu_read_unlock();
@@ -701,13 +699,10 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 		int lc_put_result = lc_put(device->act_log, extent);
 		if (lc_put_result == 0)
 			wake = true;
-		else { 
-			if (lc_put_result == -EINVAL) {
-				WDRBD_ERROR("lc_put return error.\n");
-				break;
-			}
+		else if (lc_put_result < 0) {
+			WDRBD_ERROR("lc_put return error.\n");
+			break;
 		}
-		
 	}
 	spin_unlock_irqrestore(&device->al_lock, flags);
 	if (wake)
@@ -1659,11 +1654,9 @@ retry:
 				peer_device->resync_locked--;
 				wake_up(&device->al_wait);
 			}
-			else {
-				if (lc_put_result == -EINVAL) {
-					WDRBD_ERROR("lc_put return error.\n");
-					return -EINTR;
-				}
+			else if (lc_put_result < 0) {
+				WDRBD_ERROR("lc_put return error.\n");
+				return -EINTR;
 			}
 			spin_unlock_irq(&device->al_lock);
 			if (sig)
@@ -1737,9 +1730,9 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 				bm_ext->flags = 0;
 				peer_device->resync_locked--;
 			}
-			else {
-				if (lc_put_result == -EINVAL)
-					goto out;
+			else if (lc_put_result < 0) {
+				WDRBD_ERROR("lc_put return error.\n");
+				goto out;
 			}
 			 
 			wake_up(&device->al_wait);
@@ -1822,12 +1815,12 @@ try_again:
 				bm_ext->flags = 0;
 				peer_device->resync_locked--;
 			}
-			else {
-				if (lc_put_result == -EINVAL)
-					goto out;
+			else if (lc_put_result < 0){
+				goto out;
 			}
 			wake_up(&device->al_wait);
-		} else
+		}
+		else
 			peer_device->resync_wenr = (unsigned int)enr;
 	}
 out:
