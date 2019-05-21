@@ -10,8 +10,10 @@
  * Turns off the C6387 warning.
  * Even though pointer parameters need to contain NULLs,
  * they are treated as warnings.
+ *
+ * C6101, C28252, C28253 warnings is not a problem in wsk2.c.
  */
-#pragma warning (disable: 6102 6387)
+#pragma warning (disable: 6101 6102 6387 28252 28253)
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 IO_COMPLETION_ROUTINE CompletionRoutine;
 IO_COMPLETION_ROUTINE SendCompletionRoutine;
@@ -125,9 +127,9 @@ char *GetSockErrorString(NTSTATUS status)
 
 NTSTATUS
 NTAPI CompletionRoutine(
-	PDEVICE_OBJECT	DeviceObject,
-	PIRP			Irp,
-	PVOID			Context
+	__in PDEVICE_OBJECT	DeviceObject,
+	__in PIRP			Irp,
+	__in PVOID		Context
 )
 {
 	PKEVENT			CompletionEvent = Context;
@@ -145,9 +147,9 @@ NTAPI CompletionRoutine(
 #ifdef _WIN32_NOWAIT_COMPLETION
 NTSTATUS
 NTAPI NoWaitCompletionRoutine(
-	PDEVICE_OBJECT	DeviceObject,
-	PIRP			Irp,
-	PVOID			Context
+	__in PDEVICE_OBJECT	DeviceObject,
+	__in PIRP			Irp,
+	__in PVOID		Context
 )
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
@@ -611,9 +613,9 @@ CreateSocketConnect(
 
 NTSTATUS
 NTAPI SendCompletionRoutine(
-PDEVICE_OBJECT	DeviceObject,
-PIRP			Irp,
-PVOID			Context
+__in PDEVICE_OBJECT	DeviceObject,
+__in PIRP			Irp,
+__in PVOID			Context
 )
 {
 	struct SendParameter* SendParam = Context;
@@ -1200,7 +1202,7 @@ SendTo(
 
 LONG NTAPI Receive(
 	__in struct socket* pSock,
-	__in PVOID			Buffer,
+	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
 	__in  ULONG			Flags,
 	__in ULONG			Timeout
@@ -1329,10 +1331,10 @@ LONG
 NTAPI
 ReceiveFrom(
 	__in struct socket* pSock,
-	__in PVOID			Buffer,
+	__out PVOID			Buffer,
 	__in  ULONG			BufferSize,
-	PSOCKADDR	RemoteAddress,
-	PULONG	ControlFlags
+	__out_opt PSOCKADDR	RemoteAddress,
+	__out_opt PULONG	ControlFlags
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
@@ -1416,10 +1418,10 @@ PWSK_SOCKET
 NTAPI
 Accept(
 	__in struct socket* pSock,
-	PSOCKADDR	LocalAddress,
-	PSOCKADDR	RemoteAddress,
-	NTSTATUS*	RetStatus,
-	__in int	timeout
+	__out_opt PSOCKADDR	LocalAddress,
+	__out_opt PSOCKADDR	RemoteAddress,
+	__out_opt NTSTATUS* RetStatus,
+	__in int			timeout
 )
 {
 	PWSK_SOCKET		WskSocket = pSock->sk;
@@ -1780,8 +1782,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-PVOID *AcceptSocketContext,
-CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
+_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
 	UNREFERENCED_PARAMETER(AcceptSocketContext);
