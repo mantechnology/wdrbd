@@ -980,8 +980,12 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 }
 #ifdef _WIN32
-void run_singlethread_workqueue(struct workqueue_struct * wq)
+void run_singlethread_workqueue(PVOID StartContext)
 {
+	struct workqueue_struct * wq = (struct workqueue_struct *)StartContext;
+	if (wq == NULL)
+		return;
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PVOID waitObjects[2] = { &wq->wakeupEvent, &wq->killEvent };
     int maxObj = 2;
