@@ -808,8 +808,13 @@ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 		NetlinkWorkThread,
 		netlinkWorkItem);
 
+// DW-1587 
+// Code Analysis indicates this is obsolete, but it is ok.
+// If the work item is not associated with a device object or device stack, 
+// there is no problem in use, and it is still in use within the Windows file system driver.
+#pragma warning (disable: 28159)
 	ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
-
+#pragma warning (default: 28159)
     return STATUS_SUCCESS;
 }
 

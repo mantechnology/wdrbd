@@ -3134,7 +3134,11 @@ void panic(char *msg)
 #ifdef _WIN32_EVENTLOG
 	WriteEventLogEntryData((ULONG) DEV_ERR_3003, 0, 0, 1, L"%S", msg);
 #endif
+// DW-1587 
+//	The code that caused the BugCheck was written as needed.
+#pragma warning (disable: 28159)
 	KeBugCheckEx(0xddbd, (ULONG_PTR)__FILE__, (ULONG_PTR)__func__, 0x12345678, 0xd8bdd8bd);
+#pragma warning (default: 28159)
 }
 
 int scnprintf(char * buf, size_t size, const char *fmt, ...)
