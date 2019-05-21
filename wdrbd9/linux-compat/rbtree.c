@@ -146,87 +146,98 @@ static void __rb_erase_color(struct rb_node *node, struct rb_node *parent,
 struct rb_root *root)
 {
 	struct rb_node *other;
+	if (!parent || !root)
+		return;
 
 	while ((!node || rb_is_black(node)) && node != root->rb_node)
 	{
 		if (parent->rb_left == node)
 		{
 			other = parent->rb_right;
-			if (other) {
-				if (rb_is_red(other))
-				{
-					rb_set_black(other);
-					rb_set_red(parent);
-					__rb_rotate_left(parent, root);
-					if (parent)
-						other = parent->rb_right;
-				}
-				if ((!other->rb_left || rb_is_black(other->rb_left)) &&
-					(!other->rb_right || rb_is_black(other->rb_right)))
-				{
-					rb_set_red(other);
-					node = parent;
-					parent = rb_parent(node);
-				}
-				else
-				{
-					if (!other->rb_right || rb_is_black(other->rb_right))
-					{
-						rb_set_black(other->rb_left);
-						rb_set_red(other);
-						__rb_rotate_right(other, root);
-						other = parent->rb_right;
-					}
-					rb_set_color(other, rb_color(parent));
-					rb_set_black(parent);
-					rb_set_black(other->rb_right);
-					__rb_rotate_left(parent, root);
-					node = root->rb_node;
+			if (!other)
+				break;
+			if (rb_is_red(other))
+			{
+				rb_set_black(other);
+				rb_set_red(parent);
+				__rb_rotate_left(parent, root);
+				other = parent->rb_right;
+				if (!other)
 					break;
+			}
+			if ((!other->rb_left || rb_is_black(other->rb_left)) &&
+				(!other->rb_right || rb_is_black(other->rb_right)))
+			{
+				rb_set_red(other);
+				node = parent;
+				parent = rb_parent(node);
+				if (!parent)
+					break;
+			}
+			else
+			{
+				if (!other->rb_right || rb_is_black(other->rb_right))
+				{
+					rb_set_black(other->rb_left);
+					rb_set_red(other);
+					__rb_rotate_right(other, root);
+					other = parent->rb_right;
+					if (!other)
+						break;
 				}
+				rb_set_color(other, rb_color(parent));
+				rb_set_black(parent);
+				rb_set_black(other->rb_right);
+				__rb_rotate_left(parent, root);
+				node = root->rb_node;
+				break;
 			}
 		}
 		else
 		{
 			other = parent->rb_left;
-			if (other) {
-				if (rb_is_red(other))
-				{
-					rb_set_black(other);
-					rb_set_red(parent);
-					__rb_rotate_right(parent, root);
-					if (parent)
-						other = parent->rb_left;
-				}
-				if ((!other->rb_left || rb_is_black(other->rb_left)) &&
-					(!other->rb_right || rb_is_black(other->rb_right)))
-				{
-					rb_set_red(other);
-					node = parent;
-					if (node)
-						parent = rb_parent(node);
-				}
-				else
-				{
-					if (!other->rb_left || rb_is_black(other->rb_left))
-					{
-						rb_set_black(other->rb_right);
-						rb_set_red(other);
-						__rb_rotate_left(other, root);
-						if (parent)
-							other = parent->rb_left;
-					}
-
-					rb_set_color(other, rb_color(parent));
-									
-					rb_set_black(parent);
-					rb_set_black(other->rb_left);
-
-					__rb_rotate_right(parent, root);
-					node = root->rb_node;
+			if (!other)
+				break;
+			if (rb_is_red(other))
+			{
+				rb_set_black(other);
+				rb_set_red(parent);
+				__rb_rotate_right(parent, root);
+				other = parent->rb_left;
+				if (!other)
 					break;
-				}
 			}
+			if ((!other->rb_left || rb_is_black(other->rb_left)) &&
+				(!other->rb_right || rb_is_black(other->rb_right)))
+			{
+				rb_set_red(other);
+				node = parent;
+				parent = rb_parent(node);
+				if (!parent)
+					break;
+			}
+			else
+			{
+				if (!other->rb_left || rb_is_black(other->rb_left))
+				{
+					rb_set_black(other->rb_right);
+					rb_set_red(other);
+					__rb_rotate_left(other, root);
+					other = parent->rb_left;
+					if (!other)
+						break;
+				}
+
+				rb_set_color(other, rb_color(parent));
+
+				rb_set_black(parent);
+				rb_set_black(other->rb_left);
+
+				__rb_rotate_right(parent, root);
+				node = root->rb_node;
+				break;
+			}
+
 		}
 	}
 	if (node)
