@@ -41,7 +41,7 @@
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[64] = { 0, }; 
 	strcat_s(buf, buf_len, string);
-	sprintf_s(tmp, sizeof(tmp), "%lu", string_value);
+	sprintf_s(tmp, sizeof(tmp), "%Iu", string_value);
 	strcat_s(buf, buf_len, tmp);
 }
 
