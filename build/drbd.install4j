@@ -1137,7 +1137,13 @@ return true;</string>
                       <void property="script">
                         <object class="com.install4j.api.beans.ScriptProperty">
                           <void property="value">
-                            <string>WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\CrashControl", "CrashDumpEnabled", 2);
+                            <string>Object value = WinRegistry.getValue(RegistryRoot.HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\CrashControl", "CrashDumpEnabled");
+if(value == null)
+    return false;
+int type = Integer.parseInt(value.toString());
+if(type != 1 &amp;&amp; type != 2 &amp;&amp; type != 7) {
+    return WinRegistry.setValue(RegistryRoot.HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\CrashControl", "CrashDumpEnabled", 2);
+}
 return true;</string>
                           </void>
                         </object>
