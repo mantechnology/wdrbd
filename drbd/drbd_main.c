@@ -3928,6 +3928,8 @@ static void drbd_put_send_buffers(struct drbd_connection *connection)
 #ifndef _WIN32
 			put_page(connection->send_buffer[i].page);
 #endif
+			//DW-1791 fix memory leak 
+			__free_page(connection->send_buffer[i].page);
 			connection->send_buffer[i].page = NULL;
 		}
 	}
@@ -4345,6 +4347,11 @@ void drbd_destroy_connection(struct kref *kref)
 #endif
 		kref_put(&peer_device->device->kref, drbd_destroy_device);
 		free_peer_device(peer_device);
+
+		//DW-1791 fix memory leak
+		spin_lock_irq(&resource->req_lock);
+		idr_remove(&connection->peer_devices, vnr);
+		spin_unlock_irq(&resource->req_lock);
 	}
 
 	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
