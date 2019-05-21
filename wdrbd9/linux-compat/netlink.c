@@ -565,6 +565,8 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 	return 0;
 }
 
+// DW-1587 exceeds the default stack size warning threshold by a few bytes.
+#pragma warning (disable: 6262)
 VOID
 NetlinkWorkThread(PVOID context)
 {
@@ -734,7 +736,7 @@ cleanup:
 		WDRBD_TRACE("NetlinkWorkThread:%p done...\n",KeGetCurrentThread());
     }
 }
-
+#pragma warning (default: 6262)
 // Listening socket callback which is invoked whenever a new connection arrives.
 NTSTATUS
 WSKAPI
