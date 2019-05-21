@@ -769,10 +769,12 @@ void bio_endio(struct bio *bio, int error)
 {
 	if (bio->bi_end_io) {
 		if(error) {
+			bio->bi_bdev = NULL;
 			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
         	bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
 		} else { // if bio_endio is called with success(just in case)
 			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
+			bio->bi_bdev = NULL;
         	bio->bi_end_io((void*)error, (void*) bio, (void*) error);
 		}
 	}

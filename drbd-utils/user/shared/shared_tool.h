@@ -56,7 +56,7 @@ extern const char* shell_escape(const char* s);
 #ifdef _WIN32
 extern int convert_win32_separator(char * name);
 #endif
-extern char* ppsize(char* buf, size_t len, unsigned long long size);
+extern char* ppsize(char* buf, unsigned long long size);
 extern const char* make_optstring(struct option *options);
 #ifdef _WIN32
 extern int fget_token(char *s, int size, int stream);

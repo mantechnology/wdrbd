@@ -119,7 +119,7 @@ int convert_win32_separator(char * name)
 #endif
 
 /* input size is expected to be in KB */
-char *ppsize(char *buf, size_t len, unsigned long long size)
+char *ppsize(char *buf, unsigned long long size)
 {
 	/* Needs 9 bytes at max including trailing NUL:
 	 * -1ULL ==> "16384 EB" */

@@ -248,6 +248,9 @@ struct rb_root *root)
 
 void rb_erase(struct rb_node *node, struct rb_root *root)
 {
+	if (!node)
+		return;
+
     struct rb_node *child, *parent;
     int color;
  
@@ -258,7 +261,6 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
     else
     {
         struct rb_node *old = node, *left;
- 
         node = node->rb_right;
         while ((left = node->rb_left) != NULL)
             node = left;
@@ -286,11 +288,9 @@ void rb_erase(struct rb_node *node, struct rb_root *root)
             rb_set_parent(old->rb_right, node);
         }
  
-		if (old) {
-			node->rb_parent_color = old->rb_parent_color;
-			node->rb_left = old->rb_left;
-			rb_set_parent(old->rb_left, node);
-		}
+		node->rb_parent_color = old->rb_parent_color;
+		node->rb_left = old->rb_left;
+		rb_set_parent(old->rb_left, node);
 
         goto color;
     }

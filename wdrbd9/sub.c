@@ -611,11 +611,15 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
-	if( RootExtension != NULL )
-		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, RootExtension->PhysicalDeviceName);
-	else if (VolumeExtension != NULL && RootExtension != NULL)
-		wcscpy_s(wp, RootExtension->PhysicalDeviceNameLength, VolumeExtension->PhysicalDeviceName);
-	wp += deviceNameLength / sizeof(WCHAR);
+	if (RootExtension != NULL) {
+		wcscpy_s(wp, deviceNameLength, RootExtension->PhysicalDeviceName);
+		wp += deviceNameLength / sizeof(WCHAR);
+	}
+	else if (VolumeExtension != NULL) {
+		wcscpy_s(wp, deviceNameLength, VolumeExtension->PhysicalDeviceName);
+		wp += deviceNameLength / sizeof(WCHAR);
+	}
+		
 	*wp = 0;
 
 	IoWriteErrorLogEntry(pLogEntry);
