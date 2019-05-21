@@ -43,7 +43,8 @@ mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 	UNREFERENCED_PARAMETER(DeviceObject);
 	UNREFERENCED_PARAMETER(Irp);
 
-	KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
+	if (Event != NULL)
+		KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
