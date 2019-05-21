@@ -124,7 +124,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Count = 0;
 	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
     RootExtension->PhysicalDeviceNameLength = nameUnicode.Length * sizeof(WCHAR);
-    RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length * sizeof(WCHAR));
+    RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
     KeInitializeMutex(&mvolMutex, 0);
