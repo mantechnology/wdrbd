@@ -145,7 +145,7 @@ Return Value:
 
 	if (STATUS_INFO_LENGTH_MISMATCH == ObQueryNameString(pVolObj, NULL, 0, &ulSize))
 	{
-		pNameInfo = (POBJECT_NAME_INFORMATION)ExAllocatePoolWithTag(NonPagedPool, ulSize, 'B1DW');		
+		pNameInfo = (POBJECT_NAME_INFORMATION)ExAllocatePool(NonPagedPool, ulSize);		
 		if (pNameInfo)
 		{
 			status = ObQueryNameString(pVolObj, pNameInfo, ulSize, &ulSize);
