@@ -3025,7 +3025,6 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 
-	memset(cmd_line, 0, leng);
 	_snprintf(cmd_line, leng - 1, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 

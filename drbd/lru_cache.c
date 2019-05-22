@@ -43,7 +43,7 @@ void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_va
 	char tmp[64] = { 0, }; 
 	strncat(buf, string, buf_len - strlen(buf) - 1);
 	_snprintf(tmp, sizeof(tmp) - 1, "%Iu", string_value);
-	strncat(buf, tmp, buf_len - 1);
+	strncat(buf, tmp, buf_len - strlen(buf) - 1);
 }
 
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
