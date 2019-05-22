@@ -1042,7 +1042,6 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		memset(temp, 0, sizeof(temp));
 		_snprintf(temp, sizeof(temp) - 1, FRAME_DELIMITER"%p", stackFrames[i]);
 		strncat(buf, temp, sizeof(buf) - 1);
 	}

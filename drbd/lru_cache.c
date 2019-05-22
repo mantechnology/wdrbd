@@ -41,8 +41,7 @@
 #ifdef WIN_AL_BUG_ON
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[64] = { 0, }; 
-	memset(tmp, 0, sizeof(tmp));
-	strncat(buf, string, buf_len - 1);
+	strncat(buf, string, buf_len - strlen(buf) - 1);
 	_snprintf(tmp, sizeof(tmp) - 1, "%Iu", string_value);
 	strncat(buf, tmp, buf_len - 1);
 }
@@ -50,8 +49,6 @@ void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_va
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 	char print_lru[512] = { 0, };
 	char print_ele[128] = { 0, };
-	memset(print_lru, 0, sizeof(print_lru));
-	memset(print_ele, 0, sizeof(print_ele));
 
 	if (lc){
 		if (lc->name)

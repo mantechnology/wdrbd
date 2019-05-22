@@ -131,7 +131,6 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	*ReturnLength = 0;
 	// DW-1300
 	struct drbd_device *device = NULL;
-	memset(Message, 0, sizeof(Message));
     COUNT_LOCK(pvext);
 	
     if (!pvext->Active)
