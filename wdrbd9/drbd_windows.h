@@ -898,6 +898,9 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define atomic_inc64(_v)		atomic_inc_return64(_v)
 #define atomic_dec64(_v)		atomic_dec_return64(_v)
 
+#ifndef NTDDI_WIN7
+#define NTDDI_WIN7 0x06010000
+#endif
 #if ( (NTDDI_VERSION < NTDDI_WIN7))
 #define _vsnprintf_s(buf, size, cnt, fmt, args) _vsnprintf(buf, size, fmt, args)
 #define swprintf_s _snwprintf
