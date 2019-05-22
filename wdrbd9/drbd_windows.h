@@ -905,7 +905,7 @@ extern void *mempool_free_slab(gfp_t gfp_mask, void *pool_data);
 #define _vsnprintf_s(buf, size, cnt, fmt, args) _vsnprintf(buf, size, fmt, args)
 #define swprintf_s _snwprintf
 #define _itoa_s(val, buf, size, radix) _itoa(val, buf, radix)
-#define sprintf_s(buffer, size, fmt, ...)	sprintf(buffer, __VA_ARGS__)
+#define sprintf_s(buffer, size, fmt, ...)	sprintf(buffer, fmt, __VA_ARGS__)
 #define strcpy_s(buffer, size, src)		strcpy(buffer, src)
 #define strcat_s(buffer, size, src)		strcat(buffer, src)
 #define vsprintf_s(buf, size, fmt, ...)		vsprintf(buf, fmt, __VA_ARGS__)
