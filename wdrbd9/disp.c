@@ -55,9 +55,8 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 #pragma alloc_text(PAGE, _QueryVolumeNameRegistry)
 #endif
 
-// DW-1587 C6102 warning warns to access uninitialized variable, 
-// but disables warnig because there is no problem in code
-#pragma warning (disable: 6102)
+// DW-1587 disables warnig because there is no problem in code
+#pragma warning (disable: 6101 6102)
 
 NTSTATUS
 mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
@@ -159,7 +158,7 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 
 NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
-	_In_ PVOLUME_EXTENSION pvext)
+	_Out_ PVOLUME_EXTENSION pvext)
 {
 	OBJECT_ATTRIBUTES           attributes;
 	PKEY_FULL_INFORMATION       keyInfo = NULL;

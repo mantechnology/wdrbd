@@ -691,7 +691,7 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 	spin_lock_irqsave(&device->al_lock, flags);
 	for (enr = first; enr <= last; enr++) {
 		extent = lc_find(device->act_log, enr);
-		if (!extent || extent->refcnt == 0) {
+		if (!extent || extent->refcnt <= 0) {
 			drbd_err(device, "al_complete_io() called on inactive extent %u\n", enr);
 			continue;
 		}
@@ -699,10 +699,6 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 		int lc_put_result = lc_put(device->act_log, extent);
 		if (lc_put_result == 0)
 			wake = true;
-		else if (lc_put_result < 0) {
-			WDRBD_ERROR("lc_put return error.\n");
-			break;
-		}
 	}
 	spin_unlock_irqrestore(&device->al_lock, flags);
 	if (wake)
@@ -1656,6 +1652,7 @@ retry:
 			}
 			else if (lc_put_result < 0) {
 				WDRBD_ERROR("lc_put return error.\n");
+				spin_unlock_irq(&device->al_lock);
 				return -EINTR;
 			}
 			spin_unlock_irq(&device->al_lock);

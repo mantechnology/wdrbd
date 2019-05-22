@@ -36,10 +36,10 @@
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
 *
-* C6102 warning warns to access uninitialized variable,
+* C6101 C6102 warning warns accessing and returning uninitialized variable,
 * but disables warnig because there is no problem in code
 */
-#pragma warning (disable: 6319 6102)
+#pragma warning (disable: 6101 6319 6102)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
@@ -55,22 +55,6 @@
 #endif
 
 //#define _WIN32_CHECK_PARTITION_STYLE // DW-1495
-
-__inline
-BOOLEAN
-IsVolumeAlreadyMounted(
-_In_ PDEVICE_OBJECT DeviceObject
-)
-{
-// DW-1587
-// there is no other way to check if there is volume mounted.
-// So 28175 warning disabled.
-#pragma warning (disable: 28175)
-	return (DeviceObject &&
-		(DeviceObject->Vpb != NULL) &&
-		((DeviceObject->Vpb->Flags & VPB_MOUNTED) != 0));
-#pragma warning (default: 28175)
-}
 
 NTSTATUS
 GetDeviceName( PDEVICE_OBJECT DeviceObject, PWCHAR Buffer, ULONG BufferLength )
@@ -138,12 +122,18 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 
 	RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 	
+	// DW-1587
+	// there is no other way to check if there is volume mounted.
+	// So 28175 warning disabled.
+#pragma warning (disable: 28175)
 	// DW-1303 No dismount for already dismounted volume
-	if (!IsVolumeAlreadyMounted(pvext->PhysicalDeviceObject)) {
-		WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
-		return STATUS_SUCCESS;
+	if (pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
+			WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
+			return STATUS_SUCCESS;
+		}
 	}
-	
+#pragma warning (default: 28175)
     __try
     {
         if (!pvext->LockHandle)
@@ -245,12 +235,18 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
+	// DW-1587
+	// there is no other way to check if there is volume mounted.
+	// So 28175 warning disabled.
+#pragma warning (disable: 28175)
 	// DW-1303 No lock for already dismounted volume
-	if (!IsVolumeAlreadyMounted(pvext->PhysicalDeviceObject)) {
-		WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
-		return STATUS_UNSUCCESSFUL;
+	if (pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
+			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
+			return STATUS_UNSUCCESSFUL;
+		}
 	}
-	
+#pragma warning (default: 28175)
     __try
     {
         InitializeObjectAttributes(&ObjectAttributes,
@@ -1125,7 +1121,7 @@ NTSTATUS QueryMountPoint(
 	_In_ PVOID MountPoint,
 	_In_ ULONG MountPointLength,
 	_Inout_ PVOID MountPointInfo,
-	PULONG MountPointInfoLength)
+	_Out_  PULONG MountPointInfoLength)
 {
 	OBJECT_ATTRIBUTES mmgrObjectAttributes;
 	UNICODE_STRING mmgrObjectName;
