@@ -57,6 +57,8 @@
 #define BITS_PER_BM_WORD	(BYTES_PER_BM_WORD << 3)
 #endif
 
+IO_COMPLETION_ROUTINE drbd_bm_endio;
+
 /* OPAQUE outside this file!
  * interface defined in drbd_int.h
 
@@ -521,7 +523,7 @@ static __inline ULONG_PTR last_bit_on_page(struct drbd_bitmap *bitmap,
 {
     ULONG_PTR word = interleaved_word32(bitmap, bitmap_index, bit);
 
-	return (bit | 31) + ((word32_in_page(~word) / bitmap->bm_max_peers) << 5);
+	return (bit | 31) + ((ULONG_PTR)(word32_in_page(~word) / bitmap->bm_max_peers) << 5);
 }
 
 static __inline ULONG_PTR bit_to_page_interleaved(struct drbd_bitmap *bitmap,
@@ -600,7 +602,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 
 	word = interleaved_word32(bitmap, bitmap_index, start);
 	page = word32_to_page(word);
-	bit_in_page = (word32_in_page(word) << 5) | (start & 31);
+	bit_in_page = ((ULONG_PTR)word32_in_page(word) << 5) | (start & 31);
 
 	for (; start <= end; page++) {
 		ULONG_PTR count = 0;
@@ -1284,7 +1286,7 @@ static void drbd_bm_aio_ctx_destroy(struct kref *kref)
 
 /* bv_page may be a copy, or may be the original */
 #ifdef _WIN32
-static BIO_ENDIO_TYPE drbd_bm_endio(void *p1, void *p2, void *p3)
+NTSTATUS drbd_bm_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
@@ -1292,12 +1294,10 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
     struct bio *bio = NULL;
     int error = 0;
-    PIRP Irp = NULL;
 
-    if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
-        Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
-        bio = (struct bio *)p3;
+		bio = (struct bio *)Context;
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -1317,8 +1317,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 			}
 		}
     } else {
-        error = (int)p3;
-        bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
     }
 #endif
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
@@ -1709,7 +1709,7 @@ static void push_al_bitmap_hint(struct drbd_device *device, unsigned int page_nr
 	struct drbd_bitmap *b = device->bitmap;
 	struct page *page = b->bm_pages[page_nr];
 	BUG_ON(b->n_bitmap_hints >= ARRAY_SIZE(b->al_bitmap_hints));
-	if (!test_and_set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page)))
+	if (!test_and_set_bit(BM_PAGE_HINT_WRITEOUT, &page_private(page)) && (b->n_bitmap_hints < ARRAY_SIZE(b->al_bitmap_hints)))
 		b->al_bitmap_hints[b->n_bitmap_hints++] = page_nr;
 }
 

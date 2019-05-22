@@ -118,11 +118,19 @@ struct rb_root
 
 
 #define rb_parent(r)   ((struct rb_node *)((r)->rb_parent_color & ~3))
-#define rb_color(r)   ((r)->rb_parent_color & 1)
+
+static __inline int rb_color(struct rb_node *r)
+{
+	if (r)
+		return (r->rb_parent_color & 1);
+	else
+		return 0;
+}
+
 #define rb_is_red(r)   (!rb_color(r))
 #define rb_is_black(r) rb_color(r)
-#define rb_set_red(r)  ((r)->rb_parent_color &= ~1)
-#define rb_set_black(r)  ((r)->rb_parent_color |= 1)
+#define rb_set_red(r)  if(r) { ((r)->rb_parent_color &= ~1); }
+#define rb_set_black(r)  if(r) { ((r)->rb_parent_color |= 1); }
 
 static __inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
 {

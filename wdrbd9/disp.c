@@ -52,7 +52,11 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
+#pragma alloc_text(PAGE, _QueryVolumeNameRegistry)
 #endif
+
+// DW-1587 disables warnig because there is no problem in code
+#pragma warning (disable: 6101 6102)
 
 NTSTATUS
 mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
@@ -118,7 +122,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Head = NULL;
     RootExtension->Count = 0;
 	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
-    RootExtension->PhysicalDeviceNameLength = nameUnicode.Length;
+    RootExtension->PhysicalDeviceNameLength = nameUnicode.Length * sizeof(WCHAR);
     RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
@@ -152,7 +156,6 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WskPutNPI();
 }
 
-static
 NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
 	_Out_ PVOLUME_EXTENSION pvext)
@@ -692,7 +695,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 #ifdef _WIN32_MULTIVOL_THREAD
-			IoMarkIrpPending(Irp);
 			//It is processed in 2 passes according to IRQL.
 			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
 			//2. Otherwise, Directly call mvolwritedispatch
@@ -707,8 +709,10 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 	return status;
             	}	
 			} else {
+				IoMarkIrpPending(Irp);
 				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
 			}
+			
 #else
 			PMVOL_THREAD	pThreadInfo = &VolumeExtension->WorkThreadInfo;
 

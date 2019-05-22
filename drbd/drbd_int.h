@@ -2458,7 +2458,7 @@ enum suspend_scope {
 };
 extern void drbd_suspend_io(struct drbd_device *device, enum suspend_scope);
 extern void drbd_resume_io(struct drbd_device *device);
-extern char *ppsize(char *buf, unsigned long long size);
+extern char *ppsize(char *buf, size_t len, unsigned long long size);
 extern sector_t drbd_new_dev_size(struct drbd_device *,
 	sector_t current_size, /* need at least this much */
 	sector_t user_capped_size, /* want (at most) this much */
@@ -2519,7 +2519,7 @@ extern void drbd_rs_controller_reset(struct drbd_peer_device *);
 extern void drbd_ping_peer(struct drbd_connection *connection);
 extern struct drbd_peer_device *peer_device_by_node_id(struct drbd_device *, int);
 #ifdef _WIN32
-extern void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2); 
+extern KDEFERRED_ROUTINE repost_up_to_date_fn;
 #else
 extern void repost_up_to_date_fn(unsigned long data);
 #endif 
@@ -2562,8 +2562,8 @@ extern int w_start_resync(struct drbd_work *, int);
 extern int w_send_uuids(struct drbd_work *, int);
 
 #ifdef _WIN32
-extern void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
-extern void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+extern KDEFERRED_ROUTINE resync_timer_fn;
+extern KDEFERRED_ROUTINE start_resync_timer_fn;
 #else
 extern void resync_timer_fn(unsigned long data);
 extern void start_resync_timer_fn(unsigned long data);
@@ -2661,7 +2661,7 @@ extern void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __m
 #endif
 extern void queue_queued_twopc(struct drbd_resource *resource);
 #ifdef _WIN32
-extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+extern KDEFERRED_ROUTINE queued_twopc_timer_fn;
 #else
 extern void queued_twopc_timer_fn(unsigned long data);
 #endif
@@ -2787,8 +2787,8 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backing_dev *bdev,
 			      enum write_ordering_e wo);
 #ifdef _WIN32
-extern void twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
-extern void connect_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+extern KDEFERRED_ROUTINE twopc_timer_fn;
+extern KDEFERRED_ROUTINE connect_timer_fn;
 #else
 extern void twopc_timer_fn(unsigned long);
 extern void connect_timer_fn(unsigned long);

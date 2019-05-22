@@ -28,6 +28,12 @@
 
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #ifdef _WIN32
+/* DW-1587 
+ * Turns off the C6319 warning caused by code analysis.
+ * The use of comma does not cause any performance problems or bugs, 
+ * but keep the code as it is written.
+ */
+#pragma warning (disable: 6319)
 #include <ntifs.h>
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"
@@ -90,7 +96,9 @@
 static int drbd_open(struct block_device *bdev, fmode_t mode);
 static DRBD_RELEASE_RETURN drbd_release(struct gendisk *gd, fmode_t mode);
 #ifdef _WIN32
-static void md_sync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+static KDEFERRED_ROUTINE md_sync_timer_fn;
+static KDEFERRED_ROUTINE peer_ack_timer_fn;
+KSTART_ROUTINE drbd_thread_setup;
 extern void nl_policy_init_by_manual(void);
 #else
 static void md_sync_timer_fn(unsigned long data);
@@ -1564,7 +1572,8 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 		return -EIO;
 
 	/* initialize verify_alg and csums_alg */
-	memset(p->verify_alg, 0, 2 * SHARED_SECRET_MAX);
+	memset(p->verify_alg, 0, SHARED_SECRET_MAX);
+	memset(p->csums_alg, 0, SHARED_SECRET_MAX);
 #ifdef _WIN32
     rcu_read_lock_w32_inner();
 #else
@@ -1589,9 +1598,9 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 	}
 
 	if (apv >= 88)
-		strcpy(p->verify_alg, nc->verify_alg);
+		strcpy_s(p->verify_alg, sizeof(p->verify_alg), nc->verify_alg);
 	if (apv >= 89)
-		strcpy(p->csums_alg, nc->csums_alg);
+		strcpy_s(p->csums_alg, sizeof(p->csums_alg), nc->csums_alg);
 	rcu_read_unlock();
 
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
@@ -1640,7 +1649,7 @@ int __drbd_send_protocol(struct drbd_connection *connection, enum drbd_packet cm
 	p->conn_flags    = cpu_to_be32(cf);
 
 	if (connection->agreed_pro_version >= 87)
-		strcpy(p->integrity_alg, nc->integrity_alg);
+		strcpy_s(p->integrity_alg, SHARED_SECRET_MAX, nc->integrity_alg);
 	rcu_read_unlock();
 
 	return __send_command(connection, -1, cmd, DATA_STREAM);
@@ -2308,7 +2317,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	BUG_ON(UINT_MAX < bs.cur.b - p->code + !!bs.cur.bit);
 	len = (unsigned int)(bs.cur.b - p->code + !!bs.cur.bit);
 
-	if (plain_bits < (len << 3)) {
+	if (plain_bits < ((ULONG_PTR)len << 3)) {
 		/* incompressible with this method.
 		 * we need to rewind both word and bit position. */
 		c->bit_offset -= plain_bits;
@@ -4432,9 +4441,9 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
     init_timer(&peer_device->resync_timer);
 #ifdef DBG
     memset(peer_device->start_resync_timer.name, 0, Q_NAME_SZ);
-    strcpy(peer_device->start_resync_timer.name, "start_resync_timer");
+	strcpy_s(peer_device->start_resync_timer.name, sizeof(peer_device->start_resync_timer.name), "start_resync_timer");
     memset(peer_device->resync_timer.name, 0, Q_NAME_SZ);
-    strcpy(peer_device->resync_timer.name, "resync_timer");
+	strcpy_s(peer_device->resync_timer.name, sizeof(peer_device->resync_timer.name), "resync_timer");
 #endif
 #endif
 
@@ -4572,9 +4581,9 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     init_timer(&device->request_timer);
 #ifdef DBG
     memset(device->md_sync_timer.name, 0, Q_NAME_SZ);
-    strcpy(device->md_sync_timer.name, "md_sync_timer");
+	strcpy_s(device->md_sync_timer.name, sizeof(device->md_sync_timer.name), "md_sync_timer");
     memset(device->request_timer.name, 0, Q_NAME_SZ);
-    strcpy(device->request_timer.name, "request_timer");
+	strcpy_s(device->request_timer.name, sizeof(device->request_timer.name), "request_timer");
 #endif
 #endif
 	init_waitqueue_head(&device->misc_wait);
@@ -4608,7 +4617,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	sprintf(disk->disk_name, "drbd%d", minor);
+	sprintf_s(disk->disk_name, sizeof(disk->disk_name), "drbd%d", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4955,7 +4964,7 @@ static int __init drbd_init(void)
 	 * allocate all necessary structs
 	 */
 #ifdef _WIN32 
-	strcpy(drbd_pp_wait.eventName, "drbd_pp_wait");
+	strcpy_s(drbd_pp_wait.eventName, sizeof(drbd_pp_wait.eventName), "drbd_pp_wait");
 #endif
 	init_waitqueue_head(&drbd_pp_wait);
 #ifdef _WIN32

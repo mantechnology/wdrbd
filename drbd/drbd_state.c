@@ -3956,7 +3956,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if (device->ldev->md.effective_size != size) {
 				char ppb[10];
 
-				drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+				drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), size >> 1),
 				     (unsigned long long)size >> 1);
 				device->ldev->md.effective_size = size;
 				drbd_md_mark_dirty(device);
@@ -4574,7 +4574,6 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	for_each_connection_rcu(connection, resource) {
 		if (!expect(connection, current != connection->receiver.task) ||
 		    !expect(connection, current != connection->ack_receiver.task)) {
-			rcu_read_unlock();
 			BUG();
 		}
 	}
@@ -5115,7 +5114,7 @@ static void twopc_end_nested(struct drbd_resource *resource, enum drbd_packet cm
 	}
 
 	// allocate memory for connection pointers.
-	connections = (struct drbd_connection**)ExAllocatePool(NonPagedPool, sizeof(struct drbd_connection*) * connectionCount);
+	connections = (struct drbd_connection**)ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_connection*) * connectionCount, 'D8DW');
 	if (connections == NULL) {
 		spin_unlock_irq(&resource->req_lock);
 		drbd_err(resource, "failed to allocate memory for connections, size : %u\n", sizeof(struct drbd_connection*) * connectionCount);

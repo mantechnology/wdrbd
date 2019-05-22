@@ -59,6 +59,15 @@
 #endif
 
 #ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
+#endif
+
+#ifdef _WIN32
 bool capable(int cap)
 {
 	UNREFERENCED_PARAMETER(cap);
@@ -114,6 +123,10 @@ int drbd_adm_dump_peer_devices(struct sk_buff *skb, struct netlink_callback *cb)
 int drbd_adm_dump_peer_devices_done(struct netlink_callback *cb);
 int drbd_adm_get_initial_state(struct sk_buff *skb, struct netlink_callback *cb);
 int drbd_adm_get_initial_state_done(struct netlink_callback *cb);
+
+#ifdef _WIN32
+KSTART_ROUTINE _try_outdate_peer_async;
+#endif
 
 #include <linux/drbd_genl_api.h>
 #include "drbd_nla.h"
@@ -387,7 +400,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 	}
 
 	/* some more paranoia, if the request was over-determined */
-	if (adm_ctx->device && adm_ctx->resource &&
+	if (adm_ctx->device && adm_ctx->resource && adm_ctx->device->resource && 
 	    adm_ctx->device->resource != adm_ctx->resource) {
 		pr_warning("request: minor=%u, resource=%s; but that minor belongs to resource %s\n",
 				adm_ctx->minor, adm_ctx->resource->name,
@@ -396,7 +409,7 @@ static int drbd_adm_prepare(struct drbd_config_context *adm_ctx,
 		err = ERR_INVALID_REQUEST;
 		goto finish;
 	}
-	if (adm_ctx->device &&
+	if (adm_ctx->device && adm_ctx->device->resource && 
 	    adm_ctx->volume != VOLUME_UNSPECIFIED &&
 	    adm_ctx->volume != adm_ctx->device->vnr) {
 		pr_warning("request: minor=%u, volume=%u; but that minor is volume %u in %s\n",
@@ -587,7 +600,7 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 		return pos;
 	va_start(args, fmt);
 #ifdef _WIN32
-    ret = _vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
+	ret = _vsnprintf_s(env->buffer + pos, env->size - pos, env->size - pos, fmt, args);
 #else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #endif
@@ -752,7 +765,7 @@ int drbd_khelper(struct drbd_device *device, struct drbd_connection *connection,
 	}
 	rcu_read_unlock();
 
-	if (strstr(cmd, "fence")) {
+	if (strstr(cmd, "fence") && connection) {
 		bool op_is_fence = strcmp(cmd, "fence-peer") == 0;
 		struct drbd_peer_device *peer_device;
 		u64 mask = UINT64_MAX;
@@ -1006,7 +1019,11 @@ bool conn_try_outdate_peer(struct drbd_connection *connection)
 	return conn_highest_pdsk(connection) <= D_OUTDATED;
 }
 
+#ifdef _WIN32
+void _try_outdate_peer_async(void *data)
+#else
 static int _try_outdate_peer_async(void *data)
+#endif
 {
 	struct drbd_connection *connection = (struct drbd_connection *)data;
 
@@ -1016,8 +1033,9 @@ static int _try_outdate_peer_async(void *data)
 	kref_put(&connection->kref, drbd_destroy_connection);
 #ifdef _WIN32
 	PsTerminateSystemThread(STATUS_SUCCESS); 
-#endif
+#else
 	return 0;
+#endif
 }
 
 void conn_try_outdate_peer_async(struct drbd_connection *connection)
@@ -1035,7 +1053,8 @@ void conn_try_outdate_peer_async(struct drbd_connection *connection)
 
         kref_put(&connection->kref, drbd_destroy_connection);
 	}
-	ZwClose (hThread);
+	else
+		ZwClose (hThread);
 #else
 	/* We may just have force_sig()'ed this thread
 	 * to get it out of some blocking network function.
@@ -1918,7 +1937,7 @@ void drbd_md_set_sector_offsets(struct drbd_device *device,
 }
 
 /* input size is expected to be in KB */
-char *ppsize(char *buf, unsigned long long size)
+char *ppsize(char *buf, size_t len, unsigned long long size)
 {
 	/* Needs 9 bytes at max including trailing NUL:
 	 * -1ULL ==> "16384 EB" */
@@ -1929,7 +1948,8 @@ char *ppsize(char *buf, unsigned long long size)
 		size = (size >> 10) + !!(size & (1<<9));
 		base++;
 	}
-	sprintf(buf, "%u %cB", (unsigned)size, units[base]);
+
+	sprintf_s(buf, len, "%u %cB", (unsigned)size, units[base]);
 
 	return buf;
 }
@@ -2100,7 +2120,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 		drbd_set_my_capacity(device, size);
 		if (effective_disk_size_determined(device)) {
 			md->effective_size = size;
-			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), size >> 1),
 			     (unsigned long long)size >> 1);
 		}
 	}
@@ -2167,6 +2187,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 		rv = prev.effective_size ? DS_GREW : DS_GREW_FROM_ZERO;
 	if (size < prev.effective_size)
 		rv = DS_SHRUNK;
+
 
 	if (false,false) {
 	err_out:
@@ -3927,7 +3948,7 @@ alloc_crypto(struct crypto *crypto, struct net_conf *new_net_conf)
 	if (rv != NO_ERROR)
 		return rv;
 	if (new_net_conf->cram_hmac_alg[0] != 0) {
-		snprintf(hmac_name, CRYPTO_MAX_ALG_NAME, "hmac(%s)",
+		sprintf_s(hmac_name, CRYPTO_MAX_ALG_NAME, "hmac(%s)",
 			 new_net_conf->cram_hmac_alg);
 
 		rv = alloc_hash(&crypto->cram_hmac_tfm, hmac_name,
@@ -7609,7 +7630,7 @@ void notify_helper(enum drbd_notification_type type,
 	int err;
 
 #ifdef _WIN32
-    strncpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));
+	strncpy_s(helper_info.helper_name, sizeof(helper_info.helper_name), name, sizeof(helper_info.helper_name));
     helper_info.helper_name[sizeof(helper_info.helper_name) - 1] = '\0';
 #else
 	strlcpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));

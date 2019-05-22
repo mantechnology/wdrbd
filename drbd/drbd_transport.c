@@ -9,6 +9,15 @@
 #include <drbd_transport.h>
 #include <drbd_int.h>
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
+#endif
+
 static LIST_HEAD(transport_classes);
 #ifdef _WIN32
 extern int __init dtt_initialize(void);
@@ -312,8 +321,8 @@ void drbd_put_listener(struct drbd_path *path)
 }
 
 #ifdef _WIN32
-extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+extern char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr);
+extern char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr);
 #endif
 
 #ifdef _WIN32
@@ -338,9 +347,9 @@ struct drbd_waiter *drbd_find_waiter_by_addr(struct drbd_listener *listener, str
 #ifdef _WIN32
 			char sbuf[128], dbuf[128];
 			if (path->peer_addr.ss_family == AF_INET6) {
-				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip6(sbuf, (struct sockaddr_in6*)&path->peer_addr), get_ip6(dbuf, (struct sockaddr_in6*)addr));
+				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&path->peer_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)addr));
 			} else {
-				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&path->peer_addr), get_ip4(dbuf, (struct sockaddr_in*)addr));
+				WDRBD_TRACE_CO("[%p] path->peer:%s addr:%s \n", KeGetCurrentThread(), get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&path->peer_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)addr));
 			}
 #endif
 			if (addr_equal(&path->peer_addr, addr))

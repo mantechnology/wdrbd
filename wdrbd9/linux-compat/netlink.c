@@ -5,6 +5,14 @@
 #include "Drbd_int.h"
 #include "../../drbd/drbd_nla.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*/
+#pragma warning (disable: 6319)
+#endif
 NPAGED_LOOKASIDE_LIST drbd_workitem_mempool;
 NPAGED_LOOKASIDE_LIST netlink_ctx_mempool;
 NPAGED_LOOKASIDE_LIST genl_info_mempool;
@@ -56,6 +64,7 @@ extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
+WORKER_THREAD_ROUTINE NetlinkWorkThread;
 /*
 static struct genl_ops drbd_genl_ops[] = {
 { .doit = drbd_adm_new_minor, .flags = 0x01, .cmd = DRBD_ADM_NEW_MINOR, .policy = drbd_tla_nl_policy, },
@@ -150,9 +159,8 @@ static bool push_msocket_entry(void * ptr)
 /**
 * @brief: Pop the argument pointer from the socket pointer list
 */
-static PPTR_ENTRY pop_msocket_entry(void * ptr)
+static void pop_msocket_entry(void * ptr)
 {
-    PPTR_ENTRY ret = NULL;
     PSINGLE_LIST_ENTRY iter = &gSocketList.slink;
 
     MvfAcquireResourceExclusive(&genl_multi_socket_res_lock);
@@ -165,7 +173,7 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
             iter->Next = PopEntryList(iter->Next);
 
             ExFreePool(socket_entry);
-            ret = socket_entry;
+			socket_entry = NULL;
             break;
         }
         iter = iter->Next;
@@ -173,7 +181,7 @@ static PPTR_ENTRY pop_msocket_entry(void * ptr)
 
     MvfReleaseResource(&genl_multi_socket_res_lock);
 
-    return NULL;
+    return;
 }
 
 /**
@@ -557,6 +565,8 @@ static int _genl_ops(struct genl_ops * pops, struct genl_info * pinfo)
 	return 0;
 }
 
+// DW-1587 exceeds the default stack size warning threshold by a few bytes.
+#pragma warning (disable: 6262)
 VOID
 NetlinkWorkThread(PVOID context)
 {
@@ -726,7 +736,7 @@ cleanup:
 		WDRBD_TRACE("NetlinkWorkThread:%p done...\n",KeGetCurrentThread());
     }
 }
-
+#pragma warning (default: 6262)
 // Listening socket callback which is invoked whenever a new connection arrives.
 NTSTATUS
 WSKAPI
@@ -736,8 +746,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+PVOID *AcceptSocketContext,
+CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 )
 {
 	UNREFERENCED_PARAMETER(AcceptSocketDispatch);
@@ -798,8 +808,13 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
 		NetlinkWorkThread,
 		netlinkWorkItem);
 
+// DW-1587 
+// Code Analysis indicates this is obsolete, but it is ok.
+// If the work item is not associated with a device object or device stack, 
+// there is no problem in use, and it is still in use within the Windows file system driver.
+#pragma warning (disable: 28159)
 	ExQueueWorkItem(&netlinkWorkItem->Item, DelayedWorkQueue);
-
+#pragma warning (default: 28159)
     return STATUS_SUCCESS;
 }
 

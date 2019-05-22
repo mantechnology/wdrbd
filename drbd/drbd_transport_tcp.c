@@ -52,6 +52,13 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");
 #endif
 
+/* DW-1587
+ * Turns off the C6387 warning.
+ * Even though pointer parameters need to contain NULLs,
+ * they are treated as warnings.
+ */
+#pragma warning (disable: 6387)
+
 struct buffer {
 	void *base;
 	void *pos;
@@ -683,7 +690,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 		err = -ENOMEM; 
 		goto out;
 	}
-	sprintf(socket->name, "conn_sock\0");
+	sprintf_s(socket->name, sizeof(socket->name), "conn_sock\0");
 	socket->sk_linux_attr = 0;
 	err = 0;
 
@@ -702,9 +709,9 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 	what = "create-connect";
 
 	if (my_addr.ss_family == AF_INET6) {
-		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip6(sbuf, (struct sockaddr_in6*)&my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&peer_addr));
+		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&my_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)&peer_addr));
 	} else {
-		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&my_addr), get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
+		WDRBD_TRACE("dtt_try_connect: Connecting: %s -> %s\n", get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&my_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&peer_addr));
 	}
 #ifdef _WSK_SOCKET_STATE
 	socket->sk = CreateSocketConnect(socket, SOCK_STREAM, IPPROTO_TCP, (PSOCKADDR)&my_addr, (PSOCKADDR)&peer_addr, &status, &dispatchDisco, (PVOID*)socket);
@@ -1187,7 +1194,7 @@ retry:
 			return -1;
 		}
 		char dbuf[128];
-		WDRBD_CONN_TRACE("GetRemoteAddress : peer_addr %s\n", get_ip4(dbuf, (struct sockaddr_in*)&peer_addr));
+		WDRBD_CONN_TRACE("GetRemoteAddress : peer_addr %s\n", get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&peer_addr));
 
 #else
 		unregister_state_change(s_estab->sk, listener);
@@ -1338,15 +1345,15 @@ static void dtt_incoming_connection(struct sock *sock)
 	}
 
 	char buf[128];
-	WDRBD_CONN_TRACE("LocalAddress:%s \n", get_ip4(buf, (struct sockaddr_in*)LocalAddress));
-	WDRBD_CONN_TRACE("RemoteAddress:%s \n", get_ip4(buf, (struct sockaddr_in*)RemoteAddress));
+	WDRBD_CONN_TRACE("LocalAddress:%s \n", get_ip4(buf, sizeof(buf), (struct sockaddr_in*)LocalAddress));
+	WDRBD_CONN_TRACE("RemoteAddress:%s \n", get_ip4(buf, sizeof(buf), (struct sockaddr_in*)RemoteAddress));
 
 	
 	spin_lock_bh(&resource->listeners_lock);	
 
 	// DW-1498 : Find the listener that matches the LocalAddress in resource-> listeners.
 	list_for_each_entry(struct drbd_listener, listener, &resource->listeners, list) {
-		WDRBD_CONN_TRACE("listener->listen_addr:%s \n", get_ip4(buf, (struct sockaddr_in*)&listener->listen_addr));
+		WDRBD_CONN_TRACE("listener->listen_addr:%s \n", get_ip4(buf, sizeof(buf), (struct sockaddr_in*)&listener->listen_addr));
 		
 		if (addr_and_port_equal(&listener->listen_addr, (const struct sockaddr_storage_win *)LocalAddress)) {
 			find_listener = true;
@@ -1378,7 +1385,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	SetEventCallbacks(s_estab, WSK_EVENT_DISCONNECT);		
 #endif
 
-    sprintf(s_estab->name, "estab_sock");
+	sprintf_s(s_estab->name, sizeof(s_estab->name), "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
 
     if (s_estab->sk_linux_attr)
@@ -1565,7 +1572,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = -ENOMEM;
         goto out;
     }
-    sprintf(s_listen->name, "listen_sock\0");
+	sprintf_s(s_listen->name, sizeof(s_listen->name), "listen_sock\0");
     s_listen->sk_linux_attr = 0;
     err = 0;
 	listener = kzalloc(sizeof(struct dtt_listener), 0, 'F6DW');
@@ -1775,8 +1782,8 @@ static struct dtt_path *dtt_next_path(struct drbd_tcp_transport *tcp_transport, 
 	return container_of(drbd_path, struct dtt_path, path);
 }
 #ifdef _WIN32
-extern char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-extern char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+extern char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr);
+extern char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr);
 #endif
 
 static int dtt_connect(struct drbd_transport *transport)
@@ -1784,6 +1791,11 @@ static int dtt_connect(struct drbd_transport *transport)
 #ifdef _WIN32
 	NTSTATUS status;
 #endif
+	if (transport == NULL) {
+		WDRBD_ERROR("dtt_connect transport is null.\n");
+		return -EDESTADDRREQ;
+	}
+	
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct drbd_path *drbd_path;
@@ -1854,23 +1866,31 @@ static int dtt_connect(struct drbd_transport *transport)
 
 	drbd_path = list_first_entry(&transport->paths, struct drbd_path, list);
 	
+	if (drbd_path == NULL) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto out;
+	}
 #ifdef _WIN32
         {
 		if (drbd_path->my_addr.ss_family == AF_INET6) {
-			WDRBD_TRACE("dtt_connect: drbd_path: %s -> %s \n", get_ip6(sbuf, (struct sockaddr_in6*)&drbd_path->my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&drbd_path->peer_addr));
+			WDRBD_TRACE("dtt_connect: drbd_path: %s -> %s \n", get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&drbd_path->my_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)&drbd_path->peer_addr));
 		} else {
-			WDRBD_TRACE("dtt_connect: drbd_path: %s -> %s \n", get_ip4(sbuf, (struct sockaddr_in*)&drbd_path->my_addr), get_ip4(dbuf, (struct sockaddr_in*)&drbd_path->peer_addr));
+			WDRBD_TRACE("dtt_connect: drbd_path: %s -> %s \n", get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&drbd_path->my_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&drbd_path->peer_addr));
 		}
 	}
 #endif
 
 	connect_to_path = container_of(drbd_path, struct dtt_path, path);
+	if (connect_to_path == NULL) {
+		spin_unlock(&tcp_transport->paths_lock);
+		goto out;
+	}
 #ifdef _WIN32
 	{
 		if(connect_to_path->path.my_addr.ss_family == AF_INET6) {
-			WDRBD_TRACE("dtt_connect: connect_to_path: %s -> %s \n", get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
+			WDRBD_TRACE("dtt_connect: connect_to_path: %s -> %s \n", get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 		} else {
-			WDRBD_TRACE("dtt_connect: connect_to_path: %s -> %s \n", get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
+			WDRBD_TRACE("dtt_connect: connect_to_path: %s -> %s \n", get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 		}
 	}
 #endif
@@ -1889,9 +1909,9 @@ static int dtt_connect(struct drbd_transport *transport)
 			{
 #ifdef _WIN32
 				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
-					WDRBD_TRACE("dtt_connect: Connected: %s -> %s\n", get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
+					WDRBD_TRACE("dtt_connect: Connected: %s -> %s\n", get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 				} else {
-					WDRBD_TRACE("dtt_connect: Connected: %s -> %s\n", get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
+					WDRBD_TRACE("dtt_connect: Connected: %s -> %s\n", get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 				}
 #endif
 			}
@@ -1978,9 +1998,9 @@ retry:
 			{
 #ifdef _WIN32
 				if (connect_to_path->path.my_addr.ss_family == AF_INET6) {
-					WDRBD_TRACE("dtt_connect:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip6(sbuf, (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
+					WDRBD_TRACE("dtt_connect:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip6(sbuf, sizeof(sbuf), (struct sockaddr_in6*)&connect_to_path->path.my_addr), get_ip6(dbuf, sizeof(dbuf), (struct sockaddr_in6*)&connect_to_path->path.peer_addr));
 				} else {
-					WDRBD_TRACE("dtt_connect:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, (struct sockaddr_in*)&connect_to_path->path.peer_addr));
+					WDRBD_TRACE("dtt_connect:(%p) Accepted:  %s <- %s\n", KeGetCurrentThread(), get_ip4(sbuf, sizeof(sbuf), (struct sockaddr_in*)&connect_to_path->path.my_addr), get_ip4(dbuf, sizeof(dbuf), (struct sockaddr_in*)&connect_to_path->path.peer_addr));
 				}				
 #endif				
 			}
@@ -2481,7 +2501,7 @@ static void __exit dtt_cleanup(void)
 
 #ifdef _WIN32_SEND_BUFFING
 
-extern VOID NTAPI send_buf_thread(PVOID p);
+extern KSTART_ROUTINE send_buf_thread;
 
 static bool dtt_start_send_buffring(struct drbd_transport *transport, signed long long size)
 {

@@ -23,9 +23,7 @@
  */
 
 #ifdef _WIN32
-
 #include "windows/drbd.h"
-
 #include "drbd_int.h"
 #include "drbd_protocol.h"
 #include "drbd_req.h"
@@ -60,6 +58,19 @@
 #include <linux/scatterlist.h>
 #endif
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs, 
+* they are treated as warnings.
+*/
+#pragma warning (disable: 6319 6387)
+#endif
+
 #define PRO_FEATURES (DRBD_FF_TRIM|DRBD_FF_THIN_RESYNC|DRBD_FF_WSAME)
 
 struct flush_work {
@@ -82,6 +93,8 @@ enum resync_reason {
 // MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
 extern atomic_t64 g_total_req_buf_bytes;
 #endif
+
+IO_COMPLETION_ROUTINE one_flush_endio;
 
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
@@ -799,6 +812,9 @@ void connect_timer_fn(unsigned long data)
 	UNREFERENCED_PARAMETER(arg2);
 	UNREFERENCED_PARAMETER(Dpc);
 
+	if (data == NULL)
+		return;
+
 	struct drbd_connection *connection = (struct drbd_connection *) data;
 	struct drbd_resource *resource = connection->resource;
 	unsigned long irq_flags;
@@ -1225,29 +1241,32 @@ struct one_flush_context {
 	struct issue_flush_context *ctx;
 };
 #ifdef _WIN32
-BIO_ENDIO_TYPE one_flush_endio(void *p1, void *p2, void *p3)
+NTSTATUS one_flush_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
 BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 {
 #ifdef _WIN32
 	struct bio *bio = NULL;
-	PIRP Irp = NULL;
 	int error = 0;
 
-	if ((ULONG_PTR) p1 != FAULT_TEST_FLAG) {
-		Irp = p2;
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
+		bio = (struct bio *)Context;
 		error = Irp->IoStatus.Status;
-		bio = (struct bio *)p3;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		if (bio) {
+			if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+				IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			}
 		}
 	}
 	else {
-		error = (int) p3;
-		bio = (struct bio *)p2;
+		error = (int)Context;
+		bio = (struct bio *)Irp;
 	}
 #endif
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
 	struct one_flush_context *octx = bio->bi_private;
 	struct drbd_device *device = octx->device;
 	struct issue_flush_context *ctx = octx->ctx;
@@ -1264,7 +1283,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 
 #ifdef _WIN32 // DW-1117 patch flush io memory leak
-	if ((ULONG_PTR)p1 != FAULT_TEST_FLAG) {
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		if (Irp->MdlAddress != NULL) {
 			PMDL mdl, nextMdl;
 			for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
@@ -5477,14 +5496,14 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 			*new_net_conf = *old_net_conf;
 
 			if (verify_tfm) {
-				strcpy(new_net_conf->verify_alg, p->verify_alg);
+				strcpy_s(new_net_conf->verify_alg, sizeof(new_net_conf->verify_alg), p->verify_alg);
 				new_net_conf->verify_alg_len = (__u32)(strlen(p->verify_alg) + 1);
 				crypto_free_hash(connection->verify_tfm);
 				connection->verify_tfm = verify_tfm;
 				drbd_info(device, "using verify-alg: \"%s\"\n", p->verify_alg);
 			}
 			if (csums_tfm) {
-				strcpy(new_net_conf->csums_alg, p->csums_alg);
+				strcpy_s(new_net_conf->csums_alg, sizeof(new_net_conf->csums_alg), p->csums_alg);
 				new_net_conf->csums_alg_len = (__u32)(strlen(p->csums_alg) + 1);
 				crypto_free_hash(connection->csums_tfm);
 				connection->csums_tfm = csums_tfm;
@@ -5829,7 +5848,7 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 			char ppb[10];
 			should_send_sizes = true;
 			drbd_set_my_capacity(device, size);
-			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, size >> 1),
+			drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), size >> 1),
 				(unsigned long long)size >> 1);
 		}
 	}
@@ -6758,6 +6777,10 @@ void twopc_timer_fn(unsigned long data)
     UNREFERENCED_PARAMETER(arg1);
     UNREFERENCED_PARAMETER(arg2);
 #endif
+
+	if (data == NULL)
+		return;
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	unsigned long irq_flags;
 
@@ -7073,6 +7096,9 @@ void queued_twopc_timer_fn(unsigned long data)
 	UNREFERENCED_PARAMETER(arg2);
 	UNREFERENCED_PARAMETER(Dpc);
 
+	if (data == NULL)
+		return;
+
 	struct drbd_resource *resource = (struct drbd_resource *) data;
 	struct queued_twopc *q;
 	unsigned long irq_flags;
@@ -7228,7 +7254,7 @@ drbd_commit_size_change(struct drbd_device *device, struct resize_parms *rs, u64
         char ppb[10];
 
 		drbd_set_my_capacity(device, tr->new_size);
-		drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, tr->new_size >> 1),
+		drbd_info(device, "size = %s (%llu KB)\n", ppsize(ppb, sizeof(ppb), tr->new_size >> 1),
 			(unsigned long long)tr->new_size >> 1);
         return DS_UNCHANGED; /* Not entirely true, but we are diskless... */
     }
@@ -7370,6 +7396,10 @@ static int process_twopc(struct drbd_connection *connection,
 			 unsigned long receive_jif)
 #endif
 {
+	if (connection == NULL) {
+		WDRBD_ERROR("process_twopc connection is null\n");
+	}
+
 	struct drbd_connection *affected_connection = connection;
 	struct drbd_resource *resource = connection->resource;
 	struct drbd_peer_device *peer_device = NULL;
@@ -10727,16 +10757,18 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 		}
 		if (received == expect) {
 #ifdef _WIN32
-			int err;
+			int err = 0;
 #else
 			bool err;
 #endif
-
 			pi.data = buffer;
-			err = cmd->fn(connection, &pi);
+			if (cmd) {
+				err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-			drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+				drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
 #endif
+			}
+
 			if (err) {
 #ifdef _WIN32
 				if (err == -EINTR && current->sig == SIGXCPU)
@@ -10845,13 +10877,13 @@ void drbd_send_out_of_sync_wf(struct work_struct *ws)
 
 	while (&send_oos->oos_list_head != &peer_device->send_oos_list)
 	{
-		struct drbd_request req;
-		req.i.sector = send_oos->sector;
-		req.i.size = send_oos->size;
+		struct drbd_interval interval;
+		interval.sector = send_oos->sector;
+		interval.size = send_oos->size;
 
 		spin_unlock_irq(&peer_device->send_oos_lock);
 
-		drbd_send_out_of_sync(peer_device, &req.i);
+		drbd_send_out_of_sync(peer_device, &interval);
 
 		spin_lock_irq(&peer_device->send_oos_lock);
 		

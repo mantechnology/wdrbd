@@ -333,6 +333,8 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, al_ctx->device) {
+		if (peer_device == NULL)
+			goto out;
 		//DW-1601 If greater than 112, remove act_log and resync_lru associations
 		if (peer_device->connection->agreed_pro_version <= 112) {
 			tmp = lc_find(peer_device->resync_lru, al_ctx->enr / AL_EXT_PER_BM_SECT);
@@ -341,10 +343,15 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 				if (test_bit(BME_NO_WRITES, &bm_ext->flags)) {
 					if (peer_device->resync_wenr == tmp->lc_number) {
 						peer_device->resync_wenr = LC_FREE;
-						if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
+						int lc_put_result = lc_put(peer_device->resync_lru, &bm_ext->lce);
+						if (lc_put_result == 0) {
 							bm_ext->flags = 0;
 							al_ctx->wake_up = true;
 							peer_device->resync_locked--;
+							continue;
+						}
+						else if (lc_put_result < 0) {
+							WDRBD_ERROR("lc_put return error.\n");
 							continue;
 						}
 					}
@@ -355,6 +362,7 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 			}
 		}
 	}
+out:
 	rcu_read_unlock();
 	WDRBD_TRACE_AL("return NULL\n");
 	return NULL;
@@ -683,12 +691,13 @@ bool put_actlog(struct drbd_device *device, unsigned int first, unsigned int las
 	spin_lock_irqsave(&device->al_lock, flags);
 	for (enr = first; enr <= last; enr++) {
 		extent = lc_find(device->act_log, enr);
-		if (!extent || extent->refcnt == 0) {
+		if (!extent || extent->refcnt <= 0) {
 			drbd_err(device, "al_complete_io() called on inactive extent %u\n", enr);
 			continue;
 		}
 		WDRBD_TRACE_AL("called lc_put extent->lc_number= %lu, extent->refcnt = %lu\n", extent->lc_number, extent->refcnt); 
-		if (lc_put(device->act_log, extent) == 0)
+		int lc_put_result = lc_put(device->act_log, extent);
+		if (lc_put_result == 0)
 			wake = true;
 	}
 	spin_unlock_irqrestore(&device->al_lock, flags);
@@ -1635,10 +1644,16 @@ retry:
 #endif
 		if (sig || (sa && test_bit(BME_PRIORITY, &bm_ext->flags))) {
 			spin_lock_irq(&device->al_lock);
-			if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
+			int lc_put_result = lc_put(peer_device->resync_lru, &bm_ext->lce);
+			if (lc_put_result == 0) {
 				bm_ext->flags = 0; /* clears BME_NO_WRITES and eventually BME_PRIORITY */
 				peer_device->resync_locked--;
 				wake_up(&device->al_wait);
+			}
+			else if (lc_put_result < 0) {
+				WDRBD_ERROR("lc_put return error.\n");
+				spin_unlock_irq(&device->al_lock);
+				return -EINTR;
 			}
 			spin_unlock_irq(&device->al_lock);
 			if (sig)
@@ -1707,10 +1722,16 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 			D_ASSERT(device, test_bit(BME_NO_WRITES, &bm_ext->flags));
 			clear_bit(BME_NO_WRITES, &bm_ext->flags);
 			peer_device->resync_wenr = LC_FREE;
-			if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
+			int lc_put_result = lc_put(peer_device->resync_lru, &bm_ext->lce);
+			if (lc_put_result == 0) {
 				bm_ext->flags = 0;
 				peer_device->resync_locked--;
 			}
+			else if (lc_put_result < 0) {
+				WDRBD_ERROR("lc_put return error.\n");
+				goto out;
+			}
+			 
 			wake_up(&device->al_wait);
 		} else {
 			drbd_alert(device, "LOGIC BUG\n");
@@ -1786,14 +1807,20 @@ try_again:
 			clear_bit(BME_NO_WRITES, &bm_ext->flags);
 			clear_bit(BME_PRIORITY, &bm_ext->flags);
 			peer_device->resync_wenr = LC_FREE;
-			if (lc_put(peer_device->resync_lru, &bm_ext->lce) == 0) {
+			int lc_put_result = lc_put(peer_device->resync_lru, &bm_ext->lce);
+			if (lc_put_result == 0) {
 				bm_ext->flags = 0;
 				peer_device->resync_locked--;
 			}
+			else if (lc_put_result < 0){
+				goto out;
+			}
 			wake_up(&device->al_wait);
-		} else
+		}
+		else
 			peer_device->resync_wenr = (unsigned int)enr;
 	}
+out:
 	spin_unlock_irq(&device->al_lock);
 	return -EAGAIN;
 }

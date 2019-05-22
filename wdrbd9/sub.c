@@ -43,7 +43,8 @@ mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 	UNREFERENCED_PARAMETER(DeviceObject);
 	UNREFERENCED_PARAMETER(Irp);
 
-	KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
+	if (Event != NULL)
+		KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
@@ -204,6 +205,9 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolDeviceUsage(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	if (DeviceObject == NULL)
+		return STATUS_UNSUCCESSFUL;
+
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 	PDEVICE_OBJECT		attachedDeviceObject;
@@ -607,11 +611,15 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
-	if( RootExtension != NULL )
-		wcscpy(wp, RootExtension->PhysicalDeviceName);
-	else
-		wcscpy(wp, VolumeExtension->PhysicalDeviceName);
-	wp += deviceNameLength / sizeof(WCHAR);
+	if (RootExtension != NULL) {
+		wcscpy_s(wp, deviceNameLength, RootExtension->PhysicalDeviceName);
+		wp += deviceNameLength / sizeof(WCHAR);
+	}
+	else if (VolumeExtension != NULL) {
+		wcscpy_s(wp, deviceNameLength, VolumeExtension->PhysicalDeviceName);
+		wp += deviceNameLength / sizeof(WCHAR);
+	}
+		
 	*wp = 0;
 
 	IoWriteErrorLogEntry(pLogEntry);
@@ -705,7 +713,7 @@ void _printk(const char * func, const char * format, ...)
 	
 	logcnt = InterlockedIncrement(&gLogCnt);
 	if(logcnt >= LOGBUF_MAXCNT) {
-		gLogCnt = 0;
+		InterlockedExchange(&gLogCnt, 0);
 		logcnt = 0;
 	}
 	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
@@ -719,7 +727,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ", 
+	offset = sprintf_s(buf, logcnt, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -748,7 +756,7 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = vsprintf_s(buf + offset + LEVEL_OFFSET, logcnt, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
@@ -955,11 +963,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 {
     UNICODE_STRING reg_path, valuekey;
     wchar_t wszletter[] = L"A";
-
-    RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	NTSTATUS status;
+    status = RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	if (!NT_SUCCESS(status))
+		return status;
 
     wszletter[0] = (WCHAR)letter;
-    RtlUnicodeStringInit(&valuekey, wszletter);
+    status = RtlUnicodeStringInit(&valuekey, wszletter);
+	if (!NT_SUCCESS(status))
+		return status;
 
     return DeleteRegistryValueKey(&reg_path, &valuekey);
 }
@@ -1013,9 +1025,9 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	sprintf(buf, "%s["OOS_TRACE_STRING"] %s %lu bits for bitmap_index(%d), pos(%lu ~ %lu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	sprintf_s(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
-	stackFrames = (PVOID*)ExAllocatePool(NonPagedPool, sizeof(PVOID) * frameCount);
+	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 
 	if (NULL == stackFrames)
 	{
@@ -1028,11 +1040,11 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		sprintf(temp, FRAME_DELIMITER"%p", stackFrames[i]);
-		strcat(buf, temp);
+		sprintf_s(temp, sizeof(temp), FRAME_DELIMITER"%p", stackFrames[i]);
+		strcat_s(buf, sizeof(buf), temp);
 	}
 
-	strcat(buf, "\n");
+	strcat_s(buf, sizeof(buf), "\n");
 	
 	printk(buf);
 

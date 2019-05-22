@@ -557,8 +557,8 @@ struct socket {
 #endif 
 };
 
-char * get_ip4(char *buf, struct sockaddr_in *sockaddr);
-char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr);
+char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr);
+char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr);
 	
 #define WQNAME_LEN	16	
 struct workqueue_struct {
@@ -577,7 +577,8 @@ struct workqueue_struct {
 struct timer_list {
     KTIMER ktimer;
     KDPC dpc;
-    void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
+    //void (*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2);
+	PKDEFERRED_ROUTINE function;
     PVOID data;             
     ULONG_PTR expires; 
 #ifdef DBG
@@ -598,8 +599,9 @@ extern void init_timer_key(struct timer_list *timer, const char *name, struct lo
 
 static __inline void setup_timer_key(_In_ struct timer_list * timer,
     const char *name,
-    struct lock_class_key *key,
-	void(*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2),
+struct lock_class_key *key,
+	//void(*function)(PKDPC dpc, PVOID data, PVOID arg1, PVOID arg2),
+	PKDEFERRED_ROUTINE function,
     void * data)
 {
     timer->function = function;
@@ -724,7 +726,8 @@ struct bio {
 	Drbd_receiver.c (drbd):	bio->bi_end_io = drbd_peer_request_endio;
 	Drbd_req.h (drbd):	bio->bi_end_io   = drbd_request_endio;
 	*/
-	BIO_END_IO_CALLBACK*	bi_end_io; 
+	//BIO_END_IO_CALLBACK*	bi_end_io; 
+	PIO_COMPLETION_ROUTINE  bi_end_io;
 	void*					bi_private; 
 	unsigned int			bi_max_vecs;    /* max bvl_vecs we can hold */
 	struct bio_vec			bi_io_vec[1]; // only one!!!
@@ -1345,6 +1348,8 @@ __inline bool IsDriveLetterMountPoint(UNICODE_STRING * s)
 
 __inline bool IsEmptyUnicodeString(UNICODE_STRING * s)
 {
+	if (s == NULL)
+		return true;
 	return (s && (s->Length == 0) || !(s->Buffer));
 }
 
@@ -1355,7 +1360,11 @@ __inline void FreeUnicodeString(UNICODE_STRING * s)
 	}
 }
 
-extern bool is_equal_volume_link(UNICODE_STRING *, UNICODE_STRING *, bool);
+extern bool is_equal_volume_link(
+	_In_ UNICODE_STRING * lhs,
+	_In_ UNICODE_STRING * rhs,
+	_In_ bool case_sensitive);
+
 extern void dumpHex(const void *b, const size_t s, size_t w);	
 extern void ResolveDriveLetters(void);
 
@@ -1377,10 +1386,8 @@ extern NTSTATUS SetDrbdlockIoBlock(PVOLUME_EXTENSION pVolumeExtension, bool bBlo
 extern bool ChangeVolumeReadonly(unsigned int minor, bool set);
 #endif
 
-extern
-void InitWskNetlink(void * pctx);
-
-extern void monitor_mnt_change(PVOID pParam);
+extern KSTART_ROUTINE InitWskNetlink;
+extern KSTART_ROUTINE monitor_mnt_change;
 extern NTSTATUS start_mnt_monitor();
 
 extern
@@ -1395,8 +1402,8 @@ _In_  ULONG         Flags,
 _In_  PSOCKADDR     LocalAddress,
 _In_  PSOCKADDR     RemoteAddress,
 _In_opt_  PWSK_SOCKET AcceptSocket,
-_Outptr_result_maybenull_ PVOID *AcceptSocketContext,
-_Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
+PVOID *AcceptSocketContext,
+CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDispatch
 );
 extern NTSTATUS QueryMountPoint(
 	_In_ PVOID MountPoint,
@@ -1409,6 +1416,7 @@ extern PVOLUME_EXTENSION mvolSearchDevice(PWCHAR PhysicalDeviceName);
 extern int initRegistry(__in PUNICODE_STRING RegistryPath);
 extern NTSTATUS DeleteRegistryValueKey(__in PUNICODE_STRING preg_path, __in PUNICODE_STRING pvalue_name);
 extern NTSTATUS DeleteDriveLetterInRegistry(char letter);
+extern NTSTATUS _QueryVolumeNameRegistry(_In_ PMOUNTDEV_UNIQUE_ID pmuid, _Out_ PVOLUME_EXTENSION pvext);
 extern void NTAPI NetlinkServerThread(PVOID p);
 extern struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext);
 extern void delete_drbd_block_device(struct kref *kref);
@@ -1421,7 +1429,8 @@ extern void refresh_targetdev_list();
 extern PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev);
 extern LONGLONG get_targetdev_volsize(PVOLUME_EXTENSION deviceExtension);
 
-extern int WriteEventLogEntryData(
+extern int 
+WriteEventLogEntryData(
 	ULONG	pi_ErrorCode,
 	ULONG	pi_UniqueErrorCode,
 	ULONG	pi_FinalStatus,

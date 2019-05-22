@@ -2,7 +2,24 @@
 #include "drbd_windows.h"
 #include "wsk2.h"
 
+/* DW-1587 
+ * Turns off the C6102 warning.
+ * this warning warns to access uninitialized variable, 
+ * but disables warnig because there is no problem in code
+ *
+ * Turns off the C6387 warning.
+ * Even though pointer parameters need to contain NULLs,
+ * they are treated as warnings.
+ *
+ * C6101, C28252, C28253 warnings is not a problem in wsk2.c.
+ */
+#pragma warning (disable: 6101 6102 6387 28252 28253)
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
+IO_COMPLETION_ROUTINE CompletionRoutine;
+IO_COMPLETION_ROUTINE SendCompletionRoutine;
+#ifdef _WIN32_NOWAIT_COMPLETION
+IO_COMPLETION_ROUTINE NoWaitCompletionRoutine;
+#endif
 
 WSK_REGISTRATION			g_WskRegistration;
 static WSK_PROVIDER_NPI		g_WskProvider;
@@ -112,15 +129,17 @@ NTSTATUS
 NTAPI CompletionRoutine(
 	__in PDEVICE_OBJECT	DeviceObject,
 	__in PIRP			Irp,
-	__in PKEVENT		CompletionEvent
+	__in PVOID		Context
 )
 {
+	PKEVENT			CompletionEvent = Context;
 	UNREFERENCED_PARAMETER(Irp);
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	ASSERT(CompletionEvent);
 	
-	KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
+	if (CompletionEvent)
+		KeSetEvent(CompletionEvent, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
@@ -596,10 +615,14 @@ NTSTATUS
 NTAPI SendCompletionRoutine(
 __in PDEVICE_OBJECT	DeviceObject,
 __in PIRP			Irp,
-__in struct SendParameter* SendParam
+__in PVOID			Context
 )
 {
+	struct SendParameter* SendParam = Context;
 	UNREFERENCED_PARAMETER(DeviceObject);
+
+	if (SendParam == NULL)
+		return STATUS_MORE_PROCESSING_REQUIRED;
 
 	FreeWskBuffer(SendParam->WskBuffer);
 	ExFreePool(SendParam->WskBuffer);
@@ -1203,6 +1226,7 @@ LONG NTAPI Receive(
 		return SOCKET_ERROR;
 	}
 
+	RtlZeroMemory(Buffer, BufferSize);
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
@@ -1323,6 +1347,7 @@ ReceiveFrom(
 	if (g_WskState != INITIALIZED || !WskSocket || !Buffer || !BufferSize)
 		return SOCKET_ERROR;
 
+	RtlZeroMemory(Buffer, BufferSize);
 	Status = InitWskBuffer(Buffer, BufferSize, &WskBuffer, TRUE);
 	if (!NT_SUCCESS(Status)) {
 		return SOCKET_ERROR;
@@ -1395,7 +1420,7 @@ Accept(
 	__in struct socket* pSock,
 	__out_opt PSOCKADDR	LocalAddress,
 	__out_opt PSOCKADDR	RemoteAddress,
-	__out_opt NTSTATUS* RetStaus,
+	__out_opt NTSTATUS* RetStatus,
 	__in int			timeout
 )
 {
@@ -1409,13 +1434,13 @@ Accept(
     int wObjCount = 1;
 
 	if (g_WskState != INITIALIZED || !WskSocket) {
-		*RetStaus = SOCKET_ERROR;
+		*RetStatus = SOCKET_ERROR;
 		return NULL;
 	}
 
 	Status = InitWskData(&Irp, &CompletionEvent, FALSE);
 	if (!NT_SUCCESS(Status)) {
-		*RetStaus = Status;
+		*RetStatus = Status;
 		return NULL;
 	}
 
@@ -1454,13 +1479,13 @@ Accept(
 			case STATUS_WAIT_0 + 1:
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				*RetStaus = -EINTR;	
+				*RetStatus = -EINTR;
 				break;
 
 			case STATUS_TIMEOUT:
 				IoCancelIrp(Irp);
 				KeWaitForSingleObject(&CompletionEvent, Executive, KernelMode, FALSE, NULL);
-				*RetStaus = STATUS_TIMEOUT;
+				*RetStatus = STATUS_TIMEOUT;
 				break;
 
 			default:
@@ -1776,7 +1801,7 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         	return STATUS_REQUEST_NOT_ACCEPTED;
         }
         ad->s_accept->sk = AcceptSocket;
-        sprintf(ad->s_accept->name, "estab_sock");
+		sprintf_s(ad->s_accept->name, sizeof(ad->s_accept->name), "estab_sock");
         ad->s_accept->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
         if (!ad->s_accept->sk_linux_attr) {
             ExFreePool(ad->s_accept);
@@ -1798,6 +1823,9 @@ NTSTATUS WskDisconnectEvent(
 	_In_     ULONG Flags
 	)
 {
+	if (SocketContext == NULL)
+		return STATUS_UNSUCCESSFUL;
+
 	UNREFERENCED_PARAMETER(Flags);
 	
 	WDRBD_CONN_TRACE("WskDisconnectEvent\n");

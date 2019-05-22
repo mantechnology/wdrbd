@@ -441,6 +441,7 @@ void drbd_req_destroy(struct kref *kref)
 					kfree2(peer_ack_req->req_databuf);
 				}
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
+				peer_ack_req = NULL;
 				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 				// DW-1539
 				atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
@@ -618,11 +619,12 @@ void complete_master_bio(struct drbd_device *device,
 	                WDRBD_ERROR("splitIO: MmGetSystemAddressForMdlSafe ERROR!\n");
 	                BUG();
 	            }
+				else {
+					// get offset and copy
+					memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
+				}
 
 	            master_bio->pMasterIrp->IoStatus.Information = master_bio->bi_size;
-
-	            // get offset and copy
-	            memcpy((char *)buffer + (master_bio->split_id * MAX_SPILT_BLOCK_SZ), master_bio->bio_databuf, master_bio->pMasterIrp->IoStatus.Information);
 	        }
 #endif
 
@@ -1186,7 +1188,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 {
 	struct drbd_device *device = req->device;
 	struct net_conf *nc;
-	unsigned int p;
+	unsigned int p = 0;
 	int idx, rv = 0;
 
 	if (m)
@@ -1210,9 +1212,12 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		 * and from w_read_retry_remote */
 		D_ASSERT(device, idx && !(req->rq_state[idx] & RQ_NET_MASK));
 		rcu_read_lock();
-		nc = rcu_dereference(peer_device->connection->transport.net_conf);
-		p = nc->wire_protocol;
+		if (peer_device && peer_device->connection) {
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			p = nc->wire_protocol;
+		}
 		rcu_read_unlock();
+		
 		req->rq_state[idx] |=
 			p == DRBD_PROT_C ? RQ_EXP_WRITE_ACK :
 			p == DRBD_PROT_B ? RQ_EXP_RECEIVE_ACK : 0;
@@ -1316,8 +1321,10 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 #else
 		rcu_read_lock();
 #endif
-		nc = rcu_dereference(peer_device->connection->transport.net_conf);
-		p = nc->max_epoch_size;
+		if (peer_device && peer_device->connection) {
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			p = nc->max_epoch_size;
+		}
 		rcu_read_unlock();
 		if (device->resource->current_tle_writes >= p)
 			start_new_tl_epoch(device->resource);
@@ -2798,6 +2805,9 @@ void request_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID System
 void request_timer_fn(unsigned long data)
 #endif
 {
+	if (data == NULL)
+		return;
+
 	struct drbd_device *device = (struct drbd_device *) data;
 	struct drbd_connection *connection;
 	struct drbd_request *req_read, *req_write;

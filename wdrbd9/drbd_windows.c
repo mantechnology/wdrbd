@@ -29,6 +29,22 @@
 #include "disp.h"
 #include "proto.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+* 
+* Turns off the C6102 warning.
+* this warning warns to access uninitialized variable,
+* but disables warnig because there is no problem in code
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs,
+* they are treated as warnings.
+*/
+#pragma warning (disable: 6102 6319 6387)
+#endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
 #endif
@@ -67,7 +83,8 @@ WCHAR g_ver[64];
 /* Number of id_layer structs to leave in free list */
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
-
+KSTART_ROUTINE run_singlethread_workqueue;
+KSTART_ROUTINE adjust_changes_to_volume;
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 
 // DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)
@@ -752,10 +769,12 @@ void bio_endio(struct bio *bio, int error)
 {
 	if (bio->bi_end_io) {
 		if(error) {
+			bio->bi_bdev = NULL;
 			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
         	bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
 		} else { // if bio_endio is called with success(just in case)
 			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
+			bio->bi_bdev = NULL;
         	bio->bi_end_io((void*)error, (void*) bio, (void*) error);
 		}
 	}
@@ -836,7 +855,7 @@ void _wake_up(wait_queue_head_t *q, char *__func, int __line)
 void init_completion(struct completion *completion)
 {
 	memset(completion->wait.eventName, 0, Q_NAME_SZ);
-	strcpy(completion->wait.eventName, "completion");
+	strcpy_s(completion->wait.eventName, sizeof(completion->wait.eventName), "completion");
 	init_waitqueue_head(&completion->wait);
 }
 
@@ -963,8 +982,12 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 }
 #ifdef _WIN32
-void run_singlethread_workqueue(struct workqueue_struct * wq)
+void run_singlethread_workqueue(PVOID StartContext)
 {
+	struct workqueue_struct * wq = (struct workqueue_struct *)StartContext;
+	if (wq == NULL)
+		return;
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PVOID waitObjects[2] = { &wq->wakeupEvent, &wq->killEvent };
     int maxObj = 2;
@@ -1008,7 +1031,7 @@ struct workqueue_struct *create_singlethread_workqueue(void * name)
     KeInitializeEvent(&wq->killEvent, SynchronizationEvent, FALSE);
     InitializeListHead(&wq->list_head);
     KeInitializeSpinLock(&wq->list_lock);
-    strcpy(wq->name, name);
+	strcpy_s(wq->name, sizeof(wq->name), name);
     wq->run = TRUE;
 
     HANDLE hThread = NULL;
@@ -1190,7 +1213,12 @@ void downup_rwlock_init(KSPIN_LOCK* lock)
 {
 	KeInitializeSpinLock(lock);
 }
-
+/* DW-1587 disable C28167 warning
+ * We've just called KeAcquireSpinLock and KeReleaseSpinLock in separate functions. 
+ * The lock and unlock code do not exist together in one stack, so they are recognized as an error.
+ * But there's nothing wrong with the code.
+ */ 
+#pragma warning (disable: 28167 26110)
 KIRQL down_write(KSPIN_LOCK* lock)
 {
 	return KeAcquireSpinLock(lock, &du_OldIrql);
@@ -1318,7 +1346,7 @@ void spin_unlock_bh(spinlock_t *lock)
 		KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 	}
 }
-
+#pragma warning (default: 28167 26110)
 spinlock_t g_irqLock;
 void local_irq_disable()
 {	
@@ -1384,7 +1412,7 @@ void init_timer(struct timer_list *t)
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
-    strcpy(t->name, "undefined");
+	strcpy_s(t->name, sizeof(t->name), "undefined");
 #endif
 }
 
@@ -1396,7 +1424,7 @@ void init_timer_key(struct timer_list *timer, const char *name,
 
     init_timer(timer);
 #ifdef DBG
-    strcpy(timer->name, name);
+	strcpy_s(timer->name, sizeof(timer->name), name);
 #endif
 }
 
@@ -1714,7 +1742,7 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
         KeInitializeEvent(&t->sig_event, SynchronizationEvent, FALSE);
         t->has_sig_event = TRUE;
     }
-    strcpy(t->comm, name);
+	strcpy_s(t->comm, sizeof(t->comm), name);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
 	list_add(&t->list, &ct_thread_list);
 	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
@@ -1742,7 +1770,7 @@ struct task_struct* ct_find_thread(PKTHREAD id)
         t = &g_dummy_current;
         t->pid = 0;
         t->has_sig_event = FALSE;
-        strcpy(t->comm, "not_drbd_thread");
+		strcpy_s(t->comm, sizeof(t->comm), "not_drbd_thread");
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -2360,7 +2388,7 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		pvext->dev->bd_contains->d_size = d_size;
 		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
-    WDRBD_TRACE("d_size: %lld bytes bd_contains->d_size: %lld bytes max_hw_sectors: %lld sectors\n",d_size, pvext->dev->bd_contains->d_size, pvext->dev->bd_disk->queue->max_hw_sectors );
+	WDRBD_TRACE("d_size: %lld bytes bd_contains->d_size: %lld bytes max_hw_sectors: %lld sectors\n", d_size, pvext->dev->bd_contains ? pvext->dev->bd_contains->d_size : 0, pvext->dev->bd_disk->queue->max_hw_sectors);
 }
 
 // DW-1105: refresh all volumes and handle changes.
@@ -2573,7 +2601,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf(dev->bd_disk->disk_name, "drbd%d", pvext->Minor);
+	sprintf_s(dev->bd_disk->disk_name, sizeof(dev->bd_disk->disk_name), "drbd%d", pvext->Minor);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;
@@ -2666,7 +2694,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
     NTSTATUS                    status;
     HANDLE                      hKey = NULL;
-    ULONG                       size;
+    ULONG                       size = 0;
     int                         count;
     bool                        ret = FALSE;
 
@@ -2814,18 +2842,19 @@ bool is_equal_volume_link(
  *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
  *	f no block_device allocated, then query
  */
-static void _adjust_guid_name(char * dst, const char * src)
+static void _adjust_guid_name(char * dst, size_t dst_len, const char * src)
 {
 	const char token[] = "Volume{";
 	char * start = strstr(src, token);
 	if (start) {
-		strcpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		strcpy_s(dst, dst_len, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
 		char * end = strstr(src, "}");
 		char * t3 = strstr(dst, token);
-		memcpy(t3, start, (int)(end - start));
+		if (t3 && end)
+			memcpy(t3, start, (int)(end - start));
 	}
  	else {
-		strcpy(dst, src);
+		strcpy_s(dst, dst_len, src);
 	}
 }
 
@@ -2878,7 +2907,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
 	
-	_adjust_guid_name(cpath, path);
+	_adjust_guid_name(cpath, sizeof(cpath), path);
 
 	RtlInitAnsiString(&apath, cpath);
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
@@ -2938,7 +2967,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		/* Address */
 		//snprintf(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t) (sPos & 0xFFFF));
 		memset(sHexBuffer, 0, 6);
-		sprintf(sHexBuffer, "%04X:", (uint16_t) (sPos & 0xFFFF));
+		sprintf_s(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t)(sPos & 0xFFFF));
 		memcpy(sLine, sHexBuffer, 5);
 
 		/* Hex part */
@@ -2946,7 +2975,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		{
 			//snprintf(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memset(sHexBuffer, 0, 6);
-			sprintf(sHexBuffer, "%02X", *(sBuffer + sPos + i));
+			sprintf_s(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memcpy(sLine + sAddrAreaSize + (i * 3) + (i / sColWidth), sHexBuffer, 2);
 		}
 
@@ -2996,7 +3025,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 
-    sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+	sprintf_s(cmd_line, leng, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 
     pSock->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
@@ -3044,6 +3073,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 	{
 		LONG readcount;
 		char hello[2];
+		memset(hello, 0, sizeof(hello));
 		WDRBD_TRACE("Wait Hi\n");
 		if ((readcount = Receive(pSock, &hello, 2, 0, g_handler_timeout)) == 2) {
 			WDRBD_TRACE("recv HI!!! \n");
@@ -3110,7 +3140,11 @@ void panic(char *msg)
 #ifdef _WIN32_EVENTLOG
 	WriteEventLogEntryData((ULONG) DEV_ERR_3003, 0, 0, 1, L"%S", msg);
 #endif
+// DW-1587 
+//	The code that caused the BugCheck was written as needed.
+#pragma warning (disable: 28159)
 	KeBugCheckEx(0xddbd, (ULONG_PTR)__FILE__, (ULONG_PTR)__func__, 0x12345678, 0xd8bdd8bd);
+#pragma warning (default: 28159)
 }
 
 int scnprintf(char * buf, size_t size, const char *fmt, ...)
@@ -3183,9 +3217,9 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 #endif
 }
 
-char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
+char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr)
 {
-	sprintf(buf, "%u.%u.%u.%u:%u\0",
+	sprintf_s(buf, len, "%u.%u.%u.%u:%u\0",
 		sockaddr->sin_addr.S_un.S_un_b.s_b1,
 		sockaddr->sin_addr.S_un.S_un_b.s_b2,
 		sockaddr->sin_addr.S_un.S_un_b.s_b3,
@@ -3195,9 +3229,9 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 	return buf;
 }
 #ifdef _WIN32
-char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
+char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr)
 {
-	sprintf(buf, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0", 
+	sprintf_s(buf, len, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0",
 			sockaddr->sin6_addr.u.Byte[0],
 			sockaddr->sin6_addr.u.Byte[1],
 			sockaddr->sin6_addr.u.Byte[2],

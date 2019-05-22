@@ -30,13 +30,27 @@
 #include "proto.h"
 #include "drbd_int.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning caused by code analysis.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*
+* C6101 C6102 warning warns accessing and returning uninitialized variable,
+* but disables warnig because there is no problem in code
+*/
+#pragma warning (disable: 6101 6319 6102)
+#endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
+#pragma alloc_text(PAGE, DeleteRegistryValueKey)
 #ifdef _WIN32_MVFL
 //#pragma alloc_text(PAGE, FsctlFlsuhDismountVolume)
 #pragma alloc_text(PAGE, FsctlLockVolume)
 #pragma alloc_text(PAGE, FsctlUnlockVolume)
 #pragma alloc_text(PAGE, FsctlCreateVolume)
+#pragma alloc_text(PAGE, FsctlFlushDismountVolume)
+#pragma alloc_text(PAGE, FsctlFlushVolume)
 #endif
 #endif
 
@@ -108,14 +122,18 @@ NTSTATUS FsctlFlushDismountVolume(unsigned int minor, bool bFlush)
 
 	RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 	
+	// DW-1587
+	// there is no other way to check if there is volume mounted.
+	// So 28175 warning disabled.
+#pragma warning (disable: 28175)
 	// DW-1303 No dismount for already dismounted volume
-	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
-		if( !(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED) ) {
+	if (pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
 			WDRBD_INFO("no dismount. volume(%wZ) already dismounted\n", &device_name);
 			return STATUS_SUCCESS;
 		}
 	}
-	
+#pragma warning (default: 28175)
     __try
     {
         if (!pvext->LockHandle)
@@ -217,14 +235,18 @@ NTSTATUS FsctlLockVolume(unsigned int minor)
 
     RtlUnicodeStringInit(&device_name, pvext->PhysicalDeviceName);
 
+	// DW-1587
+	// there is no other way to check if there is volume mounted.
+	// So 28175 warning disabled.
+#pragma warning (disable: 28175)
 	// DW-1303 No lock for already dismounted volume
-	if(pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
+	if (pvext->PhysicalDeviceObject && pvext->PhysicalDeviceObject->Vpb) {
 		if (!(pvext->PhysicalDeviceObject->Vpb->Flags & VPB_MOUNTED)) {
 			WDRBD_INFO("no lock. volume(%wZ) already dismounted\n", &device_name);
 			return STATUS_UNSUCCESSFUL;
 		}
 	}
-	
+#pragma warning (default: 28175)
     __try
     {
         InitializeObjectAttributes(&ObjectAttributes,
@@ -470,7 +492,7 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 
 		if (!NT_SUCCESS(status)) {
 			WDRBD_ERROR("ZwCreateFile Failed. status(0x%x)\n", status);
-			break;
+			return NULL;
 		}
 		
 	} while (false, false);
@@ -491,20 +513,16 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 		return 0;
 	}
 	
-	do
+	status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
+	// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
+	if (fss.FileSystemType == 0 &&
+		!NT_SUCCESS(status))
 	{
-		status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
-		// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
-		if (fss.FileSystemType == 0 &&
-			!NT_SUCCESS(status))
-		{
-			WDRBD_ERROR("ZwFsControlFile with FSCTL_FILESYSTEM_GET_STATISTICS failed, status(0x%x)\n", status);
-			break;
-		}
-
-	} while (false, false);
-
-	return fss.FileSystemType;
+		WDRBD_ERROR("ZwFsControlFile with FSCTL_FILESYSTEM_GET_STATISTICS failed, status(0x%x)\n", status);
+		return 0;
+	}
+	else
+		return fss.FileSystemType;
 }
 
 // retrieves file system specified cluster information ( total cluster count, number of bytes per cluster )
@@ -776,7 +794,7 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 
 		ULONG ulBitmapSize = sizeof(VOLUME_BITMAP_BUFFER) + (ULONG)(*pullTotalCluster / BITS_PER_BYTE);
 		
-		pVbb = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, ulBitmapSize);
+		pVbb = (PVOLUME_BITMAP_BUFFER)ExAllocatePoolWithTag(NonPagedPool, ulBitmapSize, '16DW');
 		if (NULL == pVbb)
 		{
 			WDRBD_ERROR("pVbb allocation failed\n");
@@ -901,7 +919,7 @@ PVOID GetVolumeBitmapForDrbd(unsigned int minor, ULONG ulDrbdBitmapUnit)
 			ullTotalCluster = (ullTotalCluster * ulBytesPerCluster) / ulDrbdBitmapUnit;
 			ulConvertedBitmapSize = (ULONG)(ullTotalCluster / BITS_PER_BYTE);
 
-			pDrbdBitmap = (PVOLUME_BITMAP_BUFFER)ExAllocatePool(NonPagedPool, sizeof(VOLUME_BITMAP_BUFFER) +  ulConvertedBitmapSize);
+			pDrbdBitmap = (PVOLUME_BITMAP_BUFFER)ExAllocatePoolWithTag(NonPagedPool, sizeof(VOLUME_BITMAP_BUFFER) +  ulConvertedBitmapSize, '56DW');
 			if (NULL == pDrbdBitmap)
 			{
 				WDRBD_ERROR("pConvertedBitmap allocation failed\n");
@@ -1103,7 +1121,7 @@ NTSTATUS QueryMountPoint(
 	_In_ PVOID MountPoint,
 	_In_ ULONG MountPointLength,
 	_Inout_ PVOID MountPointInfo,
-	_Out_ PULONG MountPointInfoLength)
+	_Out_  PULONG MountPointInfoLength)
 {
 	OBJECT_ATTRIBUTES mmgrObjectAttributes;
 	UNICODE_STRING mmgrObjectName;
@@ -1314,8 +1332,8 @@ void PrintVolumeDuid(PDEVICE_OBJECT devObj)
     for (i = 0; i < guid->UniqueIdLength; ++i)
     {
         _itoa_s(guid->UniqueId[i], temp, 8, 16);
-        strcat(pguid_text, temp);
-        strcat(pguid_text, " ");
+		strcat_s(pguid_text, sizeof(pguid_text), temp);
+		strcat_s(pguid_text, sizeof(pguid_text), " ");
     }
 
     WDRBD_TRACE("device object(0x%x), Volume GUID(%s)\n", devObj, pguid_text);
@@ -1597,7 +1615,7 @@ int initRegistry(__in PUNICODE_STRING RegPath_unicode)
 	}
 	else
 	{
-		RtlCopyMemory(g_ver, "DRBD", 4 * 2); 
+		RtlCopyMemory(g_ver, L"DRBD", 4 * 2); 
 	}
 	// _WIN32_V9: proc_details is removed. 
 	WDRBD_INFO("registry_path[%wZ]\n"

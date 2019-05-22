@@ -24,9 +24,8 @@
 //
 // disp.c
 //
-NTSTATUS
-mvolSendToNextDriver( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp );
-
+_Dispatch_type_(IRP_MJ_OTHER)
+DRIVER_DISPATCH mvolSendToNextDriver;
 //
 // sub.c
 //
@@ -48,6 +47,8 @@ mvolLogError( PDEVICE_OBJECT DeviceObject, ULONG UniqID,
 
 NTSTATUS
 IOCTL_SetIOFlag(PDEVICE_OBJECT DeviceObject, PIRP Irp, ULONG Val, BOOLEAN On);
+
+IO_COMPLETION_ROUTINE mvolIrpCompletion;
 
 //
 // util.c
@@ -122,8 +123,7 @@ mvolInitializeThread( PVOLUME_EXTENSION DeviceExtension,
 #endif
 VOID
 mvolTerminateThread( PMVOL_THREAD pThreadInfo );
-VOID
-mvolWorkThread( PVOID arg );
+KSTART_ROUTINE mvolWorkThread;
 #ifdef _WIN32_MULTIVOL_THREAD
 VOID
 mvolQueueWork(PMVOL_THREAD pThreadInfo, PDEVICE_OBJECT DeviceObject, PIRP irp);
