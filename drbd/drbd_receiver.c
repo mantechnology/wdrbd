@@ -68,7 +68,7 @@
 * Even though pointer parameters need to contain NULLs, 
 * they are treated as warnings.
 */
-#pragma warning (disable: 6319 6387)
+#pragma warning (disable: 6053 6319 6387 28719)
 #endif
 
 #define PRO_FEATURES (DRBD_FF_TRIM|DRBD_FF_THIN_RESYNC|DRBD_FF_WSAME)
@@ -5496,14 +5496,14 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 			*new_net_conf = *old_net_conf;
 
 			if (verify_tfm) {
-				strcpy_s(new_net_conf->verify_alg, sizeof(new_net_conf->verify_alg), p->verify_alg);
+				strncpy(new_net_conf->verify_alg, p->verify_alg, sizeof(new_net_conf->verify_alg) - 1);
 				new_net_conf->verify_alg_len = (__u32)(strlen(p->verify_alg) + 1);
 				crypto_free_hash(connection->verify_tfm);
 				connection->verify_tfm = verify_tfm;
 				drbd_info(device, "using verify-alg: \"%s\"\n", p->verify_alg);
 			}
 			if (csums_tfm) {
-				strcpy_s(new_net_conf->csums_alg, sizeof(new_net_conf->csums_alg), p->csums_alg);
+				strncpy(new_net_conf->csums_alg, p->csums_alg, sizeof(new_net_conf->csums_alg) - 1);
 				new_net_conf->csums_alg_len = (__u32)(strlen(p->csums_alg) + 1);
 				crypto_free_hash(connection->csums_tfm);
 				connection->csums_tfm = csums_tfm;

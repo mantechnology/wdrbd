@@ -39,7 +39,7 @@
 * C6101 C6102 warning warns accessing and returning uninitialized variable,
 * but disables warnig because there is no problem in code
 */
-#pragma warning (disable: 6101 6319 6102)
+#pragma warning (disable: 6053 6101 6319 6102 28719)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, QueryMountDUID)
@@ -1332,8 +1332,8 @@ void PrintVolumeDuid(PDEVICE_OBJECT devObj)
     for (i = 0; i < guid->UniqueIdLength; ++i)
     {
         _itoa_s(guid->UniqueId[i], temp, 8, 16);
-		strcat_s(pguid_text, sizeof(pguid_text), temp);
-		strcat_s(pguid_text, sizeof(pguid_text), " ");
+		strncat(pguid_text, temp, sizeof(pguid_text) - 1);
+		strncat(pguid_text, " ", sizeof(pguid_text) - 1);
     }
 
     WDRBD_TRACE("device object(0x%x), Volume GUID(%s)\n", devObj, pguid_text);
