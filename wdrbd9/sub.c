@@ -1043,10 +1043,10 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	{
 		CHAR temp[20] = { 0, };
 		_snprintf(temp, sizeof(temp) - 1, FRAME_DELIMITER"%p", stackFrames[i]);
-		strncat(buf, temp, strlen(buf) - sizeof(buf) - 1);
+		strncat(buf, temp, sizeof(buf) - strlen(buf) - 1);
 	}
 
-	strncat(buf, "\n", strlen(buf) - sizeof(buf) - 1);
+	strncat(buf, "\n", sizeof(buf) - strlen(buf) - 1);
 	
 	printk(buf);
 
