@@ -13,7 +13,7 @@
  *
  * C6101, C28252, C28253 warnings is not a problem in wsk2.c.
  */
-#pragma warning (disable: 6101 6102 6387 28252 28253)
+#pragma warning (disable: 6053 6101 6102 6387 28252 28253 28719)
 extern bool drbd_stream_send_timed_out(struct drbd_transport *transport, enum drbd_stream stream);
 IO_COMPLETION_ROUTINE CompletionRoutine;
 IO_COMPLETION_ROUTINE SendCompletionRoutine;
@@ -1801,7 +1801,7 @@ _Outptr_result_maybenull_ CONST WSK_CLIENT_CONNECTION_DISPATCH **AcceptSocketDis
         	return STATUS_REQUEST_NOT_ACCEPTED;
         }
         ad->s_accept->sk = AcceptSocket;
-		sprintf_s(ad->s_accept->name, sizeof(ad->s_accept->name), "estab_sock");
+		_snprintf(ad->s_accept->name, sizeof(ad->s_accept->name) - 1, "estab_sock");
         ad->s_accept->sk_linux_attr = kzalloc(sizeof(struct sock), 0, '92DW');
         if (!ad->s_accept->sk_linux_attr) {
             ExFreePool(ad->s_accept);

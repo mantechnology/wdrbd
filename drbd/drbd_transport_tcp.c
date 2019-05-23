@@ -57,7 +57,7 @@ MODULE_VERSION("1.0.0");
  * Even though pointer parameters need to contain NULLs,
  * they are treated as warnings.
  */
-#pragma warning (disable: 6387)
+#pragma warning (disable: 6053 6387 28719)
 
 struct buffer {
 	void *base;
@@ -690,7 +690,7 @@ static int dtt_try_connect(struct drbd_transport *transport, struct dtt_path *pa
 		err = -ENOMEM; 
 		goto out;
 	}
-	sprintf_s(socket->name, sizeof(socket->name), "conn_sock\0");
+	_snprintf(socket->name, sizeof(socket->name) - 1, "conn_sock\0");
 	socket->sk_linux_attr = 0;
 	err = 0;
 
@@ -1385,7 +1385,7 @@ static void dtt_incoming_connection(struct sock *sock)
 	SetEventCallbacks(s_estab, WSK_EVENT_DISCONNECT);		
 #endif
 
-	sprintf_s(s_estab->name, sizeof(s_estab->name), "estab_sock");
+	_snprintf(s_estab->name, sizeof(s_estab->name) - 1, "estab_sock");
     s_estab->sk_linux_attr = kzalloc(sizeof(struct sock), 0, 'C6DW');
 
     if (s_estab->sk_linux_attr)
@@ -1572,7 +1572,7 @@ static int dtt_create_listener(struct drbd_transport *transport,
         err = -ENOMEM;
         goto out;
     }
-	sprintf_s(s_listen->name, sizeof(s_listen->name), "listen_sock\0");
+	_snprintf(s_listen->name, sizeof(s_listen->name) - 1, "listen_sock\0");
     s_listen->sk_linux_attr = 0;
     err = 0;
 	listener = kzalloc(sizeof(struct dtt_listener), 0, 'F6DW');

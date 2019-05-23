@@ -36,13 +36,14 @@
 #endif
 #include "./drbd-kernel-compat/drbd_wrappers.h"
 
+#pragma warning (disable: 6053 28719)
 // MODIFIED_BY_MANTECH DW-1513 : Output LRU status like lc_seq_printf_stats function
 #ifdef WIN_AL_BUG_ON
 void private_strcat(char* buf, size_t buf_len, char* string, ULONG_PTR string_value){
 	char tmp[64] = { 0, }; 
-	strcat_s(buf, buf_len, string);
-	sprintf_s(tmp, sizeof(tmp), "%Iu", string_value);
-	strcat_s(buf, buf_len, tmp);
+	strncat(buf, string, buf_len - strlen(buf) - 1);
+	_snprintf(tmp, sizeof(tmp) - 1, "%Iu", string_value);
+	strncat(buf, tmp, buf_len - strlen(buf) - 1);
 }
 
 void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
@@ -51,7 +52,7 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 
 	if (lc){
 		if (lc->name)
-			sprintf_s(print_lru, sizeof(print_lru), "name=%s ", lc->name);
+			_snprintf(print_lru, sizeof(print_lru) - 1, "name=%s ", lc->name);
 		if (lc->nr_elements)
 			private_strcat(print_lru, sizeof(print_lru), " nr_elements= ", lc->nr_elements);
 		if (lc->max_pending_changes)
@@ -73,7 +74,7 @@ void lc_printf_stats(struct lru_cache *lc, struct lc_element *e){
 
 	if (e){
 		if (e->lc_index)
-			sprintf_s(print_ele, sizeof(print_ele), "lc_index=%u ", e->lc_index);
+			_snprintf(print_ele, sizeof(print_ele) - 1, "lc_index=%u ", e->lc_index);
 		if (e->refcnt)
 			private_strcat(print_ele, sizeof(print_ele), " refcnt= ", e->refcnt);
 		if (e->lc_number)

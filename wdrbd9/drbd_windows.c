@@ -43,7 +43,7 @@
 * Even though pointer parameters need to contain NULLs,
 * they are treated as warnings.
 */
-#pragma warning (disable: 6102 6319 6387)
+#pragma warning (disable: 6053 6102 6319 6387 28719)
 #endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
@@ -855,7 +855,7 @@ void _wake_up(wait_queue_head_t *q, char *__func, int __line)
 void init_completion(struct completion *completion)
 {
 	memset(completion->wait.eventName, 0, Q_NAME_SZ);
-	strcpy_s(completion->wait.eventName, sizeof(completion->wait.eventName), "completion");
+	strncpy(completion->wait.eventName, "completion", sizeof(completion->wait.eventName) - 1);
 	init_waitqueue_head(&completion->wait);
 }
 
@@ -1031,7 +1031,7 @@ struct workqueue_struct *create_singlethread_workqueue(void * name)
     KeInitializeEvent(&wq->killEvent, SynchronizationEvent, FALSE);
     InitializeListHead(&wq->list_head);
     KeInitializeSpinLock(&wq->list_lock);
-	strcpy_s(wq->name, sizeof(wq->name), name);
+	strncpy(wq->name, name, sizeof(wq->name) - 1);
     wq->run = TRUE;
 
     HANDLE hThread = NULL;
@@ -1412,7 +1412,7 @@ void init_timer(struct timer_list *t)
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
-	strcpy_s(t->name, sizeof(t->name), "undefined");
+	strncpy(t->name, "undefined", sizeof(t->name) - 1);
 #endif
 }
 
@@ -1424,7 +1424,7 @@ void init_timer_key(struct timer_list *timer, const char *name,
 
     init_timer(timer);
 #ifdef DBG
-	strcpy_s(timer->name, sizeof(timer->name), name);
+	strncpy(timer->name, name, sizeof(timer->name) - 1);
 #endif
 }
 
@@ -1742,7 +1742,7 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
         KeInitializeEvent(&t->sig_event, SynchronizationEvent, FALSE);
         t->has_sig_event = TRUE;
     }
-	strcpy_s(t->comm, sizeof(t->comm), name);
+	strncpy(t->comm, name, sizeof(t->comm) - 1);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
 	list_add(&t->list, &ct_thread_list);
 	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
@@ -1770,7 +1770,7 @@ struct task_struct* ct_find_thread(PKTHREAD id)
         t = &g_dummy_current;
         t->pid = 0;
         t->has_sig_event = FALSE;
-		strcpy_s(t->comm, sizeof(t->comm), "not_drbd_thread");
+		strncpy(t->comm, "not_drbd_thread", sizeof(t->comm) - 1);
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -2601,7 +2601,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf_s(dev->bd_disk->disk_name, sizeof(dev->bd_disk->disk_name), "drbd%d", pvext->Minor);
+	_snprintf(dev->bd_disk->disk_name, sizeof(dev->bd_disk->disk_name) - 1, "drbd%d", pvext->Minor);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;
@@ -2847,14 +2847,14 @@ static void _adjust_guid_name(char * dst, size_t dst_len, const char * src)
 	const char token[] = "Volume{";
 	char * start = strstr(src, token);
 	if (start) {
-		strcpy_s(dst, dst_len, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		strncpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\", dst_len - 1);
 		char * end = strstr(src, "}");
 		char * t3 = strstr(dst, token);
 		if (t3 && end)
 			memcpy(t3, start, (int)(end - start));
 	}
  	else {
-		strcpy_s(dst, dst_len, src);
+		strncpy(dst, src, dst_len - 1);
 	}
 }
 
@@ -2906,7 +2906,7 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	ANSI_STRING apath;
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
-	
+
 	_adjust_guid_name(cpath, sizeof(cpath), path);
 
 	RtlInitAnsiString(&apath, cpath);
@@ -2967,7 +2967,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		/* Address */
 		//snprintf(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t) (sPos & 0xFFFF));
 		memset(sHexBuffer, 0, 6);
-		sprintf_s(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t)(sPos & 0xFFFF));
+		_snprintf(sHexBuffer, sizeof(sHexBuffer) - 1, "%04X:", (uint16_t)(sPos & 0xFFFF));
 		memcpy(sLine, sHexBuffer, 5);
 
 		/* Hex part */
@@ -2975,7 +2975,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		{
 			//snprintf(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memset(sHexBuffer, 0, 6);
-			sprintf_s(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
+			_snprintf(sHexBuffer, sizeof(sHexBuffer) - 1, "%02X", *(sBuffer + sPos + i));
 			memcpy(sLine + sAddrAreaSize + (i * 3) + (i / sColWidth), sHexBuffer, 2);
 		}
 
@@ -3025,7 +3025,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 		return -1;
 	}
 
-	sprintf_s(cmd_line, leng, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+	_snprintf(cmd_line, leng - 1, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 
     pSock->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
@@ -3153,7 +3153,7 @@ int scnprintf(char * buf, size_t size, const char *fmt, ...)
 	int i = 0;
 
 	va_start(args, fmt);
-    i = _vsnprintf_s(buf, size, _TRUNCATE, fmt, args);
+	i = _vsnprintf(buf, size - 1, fmt, args);
 	va_end(args);
 
 	return (int)((-1 == i) ? (size - 1) : i);
@@ -3219,7 +3219,7 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 
 char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr)
 {
-	sprintf_s(buf, len, "%u.%u.%u.%u:%u\0",
+	_snprintf(buf, len - 1, "%u.%u.%u.%u:%u\0",
 		sockaddr->sin_addr.S_un.S_un_b.s_b1,
 		sockaddr->sin_addr.S_un.S_un_b.s_b2,
 		sockaddr->sin_addr.S_un.S_un_b.s_b3,
@@ -3231,7 +3231,7 @@ char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr)
 #ifdef _WIN32
 char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr)
 {
-	sprintf_s(buf, len, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0",
+	_snprintf(buf, len - 1, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0",
 			sockaddr->sin6_addr.u.Byte[0],
 			sockaddr->sin6_addr.u.Byte[1],
 			sockaddr->sin6_addr.u.Byte[2],

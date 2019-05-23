@@ -35,6 +35,8 @@
 #include "sub.tmh" 
 #endif
 
+#pragma warning (disable: 6053 28719)
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -612,11 +614,11 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
 	if (RootExtension != NULL) {
-		wcscpy_s(wp, deviceNameLength, RootExtension->PhysicalDeviceName);
+		wcsncpy(wp, RootExtension->PhysicalDeviceName, deviceNameLength - 1);
 		wp += deviceNameLength / sizeof(WCHAR);
 	}
 	else if (VolumeExtension != NULL) {
-		wcscpy_s(wp, deviceNameLength, VolumeExtension->PhysicalDeviceName);
+		wcsncpy(wp, VolumeExtension->PhysicalDeviceName, deviceNameLength - 1);
 		wp += deviceNameLength / sizeof(WCHAR);
 	}
 		
@@ -727,7 +729,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = sprintf_s(buf, logcnt, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+	offset = _snprintf(buf, logcnt - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -756,7 +758,7 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = vsprintf_s(buf + offset + LEVEL_OFFSET, logcnt, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, logcnt, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
@@ -893,13 +895,13 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		else if (!wcscmp(l_FormatStr, L"%s")) {
 			l_CurPtrDataItem = va_arg(l_Argptr, PWCHAR);
 			/* convert to string */
-			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
+			_snwprintf((wchar_t*)l_Ptr, (l_BufSize >> 1) - 1, l_FormatStr, l_CurPtrDataItem);
             //status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
 		}
 		else {
 			l_CurDataItem = va_arg(l_Argptr, int);
 			/* convert to string */
-			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
+			_snwprintf((wchar_t*)l_Ptr, (l_BufSize >> 1) - 1, l_FormatStr, l_CurDataItem);
 			//status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR) l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
 		}
 
@@ -1025,7 +1027,7 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	sprintf_s(buf, sizeof(buf), "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 
@@ -1040,11 +1042,11 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		sprintf_s(temp, sizeof(temp), FRAME_DELIMITER"%p", stackFrames[i]);
-		strcat_s(buf, sizeof(buf), temp);
+		_snprintf(temp, sizeof(temp) - 1, FRAME_DELIMITER"%p", stackFrames[i]);
+		strncat(buf, temp, sizeof(buf) - strlen(buf) - 1);
 	}
 
-	strcat_s(buf, sizeof(buf), "\n");
+	strncat(buf, "\n", sizeof(buf) - strlen(buf) - 1);
 	
 	printk(buf);
 

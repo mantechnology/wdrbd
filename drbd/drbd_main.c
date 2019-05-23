@@ -33,7 +33,7 @@
  * The use of comma does not cause any performance problems or bugs, 
  * but keep the code as it is written.
  */
-#pragma warning (disable: 6319)
+#pragma warning (disable: 6053 6319 28719)
 #include <ntifs.h>
 #include "windows/drbd.h"
 #include "linux-compat/drbd_endian.h"
@@ -1598,9 +1598,9 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 	}
 
 	if (apv >= 88)
-		strcpy_s(p->verify_alg, sizeof(p->verify_alg), nc->verify_alg);
+		strncpy(p->verify_alg, nc->verify_alg, sizeof(p->verify_alg) - 1);
 	if (apv >= 89)
-		strcpy_s(p->csums_alg, sizeof(p->csums_alg), nc->csums_alg);
+		strncpy(p->csums_alg, nc->csums_alg, sizeof(p->csums_alg) - 1);
 	rcu_read_unlock();
 
 	return drbd_send_command(peer_device, cmd, DATA_STREAM);
@@ -1649,7 +1649,7 @@ int __drbd_send_protocol(struct drbd_connection *connection, enum drbd_packet cm
 	p->conn_flags    = cpu_to_be32(cf);
 
 	if (connection->agreed_pro_version >= 87)
-		strcpy_s(p->integrity_alg, SHARED_SECRET_MAX, nc->integrity_alg);
+		strncpy(p->integrity_alg, nc->integrity_alg, SHARED_SECRET_MAX-1);
 	rcu_read_unlock();
 
 	return __send_command(connection, -1, cmd, DATA_STREAM);
@@ -4441,9 +4441,9 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
     init_timer(&peer_device->resync_timer);
 #ifdef DBG
     memset(peer_device->start_resync_timer.name, 0, Q_NAME_SZ);
-	strcpy_s(peer_device->start_resync_timer.name, sizeof(peer_device->start_resync_timer.name), "start_resync_timer");
+	strncpy(peer_device->start_resync_timer.name, "start_resync_timer", sizeof(peer_device->start_resync_timer.name) - 1);
     memset(peer_device->resync_timer.name, 0, Q_NAME_SZ);
-	strcpy_s(peer_device->resync_timer.name, sizeof(peer_device->resync_timer.name), "resync_timer");
+	strncpy(peer_device->resync_timer.name, "resync_timer", sizeof(peer_device->resync_timer.name) - 1);
 #endif
 #endif
 
@@ -4581,9 +4581,9 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
     init_timer(&device->request_timer);
 #ifdef DBG
     memset(device->md_sync_timer.name, 0, Q_NAME_SZ);
-	strcpy_s(device->md_sync_timer.name, sizeof(device->md_sync_timer.name), "md_sync_timer");
+	strncpy(device->md_sync_timer.name, "md_sync_timer", sizeof(device->md_sync_timer.name) - 1);
     memset(device->request_timer.name, 0, Q_NAME_SZ);
-	strcpy_s(device->request_timer.name, sizeof(device->request_timer.name), "request_timer");
+	strncpy(device->request_timer.name, "request_timer", sizeof(device->request_timer.name) - 1);
 #endif
 #endif
 	init_waitqueue_head(&device->misc_wait);
@@ -4617,7 +4617,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	sprintf_s(disk->disk_name, sizeof(disk->disk_name), "drbd%d", minor);
+	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%d", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4964,7 +4964,7 @@ static int __init drbd_init(void)
 	 * allocate all necessary structs
 	 */
 #ifdef _WIN32 
-	strcpy_s(drbd_pp_wait.eventName, sizeof(drbd_pp_wait.eventName), "drbd_pp_wait");
+	strncpy(drbd_pp_wait.eventName, "drbd_pp_wait", sizeof(drbd_pp_wait.eventName) - 1);
 #endif
 	init_waitqueue_head(&drbd_pp_wait);
 #ifdef _WIN32

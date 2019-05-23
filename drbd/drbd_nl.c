@@ -64,7 +64,7 @@
 * The use of comma does not cause any performance problems or bugs,
 * but keep the code as it is written.
 */
-#pragma warning (disable: 6319)
+#pragma warning (disable: 6053 6319 28719)
 #endif
 
 #ifdef _WIN32
@@ -600,7 +600,7 @@ static __printf(2, 3) int env_print(struct env *env, const char *fmt, ...)
 		return pos;
 	va_start(args, fmt);
 #ifdef _WIN32
-	ret = _vsnprintf_s(env->buffer + pos, env->size - pos, env->size - pos, fmt, args);
+	ret = _vsnprintf(env->buffer + pos, env->size - pos - 1, fmt, args);
 #else
 	ret = vsnprintf(env->buffer + pos, env->size - pos, fmt, args);
 #endif
@@ -1949,7 +1949,7 @@ char *ppsize(char *buf, size_t len, unsigned long long size)
 		base++;
 	}
 
-	sprintf_s(buf, len, "%u %cB", (unsigned)size, units[base]);
+	_snprintf(buf, len-1, "%u %cB", (unsigned)size, units[base]);
 
 	return buf;
 }
@@ -3948,7 +3948,7 @@ alloc_crypto(struct crypto *crypto, struct net_conf *new_net_conf)
 	if (rv != NO_ERROR)
 		return rv;
 	if (new_net_conf->cram_hmac_alg[0] != 0) {
-		sprintf_s(hmac_name, CRYPTO_MAX_ALG_NAME, "hmac(%s)",
+		_snprintf(hmac_name, CRYPTO_MAX_ALG_NAME-1, "hmac(%s)",
 			 new_net_conf->cram_hmac_alg);
 
 		rv = alloc_hash(&crypto->cram_hmac_tfm, hmac_name,
@@ -7630,7 +7630,7 @@ void notify_helper(enum drbd_notification_type type,
 	int err;
 
 #ifdef _WIN32
-	strncpy_s(helper_info.helper_name, sizeof(helper_info.helper_name), name, sizeof(helper_info.helper_name));
+	strncpy(helper_info.helper_name, name, sizeof(helper_info.helper_name) - 1);
     helper_info.helper_name[sizeof(helper_info.helper_name) - 1] = '\0';
 #else
 	strlcpy(helper_info.helper_name, name, sizeof(helper_info.helper_name));
