@@ -16,6 +16,10 @@
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|Win32'">
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
@@ -29,6 +33,10 @@
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|Win32'">
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
@@ -48,6 +56,10 @@
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|x64'">
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
@@ -61,6 +73,10 @@
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
+    <SignMode>ProductionSign</SignMode>
+    <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|x64'">
     <SignMode>ProductionSign</SignMode>
     <ProductionCertificate>CN=Man Technology Inc., O=Man Technology Inc., L=Seongdong-gu, S=Seoul, C=KR | 679164F5D8E90F9C50277D456AE5D59938D1A2B9</ProductionCertificate>
   </PropertyGroup>
