@@ -11,3 +11,11 @@ build/drbd/drbd.v12.suo
 *.opensdf
 *Release/
 *Debug/
+setup.rpt
+disk1/drbdlock.cab
+build/installer/updates.xml
+build/installer/output.txt
+sign_this_file.cmd
+disk1/drbd.cab
+build/installer/md5sums
+setup.inf

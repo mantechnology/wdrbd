@@ -35,6 +35,8 @@
       <fileset name="Windows 8.1 x64" id="1498" customizedId="" />
       <fileset name="Windows Server 2008 x86" id="2241" customizedId="" />
       <fileset name="Windows Server 2008 x64" id="2243" customizedId="" />
+      <fileset name="Windows 10 x86" id="2571" customizedId="" />
+      <fileset name="Windows 10 x64" id="2573" customizedId="" />
     </filesets>
     <roots>
       <root id="584" fileset="583" location="" />
@@ -47,6 +49,8 @@
       <root id="1499" fileset="1498" location="" />
       <root id="2242" fileset="2241" location="" />
       <root id="2244" fileset="2243" location="" />
+      <root id="2572" fileset="2571" location="" />
+      <root id="2574" fileset="2573" location="" />
     </roots>
     <mountPoints>
       <mountPoint id="865" root="" location="bin" mode="755" />
@@ -62,6 +66,8 @@
       <mountPoint id="1501" root="1499" location="" mode="755" />
       <mountPoint id="2245" root="2242" location="" mode="755" />
       <mountPoint id="2246" root="2244" location="" mode="755" />
+      <mountPoint id="2575" root="2572" location="" mode="755" />
+      <mountPoint id="2576" root="2574" location="" mode="755" />
     </mountPoints>
     <entries>
       <dirEntry mountPoint="865" file="drbd/bin" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="" excludeSuffixes="" dirMode="755" overrideDirMode="false">
@@ -98,6 +104,12 @@
         <exclude />
       </dirEntry>
       <dirEntry mountPoint="2246" file="drbd/x64/Server2008Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Server2008Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2575" file="drbd/x86/Win10Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win10Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
+        <exclude />
+      </dirEntry>
+      <dirEntry mountPoint="2576" file="drbd/x64/Win10Release" overwriteMode="4" shared="false" fileMode="644" uninstallMode="0" overrideFileMode="false" overrideOverwriteMode="false" overrideUninstallMode="false" entryMode="direct" subDirectory="Win10Release" excludeSuffixes="" dirMode="755" overrideDirMode="false">
         <exclude />
       </dirEntry>
     </entries>
@@ -628,7 +640,12 @@ if(filesetName.startsWith("Windows"))
 {
     String osName;
     Float osVer = (Float)context.getVariable("os.floatver");
-    if (osVer &gt;= 6.3f)
+        
+    if (osVer &gt;= 10.0f)
+    {
+        osName = "Windows 10 ";
+    }
+    else if (osVer &gt;= 6.3f)
     {
         osName = "Windows 8.1 ";
     }
