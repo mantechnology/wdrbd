@@ -729,7 +729,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = _snprintf(buf, logcnt - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+	offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -758,7 +758,7 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, logcnt, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(strlen(buf));
