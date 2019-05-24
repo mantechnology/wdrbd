@@ -729,7 +729,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = _snprintf(buf, logcnt - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+	offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
