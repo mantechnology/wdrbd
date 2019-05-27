@@ -1425,10 +1425,12 @@ int __send_command(struct drbd_connection *connection, int vnr,
 		       sbuf->allocated_size + sbuf->additional_size);
 
 	if (corked && !flush) {
+		drbd_debug(connection, "send buff %s, size: %d vnr: %d\n", drbd_packet_name(cmd), (sbuf->allocated_size + sbuf->additional_size), vnr);
 		sbuf->pos += sbuf->allocated_size;
 		sbuf->allocated_size = 0;
 		err = 0;
 	} else {
+		drbd_debug(connection, "sending %s, size: %d vnr: %d\n", drbd_packet_name(cmd), (sbuf->allocated_size + sbuf->additional_size), vnr);
 		err = flush_send_buffer(connection, drbd_stream);
 
 		/* DRBD protocol "pings" are latency critical.
