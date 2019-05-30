@@ -3714,8 +3714,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			/* Make sure the peer gets informed about eventual state
 			   changes (ISP bits) while we were in L_OFF. */
-			if (repl_state[OLD] == L_OFF && repl_state[NEW] >= L_ESTABLISHED)
-				send_state = true;
+			if (repl_state[OLD] == L_OFF && repl_state[NEW] >= L_ESTABLISHED) {
+				//DW-1801 Connection initialized.
+				if (test_bit(INITIAL_STATE_SENT, &peer_device->flags))
+					send_state = true;
+			}
 
 			if (repl_state[OLD] != L_AHEAD && repl_state[NEW] == L_AHEAD)
 				send_state = true;
@@ -3848,8 +3851,12 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				put_ldev(device);
 			}
 
-			if (send_state)
+			if (send_state) {
+				if (!test_bit(INITIAL_STATE_SENT, &peer_device->flags)) {
+					drbd_info(peer_device, "Connection not initialized.\n");
+				}
 				drbd_send_state(peer_device, new_state);
+			}
 #ifndef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: disable resync after unstable.
 			if (!device_stable[OLD] && device_stable[NEW] &&
