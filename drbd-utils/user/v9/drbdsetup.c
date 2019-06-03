@@ -2572,10 +2572,10 @@ static void device_status(struct devices_list *device, bool single_device)
 	 * the disk status is kept up_to_date in the event of a primary failure,
 	 * so disk error information should be displayed seperately.
 	 */
-	if (disk_state == D_UP_TO_DATE && device->info.disk_error_count) {
-		wrap_printf(indent, " %sdisk error:%d%s", 
+	if (disk_state == D_UP_TO_DATE && device->info.io_error_count) {
+		wrap_printf(indent, " %sio-error:%d%s", 
 			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
-			device->info.disk_error_count, 
+			device->info.io_error_count,
 			disk_state_color_stop(D_DISKLESS, true));
 	}
 
@@ -3637,7 +3637,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
 		[DRBD_PATH_STATE] = "path",
-		[DRBD_DISK_ERROR] = "local disk error"
+		[DRBD_IO_ERROR] = "io-error"
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;
@@ -3673,7 +3673,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	if (opt_now && action != NOTIFY_EXISTS)
 		return 0;
 	
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_IO_ERROR) {
 		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
 		}
@@ -3711,7 +3711,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)(tm->tm_gmtoff / 3600),
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_DISK_ERROR) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_IO_ERROR) {
 		const char *name = object_name[info->genlhdr->cmd];
 		int size;
 
@@ -3724,10 +3724,10 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		event_key(key, size + 1, name, dh->minor, &ctx);
 	}
 
-	if (info->genlhdr->cmd == DRBD_DISK_ERROR) {
+	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
 		printf("%s %s%s%s",
-			action_name[action], disk_error_color_start(), 
-			object_name[info->genlhdr->cmd], disk_error_color_stop());
+			action_name[action], io_error_color_start(),
+			object_name[info->genlhdr->cmd], io_error_color_stop());
 	}
 	else {
 		printf("%s %s",
@@ -3907,14 +3907,14 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		}
 	}
 		break;
-	case DRBD_DISK_ERROR: {
-		struct drbd_disk_error_info disk_error;
-		if (!drbd_disk_error_info_from_attrs(&disk_error, info)) {
-			printf(" disk:%s, io:%s,", drbd_disk_type_name(disk_error.disk_type), drbd_io_type_name(disk_error.io_type));
-			printf(" error_code:0x%08X, sector:%llus, size:%u", disk_error.error_code, disk_error.sector, disk_error.size);
+	case DRBD_IO_ERROR: {
+		struct drbd_io_error_info io_error;
+		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
+			printf(" disk:%s, io:%s,", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+			printf(" error_code:0x%08X, sector:%llus, size:%u", io_error.error_code, io_error.sector, io_error.size);
 		}
 		else {
-			dbg(1, "disk_error info missing\n");
+			dbg(1, "io_error info missing\n");
 			goto nl_out;
 		}
 	}

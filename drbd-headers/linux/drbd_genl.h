@@ -236,7 +236,7 @@ GENL_struct(DRBD_NLA_RESOURCE_INFO, 15, resource_info,
 GENL_struct(DRBD_NLA_DEVICE_INFO, 16, device_info,
 	__u32_field(1, 0, dev_disk_state)
 	__flg_field(2, 0, is_intentional_diskless)
-	__s32_field(3, 0, disk_error_count)
+	__s32_field(3, 0, io_error_count)
 )
 
 GENL_struct(DRBD_NLA_CONNECTION_INFO, 17, connection_info,
@@ -330,7 +330,7 @@ GENL_struct(DRBD_NLA_PATH_INFO, 30, drbd_path_info,
 	__flg_field(1, 0, path_established)
 )
 
-GENL_struct(DRBD_NLA_DISK_ERROR, 31, drbd_disk_error_info,
+GENL_struct(DRBD_NLA_IO_ERROR, 31, drbd_io_error_info,
 __s32_field(3, DRBD_GENLA_F_MANDATORY, error_code)
 __u32_field(4, DRBD_GENLA_F_MANDATORY, size)
 __u64_field(5, DRBD_GENLA_F_MANDATORY, sector)
@@ -571,5 +571,5 @@ GENL_notification(
 	GENL_tla_expected(DRBD_NLA_PATH_INFO, DRBD_F_REQUIRED))
 
 GENL_notification(
-	DRBD_DISK_ERROR, 49, events,
-	GENL_tla_expected(DRBD_NLA_DISK_ERROR, DRBD_F_REQUIRED))
+	DRBD_IO_ERROR, 49, events,
+	GENL_tla_expected(DRBD_NLA_IO_ERROR, DRBD_F_REQUIRED))

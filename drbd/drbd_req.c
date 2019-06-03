@@ -514,15 +514,15 @@ bool start_new_tl_epoch(struct drbd_resource *resource)
 	return true;
 }
 
-int w_notify_disk_error(struct drbd_work *w, int cancel)
+int w_notify_io_error(struct drbd_work *w, int cancel)
 {
 	UNREFERENCED_PARAMETER(cancel);
 	int ret = 0;
 	
-	struct drbd_disk_error_work *dw =
-		container_of(w, struct drbd_disk_error_work, w);
-	notify_disk_error(dw->disk_error);
-	kfree(dw->disk_error);
+	struct drbd_io_error_work *dw =
+		container_of(w, struct drbd_io_error_work, w);
+	notify_io_error(dw->io_error);
+	kfree(dw->io_error);
 	kfree(dw);
 	return ret;
 }
@@ -1136,8 +1136,8 @@ static void drbd_report_io_error(struct drbd_device *device, struct drbd_request
 	eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
 	if (eh == EP_PASSTHROUGH) {
-		if (atomic_read(&device->disk_error_count) < INT32_MAX) {
-			if (atomic_inc(&device->disk_error_count) > 1)
+		if (atomic_read(&device->io_error_count) < INT32_MAX) {
+			if (atomic_inc(&device->io_error_count) > 1)
 				write_log = true;
 		}
 	}

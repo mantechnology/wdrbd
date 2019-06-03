@@ -532,9 +532,9 @@ struct drbd_work {
 	int (*cb)(struct drbd_work *, int cancel);
 };
 
-struct drbd_disk_error_work {
+struct drbd_io_error_work {
 	struct drbd_work w;
-	struct drbd_disk_error *disk_error;
+	struct drbd_io_error *io_error;
 };
 
 struct drbd_peer_device_work {
@@ -558,7 +558,7 @@ extern long twopc_timeout(struct drbd_resource *);
 extern long twopc_retry_timeout(struct drbd_resource *, int);
 extern void twopc_connection_down(struct drbd_connection *);
 extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
-extern int w_notify_disk_error(struct drbd_work *w, int cancel);
+extern int w_notify_io_error(struct drbd_work *w, int cancel);
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
 #ifdef _WIN32
@@ -803,7 +803,7 @@ struct drbd_peer_request {
 
 // DW-1755 passthrough policy
 // disk error structure to pass to events2
-struct drbd_disk_error {
+struct drbd_io_error {
 	unsigned char	disk_type;
 	unsigned char	io_type;
 	NTSTATUS		error_code;
@@ -1809,7 +1809,7 @@ struct drbd_device {
 	Disk errors rarely occur, and even if they occur, 
 	the list counts will not increase in a large amount 
 	because they will occur only in a specific sector. */
-	atomic_t disk_error_count;
+	atomic_t io_error_count;
 };
 
 struct drbd_bm_aio_ctx {
@@ -2984,7 +2984,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		break;
 	// DW-1755
 	case EP_PASSTHROUGH:
-		if(atomic_read(&device->disk_error_count) == 1)
+		if(atomic_read(&device->io_error_count) == 1)
 			WDRBD_ERROR("Local IO failed in %s. Passthrough... \n", where);
 	
 		// if the metadisk fails, replication should be stopped immediately.
@@ -3182,7 +3182,7 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
  * it must be handled through the work thread.*/
 
 static inline void
-drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
+drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
 {
 	enum drbd_io_error_p ep;
 
@@ -3193,7 +3193,7 @@ drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type
 	if (ep != EP_PASSTHROUGH)
 		return;
 
-	struct drbd_disk_error_work *w;
+	struct drbd_io_error_work *w;
 #ifdef _WIN32 
 	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
 #else
@@ -3201,17 +3201,17 @@ drbd_queue_notify_disk_error(struct drbd_device *device, unsigned char disk_type
 #endif
 	if (w) {
 #ifdef _WIN32
-		w->disk_error = kmalloc(sizeof(*(w->disk_error)), GFP_ATOMIC, 'W2DW');
+		w->io_error = kmalloc(sizeof(*(w->io_error)), GFP_ATOMIC, 'W2DW');
 #else
 		w = kmalloc(sizeof(*w), GFP_ATOMIC);
 #endif
-		if (w->disk_error) {
-			w->w.cb = w_notify_disk_error;
-			w->disk_error->error_code = error_code;
-			w->disk_error->sector = sector;
-			w->disk_error->size = size;
-			w->disk_error->io_type = io_type;
-			w->disk_error->disk_type = disk_type;
+		if (w->io_error) {
+			w->w.cb = w_notify_io_error;
+			w->io_error->error_code = error_code;
+			w->io_error->sector = sector;
+			w->io_error->size = size;
+			w->io_error->io_type = io_type;
+			w->io_error->disk_type = disk_type;
 			drbd_queue_work(&device->resource->work, &w->w);
 		}
 		else {
