@@ -286,7 +286,15 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		* In case of a write error, send the neg ack anyways. */
 		if (!__test_and_set_bit(__EE_SEND_WRITE_ACK, &peer_req->flags))
 			inc_unacked(peer_device);
-		drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+
+		/* DW-1755 In the passthrough policy,
+		* when a disk error occurs on the secondary node,
+		* write out_of_sync for all nodes.
+		*/
+		for_each_peer_device(peer_device, device) {
+			if (peer_device)
+				drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+		}
     }
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
@@ -390,7 +398,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #else
 	if (error) {
 #endif
-		set_bit(__EE_WAS_ERROR, &peer_req->flags);
+		set_bit(__EE_WRITE_IO_FAIL|__EE_WAS_ERROR, &peer_req->flags);
 		process_io_error(bio, device, VOLUME_TYPE_REPL, error);
 	}
 

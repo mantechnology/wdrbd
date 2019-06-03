@@ -2854,6 +2854,26 @@ static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet
 	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
 }
 
+static int _drbd_send_neg_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
+	u64 sector, u32 blksize, u64 block_id, u64 flags)
+{
+	struct p_neg_ack *p;
+
+	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
+		return -EIO;
+
+	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
+	if (!p)
+		return -EIO;
+	p->sector = sector;
+	p->block_id = block_id;
+	p->blksize = blksize;
+	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
+	p->flags = flags;
+	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
+}
+
+
 static int drbd_send_ack_dp(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 		  struct drbd_peer_request_details *d)
 {
@@ -2883,6 +2903,23 @@ int drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 			      cpu_to_be32(peer_req->i.size),
 			      peer_req->block_id);
 }
+
+/* DW-1810
+* drbd_send_ack() - Sends an ack packet
+* @device:	DRBD device
+* @cmd:	packet command code
+* @peer_req:	peer request
+*/
+int drbd_send_neg_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
+			struct drbd_peer_request *peer_req, u64 flags)
+{
+	return _drbd_send_neg_ack(peer_device, cmd,
+		cpu_to_be64(peer_req->i.sector),
+		cpu_to_be32(peer_req->i.size),
+		peer_req->block_id,
+		flags);
+}
+		
 
 /* This function misuses the block_id field to signal if the blocks
  * are is sync or not. */
@@ -2963,6 +3000,7 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	sector_t sector = peer_req->i.sector;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
+	u64 flags = 0;
 
 	if (peer_req->flags & EE_IS_BARRIER) {
 		epoch = previous_epoch(peer_device->connection, peer_req->epoch);
@@ -2988,7 +3026,9 @@ static int e_end_block(struct drbd_work *w, int cancel)
 				drbd_set_in_sync(peer_device, sector, peer_req->i.size);
 #endif
 		} else {
-			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+			if (peer_req->flags & EE_WRITE_IO_FAIL)
+				set_bit(__EE_WRITE_IO_FAIL, &flags);
+			err = drbd_send_neg_ack(peer_device, P_NEG_ACK, peer_req, flags);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
 			drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
@@ -10086,7 +10126,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 {
 	struct drbd_peer_device *peer_device;
 	struct drbd_device *device;
-	struct p_block_ack *p = pi->data;
+	struct p_neg_ack *p = pi->data;
 	sector_t sector = be64_to_cpu(p->sector);
 	int size = be32_to_cpu(p->blksize);
 	int err;
@@ -10130,7 +10170,9 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 					    NEG_ACKED, true);
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH: Set out-of-sync if peer sent negative ack for this request, doesn't matter req exists or not.
-	drbd_set_out_of_sync(peer_device, sector, size);
+	// DW-1810 
+	if (!test_bit(__EE_WRITE_IO_FAIL, &p->flags)) 
+		drbd_set_out_of_sync(peer_device, sector, size);
 #else
 	if (err) {
 		/* Protocol A has no P_WRITE_ACKs, but has P_NEG_ACKs.
@@ -10596,7 +10638,7 @@ static struct meta_sock_cmd ack_receiver_tbl[] = {
 	[P_WRITE_ACK]	    = { sizeof(struct p_block_ack), got_BlockAck },
 	[P_RS_WRITE_ACK]    = { sizeof(struct p_block_ack), got_BlockAck },
 	[P_SUPERSEDED]      = { sizeof(struct p_block_ack), got_BlockAck },
-	[P_NEG_ACK]	    = { sizeof(struct p_block_ack), got_NegAck },
+	[P_NEG_ACK] = { sizeof(struct p_neg_ack), got_NegAck },
 	[P_NEG_DREPLY]	    = { sizeof(struct p_block_ack), got_NegDReply },
 	[P_NEG_RS_DREPLY]   = { sizeof(struct p_block_ack), got_NegRSDReply },
 	[P_OV_RESULT]	    = { sizeof(struct p_block_ack), got_OVResult },
