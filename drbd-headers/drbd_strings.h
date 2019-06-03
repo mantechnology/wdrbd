@@ -20,7 +20,7 @@ extern const char *drbd_role_str(enum drbd_role);
 extern const char *drbd_disk_str(enum drbd_disk_state);
 extern const char *drbd_set_st_err_str(enum drbd_state_rv);
 extern const char *drbd_packet_name(enum drbd_packet);
-
-
+extern const char *drbd_io_type_name(unsigned char type);
+extern const char *drbd_disk_type_name(unsigned char type);
 
 #endif  /* __DRBD_STRINGS_H */
