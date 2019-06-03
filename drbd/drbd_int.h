@@ -1567,6 +1567,8 @@ struct drbd_peer_device {
 #else
 	unsigned long flags;
 #endif
+	//DW-1806 set after initial send.
+	KEVENT state_initial_send_event;
 	
 
 	enum drbd_repl_state start_resync_side;

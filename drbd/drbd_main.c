@@ -4411,6 +4411,8 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	peer_device->repl_state[NOW] = L_OFF;
 	spin_lock_init(&peer_device->peer_seq_lock);
 
+	//DW-1806 default value is TRUE
+	KeInitializeEvent(&peer_device->state_initial_send_event, NotificationEvent, TRUE);
 	err = drbd_create_peer_device_default_config(peer_device);
 	if (err) {
 		kfree(peer_device);
