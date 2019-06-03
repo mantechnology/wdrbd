@@ -3509,11 +3509,11 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				LARGE_INTEGER		timeout;
 				NTSTATUS			status = STATUS_SUCCESS;
 
-				drbd_info(peer_device, "State Initial Send Wait\n");
 				timeout.QuadPart = (-1 * 10000 * 3000);   // wait 3000 ms relative
 				status = KeWaitForSingleObject(&peer_device->state_initial_send_event, Executive, KernelMode, FALSE, &timeout);
 				if (status == STATUS_TIMEOUT) {
-					drbd_info(peer_device, "State Initial Send Timeout\n");
+					/* FIXME timeout when sending initial state? */
+					drbd_err(peer_device, "state initial send timeout!\n");
 				}
 			}
 
