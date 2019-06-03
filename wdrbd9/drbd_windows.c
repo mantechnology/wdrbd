@@ -3469,7 +3469,7 @@ VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx
 	struct drbd_bm_aio_ctx *bm_ctx = bio->bi_private;
 	struct drbd_device *device = bm_ctx->device;
 	bool write_log = true;
-	if (atomic_read(&device->disk_error_count) > 0)
+	if (atomic_read(&device->io_error_count) > 0)
 		write_log = false;
 
 	if (write_log)
