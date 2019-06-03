@@ -3504,6 +3504,18 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #ifdef _WIN32 // DW-1447
 			bool send_bitmap = false;
 #endif
+			//DW-1806 If the initial state is not sent, wait for it to be sent.(Maximum 3 seconds)
+			if (!test_bit(INITIAL_STATE_SENT, &peer_device->flags)) {
+				LARGE_INTEGER		timeout;
+				NTSTATUS			status = STATUS_SUCCESS;
+
+				drbd_info(peer_device, "State Initial Send Wait\n");
+				timeout.QuadPart = (-1 * 10000 * 3000);   // wait 3000 ms relative
+				status = KeWaitForSingleObject(&peer_device->state_initial_send_event, Executive, KernelMode, FALSE, &timeout);
+				if (status == STATUS_TIMEOUT) {
+					drbd_info(peer_device, "State Initial Send Timeout\n");
+				}
+			}
 
 			/* In case we finished a resync as resync-target update all neighbors
 			   about having a bitmap_uuid of 0 towards the previous sync-source.
@@ -3715,9 +3727,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			/* Make sure the peer gets informed about eventual state
 			   changes (ISP bits) while we were in L_OFF. */
 			if (repl_state[OLD] == L_OFF && repl_state[NEW] >= L_ESTABLISHED) {
-				//DW-1801 Connection initialized.
-				if (test_bit(INITIAL_STATE_SENT, &peer_device->flags))
-					send_state = true;
+				send_state = true;
 			}
 
 			if (repl_state[OLD] != L_AHEAD && repl_state[NEW] == L_AHEAD)
@@ -3851,12 +3861,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				put_ldev(device);
 			}
 
-			if (send_state) {
-				if (!test_bit(INITIAL_STATE_SENT, &peer_device->flags)) {
-					drbd_info(peer_device, "Connection not initialized.\n");
-				}
+			if (send_state) 
 				drbd_send_state(peer_device, new_state);
-			}
+
 #ifndef _WIN32_DISABLE_RESYNC_FROM_SECONDARY
 			// MODIFIED_BY_MANTECH DW-1142: disable resync after unstable.
 			if (!device_stable[OLD] && device_stable[NEW] &&
