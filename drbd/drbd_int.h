@@ -805,9 +805,6 @@ struct drbd_peer_request {
 // DW-1755 passthrough policy
 // disk error structure to pass to events2
 struct drbd_io_error {
-	char			res_name[128];
-	unsigned int	vnr;
-	unsigned int	minor;
 	unsigned char	disk_type;
 	unsigned char	io_type;
 	NTSTATUS		error_code;
@@ -3214,10 +3211,6 @@ drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, 
 		if (w->io_error) {
 			w->device = device;
 			w->w.cb = w_notify_io_error;
-			if (device->resource->name)
-				strncpy(w->io_error->res_name, device->resource->name, 127);
-			w->io_error->minor = device->minor;
-			w->io_error->vnr = device->vnr;
 			w->io_error->error_code = error_code;
 			w->io_error->sector = sector;
 			w->io_error->size = size;

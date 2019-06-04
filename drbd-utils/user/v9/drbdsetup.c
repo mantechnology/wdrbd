@@ -3728,7 +3728,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	}
 
 	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
-		printf("%s %s%s%s %s",
+		printf("%s %s%s%s%s",
 			action_name[action], io_error_color_start(),
 			object_name[info->genlhdr->cmd], io_error_color_stop(), key ? key : "-");
 	}
@@ -3914,7 +3914,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		struct drbd_io_error_info io_error;
 		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
 			printf(" disk:%s io:%s", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
-			printf(" error_code:0x%08X, sector:%llus, size:%u", io_error.error_code, io_error.sector, io_error.size);
+			printf(" error_code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
 		}
 		else {
 			dbg(1, "io_error info missing\n");
