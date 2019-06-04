@@ -287,13 +287,10 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		if (!__test_and_set_bit(__EE_SEND_WRITE_ACK, &peer_req->flags))
 			inc_unacked(peer_device);
 
-		/* DW-1755 In the passthrough policy,
-		* when a disk error occurs on the secondary node,
-		* write out_of_sync for all nodes.
-		*/
-		for_each_peer_device(peer_device, device) {
-			if (peer_device)
-				drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+		struct drbd_peer_device *p_device;
+		for_each_peer_device(p_device, device) {
+			if (p_device)
+				drbd_set_out_of_sync(p_device, peer_req->i.sector, peer_req->i.size);
 		}
     }
 

@@ -2991,7 +2991,11 @@ static int e_end_block(struct drbd_work *w, int cancel)
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
-			drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
+			struct drbd_peer_device *p_device;
+			for_each_peer_device(p_device, device) {
+				if (p_device)
+					drbd_set_out_of_sync(p_device, sector, peer_req->i.size);
+			}
 #endif
 
 			/* we expect it to be marked out of sync anyways...
