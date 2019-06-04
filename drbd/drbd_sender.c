@@ -398,7 +398,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 #else
 	if (error) {
 #endif
-		set_bit(__EE_WRITE_IO_FAIL|__EE_WAS_ERROR, &peer_req->flags);
+		set_bit(__EE_WAS_ERROR, &peer_req->flags);
 		process_io_error(bio, device, VOLUME_TYPE_REPL, error);
 	}
 

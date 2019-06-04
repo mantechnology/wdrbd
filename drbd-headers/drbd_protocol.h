@@ -196,16 +196,6 @@ struct p_block_ack {
 	uint32_t seq_num;
 } __packed;
 
-//DW-1810
-struct p_neg_ack {
-	uint64_t sector;
-	uint64_t block_id;
-	uint32_t blksize;
-	uint32_t seq_num;
-	uint64_t flags;
-} __packed;
-
-
 struct p_block_req {
 	uint64_t sector;
 	uint64_t block_id;

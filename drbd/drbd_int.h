@@ -879,10 +879,6 @@ enum {
 	//DW-1601
 	/* last split request */
 	__EE_SPLIT_LAST_REQUEST,
-
-	//DW-1810
-	// write io fail
-	__EE_WRITE_IO_FAIL,
 };
 #define EE_MAY_SET_IN_SYNC     		(1<<__EE_MAY_SET_IN_SYNC)			//LSB bit field:0
 #define EE_IS_BARRIER          		(1<<__EE_IS_BARRIER)				//LSB bit field:1
@@ -903,8 +899,7 @@ enum {
 //DW-1601
 #define EE_SPLIT_REQUEST			(1<<__EE_SPLIT_REQUEST)				//LSB bit field:16 
 #define EE_SPLIT_LAST_REQUEST		(1<<__EE_SPLIT_LAST_REQUEST)				//LSB bit field:17
-//DW-1810
-#define EE_WRITE_IO_FAIL				(1<<__EE_WRITE_IO_FAIL)				//LSB bit field:18
+
 /* flag bits per device */
 enum {
 	UNPLUG_QUEUED,		/* only relevant with kernel 2.4 */
