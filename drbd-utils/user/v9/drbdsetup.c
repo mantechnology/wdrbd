@@ -3914,7 +3914,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		struct drbd_io_error_info io_error;
 		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
 			printf(" disk:%s io:%s", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
-			printf(" error_code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
+			printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
 		}
 		else {
 			dbg(1, "io_error info missing\n");
