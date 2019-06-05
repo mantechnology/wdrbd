@@ -3674,7 +3674,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	if (opt_now && action != NOTIFY_EXISTS)
 		return 0;
 	
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE /*/&& info->genlhdr->cmd != DRBD_IO_ERROR*/) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
 		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
 		}
@@ -3712,7 +3712,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)(tm->tm_gmtoff / 3600),
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE/* && info->genlhdr->cmd != DRBD_IO_ERROR*/) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
 		const char *name = NULL;
 		if (info->genlhdr->cmd != DRBD_IO_ERROR)
 			name = object_name[info->genlhdr->cmd];
