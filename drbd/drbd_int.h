@@ -534,6 +534,7 @@ struct drbd_work {
 
 struct drbd_io_error_work {
 	struct drbd_work w;
+	struct drbd_device *device;
 	struct drbd_io_error *io_error;
 };
 
@@ -3208,6 +3209,7 @@ drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, 
 		w = kmalloc(sizeof(*w), GFP_ATOMIC);
 #endif
 		if (w->io_error) {
+			w->device = device;
 			w->w.cb = w_notify_io_error;
 			w->io_error->error_code = error_code;
 			w->io_error->sector = sector;

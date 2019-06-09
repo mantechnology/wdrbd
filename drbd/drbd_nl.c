@@ -7507,7 +7507,7 @@ failed:
 		 err, seq);
 }
 				  
-void notify_io_error(struct drbd_io_error *io_error)
+void notify_io_error(struct drbd_device *device, struct drbd_io_error *io_error)
 {
 	struct drbd_io_error_info io_error_info;
 	io_error_info.error_code = io_error->error_code;
@@ -7536,10 +7536,11 @@ void notify_io_error(struct drbd_io_error *io_error)
 	if (!dh)
 		goto fail;
 
-	dh->minor = UINT32_MAX;
+	dh->minor = device->minor;
 	dh->ret_code = NO_ERROR;
 	mutex_lock(&notification_mutex);
-	if (nla_put_notification_header(skb, NOTIFY_ERROR) ||
+	if (nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL) ||
+		nla_put_notification_header(skb, NOTIFY_ERROR) ||
 		drbd_io_error_info_to_skb(skb, &io_error_info, true))
 		goto unlock_fail;
 
