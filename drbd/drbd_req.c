@@ -521,9 +521,13 @@ int w_notify_io_error(struct drbd_work *w, int cancel)
 	
 	struct drbd_io_error_work *dw =
 		container_of(w, struct drbd_io_error_work, w);
-	notify_io_error(dw->io_error);
-	kfree(dw->io_error);
-	kfree(dw);
+
+	if (dw && dw->io_error) {
+		notify_io_error(dw->device, dw->io_error);
+		kfree(dw->io_error);
+		kfree(dw);
+	}
+
 	return ret;
 }
 

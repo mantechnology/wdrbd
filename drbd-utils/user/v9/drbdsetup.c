@@ -3540,10 +3540,11 @@ static int event_key(char *key, int size, const char *name, unsigned minor,
 	char addr[ADDRESS_STR_MAX];
 	int ret, pos = 0;
 
-	if (!ctx)
+	if (!ctx) 
 		return -1;
 
-	EVPRINT("%s", name);
+	if (name)
+		EVPRINT("%s", name);
 
 	if (ctx->ctx_resource_name)
 		EVPRINT(" name:%s", ctx->ctx_resource_name);
@@ -3673,7 +3674,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	if (opt_now && action != NOTIFY_EXISTS)
 		return 0;
 	
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_IO_ERROR) {
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
 		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
 		}
@@ -3711,8 +3712,10 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)(tm->tm_gmtoff / 3600),
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
-	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE && info->genlhdr->cmd != DRBD_IO_ERROR) {
-		const char *name = object_name[info->genlhdr->cmd];
+	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
+		const char *name = NULL;
+		if (info->genlhdr->cmd != DRBD_IO_ERROR)
+			name = object_name[info->genlhdr->cmd];
 		int size;
 
 		size = event_key(NULL, 0, name, dh->minor, &ctx);
@@ -3725,9 +3728,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	}
 
 	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
-		printf("%s %s%s%s",
+		printf("%s %s%s%s%s",
 			action_name[action], io_error_color_start(),
-			object_name[info->genlhdr->cmd], io_error_color_stop());
+			object_name[info->genlhdr->cmd], io_error_color_stop(), key ? key : "-");
 	}
 	else {
 		printf("%s %s",
@@ -3910,8 +3913,8 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	case DRBD_IO_ERROR: {
 		struct drbd_io_error_info io_error;
 		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
-			printf(" disk:%s, io:%s,", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
-			printf(" error_code:0x%08X, sector:%llus, size:%u", io_error.error_code, io_error.sector, io_error.size);
+			printf(" disk:%s io:%s", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+			printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
 		}
 		else {
 			dbg(1, "io_error info missing\n");
