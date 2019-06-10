@@ -286,12 +286,14 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		* In case of a write error, send the neg ack anyways. */
 		if (!__test_and_set_bit(__EE_SEND_WRITE_ACK, &peer_req->flags))
 			inc_unacked(peer_device);
-
-		struct drbd_peer_device *p_device;
-		for_each_peer_device(p_device, device) {
-			if (p_device)
-				drbd_set_out_of_sync(p_device, peer_req->i.sector, peer_req->i.size);
-		}
+		
+		/* DW-1810
+		 * There is no case where this flag is set because of WRITE SAME, TRIM. 
+           Therefore, the flag EE_WAS_ERROR means that an IO ERROR occurred. 
+		   In order to synchronize the Secondaries at the time of primary failure, 
+		   OOS for IO error is recorded for all nodes.
+		 */
+		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
     }
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);

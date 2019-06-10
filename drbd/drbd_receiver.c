@@ -2960,7 +2960,6 @@ static int e_end_block(struct drbd_work *w, int cancel)
 		container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
-	sector_t sector = peer_req->i.sector;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
 
@@ -2989,14 +2988,11 @@ static int e_end_block(struct drbd_work *w, int cancel)
 #endif
 		} else {
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-#ifdef _WIN32
-			// MODIFIED_BY_MANTECH DW-1012: Set out-of-sync when failed to write received data, it will also be set on source node.
-			struct drbd_peer_device *p_device;
-			for_each_peer_device(p_device, device) {
-				if (p_device)
-					drbd_set_out_of_sync(p_device, sector, peer_req->i.size);
-			}
-#endif
+			/* DW-1810
+			 * Since the drbd_endio_write_sec_final function must be executed at both the replication and resync after the IO completion routine, 
+			 * the OOS record for the IO error is set to drbd_endio_write_sec_final.
+			 * And since duplicate records were made in e_end_block, they are deleted.
+			 */
 
 			/* we expect it to be marked out of sync anyways...
 			 * maybe assert this?  */
