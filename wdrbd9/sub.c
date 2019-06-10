@@ -595,7 +595,8 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 		deviceNameLength = VolumeExtension->PhysicalDeviceNameLength;
 	}
 
-	len = sizeof(IO_ERROR_LOG_PACKET) + deviceNameLength + 4;
+	//DW-1816 remove unnecessary allocate
+	len = sizeof(IO_ERROR_LOG_PACKET) + deviceNameLength + sizeof(WCHAR);
 	pLogEntry = (PIO_ERROR_LOG_PACKET) IoAllocateErrorLogEntry(mvolDriverObject, (UCHAR) len);
 	if (pLogEntry == NULL)
 	{
@@ -613,16 +614,13 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
+	//DW-1816 wcsncpy() is divided into sizeof(WCHAR) because the third argument is the WCHAR count. Also, fill the rest of the area with null after copying
 	if (RootExtension != NULL) {
-		wcsncpy(wp, RootExtension->PhysicalDeviceName, deviceNameLength - 1);
-		wp += deviceNameLength / sizeof(WCHAR);
+		wcsncpy(wp, RootExtension->PhysicalDeviceName, deviceNameLength / sizeof(WCHAR));
 	}
 	else if (VolumeExtension != NULL) {
-		wcsncpy(wp, VolumeExtension->PhysicalDeviceName, deviceNameLength - 1);
-		wp += deviceNameLength / sizeof(WCHAR);
+		wcsncpy(wp, VolumeExtension->PhysicalDeviceName, deviceNameLength / sizeof(WCHAR));
 	}
-		
-	*wp = 0;
 
 	IoWriteErrorLogEntry(pLogEntry);
 }
