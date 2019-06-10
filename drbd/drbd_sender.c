@@ -1112,7 +1112,7 @@ next_sector:
 
 		if (bit == DRBD_END_OF_BITMAP) {
 			device->bm_resync_fo = drbd_bm_bits(device);
-			drbd_info(device, "DRBD_END_OF_BITMAP, device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
+			drbd_info(peer_device, "DRBD_END_OF_BITMAP, device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
 			put_ldev(device);
 			return 0;
 		}
@@ -1200,7 +1200,7 @@ next_sector:
 						(size == (unsigned int)discard_granularity) ? P_RS_THIN_REQ : P_RS_DATA_REQUEST,
 						 sector, size, ID_SYNCER);
 			if (err) {
-				drbd_err(device, "drbd_send_drequest() failed, aborting...\n");
+				drbd_err(peer_device, "drbd_send_drequest() failed, aborting...\n");
 				dec_rs_pending(peer_device);
 				put_ldev(device);
 				return err;
@@ -1215,7 +1215,7 @@ next_sector:
 		 * resync data block, and the last bit is cleared.
 		 * until then resync "work" is "inactive" ...
 		 */
-		drbd_info(device, "P_RS_DATA_REPLY not received??,  device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
+		drbd_info(peer_device, "P_RS_DATA_REPLY not received??,  device->bm_resync_fo : %lu, bm_set : %lu\n", device->bm_resync_fo, drbd_bm_total_weight(peer_device));
 		put_ldev(device);
 		return 0;
 	}
