@@ -2557,21 +2557,25 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	atomic_t *split_cnt;
 	int submit_cnt = 0;
 
-	split_cnt = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
-	if (!split_cnt)
-		return -EIO;
-
-	atomic_set(split_cnt, 0);
-
 	peer_req = read_in_block(peer_device, d);
-	if (!peer_req)
+	if (!peer_req) {
+		drbd_err(peer_device, "failed peer_req allocate\n");
 		return -EIO;
+	}
 
 	if (test_bit(UNSTABLE_RESYNC, &peer_device->flags))
 		clear_bit(STABLE_RESYNC, &device->flags);
 
+	split_cnt = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
+	if (!split_cnt) {
+		drbd_err(peer_device, "failed split count allocate\n");
+		return -EIO;
+	}
+
 	dec_rs_pending(peer_device);
 	inc_unacked(peer_device);
+
+	atomic_set(split_cnt, 0);
 
 	offset = first = BM_SECT_TO_BIT(d->sector);
 	last = d->bi_size == 0 ? first : BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
@@ -10195,13 +10199,17 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			drbd_rs_failed_io(peer_device, sector, size);
 			break;
 		case P_RS_CANCEL:
-			bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
-			mutex_lock(&device->bm_resync_fo_mutex);
-			device->bm_resync_fo = min(device->bm_resync_fo, bit);
-			mutex_unlock(&device->bm_resync_fo_mutex);
-			atomic_add(size >> 9, &peer_device->rs_sect_in);
+			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in sync.
+			if (peer_device->repl_state[NOW] == L_SYNC_TARGET || peer_device->repl_state[NOW] == L_VERIFY_T) {
+				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
-			mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
+				mutex_lock(&device->bm_resync_fo_mutex);
+				device->bm_resync_fo = min(device->bm_resync_fo, bit);
+				mutex_unlock(&device->bm_resync_fo_mutex);
+
+				atomic_add(size >> 9, &peer_device->rs_sect_in);
+				mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
+			}
 			break;
 		default:
 			BUG();
