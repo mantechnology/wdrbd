@@ -1875,22 +1875,27 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 		put_ldev(device);
 	}
 
-	if (peer_device->repl_state[NOW] == L_AHEAD ||
-		//DW-1807 send P_RS_CANCEL if resync is not in progress
-		peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+	if (peer_device->repl_state[NOW] == L_AHEAD) {
 		err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
-	} else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
-			inc_rs_pending(peer_device);
-			if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
-				err = drbd_send_rs_deallocated(peer_device, peer_req);
-			else
-				err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
-		} else {
-			if (drbd_ratelimit())
-				drbd_err(peer_device, "Not sending RSDataReply, "
-				    "partner DISKLESS!\n");
-			err = 0;
+	}
+	else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+		//DW-1807 send P_RS_CANCEL if resync is not in progress
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE)
+			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+		else {
+			if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
+				inc_rs_pending(peer_device);
+				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
+					err = drbd_send_rs_deallocated(peer_device, peer_req);
+				else
+					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
+			}
+			else {
+				if (drbd_ratelimit())
+					drbd_err(peer_device, "Not sending RSDataReply, "
+					"partner DISKLESS!\n");
+				err = 0;
+			}
 		}
 	} else {
 		if (drbd_ratelimit())
