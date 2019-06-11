@@ -2970,8 +2970,6 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		 * we read meta data only once during attach,
 		 * which will fail in case of errors.
 		 */
-		if (df == DRBD_READ_ERROR)
-			set_bit(WAS_READ_ERROR, &device->flags);
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
 		if (device->disk_state[NOW] > D_FAILED) {
@@ -2982,14 +2980,16 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 #else
 			end_state_change_locked(device->resource);
 #endif
-			WDRBD_ERROR("Local IO failed in %s. Detaching...\n", where);
+			drbd_err(device, "Local IO failed in %s. Detaching...\n", where);
 		}
 		break;
 	// DW-1755
 	case EP_PASSTHROUGH:
 		// DW-1814 
 		// If an error occurs in the meta volume, disk consistency can not be guaranteed and replication must be stopped in any case. 
-		if (df == DRBD_META_IO_ERROR) {
+		if (df == DRBD_FORCE_DETACH)
+			set_bit(FORCE_DETACH, &device->flags);
+		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
 			if (device->disk_state[NOW] > D_FAILED) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_FAILED);
@@ -2998,8 +2998,12 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 #else
 				end_state_change_locked(device->resource);
 #endif
-				WDRBD_ERROR("IO error occurred on meta-disk. Detaching...\n");
 			}
+
+			if (df == DRBD_META_IO_ERROR)
+				drbd_err(device, "IO error occurred on meta-disk in %s. Detaching...\n", where);
+			else
+				drbd_err(device, "Force-detaching in %s\n", where);
 		}
 		else {
 		// DW-1814 
@@ -3007,7 +3011,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		// When a write error occurs in the duplicate volume, P_NEG_ACK is transmitted and the OOS is recorded and synchronized.
 		// When a read error occurs, P_NEG_RS_DREPLY is transmitted, and synchronization can be restarted for failed bits.
 			if (atomic_read(&device->io_error_count) == 1)
-				WDRBD_ERROR("%s IO error occurred on repl-disk. Passthrough...\n", (df == DRBD_READ_ERROR)?"Read":"Write");
+				drbd_err(device, "%s IO error occurred on repl-disk. Passthrough...\n", (df == DRBD_READ_ERROR) ? "Read" : "Write");
 		}
 
 		break;
