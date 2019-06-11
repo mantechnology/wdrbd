@@ -1617,14 +1617,14 @@ static int bm_rw_range(struct drbd_device *device,
 			 * unless specifically requested to write ALL pages */
 			if (!(flags & BM_AIO_WRITE_ALL_PAGES) &&
 			    bm_test_page_unchanged(b->bm_pages[i])) {
-				dynamic_drbd_dbg(device, "skipped bm write for idx %u\n", i);
+				//dynamic_drbd_dbg(device, "skipped bm write for idx %u\n", i);
 				continue;
 			}
 			/* during lazy writeout,
 			 * ignore those pages not marked for lazy writeout. */
 			if ((flags & BM_AIO_WRITE_LAZY) &&
 			    !bm_test_page_lazy_writeout(b->bm_pages[i])) {
-				dynamic_drbd_dbg(device, "skipped bm lazy write for idx %u\n", i);
+				//dynamic_drbd_dbg(device, "skipped bm lazy write for idx %u\n", i);
 				continue;
 			}
 			atomic_inc(&ctx->in_flight);
