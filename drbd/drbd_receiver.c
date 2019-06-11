@@ -7726,10 +7726,11 @@ static int process_twopc(struct drbd_connection *connection,
 
 
 #ifdef _WIN32_TWOPC
-	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n",
+	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) repl(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n",
 				reply->tid,
 				reply->target_node_id,
 				mask.conn == conn_MASK ? drbd_conn_str(val.conn) : "-",
+				mask.conn == conn_MASK ? ((val.conn < conn_MASK && val.conn > C_CONNECTED) ? drbd_repl_str(val.conn) : "-") : "-",
 				mask.disk == disk_MASK ? drbd_disk_str(val.disk) : "-",
 				mask.pdsk == pdsk_MASK ? drbd_disk_str(val.pdsk) : "-",
 				mask.role == role_MASK ? drbd_role_str(val.role) : "-",

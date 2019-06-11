@@ -4668,10 +4668,11 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 #endif
 
 #ifdef _WIN32_TWOPC
-	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n", 
+	drbd_info(resource, "[TWOPC:%u] target_node_id(%d) conn(%s) repl(%s) disk(%s) pdsk(%s) role(%s) peer(%s) flags (%d) \n", 
 				be32_to_cpu(request.tid),
 				context->target_node_id,
 				context->mask.conn == conn_MASK ? drbd_conn_str(context->val.conn) : "-",
+				context->mask.conn == conn_MASK ? ((context->val.conn < conn_MASK && context->val.conn > C_CONNECTED) ? drbd_repl_str(context->val.conn) : "-") : "-",
 				context->mask.disk == disk_MASK ? drbd_disk_str(context->val.disk) : "-",
 				context->mask.pdsk == pdsk_MASK ? drbd_disk_str(context->val.pdsk) : "-",
 				context->mask.role == role_MASK ? drbd_role_str(context->val.role) : "-",

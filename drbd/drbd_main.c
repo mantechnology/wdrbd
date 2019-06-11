@@ -6165,7 +6165,7 @@ int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_devic
 			!isFastInitialSync() ||
 			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_SOURCE, false))
 		{
-			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			drbd_warn(peer_device, "can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
 			if (dec_bm_work_n)
 			{
 				atomic_inc(&device->pending_bitmap_work.n);
@@ -6180,7 +6180,7 @@ int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_devic
 			!isFastInitialSync() ||
 			!SetOOSAllocatedCluster(device, peer_device, L_SYNC_TARGET, false))
 		{
-			WDRBD_WARN("can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
+			drbd_warn(peer_device, "can not perform fast invalidate(remote), protocol ver(%d), fastSyncOpt(%d)\n", peer_device->connection->agreed_pro_version, isFastInitialSync());
 			if (dec_bm_work_n)
 			{
 				atomic_inc(&device->pending_bitmap_work.n);
@@ -6191,7 +6191,7 @@ int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_devic
 	}
 	else
 	{
-		WDRBD_WARN("unexpected repl state: %s\n", drbd_repl_str(peer_device->repl_state[NOW]));
+		drbd_warn(peer_device, "unexpected repl state: %s\n", drbd_repl_str(peer_device->repl_state[NOW]));
 	}
 
 	if (dec_bm_work_n)
@@ -6207,14 +6207,13 @@ int drbd_bmio_set_all_or_fast(struct drbd_device *device, struct drbd_peer_devic
 int drbd_bmio_set_all_n_write(struct drbd_device *device,
 			      struct drbd_peer_device *peer_device) __must_hold(local)
 {
-	UNREFERENCED_PARAMETER(peer_device);
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
 	for_each_peer_device_rcu(p, device) {
 		if (!update_sync_bits(p, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
-			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
+			drbd_err(peer_device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
 			drbd_bm_set_many_bits(p, 0, DRBD_END_OF_BITMAP);
 		}
 	}
@@ -6273,7 +6272,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 		NULL == pBitmap->Buffer ||
 		NULL == peer_device)
 	{
-		WDRBD_ERROR("Invalid parameter, pBitmap(0x%p), pBitmap->Buffer(0x%p) peer_device(0x%p)\n", pBitmap, pBitmap ? pBitmap->Buffer:NULL, peer_device);
+		drbd_err(peer_device, "Invalid parameter, pBitmap(0x%p), pBitmap->Buffer(0x%p) peer_device(0x%p)\n", pBitmap, pBitmap ? pBitmap->Buffer : NULL, peer_device);
 		return UINT64_MAX;
 	}
 
@@ -6334,7 +6333,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		NULL == peer_device ||
 		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
 	{
-		WDRBD_ERROR("Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
+		drbd_err(peer_device,"Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
 		return false;
 	}
 
@@ -6349,7 +6348,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	if (!drbd_inspect_resync_side(peer_device, side, NOW))
 #endif
 	{
-		WDRBD_WARN("can't be %s\n", drbd_repl_str(side));
+		drbd_warn(peer_device, "can't be %s\n", drbd_repl_str(side));
 		goto out;
 	}
 #endif
@@ -6367,12 +6366,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		// DW-1317: set read-only attribute and mount for temporary.
 		if (side == L_SYNC_SOURCE)
 		{
-			WDRBD_INFO("I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
+			drbd_info(peer_device,"I am a secondary sync source, will mount volume for temporary to get allocated clusters.\n");
 			bSecondary = true;
 		}
 		else if (side == L_SYNC_TARGET)
 		{
-			WDRBD_INFO("I am a sync target, wait to receive source's bitmap\n");
+			drbd_info(peer_device,"I am a sync target, wait to receive source's bitmap\n");
 			bRet = true;
 			goto out;			
 		}
@@ -6388,7 +6387,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			// set readonly attribute.
 			if (!ChangeVolumeReadonly(device->minor, true))
 			{
-				WDRBD_ERROR("Could not change volume read-only attribute\n");
+				drbd_err(peer_device, "Could not change volume read-only attribute\n");
 				mutex_unlock(&att_mod_mutex);
 				bSecondary = false;
 				break;
@@ -6403,7 +6402,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		// Get volume bitmap which is converted into 4kb cluster unit.
 		pBitmap = (PVOLUME_BITMAP_BUFFER)GetVolumeBitmapForDrbd(device->minor, BM_BLOCK_SIZE);		
 		if (NULL == pBitmap) {
-			WDRBD_ERROR("Could not get bitmap for drbd\n");
+			drbd_err(peer_device, "Could not get bitmap for drbd\n");
 		}
 
 		// DW-1391
@@ -6420,7 +6419,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 			// clear readonly attribute
 			if (!ChangeVolumeReadonly(device->minor, false))
 			{
-				WDRBD_ERROR("Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
+				drbd_err(peer_device, "Read-only attribute for volume(minor: %d) had been set, but can't be reverted. force detach drbd disk\n", device->minor);
 				if (device &&
 					get_ldev_if_state(device, D_NEGOTIATING))
 				{
@@ -6444,7 +6443,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	if (count == -1)
 	{
-		WDRBD_ERROR("Could not set bits from gotten bitmap\n");
+		drbd_err(peer_device, "Could not set bits from gotten bitmap\n");
 		bRet = false;
 	}
 	else{
