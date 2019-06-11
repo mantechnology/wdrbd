@@ -2987,15 +2987,27 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		break;
 	// DW-1755
 	case EP_PASSTHROUGH:
-		if(atomic_read(&device->io_error_count) == 1)
-			WDRBD_ERROR("Local IO failed in %s. Passthrough... \n", where);
-	
-		// if the metadisk fails, replication should be stopped immediately.
+		// DW-1814 
+		// If an error occurs in the meta volume, disk consistency can not be guaranteed and replication must be stopped in any case. 
 		if (df == DRBD_META_IO_ERROR) {
-			struct drbd_peer_device* peer_device;
-			for_each_peer_device(peer_device, device) {
-				change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
+			if (device->disk_state[NOW] > D_FAILED) {
+				begin_state_change_locked(device->resource, CS_HARD);
+				__change_disk_state(device, D_FAILED);
+#ifdef _WIN32_RCU_LOCKED
+				end_state_change_locked(device->resource, false, __FUNCTION__);
+#else
+				end_state_change_locked(device->resource);
+#endif
+				WDRBD_ERROR("IO error occurred on meta-disk. Detaching...\n");
 			}
+		}
+		else {
+		// DW-1814 
+		// In the event of a write or read error on a clone volume, there is no action here to commit it to the failure handling mechanism.
+		// When a write error occurs in the duplicate volume, P_NEG_ACK is transmitted and the OOS is recorded and synchronized.
+		// When a read error occurs, P_NEG_RS_DREPLY is transmitted, and synchronization can be restarted for failed bits.
+			if (atomic_read(&device->io_error_count) == 1)
+				WDRBD_ERROR("%s IO error occurred on repl-disk. Passthrough...\n", (df == DRBD_READ_ERROR)?"Read":"Write");
 		}
 
 		break;
