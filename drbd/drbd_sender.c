@@ -1877,7 +1877,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 
 	if (peer_device->repl_state[NOW] == L_AHEAD ||
 		//DW-1807 send P_RS_CANCEL if resync is not in progress
-		(peer_device->repl_state[NOW] != L_SYNC_SOURCE && peer_device->repl_state[NOW] != L_VERIFY_S)) {
+		peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
 		err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 	} else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
