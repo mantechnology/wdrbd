@@ -1298,9 +1298,6 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
 		bio = (struct bio *)Context;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 4
 		//
@@ -1321,6 +1318,22 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		bio = (struct bio *)Irp;
     }
 #endif
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
+	/* DW-1822
+	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
+	 * and is freed from the completion routine functions.
+	 * However, retry I/O operations are performed without RemoveLock, 
+	 * because the retry routine will work after the release.
+	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
+	 */
+	if (bio) {
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		}
+	}
+
 	struct drbd_bm_aio_ctx *ctx = bio->bi_private;
 	struct drbd_device *device = ctx->device;
 	struct drbd_bitmap *b = device->bitmap;
@@ -1383,6 +1396,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		WDRBD_TRACE("bm_async_io_complete done.(%d).................!!!\n", cnt++);
 	}
 #endif
+
 	BIO_ENDIO_FN_RETURN;
 }
 
