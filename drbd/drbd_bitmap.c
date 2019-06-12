@@ -1298,9 +1298,6 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
 		bio = (struct bio *)Context;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 4
 		//
@@ -1313,6 +1310,10 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		if (NT_ERROR(error)) {
 			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_bm_endio");
+
+				if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+					IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+				}
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
 		}
@@ -1383,6 +1384,11 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		WDRBD_TRACE("bm_async_io_complete done.(%d).................!!!\n", cnt++);
 	}
 #endif
+
+	if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+	}
+
 	BIO_ENDIO_FN_RETURN;
 }
 
