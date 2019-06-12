@@ -10199,8 +10199,10 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			drbd_rs_failed_io(peer_device, sector, size);
 			break;
 		case P_RS_CANCEL:
-			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in sync.
-			if (peer_device->repl_state[NOW] == L_SYNC_TARGET || peer_device->repl_state[NOW] == L_VERIFY_T) {
+			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
+			if (peer_device->repl_state[NOW] == L_BEHIND || 
+				peer_device->repl_state[NOW] == L_SYNC_TARGET || 
+				peer_device->repl_state[NOW] == L_VERIFY_T) {
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
 				mutex_lock(&device->bm_resync_fo_mutex);
