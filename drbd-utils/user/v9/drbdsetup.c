@@ -3921,7 +3921,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (io_error.is_cleared)
 				printf(" cleared%s", key ? key : "-");
 			else {
-				printf(" %s disk:%s io:%s", key ? key : "-", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+				printf("%s disk:%s io:%s", key ? key : "-", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
 				printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
 			}
 		}
