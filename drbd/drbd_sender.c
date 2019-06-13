@@ -1676,6 +1676,18 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		peer_device->resync_again++;
 	}
 	else {
+		//DW-1820
+		//Check that all oos are cleared after synchronization is finished.
+		//Initialize io-error when OOS of all nodes is removed. 
+		//If all OOS are removed, the io-error is considered to be resolved
+		//and the number of io-errors is initialized to zero.
+		if (atomic_read(&device->io_error_count) > 0) {
+			if (drbd_all_bm_total_weight(device) == 0) {
+				drbd_info(device, "Initialize the count of I/O errors.\n");
+				atomic_set(&device->io_error_count, 0);
+			}
+		}
+
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)

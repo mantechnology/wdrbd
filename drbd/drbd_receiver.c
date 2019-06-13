@@ -10403,6 +10403,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
+	struct drbd_device *device;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
 #ifdef _WIN32
@@ -10432,6 +10433,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
+	device = peer_req->peer_device->device;
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
@@ -10441,7 +10443,6 @@ found:
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
-		struct drbd_device *device = peer_device->device;
 		ULONG_PTR in_sync_b;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
@@ -10475,13 +10476,10 @@ found:
 	//Initialize io-error when OOS of all nodes is removed. 
 	//If all OOS are removed, the io-error is considered to be resolved
 	//and the number of io-errors is initialized to zero.
-	struct drbd_device *device = peer_req->peer_device->device;
-	if (device) {
-		if (atomic_read(&device->io_error_count) > 0) {
-			if (drbd_all_bm_total_weight(device) == 0) {
-				drbd_info(device, "Initialize the count of I/O errors.\n");
-				atomic_set(&device->io_error_count, 0);
-			}
+	if (atomic_read(&device->io_error_count) > 0) {
+		if (drbd_all_bm_total_weight(device) == 0) {
+			drbd_info(device, "Initialize the count of I/O errors.\n");
+			atomic_set(&device->io_error_count, 0);
 		}
 	}
 	return 0;
