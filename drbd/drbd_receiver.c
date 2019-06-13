@@ -9286,12 +9286,6 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	if (atomic_read(&connection->current_epoch->epoch_size) != 0) 
 		drbd_err(connection, "current epoch size not zero(size:%d)\n", atomic_read(&connection->current_epoch->epoch_size));
-
-	//DW-1812 initialize current_epoch.
-	connection->current_epoch->barrier_nr = 0;
-	connection->current_epoch->flags = 0;
-	atomic_set(&connection->current_epoch->epoch_size, 0);
-	atomic_set(&connection->current_epoch->active, 0);
 	
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
@@ -9376,8 +9370,15 @@ void conn_disconnect(struct drbd_connection *connection)
 				break;
 		}
 	}
+
 	/* ok, no more ee's on the fly, it is safe to reset the epoch_size */
 	atomic_set(&connection->current_epoch->epoch_size, 0);
+
+	//DW-1812 initialize current_epoch.
+	connection->current_epoch->barrier_nr = 0;
+	connection->current_epoch->flags = 0;
+	atomic_set(&connection->current_epoch->active, 0);
+
 	connection->send.seen_any_write_yet = false;
 
 	drbd_info(connection, "Connection closed\n");
