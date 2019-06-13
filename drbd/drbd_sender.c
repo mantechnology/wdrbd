@@ -92,9 +92,6 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
         error = Irp->IoStatus.Status;
 		bio = (struct bio *)Context;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 3
 		//
@@ -117,6 +114,22 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         bio = (struct bio *)Irp;
     }
 #endif
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
+	/* DW-1822
+	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
+	 * and is freed from the completion routine functions.
+	 * However, retry I/O operations are performed without RemoveLock,
+	 * because the retry routine will work after the release.
+	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
+	 */
+	if (bio) {
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		}
+	}
+
 	BIO_ENDIO_FN_START;
 
 	device = bio->bi_private;
@@ -352,9 +365,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		error = Irp->IoStatus.Status;
 		bio = (struct bio *)Context;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 2
 		//
@@ -377,6 +387,22 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 		bio = (struct bio *)Irp;
 	}
 #endif
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
+	/* DW-1822
+	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
+ 	 * and is freed from the completion routine functions.
+	 * However, retry I/O operations are performed without RemoveLock,
+	 * because the retry routine will work after the release.
+	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
+	 */
+	if (bio) {
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		}
+	}
+
 	struct drbd_peer_request *peer_req = bio->bi_private;
 	struct drbd_device *device = peer_req->peer_device->device;
 	bool is_write = bio_data_dir(bio) == WRITE;
@@ -484,9 +510,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		bio = (struct bio *)Context;
 		error = Irp->IoStatus.Status;
-		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		}
 		//
 		//	Simulation Local Disk I/O Error Point. disk error simluation type 1
 		//
@@ -508,6 +531,22 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	} else {
 		error = (int)Context;
 		bio = (struct bio *)Irp;
+	}
+
+	if (!bio)
+		BIO_ENDIO_FN_RETURN;
+
+	/* DW-1822
+	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
+	 * and is freed from the completion routine functions.
+	 * However, retry I/O operations are performed without RemoveLock,
+	 * because the retry routine will work after the release.
+	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
+	 */
+	if (bio) {
+		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		}
 	}
 
 	req = bio->bi_private; 
