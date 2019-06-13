@@ -2572,7 +2572,12 @@ static void device_status(struct devices_list *device, bool single_device)
 	 * the disk status is kept up_to_date in the event of a primary failure,
 	 * so disk error information should be displayed seperately.
 	 */
-	if (disk_state == D_UP_TO_DATE && device->info.io_error_count) {
+
+	/* DW-1820
+	 * Modified to print io-error on secondary. 
+	 * In secondary io-error, it is not UpToDate, so modify the condition.
+	 */
+	if (device->info.io_error_count) {
 		wrap_printf(indent, " %sio-error:%d%s", 
 			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
 			device->info.io_error_count,

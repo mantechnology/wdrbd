@@ -10470,6 +10470,20 @@ found:
 		list_del(&peer_req->recv_order);
 		notify_sync_targets_or_free(peer_req, in_sync);
 	}
+
+	//DW-1820
+	//Initialize io-error when OOS of all nodes is removed. 
+	//If all OOS are removed, the io-error is considered to be resolved
+	//and the number of io-errors is initialized to zero.
+	struct drbd_device *device = peer_req->peer_device->device;
+	if (device) {
+		if (atomic_read(&device->io_error_count) > 0) {
+			if (drbd_all_bm_total_weight(device) == 0) {
+				drbd_info(device, "Initialize the count of I/O errors.\n");
+				atomic_set(&device->io_error_count, 0);
+			}
+		}
+	}
 	return 0;
 }
 

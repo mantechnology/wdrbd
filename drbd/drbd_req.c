@@ -396,6 +396,17 @@ void drbd_req_destroy(struct kref *kref)
 #else
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
 #endif
+			//DW-1820
+			//Initialize io-error when OOS of all nodes is removed. 
+			//If all OOS are removed, the io-error is considered to be resolved
+			//and the number of io-errors is initialized to zero.
+			if (atomic_read(&device->io_error_count) > 0) {
+				if (drbd_all_bm_total_weight(device) == 0) {
+					drbd_info(device, "Initialize the count of I/O errors.\n");
+					atomic_set(&device->io_error_count, 0);
+				}
+			}
+
 			put_ldev(device);
 		}
 

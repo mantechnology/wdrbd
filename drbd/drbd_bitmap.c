@@ -1199,6 +1199,33 @@ unsigned long drbd_bm_total_weight(struct drbd_peer_device *peer_device)
 	return s;
 }
 
+//DW-1812
+//A function created to initialize io-error to 0 when OOS of all nodes is removed.
+//If 0 is returned, it is judged that all OOS has been removed. 
+//Therefore, 0 should not be returned when an error occurs.
+ULONG_PTR drbd_all_bm_total_weight(struct drbd_device *device)
+{
+	struct drbd_bitmap *b = device->bitmap;
+	ULONG_PTR bits_count = 0;
+	long flags;
+	unsigned int bitmap_index;
+	/* if I don't have a disk, I don't know about out-of-sync status */
+	if (!get_ldev_if_state(device, D_NEGOTIATING))
+		return UINT64_MAX;
+	if (!b)
+		return UINT64_MAX;
+	if (!b->bm_pages)
+		return UINT64_MAX;
+
+	spin_lock_irqsave(&b->bm_lock, flags);
+	for (bitmap_index = 0; bitmap_index < b->bm_max_peers; bitmap_index++)
+		bits_count += b->bm_set[bitmap_index];
+	spin_unlock_irqrestore(&b->bm_lock, flags);
+
+	put_ldev(device);
+	return bits_count;
+}
+
 /* Returns the number of unsigned long words per peer */
 size_t drbd_bm_words(struct drbd_device *device)
 {

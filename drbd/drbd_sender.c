@@ -294,6 +294,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		   OOS for IO error is recorded for all nodes.
 		 */
 		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+		atomic_inc(&device->io_error_count);
     }
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);

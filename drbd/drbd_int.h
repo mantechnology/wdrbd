@@ -2330,6 +2330,8 @@ extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
 extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
+extern ULONG_PTR drbd_all_bm_total_weight(struct drbd_device *);
+
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
     size_t number, ULONG_PTR *buffer);
@@ -3209,8 +3211,6 @@ drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, 
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
 
-	if (ep != EP_PASSTHROUGH)
-		return;
 
 	struct drbd_io_error_work *w;
 #ifdef _WIN32 
