@@ -810,6 +810,7 @@ struct drbd_io_error {
 	NTSTATUS		error_code;
 	sector_t		sector;
 	unsigned int	size;
+	bool			is_cleared;
 };
 
 /* ee flag bits.
@@ -3202,15 +3203,20 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
  * However, because the completion routine can operate in DISPATCH_LEVEL, 
  * it must be handled through the work thread.*/
 
+#define drbd_queue_notify_io_error_cleared(device) \
+	drbd_queue_notify_io_error(device, 0, 0, 0, 0, 0, true)
+
+#define drbd_queue_notify_io_error_occurred(device, disk_type, io_type, error_code, sector, size) \
+	drbd_queue_notify_io_error(device, disk_type, io_type, error_code, sector, size, false)
+
 static inline void
-drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
+drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size, bool is_cleared)
 {
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
-
 
 	struct drbd_io_error_work *w;
 #ifdef _WIN32 
@@ -3232,6 +3238,7 @@ drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, 
 			w->io_error->size = size;
 			w->io_error->io_type = io_type;
 			w->io_error->disk_type = disk_type;
+			w->io_error->is_cleared = is_cleared;
 			drbd_queue_work(&device->resource->work, &w->w);
 		}
 		else {

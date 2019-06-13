@@ -404,6 +404,7 @@ void drbd_req_destroy(struct kref *kref)
 				if (drbd_all_bm_total_weight(device) == 0) {
 					drbd_info(device, "Initialize the count of I/O errors.\n");
 					atomic_set(&device->io_error_count, 0);
+					drbd_queue_notify_io_error_cleared(device);
 				}
 			}
 

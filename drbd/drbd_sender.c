@@ -1685,6 +1685,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			if (drbd_all_bm_total_weight(device) == 0) {
 				drbd_info(device, "Initialize the count of I/O errors.\n");
 				atomic_set(&device->io_error_count, 0);
+				drbd_queue_notify_io_error_cleared(device);
 			}
 		}
 
@@ -3892,12 +3893,6 @@ int drbd_worker(struct drbd_thread *thi)
  */
 static void process_io_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
 {
-	enum drbd_io_error_p ep;
-
-	rcu_read_lock();
-	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-	rcu_read_unlock();
-
-	drbd_queue_notify_io_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
+	drbd_queue_notify_io_error_occurred(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
 
