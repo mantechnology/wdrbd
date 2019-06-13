@@ -3733,9 +3733,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	}
 
 	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
-		printf("%s %s%s%s%s",
+		printf("%s %s%s%s",
 			action_name[action], io_error_color_start(),
-			object_name[info->genlhdr->cmd], io_error_color_stop(), key ? key : "-");
+			object_name[info->genlhdr->cmd], io_error_color_stop());
 	}
 	else {
 		printf("%s %s",
@@ -3919,9 +3919,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		struct drbd_io_error_info io_error;
 		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
 			if (io_error.is_cleared)
-				printf(" cleared");
+				printf(" cleared%s", key ? key : "-");
 			else {
-				printf(" disk:%s io:%s", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+				printf(" %s disk:%s io:%s", key ? key : "-", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
 				printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
 			}
 		}
