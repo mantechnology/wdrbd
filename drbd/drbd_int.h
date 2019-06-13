@@ -2331,7 +2331,7 @@ extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
 extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
-extern ULONG_PTR drbd_all_bm_total_weight(struct drbd_device *);
+extern bool is_cleared_all_oos(struct drbd_device *);
 
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,

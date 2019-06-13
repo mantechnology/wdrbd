@@ -401,7 +401,7 @@ void drbd_req_destroy(struct kref *kref)
 			//If all OOS are removed, the io-error is considered to be resolved
 			//and the number of io-errors is initialized to zero.
 			if (atomic_read(&device->io_error_count) > 0) {
-				if (drbd_all_bm_total_weight(device) == 0) {
+				if (is_cleared_all_oos(device)) {
 					drbd_info(device, "Initialize the count of I/O errors.\n");
 					atomic_set(&device->io_error_count, 0);
 					drbd_queue_notify_io_error_cleared(device);
