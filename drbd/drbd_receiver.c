@@ -9270,22 +9270,8 @@ void conn_disconnect(struct drbd_connection *connection)
 			put_ldev(device);
 		}
 		list_del(&peer_req->recv_order);
-
-		//DW-1812 remove the inactive_ee epoch.
-		if (connection->current_epoch != peer_req->epoch) {
-			list_del(&peer_req->epoch->list);
-			connection->epochs--;
-			kfree(peer_req->epoch);
-		}
-
 		drbd_info(connection, "add, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 	}
-
-	if (connection->epochs != 1)
-		drbd_err(connection, "connection epochs shall be 1(epochs:%u)\n", connection->epochs);
-
-	if (atomic_read(&connection->current_epoch->epoch_size) != 0) 
-		drbd_err(connection, "current epoch size not zero(size:%d)\n", atomic_read(&connection->current_epoch->epoch_size));
 	
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
@@ -9356,7 +9342,6 @@ void conn_disconnect(struct drbd_connection *connection)
 		drbd_info(connection, "pp_in_use_by_net = %d, expected 0\n", i);
 
 	if (!list_empty(&connection->current_epoch->list)) {
-		//DW-1812 FIXME The epoch list should be empty.
 		drbd_err(connection, "ASSERTION FAILED: connection->current_epoch->list not empty\n");
 
 		//DW-1812 if the epoch list is not empty, remove it.
