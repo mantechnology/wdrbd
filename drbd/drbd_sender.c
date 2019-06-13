@@ -3898,7 +3898,6 @@ static void process_io_error(struct bio *bio, struct drbd_device *device, unsign
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
 
-	if (ep == EP_PASSTHROUGH)
-		drbd_queue_notify_io_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
+	drbd_queue_notify_io_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
 

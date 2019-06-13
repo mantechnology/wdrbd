@@ -1146,17 +1146,12 @@ static void drbd_report_io_error(struct drbd_device *device, struct drbd_request
 	// DW-1755 Counts the error value only when it is a passthrough policy.
 	// Only the first error is logged.
 	bool write_log = true;
-	enum drbd_io_error_p eh;
-	rcu_read_lock();
-	eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-	rcu_read_unlock();
-	if (eh == EP_PASSTHROUGH) {
-		if (atomic_read(&device->io_error_count) < INT32_MAX) {
-			if (atomic_inc(&device->io_error_count) > 1)
-				write_log = true;
-		}
+	if (atomic_read(&device->io_error_count) < INT32_MAX) {
+		if (atomic_inc(&device->io_error_count) > 1)
+			write_log = true;
 	}
-	else if (!drbd_ratelimit())
+
+	if (!drbd_ratelimit())
 		write_log = false;
 
 	if (write_log) {
