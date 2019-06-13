@@ -9262,18 +9262,37 @@ void conn_disconnect(struct drbd_connection *connection)
 	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->active_ee, w.list) {
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		struct drbd_device *device = peer_device->device;
-		int bitmap_index = peer_device->bitmap_index;
-		u64 mask = ~(bitmap_index != -1 ? 1UL << bitmap_index : 0UL);
 
 		if (get_ldev(device)) {
-			drbd_set_sync(device, peer_req->i.sector, peer_req->i.size,
-				(ULONG_PTR)mask, (ULONG_PTR)mask);
+			//DW-1812 set inactive_ee to out of sync.
+			drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 			drbd_al_complete_io(device, &peer_req->i);
 			put_ldev(device);
 		}
 		list_del(&peer_req->recv_order);
+
+		//DW-1812 remove the inactive_ee epoch.
+		if (connection->current_epoch != peer_req->epoch) {
+			list_del(&peer_req->epoch->list);
+			connection->epochs--;
+			kfree(peer_req->epoch);
+		}
+
 		drbd_info(connection, "add, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 	}
+
+	if (connection->epochs != 1)
+		drbd_err(connection, "connection epochs shall be 1(epochs:%u)\n", connection->epochs);
+
+	if (atomic_read(&connection->current_epoch->epoch_size) != 0) 
+		drbd_err(connection, "current epoch size not zero(size:%d)\n", atomic_read(&connection->current_epoch->epoch_size));
+
+	//DW-1812 initialize current_epoch.
+	connection->current_epoch->barrier_nr = 0;
+	connection->current_epoch->flags = 0;
+	atomic_set(&connection->current_epoch->epoch_size, 0);
+	atomic_set(&connection->current_epoch->active, 0);
+	
 	list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
 	//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
@@ -9342,8 +9361,21 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (i)
 		drbd_info(connection, "pp_in_use_by_net = %d, expected 0\n", i);
 
-	if (!list_empty(&connection->current_epoch->list))
+	if (!list_empty(&connection->current_epoch->list)) {
+		//DW-1812 FIXME The epoch list should be empty.
 		drbd_err(connection, "ASSERTION FAILED: connection->current_epoch->list not empty\n");
+
+		//DW-1812 if the epoch list is not empty, remove it.
+		struct drbd_epoch *epoch;
+		list_for_each_entry(struct drbd_epoch, epoch, &connection->current_epoch->list, list) {
+			drbd_info(connection, "ASSERTION FAILED: remove epoch barrier_nr : %u, epochs:%u\n", epoch->barrier_nr, connection->epochs);
+			list_del(&epoch->list);
+			kfree(epoch);
+			connection->epochs--;
+			if (list_empty(&connection->current_epoch->list))
+				break;
+		}
+	}
 	/* ok, no more ee's on the fly, it is safe to reset the epoch_size */
 	atomic_set(&connection->current_epoch->epoch_size, 0);
 	connection->send.seen_any_write_yet = false;
