@@ -1227,6 +1227,26 @@ bool is_cleared_all_oos(struct drbd_device *device)
 	return is_cleared;
 }
 
+//DW-1820
+//Check that all oos are cleared after synchronization is finished.
+//Initialize io-error when OOS of all nodes is removed. 
+//If all OOS are removed, the io-error is considered to be resolved
+//and the number of io-errors is initialized to zero.
+void check_and_clear_io_error(struct drbd_device *device)
+{
+	if (!device) {
+		return;
+	}
+
+	if (atomic_read(&device->io_error_count) > 0) {
+		if (is_cleared_all_oos(device)) {
+			drbd_err(device, "Initialize the count of I/O errors.\n");
+			atomic_set(&device->io_error_count, 0);
+			drbd_queue_notify_io_error_cleared(device);
+		}
+	}
+}
+
 /* Returns the number of unsigned long words per peer */
 size_t drbd_bm_words(struct drbd_device *device)
 {

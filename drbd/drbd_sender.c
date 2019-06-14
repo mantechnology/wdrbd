@@ -221,8 +221,10 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	list_del(&peer_req->w.list);
 	if (list_empty(&connection->read_ee))
 		wake_up(&connection->ee_wait);
-	if (test_bit(__EE_WAS_ERROR, &peer_req->flags))
+	if (test_bit(__EE_WAS_ERROR, &peer_req->flags)) {
+		atomic_inc(&device->io_error_count);
 		__drbd_chk_io_error(device, DRBD_READ_ERROR);
+	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
 	drbd_queue_work(&connection->sender_work, &peer_req->w);
@@ -309,6 +311,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
 		atomic_inc(&device->io_error_count);
     }
+
+	check_and_clear_io_error(device);
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	device->writ_cnt += peer_req->i.size >> 9;
@@ -1676,19 +1680,6 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		peer_device->resync_again++;
 	}
 	else {
-		//DW-1820
-		//Check that all oos are cleared after synchronization is finished.
-		//Initialize io-error when OOS of all nodes is removed. 
-		//If all OOS are removed, the io-error is considered to be resolved
-		//and the number of io-errors is initialized to zero.
-		if (atomic_read(&device->io_error_count) > 0) {
-			if (is_cleared_all_oos(device)) {
-				drbd_info(device, "Initialize the count of I/O errors.\n");
-				atomic_set(&device->io_error_count, 0);
-				drbd_queue_notify_io_error_cleared(device);
-			}
-		}
-
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)

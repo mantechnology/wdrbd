@@ -396,18 +396,6 @@ void drbd_req_destroy(struct kref *kref)
 #else
 			drbd_set_sync(device, req->i.sector, req->i.size, bits, mask);
 #endif
-			//DW-1820
-			//Initialize io-error when OOS of all nodes is removed. 
-			//If all OOS are removed, the io-error is considered to be resolved
-			//and the number of io-errors is initialized to zero.
-			if (atomic_read(&device->io_error_count) > 0) {
-				if (is_cleared_all_oos(device)) {
-					drbd_info(device, "Initialize the count of I/O errors.\n");
-					atomic_set(&device->io_error_count, 0);
-					drbd_queue_notify_io_error_cleared(device);
-				}
-			}
-
 			put_ldev(device);
 		}
 
@@ -590,6 +578,8 @@ void complete_master_bio(struct drbd_device *device,
 					drbd_set_out_of_sync(peer_device, master_bio->bi_sector, master_bio->bi_size);
 			}
 		}
+
+		check_and_clear_io_error(device);
 
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {

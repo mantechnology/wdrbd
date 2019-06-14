@@ -641,6 +641,7 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
+	struct drbd_device *device = NULL;
 	int err = 0;
 	int n = 0;
 
@@ -666,6 +667,9 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
 #endif
+		if (!device)
+			device = peer_req->peer_device->device;
+
 		int err2;
 		// MODIFIED_BY_MANTECH DW-1665: check callback function(e_end_block)
 		bool epoch_put = (peer_req->w.cb == e_end_block) ? true : false;
@@ -697,6 +701,8 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	}
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
+
+	check_and_clear_io_error(device);
 
 	return err;
 }
@@ -10045,6 +10051,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
 			drbd_set_in_sync(peer_device, sector, blksize);
+			check_and_clear_io_error(device);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE) 
 				dec_rs_pending(peer_device);
 			return 0;
@@ -10055,6 +10062,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER) {
 			drbd_set_in_sync(peer_device, sector, blksize);
+			check_and_clear_io_error(device);
 			dec_rs_pending(peer_device);
 
 			return 0;
@@ -10472,17 +10480,6 @@ found:
 		notify_sync_targets_or_free(peer_req, in_sync);
 	}
 
-	//DW-1820
-	//Initialize io-error when OOS of all nodes is removed. 
-	//If all OOS are removed, the io-error is considered to be resolved
-	//and the number of io-errors is initialized to zero.
-	if (atomic_read(&device->io_error_count) > 0) {
-		if (is_cleared_all_oos(device)) {
-			drbd_info(device, "Initialize the count of I/O errors.\n");
-			atomic_set(&device->io_error_count, 0);
-			drbd_queue_notify_io_error_cleared(device);
-		}
-	}
 	return 0;
 }
 
