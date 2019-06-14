@@ -4346,7 +4346,7 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
-	//DW-1829 : peer_req must be free before peer_device.
+	//DW-1829 : inactive_ee must be free before peer_device.
 	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
 	struct drbd_peer_request *peer_req, *t;
 	spin_lock(&resource->req_lock);
@@ -4356,6 +4356,7 @@ void drbd_destroy_connection(struct kref *kref)
 			drbd_free_peer_req(peer_req);
 		}
 	}
+	spin_unlock(&resource->req_lock);
 
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -4376,7 +4377,6 @@ void drbd_destroy_connection(struct kref *kref)
 		spin_unlock_irq(&resource->req_lock);
 	}
 
-	spin_unlock(&resource->req_lock);
 
 	idr_destroy(&connection->peer_devices);
 
