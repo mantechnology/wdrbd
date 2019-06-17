@@ -1199,34 +1199,6 @@ unsigned long drbd_bm_total_weight(struct drbd_peer_device *peer_device)
 	return s;
 }
 
-//DW-1812
-//A function created to initialize io-error to 0 when OOS of all nodes is removed.
-bool is_cleared_all_oos(struct drbd_device *device)
-{
-	struct drbd_bitmap *b = device->bitmap;
-	long flags;
-	unsigned int bitmap_index;
-	/* if I don't have a disk, I don't know about out-of-sync status */
-	if (!get_ldev_if_state(device, D_NEGOTIATING))
-		return false;
-	if (!b)
-		return false;
-	if (!b->bm_pages)
-		return false;
-
-	bool is_cleared = true;
-	spin_lock_irqsave(&b->bm_lock, flags);
-	for (bitmap_index = 0; bitmap_index < b->bm_max_peers; bitmap_index++) {
-		if (b->bm_set[bitmap_index] > 0) {
-			is_cleared = false;
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&b->bm_lock, flags);
-	put_ldev(device);
-	return is_cleared;
-}
-
 //DW-1820
 //Check that all oos are cleared after synchronization is finished.
 //Initialize io-error when OOS of all nodes is removed. 
@@ -1234,15 +1206,20 @@ bool is_cleared_all_oos(struct drbd_device *device)
 //and the number of io-errors is initialized to zero.
 void check_and_clear_io_error(struct drbd_device *device)
 {
-	if (!device) {
+	if (!device)
 		return;
-	}
 
-	if (atomic_read(&device->io_error_count) > 0) {
-		if (is_cleared_all_oos(device)) {
-			drbd_err(device, "Initialize the count of I/O errors.\n");
+	if (atomic_read(&device->io_error_count) <= 0)
+		return;
+
+	struct drbd_peer_device *peer_device;
+	for_each_peer_device(peer_device, device) {
+		ULONG_PTR count = drbd_bm_total_weight(peer_device);
+		if (count == 0) {
+			drbd_info(device, "io-error has been cleared.\n");
 			atomic_set(&device->io_error_count, 0);
 			drbd_queue_notify_io_error_cleared(device);
+			break;
 		}
 	}
 }
