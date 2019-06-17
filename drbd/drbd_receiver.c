@@ -1264,7 +1264,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
 		bio = (struct bio *)Context;
 		error = Irp->IoStatus.Status;
-		if (bio) {
+		//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+		if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk) {
 			if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 				IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 			}
