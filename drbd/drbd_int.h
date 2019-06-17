@@ -810,6 +810,7 @@ struct drbd_io_error {
 	NTSTATUS		error_code;
 	sector_t		sector;
 	unsigned int	size;
+	bool			is_cleared;
 };
 
 /* ee flag bits.
@@ -2330,6 +2331,8 @@ extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
 extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
+extern void check_and_clear_io_error(struct drbd_device *);
+
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
     size_t number, ULONG_PTR *buffer);
@@ -3200,17 +3203,20 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
  * However, because the completion routine can operate in DISPATCH_LEVEL, 
  * it must be handled through the work thread.*/
 
+#define drbd_queue_notify_io_error_cleared(device) \
+	drbd_queue_notify_io_error(device, 0, 0, 0, 0, 0, true)
+
+#define drbd_queue_notify_io_error_occurred(device, disk_type, io_type, error_code, sector, size) \
+	drbd_queue_notify_io_error(device, disk_type, io_type, error_code, sector, size, false)
+
 static inline void
-drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size)
+drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size, bool is_cleared)
 {
 	enum drbd_io_error_p ep;
 
 	rcu_read_lock();
 	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
 	rcu_read_unlock();
-
-	if (ep != EP_PASSTHROUGH)
-		return;
 
 	struct drbd_io_error_work *w;
 #ifdef _WIN32 
@@ -3232,6 +3238,7 @@ drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, 
 			w->io_error->size = size;
 			w->io_error->io_type = io_type;
 			w->io_error->disk_type = disk_type;
+			w->io_error->is_cleared = is_cleared;
 			drbd_queue_work(&device->resource->work, &w->w);
 		}
 		else {

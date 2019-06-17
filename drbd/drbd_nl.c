@@ -7514,6 +7514,7 @@ void notify_io_error(struct drbd_device *device, struct drbd_io_error *io_error)
 	io_error_info.size = io_error->size;
 	io_error_info.disk_type = io_error->disk_type;
 	io_error_info.io_type = io_error->io_type;
+	io_error_info.is_cleared = io_error->is_cleared;
 	
 	unsigned int seq = atomic_inc_return(&drbd_genl_seq);
 	struct sk_buff *skb = NULL;

@@ -2572,7 +2572,12 @@ static void device_status(struct devices_list *device, bool single_device)
 	 * the disk status is kept up_to_date in the event of a primary failure,
 	 * so disk error information should be displayed seperately.
 	 */
-	if (disk_state == D_UP_TO_DATE && device->info.io_error_count) {
+
+	/* DW-1820
+	 * Modified to print io-error on secondary. 
+	 * In secondary io-error, it is not UpToDate, so modify the condition.
+	 */
+	if (device->info.io_error_count) {
 		wrap_printf(indent, " %sio-error:%d%s", 
 			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
 			device->info.io_error_count,
@@ -3728,9 +3733,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	}
 
 	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
-		printf("%s %s%s%s%s",
+		printf("%s %s%s%s",
 			action_name[action], io_error_color_start(),
-			object_name[info->genlhdr->cmd], io_error_color_stop(), key ? key : "-");
+			object_name[info->genlhdr->cmd], io_error_color_stop());
 	}
 	else {
 		printf("%s %s",
@@ -3913,8 +3918,12 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 	case DRBD_IO_ERROR: {
 		struct drbd_io_error_info io_error;
 		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
-			printf(" disk:%s io:%s", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
-			printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
+			if (io_error.is_cleared)
+				printf(" cleared%s", key ? key : "-");
+			else {
+				printf("%s disk:%s io:%s", key ? key : "-", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+				printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
+			}
 		}
 		else {
 			dbg(1, "io_error info missing\n");

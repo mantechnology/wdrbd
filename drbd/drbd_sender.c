@@ -221,8 +221,10 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	list_del(&peer_req->w.list);
 	if (list_empty(&connection->read_ee))
 		wake_up(&connection->ee_wait);
-	if (test_bit(__EE_WAS_ERROR, &peer_req->flags))
+	if (test_bit(__EE_WAS_ERROR, &peer_req->flags)) {
+		atomic_inc(&device->io_error_count);
 		__drbd_chk_io_error(device, DRBD_READ_ERROR);
+	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
 	drbd_queue_work(&connection->sender_work, &peer_req->w);
@@ -307,7 +309,10 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		   OOS for IO error is recorded for all nodes.
 		 */
 		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+		atomic_inc(&device->io_error_count);
     }
+
+	check_and_clear_io_error(device);
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	device->writ_cnt += peer_req->i.size >> 9;
@@ -3879,13 +3884,6 @@ int drbd_worker(struct drbd_thread *thi)
  */
 static void process_io_error(struct bio *bio, struct drbd_device *device, unsigned char disk_type, int error)
 {
-	enum drbd_io_error_p ep;
-
-	rcu_read_lock();
-	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-	rcu_read_unlock();
-
-	if (ep == EP_PASSTHROUGH)
-		drbd_queue_notify_io_error(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
+	drbd_queue_notify_io_error_occurred(device, disk_type, (bio->bi_rw & WRITE) ? WRITE : READ, error, bio->bi_sector, bio->bi_size);
 }
 

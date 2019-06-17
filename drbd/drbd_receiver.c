@@ -641,6 +641,7 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
+	struct drbd_device *device = NULL;
 	int err = 0;
 	int n = 0;
 
@@ -666,6 +667,9 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
 #endif
+		if (!device)
+			device = peer_req->peer_device->device;
+
 		int err2;
 		// MODIFIED_BY_MANTECH DW-1665: check callback function(e_end_block)
 		bool epoch_put = (peer_req->w.cb == e_end_block) ? true : false;
@@ -697,6 +701,8 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	}
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
+
+	check_and_clear_io_error(device);
 
 	return err;
 }
@@ -10063,6 +10069,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
 			drbd_set_in_sync(peer_device, sector, blksize);
+			check_and_clear_io_error(device);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE) 
 				dec_rs_pending(peer_device);
 			return 0;
@@ -10073,6 +10080,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER) {
 			drbd_set_in_sync(peer_device, sector, blksize);
+			check_and_clear_io_error(device);
 			dec_rs_pending(peer_device);
 
 			return 0;
@@ -10421,6 +10429,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
+	struct drbd_device *device;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
 #ifdef _WIN32
@@ -10450,6 +10459,7 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
+	device = peer_req->peer_device->device;
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
@@ -10459,7 +10469,6 @@ found:
 	list_for_each_entry_safe(peer_req, tmp, &work_list, recv_order) {
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
-		struct drbd_device *device = peer_device->device;
 		ULONG_PTR in_sync_b;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
@@ -10488,6 +10497,7 @@ found:
 		list_del(&peer_req->recv_order);
 		notify_sync_targets_or_free(peer_req, in_sync);
 	}
+
 	return 0;
 }
 

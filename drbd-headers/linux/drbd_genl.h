@@ -336,6 +336,7 @@ GENL_struct(DRBD_NLA_IO_ERROR, 31, drbd_io_error_info,
 	__u64_field(3, DRBD_GENLA_F_MANDATORY, sector)
 	__u8_field(4, DRBD_GENLA_F_MANDATORY, disk_type)
 	__u8_field(5, DRBD_GENLA_F_MANDATORY, io_type)
+	__u8_field(6, DRBD_GENLA_F_MANDATORY, is_cleared)
 )
 
 /*
