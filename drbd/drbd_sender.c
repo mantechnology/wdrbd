@@ -101,14 +101,16 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
-		
+// DW-1830
+// Disable this code because io hang occurs during IRP reuse.
+#ifdef RETRY_WRITE_IO
 		if(NT_ERROR(error)) {
 			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_md_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
 		}
-		
+#endif		
     } else {
         error = (int)Context;
         bio = (struct bio *)Irp;
@@ -378,7 +380,9 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
-
+// DW-1830
+// Disable this code because io hang occurs during IRP reuse.
+#ifdef RETRY_WRITE_IO
 		// DW-1716 retry if an write I/O error occurs.
 		if (NT_ERROR(error)) {
 			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
@@ -386,6 +390,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
 		}
+#endif
 	} else {
 		error = (int)Context;
 		bio = (struct bio *)Irp;
@@ -523,7 +528,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
-		
+#ifdef RETRY_WRITE_IO		
 		// DW-1716 retry if an write I/O error occurs.
 		if (NT_ERROR(error)) {
 			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
@@ -531,7 +536,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
 		}
-	
+#endif	
 	} else {
 		error = (int)Context;
 		bio = (struct bio *)Irp;
