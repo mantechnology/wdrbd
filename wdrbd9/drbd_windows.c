@@ -1830,10 +1830,18 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
+
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
-		status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		if (!NT_SUCCESS(status)) {
-			WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
+		//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+		if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension) {
+			status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			if (!NT_SUCCESS(status)) {
+				WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
+				return -EIO;
+			}
+		}
+		else {
+			WDRBD_WARN("IRQL(%d), bio->bi_bdev->bd_disk->pDeviceExtension null\n", KeGetCurrentIrql());
 			return -EIO;
 		}
 	}
@@ -1881,7 +1889,9 @@ int generic_make_request(struct bio *bio)
 
 	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+		if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension)
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		return -ENOMEM;
 	}
 
@@ -1905,10 +1915,12 @@ int generic_make_request(struct bio *bio)
 	//
 	//	simulation disk-io error point . (generic_make_request fail) - disk error simluation type 0
 	//
-	if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
-		if(IsDiskError()) {
+	if (gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
+		if (IsDiskError()) {
 			WDRBD_ERROR("SimulDiskIoError: type0...............ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+			if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension)
+				IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
 			// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
 			// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.

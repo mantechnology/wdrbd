@@ -126,7 +126,8 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	 * because the retry routine will work after the release.
 	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
 	 */
-	if (bio) {
+	//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+	if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk) {
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -406,7 +407,8 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	 * because the retry routine will work after the release.
 	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
 	 */
-	if (bio) {
+	//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+	if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk) {
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
@@ -554,7 +556,8 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	 * because the retry routine will work after the release.
 	 * IoReleaseRemoveLock must be moved so that it is released after the retry.
 	 */
-	if (bio) {
+	//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+	if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk) {
 		if (bio->bi_bdev->bd_disk->pDeviceExtension != NULL) {
 			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		}
