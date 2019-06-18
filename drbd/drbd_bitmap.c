@@ -1332,12 +1332,16 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
+// DW-1830
+// Disable this code because io hang occurs during IRP reuse.
+#ifdef RETRY_WRITE_IO
 		if (NT_ERROR(error)) {
 			if( (bio->bi_rw & WRITE) && bio->io_retry ) {
 				RetryAsyncWriteRequest(bio, Irp, error, "drbd_bm_endio");
 				return STATUS_MORE_PROCESSING_REQUIRED;
 			}
 		}
+#endif
     } else {
 		error = (int)Context;
 		bio = (struct bio *)Irp;
