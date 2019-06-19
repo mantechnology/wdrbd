@@ -2600,7 +2600,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					//DW-1601 all data is synced.
 					drbd_debug(peer_device, "##all, sync bitmap(%lu), first : %lu, last :%lu\n", index, first, (last - 1));
 					//DW-1601 complete rs data here.
-					drbd_rs_complete_io(peer_device, peer_req->i.sector);
+					drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 					err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 					atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
 					drbd_free_peer_req(peer_req);
@@ -9011,7 +9011,7 @@ static int receive_rs_deallocated(struct drbd_connection *connection, struct pac
 		   as well as drbd_rs_complete_io() */
 	} else {
 	fail:
-		drbd_rs_complete_io(peer_device, sector);
+		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		drbd_send_ack_ex(peer_device, P_NEG_ACK, sector, size, ID_SYNCER);
 	}
 
@@ -9169,9 +9169,9 @@ static void drain_resync_activity(struct drbd_connection *connection)
 
 	/* verify or resync related peer requests are read_ee or sync_ee,
 	* drain them first */
-
-	conn_wait_ee_empty(connection, &connection->read_ee);
-	conn_wait_ee_empty(connection, &connection->sync_ee);
+	//DW-1828 read_ee, sync_ee wait up to 3 seconds for completion
+	conn_wait_ee_empty_timeout(connection, &connection->read_ee);
+	conn_wait_ee_empty_timeout(connection, &connection->sync_ee);
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -9994,7 +9994,7 @@ static int got_IsInSync(struct drbd_connection *connection, struct packet_info *
 	update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 	if (get_ldev(device)) {
-		drbd_rs_complete_io(peer_device, sector);
+		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		drbd_set_in_sync(peer_device, sector, blksize);
 		/* rs_same_csums is supposed to count in units of BM_BLOCK_SIZE */
 		peer_device->rs_same_csum += (blksize >> BM_BLOCK_SHIFT);
@@ -10220,7 +10220,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 	dec_rs_pending(peer_device);
 
 	if (get_ldev_if_state(device, D_DETACHING)) {
-		drbd_rs_complete_io(peer_device, sector);
+		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		switch (pi->cmd) {
 		case P_NEG_RS_DREPLY:
 			drbd_rs_failed_io(peer_device, sector, size);
@@ -10309,7 +10309,7 @@ static int got_OVResult(struct drbd_connection *connection, struct packet_info *
 	if (!get_ldev(device))
 		return 0;
 
-	drbd_rs_complete_io(peer_device, sector);
+	drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 	dec_rs_pending(peer_device);
 
 	--peer_device->ov_left;

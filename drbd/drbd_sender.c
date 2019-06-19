@@ -346,7 +346,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	
 	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
-		drbd_rs_complete_io(peer_device, sector);
+		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
 	if (do_wake)
 		wake_up(&connection->ee_wait);
@@ -1180,7 +1180,7 @@ next_sector:
 		device->bm_resync_fo = bit + 1;
 
 		if (unlikely(drbd_bm_test_bit(peer_device, bit) == 0)) {
-			drbd_rs_complete_io(peer_device, sector);
+			drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 			goto next_sector;
 		}
 
@@ -1236,7 +1236,7 @@ next_sector:
 				put_ldev(device);
 				return -EIO;
 			case -EAGAIN: /* allocation failed, or ldev busy */
-				drbd_rs_complete_io(peer_device, sector);
+				drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 				device->bm_resync_fo = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 				i = rollback_i;
 				goto requeue;
@@ -1932,7 +1932,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	}
 
 	if (get_ldev_if_state(device, D_DETACHING)) {
-		drbd_rs_complete_io(peer_device, peer_req->i.sector);
+		drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 		put_ldev(device);
 	}
 
@@ -2001,7 +2001,7 @@ int w_e_end_csum_rs_req(struct drbd_work *w, int cancel)
 	}
 
 	if (get_ldev(device)) {
-		drbd_rs_complete_io(peer_device, peer_req->i.sector);
+		drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 		put_ldev(device);
 	}
 
@@ -2137,7 +2137,7 @@ int w_e_end_ov_reply(struct drbd_work *w, int cancel)
 	/* after "cancel", because after drbd_disconnect/drbd_rs_cancel_all
 	 * the resync lru has been cleaned up already */
 	if (get_ldev(device)) {
-		drbd_rs_complete_io(peer_device, peer_req->i.sector);
+		drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 		put_ldev(device);
 	}
 
