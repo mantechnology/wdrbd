@@ -2249,8 +2249,8 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 			 * double check on cstate ... */
 			if (peer_device->repl_state[NOW] >= L_ESTABLISHED ||
 				(peer_device->connection->cstate[NOW] >= C_CONNECTED && 
-				//DW-1799 It is deemed to be connected only when INITIAL_STATE_RECEIVED is set.
-				test_bit(INITIAL_STATE_RECEIVED, &peer_device->flags))) {
+				//DW-1799 It is deemed to be connected only when INITIAL_STATE_RECEIVED or UUID_JUST_CREATED.
+				(test_bit(INITIAL_STATE_RECEIVED, &peer_device->flags) || drbd_current_uuid(device) == UUID_JUST_CREATED))) {
 				/* If we still can see it, consider its last
 				 * known size, even if it may have meanwhile
 				 * detached from its disk.
