@@ -925,7 +925,7 @@ static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs
 			e = lc_find(peer_device->resync_lru, rs_enr);
 			bm_ext = lc_entry(e, struct bm_extent, lce);
 			rv = (bm_ext->rs_left == 0);
-			drbd_rs_complete_io(peer_device, BM_EXT_TO_SECT(rs_enr));
+			drbd_rs_complete_io(peer_device, BM_EXT_TO_SECT(rs_enr), __FUNCTION__);
 		}
 
 		return rv;
@@ -1825,7 +1825,7 @@ out:
 	return -EAGAIN;
 }
 
-void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
+void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector, char *caller)
 {
 	struct drbd_device *device = peer_device->device;
 	ULONG_PTR enr = (ULONG_PTR)BM_SECT_TO_EXT(sector);
@@ -1842,15 +1842,15 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector)
 	if (!bm_ext) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
 		if (drbd_ratelimit())
-			drbd_err(device, "drbd_rs_complete_io() called, but extent not found\n");
+			drbd_err(device, "%s => drbd_rs_complete_io() called, but extent not found\n", caller);
 		return;
 	}
 
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
-		drbd_err(device, "drbd_rs_complete_io(,%llu [=%u], %lu) called, "
+		drbd_err(device, "%s => drbd_rs_complete_io(,%llu [=%u], %lu) called, "
 		    "but refcnt is 0!?\n", 
-			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector));
+			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector), caller);
 		return;
 	}
 
