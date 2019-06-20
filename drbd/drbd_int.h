@@ -3212,12 +3212,6 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 static inline void
 drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size, bool is_cleared)
 {
-	enum drbd_io_error_p ep;
-
-	rcu_read_lock();
-	ep = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-	rcu_read_unlock();
-
 	struct drbd_io_error_work *w;
 #ifdef _WIN32 
 	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
