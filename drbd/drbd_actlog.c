@@ -1304,8 +1304,16 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 	}
 	else {
 		//DW-1761 calls wake_up() to resolve the al_wait timeout when duplicate "SET_OUT_OF_SYNC"
-		if (mode == SET_OUT_OF_SYNC)
-			wake_up(&device->al_wait);
+		if (peer_device->repl_state[NOW] == L_AHEAD && mode == SET_OUT_OF_SYNC) {
+			struct net_conf *nc;
+
+			rcu_read_lock();
+			nc = rcu_dereference(peer_device->connection->transport.net_conf);
+			rcu_read_unlock();
+
+			if (device->act_log->used < nc->cong_extents)
+				wake_up(&device->al_wait);
+		}
 	}
 	return count;
 }
