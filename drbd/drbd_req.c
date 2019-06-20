@@ -783,10 +783,13 @@ void drbd_req_complete(struct drbd_request *req, struct bio_and_error *m)
 #ifdef _WIN32
 		// DW-1755 
 		// for the "passthrough" policy, all local errors are returned to the file system.
-		enum drbd_io_error_p eh;
-		rcu_read_lock();
-		eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
-		rcu_read_unlock();
+		enum drbd_io_error_p eh = EP_PASSTHROUGH;
+
+		if (device->ldev) {
+			rcu_read_lock();
+			eh = rcu_dereference(device->ldev->disk_conf)->on_io_error;
+			rcu_read_unlock();
+		}
 
 		if (eh == EP_PASSTHROUGH)
 			m->error = error;
