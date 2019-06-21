@@ -5834,7 +5834,13 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	int bitmap_index = device->ldev->md.peers[node_id].bitmap_index;
 	const char* name;
 
-	if (_drbd_bm_total_weight(device, bitmap_index) == 0)
+	/* DW-1843
+	 * When an io error occurs on the primary node, oos is recorded with up_to_date maintained. 
+	 * Therefore, when changing status to secondary, it is recognized as inconsistent oos and deleted through forget_bitmap. 
+	 * To prevent it, use MDF_PRIMARY_IO_ERROR.
+	 */
+	if (_drbd_bm_total_weight(device, bitmap_index) == 0 || 
+		drbd_md_test_flag(device->ldev, MDF_PRIMARY_IO_ERROR))
 		return;
 
 	spin_unlock_irq(&device->ldev->md.uuid_lock);

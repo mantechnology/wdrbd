@@ -3009,6 +3009,8 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				drbd_err(device, "Force-detaching in %s\n", where);
 		}
 		else {
+			drbd_md_set_flag(device, MDF_PRIMARY_IO_ERROR);
+
 		// DW-1814 
 		// In the event of a write or read error on a clone volume, there is no action here to commit it to the failure handling mechanism.
 		// When a write error occurs in the duplicate volume, P_NEG_ACK is transmitted and the OOS is recorded and synchronized.

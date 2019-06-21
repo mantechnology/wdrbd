@@ -1218,6 +1218,7 @@ void check_and_clear_io_error(struct drbd_device *device)
 		if (count == 0) {
 			drbd_info(device, "io-error has been cleared.\n");
 			atomic_set(&device->io_error_count, 0);
+			drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
 			drbd_queue_notify_io_error_cleared(device);
 			break;
 		}
