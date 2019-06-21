@@ -1395,19 +1395,24 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	bm_page_unlock_io(device, (int)idx);
 
 #ifdef _WIN32
-    if (Irp) {
-        if (Irp->MdlAddress != NULL) {
-            PMDL mdl, nextMdl;
-            for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
-                nextMdl = mdl->Next;
-                MmUnlockPages(mdl);
-                IoFreeMdl(mdl); // This function will also unmap pages.
-            }
-            Irp->MdlAddress = NULL;
-        }
+	//DW-1838 
+	//If IoAcquireRemoveLock fails, 
+	//DeviceObjects points to FAULT_TEST_FLAG, and IRP variable points to bio instead of IRP.
+	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
+		if (Irp) {
+			if (Irp->MdlAddress != NULL) {
+				PMDL mdl, nextMdl;
+				for (mdl = Irp->MdlAddress; mdl != NULL; mdl = nextMdl) {
+					nextMdl = mdl->Next;
+					MmUnlockPages(mdl);
+					IoFreeMdl(mdl); // This function will also unmap pages.
+				}
+				Irp->MdlAddress = NULL;
+			}
 
-        IoFreeIrp(Irp);
-    }
+			IoFreeIrp(Irp);
+		}
+	}
 #endif
 
 	if (ctx->flags & BM_AIO_COPY_PAGES)
