@@ -9169,9 +9169,8 @@ static void drain_resync_activity(struct drbd_connection *connection)
 
 	/* verify or resync related peer requests are read_ee or sync_ee,
 	* drain them first */
-	//DW-1828 read_ee, sync_ee wait up to 3 seconds for completion
-	conn_wait_ee_empty_timeout(connection, &connection->read_ee);
-	conn_wait_ee_empty_timeout(connection, &connection->sync_ee);
+	conn_wait_ee_empty(connection, &connection->read_ee);
+	conn_wait_ee_empty(connection, &connection->sync_ee);
 
 	rcu_read_lock();
 #ifdef _WIN32
