@@ -226,6 +226,11 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 		wake_up(&connection->ee_wait);
 	if (test_bit(__EE_WAS_ERROR, &peer_req->flags)) {
 		atomic_inc(&device->io_error_count);
+		//DW-1843 set MDF_PRIMARY_IO_ERROR flag when reading IO error at primary.
+		if (device->resource->role[NOW] == R_PRIMARY) {
+			drbd_md_set_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+			drbd_md_set_flag(device, MDF_PRIMARY_IO_ERROR);
+		}
 		__drbd_chk_io_error(device, DRBD_READ_ERROR);
 	}
 	spin_unlock_irqrestore(&device->resource->req_lock, flags);
