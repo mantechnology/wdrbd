@@ -481,6 +481,12 @@ Connect(
 	}
 
 	IoFreeIrp(Irp);
+
+	if (NT_SUCCESS(Status)) {
+		//DW-1844 set connection status to WSK_ESTABLISHED
+		pSock->sk_state = WSK_ESTABLISHED;
+	}
+
 	return Status;
 }
 
