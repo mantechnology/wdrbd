@@ -4774,7 +4774,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	} else if (hg < 0) { /* become sync target */
 		rv = L_WF_BITMAP_T;
 	} else {
-		
+		rv = L_ESTABLISHED;
 		if (drbd_bitmap_uuid(peer_device)) {
 			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%lu bits)\n",
 				  drbd_bm_total_weight(peer_device));
@@ -4798,8 +4798,6 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 			else {
 				drbd_info(device, "No resync, but %lu bits in bitmap!\n",
 					drbd_bm_total_weight(peer_device));
-
-				rv = L_ESTABLISHED;
 			}
 		}
 	}
