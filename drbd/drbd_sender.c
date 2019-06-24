@@ -1498,7 +1498,7 @@ static void __cancel_other_resyncs(struct drbd_device *device)
 
 			if (peer_bm_uuid)
 				_drbd_uuid_push_history(device, peer_bm_uuid);
-			if (peer_md[peer_node_id].bitmap_index != -1)
+			if (peer_md[peer_node_id].bitmap_index != -1 && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 			{
 				drbd_info(peer_device, "bitmap will be cleared due to resync cancelation\n");
 				forget_bitmap(device, peer_node_id);

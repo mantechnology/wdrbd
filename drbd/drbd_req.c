@@ -574,9 +574,13 @@ void complete_master_bio(struct drbd_device *device,
 			 * write out_of_sync for all nodes.
 			 */
 			for_each_peer_device(peer_device, device) {
-				if (peer_device)
+				if (peer_device) {
 					drbd_set_out_of_sync(peer_device, master_bio->bi_sector, master_bio->bi_size);
+					drbd_md_set_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+				}
 			}
+
+			drbd_md_set_flag(device, MDF_PRIMARY_IO_ERROR);
 		}
 
 		check_and_clear_io_error(device);

@@ -416,6 +416,7 @@ enum mdf_flag {
 	MDF_AL_DISABLED =       1 << 8,
 #ifdef _WIN32
 	MDF_LAST_PRIMARY = 1 << 16,
+	MDF_PRIMARY_IO_ERROR = 1 << 17,				/* DW-1843 since the io_error_count of the device structure is initialized when down, it is saved as an mdf flag to hold the value.*/
 #endif
 };
 
@@ -438,6 +439,7 @@ enum mdf_peer_flag {
 #ifdef _WIN32
 	MDF_PEER_INIT_SYNCT_BEGIN	= 1 << 17,
 	MDF_PEER_INIT_SYNCT_DONE 	= 1 << 18,
+	MDF_PEER_PRIMARY_IO_ERROR = 1 << 19,         /* DW-1843 Set the peer flag to indicate that an io-error occurred at the primary.*/
 #endif
 };
 
