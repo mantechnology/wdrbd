@@ -1219,15 +1219,30 @@ void check_and_clear_io_error(struct drbd_device *device)
 
 	struct drbd_peer_device *peer_device;
 	for_each_peer_device(peer_device, device) {
-		if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR)) {
-			ULONG_PTR count = _drbd_bm_total_weight(device, peer_device->bitmap_index);
-			if (count == 0) {
-				drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
-				if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IO_ERROR)) {
+		if (device->resource->role[NOW] == R_PRIMARY) {
+			if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR)) {
+				ULONG_PTR count = _drbd_bm_total_weight(device, peer_device->bitmap_index);
+				if (count == 0) {
+					drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+					if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IO_ERROR)) {
+						drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
+						drbd_info(device, "io-error has been cleared.\n");
+						atomic_set(&device->io_error_count, 0);
+						drbd_queue_notify_io_error_cleared(device);
+					}
+				}
+			}
+		}
+		else {
+			if (atomic_read(&device->io_error_count) > 0) {
+				ULONG_PTR count = _drbd_bm_total_weight(device, peer_device->bitmap_index);
+				if (count == 0) {
+					drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
 					drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
 					drbd_info(device, "io-error has been cleared.\n");
 					atomic_set(&device->io_error_count, 0);
 					drbd_queue_notify_io_error_cleared(device);
+					break;
 				}
 			}
 		}
