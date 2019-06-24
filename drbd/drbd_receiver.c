@@ -2461,31 +2461,31 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
  * e_end_resync_block() is called in ack_sender context via
  * drbd_finish_peer_reqs().
  */
-//static int e_end_resync_block(struct drbd_work *w, int unused)
-//{
-//	UNREFERENCED_PARAMETER(unused);
-//
-//	struct drbd_peer_request *peer_req =
-//		container_of(w, struct drbd_peer_request, w);
-//	struct drbd_peer_device *peer_device = peer_req->peer_device;
-//	sector_t sector = peer_req->i.sector;
-//	int err;
-//
-//	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
-//
-//	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-//		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-//		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-//	} else {
-//		/* Record failure to sync */
-//		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-//
-//		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-//	}
-//	dec_unacked(peer_device);
-//
-//	return err;
-//}
+static int e_end_resync_block(struct drbd_work *w, int unused)
+{
+	UNREFERENCED_PARAMETER(unused);
+
+	struct drbd_peer_request *peer_req =
+		container_of(w, struct drbd_peer_request, w);
+	struct drbd_peer_device *peer_device = peer_req->peer_device;
+	sector_t sector = peer_req->i.sector;
+	int err;
+
+	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
+
+	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+	} else {
+		/* Record failure to sync */
+		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+
+		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+	}
+	dec_unacked(peer_device);
+
+	return err;
+}
 
 static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request *peer_request, sector_t sector, 
 														ULONG_PTR offset, unsigned int size, u64 block_id, char* verify) __must_hold(local)
@@ -2736,52 +2736,52 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	return 0;
 }
 
-//static int recv_resync_read(struct drbd_peer_device *peer_device,
-//			    struct drbd_peer_request_details *d) __releases(local)
-//{
-//	struct drbd_device *device = peer_device->device;
-//	struct drbd_peer_request *peer_req;
-//
-//	peer_req = read_in_block(peer_device, d);
-//	if (!peer_req)
-//		return -EIO;
-//
-//	if (test_bit(UNSTABLE_RESYNC, &peer_device->flags))
-//		clear_bit(STABLE_RESYNC, &device->flags);
-//
-//	dec_rs_pending(peer_device);
-//
-//	inc_unacked(peer_device);
-//	/* corresponding dec_unacked() in e_end_resync_block()
-//	 * respective _drbd_clear_done_ee */
-//
-//	peer_req->w.cb = e_end_resync_block;
-//	peer_req->submit_jif = jiffies;
-//
-//	spin_lock_irq(&device->resource->req_lock);
-//	list_add_tail(&peer_req->w.list, &peer_device->connection->sync_ee);
-//	spin_unlock_irq(&device->resource->req_lock);
-//
-//	atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
-//
-//	/* Seting all peer out of sync here. Sync source peer will be set
-//	   in sync when the write completes. Other peers will be set in
-//	   sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-//	drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
-//
-//	if (drbd_submit_peer_request(device, peer_req, REQ_OP_WRITE, 0,
-//		DRBD_FAULT_RS_WR) == 0)
-//		return 0;
-//
-//	/* don't care for the reason here */
-//	drbd_err(device, "submit failed, triggering re-connect\n");
-//	spin_lock_irq(&device->resource->req_lock);
-//	list_del(&peer_req->w.list);
-//	spin_unlock_irq(&device->resource->req_lock);
-//
-//	drbd_free_peer_req(peer_req);
-//	return -EIO;
-//}
+static int recv_resync_read(struct drbd_peer_device *peer_device,
+			    struct drbd_peer_request_details *d) __releases(local)
+{
+	struct drbd_device *device = peer_device->device;
+	struct drbd_peer_request *peer_req;
+
+	peer_req = read_in_block(peer_device, d);
+	if (!peer_req)
+		return -EIO;
+
+	if (test_bit(UNSTABLE_RESYNC, &peer_device->flags))
+		clear_bit(STABLE_RESYNC, &device->flags);
+
+	dec_rs_pending(peer_device);
+
+	inc_unacked(peer_device);
+	/* corresponding dec_unacked() in e_end_resync_block()
+	 * respective _drbd_clear_done_ee */
+
+	peer_req->w.cb = e_end_resync_block;
+	peer_req->submit_jif = jiffies;
+
+	spin_lock_irq(&device->resource->req_lock);
+	list_add_tail(&peer_req->w.list, &peer_device->connection->sync_ee);
+	spin_unlock_irq(&device->resource->req_lock);
+
+	atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
+
+	/* Seting all peer out of sync here. Sync source peer will be set
+	   in sync when the write completes. Other peers will be set in
+	   sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
+	drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+
+	if (drbd_submit_peer_request(device, peer_req, REQ_OP_WRITE, 0,
+		DRBD_FAULT_RS_WR) == 0)
+		return 0;
+
+	/* don't care for the reason here */
+	drbd_err(device, "submit failed, triggering re-connect\n");
+	spin_lock_irq(&device->resource->req_lock);
+	list_del(&peer_req->w.list);
+	spin_unlock_irq(&device->resource->req_lock);
+
+	drbd_free_peer_req(peer_req);
+	return -EIO;
+}
 
 static struct drbd_request *
 find_request(struct drbd_device *device, struct rb_root *root, u64 id,
@@ -2924,7 +2924,12 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	D_ASSERT(device, d.block_id == ID_SYNCER);
 
 	if (get_ldev(device)) {
+		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE 0
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+		err = recv_resync_read(peer_device, &d);
+#else
 		err = split_recv_resync_read(peer_device, &d); 
+#endif
 		if (err)
 			put_ldev(device);
 	} else {
@@ -10080,6 +10085,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		return -EIO;
 	device = peer_device->device;
 
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
 	//DW-1601 ID_SYNCER_SPLIT_DONE == ID_SYNCER
 	if (connection->agreed_pro_version >= 113) {
 		if (p->block_id != ID_SYNCER_SPLIT)
@@ -10093,7 +10099,9 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 			return 0;
 		}
 	}
-	else {
+	else 
+#endif
+	{
 		update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 		if (p->block_id == ID_SYNCER) {
@@ -10146,6 +10154,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 	device = peer_device->device;
 
 	//DW-1601 
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
 	if (connection->agreed_pro_version >= 113) {
 		if (p->block_id != ID_SYNCER_SPLIT)
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
@@ -10161,7 +10170,9 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		}
 
 	}
-	else {
+	else 
+#endif
+	{
 		update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 		if (peer_device->disk_state[NOW] == D_UP_TO_DATE)
