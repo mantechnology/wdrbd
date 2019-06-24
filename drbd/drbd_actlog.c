@@ -336,7 +336,10 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 		if (peer_device == NULL)
 			goto out;
 		//DW-1601 If greater than 112, remove act_log and resync_lru associations
-		if (peer_device->connection->agreed_pro_version <= 112) {
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+		if (peer_device->connection->agreed_pro_version <= 112) 
+#endif
+		{
 			tmp = lc_find(peer_device->resync_lru, al_ctx->enr / AL_EXT_PER_BM_SECT);
 			if (unlikely(tmp != NULL)) {
 				struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
@@ -377,7 +380,10 @@ set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, al_ctx->device) {
 		//DW-1601 If greater than 112, remove act_log and resync_lru associations
-		if (peer_device->connection->agreed_pro_version <= 112) {
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+		if (peer_device->connection->agreed_pro_version <= 112)
+#endif
+		{
 			tmp = lc_find(peer_device->resync_lru, al_ctx->enr / AL_EXT_PER_BM_SECT);
 			if (tmp) {
 				struct bm_extent  *bm_ext = lc_entry(tmp, struct bm_extent, lce);
@@ -1791,7 +1797,10 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 	}
 check_al:
 	//DW-1601 If greater than 112, remove act_log and resync_lru associations
-	if (peer_device->connection->agreed_pro_version <= 112) {
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+	if (peer_device->connection->agreed_pro_version <= 112) 
+#endif
+	{
 		for (i = 0; i < AL_EXT_PER_BM_SECT; i++) {
 			if (lc_is_used(device->act_log, (unsigned int)(al_enr + i))){
 				WDRBD_TRACE_AL("check_al sector = %lu, enr = %lu, al_enr + 1 = %lu and goto try_again\n", sector, enr, al_enr + i);
