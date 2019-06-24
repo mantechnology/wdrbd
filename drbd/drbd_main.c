@@ -1699,6 +1699,8 @@ static int _drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
 	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
+		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
 	put_ldev(device);
@@ -1822,6 +1824,8 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (test_bit(RECONNECT, &peer_device->connection->flags))
 		uuid_flags |= UUID_FLAG_RECONNECT;
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
+		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
 	if (drbd_device_stable(device, &authoritative_mask)) {
 		uuid_flags |= UUID_FLAG_STABLE;
 		p->node_mask = cpu_to_be64(node_mask);
@@ -5839,8 +5843,7 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	 * Therefore, when changing status to secondary, it is recognized as inconsistent oos and deleted through forget_bitmap. 
 	 * To prevent it, use MDF_PRIMARY_IO_ERROR.
 	 */
-	if (_drbd_bm_total_weight(device, bitmap_index) == 0 || 
-		drbd_md_test_flag(device->ldev, MDF_PRIMARY_IO_ERROR))
+	if (_drbd_bm_total_weight(device, bitmap_index) == 0)
 		return;
 
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
@@ -6030,7 +6033,7 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 					struct drbd_peer_device *found_peer = peer_device_by_node_id(device, node_id);
 					
 					if (found_peer &&
-						isForgettableReplState(found_peer->repl_state[NOW]))
+						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
 						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
@@ -6105,7 +6108,7 @@ clear_flag:
 		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
 		if (peer_bm_uuid)
 			_drbd_uuid_push_history(device, peer_bm_uuid);
-		if (peer_md[peer_node_id].bitmap_index != -1)
+		if (peer_md[peer_node_id].bitmap_index != -1 && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 		{
 			drbd_info(peer_device, "bitmap will be cleared due to inconsistent out-of-sync, disk(%d)\n", device->disk_state[NOW]);
 			forget_bitmap(device, peer_node_id);
@@ -6124,7 +6127,7 @@ clear_flag:
 		u64 peer_bm_uuid = peer_md[peer_node_id].bitmap_uuid;
 		if (peer_bm_uuid)
 			_drbd_uuid_push_history(device, peer_bm_uuid);
-		if (peer_md[peer_node_id].bitmap_index != -1)
+		if (peer_md[peer_node_id].bitmap_index != -1 && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 		{
 			drbd_info(peer_device, "bitmap will be cleared because peer has consistent disk with primary's\n");
 			forget_bitmap(device, peer_node_id);
