@@ -6661,6 +6661,9 @@ int drbd_bitmap_io(struct drbd_device *device,
 
 void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
+	if (!device->ldev)
+		return;
+
 	if (((int)(device->ldev->md.flags) & flag) != flag) {
 		drbd_md_mark_dirty(device);
 		device->ldev->md.flags |= flag;
@@ -6670,9 +6673,12 @@ void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag flag) __must_hol
 void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 			   enum mdf_peer_flag flag) __must_hold(local)
 {
+	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
-	struct drbd_md *md = &device->ldev->md;
+	if (!device->ldev)
+		return;
 
+	md = &device->ldev->md;
 	if (!(md->peers[peer_device->node_id].flags & flag)) {
 		drbd_md_mark_dirty(device);
 		md->peers[peer_device->node_id].flags |= flag;
@@ -6681,6 +6687,9 @@ void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 
 void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
+	if (!device->ldev)
+		return;
+
 	if ((device->ldev->md.flags & flag) != 0) {
 		drbd_md_mark_dirty(device);
 		device->ldev->md.flags &= ~flag;
@@ -6690,9 +6699,12 @@ void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag flag) __must_h
 void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 			     enum mdf_peer_flag flag) __must_hold(local)
 {
+	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
-	struct drbd_md *md = &device->ldev->md;
+	if (!device->ldev)
+		return;
 
+	md = &device->ldev->md;
 	if (md->peers[peer_device->node_id].flags & flag) {
 		drbd_md_mark_dirty(device);
 		md->peers[peer_device->node_id].flags &= ~flag;
@@ -6701,13 +6713,20 @@ void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 
 int drbd_md_test_flag(struct drbd_backing_dev *bdev, enum mdf_flag flag)
 {
+	if (!bdev)
+		return 0;
+
 	return (bdev->md.flags & flag) != 0;
 }
 
 bool drbd_md_test_peer_flag(struct drbd_peer_device *peer_device, enum mdf_peer_flag flag)
 {
-	struct drbd_md *md = &peer_device->device->ldev->md;
+	struct drbd_md *md;
 
+	if (!peer_device->device->ldev)
+		return false;
+
+	md = &peer_device->device->ldev->md;
 	if (peer_device->bitmap_index == -1)
 		return false;
 
