@@ -1697,7 +1697,7 @@ static int _drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags
 		uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+	if (!drbd_md_test_flag(device, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
@@ -1820,7 +1820,7 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
 #endif
 		uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+	if (!drbd_md_test_flag(device, MDF_CONSISTENT))
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (test_bit(RECONNECT, &peer_device->connection->flags))
 		uuid_flags |= UUID_FLAG_RECONNECT;
@@ -6661,8 +6661,10 @@ int drbd_bitmap_io(struct drbd_device *device,
 
 void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
-	if (!device->ldev)
+	if (!device->ldev) {
+		drbd_err(device, "ldev is null.\n");
 		return;
+	}
 
 	if (((int)(device->ldev->md.flags) & flag) != flag) {
 		drbd_md_mark_dirty(device);
@@ -6675,8 +6677,10 @@ void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 {
 	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
-	if (!device->ldev)
+	if (!device->ldev) {
+		drbd_err(device, "ldev is null.\n");
 		return;
+	}
 
 	md = &device->ldev->md;
 	if (!(md->peers[peer_device->node_id].flags & flag)) {
@@ -6687,8 +6691,10 @@ void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 
 void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
-	if (!device->ldev)
+	if (!device->ldev) {
+		drbd_err(device, "ldev is null.\n");
 		return;
+	}
 
 	if ((device->ldev->md.flags & flag) != 0) {
 		drbd_md_mark_dirty(device);
@@ -6701,8 +6707,10 @@ void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 {
 	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
-	if (!device->ldev)
+	if (!device->ldev) {
+		drbd_err(device, "ldev is null.\n");
 		return;
+	}
 
 	md = &device->ldev->md;
 	if (md->peers[peer_device->node_id].flags & flag) {
@@ -6711,12 +6719,14 @@ void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 	}
 }
 
-int drbd_md_test_flag(struct drbd_backing_dev *bdev, enum mdf_flag flag)
+int drbd_md_test_flag(struct drbd_device *device, enum mdf_flag flag)
 {
-	if (!bdev)
+	if (!device->ldev) {
+		drbd_err(device, "ldev is null.\n");
 		return 0;
+	}
 
-	return (bdev->md.flags & flag) != 0;
+	return (device->ldev->md.flags & flag) != 0;
 }
 
 bool drbd_md_test_peer_flag(struct drbd_peer_device *peer_device, enum mdf_peer_flag flag)

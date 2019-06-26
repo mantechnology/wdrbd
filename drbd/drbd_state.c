@@ -175,9 +175,9 @@ enum drbd_disk_state disk_state_from_md(struct drbd_device *device) __must_hold(
 {
 	enum drbd_disk_state disk_state;
 
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+	if (!drbd_md_test_flag(device, MDF_CONSISTENT))
 		disk_state = D_INCONSISTENT;
-	else if (!drbd_md_test_flag(device->ldev, MDF_WAS_UP_TO_DATE))
+	else if (!drbd_md_test_flag(device, MDF_WAS_UP_TO_DATE))
 		disk_state = D_OUTDATED;
 	else
 		disk_state = may_be_up_to_date(device) ? D_UP_TO_DATE : D_CONSISTENT;
