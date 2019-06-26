@@ -4592,7 +4592,7 @@ static void log_handshake(struct drbd_peer_device *peer_device)
        uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
        uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+	if (!drbd_md_test_flag(device, MDF_CONSISTENT))
        uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (test_bit(RECONNECT, &peer_device->connection->flags))
        uuid_flags |= UUID_FLAG_RECONNECT;
