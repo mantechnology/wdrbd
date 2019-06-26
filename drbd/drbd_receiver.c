@@ -10255,8 +10255,9 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			break;
 		case P_RS_CANCEL:
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
-			if (peer_device->repl_state[NOW] == L_BEHIND || 
-				peer_device->repl_state[NOW] == L_SYNC_TARGET || 
+			if (peer_device->repl_state[NOW] == L_BEHIND ||
+				//DW-1846 The request should also be processed when the resync is stopped.
+				is_sync_target_state(peer_device, NOW) ||
 				peer_device->repl_state[NOW] == L_VERIFY_T) {
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
