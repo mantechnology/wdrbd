@@ -6662,7 +6662,7 @@ int drbd_bitmap_io(struct drbd_device *device,
 void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
 	if (!device->ldev) {
-		drbd_err(device, "ldev is null.\n");
+		drbd_warn(device, "ldev is null.\n");
 		return;
 	}
 
@@ -6678,7 +6678,7 @@ void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
 	if (!device->ldev) {
-		drbd_err(device, "ldev is null.\n");
+		drbd_warn(peer_device, "ldev is null.\n");
 		return;
 	}
 
@@ -6692,7 +6692,7 @@ void drbd_md_set_peer_flag(struct drbd_peer_device *peer_device,
 void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag flag) __must_hold(local)
 {
 	if (!device->ldev) {
-		drbd_err(device, "ldev is null.\n");
+		drbd_warn(device, "ldev is null.\n");
 		return;
 	}
 
@@ -6708,7 +6708,7 @@ void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 	struct drbd_md *md;
 	struct drbd_device *device = peer_device->device;
 	if (!device->ldev) {
-		drbd_err(device, "ldev is null.\n");
+		drbd_warn(peer_device, "ldev is null.\n");
 		return;
 	}
 
@@ -6722,7 +6722,7 @@ void drbd_md_clear_peer_flag(struct drbd_peer_device *peer_device,
 int drbd_md_test_flag(struct drbd_device *device, enum mdf_flag flag)
 {
 	if (!device->ldev) {
-		drbd_err(device, "ldev is null.\n");
+		drbd_warn(device, "ldev is null.\n");
 		return 0;
 	}
 
@@ -6733,8 +6733,10 @@ bool drbd_md_test_peer_flag(struct drbd_peer_device *peer_device, enum mdf_peer_
 {
 	struct drbd_md *md;
 
-	if (!peer_device->device->ldev)
+	if (!peer_device->device->ldev) {
+		drbd_warn(peer_device, "ldev is null.\n");
 		return false;
+	}
 
 	md = &peer_device->device->ldev->md;
 	if (peer_device->bitmap_index == -1)
