@@ -2360,12 +2360,16 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		if(!IsEmptyUnicodeString(&pvext->MountPoint)) {
 			ucsdup (&old_mount_point, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
 			bWasExist = TRUE;
+
+			if (!IsEmptyUnicodeString(&old_mount_point))
+				WDRBD_TRACE("old_mount_point:%wZ\n", &old_mount_point);
 		}
 		
 		status = mvolUpdateMountPointInfoByExtension(pvext);
 		if(NT_SUCCESS(status)) {
 
-			WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+			if (!IsEmptyUnicodeString(&pvext->MountPoint))
+				WDRBD_TRACE("new mount point:%wZ\n", &pvext->MountPoint);
 
 			// DW-1105: detach volume when replicating volume letter is changed.
 			if (pvext->Active && bWasExist) {
