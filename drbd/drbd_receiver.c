@@ -10257,7 +10257,7 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
 			if (peer_device->repl_state[NOW] == L_BEHIND ||
 				//DW-1846 The request should also be processed when the resync is stopped.
-				is_sync_target_state(peer_device, NOW) ||
+				is_sync_target(peer_device) ||
 				peer_device->repl_state[NOW] == L_VERIFY_T) {
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
@@ -10393,11 +10393,6 @@ static ULONG_PTR node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __
 }
 
 
-static bool is_sync_source(struct drbd_peer_device *peer_device)
-{
-	return is_sync_source_state(peer_device, NOW) ||
-		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
-}
 
 static int w_send_out_of_sync(struct drbd_work *w, int cancel)
 {

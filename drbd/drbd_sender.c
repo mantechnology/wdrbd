@@ -1949,8 +1949,9 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		//DW-1807 send P_RS_CANCEL if resync is not in progress
 		//DW-1846 The request should also be processed when the resync is stopped.
-		if (peer_device->repl_state[NOW] != is_sync_source_state(peer_device, NOW))
+		if (!is_sync_source(peer_device)) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+		}
 		else {
 			if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
 				inc_rs_pending(peer_device);

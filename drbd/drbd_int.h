@@ -3387,6 +3387,12 @@ static inline bool is_sync_target_state(struct drbd_peer_device *peer_device,
 	return repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T;
 }
 
+static inline bool is_sync_target(struct drbd_peer_device *peer_device)
+{
+	return is_sync_target_state(peer_device, NOW) ||
+				peer_device->repl_state[NOW] == L_WF_BITMAP_T;
+}
+
 static inline bool is_sync_source_state(struct drbd_peer_device *peer_device,
 					enum which_state which)
 {
@@ -3402,6 +3408,11 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
 		is_sync_target_state(peer_device, which);
 }
 
+static inline bool is_sync_source(struct drbd_peer_device *peer_device)
+{
+	return is_sync_source_state(peer_device, NOW) ||
+		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+}
 /**
  * get_ldev() - Increase the ref count on device->ldev. Returns 0 if there is no ldev
  * @_device:		DRBD device.
