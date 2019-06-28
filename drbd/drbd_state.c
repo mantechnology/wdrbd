@@ -2154,7 +2154,8 @@ static void sanitize_state(struct drbd_resource *resource)
 				set_resync_susp_other_c(peer_device, true, false, __FUNCTION__);
 
 			//DW-1854 resync_susp_other_c must be set to false even when L_WF_BITMAP_T state
-			if ((repl_state[OLD] == L_WF_BITMAP_T || repl_state[OLD] == L_SYNC_TARGET) && repl_state[NEW] != L_SYNC_TARGET)
+			if ((repl_state[OLD] == L_WF_BITMAP_T && (repl_state[NEW] != L_SYNC_TARGET && repl_state[NEW] != L_WF_BITMAP_T)) ||
+				(repl_state[OLD] == L_SYNC_TARGET && repl_state[NEW] != L_SYNC_TARGET))
 				set_resync_susp_other_c(peer_device, false, false, __FUNCTION__);
 
 			/* Implication of the repl state on other peer's repl state */
@@ -2169,7 +2170,7 @@ static void sanitize_state(struct drbd_resource *resource)
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
 			if (repl_state[OLD] == L_STARTING_SYNC_T && 
 				//DW-1854 If the current state is L_STARTING_SYNC_T, the new state must be L_WF_BITMAP_T, otherwise change resync_sp_other_c to false.
-				repl_state[NEW] != L_WF_BITMAP_T)
+				(repl_state[NEW] != L_STARTING_SYNC_T && repl_state[NEW] != L_WF_BITMAP_T))
 				//repl_state[NEW] == L_ESTABLISHED)
 				set_resync_susp_other_c(peer_device, false, false, __FUNCTION__);
 #endif
