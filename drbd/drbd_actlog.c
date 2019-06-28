@@ -1865,9 +1865,9 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
-		drbd_err(device, "%s => drbd_rs_complete_io(,%llu [=%u], %lu) called, "
+		drbd_err(device, "%s => drbd_rs_complete_io(,%llu [=%u], %llu) called, "
 		    "but refcnt is 0!?\n", 
-			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector), caller);
+			caller, (unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector));
 		return;
 	}
 
