@@ -6566,15 +6566,15 @@ __change_peer_device_state(struct drbd_peer_device *peer_device,
 	}
 	if (mask.user_isp) {
 		mask.user_isp ^= -1;
-		__change_resync_susp_user(peer_device, val.user_isp);
+		__change_resync_susp_user(peer_device, val.user_isp, __FUNCTION__);
 	}
 	if (mask.peer_isp) {
 		mask.peer_isp ^= -1;
-		__change_resync_susp_peer(peer_device, val.peer_isp);
+		__change_resync_susp_peer(peer_device, val.peer_isp, __FUNCTION__);
 	}
 	if (mask.aftr_isp) {
 		mask.aftr_isp ^= -1;
-		__change_resync_susp_dependency(peer_device, val.aftr_isp);
+		__change_resync_susp_dependency(peer_device, val.aftr_isp, __FUNCTION__);
 	}
 	if (mask.i) {
 		drbd_info(peer_device, "Remote state change: request %u/%u not "
@@ -8210,7 +8210,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
 		__change_peer_role(connection, peer_state.role);
 	__change_peer_disk_state(peer_device, peer_disk_state);
-	__change_resync_susp_peer(peer_device, peer_state.aftr_isp | peer_state.user_isp);
+	__change_resync_susp_peer(peer_device, peer_state.aftr_isp | peer_state.user_isp, __FUNCTION__);
 	repl_state = peer_device->repl_state;
 	if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED)
 		resource->state_change_flags |= CS_HARD;

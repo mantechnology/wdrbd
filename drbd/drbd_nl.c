@@ -5662,7 +5662,7 @@ int drbd_adm_pause_sync(struct sk_buff *skb, struct genl_info *info)
 
 	peer_device = adm_ctx.peer_device;
 	if (change_resync_susp_user(peer_device, true,
-			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE) == SS_NOTHING_TO_DO)
+		CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, __FUNCTION__) == SS_NOTHING_TO_DO)
 		retcode = ERR_PAUSE_IS_SET;
 
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
@@ -5684,7 +5684,7 @@ int drbd_adm_resume_sync(struct sk_buff *skb, struct genl_info *info)
 
 	peer_device = adm_ctx.peer_device;
 	if (change_resync_susp_user(peer_device, false,
-			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE) == SS_NOTHING_TO_DO) {
+			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, __FUNCTION__) == SS_NOTHING_TO_DO) {
 
 		if (peer_device->repl_state[NOW] == L_PAUSED_SYNC_S ||
 		    peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {

@@ -155,10 +155,10 @@ extern enum drbd_state_rv change_peer_disk_state(struct drbd_peer_device *, enum
 
 enum drbd_state_rv change_from_consistent(struct drbd_resource *, enum chg_state_flags);
 
-extern void __change_resync_susp_user(struct drbd_peer_device *, bool);
-extern enum drbd_state_rv change_resync_susp_user(struct drbd_peer_device *, bool, enum chg_state_flags);
-extern void __change_resync_susp_peer(struct drbd_peer_device *, bool);
-extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool);
+extern void __change_resync_susp_user(struct drbd_peer_device *, bool, const char*);
+extern enum drbd_state_rv change_resync_susp_user(struct drbd_peer_device *, bool, enum chg_state_flags, const char *);
+extern void __change_resync_susp_peer(struct drbd_peer_device *, bool, const char*);
+extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool, const char*);
 
 struct drbd_work;
 extern int abort_nested_twopc_work(struct drbd_work *, int);
