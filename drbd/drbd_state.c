@@ -1063,12 +1063,12 @@ static enum drbd_repl_state conn_lowest_repl_state(struct drbd_connection *conne
 static bool resync_suspended(struct drbd_peer_device *peer_device, enum which_state which)
 {
 	return peer_device->resync_susp_user[which] ||
-	       peer_device->resync_susp_peer[which] ||
-	       peer_device->resync_susp_dependency[which] ||
-	       peer_device->resync_susp_other_c[which];
+		peer_device->resync_susp_peer[which] ||
+		peer_device->resync_susp_dependency[which] ||
+		peer_device->resync_susp_other_c[which];
 }
 
-static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool val, bool start)
+static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool val, bool start, const char* caller)
 {
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_device *p;
@@ -1087,6 +1087,9 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 			r = p->repl_state[NEW];
 			p->resync_susp_other_c[NEW] = true;
 
+			if (p->resync_susp_other_c[NOW] != p->resync_susp_other_c[NEW])
+				drbd_info(peer_device, "%s => node_id(%d), resync_susp_other_c : true\n", caller, p->node_id);
+
 			if (start && p->disk_state[NEW] >= D_INCONSISTENT && r == L_ESTABLISHED)
 				p->repl_state[NEW] = L_PAUSED_SYNC_T;
 		}
@@ -1100,6 +1103,10 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 				continue;
 
 			p->resync_susp_other_c[NEW] = false;
+
+			if (p->resync_susp_other_c[NOW] != p->resync_susp_other_c[NEW])
+				drbd_info(peer_device, "%s => node_id(%d), resync_susp_other_c : false\n", caller, p->node_id);
+
 			if (r == L_PAUSED_SYNC_T && !resync_suspended(p, NEW)) {
 				p->repl_state[NEW] = L_SYNC_TARGET;
 #ifdef _WIN32				
@@ -2144,22 +2151,22 @@ static void sanitize_state(struct drbd_resource *resource)
 			/* This needs to be after the previous block, since we should not set
 			   the bit if we are paused ourself */
 			if (repl_state[OLD] != L_SYNC_TARGET && repl_state[NEW] == L_SYNC_TARGET)
-				set_resync_susp_other_c(peer_device, true, false);
+				set_resync_susp_other_c(peer_device, true, false, __FUNCTION__);
 			if (repl_state[OLD] == L_SYNC_TARGET && repl_state[NEW] != L_SYNC_TARGET)
-				set_resync_susp_other_c(peer_device, false, false);
+				set_resync_susp_other_c(peer_device, false, false, __FUNCTION__);
 
 			/* Implication of the repl state on other peer's repl state */
 			if (repl_state[OLD] != L_STARTING_SYNC_T && repl_state[NEW] == L_STARTING_SYNC_T)
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Do not discretionally change other peer's replication state. 
 				// We should always notify state change, or possibly brought unpaired sync target up.
-				set_resync_susp_other_c(peer_device, true, false);
+				set_resync_susp_other_c(peer_device, true, false, __FUNCTION__);
 #else
 				set_resync_susp_other_c(peer_device, true, true);
 #endif
 
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: Clear resync_susp_other_c when state change is aborted, to get resynced from other node.
 			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_ESTABLISHED)
-				set_resync_susp_other_c(peer_device, false, false);
+				set_resync_susp_other_c(peer_device, false, false, __FUNCTION__);
 #endif
 
 			/* A detach is a cluster wide transaction. The peer_disk_state updates
@@ -5901,31 +5908,41 @@ enum drbd_state_rv change_peer_disk_state(struct drbd_peer_device *peer_device,
 }
 
 void __change_resync_susp_user(struct drbd_peer_device *peer_device,
-				       bool value)
+				       bool value, const char* caller)
 {
 	peer_device->resync_susp_user[NEW] = value;
+	if (peer_device->resync_susp_user[NOW] != peer_device->resync_susp_user[NEW]) {
+		drbd_info(peer_device, "%s, resync_susp_user : %s\n", caller, peer_device->resync_susp_user[NEW] ? "true" : "false");
+	}
 }
 
 enum drbd_state_rv change_resync_susp_user(struct drbd_peer_device *peer_device,
 						   bool value,
-						   enum chg_state_flags flags)
+						   enum chg_state_flags flags,
+						const char* caller)
 {
 	struct drbd_resource *resource = peer_device->device->resource;
 	unsigned long irq_flags;
 
 	begin_state_change(resource, &irq_flags, flags);
-	__change_resync_susp_user(peer_device, value);
+	__change_resync_susp_user(peer_device, value, caller);
 	return end_state_change(resource, &irq_flags, __FUNCTION__);
 }
 
 void __change_resync_susp_peer(struct drbd_peer_device *peer_device,
-				       bool value)
+				       bool value, const char* caller)
 {
 	peer_device->resync_susp_peer[NEW] = value;
+	if (peer_device->resync_susp_peer[NOW] != peer_device->resync_susp_peer[NEW]) {
+		drbd_info(peer_device, "%s, resync_susp_peer : %s\n", caller, peer_device->resync_susp_peer[NEW] ? "true" : "false");
+	}
 }
 
 void __change_resync_susp_dependency(struct drbd_peer_device *peer_device,
-					     bool value)
+					     bool value, const char* caller)
 {
 	peer_device->resync_susp_dependency[NEW] = value;
+	if (peer_device->resync_susp_dependency[NOW] != peer_device->resync_susp_dependency[NEW]) {
+		drbd_info(peer_device, "%s, resync_susp_dependency : %s\n", caller, peer_device->resync_susp_dependency[NEW] ? "true" : "false");
+	}
 }

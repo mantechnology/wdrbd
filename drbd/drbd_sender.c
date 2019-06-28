@@ -2302,6 +2302,7 @@ static bool __drbd_may_sync_now(struct drbd_peer_device *peer_device)
 		    other_peer_device->resync_susp_dependency[NOW] ||
 		    other_peer_device->resync_susp_peer[NOW] ||
 		    other_peer_device->resync_susp_user[NOW]) {
+			drbd_info(peer_device, "another(node_id:%d) peer device is in progress for resync\n", other_peer_device->node_id);
 			ret = false;
 			break;
 		}
@@ -2348,7 +2349,7 @@ static bool drbd_pause_after(struct drbd_device *device)
 			if (other_peer_device->repl_state[NOW] == L_OFF)
 				continue;
 			if (!__drbd_may_sync_now(other_peer_device))
-				__change_resync_susp_dependency(other_peer_device, true);
+				__change_resync_susp_dependency(other_peer_device, true, __FUNCTION__);
 		}
 #ifdef _WIN32_RCU_LOCKED
 		if (end_state_change_locked(other_device->resource, true, __FUNCTION__) != SS_NOTHING_TO_DO)
@@ -2397,7 +2398,7 @@ static bool drbd_resume_next(struct drbd_device *device)
 				continue;
 			if (other_peer_device->resync_susp_dependency[NOW] &&
 			    __drbd_may_sync_now(other_peer_device))
-				__change_resync_susp_dependency(other_peer_device, false);
+				__change_resync_susp_dependency(other_peer_device, false, __FUNCTION__);
 		}
 #ifdef _WIN32_RCU_LOCKED
 		if (end_state_change_locked(other_device->resource, true, __FUNCTION__) != SS_NOTHING_TO_DO)
@@ -2832,7 +2833,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #ifdef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_lock();
 #endif
-	__change_resync_susp_dependency(peer_device, !__drbd_may_sync_now(peer_device));
+	__change_resync_susp_dependency(peer_device, !__drbd_may_sync_now(peer_device), __FUNCTION__);
 #ifdef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_unlock();
 #endif
