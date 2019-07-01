@@ -1833,6 +1833,7 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	int err = -ENOMEM;
 #ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
 	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
+		drbd_info(device, "node-id : %d, flag : CONNECTION_ALREADY_FREED\n", peer_req->peer_device->node_id);
 		return 0; 
 	}
 #endif
@@ -3880,6 +3881,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		   the block... */
 		peer_req->flags |= EE_RS_THIN_REQ;
 	case P_RS_DATA_REQUEST:
+		//DW-1857 If P_RS_DATA_REQUEST is received, send P_RS_CANCEL unless L_SYNC_SOURCE.
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+			/* If err is set, we will drop the connection... */
+			goto fail3;
+		}
 		peer_req->w.cb = w_e_end_rsdata_req;
 		fault_type = DRBD_FAULT_RS_RD;
 		break;
