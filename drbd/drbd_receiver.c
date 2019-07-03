@@ -676,7 +676,7 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 		if (!err)
 			err = err2;
 
-		check_and_clear_io_error(peer_req->peer_device);
+		check_and_clear_io_error_in_secondary(peer_req->peer_device);
 
 		if (!list_empty(&peer_req->recv_order)) {
 #ifdef _WIN32
@@ -10103,7 +10103,11 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER) {
 			drbd_set_in_sync(peer_device, sector, blksize);
-			check_and_clear_io_error(peer_device);
+
+			if(device->resource->role[NOW] == R_PRIMARY)
+				check_and_clear_io_error_in_primary(device);
+			else
+				check_and_clear_io_error_in_secondary(peer_device);
 			dec_rs_pending(peer_device);
 
 			return 0;

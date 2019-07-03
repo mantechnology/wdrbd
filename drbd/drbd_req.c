@@ -580,11 +580,10 @@ void complete_master_bio(struct drbd_device *device,
 				}
 			}
 
-			drbd_md_set_flag(device, MDF_PRIMARY_IO_ERROR);
+			drbd_md_set_flag(device, MDF_IO_ERROR);
 		}
 
-		for_each_peer_device(peer_device, device)
-			check_and_clear_io_error(peer_device);
+		check_and_clear_io_error_in_primary(device);
 
 		if (!master_bio->splitInfo) {
 	        if (master_bio->bi_size <= 0 || master_bio->bi_size > (1024 * 1024) ) {
