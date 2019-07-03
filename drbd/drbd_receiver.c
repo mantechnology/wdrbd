@@ -641,7 +641,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
-	struct drbd_device *device = NULL;
 	int err = 0;
 	int n = 0;
 
@@ -667,9 +666,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
 #endif
-		if (!device)
-			device = peer_req->peer_device->device;
-
 		int err2;
 		// MODIFIED_BY_MANTECH DW-1665: check callback function(e_end_block)
 		bool epoch_put = (peer_req->w.cb == e_end_block) ? true : false;
@@ -679,6 +675,9 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 		err2 = peer_req->w.cb(&peer_req->w, !!err);
 		if (!err)
 			err = err2;
+
+		check_and_clear_io_error(peer_req->peer_device);
+
 		if (!list_empty(&peer_req->recv_order)) {
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-972: Gotten peer_req is not always allocated in current connection since the work_list is spliced from device->done_ee.
@@ -701,10 +700,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	}
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
-
-	struct drbd_peer_device *peer_device;
-	for_each_peer_device(peer_device, device) 
-		check_and_clear_io_error(peer_device);
 
 	return err;
 }
