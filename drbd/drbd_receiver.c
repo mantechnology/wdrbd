@@ -702,7 +702,9 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
 
-	check_and_clear_io_error(device);
+	struct drbd_peer_device *peer_device;
+	for_each_peer_device(peer_device, device) 
+		check_and_clear_io_error(peer_device);
 
 	return err;
 }
@@ -10106,7 +10108,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER) {
 			drbd_set_in_sync(peer_device, sector, blksize);
-			check_and_clear_io_error(device);
+			check_and_clear_io_error(peer_device);
 			dec_rs_pending(peer_device);
 
 			return 0;

@@ -322,7 +322,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		atomic_inc(&device->io_error_count);
     }
 
-	check_and_clear_io_error(device);
+	check_and_clear_io_error(peer_device);
 
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	device->writ_cnt += peer_req->i.size >> 9;

@@ -1204,10 +1204,18 @@ unsigned long drbd_bm_total_weight(struct drbd_peer_device *peer_device)
 //Initialize io-error when OOS of all nodes is removed. 
 //If all OOS are removed, the io-error is considered to be resolved
 //and the number of io-errors is initialized to zero.
-void check_and_clear_io_error(struct drbd_device *device)
+void check_and_clear_io_error(struct drbd_peer_device *peer_device)
 {
-	if (!device)
+	struct drbd_bitmap *b;
+	struct drbd_device *device;
+	ULONG_PTR count;
+	long flags;
+
+	if (!peer_device || !peer_device->device || !peer_device->device->bitmap)
 		return;
+
+	device = peer_device->device;
+	b = device->bitmap;
 
 	if (!get_ldev_if_state(device, D_NEGOTIATING))
 		return;
@@ -1216,35 +1224,18 @@ void check_and_clear_io_error(struct drbd_device *device)
 	 * and to determine Sync-Source or SyncTarget if uuid is the same. 
 	 * MDF_PRIMARY_IO_ERROR is the value required to check if io-error is cleared.
 	 */
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR) || (atomic_read(&device->io_error_count) > 0)) {
+		spin_lock_irqsave(&b->bm_lock, flags);
+		count = b->bm_set[peer_device->bitmap_index];
+		spin_unlock_irqrestore(&b->bm_lock, flags);
+		if (count == 0) {
+			drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+			if (drbd_md_test_flag(device, MDF_PRIMARY_IO_ERROR))
+				drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
 
-	struct drbd_peer_device *peer_device;
-	for_each_peer_device(peer_device, device) {
-		if (device->resource->role[NOW] == R_PRIMARY) {
-			if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR)) {
-				ULONG_PTR count = _drbd_bm_total_weight(device, peer_device->bitmap_index);
-				if (count == 0) {
-					drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
-					if (drbd_md_test_flag(device, MDF_PRIMARY_IO_ERROR)) {
-						drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
-						drbd_info(device, "io-error has been cleared.\n");
-						atomic_set(&device->io_error_count, 0);
-						drbd_queue_notify_io_error_cleared(device);
-					}
-				}
-			}
-		}
-		else {
-			if (atomic_read(&device->io_error_count) > 0) {
-				ULONG_PTR count = _drbd_bm_total_weight(device, peer_device->bitmap_index);
-				if (count == 0) {
-					drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
-					drbd_md_clear_flag(device, MDF_PRIMARY_IO_ERROR);
-					drbd_info(device, "io-error has been cleared.\n");
-					atomic_set(&device->io_error_count, 0);
-					drbd_queue_notify_io_error_cleared(device);
-					break;
-				}
-			}
+			drbd_info(peer_device, "io-error has been cleared.\n");
+			atomic_set(&device->io_error_count, 0);
+			drbd_queue_notify_io_error_cleared(device);
 		}
 	}
 
