@@ -3673,8 +3673,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			}
 
 
-#ifdef _WIN32 // DW-1447
-			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T 
+#ifdef _WIN32 
+			// DW-1447
+			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T
 				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
 			{
 				send_state = true;

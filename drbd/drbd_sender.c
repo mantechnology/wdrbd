@@ -1931,7 +1931,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	struct drbd_peer_request *peer_req = container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
-	int err;
+	int err = 0;
 
 	if (unlikely(cancel)) {
 		drbd_free_peer_req(peer_req);
@@ -2882,7 +2882,10 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
 		if (side == L_SYNC_TARGET) {
+			//DW-1846 bm_resync_fo must be locked and set.
+			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = 0;
+			mutex_unlock(&device->bm_resync_fo_mutex);
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
 		} else {
 			peer_device->use_csums = false;

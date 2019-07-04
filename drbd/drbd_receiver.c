@@ -2470,14 +2470,21 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 
 	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
 
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-	} else {
-		/* Record failure to sync */
-		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+	//DW-1846 send P_NEG_ACK if not sync target
+	if (is_sync_target(peer_device)) {
+		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+		}
+		else {
+			/* Record failure to sync */
+			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
 
-		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+		}
+	}
+	else {
+		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 	}
 	dec_unacked(peer_device);
 
@@ -2764,7 +2771,11 @@ static int recv_resync_read(struct drbd_peer_device *peer_device,
 	/* Seting all peer out of sync here. Sync source peer will be set
 	   in sync when the write completes. Other peers will be set in
 	   sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-	drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+
+	//DW-1846 do not set out of sync unless it is a sync target.
+	if (is_sync_target(peer_device)) {
+		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+	}
 
 	if (drbd_submit_peer_request(device, peer_req, REQ_OP_WRITE, 0,
 		DRBD_FAULT_RS_WR) == 0)
@@ -10256,10 +10267,8 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			break;
 		case P_RS_CANCEL:
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
-			if (peer_device->repl_state[NOW] == L_BEHIND ||
-				//DW-1846 The request should also be processed when the resync is stopped.
-				is_sync_target(peer_device) ||
-				peer_device->repl_state[NOW] == L_VERIFY_T) {
+			//DW-1846 receive data when synchronization is in progress.
+			if (is_sync_target(peer_device)) {
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
 				mutex_lock(&device->bm_resync_fo_mutex);
