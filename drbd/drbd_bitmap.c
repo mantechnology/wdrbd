@@ -1212,8 +1212,10 @@ void check_and_clear_io_error_in_primary(struct drbd_device *device)
 		return;
 
 	//DW-1859 If MDF_IO_ERROR is not set, and if io_error_count is also 0, there is certainly no error.
-	if (!drbd_md_test_flag(device, MDF_IO_ERROR) && (atomic_read(&device->io_error_count) == 0))
+	if (!drbd_md_test_flag(device, MDF_IO_ERROR) && (atomic_read(&device->io_error_count) == 0)) {
+		put_ldev(device);
 		return;
+	}
 
 	/* DW-1859 MDF_PRIMARY_IO_ERROR is the value required to check if io-error is cleared.
 	 * If all peer's OOS are removed, the io-error is considered to be resolved
@@ -1261,8 +1263,10 @@ void check_and_clear_io_error_in_secondary(struct drbd_peer_device *peer_device)
 		return;
 
 	//DW-1859 If MDF_IO_ERROR is not set, and if io_error_count is also 0, there is certainly no error.
-	if (!drbd_md_test_flag(device, MDF_IO_ERROR) && (atomic_read(&device->io_error_count) == 0))
+	if (!drbd_md_test_flag(device, MDF_IO_ERROR) && (atomic_read(&device->io_error_count) == 0)) {
+		put_ldev(device);
 		return;
+	}
 
 	//DW-1859 In secondary, initialize io - error count when OOS with one peer is removed.
 	spin_lock_irqsave(&b->bm_lock, flags);
