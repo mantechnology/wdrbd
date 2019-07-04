@@ -3662,8 +3662,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 #ifdef _WIN32 
 			// DW-1447
-			//DW-1846 the L_ESTABLISHED status should also be checked.
-			if ((repl_state[OLD] == L_ESTABLISHED || repl_state[OLD] == L_STARTING_SYNC_T) && repl_state[NEW] == L_WF_BITMAP_T
+			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T
 				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
 			{
 				send_state = true;

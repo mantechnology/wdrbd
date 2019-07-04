@@ -2774,7 +2774,11 @@ static int recv_resync_read(struct drbd_peer_device *peer_device,
 	/* Seting all peer out of sync here. Sync source peer will be set
 	   in sync when the write completes. Other peers will be set in
 	   sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-	drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+
+	//DW-1846 do not set out of sync unless it is a sync target.
+	if (is_sync_target(peer_device)) {
+		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+	}
 
 	if (drbd_submit_peer_request(device, peer_req, REQ_OP_WRITE, 0,
 		DRBD_FAULT_RS_WR) == 0)
