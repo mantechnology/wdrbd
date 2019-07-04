@@ -1220,15 +1220,17 @@ void check_and_clear_io_error_in_primary(struct drbd_device *device)
 	 * and the number of io-errors is initialized to zero. 
 	 */
 	for_each_peer_device(peer_device, device) {
-		ULONG_PTR count = 0;
-		spin_lock_irqsave(&device->bitmap->bm_lock, flags);
-		count = device->bitmap->bm_set[peer_device->bitmap_index];
-		spin_unlock_irqrestore(&device->bitmap->bm_lock, flags);
+		if (peer_device->connection->cstate[NOW] == C_CONNECTED) {
+			ULONG_PTR count = 0;
+			spin_lock_irqsave(&device->bitmap->bm_lock, flags);
+			count = device->bitmap->bm_set[peer_device->bitmap_index];
+			spin_unlock_irqrestore(&device->bitmap->bm_lock, flags);
 
-		if (count == 0)
-			drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
-		
-		total_count += count;
+			if (count == 0)
+				drbd_md_clear_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+
+			total_count += count;
+		}
 	}
 
 	//DW-1859 At primary, all OOS with all peers must be removed before the io - error count can be initialized.
