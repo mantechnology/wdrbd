@@ -1930,7 +1930,7 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	struct drbd_peer_request *peer_req = container_of(w, struct drbd_peer_request, w);
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	struct drbd_device *device = peer_device->device;
-	int err;
+	int err = 0;
 
 	if (unlikely(cancel)) {
 		drbd_free_peer_req(peer_req);
