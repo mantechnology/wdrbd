@@ -1503,10 +1503,12 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	clear_start = (ULONG_PTR)BM_SECT_TO_BIT(sector + BM_SECT_PER_BIT - 1);
 	if (esector == nr_sectors - 1)
 		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector);
-	else
-		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1) - 1;
-
-
+	else {
+		//DW-1871 if greater than clear_end 0, subtract 1
+		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1);
+		if (clear_end > 0)
+			clear_end -= 1;
+	}
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
 		int bitmap_index = peer_device->bitmap_index;
