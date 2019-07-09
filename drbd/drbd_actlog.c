@@ -1453,6 +1453,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	bool set = false;
 #endif
 	struct drbd_peer_device *peer_device;
+	//DW-1871
+	bool skip_clear = false;
 #ifndef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
 #endif
@@ -1504,9 +1506,11 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	if (esector == nr_sectors - 1)
 		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector);
 	else {
-		//DW-1871 if greater than clear_end 0, subtract 1
 		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1);
-		if (clear_end > 0)
+		//DW-1871 if clear_end is zero, you do not need to call it. update_sync_bits(), drbd_bm_clear_bits()
+		if (clear_end == 0)
+			skip_clear = true;
+		else
 			clear_end -= 1;
 	}
 	rcu_read_lock();
@@ -1529,8 +1533,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #else
 			update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC);
 #endif
-
-		else if (clear_start <= clear_end)
+		//DW-1871
+		else if (clear_start <= clear_end && !skip_clear)
 			update_sync_bits(peer_device, (unsigned long)clear_start, (unsigned long)clear_end, SET_IN_SYNC);
 	}
 	rcu_read_unlock();
@@ -1547,7 +1551,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 			if (test_bit((unsigned int)bitmap_index, &bits))
 				drbd_bm_set_bits(device, (unsigned int)bitmap_index,
 				(unsigned long)set_start, (unsigned long)set_end);
-			else if (clear_start <= clear_end)
+			//DW-1871
+			else if (clear_start <= clear_end && !skip_clear)
 				drbd_bm_clear_bits(device, (unsigned int)bitmap_index,
 				(unsigned long)clear_start, (unsigned long)clear_end);
 		}
