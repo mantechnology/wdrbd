@@ -999,6 +999,8 @@ start:
 #endif
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
+		//DW-1799
+		clear_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags);
 	}
 #ifdef _WIN32
 	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -5774,7 +5776,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
 	/* Maybe the peer knows something about peers I cannot currently see. */
 	ddsf |= DDSF_IGNORE_PEER_CONSTRAINTS;
-
+	//DW-1799
+	set_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags); 
 	if (get_ldev(device)) {
 		sector_t new_size;
 
