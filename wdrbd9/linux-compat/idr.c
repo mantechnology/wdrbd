@@ -129,7 +129,8 @@ int idr_pre_get(struct idr *idp, gfp_t gfp_mask)
 
 static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 {
-	int n, m, sh;
+	int n, sh;
+	ULONG_PTR m;
 	struct idr_layer *p, *new;
 	struct idr_layer *pa[MAX_LEVEL];
 	int l, id;
@@ -161,9 +162,9 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 			}
 			continue;
 		}
-		if (m != n) {
+		if (n != (int)m) {
 			sh = IDR_BITS*l;
-			id = ((id >> sh) ^ n ^ m) << sh;
+			id = (int)((id >> sh) ^ n ^ m) << sh;
 		}
 		if ((id >= MAX_ID_BIT) || (id < 0))
 			return -3;
@@ -186,7 +187,10 @@ static int sub_alloc(struct idr *idp, void *ptr, int *starting_id)
 	* users pointer and return the raw id.
 	*/
 	p->ary[m] = (struct idr_layer *)ptr;
-	__set_bit(m, &p->bitmap);
+#ifdef _WIN64
+	BUG_ON_UINT32_OVER(m);
+#endif
+	__set_bit((int)m, &p->bitmap);
 	p->count++;
 	/*
 	* If this layer is full mark the bit in the layer above
@@ -373,11 +377,13 @@ static void sub_remove(struct idr *idp, int shift, int id)
 		__clear_bit(n, &p->bitmap);
 #endif
 		p->ary[n] = NULL;
-		while (*paa && !--((**paa)->count)){
-			free_layer(idp, **paa);
-			**paa-- = NULL;
+		if (**paa) {
+			while (*paa && !--((**paa)->count)){
+				free_layer(idp, **paa);
+				**paa-- = NULL;
+			}
 		}
-		if (!*paa)
+		if (!*paa && idp)
 			idp->layers = 0;
 	}
 	else
@@ -557,6 +563,9 @@ void *idr_replace(struct idr *idp, void *ptr, int id)
 
 static void idr_cache_ctor(void * idr_layer, kmem_cache_t *idr_layer_cache, unsigned long flags)
 {
+	UNREFERENCED_PARAMETER(idr_layer_cache);
+	UNREFERENCED_PARAMETER(flags);
+
 	RtlZeroMemory(idr_layer, sizeof(struct idr_layer));
 }
 

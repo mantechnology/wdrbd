@@ -27,6 +27,18 @@
 #include "send_buf.h"	
 #include <linux/drbd_limits.h>
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs,
+* they are treated as warnings.
+*/
+#pragma warning (disable: 6319 6387)
+#endif
 #ifdef _WIN32_SEND_BUFFING
 #define EnterCriticalSection mutex_lock
 #define LeaveCriticalSection mutex_unlock
@@ -49,7 +61,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		}
 		__try {
 			sz = sizeof(*ring) + nconf->sndbuf_size;
-			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '0ADW'); //POOL_RAISE_IF_ALLOCATION_FAILURE flag is required for big pool
 			if(!ring) {
 				WDRBD_INFO("alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				goto $ALLOC_FAIL;
@@ -65,7 +77,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		connection->ptxbab[DATA_STREAM] = ring;
 		__try {
 			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
-			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool|POOL_RAISE_IF_ALLOCATION_FAILURE, sz, '2ADW');
+			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool | POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '2ADW');
 			if(!ring) {
 				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
@@ -81,7 +93,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		
 		connection->ptxbab[CONTROL_STREAM] = ring;
 		
-	} while(FALSE);
+	} while (false, false);
 	
 	WDRBD_INFO("alloc_bab ok connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 	return TRUE;
@@ -238,10 +250,10 @@ $GO_BUFFERING:
 	if (len > 0) {
 		remain = ring->length - ring->write_pos;
 		if (remain < len) {
-			memcpy(ring->mem + (ring->write_pos), data, remain);
-			memcpy(ring->mem, data + remain, len - remain);
+			memcpy(ring->mem + (ring->write_pos), data, (size_t)remain);
+			memcpy(ring->mem, data + remain, (size_t)(len - remain));
 		} else {
-			memcpy(ring->mem + ring->write_pos, data, len);
+			memcpy(ring->mem + ring->write_pos, data, (size_t)len);
 		}
 
 		ring->write_pos += len;
@@ -279,11 +291,11 @@ bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long
 
 	remain = ring->length - ring->read_pos;
 	if (remain < tx_sz) {
-		memcpy(data, ring->mem + ring->read_pos, remain);
-		memcpy(data + remain, ring->mem, tx_sz - remain);
+		memcpy(data, ring->mem + ring->read_pos, (size_t)remain);
+		memcpy(data + remain, ring->mem, (size_t)(tx_sz - remain));
 	}
 	else {
-		memcpy(data, ring->mem + ring->read_pos, tx_sz);
+		memcpy(data, ring->mem + ring->read_pos, (size_t)tx_sz);
 	}
 
 	ring->read_pos += tx_sz;
@@ -295,7 +307,7 @@ bool read_ring_buffer(IN ring_buffer *ring, OUT char *data, OUT signed long long
 	return 1;
 }
 
-int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct socket *socket, PVOID buf, ULONG size)
+int send_buf(struct drbd_transport *transport, enum drbd_stream stream, socket *socket, PVOID buf, LONG size)
 {
 	struct _buffering_attr *buffering_attr = &socket->buffering_attr;
 	ULONG timeout = socket->sk_linux_attr->sk_sndtimeo;
@@ -309,14 +321,15 @@ int send_buf(struct drbd_transport *transport, enum drbd_stream stream, struct s
 	// performance tuning point for delay time
 	int retry = socket->sk_linux_attr->sk_sndtimeo / 100; //retry default count : 6000/100 = 60 => write buffer delay time : 100ms => 60*100ms = 6sec //retry default count : 6000/20 = 300 => write buffer delay time : 20ms => 300*20ms = 6sec
 
-	size = write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
+	size = (LONG)write_ring_buffer(transport, stream, buffering_attr->bab, buf, size, highwater, retry);
 
 	KeSetEvent(&buffering_attr->ring_buf_event, 0, FALSE);
-	return size;
+	return (int)size;
 }
 
 int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT *send_buf_kill_event)
 {
+	UNREFERENCED_PARAMETER(send_buf_kill_event);
 	int ret = 0;
 
 	if (bab == NULL) {
@@ -324,16 +337,18 @@ int do_send(struct socket *socket, struct ring_buffer *bab, int timeout, KEVENT 
 		return 0;
 	}
 
-	while (1) {
-		signed long long tx_sz = 0;
+	while (true, true) {
+		long long tx_sz = 0;
 
 		if (!read_ring_buffer(bab, bab->static_big_buf, &tx_sz)) {
 			break;
 		}
-		
+#ifndef _WIN64
+		BUG_ON_UINT32_OVER(tx_sz);
+#endif
 		// DW-1095 SendAsync is only used on Async mode (adjust retry_count) 
 		//ret = SendAsync(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, 0);
-		ret = Send(socket, bab->static_big_buf, tx_sz, 0, timeout, NULL, NULL, 0);
+		ret = Send(socket, bab->static_big_buf, (ULONG)tx_sz, 0, timeout, NULL, NULL, 0);
 		if (ret != tx_sz) {
 			if (ret < 0) {
 				if (ret != -EINTR) {
@@ -359,7 +374,6 @@ VOID NTAPI send_buf_thread(PVOID p)
 {
 	struct _buffering_attr *buffering_attr = (struct _buffering_attr *)p;
 	struct socket *socket = container_of(buffering_attr, struct socket, buffering_attr);
-	LONG readcount;
 	NTSTATUS status;
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
@@ -378,7 +392,7 @@ VOID NTAPI send_buf_thread(PVOID p)
 	waitObjects[0] = &buffering_attr->send_buf_kill_event;
 	waitObjects[1] = &buffering_attr->ring_buf_event;
 
-	while (TRUE) {
+	while (true, true) {
 		status = KeWaitForMultipleObjects(MAX_EVT, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 		switch (status) {
 		case STATUS_TIMEOUT:

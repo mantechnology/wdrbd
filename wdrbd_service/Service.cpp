@@ -28,6 +28,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName);
 DWORD UnInstall(const TCHAR * pName);
 DWORD KillService(const TCHAR * pName);
 DWORD RunService(const TCHAR * pName);
+DWORD UpdateDescription(const TCHAR * pName, const TCHAR * lang);
 
 VOID ExecuteSubProcess();
 VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv);
@@ -41,6 +42,11 @@ DWORD RcDrbdStop();
 BOOL g_bProcessStarted = TRUE;
 
 TCHAR * ServiceName = _T("drbdService");
+TCHAR * ServiceDisplayName = _T("DRBD for Windows");
+//DW-1741 ko
+TCHAR * DescriptionKO = _T("DRBD의 Windows 버전으로 실시간 블럭레벨 복제를 제공합니다. 이 서비스를 중지하면 복제 서비스에 문제가 발생할 수 있습니다.");
+//DW-1741 en
+TCHAR * DescriptionEN = _T("Provides real-time block-level replication with a Windows version of the DRBD. Stopping this service can cause problems with the replication service.");
 
 SERVICE_TABLE_ENTRY		g_lpServiceStartTable[] =
 {
@@ -151,7 +157,9 @@ int _tmain(int argc, _TCHAR* argv[])
     else if (_tcsicmp(L"/u", argv[1]) == 0)
         return UnInstall(ServiceName);
     else if (_tcsicmp(L"/s", argv[1]) == 0)
-        return RunService(ServiceName);
+		return RunService(ServiceName);
+	else if (_tcsicmp(L"/d", argv[1]) == 0)
+		return UpdateDescription(ServiceName, argv[2]);
     else if (_tcsicmp(L"/t", argv[1]) == 0)
     {
         DWORD dwPID;
@@ -230,7 +238,7 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
     SC_HANDLE schService = CreateService(
         schSCManager,				/* SCManager database      */
         ServiceName,						/* name of service         */
-        ServiceName,						/* service name to display */
+		ServiceDisplayName,						/* service name to display */
         SERVICE_ALL_ACCESS,			/* desired access          */
         SERVICE_WIN32_OWN_PROCESS | SERVICE_INTERACTIVE_PROCESS, /* service type            */
         SERVICE_AUTO_START,			/* start type              */
@@ -250,9 +258,23 @@ DWORD Install(const TCHAR * full_path, const TCHAR * pName)
         WriteLog(pTemp);
     }
     else
-    {
+	{
+		SERVICE_DESCRIPTION sd;
+
+		sd.lpDescription = DescriptionEN;
+
+		if (!ChangeServiceConfig2(schService,
+									SERVICE_CONFIG_DESCRIPTION,
+									&sd))
+		{
+			err = GetLastError();
+			_stprintf_s(pTemp, _T("Failed to change service config %s, error code = %d\n"), ServiceName, err);
+			WriteLog(pTemp);
+		}
+		else
+			AddEventSource(L"Application", ServiceName);
+
         CloseServiceHandle(schService);
-		AddEventSource(L"Application", ServiceName);
     }
 
     CloseServiceHandle(schSCManager);
@@ -340,6 +362,56 @@ DWORD KillService(const TCHAR * pName)
     return err;
 }
 
+//DW-1741 add update service description
+DWORD UpdateDescription(const TCHAR * pName, const TCHAR * lang)
+{
+	wchar_t pTemp[1024];
+	DWORD err = ERROR_SUCCESS;
+
+	// run service with given name
+	SC_HANDLE schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	if (schSCManager == 0)
+	{
+		err = GetLastError();
+		_stprintf_s(pTemp, _T("OpenSCManager failed, error code = %d\n"), err);
+		WriteLog(pTemp);
+	}
+	else
+	{
+		// open the service
+		SC_HANDLE schService = OpenService(schSCManager, pName, SERVICE_ALL_ACCESS);
+		if (schService == 0)
+		{
+			err = GetLastError();
+			_stprintf_s(pTemp, _T("OpenService failed, error code = %d\n"), err);
+			WriteLog(pTemp);
+		}
+		else
+		{
+			SERVICE_DESCRIPTION sd;
+
+			if (_tcsicmp(L"ko", lang) == 0)
+				sd.lpDescription = DescriptionKO;
+			else
+				sd.lpDescription = DescriptionEN;
+
+			if (!ChangeServiceConfig2(schService,
+				SERVICE_CONFIG_DESCRIPTION,
+				&sd))
+			{
+				err = GetLastError();
+				_stprintf_s(pTemp, _T("Failed to change service config %s, error code = %d\n"), ServiceName, err);
+				WriteLog(pTemp);
+			}
+
+			CloseServiceHandle(schService);
+		}
+
+		CloseServiceHandle(schSCManager);
+	}
+
+	return err;
+}
 DWORD RunService(const TCHAR * pName)
 {
     wchar_t pTemp[1024];
@@ -503,6 +575,60 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
     //DrbdSetStatus(SERVICE_STOPPED);
 }
 
+VOID ExecPreShutDownLog(TCHAR *PreShutdownTime, TCHAR *OldPreShutdownTime)
+{
+	// DW-1505 : Keep only NUMOFLOGS(10) Preshutdown logs 
+	size_t path_size; WCHAR DrbdPath[MAX_PATH] = { 0, }; WCHAR DrbdLogPath[MAX_PATH] = { 0, }; TCHAR tmp[256] = { 0, };
+	TCHAR *OldestFileName;  WCHAR FindAllLogFileName[MAX_PATH] = { 0, };
+	errno_t result = _wgetenv_s(&path_size, DrbdPath, MAX_PATH, L"DRBD_PATH");
+	if (result)
+	{
+		wcscpy_s(DrbdPath, L"c:\\Program Files\\drbd\\bin");
+	}
+	wcsncpy_s(DrbdLogPath, DrbdPath, wcslen(DrbdPath) - strlen("bin"));
+	wcscat_s(DrbdLogPath, L"log\\");
+	wcscat_s(FindAllLogFileName, DrbdLogPath);
+	wcscat_s(FindAllLogFileName, _T("Preshutdown*")); // Path to file name beginning with 'Preshutdown'
+
+	while ((OldestFileName = GetOldestFileName(FindAllLogFileName)) != NULL){
+		WCHAR DeleteFileName[MAX_PATH] = { 0, };
+		wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
+		wcscat_s(DeleteFileName, OldestFileName);
+		// Delete oldest file by name  
+		if (DeleteFile(DeleteFileName) == 0){
+			_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
+			WriteLog(tmp);
+			break;
+		}
+	}
+
+	TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; DWORD dwPID;
+
+	_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\"));
+	// Change Preshutdown log name to date(eg. Preshutdown-YEAR-MONTH-DAY-HOUR-MINUTE.log)
+	_tcscat(szFullPath, PreShutdownTime);
+
+	ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+	if (ret) {
+		_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
+		WriteLog(tmp);
+	}
+	else {
+		//DW-1821 delete old log
+		if (OldPreShutdownTime != NULL) {
+			WCHAR DeleteFileName[MAX_PATH] = { 0, };
+
+			wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
+			wcscat_s(DeleteFileName, OldPreShutdownTime);
+			// Delete oldest file by name  
+			if (DeleteFile(DeleteFileName) == 0){
+				_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
+				WriteLog(tmp);
+			}
+		}
+	}
+}
+
 
 #ifdef SERVICE_HANDLER_EX
 DWORD WINAPI ServiceHandlerEx(_In_ DWORD  fdwControl, _In_ DWORD  dwEventType, _In_ LPVOID lpEventData, _In_ LPVOID lpContext)
@@ -566,9 +692,10 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         case SERVICE_CONTROL_SHUTDOWN:
         case SERVICE_CONTROL_PRESHUTDOWN:
 			
-			RcDrbdStop();
-
 			if (SERVICE_CONTROL_STOP == fdwControl) {
+
+				RcDrbdStop();
+
 				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
 				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
@@ -578,45 +705,19 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				}
 			}
 			else {
-				// DW-1505 : Keep only NUMOFLOGS(10) Preshutdown logs 
-				size_t path_size; WCHAR DrbdPath[MAX_PATH] = { 0, }; WCHAR DrbdLogPath[MAX_PATH] = { 0, }; TCHAR tmp[256] = { 0, };
-				TCHAR *OldestFileName;  WCHAR FindAllLogFileName[MAX_PATH] = { 0, };
-				errno_t result = _wgetenv_s(&path_size, DrbdPath, MAX_PATH, L"DRBD_PATH");
-				if (result)
-				{
-					wcscpy_s(DrbdPath, L"c:\\Program Files\\drbd\\bin");
-				}
-				wcsncpy_s(DrbdLogPath, DrbdPath, wcslen(DrbdPath) - strlen("bin"));
-				wcscat_s(DrbdLogPath, L"log\\");
-				wcscat_s(FindAllLogFileName, DrbdLogPath);
-				wcscat_s(FindAllLogFileName, _T("Preshutdown*")); // Path to file name beginning with 'Preshutdown'
+				//DW-1821 log before running RcDrbdStop() when the system shuts down.
+				TCHAR sPreShutdownTime[MAX_PATH], ePreShutdownTime[MAX_PATH];
+				SYSTEMTIME sTime;
 
-
-				while ((OldestFileName = GetOldestFileName(FindAllLogFileName)) != NULL){
-					WCHAR DeleteFileName[MAX_PATH] = { 0, };
-					wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
-					wcscat_s(DeleteFileName, OldestFileName);
-					// Delete oldest file by name  
-					if (DeleteFile(DeleteFileName) == 0){
-						_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
-						WriteLog(tmp);
-						break; 
-					}
-				}
-
-				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; DWORD dwPID;
-				SYSTEMTIME sTime; TCHAR PreShutdownTime[MAX_PATH] = { 0, };
-				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\"));
-				// Change Preshutdown log name to date(eg. Preshutdown-YEAR-MONTH-DAY-HOUR-MINUTE.log)
 				GetLocalTime(&sTime);
-				_stprintf(PreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
-				_tcscat(szFullPath, PreShutdownTime);
+				_stprintf(sPreShutdownTime, _T("Preshutdown-s-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
+				ExecPreShutDownLog(sPreShutdownTime, NULL);
 
-				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
-				if (ret) {
-					_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
-					WriteLog(tmp);
-				}
+				RcDrbdStop();
+
+				GetLocalTime(&sTime);
+				_stprintf(ePreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
+				ExecPreShutDownLog(ePreShutdownTime, sPreShutdownTime);
 			}
 			
 #ifdef _WIN32_LOGLINK

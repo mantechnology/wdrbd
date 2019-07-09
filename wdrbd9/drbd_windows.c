@@ -29,6 +29,22 @@
 #include "disp.h"
 #include "proto.h"
 
+#ifdef _WIN32
+/* DW-1587
+* Turns off the C6319 warning.
+* The use of comma does not cause any performance problems or bugs,
+* but keep the code as it is written.
+* 
+* Turns off the C6102 warning.
+* this warning warns to access uninitialized variable,
+* but disables warnig because there is no problem in code
+*
+* Turns off the C6387 warning.
+* Even though pointer parameters need to contain NULLs,
+* they are treated as warnings.
+*/
+#pragma warning (disable: 6053 6102 6319 6387 28719)
+#endif
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, do_add_minor)
 #endif
@@ -67,7 +83,8 @@ WCHAR g_ver[64];
 /* Number of id_layer structs to leave in free list */
 #define MAX_IDR_FREE (MAX_IDR_LEVEL * 2)
 
-
+KSTART_ROUTINE run_singlethread_workqueue;
+KSTART_ROUTINE adjust_changes_to_volume;
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError = {0,};
 
 // DW-1105: monitoring mount change thread state (FALSE : not working, TRUE : working)
@@ -147,7 +164,8 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 	ULONG_PTR tmp;
 
 	while (size & ~(BITS_PER_LONG - 1)) {
-		if ((tmp = *(p++)))
+		tmp = *(p++);
+		if (tmp)
 			goto found;
 		result += BITS_PER_LONG;
 		size -= BITS_PER_LONG;
@@ -155,8 +173,8 @@ ULONG_PTR find_first_bit(const ULONG_PTR* addr, ULONG_PTR size)
 	if (!size)
 		return result;
 #ifdef _WIN64
-	tmp = (*p) & (~0ULL >> (BITS_PER_LONG - size));
-	if (tmp == 0ULL)	{	/* Are any bits set? */
+	tmp = (*p) & (UINT64_MAX >> (BITS_PER_LONG - size));
+	if (tmp == UINT64_MAX)	{	/* Are any bits set? */
 #else
 	tmp = (*p) & (~0UL >> (BITS_PER_LONG - size));
 	if (tmp == 0UL)	{	/* Are any bits set? */
@@ -180,7 +198,7 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 	if (offset) {
 		tmp = *(p++);
 #ifdef _WIN64
-		tmp &= (~0ULL << offset);
+		tmp &= (UINT64_MAX << offset);
 #else
 		tmp &= (~0UL << offset);
 #endif
@@ -192,7 +210,8 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 		result += BITS_PER_LONG;
 	}
 	while (size & ~(BITS_PER_LONG - 1)) {
-		if ((tmp = *(p++)))
+		tmp = *(p++);
+		if (tmp)
 			goto found_middle;
 		result += BITS_PER_LONG;
 		size -= BITS_PER_LONG;
@@ -203,7 +222,7 @@ ULONG_PTR find_next_bit(const ULONG_PTR *addr, ULONG_PTR size, ULONG_PTR offset)
 
 found_first:
 #ifdef _WIN64
-	tmp &= (~0ULL >> (BITS_PER_LONG - size));
+	tmp &= (UINT64_MAX >> (BITS_PER_LONG - size));
 	if (tmp == 0ULL)	/* Are any bits set? */
 #else
 	tmp &= (~0UL >> (BITS_PER_LONG - size));
@@ -269,8 +288,8 @@ ULONG_PTR find_first_zero_bit(const ULONG_PTR *addr, ULONG_PTR size)
 		 return result;
 
 #ifdef _WIN64
-	 tmp = (*p) | (~0ULL << size);
-	 if (tmp == ~0ULL)        /* Are any bits zero? */
+	 tmp = (*p) | (UINT64_MAX << size);
+	 if (tmp == UINT64_MAX)        /* Are any bits zero? */
 #else
 	 tmp = (*p) | (~0UL << size);
 	 if (tmp == ~0UL)        /* Are any bits zero? */
@@ -280,13 +299,13 @@ ULONG_PTR find_first_zero_bit(const ULONG_PTR *addr, ULONG_PTR size)
 	 return result + ffz(tmp);
  }
 
-int find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset)
+ULONG_PTR find_next_zero_bit(const ULONG_PTR * addr, ULONG_PTR size, ULONG_PTR offset)
 {
 	const ULONG_PTR *p;
 	ULONG_PTR bit, set;
  
     if (offset >= size)
-            return size;
+        return size;
     bit = offset & (BITS_PER_LONG - 1);
     offset -= bit;
     size -= offset;
@@ -317,7 +336,6 @@ int test_and_change_bit(int nr, const ULONG_PTR *addr)
 	ULONG_PTR mask = BIT_MASK(nr);
 	ULONG_PTR *p = ((ULONG_PTR *) addr);
 	ULONG_PTR old;
-	ULONG_PTR flags;
 
 	if (!g_test_and_change_bit_flag)
 	{
@@ -430,15 +448,19 @@ void * kmalloc(int size, int flag, ULONG Tag)
 
 void * kcalloc(int size, int count, int flag, ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(flag); 
+
 	return kzalloc(size * count, 0, Tag);
 }
 
 void * kzalloc(int size, int flag, ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(flag); 
+
 	void *mem;
     static int fail_count = 0;
 
-	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag);
+	mem = ExAllocatePoolWithTag(NonPagedPool, size, Tag); 
 	if (!mem)
 	{
 		return NULL;
@@ -457,7 +479,10 @@ char *kstrdup(const char *s, int gfp)
 		return NULL;
 
 	len = strlen(s) + 1;
-	buf = kzalloc(len, gfp, 'C3DW');
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(len);
+#endif
+	buf = kzalloc((int)len, gfp, 'C3DW');
 	if (buf)
 		memcpy(buf, s, len);
 	return buf;
@@ -470,6 +495,8 @@ void *page_address(const struct page *page)
 
 struct page  *alloc_page(int flag)
 {
+	UNREFERENCED_PARAMETER(flag);
+
 	struct page *p = kmalloc(sizeof(struct page),0, 'D3DW'); 
 	if (!p)	{
 		WDRBD_INFO("alloc_page struct page failed\n");
@@ -501,6 +528,8 @@ void * kmem_cache_alloc(struct kmem_cache *cache, int flag, ULONG Tag)
 
 void kmem_cache_free(struct kmem_cache *cache, void * x)
 {
+	UNREFERENCED_PARAMETER(cache);
+
 	kfree(x);
 }
 
@@ -527,6 +556,10 @@ __inline void kvfree(void * x)
 
 mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_data)
 {
+	UNREFERENCED_PARAMETER(alloc_fn);
+	UNREFERENCED_PARAMETER(min_nr);
+	UNREFERENCED_PARAMETER(free_fn);
+
 	mempool_t *p_pool;
 	if (!pool_data)
 	{
@@ -544,6 +577,9 @@ mempool_t *mempool_create(int min_nr, void *alloc_fn, void *free_fn, void *pool_
 
 mempool_t *mempool_create_page_pool(int min_nr, int order)
 {
+	UNREFERENCED_PARAMETER(order);
+	UNREFERENCED_PARAMETER(min_nr);
+
 	mempool_t *p_pool = kmalloc(sizeof(mempool_t), 0, '04DW');
 	if (!p_pool) {
 		return 0;
@@ -610,6 +646,7 @@ void mempool_free(void *p, mempool_t *pool)
 
 void mempool_destroy(void *p)
 {
+	UNREFERENCED_PARAMETER(p);
 	// we don't need to free mempool. wdrbd is static loading driver.
 }
 
@@ -622,13 +659,21 @@ void kmem_cache_destroy(struct kmem_cache *s)
 struct kmem_cache *kmem_cache_create(char *name, size_t size, size_t align,
                   unsigned long flags, void (*ctor)(void *), ULONG Tag)
 {
+	UNREFERENCED_PARAMETER(align);
+	UNREFERENCED_PARAMETER(flags);
+	UNREFERENCED_PARAMETER(ctor);
+
+
 	struct kmem_cache *p = kmalloc(sizeof(struct kmem_cache), 0, Tag);	
 	if (!p)
 	{
 		WDRBD_ERROR("kzalloc failed\n");
 		return 0;
 	}
-	p->size = size;
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(size);
+#endif
+	p->size = (int)size;
 	p->name = name;
 	return p;
 }
@@ -672,6 +717,10 @@ struct request_queue *bdev_get_queue(struct block_device *bdev)
 
 struct bio *bio_alloc_bioset(gfp_t gfp_mask, int nr_iovecs, struct bio_set *bs)
 {
+	UNREFERENCED_PARAMETER(gfp_mask);
+	UNREFERENCED_PARAMETER(nr_iovecs);
+	UNREFERENCED_PARAMETER(bs);
+
 	return NULL;
 }
 
@@ -720,10 +769,12 @@ void bio_endio(struct bio *bio, int error)
 {
 	if (bio->bi_end_io) {
 		if(error) {
+			bio->bi_bdev = NULL;
 			WDRBD_INFO("thread(%s) bio_endio error with err=%d.\n", current->comm, error);
         	bio->bi_end_io((void*)FAULT_TEST_FLAG, (void*) bio, (void*) error);
 		} else { // if bio_endio is called with success(just in case)
 			//WDRBD_INFO("thread(%s) bio_endio with err=%d.\n", current->comm, error);
+			bio->bi_bdev = NULL;
         	bio->bi_end_io((void*)error, (void*) bio, (void*) error);
 		}
 	}
@@ -795,14 +846,16 @@ void wake_up_process(struct drbd_thread *thi)
 }
 
 void _wake_up(wait_queue_head_t *q, char *__func, int __line)
-{		
+{
+	UNREFERENCED_PARAMETER(__func);
+	UNREFERENCED_PARAMETER(__line);
     KeSetEvent(&q->wqh_event, 0, FALSE);
 }
 
 void init_completion(struct completion *completion)
 {
 	memset(completion->wait.eventName, 0, Q_NAME_SZ);
-	strcpy(completion->wait.eventName, "completion");
+	strncpy(completion->wait.eventName, "completion", sizeof(completion->wait.eventName) - 1);
 	init_waitqueue_head(&completion->wait);
 }
 
@@ -833,9 +886,12 @@ static  void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 
 long schedule(wait_queue_head_t *q, long timeout, char *func, int line) 
 {
+	UNREFERENCED_PARAMETER(line);
+	UNREFERENCED_PARAMETER(func);
+
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
-	unsigned long expire;
+	ULONG_PTR expire;
 
 	expire = timeout + jiffies;
 	nWaitTime.QuadPart = 0;
@@ -871,7 +927,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
             wObjCount = 2;
         }
 
-        while (1)
+        while (true, true)
         {
             status = KeWaitForMultipleObjects(wObjCount, &waitObjects[0], WaitAny, Executive, KernelMode, FALSE, pTime, NULL);
 
@@ -903,7 +959,7 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
         }
 	}
 
-	timeout = expire - jiffies;
+	timeout = (long)(expire - jiffies);
 	return timeout < 0 ? 0 : timeout;
 }
 #ifdef _WIN32
@@ -926,8 +982,12 @@ void queue_work(struct workqueue_struct* queue, struct work_struct* work)
 #endif
 }
 #ifdef _WIN32
-void run_singlethread_workqueue(struct workqueue_struct * wq)
+void run_singlethread_workqueue(PVOID StartContext)
 {
+	struct workqueue_struct * wq = (struct workqueue_struct *)StartContext;
+	if (wq == NULL)
+		return;
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PVOID waitObjects[2] = { &wq->wakeupEvent, &wq->killEvent };
     int maxObj = 2;
@@ -971,7 +1031,7 @@ struct workqueue_struct *create_singlethread_workqueue(void * name)
     KeInitializeEvent(&wq->killEvent, SynchronizationEvent, FALSE);
     InitializeListHead(&wq->list_head);
     KeInitializeSpinLock(&wq->list_lock);
-    strcpy(wq->name, name);
+	strncpy(wq->name, name, sizeof(wq->name) - 1);
     wq->run = TRUE;
 
     HANDLE hThread = NULL;
@@ -1153,7 +1213,12 @@ void downup_rwlock_init(KSPIN_LOCK* lock)
 {
 	KeInitializeSpinLock(lock);
 }
-
+/* DW-1587 disable C28167 warning
+ * We've just called KeAcquireSpinLock and KeReleaseSpinLock in separate functions. 
+ * The lock and unlock code do not exist together in one stack, so they are recognized as an error.
+ * But there's nothing wrong with the code.
+ */ 
+#pragma warning (disable: 28167 26110)
 KIRQL down_write(KSPIN_LOCK* lock)
 {
 	return KeAcquireSpinLock(lock, &du_OldIrql);
@@ -1281,7 +1346,7 @@ void spin_unlock_bh(spinlock_t *lock)
 		KeReleaseSpinLock(&lock->spinLock, lock->saved_oldIrql);
 	}
 }
-
+#pragma warning (default: 28167 26110)
 spinlock_t g_irqLock;
 void local_irq_disable()
 {	
@@ -1332,11 +1397,13 @@ void get_random_bytes(void *buf, int nbytes)
 
 unsigned int crypto_tfm_alg_digestsize(struct crypto_tfm *tfm)
 {
+	UNREFERENCED_PARAMETER(tfm);
 	return 4; // 4byte in constant
 }
 
 int page_count(struct page *page)
 {
+	UNREFERENCED_PARAMETER(page);
 	return 1;
 }
 
@@ -1345,17 +1412,19 @@ void init_timer(struct timer_list *t)
 	KeInitializeTimer(&t->ktimer);
 	KeInitializeDpc(&t->dpc, (PKDEFERRED_ROUTINE) t->function, t->data);
 #ifdef DBG
-    strcpy(t->name, "undefined");
+	strncpy(t->name, "undefined", sizeof(t->name) - 1);
 #endif
 }
 
 void init_timer_key(struct timer_list *timer, const char *name,
     struct lock_class_key *key)
 {
-    UNREFERENCED_PARAMETER(key);
+	UNREFERENCED_PARAMETER(key);
+	UNREFERENCED_PARAMETER(name);
+
     init_timer(timer);
 #ifdef DBG
-    strcpy(timer->name, name);
+	strncpy(timer->name, name, sizeof(timer->name) - 1);
 #endif
 }
 
@@ -1420,6 +1489,8 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     timer->expires = expires;
 
+	BUG_ON_UINT32_OVER(expires);
+
     if (current_milisec >= expires)
     {
 		nWaitTime.QuadPart = -1;
@@ -1427,7 +1498,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 	else
 	{
 		expires -= current_milisec;
-		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS(expires)));
+		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS((LONG)expires)));
 	}
 
 #ifdef DBG
@@ -1536,11 +1607,14 @@ void kobject_get(struct kobject *kobj)
 
 void drbd_unregister_blkdev(unsigned int major, const char *name)
 {
+	UNREFERENCED_PARAMETER(major);
+	UNREFERENCED_PARAMETER(name);
 
 }
 
 void del_gendisk(struct gendisk *disk)
 {
+	UNREFERENCED_PARAMETER(disk);
 	// free disk
 }
 
@@ -1611,7 +1685,8 @@ void del_gendisk(struct gendisk *disk)
 //Linux/block/genhd.c
 void set_disk_ro(struct gendisk *disk, int flag)
 {
-
+	UNREFERENCED_PARAMETER(disk);
+	UNREFERENCED_PARAMETER(flag);
 }
 
 #define CT_MAX_THREAD_LIST          40
@@ -1667,11 +1742,11 @@ struct task_struct * ct_add_thread(PKTHREAD id, const char *name, BOOLEAN event,
         KeInitializeEvent(&t->sig_event, SynchronizationEvent, FALSE);
         t->has_sig_event = TRUE;
     }
-    strcpy(t->comm, name);
+	strncpy(t->comm, name, sizeof(t->comm) - 1);
     KeAcquireSpinLock(&ct_thread_list_lock, &ct_oldIrql);
 	list_add(&t->list, &ct_thread_list);
 	if (++ct_thread_num > CT_MAX_THREAD_LIST) {
-        WDRBD_WARN("ct_thread too big(%d)\n", ct_thread_num);
+		WDRBD_WARN("ct_thread too big(%s, %d)\n", name, ct_thread_num);
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -1695,7 +1770,7 @@ struct task_struct* ct_find_thread(PKTHREAD id)
         t = &g_dummy_current;
         t->pid = 0;
         t->has_sig_event = FALSE;
-        strcpy(t->comm, "not_drbd_thread");
+		strncpy(t->comm, "not_drbd_thread", sizeof(t->comm) - 1);
     }
     KeReleaseSpinLock(&ct_thread_list_lock, ct_oldIrql);
     return t;
@@ -1733,13 +1808,14 @@ void flush_signals(struct task_struct *task)
 
 void *crypto_alloc_tfm(char *name, u32 mask)
 {
+	UNREFERENCED_PARAMETER(mask);
+
 	WDRBD_INFO("request crypto name(%s) --> supported crc32c only.\n", name);
 	return (void *)1;
 }
 
 int generic_make_request(struct bio *bio)
 {
-	int err = 0;
 	NTSTATUS status = STATUS_SUCCESS;
 
 	PIRP newIrp = NULL;
@@ -1754,10 +1830,18 @@ int generic_make_request(struct bio *bio)
 	if (!q) {
 		return -EIO;
 	}
+
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
-		status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
-		if (!NT_SUCCESS(status)) {
-			WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
+		//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+		if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension) {
+			status = IoAcquireRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			if (!NT_SUCCESS(status)) {
+				WDRBD_ERROR("IoAcquireRemoveLock bio->bi_bdev->bd_disk->pDeviceExtension:%p fail. status(0x%x)\n", bio->bi_bdev->bd_disk->pDeviceExtension, status);
+				return -EIO;
+			}
+		}
+		else {
+			WDRBD_WARN("IRQL(%d), bio->bi_bdev->bd_disk->pDeviceExtension null\n", KeGetCurrentIrql());
 			return -EIO;
 		}
 	}
@@ -1805,7 +1889,9 @@ int generic_make_request(struct bio *bio)
 
 	if (!newIrp) {
 		WDRBD_ERROR("IoBuildAsynchronousFsdRequest: cannot alloc new IRP\n");
-		IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+		//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+		if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension)
+			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 		return -ENOMEM;
 	}
 
@@ -1829,10 +1915,12 @@ int generic_make_request(struct bio *bio)
 	//
 	//	simulation disk-io error point . (generic_make_request fail) - disk error simluation type 0
 	//
-	if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
-		if(IsDiskError()) {
+	if (gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE0) {
+		if (IsDiskError()) {
 			WDRBD_ERROR("SimulDiskIoError: type0...............ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
-			IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
+			//DW-1831 check whether bio->bi_bdev and bio->bi_bdev->bd_disk are null.
+			if (bio && bio->bi_bdev && bio->bi_bdev->bd_disk && bio->bi_bdev->bd_disk->pDeviceExtension)
+				IoReleaseRemoveLock(&bio->bi_bdev->bd_disk->pDeviceExtension->RemoveLock, NULL);
 
 			// DW-859: Without unlocking mdl and freeing irp, freeing buffer causes bug check code 0x4e(0x9a, ...)
 			// When 'generic_make_request' returns an error code, bi_end_io is called to clean up the bio but doesn't do for irp. We should free irp that is made but wouldn't be delivered.
@@ -2014,6 +2102,7 @@ void list_add_tail_rcu(struct list_head *new, struct list_head *head)
 
 struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
 {
+	UNREFERENCED_PARAMETER(gfp_mask);
  	return kzalloc(sizeof(struct request_queue), 0, 'E5DW');
 }
 
@@ -2023,7 +2112,8 @@ void blk_cleanup_queue(struct request_queue *q)
 }
 
 struct gendisk *alloc_disk(int minors)
-{	
+{
+	UNREFERENCED_PARAMETER(minors);
 	struct gendisk *p = kzalloc(sizeof(struct gendisk), 0, '44DW');
 	return p;
 }
@@ -2035,15 +2125,21 @@ void put_disk(struct gendisk *disk)
 
 void blk_queue_make_request(struct request_queue *q, make_request_fn *mfn)
 {
+	UNREFERENCED_PARAMETER(q);
+	UNREFERENCED_PARAMETER(mfn);
 	// not support
 }
 
 void blk_queue_flush(struct request_queue *q, unsigned int flush)
 {
+	UNREFERENCED_PARAMETER(q);
+	UNREFERENCED_PARAMETER(flush);
 }
 
 struct bio_set *bioset_create(unsigned int pool_size, unsigned int front_pad)
 {
+	UNREFERENCED_PARAMETER(pool_size);
+	UNREFERENCED_PARAMETER(front_pad);
 	// not support
 	return NULL;
 }
@@ -2081,7 +2177,7 @@ void *compat_genlmsg_put(struct msg_buff *skb, u32 pid, u32 seq,
 
 	hdr = nlmsg_data(nlh);
 	hdr->cmd = cmd;
-	hdr->version = family->version;
+	hdr->version = (u8)family->version;
 	hdr->reserved = 0;
 
 	return (char *) hdr + GENL_HDRLEN;
@@ -2101,6 +2197,8 @@ void *genlmsg_put_reply(struct msg_buff *skb,
 
 void genlmsg_cancel(struct sk_buff *skb, void *hdr)
 {
+	UNREFERENCED_PARAMETER(skb);
+	UNREFERENCED_PARAMETER(hdr);
 
 }
 
@@ -2262,12 +2360,16 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		if(!IsEmptyUnicodeString(&pvext->MountPoint)) {
 			ucsdup (&old_mount_point, pvext->MountPoint.Buffer, pvext->MountPoint.Length);
 			bWasExist = TRUE;
+
+			if (!IsEmptyUnicodeString(&old_mount_point))
+				WDRBD_TRACE("old_mount_point:%wZ\n", &old_mount_point);
 		}
 		
 		status = mvolUpdateMountPointInfoByExtension(pvext);
 		if(NT_SUCCESS(status)) {
 
-			WDRBD_TRACE("old_mount_point:%wZ new mount point:%wZ\n",&old_mount_point,&pvext->MountPoint);
+			if (!IsEmptyUnicodeString(&pvext->MountPoint))
+				WDRBD_TRACE("new mount point:%wZ\n", &pvext->MountPoint);
 
 			// DW-1105: detach volume when replicating volume letter is changed.
 			if (pvext->Active && bWasExist) {
@@ -2302,18 +2404,21 @@ void update_targetdev(PVOLUME_EXTENSION pvext, bool bMountPointUpdate)
 		pvext->dev->bd_contains->d_size = d_size;
 		pvext->dev->bd_disk->queue->max_hw_sectors = d_size ? (d_size >> 9) : DRBD_MAX_BIO_SIZE;
 	}
-    WDRBD_TRACE("d_size: %lld bytes bd_contains->d_size: %lld bytes max_hw_sectors: %lld sectors\n",d_size, pvext->dev->bd_contains->d_size, pvext->dev->bd_disk->queue->max_hw_sectors );
+	WDRBD_TRACE("d_size: %lld bytes bd_contains->d_size: %lld bytes max_hw_sectors: %lld sectors\n", d_size, pvext->dev->bd_contains ? pvext->dev->bd_contains->d_size : 0, pvext->dev->bd_disk->queue->max_hw_sectors);
 }
 
 // DW-1105: refresh all volumes and handle changes.
 void adjust_changes_to_volume(PVOID pParam)
 {
+	UNREFERENCED_PARAMETER(pParam);
 	refresh_targetdev_list();
 }
 
 // DW-1105: request mount manager to notify us whenever there is a change in the mount manager's persistent symbolic link name database.
 void monitor_mnt_change(PVOID pParam)
 {
+	UNREFERENCED_PARAMETER(pParam);
+
 	OBJECT_ATTRIBUTES oaMntMgr = { 0, };
 	UNICODE_STRING usMntMgr = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -2382,7 +2487,7 @@ void monitor_mnt_change(PVOID pParam)
 			mcni1.EpicNumber = mcni2.EpicNumber;
 		}
 
-	} while (false);
+	} while (false, false);
 
 	atomic_set(&g_monitor_mnt_working, FALSE);
 
@@ -2438,7 +2543,7 @@ void refresh_targetdev_list()
  */
 PVOLUME_EXTENSION get_targetdev_by_minor(unsigned int minor, bool bUpdatetargetdev)
 {
-	char path[3] = { minor_to_letter(minor), ':', '\0' };
+	char path[3] = { (char)(minor_to_letter(minor)), ':', '\0' };
 	struct block_device * dev = blkdev_get_by_path(path, (fmode_t)0, NULL, bUpdatetargetdev);
 	if (IS_ERR(dev)) {
 		return NULL;
@@ -2512,7 +2617,7 @@ struct block_device * create_drbd_block_device(IN OUT PVOLUME_EXTENSION pvext)
 	dev->bd_contains->bd_disk = dev->bd_disk;
 	dev->bd_contains->bd_parent = dev;
 
-	sprintf(dev->bd_disk->disk_name, "drbd%d", pvext->Minor);
+	_snprintf(dev->bd_disk->disk_name, sizeof(dev->bd_disk->disk_name) - 1, "drbd%d", pvext->Minor);
 	dev->bd_disk->pDeviceExtension = pvext;
 
 	dev->bd_disk->queue->logical_block_size = 512;
@@ -2605,7 +2710,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     size_t                      valueInfoSize = sizeof(KEY_VALUE_FULL_INFORMATION) + 1024 + sizeof(ULONGLONG);
     NTSTATUS                    status;
     HANDLE                      hKey = NULL;
-    ULONG                       size;
+    ULONG                       size = 0;
     int                         count;
     bool                        ret = FALSE;
 
@@ -2667,7 +2772,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     for (int i = 0; i < count; ++i) {
         RtlZeroMemory(valueInfo, valueInfoSize);
 
-        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+        status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, (ULONG)valueInfoSize, &size);
 
         if (!NT_SUCCESS(status)) {
             if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
@@ -2676,8 +2781,8 @@ BOOLEAN do_add_minor(unsigned int minor)
         }
 
         if (REG_BINARY == valueInfo->Type) {
-            WCHAR temp = toupper(valueInfo->Name[0]);
-            if (minor == temp - L'C') {
+            WCHAR temp = (WCHAR)toupper(valueInfo->Name[0]);
+            if (minor == (unsigned int)(temp - L'C')) {
                 ret = true;
                 goto cleanup;
             }
@@ -2753,18 +2858,19 @@ bool is_equal_volume_link(
  *	"\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\"
  *	f no block_device allocated, then query
  */
-static void _adjust_guid_name(char * dst, const char * src)
+static void _adjust_guid_name(char * dst, size_t dst_len, const char * src)
 {
 	const char token[] = "Volume{";
 	char * start = strstr(src, token);
 	if (start) {
-		strcpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\");
+		strncpy(dst, "\\\\?\\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\\", dst_len - 1);
 		char * end = strstr(src, "}");
 		char * t3 = strstr(dst, token);
-		memcpy(t3, start, (int)(end - start));
+		if (t3 && end)
+			memcpy(t3, start, (int)(end - start));
 	}
  	else {
-		strcpy(dst, src);
+		strncpy(dst, src, dst_len - 1);
 	}
 }
 
@@ -2778,6 +2884,8 @@ static void _adjust_guid_name(char * dst, const char * src)
  */
 struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev)
 {
+	UNREFERENCED_PARAMETER(bUpdatetargetdev);
+
 	ROOT_EXTENSION* pRoot = mvolRootDeviceObject->DeviceExtension;
 	VOLUME_EXTENSION* pVExt = pRoot->Head;
 	VOLUME_EXTENSION* pRetVExt = NULL;
@@ -2814,8 +2922,8 @@ struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *ho
 	ANSI_STRING apath;
 	UNICODE_STRING upath;
 	char cpath[64] = { 0, };
-	
-	_adjust_guid_name(cpath, path);
+
+	_adjust_guid_name(cpath, sizeof(cpath), path);
 
 	RtlInitAnsiString(&apath, cpath);
 	NTSTATUS status = RtlAnsiStringToUnicodeString(&upath, &apath, TRUE);
@@ -2853,7 +2961,10 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 
 	const size_t  sCharAreaStartPos = sAddrAreaSize + sHexAreaSize;
 	sLineSize = sAddrAreaSize + sHexAreaSize + aWidth + 1; /* Null terminator */
-	sLine = (char *) kmalloc(sLineSize, 0, '54DW');
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(sLineSize);
+#endif
+	sLine = (char *) kmalloc((int)sLineSize, 0, '54DW');
 	if (!sLine)
 	{
 		WDRBD_ERROR("sLine:kzalloc failed\n");
@@ -2872,7 +2983,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		/* Address */
 		//snprintf(sHexBuffer, sizeof(sHexBuffer), "%04X:", (uint16_t) (sPos & 0xFFFF));
 		memset(sHexBuffer, 0, 6);
-		sprintf(sHexBuffer, "%04X:", (uint16_t) (sPos & 0xFFFF));
+		_snprintf(sHexBuffer, sizeof(sHexBuffer) - 1, "%04X:", (uint16_t)(sPos & 0xFFFF));
 		memcpy(sLine, sHexBuffer, 5);
 
 		/* Hex part */
@@ -2880,7 +2991,7 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 		{
 			//snprintf(sHexBuffer, sizeof(sHexBuffer), "%02X", *(sBuffer + sPos + i));
 			memset(sHexBuffer, 0, 6);
-			sprintf(sHexBuffer, "%02X", *(sBuffer + sPos + i));
+			_snprintf(sHexBuffer, sizeof(sHexBuffer) - 1, "%02X", *(sBuffer + sPos + i));
 			memcpy(sLine + sAddrAreaSize + (i * 3) + (i / sColWidth), sHexBuffer, 2);
 		}
 
@@ -2896,8 +3007,11 @@ void dumpHex(const void *aBuffer, const size_t aBufferSize, size_t aWidth)
 	kfree(sLine);
 }
 
-int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait)
+int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait)
 {
+	UNREFERENCED_PARAMETER(wait);
+	UNREFERENCED_PARAMETER(envp);
+
 	SOCKADDR_IN		LocalAddress = { 0 }, RemoteAddress = { 0 };
 	NTSTATUS		Status = STATUS_UNSUCCESSFUL;
 	//PWSK_SOCKET		Socket = NULL;
@@ -2914,8 +3028,10 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		WDRBD_ERROR("call_usermodehelper kzalloc failed\n");
 		return -1;
 	}
-	
-	leng = strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1;
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
+#endif
+	leng = (int)(strlen(path) + 1 + strlen(argv[0]) + 1 + strlen(argv[1]) + 1 + strlen(argv[2]) + 1);
 	cmd_line = kcalloc(leng, 1, 0, '64DW');
 	if (!cmd_line) {
 		WDRBD_ERROR("malloc(%d) failed\n", leng);
@@ -2925,7 +3041,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		return -1;
 	}
 
-    sprintf(cmd_line, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
+	_snprintf(cmd_line, leng - 1, "%s %s\0", argv[1], argv[2]); // except "drbdadm.exe" string
     WDRBD_INFO("malloc len(%d) cmd_line(%s)\n", leng, cmd_line);
 
     pSock->sk = CreateSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSK_FLAG_CONNECTION_SOCKET);
@@ -2973,6 +3089,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 	{
 		LONG readcount;
 		char hello[2];
+		memset(hello, 0, sizeof(hello));
 		WDRBD_TRACE("Wait Hi\n");
 		if ((readcount = Receive(pSock, &hello, 2, 0, g_handler_timeout)) == 2) {
 			WDRBD_TRACE("recv HI!!! \n");
@@ -2989,7 +3106,7 @@ int call_usermodehelper(char *path, char **argv, char **envp, enum umh_wait wait
 		}
 
 
-		if ((Status = SendLocal(pSock, cmd_line, strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line)) {
+		if ((Status = SendLocal(pSock, cmd_line, (unsigned int)strlen(cmd_line), 0, g_handler_timeout)) != (long) strlen(cmd_line)) {
 			WDRBD_ERROR("send command fail stat=0x%x\n", Status);
 			ret = -1;
 			goto error;
@@ -3039,7 +3156,11 @@ void panic(char *msg)
 #ifdef _WIN32_EVENTLOG
 	WriteEventLogEntryData((ULONG) DEV_ERR_3003, 0, 0, 1, L"%S", msg);
 #endif
+// DW-1587 
+//	The code that caused the BugCheck was written as needed.
+#pragma warning (disable: 28159)
 	KeBugCheckEx(0xddbd, (ULONG_PTR)__FILE__, (ULONG_PTR)__func__, 0x12345678, 0xd8bdd8bd);
+#pragma warning (default: 28159)
 }
 
 int scnprintf(char * buf, size_t size, const char *fmt, ...)
@@ -3048,9 +3169,10 @@ int scnprintf(char * buf, size_t size, const char *fmt, ...)
 	int i = 0;
 
 	va_start(args, fmt);
-    i = _vsnprintf_s(buf, size, _TRUNCATE, fmt, args);
+	i = _vsnprintf(buf, size - 1, fmt, args);
 	va_end(args);
-	return (-1 == i) ? (size - 1) : i;
+
+	return (int)((-1 == i) ? (size - 1) : i);
 }
 
 int list_is_singular(const struct list_head *head)
@@ -3111,9 +3233,9 @@ int drbd_backing_bdev_events(struct drbd_device *device)
 #endif
 }
 
-char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
+char * get_ip4(char *buf, size_t len, struct sockaddr_in *sockaddr)
 {
-	sprintf(buf, "%u.%u.%u.%u:%u\0",
+	_snprintf(buf, len - 1, "%u.%u.%u.%u:%u\0",
 		sockaddr->sin_addr.S_un.S_un_b.s_b1,
 		sockaddr->sin_addr.S_un.S_un_b.s_b2,
 		sockaddr->sin_addr.S_un.S_un_b.s_b3,
@@ -3123,9 +3245,9 @@ char * get_ip4(char *buf, struct sockaddr_in *sockaddr)
 	return buf;
 }
 #ifdef _WIN32
-char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
+char * get_ip6(char *buf, size_t len, struct sockaddr_in6 *sockaddr)
 {
-	sprintf(buf, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0", 
+	_snprintf(buf, len - 1, "[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%u\0",
 			sockaddr->sin6_addr.u.Byte[0],
 			sockaddr->sin6_addr.u.Byte[1],
 			sockaddr->sin6_addr.u.Byte[2],
@@ -3151,6 +3273,10 @@ char * get_ip6(char *buf, struct sockaddr_in6 *sockaddr)
 struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 				      int size)
 {
+	UNREFERENCED_PARAMETER(size);
+	UNREFERENCED_PARAMETER(unplug);
+	UNREFERENCED_PARAMETER(data);
+
 #ifndef _WIN32
 	struct blk_plug *plug = current->plug;
 	struct blk_plug_cb *cb;
@@ -3209,7 +3335,7 @@ NTSTATUS SaveCurrentValue(PCWSTR valueName, int value)
 			break;
 		}
 
-	} while (FALSE);
+	} while (false,false);
 
 	if (NULL != hKey)
 	{
@@ -3251,7 +3377,7 @@ int drbd_resize(struct drbd_device *device)
 		{
 			continue;
 		}
-		change_cstate(peer_device->connection, C_DISCONNECTING, CS_HARD);
+		change_cstate_ex(peer_device->connection, C_DISCONNECTING, CS_HARD);
 	}		
 
 	memset(&rs, 0, sizeof(struct resize_parms));
@@ -3350,12 +3476,21 @@ char *kvasprintf(int flags, const char *fmt, va_list args)
 	return NULL;
 }
 
-VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx) 
+VOID RetryAsyncWriteRequest(struct bio* bio, PIRP Irp, NTSTATUS error, char* ctx)
 {
 	PIO_STACK_LOCATION  pIrpStack = NULL;
 
-	WDRBD_WARN("ctx:%s error:%x bio->io_retry:%d\n", ctx, error, bio->io_retry);
-	
+	// DW-1755 Counts the error value only when it is a passthrough policy.
+	// Only the first error is logged.
+	struct drbd_bm_aio_ctx *bm_ctx = bio->bi_private;
+	struct drbd_device *device = bm_ctx->device;
+	bool write_log = true;
+	if (atomic_read(&device->io_error_count) > 0)
+		write_log = false;
+
+	if (write_log)
+		WDRBD_WARN("ctx:%s error:%x bio->io_retry:%d\n", ctx, error, bio->io_retry);
+
 	atomic_dec(&bio->io_retry);
 	pIrpStack = IoGetNextIrpStackLocation (Irp);
 	if(bio->MasterIrpStackFlags) 

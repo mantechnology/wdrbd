@@ -61,7 +61,8 @@ static FILE *m_popen(int *pid, char * const* argv)
 
 	dev_null = open("/dev/null", O_WRONLY);
 	if (dev_null == -1) {
-		err("Opening /dev/null failed: %m\n");
+		//DW-1777 revert source and change error message
+		err("Opening null service failed: %m\n");
 		exit(E_EXEC_ERROR);
 	}
 
@@ -598,7 +599,7 @@ struct d_volume *new_to_be_deleted_minor_from_template(struct d_volume *kern)
 	err("%s:%u:%s: ASSERT(%s) failed.\n", __FILE__,		\
 	     __LINE__, __func__, #x);				\
 	abort(); }						\
-	} while (0)
+	} while (false)
 
 /* Both conf and kern are single linked lists
  * supposed to be ordered by ->vnr;

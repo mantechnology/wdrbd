@@ -79,7 +79,7 @@ static int validate_nla(struct nlattr *nla, int maxtype,
         default:
             if (pt->len)
                 minlen = pt->len;
-            else if (pt->type != NLA_UNSPEC)
+			else if (pt->type != NLA_UNSPEC && pt->type <= NLA_TYPE_MAX)
                 minlen = nla_attr_minlen[pt->type];
 
             if (attrlen < minlen)
@@ -144,7 +144,7 @@ int nla_parse(struct nlattr *tb[], int maxtype, struct nlattr *head, int len,
 
     nla_for_each_attr(nla, head, len, rem)
     {
-        u16 type = nla_type(nla);
+        u16 type = (u16)nla_type(nla);
 
         if (type > 0 && type <= maxtype)
         {
@@ -208,6 +208,7 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
     if (srclen > 0 && src[srclen - 1] == '\0')
         srclen--;
 
+
     if (dstsize > 0)
     {
         size_t len = (srclen >= dstsize) ? dstsize - 1 : srclen;
@@ -215,7 +216,10 @@ size_t nla_strlcpy(char *dst, const struct nlattr *nla, size_t dstsize)
         memset(dst, 0, dstsize);
         memcpy(dst, src, len);
     }
-
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(dstsize);
+	BUG_ON_INT32_OVER(srclen);
+#endif
     return srclen;
 }
 
@@ -248,7 +252,8 @@ int nla_memcpy(void *dest, const struct nlattr *src, int count)
 int nla_memcmp(const struct nlattr *nla, const void *data,
     size_t size)
 {
-    int d = nla_len(nla) - size;
+	BUG_ON_UINT16_OVER(size);
+    int d = nla_len(nla) - (u16)size;
 
     if (d == 0)
         d = memcmp(nla_data(nla), data, size);
@@ -263,8 +268,13 @@ int nla_memcmp(const struct nlattr *nla, const void *data,
 */
 int nla_strcmp(const struct nlattr *nla, const char *str)
 {
-    int len = strlen(str) + 1;
+
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(strlen(str) + 1);
+#endif
+    int len = (int)strlen(str) + 1;
     int d = nla_len(nla) - len;
+	BUG_ON_UINT16_OVER(len);
 
     if (d == 0)
         d = memcmp(nla_data(nla), str, len);
@@ -289,8 +299,11 @@ struct nlattr *__nla_reserve(struct sk_buff *skb, int attrtype, int attrlen)
     struct nlattr *nla;
 
     nla = (struct nlattr *) skb_put(skb, nla_total_size(attrlen));
-    nla->nla_type = attrtype;
-    nla->nla_len = nla_attr_size(attrlen);
+
+	BUG_ON_UINT16_OVER(attrtype);
+	nla->nla_type = (u16)attrtype;
+	BUG_ON_UINT16_OVER(nla_attr_size(attrlen));
+	nla->nla_len = (u16)nla_attr_size(attrlen);
 
     memset((unsigned char *)nla + nla->nla_len, 0, nla_padlen(attrlen));
 

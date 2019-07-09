@@ -773,6 +773,8 @@ const char *on_io_error_map[] = {
 	[EP_PASS_ON] = "pass_on",
 	[EP_CALL_HELPER] = "call-local-io-error",
 	[EP_DETACH] = "detach",
+	[EP_PASSTHROUGH] = "passthrough",
+
 };
 
 const char *fencing_policy_map[] = {

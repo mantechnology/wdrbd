@@ -217,7 +217,7 @@ struct lc_element {
 	 * it needs to become arch independend u64 */
 	unsigned lc_number;
 	/* special label when on free list */
-#define LC_FREE (~0U)
+#define LC_FREE (UINT32_MAX)
 
 	/* for pending changes */
 	unsigned lc_new_number;
@@ -326,7 +326,7 @@ extern struct lc_element *lc_get_cumulative(struct lru_cache *lc, unsigned int e
 extern struct lc_element *lc_try_get(struct lru_cache *lc, unsigned int enr);
 extern struct lc_element *lc_find(struct lru_cache *lc, unsigned int enr);
 extern struct lc_element *lc_get(struct lru_cache *lc, unsigned int enr);
-extern unsigned int lc_put(struct lru_cache *lc, struct lc_element *e);
+extern int lc_put(struct lru_cache *lc, struct lc_element *e);
 extern void lc_committed(struct lru_cache *lc);
 
 struct seq_file;

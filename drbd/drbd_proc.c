@@ -56,6 +56,8 @@ const struct file_operations drbd_proc_fops = {
 #ifdef _WIN32 // DW-826
 int drbd_seq_show(struct seq_file *seq, void *v)
 {
+	UNREFERENCED_PARAMETER(v);
+
 	seq_printf(seq, "WDRBD:%s\nLDRBD: " REL_VERSION " (api:%d/proto:%d-%d)\n",
 		drbd_buildtag(),GENL_MAGIC_VERSION, PRO_VERSION_MIN, PRO_VERSION_MAX);
 	drbd_print_transports_loaded(seq);

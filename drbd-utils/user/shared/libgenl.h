@@ -34,7 +34,7 @@ do {							\
 	if (lvl <= DEBUG_LEVEL)				\
 		fprintf(stderr, "<%d>" fmt "\n",	\
 				lvl , ##arg);		\
-} while (0)
+} while (false)
 
 #define BUG_ON(cond)						\
 	do {							\
@@ -45,7 +45,7 @@ do {							\
 				__FILE__, __LINE__,		\
 				#cond, __cond);			\
 		abort();				\
-	} while (0)
+		} while (false)
 
 #define min_t(type, x, y) ({                    \
         type __min1 = (x);                      \
@@ -718,13 +718,13 @@ static inline int nla_put_flag(struct msg_buff *msg, int attrtype)
 	do { \
 		if (unlikely(nla_put(msg, attrtype, attrlen, data) < 0)) \
 			goto nla_put_failure; \
-	} while(0)
+		} while(false)
 
 #define NLA_PUT_TYPE(msg, type, attrtype, value) \
 	do { \
 		type __tmp = value; \
 		NLA_PUT(msg, attrtype, sizeof(type), &__tmp); \
-	} while(0)
+		} while(false)
 
 #define NLA_PUT_U8(msg, attrtype, value) \
 	NLA_PUT_TYPE(msg, __u8, attrtype, value)

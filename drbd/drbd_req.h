@@ -341,7 +341,7 @@ extern void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m);
 #endif
 #ifdef _WIN32
-		extern void request_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+		extern KDEFERRED_ROUTINE request_timer_fn;
 #else
 extern void request_timer_fn(unsigned long data);
 #endif
@@ -349,7 +349,7 @@ extern void tl_restart(struct drbd_connection *connection, enum drbd_req_event w
 extern void _tl_restart(struct drbd_connection *connection, enum drbd_req_event what);
 extern void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *req);
 extern bool drbd_should_do_remote(struct drbd_peer_device *, enum which_state);
-
+extern void notify_io_error(struct drbd_device *device, struct drbd_io_error *io_error);
 /* this is in drbd_main.c */
 extern void drbd_restart_request(struct drbd_request *req);
 

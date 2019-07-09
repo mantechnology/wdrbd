@@ -54,7 +54,8 @@
 enum drbd_io_error_p {
 	EP_PASS_ON, /* FIXME should the better be named "Ignore"? */
 	EP_CALL_HELPER,
-	EP_DETACH
+	EP_DETACH,
+	EP_PASSTHROUGH
 };
 
 enum drbd_fencing_policy {
@@ -353,6 +354,7 @@ enum mdf_flag {
 	MDF_AL_DISABLED =       1 << 8,
 #ifdef _WIN32
 	MDF_LAST_PRIMARY = 1 << 16,
+	MDF_IO_ERROR = 1 << 17,				/* DW-1843 since the io_error_count of the device structure is initialized when down, it is saved as an mdf flag to hold the value.*/
 #endif
 };
 
@@ -418,6 +420,7 @@ enum drbd_notification_type {
 	NOTIFY_DESTROY,
 	NOTIFY_CALL,
 	NOTIFY_RESPONSE,
+	NOTIFY_ERROR,
 
 	NOTIFY_CONTINUES = 0x8000,
 	NOTIFY_FLAGS = NOTIFY_CONTINUES,

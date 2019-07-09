@@ -35,6 +35,8 @@
 #include "sub.tmh" 
 #endif
 
+#pragma warning (disable: 6053 28719)
+
 NTSTATUS
 mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
@@ -43,7 +45,8 @@ mvolIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 	UNREFERENCED_PARAMETER(DeviceObject);
 	UNREFERENCED_PARAMETER(Irp);
 
-	KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
+	if (Event != NULL)
+		KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
 
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
@@ -204,6 +207,9 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolDeviceUsage(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+	if (DeviceObject == NULL)
+		return STATUS_UNSUCCESSFUL;
+
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 	PDEVICE_OBJECT		attachedDeviceObject;
@@ -498,7 +504,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 	pvext->Minor = 0;
 	
 	WDRBD_INFO("----------QueryMountPoint--------------------pvext:%p\n",pvext);
-	for (int i = 0; i < pmps->NumberOfMountPoints; i++) {
+	for (ULONG i = 0; i < pmps->NumberOfMountPoints; i++) {
 
 		PMOUNTMGR_MOUNT_POINT p = pmps->MountPoints + i;
 		PUNICODE_STRING link = NULL;
@@ -511,9 +517,9 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 
-			name.Length = strlen(" :") * sizeof(WCHAR);
+			name.Length = (USHORT)(strlen(" :") * sizeof(WCHAR));
 			name.Buffer += strlen("\\DosDevices\\");
-			pvext->Minor = name.Buffer[0] - 'C';
+			pvext->Minor = (UCHAR)(name.Buffer[0] - 'C');
 
 			link = &pvext->MountPoint;
 			//FreeUnicodeString(link);
@@ -589,7 +595,8 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 		deviceNameLength = VolumeExtension->PhysicalDeviceNameLength;
 	}
 
-	len = sizeof(IO_ERROR_LOG_PACKET) + deviceNameLength + 4;
+	//DW-1816 remove unnecessary allocate
+	len = sizeof(IO_ERROR_LOG_PACKET) + deviceNameLength + sizeof(WCHAR);
 	pLogEntry = (PIO_ERROR_LOG_PACKET) IoAllocateErrorLogEntry(mvolDriverObject, (UCHAR) len);
 	if (pLogEntry == NULL)
 	{
@@ -607,12 +614,13 @@ mvolLogError(PDEVICE_OBJECT DeviceObject, ULONG UniqID, NTSTATUS ErrorCode, NTST
 
 	wp = (PWCHAR) ((PCHAR) pLogEntry + pLogEntry->StringOffset);
 
-	if( RootExtension != NULL )
-		wcscpy(wp, RootExtension->PhysicalDeviceName);
-	else
-		wcscpy(wp, VolumeExtension->PhysicalDeviceName);
-	wp += deviceNameLength / sizeof(WCHAR);
-	*wp = 0;
+	//DW-1816 wcsncpy() is divided into sizeof(WCHAR) because the third argument is the WCHAR count. Also, fill the rest of the area with null after copying
+	if (RootExtension != NULL) {
+		wcsncpy(wp, RootExtension->PhysicalDeviceName, deviceNameLength / sizeof(WCHAR));
+	}
+	else if (VolumeExtension != NULL) {
+		wcsncpy(wp, VolumeExtension->PhysicalDeviceName, deviceNameLength / sizeof(WCHAR));
+	}
 
 	IoWriteErrorLogEntry(pLogEntry);
 }
@@ -636,7 +644,6 @@ void save_to_system_event(char * buf, int length, int level_index)
 {
 	int offset = 3;
 	char *p = buf + offset;
-	int i = 0;
 
 	while (offset < length)
 	{
@@ -671,8 +678,6 @@ void _printk(const char * func, const char * format, ...)
 	va_list args;
 	char* buf = NULL;
 	long logcnt = 0;
-
-	ULONG msgid = PRINTK_INFO;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
 	BOOLEAN bEventLog = FALSE;
@@ -682,10 +687,9 @@ void _printk(const char * func, const char * format, ...)
 #endif
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
-	KIRQL		oldirql;
 	LONGLONG	totallogcnt = 0;
 	long 		offset = 0;
-	ASSERT((level_index >= 0) && (level_index < 8));
+	ASSERT((level_index >= 0) && (level_index < 9));
 
 	// to write system event log.
 	if (level_index <= atomic_read(&g_eventlog_lv_min))
@@ -709,7 +713,7 @@ void _printk(const char * func, const char * format, ...)
 	
 	logcnt = InterlockedIncrement(&gLogCnt);
 	if(logcnt >= LOGBUF_MAXCNT) {
-		gLogCnt = 0;
+		InterlockedExchange(&gLogCnt, 0);
 		logcnt = 0;
 	}
 	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
@@ -723,7 +727,7 @@ void _printk(const char * func, const char * format, ...)
 
     RtlTimeToTimeFields(&localTime, &timeFields);
 
-	offset = sprintf(buf , "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ", 
+	offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
 										totallogcnt,
 										timeFields.Month,
 										timeFields.Day,
@@ -752,10 +756,12 @@ void _printk(const char * func, const char * format, ...)
 	}
 	
 	va_start(args, format);
-	ret = vsprintf(buf + offset + LEVEL_OFFSET, format, args); // DRBD_DOC: improve vsnprintf 
+	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
 	va_end(args);
-
-	int length = strlen(buf);
+#ifdef _WIN64
+	BUG_ON_INT32_OVER(strlen(buf));
+#endif
+	int length = (int)strlen(buf);
 	if (length > MAX_DRBDLOG_BUF) {
 		length = MAX_DRBDLOG_BUF - 1;
 		buf[MAX_DRBDLOG_BUF - 1] = 0;
@@ -786,7 +792,7 @@ static int _char_to_wchar(wchar_t * dst, size_t buf_size, char * src)
     wchar_t * t = dst;
     int c = 0;
 
-    for (; *p && c < buf_size; ++c)
+    for (; *p && c < (int)buf_size; ++c)
     {
         *t++ = (wchar_t)*p++;
     }
@@ -887,13 +893,13 @@ Reference : http://git.etherboot.org/scm/mirror/winof/hw/mlx4/kernel/bus/core/l2
 		else if (!wcscmp(l_FormatStr, L"%s")) {
 			l_CurPtrDataItem = va_arg(l_Argptr, PWCHAR);
 			/* convert to string */
-			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
+			_snwprintf((wchar_t*)l_Ptr, (l_BufSize >> 1) - 1, l_FormatStr, l_CurPtrDataItem);
             //status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurPtrDataItem);
 		}
 		else {
 			l_CurDataItem = va_arg(l_Argptr, int);
 			/* convert to string */
-			swprintf_s((wchar_t*)l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
+			_snwprintf((wchar_t*)l_Ptr, (l_BufSize >> 1) - 1, l_FormatStr, l_CurDataItem);
 			//status = RtlStringCchPrintfW((NTSTRSAFE_PWSTR) l_Ptr, l_BufSize >> 1, l_FormatStr, l_CurDataItem);
 		}
 
@@ -957,11 +963,15 @@ NTSTATUS DeleteDriveLetterInRegistry(char letter)
 {
     UNICODE_STRING reg_path, valuekey;
     wchar_t wszletter[] = L"A";
-
-    RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	NTSTATUS status;
+    status = RtlUnicodeStringInit(&reg_path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\drbd\\volumes");
+	if (!NT_SUCCESS(status))
+		return status;
 
     wszletter[0] = (WCHAR)letter;
-    RtlUnicodeStringInit(&valuekey, wszletter);
+    status = RtlUnicodeStringInit(&valuekey, wszletter);
+	if (!NT_SUCCESS(status))
+		return status;
 
     return DeleteRegistryValueKey(&reg_path, &valuekey);
 }
@@ -1003,7 +1013,7 @@ static USHORT getStackFrames(PVOID *frames, USHORT usFrameCount)
 }
 
 // DW-1153: Write Out-of-sync trace specific log. it includes stack frame.
-VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, enum update_sync_bits_mode mode)
+VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, ULONG_PTR bitsCount, unsigned int mode)
 {
 	PVOID* stackFrames = NULL;
 	USHORT frameCount = STACK_FRAME_CAPTURE_COUNT;
@@ -1015,9 +1025,9 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	sprintf(buf, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
-	stackFrames = (PVOID*)ExAllocatePool(NonPagedPool, sizeof(PVOID) * frameCount);
+	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 
 	if (NULL == stackFrames)
 	{
@@ -1030,11 +1040,11 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	for (int i = 0; i < frameCount; i++)
 	{
 		CHAR temp[20] = { 0, };
-		sprintf(temp, FRAME_DELIMITER"%p", stackFrames[i]);
-		strcat(buf, temp);
+		_snprintf(temp, sizeof(temp) - 1, FRAME_DELIMITER"%p", stackFrames[i]);
+		strncat(buf, temp, sizeof(buf) - strlen(buf) - 1);
 	}
 
-	strcat(buf, "\n");
+	strncat(buf, "\n", sizeof(buf) - strlen(buf) - 1);
 	
 	printk(buf);
 

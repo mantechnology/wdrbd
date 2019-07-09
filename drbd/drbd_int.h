@@ -27,7 +27,7 @@
 #define _DRBD_INT_H
 
 #ifdef _WIN32
-#pragma warning (disable : 4221 4706)
+//#pragma warning (disable : 4221 4706)
 #include "stddef.h"
 #include "windows/types.h"
 #include "linux-compat/list.h"
@@ -134,7 +134,10 @@ extern char usermode_helper[];
 
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
-#define ID_SYNCER (-1ULL)
+#define ID_SYNCER (UINT64_MAX)
+//DW-1601 Add define values for split peer request processing and already sync processing
+#define ID_SYNCER_SPLIT_DONE ID_SYNCER
+#define ID_SYNCER_SPLIT (ID_SYNCER - 1)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
@@ -150,7 +153,7 @@ struct drbd_connection;
         const struct drbd_resource *__r = __d->resource;	\
         printk(level "drbd %s/%u minor %u, ds(%s), dvflag(0x%x): " fmt,			\
             __r->name, __d->vnr, __d->minor, drbd_disk_str(__d->disk_state[NOW]), __d->flags, __VA_ARGS__);	\
-    } while (0)
+    } while (0,0)
 
 // DW-1494 : (peer_device)->uuid_flags has caused a problem with the 32-bit operating system and therefore removed
 #define __drbd_printk_peer_device(level, peer_device, fmt, ...)	\
@@ -167,7 +170,7 @@ struct drbd_connection;
         printk(level "drbd %s/%u minor %u pnode-id:%d, pdsk(%s), prpl(%s), pdvflag(0x%x): " fmt,		\
             __r->name, __d->vnr, __d->minor, __cn, drbd_disk_str((peer_device)->disk_state[NOW]), drbd_repl_str((peer_device)->repl_state[NOW]), (peer_device)->flags, __VA_ARGS__);\
         /*rcu_read_unlock();	_WIN32 // DW-	*/		\
-    } while (0)
+	    } while (0,0)
 
 #define __drbd_printk_resource(level, resource, fmt, ...) \
 	printk(level "drbd %s, r(%s), f(0x%x), scf(0x%x): " fmt, (resource)->name, drbd_role_str((resource)->role[NOW]), (resource)->flags,(resource)->state_change_flags, __VA_ARGS__)
@@ -178,16 +181,16 @@ struct drbd_connection;
         printk(level "drbd %s pnode-id:%d, cs(%s), prole(%s), cflag(0x%x), scf(0x%x): " fmt, (connection)->resource->name,  \
         (connection)->peer_node_id, drbd_conn_str((connection)->cstate[NOW]), drbd_role_str((connection)->peer_role[NOW]), (connection)->flags,(connection)->resource->state_change_flags, __VA_ARGS__); \
         /*rcu_read_unlock(); _WIN32 // DW- */ \
-    } while(0)
+	    } while (0,0)
 
 void drbd_printk_with_wrong_object_type(void);
-
+ 
 #define __drbd_printk_if_same_type(obj, type, func, level, fmt, ...) 
 
 #define drbd_printk(level, obj, fmt, ...)   \
     do {    \
         __drbd_printk_##obj(level, obj, fmt, __VA_ARGS__);  \
-    } while(0)
+    } while(0,0)
 
 #if defined(disk_to_dev)
 #define drbd_dbg(device, fmt, args...) \
@@ -197,7 +200,7 @@ void drbd_printk_with_wrong_object_type(void);
 	drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__)
 #else
 #define drbd_dbg(device, fmt, ...) \
-	do { if (0) drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__); } while (0)
+	do { if (false,false) drbd_printk(KERN_DEBUG, device, fmt, __VA_ARGS__); } while(false,false)
 #endif
 
 #if defined(dynamic_dev_dbg) && defined(disk_to_dev)
@@ -350,12 +353,10 @@ static inline int drbd_ratelimit(void)
 
 #ifdef _WIN32
 #define D_ASSERT(x, exp) \
-	do { \
 		if (!(exp))	{ \
 			DbgPrint("\n\nASSERTION %s FAILED in %s #########\n\n",	\
 				 #exp, __func__); \
-		} \
-	} while (0)
+		} 
 #else
 #define D_ASSERT(x, exp)							\
 	do {									\
@@ -531,6 +532,12 @@ struct drbd_work {
 	int (*cb)(struct drbd_work *, int cancel);
 };
 
+struct drbd_io_error_work {
+	struct drbd_work w;
+	struct drbd_device *device;
+	struct drbd_io_error *io_error;
+};
+
 struct drbd_peer_device_work {
 	struct drbd_work w;
 	struct drbd_peer_device *peer_device;
@@ -552,7 +559,7 @@ extern long twopc_timeout(struct drbd_resource *);
 extern long twopc_retry_timeout(struct drbd_resource *, int);
 extern void twopc_connection_down(struct drbd_connection *);
 extern u64 directly_connected_nodes(struct drbd_resource *, enum which_state);
-
+extern int w_notify_io_error(struct drbd_work *w, int cancel);
 /* sequence arithmetic for dagtag (data generation tag) sector numbers.
  * dagtag_newer_eq: true, if a is newer than b */
 #ifdef _WIN32
@@ -786,7 +793,24 @@ struct drbd_peer_request {
 	};
 #ifdef _WIN32
 	void* peer_req_databuf;
+
+	struct {
+		ULONG_PTR first;		/* DW-1601 first bitmap bit of split data */
+		ULONG_PTR last;		/* DW-1601 last bitmap bit of split data  */
+		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
+	};
 #endif
+};
+
+// DW-1755 passthrough policy
+// disk error structure to pass to events2
+struct drbd_io_error {
+	unsigned char	disk_type;
+	unsigned char	io_type;
+	NTSTATUS		error_code;
+	sector_t		sector;
+	unsigned int	size;
+	bool			is_cleared;
 };
 
 /* ee flag bits.
@@ -849,6 +873,14 @@ enum {
 
 	/* Hold reference in activity log */
 	__EE_IN_ACTLOG,
+
+	//DW-1601
+	/* split request */
+	__EE_SPLIT_REQUEST,
+
+	//DW-1601
+	/* last split request */
+	__EE_SPLIT_LAST_REQUEST,
 };
 #define EE_MAY_SET_IN_SYNC     		(1<<__EE_MAY_SET_IN_SYNC)			//LSB bit field:0
 #define EE_IS_BARRIER          		(1<<__EE_IS_BARRIER)				//LSB bit field:1
@@ -866,6 +898,9 @@ enum {
 #define EE_APPLICATION				(1<<__EE_APPLICATION)				//LSB bit field:13
 #define EE_RS_THIN_REQ				(1<<__EE_RS_THIN_REQ)				//LSB bit field:14
 #define EE_IN_ACTLOG				(1<<__EE_IN_ACTLOG)					//LSB bit field:15
+//DW-1601
+#define EE_SPLIT_REQUEST			(1<<__EE_SPLIT_REQUEST)				//LSB bit field:16 
+#define EE_SPLIT_LAST_REQUEST		(1<<__EE_SPLIT_LAST_REQUEST)				//LSB bit field:17
 
 /* flag bits per device */
 enum {
@@ -1227,7 +1262,7 @@ struct drbd_resource {
 	struct list_head connections;
 	struct list_head resources;
 	struct res_opts res_opts;
-	int max_node_id;
+	unsigned int max_node_id;
 	struct mutex conf_update;	/* for ready-copy-update of net_conf and disk_conf
 					   and devices, connection and peer_devices lists */
 	struct mutex adm_mutex;		/* mutex to serialize administrative requests */
@@ -1534,6 +1569,8 @@ struct drbd_peer_device {
 #else
 	unsigned long flags;
 #endif
+	//DW-1806 set after initial send.
+	KEVENT state_initial_send_event;
 	
 
 	enum drbd_repl_state start_resync_side;
@@ -1754,7 +1791,7 @@ struct drbd_device {
 	wait_queue_head_t al_wait;
 	struct lru_cache *act_log;	/* activity log */
 	unsigned int al_tr_number;
-	int al_tr_cycle;
+	unsigned int al_tr_cycle;
 	wait_queue_head_t seq_wait;
 	u64 exposed_data_uuid; /* UUID of the exposed data */
 	u64 next_exposed_data_uuid;
@@ -1770,6 +1807,13 @@ struct drbd_device {
 	 * are deferred to this single-threaded work queue */
 	struct submit_worker submit;
 	bool susp_quorum[2];		/* IO suspended quorum lost */
+
+	/* DW-1755 disk error information structure is managed as a list, 
+	* and the error count is stored separately for the status command.
+	Disk errors rarely occur, and even if they occur, 
+	the list counts will not increase in a large amount 
+	because they will occur only in a specific sector. */
+	atomic_t io_error_count;
 };
 
 struct drbd_bm_aio_ctx {
@@ -1797,9 +1841,9 @@ struct drbd_config_context {
 	unsigned int minor;
 	/* assigned from request attributes, if present */
 	unsigned int volume;
-#define VOLUME_UNSPECIFIED		(-1U)
+#define VOLUME_UNSPECIFIED			UINT32_MAX	//volume type unsigned int
 	unsigned int peer_node_id;
-#define PEER_NODE_ID_UNSPECIFIED	(-1U)
+#define PEER_NODE_ID_UNSPECIFIED	UINT32_MAX	//peer_node_id type unsigned int
 	/* pointer into the request skb,
 	 * limited lifetime! */
 	char *resource_name;
@@ -2021,7 +2065,7 @@ extern void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_devi
 extern u64 drbd_weak_nodes_device(struct drbd_device *device);
 extern void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag) __must_hold(local);
 extern void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag)__must_hold(local);
-extern int drbd_md_test_flag(struct drbd_backing_dev *, enum mdf_flag);
+extern int drbd_md_test_flag(struct drbd_device *device, enum mdf_flag);
 extern void drbd_md_set_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
 extern void drbd_md_clear_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
 extern bool drbd_md_test_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
@@ -2221,8 +2265,6 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 #if DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
 #error Architecture not supported: DRBD_MAX_BIO_SIZE > (BIO_MAX_PAGES << PAGE_SHIFT)
 #endif
-#else
-#define DRBD_MAX_BIO_SIZE (1 << 20)
 #endif
 #define DRBD_MAX_SIZE_H80_PACKET (1U << 15) /* Header 80 only allows packets up to 32KiB data */
 #define DRBD_MAX_BIO_SIZE_P95    (1U << 17) /* Protocol 95 to 99 allows bios up to 128KiB */
@@ -2248,7 +2290,7 @@ extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULO
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
-extern int drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
+extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
 #else
 /* set/clear/test only a few bits at a time */
 extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, unsigned long, unsigned long);
@@ -2282,13 +2324,16 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 #endif
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
-#define DRBD_END_OF_BITMAP	(~(ULONG_PTR)0)
+#define DRBD_END_OF_BITMAP	UINTPTR_MAX
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
 extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
 extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
+extern void check_and_clear_io_error_in_primary(struct drbd_device *);
+extern void check_and_clear_io_error_in_secondary(struct drbd_peer_device *);
+
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
     size_t number, ULONG_PTR *buffer);
@@ -2420,7 +2465,7 @@ enum suspend_scope {
 };
 extern void drbd_suspend_io(struct drbd_device *device, enum suspend_scope);
 extern void drbd_resume_io(struct drbd_device *device);
-extern char *ppsize(char *buf, unsigned long long size);
+extern char *ppsize(char *buf, size_t len, unsigned long long size);
 extern sector_t drbd_new_dev_size(struct drbd_device *,
 	sector_t current_size, /* need at least this much */
 	sector_t user_capped_size, /* want (at most) this much */
@@ -2481,7 +2526,7 @@ extern void drbd_rs_controller_reset(struct drbd_peer_device *);
 extern void drbd_ping_peer(struct drbd_connection *connection);
 extern struct drbd_peer_device *peer_device_by_node_id(struct drbd_device *, int);
 #ifdef _WIN32
-extern void repost_up_to_date_fn(PKDPC Dpc, PVOID data, PVOID arg1, PVOID arg2); 
+extern KDEFERRED_ROUTINE repost_up_to_date_fn;
 #else
 extern void repost_up_to_date_fn(unsigned long data);
 #endif 
@@ -2524,8 +2569,8 @@ extern int w_start_resync(struct drbd_work *, int);
 extern int w_send_uuids(struct drbd_work *, int);
 
 #ifdef _WIN32
-extern void resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
-extern void start_resync_timer_fn(PKDPC Dpc, PVOID data, PVOID SystemArgument1, PVOID SystemArgument2);
+extern KDEFERRED_ROUTINE resync_timer_fn;
+extern KDEFERRED_ROUTINE start_resync_timer_fn;
 #else
 extern void resync_timer_fn(unsigned long data);
 extern void start_resync_timer_fn(unsigned long data);
@@ -2604,7 +2649,7 @@ extern bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *);
 extern bool drbd_rs_should_slow_down(struct drbd_peer_device *, sector_t,
 				     bool throttle_if_app_is_waiting);
 extern int drbd_submit_peer_request(struct drbd_device *,
-				    struct drbd_peer_request *, const unsigned,
+				    struct drbd_peer_request *, const int,
 				    const unsigned, const int);
 extern void drbd_cleanup_after_failed_submit_peer_request(struct drbd_peer_request *peer_req);
 extern int drbd_free_peer_reqs(struct drbd_resource *, struct list_head *, bool is_net_ee);
@@ -2623,7 +2668,7 @@ extern void drbd_resync_after_unstable(struct drbd_peer_device *peer_device) __m
 #endif
 extern void queue_queued_twopc(struct drbd_resource *resource);
 #ifdef _WIN32
-extern void queued_twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+extern KDEFERRED_ROUTINE queued_twopc_timer_fn;
 #else
 extern void queued_twopc_timer_fn(unsigned long data);
 #endif
@@ -2706,6 +2751,8 @@ static inline void drbd_set_my_capacity(struct drbd_device *device,
 
 static inline void drbd_kobject_uevent(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 #ifdef _WIN32
 	// required refactring for debugfs
 #else
@@ -2747,8 +2794,8 @@ static inline void drbd_generic_make_request(struct drbd_device *device,
 void drbd_bump_write_ordering(struct drbd_resource *resource, struct drbd_backing_dev *bdev,
 			      enum write_ordering_e wo);
 #ifdef _WIN32
-extern void twopc_timer_fn(PKDPC, PVOID, PVOID, PVOID);
-extern void connect_timer_fn(PKDPC, PVOID, PVOID, PVOID);
+extern KDEFERRED_ROUTINE twopc_timer_fn;
+extern KDEFERRED_ROUTINE connect_timer_fn;
 #else
 extern void twopc_timer_fn(unsigned long);
 extern void connect_timer_fn(unsigned long);
@@ -2761,6 +2808,9 @@ extern struct proc_dir_entry *drbd_proc;
 extern const struct file_operations drbd_proc_fops;
 #endif
 
+
+typedef enum { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC } update_sync_bits_mode;
+
 /* drbd_actlog.c */
 extern bool drbd_al_try_lock(struct drbd_device *device);
 extern bool drbd_al_try_lock_for_transaction(struct drbd_device *device);
@@ -2769,7 +2819,7 @@ extern void drbd_al_begin_io_commit(struct drbd_device *device);
 extern bool drbd_al_begin_io_fastpath(struct drbd_device *device, struct drbd_interval *i);
 extern int drbd_al_begin_io_for_peer(struct drbd_peer_device *peer_device, struct drbd_interval *i);
 extern bool drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i);
-extern void drbd_rs_complete_io(struct drbd_peer_device *, sector_t);
+extern void drbd_rs_complete_io(struct drbd_peer_device *, sector_t, char *);
 extern int drbd_rs_begin_io(struct drbd_peer_device *, sector_t);
 extern int drbd_try_rs_begin_io(struct drbd_peer_device *, sector_t, bool);
 extern void drbd_rs_cancel_all(struct drbd_peer_device *);
@@ -2784,19 +2834,19 @@ extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
 extern int update_sync_bits(struct drbd_peer_device *peer_device,
-	unsigned long sbnr, unsigned long ebnr, enum update_sync_bits_mode mode);
+	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
-enum update_sync_bits_mode { RECORD_RS_FAILED, SET_OUT_OF_SYNC, SET_IN_SYNC };
 extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		enum update_sync_bits_mode mode);
+		update_sync_bits_mode mode);
 #define drbd_set_in_sync(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
 #define drbd_set_out_of_sync(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, SET_OUT_OF_SYNC)
 #define drbd_rs_failed_io(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED)
+
 extern void drbd_al_shrink(struct drbd_device *device);
 extern bool drbd_sector_has_priority(struct drbd_peer_device *, sector_t);
 extern int drbd_al_initialize(struct drbd_device *, void *);
@@ -2840,6 +2890,7 @@ extern int drbd_open_ro_count(struct drbd_resource *resource);
 
 static inline int drbd_peer_req_has_active_page(struct drbd_peer_request *peer_req)
 {
+	UNREFERENCED_PARAMETER(peer_req);
 #ifdef _WIN32
 	// not support.
 #else	
@@ -2888,12 +2939,12 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 	case EP_PASS_ON: /* FIXME would this be better named "Ignore"? */
 		if (df == DRBD_READ_ERROR ||  df == DRBD_WRITE_ERROR) {
 			if (drbd_ratelimit())
-				drbd_err(device, "Local IO failed in %s.\n", where);
+				WDRBD_ERROR("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_INCONSISTENT);
 #ifdef _WIN32_RCU_LOCKED
-				end_state_change_locked(device->resource, false);
+				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 				end_state_change_locked(device->resource);
 #endif
@@ -2923,21 +2974,50 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		 * we read meta data only once during attach,
 		 * which will fail in case of errors.
 		 */
-		if (df == DRBD_READ_ERROR)
-			set_bit(WAS_READ_ERROR, &device->flags);
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
 		if (device->disk_state[NOW] > D_FAILED) {
 			begin_state_change_locked(device->resource, CS_HARD);
 			__change_disk_state(device, D_FAILED);
 #ifdef _WIN32_RCU_LOCKED
-			end_state_change_locked(device->resource, false);
+			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
 			end_state_change_locked(device->resource);
 #endif
-			drbd_err(device,
-				"Local IO failed in %s. Detaching...\n", where);
+			drbd_err(device, "Local IO failed in %s. Detaching...\n", where);
 		}
+		break;
+	// DW-1755
+	case EP_PASSTHROUGH:
+		// DW-1814 
+		// If an error occurs in the meta volume, disk consistency can not be guaranteed and replication must be stopped in any case. 
+		if (df == DRBD_FORCE_DETACH)
+			set_bit(FORCE_DETACH, &device->flags);
+		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
+			if (device->disk_state[NOW] > D_FAILED) {
+				begin_state_change_locked(device->resource, CS_HARD);
+				__change_disk_state(device, D_FAILED);
+#ifdef _WIN32_RCU_LOCKED
+				end_state_change_locked(device->resource, false, __FUNCTION__);
+#else
+				end_state_change_locked(device->resource);
+#endif
+			}
+
+			if (df == DRBD_META_IO_ERROR)
+				drbd_err(device, "IO error occurred on meta-disk in %s. Detaching...\n", where);
+			else
+				drbd_err(device, "Force-detaching in %s\n", where);
+		}
+		else {
+		// DW-1814 
+		// In the event of a write or read error on a clone volume, there is no action here to commit it to the failure handling mechanism.
+		// When a write error occurs in the duplicate volume, P_NEG_ACK is transmitted and the OOS is recorded and synchronized.
+		// When a read error occurs, P_NEG_RS_DREPLY is transmitted, and synchronization can be restarted for failed bits.
+			if (atomic_read(&device->io_error_count) == 1)
+				drbd_err(device, "%s IO error occurred on repl-disk. Passthrough...\n", (df == DRBD_READ_ERROR) ? "Read" : "Write");
+		}
+
 		break;
 	}
 }
@@ -3118,6 +3198,52 @@ drbd_post_work(struct drbd_resource *resource, int work_bit)
 }
 
 
+/* DW-1755 passthrough policy
+ * Synchronization objects used in the process of forwarding events to events2 
+ * only work when irql is less than APC_LEVEL. 
+ * However, because the completion routine can operate in DISPATCH_LEVEL, 
+ * it must be handled through the work thread.*/
+
+#define drbd_queue_notify_io_error_cleared(device) \
+	drbd_queue_notify_io_error(device, 0, 0, 0, 0, 0, true)
+
+#define drbd_queue_notify_io_error_occurred(device, disk_type, io_type, error_code, sector, size) \
+	drbd_queue_notify_io_error(device, disk_type, io_type, error_code, sector, size, false)
+
+static inline void
+drbd_queue_notify_io_error(struct drbd_device *device, unsigned char disk_type, unsigned char io_type, NTSTATUS error_code, sector_t sector, unsigned int size, bool is_cleared)
+{
+	struct drbd_io_error_work *w;
+#ifdef _WIN32 
+	w = kmalloc(sizeof(*w), GFP_ATOMIC, 'W1DW');
+#else
+	w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+	if (w) {
+#ifdef _WIN32
+		w->io_error = kmalloc(sizeof(*(w->io_error)), GFP_ATOMIC, 'W2DW');
+#else
+		w = kmalloc(sizeof(*w), GFP_ATOMIC);
+#endif
+		if (w->io_error) {
+			w->device = device;
+			w->w.cb = w_notify_io_error;
+			w->io_error->error_code = error_code;
+			w->io_error->sector = sector;
+			w->io_error->size = size;
+			w->io_error->io_type = io_type;
+			w->io_error->disk_type = disk_type;
+			w->io_error->is_cleared = is_cleared;
+			drbd_queue_work(&device->resource->work, &w->w);
+		}
+		else {
+			drbd_err(device, "kmalloc failed.\n");
+		}
+	}
+}
+
+
+
 #ifdef _WIN32
 extern void drbd_flush_workqueue(struct drbd_resource* resource, struct drbd_work_queue *work_queue);
 extern void drbd_flush_workqueue_timeout(struct drbd_resource* resource, struct drbd_work_queue *work_queue);
@@ -3262,6 +3388,12 @@ static inline bool is_sync_target_state(struct drbd_peer_device *peer_device,
 	return repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T;
 }
 
+static inline bool is_sync_target(struct drbd_peer_device *peer_device)
+{
+	return is_sync_target_state(peer_device, NOW) ||
+				peer_device->repl_state[NOW] == L_WF_BITMAP_T;
+}
+
 static inline bool is_sync_source_state(struct drbd_peer_device *peer_device,
 					enum which_state which)
 {
@@ -3277,6 +3409,11 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
 		is_sync_target_state(peer_device, which);
 }
 
+static inline bool is_sync_source(struct drbd_peer_device *peer_device)
+{
+	return is_sync_source_state(peer_device, NOW) ||
+		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+}
 /**
  * get_ldev() - Increase the ref count on device->ldev. Returns 0 if there is no ldev
  * @_device:		DRBD device.
@@ -3431,7 +3568,7 @@ static inline void dec_ap_bio(struct drbd_device *device, int rw)
 	if (ap_bio == 0 && rw == WRITE && !list_empty(&device->pending_bitmap_work.q))
 		drbd_queue_pending_bitmap_work(device);
 
-	if (ap_bio == 0 || ap_bio == nr_requests-1)
+	if (ap_bio == 0 || ap_bio == (int)nr_requests-1)
 		wake_up(&device->misc_wait);
 }
 
@@ -3472,7 +3609,7 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 
 	spin_lock_irq(&device->resource->req_lock);
 	nr_requests = device->resource->res_opts.nr_requests;
-	rv = may_inc_ap_bio(device) && atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
+	rv = may_inc_ap_bio(device) && (unsigned int)atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
@@ -3556,6 +3693,8 @@ static inline u64 drbd_history_uuid(struct drbd_device *device, int i)
 
 static inline int drbd_queue_order_type(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
+
 	/* sorry, we currently have no working implementation
 	 * of distributed TCQ stuff */
 #ifndef QUEUE_ORDERED_NONE
@@ -3585,9 +3724,11 @@ static inline void drbd_kick_lo(struct drbd_device *device)
 #else
 static inline void drbd_blk_run_queue(struct request_queue *q)
 {
+	UNREFERENCED_PARAMETER(q);
 }
 static inline void drbd_kick_lo(struct drbd_device *device)
 {
+	UNREFERENCED_PARAMETER(device);
 }
 #endif
 

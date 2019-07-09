@@ -85,7 +85,7 @@ void dt_print_v9_uuids(const uint64_t* uuid, unsigned int mdf_flags, unsigned in
 	       mdf_peer_flags & MDF_PEER_OUTDATED ? 1 : 0,
 	       mdf_peer_flags & MDF_PEER_FENCING ? 1 : 0,
 	       mdf_peer_flags & MDF_PEER_FULL_SYNC ? 1 : 0,
-		   mdf_flags & MDF_LAST_PRIMARY ? 1 : 0 // DW-1291 provide LastPrimary Information.
+		   mdf_flags & MDF_LAST_PRIMARY ? 1 : 0// DW-1291 provide LastPrimary Information.
 		   );
 #else
 	printf(":%d:%d:%d:%d:%d\n",

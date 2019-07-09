@@ -461,6 +461,7 @@ extern void *global_btree;
 
 extern int no_tty;
 extern int dry_run;
+extern bool trace_print;
 extern int verbose;
 extern int all_resources;
 extern int adjust_more_than_one_resource;
@@ -526,7 +527,7 @@ extern struct names backend_options;
 			p = t;						\
 		}							\
 	}								\
-} while (0)
+} while (false)
 
 /* CAUTION: arguments may not have side effects! */
 #define for_each_resource(var, head) STAILQ_FOREACH(var, head, link)
@@ -541,12 +542,12 @@ extern struct names backend_options;
 #define insert_tail(head, elem) do {			\
 	typeof(*elem) *e = (elem); /* evaluate once */	\
 	STAILQ_INSERT_TAIL(head, e, link);		\
-} while (0)
+} while (false)
 
 #define insert_head(head, elem) do {			\
 	typeof(*elem) *e = (elem); /* evaluate once */	\
 	STAILQ_INSERT_HEAD(head, e, link);		\
-} while (0)
+} while (false)
 
 #define PARSER_CHECK_PROXY_KEYWORD (1)
 #define PARSER_STOP_IF_INVALID (2)

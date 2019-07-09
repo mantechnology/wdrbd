@@ -76,7 +76,8 @@ struct deferred_cmd {
 
 struct option general_admopt[] = {
 	{"stacked", no_argument, 0, 'S'},
-	{"dry-run", no_argument, 0, 'd'},
+	{"dry-run", no_argument, 0, 'd' },
+	{"trace-print", no_argument, 0, 'T' },
 	{"ignore-hostname", no_argument, 0, 'i'}, // DW-1719
 	{"verbose", no_argument, 0, 'v'},
 	{"config-file", required_argument, 0, 'c'},
@@ -169,6 +170,8 @@ int no_tty;
 int dry_run = 0;
 int ignore_hostname = 0; // DW-1719: Added option to ignore hostname check
 int verbose = 0;
+//DW-1744 : trace print option add
+bool trace_print = false;
 int adjust_with_progress = 0;
 bool help;
 int do_verify_ips = 0;
@@ -1253,13 +1256,13 @@ static void add_setup_options(char **argv, int *argcp, const struct context_def 
          else                                  \
              ARG = ssprintf("--%s", OPT->name);            \
      }                                    \
-} while (0)
+} while (false)
 
 #define make_options(ARG, OPTIONS) do {					\
 	struct d_option *option;					\
 	STAILQ_FOREACH(option, OPTIONS, link) 				\
 		make_option(ARG, option);				\
-} while (0)
+} while (false)
 
 #define ssprintf_addr(A)					\
 ssprintf(strcmp((A)->af, "ipv6") ? "%s:%s:%s" : "%s:[%s]:%s",	\
@@ -1834,7 +1837,7 @@ static int adm_khelper(const struct cfg_ctx *ctx)
 			}							\
 			name ## _len -= n;					\
 			pos_ ## name += n;					\
-			} while (0)
+			} while (false)
 
 			append(minor, "%d", vol->device_minor);
 			append(volume, "%d", vol->vnr);
@@ -2367,7 +2370,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 	char *input = strdupa(id);
 	char *vol_id;
 	char *res_name, *conn_or_hostname;
-	unsigned vol_nr = ~0U;
+	unsigned vol_nr = UINT32_MAX;
 
 	res_name = input;
 	vol_id = strrchr(input, '/');
@@ -2454,7 +2457,7 @@ int ctx_by_name(struct cfg_ctx *ctx, const char *id, checks check)
 	if (check != SETUP_MULTI)
 		return 0;
 
-	if (0) {
+	if (false) {
 found:
 		if (conn->ignore) {
 			err("Connection '%s' has the ignore flag set\n",
@@ -2474,7 +2477,7 @@ found:
 	}
 
 	vol = volume_by_vnr(&res->me->volumes, vol_nr);
-	if (vol_nr != ~0U) {
+	if (vol_nr != UINT32_MAX) {
 		if (vol) {
 			ctx->vol = vol;
 			return 0;
@@ -3178,6 +3181,9 @@ int parse_options(int argc, char **argv, struct adm_cmd **cmd, char ***resource_
 		case 'd':
 			dry_run = 1;
 			break;
+		case 'T':
+			trace_print = true;
+			break;
 		case 'i': // DW-1719: Added option to ignore hostname check
 			ignore_hostname = 1;
 			break;
@@ -3508,6 +3514,11 @@ int main(int argc, char **argv)
 
 	assign_command_names_from_argv0(argv);
 
+	TRACE_PRINT("check deferred cmd drbdsetup(%s), drbdmeta(%s), drbd_proxy_ctl(%s)\n", 
+					drbdsetup != NULL ? "true" : "false",
+					drbdmeta != NULL ? "true" : "false",
+					drbd_proxy_ctl != NULL ? "true" : "false");
+
 	if (drbdsetup == NULL || drbdmeta == NULL || drbd_proxy_ctl == NULL) {
 		err("could not strdup argv[0].\n");
 		exit(E_EXEC_ERROR);
@@ -3517,6 +3528,9 @@ int main(int argc, char **argv)
 
 	recognize_all_drbdsetup_options();
 	rv = parse_options(argc, argv, &cmd, &resource_names);
+
+	TRACE_PRINT("check parse_option (%d)\n", rv);
+
 	if (rv)
 		return rv;
 
@@ -3565,6 +3579,7 @@ int main(int argc, char **argv)
 	parse_file = config_file;
 #endif
 	my_parse();
+	TRACE_PRINT("config_file(%s) => my_parse() called\n", config_file);
 
 	if (config_test) {
 		char *saved_config_file = config_file;
@@ -3575,6 +3590,7 @@ int main(int argc, char **argv)
 
 		fclose(yyin);
 		yyin = fopen(config_test, "r");
+		TRACE_PRINT("config_test file open(%s)\n", yyin != NULL ? "true" : "false");
 		if (!yyin) {
 			err("Can not open '%s'.\n.", config_test);
 			exit(E_EXEC_ERROR);
@@ -3585,8 +3601,10 @@ int main(int argc, char **argv)
 		config_save = saved_config_save;
 	}
 
-	if (!config_valid)
+
+	if (!config_valid) {
 		exit(E_CONFIG_INVALID);
+	}
 
 #ifdef _WIN32 
 	// MODIFIED_BY_MANTECH DW-889: parsing running_config before post_parse().
@@ -3608,6 +3626,7 @@ int main(int argc, char **argv)
 	}
 #endif
 	post_parse(&config, cmd->is_proxy_cmd ? MATCH_ON_PROXY : 0);
+	TRACE_PRINT("post_parse called : cmd->is_proxy_cmd(%s)\n", cmd->is_proxy_cmd ? "true" : "false");
 
 	if (!is_dump || dry_run || verbose)
 		expand_common();
@@ -3654,10 +3673,12 @@ int main(int argc, char **argv)
 				if (!is_dump && res->ignore)
 					continue;
 
-				if (!is_dump && is_drbd_top != res->stacked)
+				if (!is_dump && is_drbd_top != res->stacked) {
 					continue;
+				}
 				ctx.res = res;
 				ctx.vol = NULL;
+				TRACE_PRINT("call cmd resource(%s), command(%s)\n", resource_names[i], cmd->name);
 				r = call_cmd(cmd, &ctx, EXIT_ON_FAIL);	/* does exit for r >= 20! */
 				/* this super positioning of return values is soo ugly
 				 * anyone any better idea? */
@@ -3763,6 +3784,8 @@ int main(int argc, char **argv)
 				verify_ips(ctx.res);
 				if (!is_dump && !config_valid)
 					exit(E_CONFIG_INVALID);
+
+				TRACE_PRINT("call cmd resource(%s), command(%s)\n", resource_names[i], cmd->name);
 				r = call_cmd(cmd, &ctx, EXIT_ON_FAIL);	/* does exit for r >= 20! */
 				if (r > rv)
 					rv = r;
@@ -3772,7 +3795,8 @@ int main(int argc, char **argv)
 		/* no call_cmd, as that implies register_minor,
 		 * which does not make sense for resource independent commands.
 		 * It does also not need to iterate over volumes: it does not even know the resource. */
-		ctx.cmd = cmd;
+		 ctx.cmd = cmd;
+		 TRACE_PRINT("call cmd command(%s)\n", cmd->name);
 		rv = __call_cmd_fn(&ctx, KEEP_RUNNING);
 		if (rv >= 10) {	/* why do we special case the "generic sh-*" commands? */
 			err("command %s exited with code %d\n", cmd->name, rv);
@@ -3780,7 +3804,9 @@ int main(int argc, char **argv)
 		}
 	}
 
+	TRACE_PRINT("run deferred cmd(%s)\n", cmd->name);
 	r = run_deferred_cmds();
+	TRACE_PRINT("run deferred cmd result(%d)\n", r);
 	if (r > rv)
 		rv = r;
 

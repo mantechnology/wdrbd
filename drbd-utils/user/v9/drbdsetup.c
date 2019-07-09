@@ -120,7 +120,7 @@ int main(void)
 	sum_total += sum;					\
 	printf("%-30s %4u [%4u]\n",				\
 			#policy ":", sum, sum_total);		\
-} while (0)
+} while (false)
 #define LEN_(p) LEN__(p ## _nl_policy)
 	LEN_(disk_conf);
 	LEN_(syncer_conf);
@@ -670,6 +670,7 @@ static const char *error_messages[] = {
 	EM(ERR_CONG_CANT_CHANGE_SNDBUF_SIZE) = "Cannot change sndbuf-size when connected. Please disconnect first and change the attribute value with adjust command\n",
 };
 #define MAX_ERROR (sizeof(error_messages)/sizeof(*error_messages))
+
 const char * error_to_string(int err_no)
 {
 	const unsigned int idx = err_no - ERR_CODE_BASE;
@@ -803,7 +804,7 @@ static void resolv6(const char *name, struct sockaddr_in6 *addr)
 		break;
 	}
 	freeaddrinfo(res);
-	if (0) { /* debug output */
+	if (false) { /* debug output */
 		char ip[INET6_ADDRSTRLEN];
 		inet_ntop(AF_INET6, &addr->sin6_addr, ip, sizeof(ip));
 		fprintf(stderr, "%s -> %02x %04x %08x %s %08x\n",
@@ -2566,6 +2567,23 @@ static void device_status(struct devices_list *device, bool single_device)
 	if (disk_state == D_DISKLESS && opt_verbose) {
 		wrap_printf(indent, " client:%s", intentional_diskless_str(&device->info));
 	}
+
+	/* DW-1755 In the passthrough policy,
+	 * the disk status is kept up_to_date in the event of a primary failure,
+	 * so disk error information should be displayed seperately.
+	 */
+
+	/* DW-1820
+	 * Modified to print io-error on secondary. 
+	 * In secondary io-error, it is not UpToDate, so modify the condition.
+	 */
+	if (device->info.io_error_count) {
+		wrap_printf(indent, " %sio-error:%d%s", 
+			disk_state_color_start(D_DISKLESS, intentional_diskless, true),
+			device->info.io_error_count,
+			disk_state_color_stop(D_DISKLESS, true));
+	}
+
 	indent = 6;
 	if (device->statistics.dev_size != -1) {
 		if (opt_statistics)
@@ -3446,7 +3464,7 @@ found:
 	}
 	if (device->info.dev_disk_state == D_DISKLESS) {
 		/* XXX we could print the exposed_data_uuid anyways: */
-		if (0)
+		if (false)
 			printf(X64(016)"\n", (uint64_t)device->statistics.dev_exposed_data_uuid);
 		fprintf(stderr, "Device has no disk\n");
 		ret = 1;
@@ -3517,7 +3535,7 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
     pos += ret; \
     if (size && checksize) \
         size -= ret; \
-} while(0)
+} while(false)
 #define EVPRINT(...) _EVPRINT(1, __VA_ARGS__)
 /* for llvm static analyzer */
 #define EVPRINT_NOSIZE(...) _EVPRINT(0, __VA_ARGS__)
@@ -3527,10 +3545,11 @@ static int event_key(char *key, int size, const char *name, unsigned minor,
 	char addr[ADDRESS_STR_MAX];
 	int ret, pos = 0;
 
-	if (!ctx)
+	if (!ctx) 
 		return -1;
 
-	EVPRINT("%s", name);
+	if (name)
+		EVPRINT("%s", name);
 
 	if (ctx->ctx_resource_name)
 		EVPRINT(" name:%s", ctx->ctx_resource_name);
@@ -3615,6 +3634,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[NOTIFY_DESTROY] = "destroy",
 		[NOTIFY_CALL] = "call",
 		[NOTIFY_RESPONSE] = "response",
+		[NOTIFY_ERROR] = "notify"
 	};
 	static char *object_name[] = {
 		[DRBD_RESOURCE_STATE] = "resource",
@@ -3623,6 +3643,7 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		[DRBD_PEER_DEVICE_STATE] = "peer-device",
 		[DRBD_HELPER] = "helper",
 		[DRBD_PATH_STATE] = "path",
+		[DRBD_IO_ERROR] = "io-error"
 	};
 	static uint32_t last_seq;
 	static bool last_seq_known;
@@ -3657,10 +3678,12 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 
 	if (opt_now && action != NOTIFY_EXISTS)
 		return 0;
-
+	
 	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
-		if (drbd_cfg_context_from_attrs(&ctx, info))
+		if (drbd_cfg_context_from_attrs(&ctx, info)) {
 			return 0;
+		}
+
 		if (info->genlhdr->cmd >= ARRAY_SIZE(object_name) ||
 		    !object_name[info->genlhdr->cmd]) {
 			dbg(1, "unknown notification\n");
@@ -3695,7 +3718,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		       (int)((abs(tm->tm_gmtoff) / 60) % 60));
 	}
 	if (info->genlhdr->cmd != DRBD_INITIAL_STATE_DONE) {
-		const char *name = object_name[info->genlhdr->cmd];
+		const char *name = NULL;
+		if (info->genlhdr->cmd != DRBD_IO_ERROR)
+			name = object_name[info->genlhdr->cmd];
 		int size;
 
 		size = event_key(NULL, 0, name, dh->minor, &ctx);
@@ -3706,11 +3731,19 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			goto fail;
 		event_key(key, size + 1, name, dh->minor, &ctx);
 	}
-	printf("%s %s",
-	       action_name[action],
-	       key ? key : "-");
 
-	switch(info->genlhdr->cmd) {
+	if (info->genlhdr->cmd == DRBD_IO_ERROR) {
+		printf("%s %s%s%s",
+			action_name[action], io_error_color_start(),
+			object_name[info->genlhdr->cmd], io_error_color_stop());
+	}
+	else {
+		printf("%s %s",
+			action_name[action],
+			key ? key : "-");
+	}
+
+	switch (info->genlhdr->cmd) {
 	case DRBD_RESOURCE_STATE:
 		if (action != NOTIFY_DESTROY) {
 			struct {
@@ -3729,8 +3762,8 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			if (!old ||
 			    new.i.res_susp != old->i.res_susp ||
 			    new.i.res_susp_nod != old->i.res_susp_nod ||
-				new.i.res_susp_fen != old->i.res_susp_fen ||
-				new.i.res_susp_quorum != old->i.res_susp_quorum)
+			    new.i.res_susp_fen != old->i.res_susp_fen ||
+			    new.i.res_susp_quorum != old->i.res_susp_quorum)
 				printf(" suspended:%s",
 				       susp_str(&new.i));
 			if (opt_statistics) {
@@ -3875,11 +3908,28 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 			printf(" helper:%s", helper_info.helper_name);
 			if (action == NOTIFY_RESPONSE)
 				printf(" status:%u", helper_info.helper_status);
-		} else {
+		}
+		else {
 			dbg(1, "helper info missing\n");
 			goto nl_out;
 		}
+	}
+		break;
+	case DRBD_IO_ERROR: {
+		struct drbd_io_error_info io_error;
+		if (!drbd_io_error_info_from_attrs(&io_error, info)) {
+			if (io_error.is_cleared)
+				printf(" cleared%s", key ? key : "-");
+			else {
+				printf("%s disk:%s io:%s", key ? key : "-", drbd_disk_type_name(io_error.disk_type), drbd_io_type_name(io_error.io_type));
+				printf(" error-code:0x%08X sector:%llus size:%u", io_error.error_code, io_error.sector, io_error.size);
+			}
 		}
+		else {
+			dbg(1, "io_error info missing\n");
+			goto nl_out;
+		}
+	}
 		break;
 	case DRBD_INITIAL_STATE_DONE:
 		break;

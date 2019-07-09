@@ -145,6 +145,13 @@ struct ifreq *get_ifreq(void)
 			ifr->ifr_addr.sa_family = -1;	/* is not up: skip */
 			continue;
 		}
+
+		struct sockaddr_in *list_addr =
+			(struct sockaddr_in *)&ifr->ifr_addr;
+		if (ifr->ifr_addr.sa_family != AF_INET)
+			continue;
+
+		TRACE_PRINT("ipv4 %s\n", inet_ntoa(list_addr->sin_addr));
 	}
 	close(sockfd);
 	return ifc.ifc_req;
@@ -177,6 +184,7 @@ int have_ip_ipv6(const char *ip)
 	FILE *if_inet6;
 	struct in6_addr addr6, query_addr;
 	unsigned int b[4];
+	char addr6_str[40];
 	char tmp_ip[INET6_ADDRSTRLEN+1];
 	char name[20]; /* IFNAMSIZ aka IF_NAMESIZE is 16 */
 	int i;
@@ -207,6 +215,9 @@ int have_ip_ipv6(const char *ip)
 		for (i = 0; i < 4; i++)
 			addr6.s6_addr32[i] = cpu_to_be32(b[i]);
 
+		inet_ntop(AF_INET6, (void *)&addr6, addr6_str, sizeof(addr6_str));
+		TRACE_PRINT("ipv6 %s\n", addr6_str);
+
 		if (memcmp(&query_addr, &addr6, sizeof(struct in6_addr)) == 0) {
 			fclose(if_inet6);
 			return 1;
@@ -218,6 +229,8 @@ int have_ip_ipv6(const char *ip)
 
 int have_ip(const char *af, const char *ip)
 {
+	TRACE_PRINT("af(%s), ip(%s)\n", af, ip);
+
 	if (!strcmp(af, "ipv4"))
 		return have_ip_ipv4(ip);
 	else if (!strcmp(af, "ipv6"))
@@ -328,7 +341,8 @@ void m__system(char **argv, int flags, const char *res_name, pid_t *kid, int *fd
 		if (flags & SUPRESS_STDERR) {
 			FILE *f = freopen("/dev/null", "w", stderr);
 			if (!f)
-				fprintf(stderr, "freopen(/dev/null) failed\n");
+				//DW-1777 revert source and change error message
+				fprintf(stderr, "reopen null service failed\n");
 		}
 		if (argv[0])
 		{

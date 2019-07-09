@@ -31,7 +31,9 @@
 
 //#ifdef WINNT
 #ifdef _WIN32 //DW-1507 remove unmeaning build warnings(2008 platform)
-#pragma warning (disable : 4005 4018 4101 4115 4121 4127 4131 4152 4189 4200 4201 4204 4212 4218 4242 4244 4245 4267 4307 4389 4702 4706)
+//#pragma warning (disable : 4005 4018 4101 4115 4121 4127 4131 4152 4189 4200 4201 4204 4212 4218 4242 4244 4245 4267 4307 4389 4702 4706)
+#pragma warning (disable : 4121 4152 4200 4201 4204)
+
 /* warning disable list
 // drbd.h
 4005: macro redefinition
@@ -102,7 +104,8 @@
 enum drbd_io_error_p {
 	EP_PASS_ON, /* FIXME should the better be named "Ignore"? */
 	EP_CALL_HELPER,
-	EP_DETACH
+	EP_DETACH,
+	EP_PASSTHROUGH
 };
 
 enum drbd_fencing_policy {
@@ -413,6 +416,7 @@ enum mdf_flag {
 	MDF_AL_DISABLED =       1 << 8,
 #ifdef _WIN32
 	MDF_LAST_PRIMARY = 1 << 16,
+	MDF_IO_ERROR = 1 << 17,				/* DW-1843 since the io_error_count of the device structure is initialized when down, it is saved as an mdf flag to hold the value.*/
 #endif
 };
 
@@ -435,6 +439,7 @@ enum mdf_peer_flag {
 #ifdef _WIN32
 	MDF_PEER_INIT_SYNCT_BEGIN	= 1 << 17,
 	MDF_PEER_INIT_SYNCT_DONE 	= 1 << 18,
+	MDF_PEER_PRIMARY_IO_ERROR = 1 << 19,         /* DW-1843 Set the peer flag to indicate that an io-error occurred at the primary.*/
 #endif
 };
 
@@ -477,6 +482,7 @@ enum drbd_notification_type {
 	NOTIFY_DESTROY,
 	NOTIFY_CALL,
 	NOTIFY_RESPONSE,
+	NOTIFY_ERROR,
 
 	NOTIFY_CONTINUES = 0x8000,
 	NOTIFY_FLAGS = NOTIFY_CONTINUES,
@@ -517,6 +523,16 @@ enum drbd_peer_state {
 #define QOU_OFF 0
 #define QOU_MAJORITY 1024
 #define QOU_ALL 1025
+
+/* flag bits per volume extension
+DW-1277: volume type is marked when drbd attaches */
+enum {
+	VOLUME_TYPE_REPL,		// for replicating volume.
+	VOLUME_TYPE_META,		// for meta volume.
+};
+
+#define READ					0
+#define WRITE					1
 
 #define _WIN32_MVFL
 #define _WIN32_MULTI_VOLUME

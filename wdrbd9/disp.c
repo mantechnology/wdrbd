@@ -52,7 +52,11 @@ _Dispatch_type_(IRP_MJ_PNP) DRIVER_DISPATCH mvolDispatchPnp;
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
+#pragma alloc_text(PAGE, _QueryVolumeNameRegistry)
 #endif
+
+// DW-1587 disables warnig because there is no problem in code
+#pragma warning (disable: 6101 6102)
 
 NTSTATUS
 mvolRunIrpSynchronous(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
@@ -118,7 +122,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     RootExtension->Head = NULL;
     RootExtension->Count = 0;
 	ucsdup(&RootExtension->RegistryPath, RegistryPath->Buffer, RegistryPath->Length);
-    RootExtension->PhysicalDeviceNameLength = nameUnicode.Length;
+    RootExtension->PhysicalDeviceNameLength = nameUnicode.Length * sizeof(WCHAR);
     RtlCopyMemory(RootExtension->PhysicalDeviceName, nameUnicode.Buffer, nameUnicode.Length);
 
     KeInitializeSpinLock(&mvolVolumeLock);
@@ -152,7 +156,6 @@ mvolUnload(IN PDRIVER_OBJECT DriverObject)
 	WskPutNPI();
 }
 
-static
 NTSTATUS _QueryVolumeNameRegistry(
 	_In_ PMOUNTDEV_UNIQUE_ID pmuid,
 	_Out_ PVOLUME_EXTENSION pvext)
@@ -211,7 +214,7 @@ NTSTATUS _QueryVolumeNameRegistry(
 	for (int i = 0; i < Count; ++i) {
 		RtlZeroMemory(valueInfo, valueInfoSize);
 
-		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, valueInfoSize, &size);
+		status = ZwEnumerateValueKey(hKey, i, KeyValueFullInformation, valueInfo, (ULONG)valueInfoSize, &size);
 		if (!NT_SUCCESS(status)) {
 			if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
 				goto cleanup;
@@ -229,8 +232,8 @@ NTSTATUS _QueryVolumeNameRegistry(
 			if (((SIZE_T)pmuid->UniqueIdLength == RtlCompareMemory(pmuid->UniqueId, (PCHAR)valueInfo + valueInfo->DataOffset, pmuid->UniqueIdLength))) {
 				if (wcsstr(key, L"\\DosDevices\\")) {
 					ucsdup(&pvext->MountPoint, L" :", 4);
-					pvext->MountPoint.Buffer[0] = toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
-					pvext->Minor = pvext->MountPoint.Buffer[0] - 'C';
+					pvext->MountPoint.Buffer[0] = (WCHAR)toupper((CHAR)(*(key + wcslen(L"\\DosDevices\\"))));
+					pvext->Minor = (UCHAR)(pvext->MountPoint.Buffer[0] - 'C');
 				}
 				else if (wcsstr(key, L"\\??\\Volume")) {	// registry's style
 					ucsdup(&pvext->VolumeGuid, key, valueInfo->NameLength);
@@ -255,6 +258,8 @@ cleanup:
 NTSTATUS
 mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
+	UNREFERENCED_PARAMETER(DriverObject);
+
     NTSTATUS            status;
     PDEVICE_OBJECT      AttachedDeviceObject = NULL;
     PDEVICE_OBJECT      ReferenceDeviceObject = NULL;
@@ -265,7 +270,6 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
     if (FALSE == InterlockedCompareExchange(&IsEngineStart, TRUE, FALSE))
     {
         HANDLE		hNetLinkThread = NULL;
-		HANDLE		hLogLinkThread = NULL;
         NTSTATUS	Status = STATUS_UNSUCCESSFUL;
 
         // Init WSK and StartNetLinkServer
@@ -327,7 +331,9 @@ mvolAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceOb
 		IoDeleteDevice(AttachedDeviceObject);
         return status;
     }
-    VolumeExtension->PhysicalDeviceNameLength = wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR);
+
+	BUG_ON_UINT16_OVER(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
+    VolumeExtension->PhysicalDeviceNameLength = (USHORT)(wcslen(VolumeExtension->PhysicalDeviceName) * sizeof(WCHAR));
 
 	PMOUNTDEV_UNIQUE_ID pmuid = QueryMountDUID(PhysicalDeviceObject);
 	if (pmuid) {
@@ -402,7 +408,6 @@ mvolSendToNextDriver(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -443,7 +448,6 @@ mvolCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 NTSTATUS
 mvolClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 #if 0 // DW-1380
     if (DeviceObject == mvolRootDeviceObject) {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -461,7 +465,6 @@ void drbd_cleanup_by_win_shutdown(PVOLUME_EXTENSION VolumeExtension);
 NTSTATUS
 mvolShutdown(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-	NTSTATUS status = STATUS_SUCCESS;
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
 
 	drbd_cleanup_by_win_shutdown(VolumeExtension);
@@ -692,7 +695,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 #ifdef _WIN32_MULTIVOL_THREAD
-			IoMarkIrpPending(Irp);
 			//It is processed in 2 passes according to IRQL.
 			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
 			//2. Otherwise, Directly call mvolwritedispatch
@@ -707,8 +709,10 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 	return status;
             	}	
 			} else {
+				IoMarkIrpPending(Irp);
 				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
 			}
+			
 #else
 			PMVOL_THREAD	pThreadInfo = &VolumeExtension->WorkThreadInfo;
 

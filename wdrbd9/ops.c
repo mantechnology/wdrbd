@@ -22,9 +22,10 @@
 #include "disp.h"
 #include "proto.h"
 #include "drbd_int.h"
-
+#pragma warning (disable: 6053 28719)
 extern SIMULATION_DISK_IO_ERROR gSimulDiskIoError;
 
+CALLBACK_FUNCTION drbdCallbackFunc;
 PCALLBACK_OBJECT g_pCallbackObj;
 PVOID g_pCallbackReg;
 
@@ -130,13 +131,12 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	*ReturnLength = 0;
 	// DW-1300
 	struct drbd_device *device = NULL;
-
     COUNT_LOCK(pvext);
-
+	
     if (!pvext->Active)
 	{
-		sprintf(Message, "%wZ volume is not dismounted", &pvext->MountPoint);
-		*ReturnLength = strlen(Message);
+		_snprintf(Message, sizeof(Message) - 1, "%wZ volume is not dismounted", &pvext->MountPoint);
+		*ReturnLength = (ULONG)strlen(Message);
 		WDRBD_ERROR("%s\n", Message);
         //status = STATUS_INVALID_DEVICE_REQUEST;
         goto out;
@@ -150,9 +150,9 @@ IOCTL_MountVolume(PDEVICE_OBJECT DeviceObject, PIRP Irp, PULONG ReturnLength)
 	if (pvext->WorkThreadInfo.Active && device)
 #endif
 	{
-    	sprintf(Message, "%wZ volume is handling by drbd. Failed to mount",
+		_snprintf(Message, sizeof(Message) - 1, "%wZ volume is handling by drbd. Failed to mount",
 			&pvext->MountPoint);
-		*ReturnLength = strlen(Message);
+		*ReturnLength = (ULONG)strlen(Message);
 		WDRBD_ERROR("%s\n", Message);
         //status = STATUS_VOLUME_DISMOUNTED;
         goto out;

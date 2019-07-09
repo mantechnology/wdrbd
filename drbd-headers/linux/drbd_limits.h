@@ -121,7 +121,7 @@
 #define DRBD_SNDBUF_SIZE_DEF	0 
 #define DRBD_SNDBUF_SIZE_MIN  (1024*1024*10)
 #else
-#define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2)
+#define DRBD_SNDBUF_SIZE_MAX  (1024*1024*1024*2LLU)
 #define DRBD_SNDBUF_SIZE_DEF  0
 /* I don't think that a tcp send buffer of more than 10M is useful */
 #define DRBD_SNDBUF_SIZE_MIN   (1024*1024*10)
@@ -216,7 +216,7 @@
 #ifdef _WIN32
 // WDRBD_DOC: when Disk I/O fail on Windows, A continous retry I/O occured in EP_PASS_ON config.(DW-463) so, EP_DETACH is suitable for WDRBD
 #endif
-#define DRBD_ON_IO_ERROR_DEF EP_DETACH 
+#define DRBD_ON_IO_ERROR_DEF EP_PASSTHROUGH 
 #define DRBD_FENCING_DEF FP_DONT_CARE
 #define DRBD_AFTER_SB_0P_DEF ASB_DISCONNECT
 #define DRBD_AFTER_SB_1P_DEF ASB_DISCONNECT

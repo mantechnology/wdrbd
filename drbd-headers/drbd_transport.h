@@ -38,7 +38,7 @@
 	       rcu_dereference((transport)->net_conf)->name,	\
 	       __VA_ARGS__);					\
 	rcu_read_unlock();					\
-	}while (0)
+	}while (false,false)
 
 #define tr_err(transport, fmt, ...) \
 	tr_printk(KERN_ERR, transport, fmt, ## __VA_ARGS__)
@@ -69,7 +69,7 @@
 		if (!(exp))							\
 			tr_err(x, "ASSERTION %s FAILED in %s\n", 		\
 				 #exp, __func__);				\
-	} while (0)
+	} while (false,false)
 
 struct drbd_resource;
 struct drbd_connection;
@@ -168,6 +168,9 @@ struct drbd_page_chain_head {
 	struct page *head; // WIN32:used by void pointer to memory which alloccated by malloc()
 	unsigned int nr_pages;
 };
+
+
+typedef struct seq_file seq_file;
 
 struct drbd_transport_ops {
 	void (*free)(struct drbd_transport *, enum drbd_tr_free_op free_op);

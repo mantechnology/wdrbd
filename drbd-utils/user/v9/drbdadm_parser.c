@@ -1133,7 +1133,9 @@ static void parse_host_section(struct d_resource *res,
 			m_asprintf(&fake_uname, "ipv6 [%s]:%s", host->address.addr, host->address.port);
 		else
 			m_asprintf(&fake_uname, "%s:%s", host->address.addr, host->address.port);
+
 		insert_head(&host->on_hosts, names_from_str(fake_uname));
+		TRACE_PRINT("BY_ADDRESS(TK_FLOATING), %s, %s\n", res->name, fake_uname);
 
 		token = yylex();
 		switch(token) {
@@ -1185,6 +1187,13 @@ static void parse_host_section(struct d_resource *res,
 				check_upr("address statement", "%s:%s:address", res->name, h->name);
 			parse_address(on_hosts, &host->address);
 			range_check(R_PORT, "port", host->address.port);
+
+			char *address = NULL;
+			if (!strcmp(host->address.af, "ipv6"))
+				m_asprintf(&address, "ipv6 [%s]:%s", host->address.addr, host->address.port);
+			else
+				m_asprintf(&address, "%s:%s", host->address.addr, host->address.port);
+			TRACE_PRINT("%s, %s, %s\n", host->require_minor ? "TK_ON" : "TK__THIS_HOST", res->name, address);
 			break;
 		case TK_PROXY:
 			host->proxy_compat_only = parse_proxy_section();
@@ -1770,7 +1779,7 @@ struct d_resource* parse_resource(char* res_name, enum pr_flags flags)
 	while(1) {
 		token = yylex();
 		fline = line;
-		switch(token) {
+		switch (token) {
 		case TK_STRING:
 			if (strcmp(yylval.txt, "protocol"))
 				goto goto_default;
@@ -2087,7 +2096,7 @@ void my_parse(void)
 	while (1) {
 		int token = yylex();
 		fline = line;
-		switch(token) {
+		switch (token) {
 		case TK_GLOBAL:
 			parse_global();
 			break;

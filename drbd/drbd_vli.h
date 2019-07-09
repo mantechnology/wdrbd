@@ -140,7 +140,7 @@ prefix    data bits                                    max val  Nº data bits
 	LEVEL(29, 8, 0x7f); \
 	LEVEL(42, 8, 0xbf); \
 	LEVEL(64, 8, 0xff); \
-	} while (0)
+	} while(false,false)
 
 /* finds a suitable level to decode the least significant part of in.
  * returns number of bits consumed.
@@ -153,11 +153,11 @@ static inline int vli_decode_bits(u64 *out, const u64 in)
 #define LEVEL(t,b,v)					\
 	do {						\
 		if ((in & ((1 << b) -1)) == v) {	\
-			*out = ((in & ((~0ULL) >> (64-t))) >> b) + adj;	\
+			*out = ((in & ((UINT64_MAX) >> (64-t))) >> b) + adj;	\
 			return t;			\
 		}					\
 		adj += 1ULL << (t - b);			\
-	} while (0)
+	} while(false,false)
 
 	VLI_L_1_1();
 
@@ -187,7 +187,7 @@ static inline int __vli_encode_bits(u64 *out, const u64 in)
 			return t;	\
 		}			\
 		adj = max + 1;		\
-	} while (0)
+	} while (false, false)
 
 	VLI_L_1_1();
 
@@ -279,12 +279,12 @@ static inline int bitstream_put_bits(struct bitstream *bs, u64 val, const unsign
 	if (bits == 0)
 		return 0;
 
-	if ((bs->cur.b + ((bs->cur.bit + bits -1) >> 3)) - bs->buf >= bs->buf_len)
+	if ((size_t)((bs->cur.b + ((bs->cur.bit + bits -1) >> 3)) - bs->buf) >= bs->buf_len)
 		return -ENOBUFS;
 
 	/* paranoia: strip off hi bits; they should not be set anyways. */
 	if (bits < 64)
-		val &= ~0ULL >> (64 - bits);
+		val &= UINT64_MAX >> (64 - bits);
 
 	*b++ |= (val & 0xff) << bs->cur.bit;
 
@@ -312,9 +312,12 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
 	if (bits > 64)
 		return -EINVAL;
 
-	if (bs->cur.b + ((bs->cur.bit + bs->pad_bits + bits -1) >> 3) - bs->buf >= bs->buf_len)
-		bits = ((bs->buf_len - (bs->cur.b - bs->buf)) << 3)
-			- bs->cur.bit - bs->pad_bits;
+	if ((size_t)(bs->cur.b + ((bs->cur.bit + bs->pad_bits + bits - 1) >> 3) - bs->buf) >= bs->buf_len) {
+#ifdef _WIN64
+		BUG_ON_UINT32_OVER(((bs->buf_len - (bs->cur.b - bs->buf)) << 3) - bs->cur.bit - bs->pad_bits);
+#endif
+		bits = (int)((bs->buf_len - (bs->cur.b - bs->buf)) << 3) - bs->cur.bit - bs->pad_bits;
+	}
 
 	if (bits == 0) {
 		*out = 0;
@@ -335,7 +338,7 @@ static inline int bitstream_get_bits(struct bitstream *bs, u64 *out, int bits)
 	val |= bs->cur.b[0] >> bs->cur.bit;
 
 	/* and mask out bits we don't want */
-	val &= ~0ULL >> (64 - bits);
+	val &= UINT64_MAX >> (64 - bits);
 
 	bitstream_cursor_advance(&bs->cur, bits);
 	*out = val;

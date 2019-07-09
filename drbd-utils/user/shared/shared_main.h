@@ -27,6 +27,16 @@
 #define CMD_TIMEOUT_SHORT_DEF 5
 #define CMD_TIMEOUT_MEDIUM_DEF 121
 #define CMD_TIMEOUT_LONG_DEF 600
+
+//DW-1744 : trace print macro add
+#define TRACE_PRINT(fmt, ...)		\
+    do {						\
+		if(trace_print)				\
+			printf("%s() : " fmt, __FUNCTION__, __VA_ARGS__);	\
+	} while (false)
+
+const char *token_to_string(int token);
+
 extern struct d_globals global_options;
 
 void alarm_handler(int __attribute((unused)) signo);
@@ -110,6 +120,7 @@ struct ifi_info {
 };
 
 extern int dry_run;
+extern bool trace_print;
 extern int verbose;
 extern int adjust_with_progress;
 extern char *sh_varname;

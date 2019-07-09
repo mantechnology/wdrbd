@@ -287,13 +287,15 @@ void set_me_in_resource(struct d_resource* res, int match_on_proxy)
 	struct d_host_info *host;
 	struct connection *conn;
 
+	TRACE_PRINT("resource_name(%s), match_on_proxy(%s), hostname(%s)\n", res->name, match_on_proxy ? "true" : "false", hostname);
 	/* Determine the local host section */
 	for_each_host(host, &res->all_hosts) {
 		/* do we match  this host? */
 		if (match_on_proxy) {
 			if (!test_proxy_on_host(res, host))
 			       continue;
-		} else if (host->by_address) {
+		}
+		else if (host->by_address) {
 			if (!have_ip(host->address.af, host->address.addr) &&
 				/* for debugging only, e.g. __DRBD_NODE__=10.0.0.1 */
 			    strcmp(hostname, host->address.addr))
@@ -329,9 +331,11 @@ void set_me_in_resource(struct d_resource* res, int match_on_proxy)
 			    host->lower ? host->lower->name : names_to_str(&host->on_hosts));
 		}
 		res->me = host;
+		TRACE_PRINT("res->me(%s)\n", host->lower ? host->lower->name : names_to_str(&host->on_hosts));
 		host->used_as_me = 1;
-		if (host->lower)
+		if (host->lower) {
 			res->stacked = 1;
+		}
 	}
 
 #ifdef _WIN32 

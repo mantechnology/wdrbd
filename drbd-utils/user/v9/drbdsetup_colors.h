@@ -15,7 +15,8 @@ extern const char *repl_state_color_start(enum drbd_repl_state);
 extern const char *repl_state_color_stop(enum drbd_repl_state);
 extern const char *disk_state_color_start(enum drbd_disk_state, bool intentional, bool);
 extern const char *disk_state_color_stop(enum drbd_disk_state, bool);
-
+extern const char *io_error_color_start();
+extern const char *io_error_color_stop();
 
 #define REPL_COLOR_STRING(__r)  \
 	repl_state_color_start(__r), drbd_repl_str(__r), repl_state_color_stop(__r)

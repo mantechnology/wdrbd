@@ -529,21 +529,33 @@ out:
 
 bool random_by_dev_urandom(void *buffer, size_t len)
 {
-	int fd;
-	bool ok = true;
+	//int fd;
+	//bool ok = true;
+	//
+	//fd = open("/dev/urandom", O_RDONLY);
+	//if (fd == -1) {
+	//	perror("Open of /dev/urandom failed");
+	//	return false;
+	//}
+	//if (read(fd, buffer, len) != len) {
+	//	ok = false;
+	//	fprintf(stderr, "Reading from /dev/urandom failed\n");
+	//}
+	//close(fd);
 
-	fd = open("/dev/urandom", O_RDONLY);
-	if (fd == -1) {
-		perror("Open of /dev/urandom failed");
+	if (len == 0)
 		return false;
-	}
-	if (read(fd, buffer, len) != len) {
-		ok = false;
-		fprintf(stderr, "Reading from /dev/urandom failed\n");
-	}
-	close(fd);
 
-	return ok;
+	//DW-1779 generate random numbers based on length.
+	uint8_t *r;
+
+	srand(time(NULL));
+	for (int i = 0; i < len; i++) {
+		r = buffer + i;
+		*r = rand() % 256;
+	}
+
+	return true;
 }
 
 void get_random_bytes(void *buffer, size_t len)
@@ -1007,7 +1019,7 @@ new_strtoll(const char *s, const char def_unit, unsigned long long *rv)
 	}
 
 	/* if shift is positive, first check for overflow */
-	if (*rv > (~0ULL >> shift))
+	if (*rv > (UINT64_MAX >> shift))
 		return MSE_OUT_OF_RANGE;
 
 	/* then convert */
