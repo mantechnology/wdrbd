@@ -1204,6 +1204,7 @@ void check_and_clear_io_error_in_primary(struct drbd_device *device)
 	struct drbd_peer_device *peer_device;
 	ULONG_PTR total_count = 0;
 	long flags;
+	bool all_disconnected = true;
 
 	if (!device || !device->bitmap || !device->bitmap->bm_pages)
 		return;
@@ -1221,9 +1222,11 @@ void check_and_clear_io_error_in_primary(struct drbd_device *device)
 	 * If all peer's OOS are removed, the io-error is considered to be resolved
 	 * and the number of io-errors is initialized to zero. 
 	 */
+	
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->connection->cstate[NOW] == C_CONNECTED) {
 			ULONG_PTR count = 0;
+			all_disconnected = false;
 			spin_lock_irqsave(&device->bitmap->bm_lock, flags);
 			count = device->bitmap->bm_set[peer_device->bitmap_index];
 			spin_unlock_irqrestore(&device->bitmap->bm_lock, flags);
@@ -1236,7 +1239,8 @@ void check_and_clear_io_error_in_primary(struct drbd_device *device)
 	}
 
 	//DW-1859 At primary, all OOS with all peers must be removed before the io - error count can be initialized.
-	if (total_count == 0) {
+	//DW-1870 If all nodes are not connected, it is not resolved.
+	if (total_count == 0 && !all_disconnected) {
 		drbd_md_clear_flag(device, MDF_IO_ERROR);
 		drbd_info(device, "io-error has been cleared.\n");
 		atomic_set(&device->io_error_count, 0);
