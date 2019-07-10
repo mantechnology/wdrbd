@@ -10464,7 +10464,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
-	struct drbd_device *device;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
 #ifdef _WIN32
@@ -10494,7 +10493,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-	device = peer_req->peer_device->device;
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
@@ -10505,6 +10503,8 @@ found:
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		ULONG_PTR in_sync_b;
+		//DW-1872 you must set the device that matches the peer_request.
+		struct drbd_device *device = peer_req->peer_device->device;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 		ULONG_PTR set_sync_mask = INTPTR_MAX;
