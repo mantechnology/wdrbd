@@ -1287,7 +1287,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #else
 	if (error) {
 #endif
-		ctx->error = error;
+		if (ctx)
+			ctx->error = error;
 		drbd_err(device, "local disk FLUSH FAILED with status %08X\n", error);
 	}
 
@@ -1313,8 +1314,11 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	put_ldev(device);
 	kref_put(&device->kref, drbd_destroy_device);
 
-	if (atomic_dec_and_test(&ctx->pending))
+	if (atomic_dec_and_test(&ctx->pending)) {
 		complete(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		kfree(ctx);
+	}
 	
 	BIO_ENDIO_FN_RETURN;
 }
@@ -1372,13 +1376,20 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	struct drbd_resource *resource = connection->resource;
 	
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
-		struct drbd_device *device;
-		struct issue_flush_context ctx;
 		int vnr;
+		struct drbd_device *device;
+		// DW-1862 
+		// Referencing a local variable in an asynchronous IO completion routine can corrupt stack memory.
+		// Therefore, non-paged pool memory is required.
+		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
+		if (!ctx) {
+			WDRBD_ERROR("Failed to allocate issue_flush_context NonPagedMemory\n");
+			goto out;
+		}
 
-		atomic_set(&ctx.pending, 1);
-		ctx.error = 0;
-		init_completion(&ctx.done);
+		atomic_set(&ctx->pending, 1);
+		ctx->error = 0;
+		init_completion(&ctx->done);
 
 		rcu_read_lock();
 #ifdef _WIN32
@@ -1391,7 +1402,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 
-			submit_one_flush(device, &ctx);
+			submit_one_flush(device, ctx);
 
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
@@ -1403,10 +1414,16 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx.pending))
-			wait_for_completion(&ctx.done);
+		if (!atomic_dec_and_test(&ctx->pending)) {
+			wait_for_completion(&ctx->done);
+		}
+		else {
+			//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+			kfree(ctx);
+		}
 
-		if (ctx.error) {
+//This is currently unused code and should be commented out.
+//		if (ctx->error) {
 			/* would rather check on EOPNOTSUPP, but that is not reliable.
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
@@ -1414,9 +1431,10 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 #ifndef _WIN32 // WDRBD support only WRITE_FLUSH
 			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
 #endif
-		}
+	//	}
 	}
 
+out:
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
