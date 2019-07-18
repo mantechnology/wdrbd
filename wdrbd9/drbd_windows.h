@@ -1077,12 +1077,14 @@ extern void complete_all(struct completion *c);
 extern int signal_pending(struct task_struct *p);
 extern void force_sig(int sig, struct task_struct *p);
 extern void flush_signals(struct task_struct *p);
-extern long schedule(wait_queue_head_t *q, long timeout, char *func, int line);
+extern long _schedule(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event);
 
+#define schedule(q, timeout, func, line)	_schedule(q, timeout, func, line, true)
 #define SCHED_Q_INTERRUPTIBLE	1
 #define schedule_timeout_interruptible(timeout)  schedule((wait_queue_head_t *)SCHED_Q_INTERRUPTIBLE, (timeout), __FUNCTION__, __LINE__)
 #define schedule_timeout_uninterruptible(timeout) schedule_timeout(timeout) 
 #define schedule_timeout(timeout) schedule((wait_queue_head_t *)NULL, (timeout), __FUNCTION__, __LINE__)
+
 
 #define __wait_event(wq, condition, __func, __line) \
 	do {\
