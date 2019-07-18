@@ -1383,8 +1383,10 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 		// Therefore, non-paged pool memory is required.
 		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
 		if (!ctx) {
-			WDRBD_ERROR("Failed to allocate issue_flush_context NonPagedMemory\n");
-			goto out;
+			drbd_err(connection, "Could not allocate a bio, CANNOT ISSUE FLUSH\n");
+			/* FIXME: what else can I do now?  disconnecting or detaching
+			* really does not help to improve the state of the world, either.*/
+			return FE_STILL_LIVE;
 		}
 
 		atomic_set(&ctx->pending, 1);
@@ -1434,7 +1436,6 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	//	}
 	}
 
-out:
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
 }
 
