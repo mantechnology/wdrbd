@@ -818,7 +818,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
-			drbd_info(device, "active resync extent enr : %lu\n", enr);
+			drbd_debug(device, "active resync extent enr : %lu\n", enr);
 			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;
