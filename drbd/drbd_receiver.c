@@ -1395,7 +1395,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		rcu_read_lock();
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
@@ -1416,13 +1416,11 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx->pending)) {
+		if (!atomic_dec_and_test(&ctx->pending))
 			wait_for_completion(&ctx->done);
-		}
-		else {
-			//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		else
 			kfree(ctx);
-		}
 
 //This is currently unused code and should be commented out.
 //		if (ctx->error) {
