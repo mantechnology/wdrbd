@@ -1417,21 +1417,20 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
 		if (!atomic_dec_and_test(&ctx->pending))
-			wait_for_completion(&ctx->done);
+			wait_for_completion_flush(&ctx->done);
 		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
 		else
 			kfree(ctx);
 
-//This is currently unused code and should be commented out.
-//		if (ctx->error) {
+#ifndef _WIN32 
+		if (ctx->error) {
 			/* would rather check on EOPNOTSUPP, but that is not reliable.
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
 			/* Any error is already reported by bio_endio callback. */
-#ifndef _WIN32 // WDRBD support only WRITE_FLUSH
 			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
+		}
 #endif
-	//	}
 	}
 
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);

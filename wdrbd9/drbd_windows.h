@@ -1071,6 +1071,7 @@ static __inline wait_queue_t initqueue(wait_queue_t *wq)
 extern void init_completion(struct completion *x);
 extern long wait_for_completion(struct completion *x);
 extern long wait_for_completion_timeout(struct completion *x, long timeout);
+extern long wait_for_completion_flush(struct completion *completion);
 extern void complete(struct completion *c);
 extern void complete_all(struct completion *c);
 
