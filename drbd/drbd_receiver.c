@@ -1383,7 +1383,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 		// Therefore, non-paged pool memory is required.
 		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
 		if (!ctx) {
-			drbd_err(connection, "Could not allocate a bio, CANNOT ISSUE FLUSH\n");
+			drbd_err(connection, "Could not allocate ctx, CANNOT ISSUE FLUSH\n");
 			/* FIXME: what else can I do now?  disconnecting or detaching
 			* really does not help to improve the state of the world, either.*/
 			return FE_STILL_LIVE;
