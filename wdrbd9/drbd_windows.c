@@ -864,9 +864,9 @@ long wait_for_completion(struct completion *completion)
 	return schedule(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 }
 
-long wait_for_completion_flush(struct completion *completion)
+long wait_for_completion_no_reset_event(struct completion *completion)
 {
-	return _schedule(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__, false);
+	return schedule_ex(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__, false);
 }
 
 long wait_for_completion_timeout(struct completion *completion, long timeout)
@@ -889,7 +889,7 @@ static  void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 	list_add(&new->task_list, &head->task_list);
 }
 
-long _schedule(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event) 
+long schedule_ex(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event) 
 {
 	UNREFERENCED_PARAMETER(line);
 	UNREFERENCED_PARAMETER(func);

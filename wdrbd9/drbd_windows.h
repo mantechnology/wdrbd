@@ -1071,16 +1071,16 @@ static __inline wait_queue_t initqueue(wait_queue_t *wq)
 extern void init_completion(struct completion *x);
 extern long wait_for_completion(struct completion *x);
 extern long wait_for_completion_timeout(struct completion *x, long timeout);
-extern long wait_for_completion_flush(struct completion *completion);
+extern long wait_for_completion_no_reset_event(struct completion *completion);
 extern void complete(struct completion *c);
 extern void complete_all(struct completion *c);
 
 extern int signal_pending(struct task_struct *p);
 extern void force_sig(int sig, struct task_struct *p);
 extern void flush_signals(struct task_struct *p);
-extern long _schedule(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event);
+extern long schedule_ex(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event);
 
-#define schedule(q, timeout, func, line)	_schedule(q, timeout, func, line, true)
+#define schedule(q, timeout, func, line)	schedule_ex(q, timeout, func, line, true)
 #define SCHED_Q_INTERRUPTIBLE	1
 #define schedule_timeout_interruptible(timeout)  schedule((wait_queue_head_t *)SCHED_Q_INTERRUPTIBLE, (timeout), __FUNCTION__, __LINE__)
 #define schedule_timeout_uninterruptible(timeout) schedule_timeout(timeout) 
