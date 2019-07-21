@@ -2731,6 +2731,8 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 #endif
 				clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 				clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
+				//DW-1799
+				clear_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags);
 			}
 		}
 

@@ -2247,8 +2247,10 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 			/* Note: in receive_sizes during connection handshake,
 			 * repl_state may still be L_OFF;
 			 * double check on cstate ... */
-			if (peer_device->repl_state[NOW] >= L_ESTABLISHED ||
-				peer_device->connection->cstate[NOW] >= C_CONNECTED) {
+			if ((peer_device->repl_state[NOW] >= L_ESTABLISHED ||
+				peer_device->connection->cstate[NOW] >= C_CONNECTED) &&
+				//DW-1799
+				test_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags)) {
 				/* If we still can see it, consider its last
 				 * known size, even if it may have meanwhile
 				 * detached from its disk.
