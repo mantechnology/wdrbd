@@ -1425,6 +1425,11 @@ retry:
 					&& (device->ldev->md.peers[peer_device->node_id].bitmap_uuid == 0)) {
 					if (younger_primary == false){
 						younger_primary = true; 
+						//DW-1850
+						//If for_each_peer_device_ref exits to break, 
+						//the reference count should be decremented.
+						kref_debug_put(&peer_device->connection->kref_debug, 15);
+						kref_put(&peer_device->connection->kref, drbd_destroy_connection);
 						break; 
 					}
 				}
