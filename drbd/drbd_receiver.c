@@ -1332,12 +1332,21 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
 		struct drbd_device *device;
-		struct issue_flush_context ctx;
 		int vnr;
+		// DW-1862 
+		// Referencing a local variable in an asynchronous IO completion routine can corrupt stack memory.
+		// Therefore, non-paged pool memory is required.
+		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
+		if (!ctx) {
+			drbd_err(connection, "Could not allocate ctx, CANNOT ISSUE FLUSH\n");
+			/* FIXME: what else can I do now?  disconnecting or detaching
+			* really does not help to improve the state of the world, either.*/
+			return FE_STILL_LIVE;
+		}
 
-		atomic_set(&ctx.pending, 1);
-		ctx.error = 0;
-		init_completion(&ctx.done);
+		atomic_set(&ctx->pending, 1);
+		ctx->error = 0;
+		init_completion(&ctx->done);
 
 		rcu_read_lock();
 #ifdef _WIN32
@@ -1350,7 +1359,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 
-			submit_one_flush(device, &ctx);
+			submit_one_flush(device, ctx);
 
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
@@ -1362,18 +1371,20 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx.pending))
-			wait_for_completion(&ctx.done);
+		if (!atomic_dec_and_test(&ctx->pending))
+			wait_for_completion_no_reset_event(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		else
+			kfree(ctx);
 
-		if (ctx.error) {
+//        Comment out code that is not used in Windows.
+//		if (ctx.error) {
 			/* would rather check on EOPNOTSUPP, but that is not reliable.
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
 			/* Any error is already reported by bio_endio callback. */
-#ifndef _WIN32 // WDRBD support only WRITE_FLUSH
-			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
-#endif
-		}
+//			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
+//		}
 	}
 
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
