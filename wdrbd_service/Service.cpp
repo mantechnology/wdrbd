@@ -575,6 +575,60 @@ VOID WINAPI ServiceMain(DWORD dwArgc, LPTSTR *lpszArgv)
     //DrbdSetStatus(SERVICE_STOPPED);
 }
 
+VOID ExecPreShutDownLog(TCHAR *PreShutdownTime, TCHAR *OldPreShutdownTime)
+{
+	// DW-1505 : Keep only NUMOFLOGS(10) Preshutdown logs 
+	size_t path_size; WCHAR DrbdPath[MAX_PATH] = { 0, }; WCHAR DrbdLogPath[MAX_PATH] = { 0, }; TCHAR tmp[256] = { 0, };
+	TCHAR *OldestFileName;  WCHAR FindAllLogFileName[MAX_PATH] = { 0, };
+	errno_t result = _wgetenv_s(&path_size, DrbdPath, MAX_PATH, L"DRBD_PATH");
+	if (result)
+	{
+		wcscpy_s(DrbdPath, L"c:\\Program Files\\drbd\\bin");
+	}
+	wcsncpy_s(DrbdLogPath, DrbdPath, wcslen(DrbdPath) - strlen("bin"));
+	wcscat_s(DrbdLogPath, L"log\\");
+	wcscat_s(FindAllLogFileName, DrbdLogPath);
+	wcscat_s(FindAllLogFileName, _T("Preshutdown*")); // Path to file name beginning with 'Preshutdown'
+
+	while ((OldestFileName = GetOldestFileName(FindAllLogFileName)) != NULL){
+		WCHAR DeleteFileName[MAX_PATH] = { 0, };
+		wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
+		wcscat_s(DeleteFileName, OldestFileName);
+		// Delete oldest file by name  
+		if (DeleteFile(DeleteFileName) == 0){
+			_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
+			WriteLog(tmp);
+			break;
+		}
+	}
+
+	TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; DWORD dwPID;
+
+	_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\"));
+	// Change Preshutdown log name to date(eg. Preshutdown-YEAR-MONTH-DAY-HOUR-MINUTE.log)
+	_tcscat(szFullPath, PreShutdownTime);
+
+	ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+	if (ret) {
+		_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
+		WriteLog(tmp);
+	}
+	else {
+		//DW-1821 delete old log
+		if (OldPreShutdownTime != NULL) {
+			WCHAR DeleteFileName[MAX_PATH] = { 0, };
+
+			wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
+			wcscat_s(DeleteFileName, OldPreShutdownTime);
+			// Delete oldest file by name  
+			if (DeleteFile(DeleteFileName) == 0){
+				_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
+				WriteLog(tmp);
+			}
+		}
+	}
+}
+
 
 #ifdef SERVICE_HANDLER_EX
 DWORD WINAPI ServiceHandlerEx(_In_ DWORD  fdwControl, _In_ DWORD  dwEventType, _In_ LPVOID lpEventData, _In_ LPVOID lpContext)
@@ -638,9 +692,10 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
         case SERVICE_CONTROL_SHUTDOWN:
         case SERVICE_CONTROL_PRESHUTDOWN:
 			
-			RcDrbdStop();
-
 			if (SERVICE_CONTROL_STOP == fdwControl) {
+
+				RcDrbdStop();
+
 				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
 				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
@@ -650,45 +705,19 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				}
 			}
 			else {
-				// DW-1505 : Keep only NUMOFLOGS(10) Preshutdown logs 
-				size_t path_size; WCHAR DrbdPath[MAX_PATH] = { 0, }; WCHAR DrbdLogPath[MAX_PATH] = { 0, }; TCHAR tmp[256] = { 0, };
-				TCHAR *OldestFileName;  WCHAR FindAllLogFileName[MAX_PATH] = { 0, };
-				errno_t result = _wgetenv_s(&path_size, DrbdPath, MAX_PATH, L"DRBD_PATH");
-				if (result)
-				{
-					wcscpy_s(DrbdPath, L"c:\\Program Files\\drbd\\bin");
-				}
-				wcsncpy_s(DrbdLogPath, DrbdPath, wcslen(DrbdPath) - strlen("bin"));
-				wcscat_s(DrbdLogPath, L"log\\");
-				wcscat_s(FindAllLogFileName, DrbdLogPath);
-				wcscat_s(FindAllLogFileName, _T("Preshutdown*")); // Path to file name beginning with 'Preshutdown'
+				//DW-1821 log before running RcDrbdStop() when the system shuts down.
+				TCHAR sPreShutdownTime[MAX_PATH], ePreShutdownTime[MAX_PATH];
+				SYSTEMTIME sTime;
 
-
-				while ((OldestFileName = GetOldestFileName(FindAllLogFileName)) != NULL){
-					WCHAR DeleteFileName[MAX_PATH] = { 0, };
-					wcsncpy_s(DeleteFileName, DrbdLogPath, wcslen(DrbdLogPath));
-					wcscat_s(DeleteFileName, OldestFileName);
-					// Delete oldest file by name  
-					if (DeleteFile(DeleteFileName) == 0){
-						_stprintf_s(tmp, _T("fail to delete oldest Preshutdown log error = %d\n"), GetLastError());
-						WriteLog(tmp);
-						break; 
-					}
-				}
-
-				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; DWORD dwPID;
-				SYSTEMTIME sTime; TCHAR PreShutdownTime[MAX_PATH] = { 0, };
-				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\"));
-				// Change Preshutdown log name to date(eg. Preshutdown-YEAR-MONTH-DAY-HOUR-MINUTE.log)
 				GetLocalTime(&sTime);
-				_stprintf(PreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
-				_tcscat(szFullPath, PreShutdownTime);
+				_stprintf(sPreShutdownTime, _T("Preshutdown-s-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
+				ExecPreShutDownLog(sPreShutdownTime, NULL);
 
-				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
-				if (ret) {
-					_stprintf_s(tmp, _T("service preshutdown drbdlog fail:%d\n"), ret);
-					WriteLog(tmp);
-				}
+				RcDrbdStop();
+
+				GetLocalTime(&sTime);
+				_stprintf(ePreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
+				ExecPreShutDownLog(ePreShutdownTime, sPreShutdownTime);
 			}
 			
 #ifdef _WIN32_LOGLINK

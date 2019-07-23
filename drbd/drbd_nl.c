@@ -1425,6 +1425,10 @@ retry:
 					&& (device->ldev->md.peers[peer_device->node_id].bitmap_uuid == 0)) {
 					if (younger_primary == false){
 						younger_primary = true; 
+						//DW-1850
+						//If for_each_peer_device_ref exits to break, 
+						//the reference count should be decremented.
+						kref_put(&peer_device->connection->kref, drbd_destroy_connection);
 						break; 
 					}
 				}
@@ -2247,10 +2251,10 @@ static bool get_max_agreeable_size(struct drbd_device *device, uint64_t *max) __
 			/* Note: in receive_sizes during connection handshake,
 			 * repl_state may still be L_OFF;
 			 * double check on cstate ... */
-			if (peer_device->repl_state[NOW] >= L_ESTABLISHED ||
-				(peer_device->connection->cstate[NOW] >= C_CONNECTED && 
-				//DW-1799 It is deemed to be connected only when INITIAL_STATE_RECEIVED or UUID_JUST_CREATED.
-				(test_bit(INITIAL_STATE_RECEIVED, &peer_device->flags) || drbd_current_uuid(device) == UUID_JUST_CREATED))) {
+			if ((peer_device->repl_state[NOW] >= L_ESTABLISHED ||
+				peer_device->connection->cstate[NOW] >= C_CONNECTED) &&
+				//DW-1799
+				test_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags)) {
 				/* If we still can see it, consider its last
 				 * known size, even if it may have meanwhile
 				 * detached from its disk.
@@ -3514,7 +3518,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	{
 	unsigned long long nsz = drbd_new_dev_size(device, 0, device->ldev->disk_conf->disk_size, 0);
 	unsigned long long eff = device->ldev->md.effective_size;
-	if (drbd_md_test_flag(device->ldev, MDF_CONSISTENT) && nsz < eff) {
+	if (drbd_md_test_flag(device, MDF_CONSISTENT) && nsz < eff) {
 		drbd_warn(device,
 			"refusing to truncate a consistent device (%llu < %llu)\n",
 			nsz, eff);		
@@ -3523,12 +3527,12 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	}
 	}
 
-	if (drbd_md_test_flag(device->ldev, MDF_CRASHED_PRIMARY))
+	if (drbd_md_test_flag(device, MDF_CRASHED_PRIMARY))
 		set_bit(CRASHED_PRIMARY, &device->flags);
 	else
 		clear_bit(CRASHED_PRIMARY, &device->flags);
 
-	if (drbd_md_test_flag(device->ldev, MDF_PRIMARY_IND) &&
+	if (drbd_md_test_flag(device, MDF_PRIMARY_IND) &&
 	    !(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
 	    !device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags))
 #ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
@@ -3573,7 +3577,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	for_each_peer_device(peer_device, device) {
 		clear_bit(USE_DEGR_WFC_T, &peer_device->flags);
 		if (resource->role[NOW] != R_PRIMARY &&
-		    drbd_md_test_flag(device->ldev, MDF_PRIMARY_IND) &&
+		    drbd_md_test_flag(device, MDF_PRIMARY_IND) &&
 		    !drbd_md_test_peer_flag(peer_device, MDF_PEER_CONNECTED))
 			set_bit(USE_DEGR_WFC_T, &peer_device->flags);
 	}
@@ -3596,7 +3600,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	for_each_peer_device(peer_device, device) {
 		if ((test_bit(CRASHED_PRIMARY, &device->flags) &&
-		     drbd_md_test_flag(device->ldev, MDF_AL_DISABLED)) ||
+		     drbd_md_test_flag(device, MDF_AL_DISABLED)) ||
 		    drbd_md_test_peer_flag(peer_device, MDF_PEER_FULL_SYNC)) {
 			drbd_info(peer_device, "Assuming that all blocks are out of sync "
 				  "(aka FullSync)\n");
@@ -5662,7 +5666,7 @@ int drbd_adm_pause_sync(struct sk_buff *skb, struct genl_info *info)
 
 	peer_device = adm_ctx.peer_device;
 	if (change_resync_susp_user(peer_device, true,
-			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE) == SS_NOTHING_TO_DO)
+		CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, __FUNCTION__) == SS_NOTHING_TO_DO)
 		retcode = ERR_PAUSE_IS_SET;
 
 	mutex_unlock(&adm_ctx.resource->adm_mutex);
@@ -5684,7 +5688,7 @@ int drbd_adm_resume_sync(struct sk_buff *skb, struct genl_info *info)
 
 	peer_device = adm_ctx.peer_device;
 	if (change_resync_susp_user(peer_device, false,
-			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE) == SS_NOTHING_TO_DO) {
+			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, __FUNCTION__) == SS_NOTHING_TO_DO) {
 
 		if (peer_device->repl_state[NOW] == L_PAUSED_SYNC_S ||
 		    peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {

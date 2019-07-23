@@ -641,7 +641,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	LIST_HEAD(reclaimed);
 	struct drbd_peer_request *peer_req, *t;
-	struct drbd_device *device = NULL;
 	int err = 0;
 	int n = 0;
 
@@ -667,9 +666,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 #else 
 	list_for_each_entry_safe(peer_req, t, &work_list, w.list) {
 #endif
-		if (!device)
-			device = peer_req->peer_device->device;
-
 		int err2;
 		// MODIFIED_BY_MANTECH DW-1665: check callback function(e_end_block)
 		bool epoch_put = (peer_req->w.cb == e_end_block) ? true : false;
@@ -679,6 +675,9 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 		err2 = peer_req->w.cb(&peer_req->w, !!err);
 		if (!err)
 			err = err2;
+
+		check_and_clear_io_error_in_secondary(peer_req->peer_device);
+
 		if (!list_empty(&peer_req->recv_order)) {
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-972: Gotten peer_req is not always allocated in current connection since the work_list is spliced from device->done_ee.
@@ -701,8 +700,6 @@ static int drbd_finish_peer_reqs(struct drbd_connection *connection)
 	}
 	if (atomic_sub_and_test(n, &connection->done_ee_cnt))
 		wake_up(&connection->ee_wait);
-
-	check_and_clear_io_error(device);
 
 	return err;
 }
@@ -1003,6 +1000,8 @@ start:
 #endif
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
+		//DW-1799
+		clear_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags);
 	}
 #ifdef _WIN32
 	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -1291,7 +1290,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #else
 	if (error) {
 #endif
-		ctx->error = error;
+		if (ctx)
+			ctx->error = error;
 		drbd_err(device, "local disk FLUSH FAILED with status %08X\n", error);
 	}
 
@@ -1317,8 +1317,11 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	put_ldev(device);
 	kref_put(&device->kref, drbd_destroy_device);
 
-	if (atomic_dec_and_test(&ctx->pending))
+	if (atomic_dec_and_test(&ctx->pending)) {
 		complete(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		kfree(ctx);
+	}
 	
 	BIO_ENDIO_FN_RETURN;
 }
@@ -1376,17 +1379,26 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	struct drbd_resource *resource = connection->resource;
 	
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
-		struct drbd_device *device;
-		struct issue_flush_context ctx;
 		int vnr;
+		struct drbd_device *device;
+		// DW-1862 
+		// Referencing a local variable in an asynchronous IO completion routine can corrupt stack memory.
+		// Therefore, non-paged pool memory is required.
+		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
+		if (!ctx) {
+			drbd_err(connection, "Could not allocate ctx, CANNOT ISSUE FLUSH\n");
+			/* FIXME: what else can I do now?  disconnecting or detaching
+			* really does not help to improve the state of the world, either.*/
+			return FE_STILL_LIVE;
+		}
 
-		atomic_set(&ctx.pending, 1);
-		ctx.error = 0;
-		init_completion(&ctx.done);
+		atomic_set(&ctx->pending, 1);
+		ctx->error = 0;
+		init_completion(&ctx->done);
 
 		rcu_read_lock();
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
@@ -1395,7 +1407,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 
-			submit_one_flush(device, &ctx);
+			submit_one_flush(device, ctx);
 
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
@@ -1407,18 +1419,20 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx.pending))
-			wait_for_completion(&ctx.done);
+		if (!atomic_dec_and_test(&ctx->pending))
+			wait_for_completion_no_reset_event(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		else
+			kfree(ctx);
 
-		if (ctx.error) {
+//		Comment out code that is not used in Windows.
+//		if (ctx->error) {
 			/* would rather check on EOPNOTSUPP, but that is not reliable.
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
 			/* Any error is already reported by bio_endio callback. */
-#ifndef _WIN32 // WDRBD support only WRITE_FLUSH
-			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
-#endif
-		}
+//			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
+//		}
 	}
 
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
@@ -1834,6 +1848,7 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	int err = -ENOMEM;
 #ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
 	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
+		drbd_info(device, "node-id : %d, flag : CONNECTION_ALREADY_FREED\n", peer_req->peer_device->node_id);
 		return 0; 
 	}
 #endif
@@ -2474,14 +2489,21 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 
 	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
 
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-		err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-	} else {
-		/* Record failure to sync */
-		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+	//DW-1846 send P_NEG_ACK if not sync target
+	if (is_sync_target(peer_device)) {
+		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+		}
+		else {
+			/* Record failure to sync */
+			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
 
-		err  = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+		}
+	}
+	else {
+		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 	}
 	dec_unacked(peer_device);
 
@@ -2768,7 +2790,11 @@ static int recv_resync_read(struct drbd_peer_device *peer_device,
 	/* Seting all peer out of sync here. Sync source peer will be set
 	   in sync when the write completes. Other peers will be set in
 	   sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-	drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+
+	//DW-1846 do not set out of sync unless it is a sync target.
+	if (is_sync_target(peer_device)) {
+		drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+	}
 
 	if (drbd_submit_peer_request(device, peer_req, REQ_OP_WRITE, 0,
 		DRBD_FAULT_RS_WR) == 0)
@@ -3881,6 +3907,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		   the block... */
 		peer_req->flags |= EE_RS_THIN_REQ;
 	case P_RS_DATA_REQUEST:
+		//DW-1857 If P_RS_DATA_REQUEST is received, send P_RS_CANCEL unless L_SYNC_SOURCE.
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+			/* If err is set, we will drop the connection... */
+			goto fail3;
+		}
 		peer_req->w.cb = w_e_end_rsdata_req;
 		fault_type = DRBD_FAULT_RS_RD;
 		break;
@@ -4593,7 +4625,7 @@ static void log_handshake(struct drbd_peer_device *peer_device)
        uuid_flags |= UUID_FLAG_DISCARD_MY_DATA;
 	if (test_bit(CRASHED_PRIMARY, &device->flags))
        uuid_flags |= UUID_FLAG_CRASHED_PRIMARY;
-	if (!drbd_md_test_flag(device->ldev, MDF_CONSISTENT))
+	if (!drbd_md_test_flag(device, MDF_CONSISTENT))
        uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (test_bit(RECONNECT, &peer_device->connection->flags))
        uuid_flags |= UUID_FLAG_RECONNECT;
@@ -5767,7 +5799,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
 	/* Maybe the peer knows something about peers I cannot currently see. */
 	ddsf |= DDSF_IGNORE_PEER_CONSTRAINTS;
-
+	//DW-1799
+	set_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags); 
 	if (get_ldev(device)) {
 		sector_t new_size;
 
@@ -6567,15 +6600,15 @@ __change_peer_device_state(struct drbd_peer_device *peer_device,
 	}
 	if (mask.user_isp) {
 		mask.user_isp ^= -1;
-		__change_resync_susp_user(peer_device, val.user_isp);
+		__change_resync_susp_user(peer_device, val.user_isp, __FUNCTION__);
 	}
 	if (mask.peer_isp) {
 		mask.peer_isp ^= -1;
-		__change_resync_susp_peer(peer_device, val.peer_isp);
+		__change_resync_susp_peer(peer_device, val.peer_isp, __FUNCTION__);
 	}
 	if (mask.aftr_isp) {
 		mask.aftr_isp ^= -1;
-		__change_resync_susp_dependency(peer_device, val.aftr_isp);
+		__change_resync_susp_dependency(peer_device, val.aftr_isp, __FUNCTION__);
 	}
 	if (mask.i) {
 		drbd_info(peer_device, "Remote state change: request %u/%u not "
@@ -8211,7 +8244,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
 		__change_peer_role(connection, peer_state.role);
 	__change_peer_disk_state(peer_device, peer_disk_state);
-	__change_resync_susp_peer(peer_device, peer_state.aftr_isp | peer_state.user_isp);
+	__change_resync_susp_peer(peer_device, peer_state.aftr_isp | peer_state.user_isp, __FUNCTION__);
 	repl_state = peer_device->repl_state;
 	if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED)
 		resource->state_change_flags |= CS_HARD;
@@ -10107,7 +10140,11 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER) {
 			drbd_set_in_sync(peer_device, sector, blksize);
-			check_and_clear_io_error(device);
+
+			if(device->resource->role[NOW] == R_PRIMARY)
+				check_and_clear_io_error_in_primary(device);
+			else
+				check_and_clear_io_error_in_secondary(peer_device);
 			dec_rs_pending(peer_device);
 			//DW-1817 
 			//At this point, it means that the synchronization data has been removed from the send buffer because the synchronization transfer is complete.
@@ -10263,9 +10300,8 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 			break;
 		case P_RS_CANCEL:
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
-			if (peer_device->repl_state[NOW] == L_BEHIND || 
-				peer_device->repl_state[NOW] == L_SYNC_TARGET || 
-				peer_device->repl_state[NOW] == L_VERIFY_T) {
+			//DW-1846 receive data when synchronization is in progress.
+			if (is_sync_target(peer_device)) {
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
 				mutex_lock(&device->bm_resync_fo_mutex);
@@ -10403,11 +10439,6 @@ static ULONG_PTR node_ids_to_bitmap(struct drbd_device *device, u64 node_ids) __
 }
 
 
-static bool is_sync_source(struct drbd_peer_device *peer_device)
-{
-	return is_sync_source_state(peer_device, NOW) ||
-		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
-}
 
 static int w_send_out_of_sync(struct drbd_work *w, int cancel)
 {
@@ -10469,7 +10500,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
-	struct drbd_device *device;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
 #ifdef _WIN32
@@ -10499,7 +10529,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-	device = peer_req->peer_device->device;
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
@@ -10510,6 +10539,8 @@ found:
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		ULONG_PTR in_sync_b;
+		//DW-1872 you must set the device that matches the peer_request.
+		struct drbd_device *device = peer_req->peer_device->device;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 		ULONG_PTR set_sync_mask = INTPTR_MAX;

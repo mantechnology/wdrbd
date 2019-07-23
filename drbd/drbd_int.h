@@ -974,6 +974,8 @@ enum {
 #endif
 #ifdef _WIN32 //DW-1598 
 	CONNECTION_ALREADY_FREED,
+	//DW-1799 use for disk size comparison and setup.
+	INITIAL_SIZE_RECEIVED,
 #endif 
 };
 
@@ -2065,7 +2067,7 @@ extern void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_devi
 extern u64 drbd_weak_nodes_device(struct drbd_device *device);
 extern void drbd_md_set_flag(struct drbd_device *device, enum mdf_flag) __must_hold(local);
 extern void drbd_md_clear_flag(struct drbd_device *device, enum mdf_flag)__must_hold(local);
-extern int drbd_md_test_flag(struct drbd_backing_dev *, enum mdf_flag);
+extern int drbd_md_test_flag(struct drbd_device *device, enum mdf_flag);
 extern void drbd_md_set_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
 extern void drbd_md_clear_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
 extern bool drbd_md_test_peer_flag(struct drbd_peer_device *, enum mdf_peer_flag);
@@ -2331,7 +2333,8 @@ extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_find_next_zero(struct drbd_peer_device *, ULONG_PTR);
 extern ULONG_PTR _drbd_bm_total_weight(struct drbd_device *, int);
 extern ULONG_PTR drbd_bm_total_weight(struct drbd_peer_device *);
-extern void check_and_clear_io_error(struct drbd_device *);
+extern void check_and_clear_io_error_in_primary(struct drbd_device *);
+extern void check_and_clear_io_error_in_secondary(struct drbd_peer_device *);
 
 /* for receive_bitmap */
 extern void drbd_bm_merge_lel(struct drbd_peer_device *peer_device, size_t offset,
@@ -3387,6 +3390,12 @@ static inline bool is_sync_target_state(struct drbd_peer_device *peer_device,
 	return repl_state == L_SYNC_TARGET || repl_state == L_PAUSED_SYNC_T;
 }
 
+static inline bool is_sync_target(struct drbd_peer_device *peer_device)
+{
+	return is_sync_target_state(peer_device, NOW) ||
+				peer_device->repl_state[NOW] == L_WF_BITMAP_T;
+}
+
 static inline bool is_sync_source_state(struct drbd_peer_device *peer_device,
 					enum which_state which)
 {
@@ -3402,6 +3411,11 @@ static inline bool is_sync_state(struct drbd_peer_device *peer_device,
 		is_sync_target_state(peer_device, which);
 }
 
+static inline bool is_sync_source(struct drbd_peer_device *peer_device)
+{
+	return is_sync_source_state(peer_device, NOW) ||
+		peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+}
 /**
  * get_ldev() - Increase the ref count on device->ldev. Returns 0 if there is no ldev
  * @_device:		DRBD device.

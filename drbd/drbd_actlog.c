@@ -818,7 +818,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
-			drbd_info(device, "active resync extent enr : %lu\n", enr);
+			drbd_debug(device, "active resync extent enr : %lu\n", enr);
 			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;
@@ -1145,7 +1145,9 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 #ifdef _WIN32
 			// DW-1640 : Node that are not synctarget or syncsource send P_PEERS_IN_SYNC packtet to synctarget, causing a disk inconsistency. 
 			// Only sync source can send P_PEERS_IN_SYNC to peers. In WDRBD, it can be guaranteed that only primary is sync source. 
-			if (device->resource->role[NOW] == R_PRIMARY || peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
+			if (device->resource->role[NOW] == R_PRIMARY ||
+				// DW-1873 change P_PEER_IN_SYNC send conditions
+				is_sync_source(peer_device)) { //peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
 				struct update_peers_work *upw;
 				upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
 #else
@@ -1453,6 +1455,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	bool set = false;
 #endif
 	struct drbd_peer_device *peer_device;
+	//DW-1871
+	bool skip_clear = false;
 #ifndef _WIN32
 	mask &= (1 << device->bitmap->bm_max_peers) - 1;
 #endif
@@ -1503,10 +1507,14 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 	clear_start = (ULONG_PTR)BM_SECT_TO_BIT(sector + BM_SECT_PER_BIT - 1);
 	if (esector == nr_sectors - 1)
 		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector);
-	else
-		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1) - 1;
-
-
+	else {
+		clear_end = (ULONG_PTR)BM_SECT_TO_BIT(esector + 1);
+		//DW-1871 if clear_end is zero, you do not need to call it. update_sync_bits(), drbd_bm_clear_bits()
+		if (clear_end == 0)
+			skip_clear = true;
+		else
+			clear_end -= 1;
+	}
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, device) {
 		int bitmap_index = peer_device->bitmap_index;
@@ -1527,8 +1535,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #else
 			update_sync_bits(peer_device, set_start, set_end, SET_OUT_OF_SYNC);
 #endif
-
-		else if (clear_start <= clear_end)
+		//DW-1871
+		else if (clear_start <= clear_end && !skip_clear)
 			update_sync_bits(peer_device, (unsigned long)clear_start, (unsigned long)clear_end, SET_IN_SYNC);
 	}
 	rcu_read_unlock();
@@ -1545,7 +1553,8 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 			if (test_bit((unsigned int)bitmap_index, &bits))
 				drbd_bm_set_bits(device, (unsigned int)bitmap_index,
 				(unsigned long)set_start, (unsigned long)set_end);
-			else if (clear_start <= clear_end)
+			//DW-1871
+			else if (clear_start <= clear_end && !skip_clear)
 				drbd_bm_clear_bits(device, (unsigned int)bitmap_index,
 				(unsigned long)clear_start, (unsigned long)clear_end);
 		}
@@ -1865,9 +1874,9 @@ void drbd_rs_complete_io(struct drbd_peer_device *peer_device, sector_t sector, 
 
 	if (bm_ext->lce.refcnt == 0) {
 		spin_unlock_irqrestore(&device->al_lock, flags);
-		drbd_err(device, "%s => drbd_rs_complete_io(,%llu [=%u], %lu) called, "
+		drbd_err(device, "%s => drbd_rs_complete_io(,%llu [=%u], %llu) called, "
 		    "but refcnt is 0!?\n", 
-			(unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector), caller);
+			caller, (unsigned long long)sector, (unsigned int)enr, (ULONG_PTR)BM_SECT_TO_BIT(sector));
 		return;
 	}
 
