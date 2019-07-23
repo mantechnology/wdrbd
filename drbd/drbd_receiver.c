@@ -9223,10 +9223,13 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	/* verify or resync related peer requests are read_ee or sync_ee,
-	* drain them first */
-	conn_wait_ee_empty(connection, &connection->read_ee);
-	conn_wait_ee_empty(connection, &connection->sync_ee);
+	//DW-1874 if FORCE_DISCONNECT is set, do not wait
+	if (test_bit(FORCE_DISCONNECT, &connection->flags)) {
+		/* verify or resync related peer requests are read_ee or sync_ee,
+		* drain them first */
+		conn_wait_ee_empty(connection, &connection->read_ee);
+		conn_wait_ee_empty(connection, &connection->sync_ee);
+	}
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -9310,12 +9313,12 @@ void conn_disconnect(struct drbd_connection *connection)
 	drbd_transport_shutdown(connection, CLOSE_CONNECTION);
 	drbd_drop_unsent(connection);
 
-	drain_resync_activity(connection);
-
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
-
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
+
+	//DW-1874 call after active_ee wait
+	drain_resync_activity(connection);
 
 	//DW-1696 : Add the incomplete active_ee, sync_ee
 	spin_lock(&resource->req_lock);	
@@ -9427,6 +9430,9 @@ void conn_disconnect(struct drbd_connection *connection)
 	atomic_set(&connection->current_epoch->active, 0);
 
 	connection->send.seen_any_write_yet = false;
+
+	//DW-1874
+	clear_bit(FORCE_DISCONNECT, &connection->flags); 
 
 	drbd_info(connection, "Connection closed\n");
 

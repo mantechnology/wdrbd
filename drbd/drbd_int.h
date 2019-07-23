@@ -1164,6 +1164,8 @@ enum {
 	RECONNECT,
 	CONN_DISCARD_MY_DATA,
 	SEND_STATE_AFTER_AHEAD_C,
+	//DW-1874
+	FORCE_DISCONNECT,
 };
 
 /* flag bits per resource */

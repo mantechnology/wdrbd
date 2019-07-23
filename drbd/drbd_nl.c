@@ -4865,7 +4865,11 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 	long t;
 #endif 
 
-    repeat:
+repeat:
+	//DW-1874
+	if (flags)
+		set_bit(FORCE_DISCONNECT, &connection->flags);
+
 	rv = change_cstate_es(connection, C_DISCONNECTING, flags, &err_str, __FUNCTION__);
 	switch (rv) {
 	case SS_CW_FAILED_BY_PEER:
