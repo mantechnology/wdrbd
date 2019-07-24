@@ -438,7 +438,9 @@ enum mdf_peer_flag {
 	MDF_NODE_EXISTS =       1 << 16, /* */
 #ifdef _WIN32
 	MDF_PEER_INIT_SYNCT_BEGIN	= 1 << 17,
-	MDF_PEER_INIT_SYNCT_DONE 	= 1 << 18,
+	MDF_PEER_IN_PROGRESS_SYNC 	= 1 << 18,			//DW-1874 
+													//when the connection is lost during synchronization and the synctarget is complete synchronizing with another node, 
+													//it is used to determine the unnecessary out of snyc removal when reconnected.
 	MDF_PEER_PRIMARY_IO_ERROR = 1 << 19,         /* DW-1843 Set the peer flag to indicate that an io-error occurred at the primary.*/
 #endif
 };
