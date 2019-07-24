@@ -10222,6 +10222,11 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		if (p->block_id == ID_SYNCER) {
 			dec_rs_pending(peer_device);
 			drbd_rs_failed_io(peer_device, sector, size);
+
+			//DW-1817
+			//This means that the resync data is definitely free from send-buffer.
+			if (atomic_sub_return64(size, &connection->rs_in_flight) < 0)
+				atomic_set64(&connection->rs_in_flight, 0);
 			return 0;
 		}
 	}
