@@ -838,6 +838,7 @@ void conn_connect2(struct drbd_connection *connection)
 	int vnr;
 
 	atomic_set64(&connection->ap_in_flight, 0);
+	atomic_set64(&connection->rs_in_flight, 0);
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -8305,6 +8306,21 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	set_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
 	spin_unlock_irq(&resource->req_lock);
 
+	if (rv < SS_SUCCESS)
+	{
+#ifdef _WIN32 // DW-1447
+		peer_device->last_repl_state = old_peer_state.conn;
+		// DW-1529 : if old connection state is C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING
+		// DISCONNECTING makes cstate STANDALONE
+		// DW-1888 if the return value is SS_NEED_CONNECTION, reconnect it.
+		if (connection->cstate[NOW] == C_CONNECTING || rv == SS_NEED_CONNECTION){
+			drbd_info(peer_device, "connection->cstate[OLD] == C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING\n");
+			goto fail_network_failure;
+		}
+#endif
+		goto fail;
+	}
+
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1341 if UNSTABLE_TRIGGER_CP bit is set , send uuids(unstable node triggering for Crashed primary wiered case).
 	if(test_and_clear_bit(UNSTABLE_TRIGGER_CP, &peer_device->flags)) {
@@ -8319,20 +8335,6 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		}
 	}
 #endif
-	
-	if (rv < SS_SUCCESS)
-	{
-#ifdef _WIN32 // DW-1447
-        peer_device->last_repl_state = old_peer_state.conn;
-		// DW-1529 : if old connection state is C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING
-		// DISCONNECTING makes cstate STANDALONE
-		if (connection->cstate[OLD] == C_CONNECTING){
-			drbd_info(peer_device, "connection->cstate[OLD] == C_CONNECTING, change cstate to NETWORK_FAILURE instead of DISCONNECTING\n"); 
-			goto fail_network_failure; 
-		}
-#endif
-		goto fail;
-	}
 
 	if (old_peer_state.conn > L_OFF) {
 		if (new_repl_state > L_ESTABLISHED && peer_state.conn <= L_ESTABLISHED &&
@@ -10168,7 +10170,10 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 			else
 				check_and_clear_io_error_in_secondary(peer_device);
 			dec_rs_pending(peer_device);
-
+			//DW-1817 
+			//At this point, it means that the synchronization data has been removed from the send buffer because the synchronization transfer is complete.
+			if (atomic_sub_return64(blksize, &connection->rs_in_flight) < 0)
+				atomic_set64(&connection->rs_in_flight, 0);
 			return 0;
 		}
 	}
@@ -10241,6 +10246,11 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 		if (p->block_id == ID_SYNCER) {
 			dec_rs_pending(peer_device);
 			drbd_rs_failed_io(peer_device, sector, size);
+
+			//DW-1817
+			//This means that the resync data is definitely free from send-buffer.
+			if (atomic_sub_return64(size, &connection->rs_in_flight) < 0)
+				atomic_set64(&connection->rs_in_flight, 0);
 			return 0;
 		}
 	}
@@ -10354,6 +10364,9 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 	idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
 		if (peer_device->repl_state[NOW] == L_AHEAD &&
+			//DW-1817 When exiting AHEAD mode, check only the replicated data.
+			//There is no need to wait until the buffer is completely emptied, so it is not necessary to check the synchronization data. 
+			//And most of the time, replication data will occupy most of it by DRBD's sync rate controller.
 		    atomic_read64(&connection->ap_in_flight) == 0 &&
 #ifdef _WIN32
 			!test_and_set_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags)) {

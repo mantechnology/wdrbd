@@ -1392,8 +1392,8 @@ struct drbd_connection {
 #else
 	unsigned long last_received;	/* in jiffies, either socket */
 #endif
-	atomic_t64 ap_in_flight; /* App sectors in flight (waiting for ack) */
-
+	atomic_t64 ap_in_flight; /* App bytes in flight (waiting for ack) */
+	atomic_t64 rs_in_flight; /* resync-data bytes in flight*/
 	struct drbd_work connect_timer_work;
 	struct timer_list connect_timer;
 
