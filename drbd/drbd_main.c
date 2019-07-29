@@ -1703,7 +1703,7 @@ static int _drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags
 		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
 	//DW-1874
 	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC))
-		uuid_flags |= MDF_PEER_IN_PROGRESS_SYNC;
+		uuid_flags |= UUID_FLAG_IN_PROGRESS_SYNC;
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
 	put_ldev(device);
