@@ -179,7 +179,8 @@ Return Value:
 		}
 	}
 
-
+	if (pNameInfo)
+		ExFreePool(pNameInfo);
 }
 
 NTSTATUS
