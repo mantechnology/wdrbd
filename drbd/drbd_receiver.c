@@ -4758,7 +4758,6 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 						   enum drbd_role peer_role,
 						   int hg)
 {
-	struct drbd_device *device = peer_device->device;
 	enum drbd_role role = peer_device->device->resource->role[NOW];
 	enum drbd_repl_state rv;
 
@@ -6456,7 +6455,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 			unsigned long irq_flags;
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 			end_state_change(device->resource, &irq_flags, __FUNCTION__);
 		}
 	}
@@ -6591,7 +6590,7 @@ __change_peer_device_state(struct drbd_peer_device *peer_device,
 
 	if (mask.conn) {
 		mask.conn ^= -1;
-		__change_repl_state(peer_device,
+		__change_repl_state_and_auto_cstate(peer_device,
 				max_t(enum drbd_repl_state, val.conn, L_OFF));
 	}
 	if (mask.pdsk) {
@@ -8240,7 +8239,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	if (new_disk_state != D_MASK)
 		__change_disk_state(device, new_disk_state);
 	if (device->disk_state[NOW] != D_NEGOTIATING)
-		__change_repl_state(peer_device, new_repl_state);
+		__change_repl_state_and_auto_cstate(peer_device, new_repl_state);
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
 		__change_peer_role(connection, peer_state.role);
 	__change_peer_disk_state(peer_device, peer_disk_state);
@@ -8907,7 +8906,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
-			__change_repl_state(peer_device, new_repl_state);
+			__change_repl_state_and_auto_cstate(peer_device, new_repl_state);
 			set_bit(RECONCILIATION_RESYNC, &peer_device->flags);
 		}
 #ifdef _WIN32 // DW-1632: If the RECONCILIATION_RESYNC flag is set, it will not be updated with the new UUID after resynchronization.

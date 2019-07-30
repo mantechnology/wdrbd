@@ -1512,10 +1512,10 @@ static void __cancel_other_resyncs(struct drbd_device *device)
 			drbd_md_mark_dirty(device);
 			spin_unlock_irq(&device->ldev->md.uuid_lock);
 
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 		}
 #else
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 #endif
 	}
 }
@@ -1638,7 +1638,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	   of application IO), and against connectivity loss just before we arrive here. */
 	if (peer_device->repl_state[NOW] <= L_ESTABLISHED)
 		goto out_unlock;
-	__change_repl_state(peer_device, L_ESTABLISHED);
+	__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 
 	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec)\n",
 	     verify_done ? "Online verify" : "Resync",
@@ -1790,7 +1790,7 @@ out_unlock:
 		if (new_repl_state != L_ESTABLISHED) {
 			peer_device->resync_again--;
 			begin_state_change_locked(device->resource, CS_VERBOSE);
-			__change_repl_state(peer_device, new_repl_state);
+			__change_repl_state_and_auto_cstate(peer_device, new_repl_state);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2745,7 +2745,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		unsigned long irq_flags;
 
 		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-		__change_repl_state(peer_device, L_ESTABLISHED);
+		__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 		end_state_change(device->resource, &irq_flags);
 		return;
 	}
@@ -2824,7 +2824,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		if (peer_device->repl_state[NOW] > L_ESTABLISHED)
 		{
 			begin_state_change_locked(device->resource, CS_VERBOSE);
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2844,7 +2844,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #ifdef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_unlock();
 #endif
-	__change_repl_state(peer_device, side);
+	__change_repl_state_and_auto_cstate(peer_device, side);
 	if (side == L_SYNC_TARGET) {
 		__change_disk_state(device, D_INCONSISTENT);
 		init_resync_stable_bits(peer_device);

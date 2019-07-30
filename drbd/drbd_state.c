@@ -543,12 +543,12 @@ static void ___begin_state_change(struct drbd_resource *resource)
 	struct drbd_device *device;
 	int vnr;
 
-	__change_peer_role(resource, resource->role[NOW]);
+	resource->role[NEW] = resource->role[NOW];
 	__change_io_susp_user(resource, resource->susp[NOW]);
 	__change_io_susp_no_data(resource, resource->susp_nod[NOW]);
 
 	for_each_connection(connection, resource) {
-		connection->cstate[NEW] = connection->cstate[NOW];
+		__change_cstate_state(connection, connection->cstate[NOW]);
 		__change_peer_role(connection, connection->peer_role[NOW]);
 		__change_io_susp_fencing(connection, connection->susp_fen[NOW]);
 	}
@@ -565,11 +565,11 @@ static void ___begin_state_change(struct drbd_resource *resource)
 
 		for_each_peer_device(peer_device, device) {
 			__change_peer_disk_state(peer_device, device->disk_state[NOW]);
-			peer_device->repl_state[NEW] = peer_device->repl_state[NOW];
+			__change_repl_state(peer_device, peer_device->repl_state[NOW]);
 			__change_resync_susp_user(peer_device, peer_device->resync_susp_user[NOW], NULL);
 			__change_resync_susp_peer(peer_device, peer_device->resync_susp_peer[NOW], NULL); 
 			__change_resync_susp_dependency(peer_device, peer_device->resync_susp_dependency[NOW], NULL);
-			peer_device->resync_susp_other_c[NEW] = peer_device->resync_susp_other_c[NOW];
+			__change_resync_susp_other_c(peer_device, peer_device->resync_susp_other_c[NOW], NULL);
 		}
 	}
 }
@@ -1081,13 +1081,13 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 				continue;
 
 			r = p->repl_state[NEW];
-			p->resync_susp_other_c[NEW] = true;
+			__change_resync_susp_other_c(p, true, NULL);
 
 			if (p->resync_susp_other_c[NOW] != p->resync_susp_other_c[NEW])
 				drbd_info(peer_device, "%s => node_id(%d), resync_susp_other_c : true\n", caller, p->node_id);
 
 			if (start && p->disk_state[NEW] >= D_INCONSISTENT && r == L_ESTABLISHED)
-				p->repl_state[NEW] = L_PAUSED_SYNC_T;
+				__change_repl_state(p, L_PAUSED_SYNC_T);
 		}
 	} else {
 		for_each_peer_device(p, device) {
@@ -1098,13 +1098,13 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 			if (r == L_PAUSED_SYNC_S)
 				continue;
 
-			p->resync_susp_other_c[NEW] = false;
+			__change_resync_susp_other_c(p, false, NULL);
 
 			if (p->resync_susp_other_c[NOW] != p->resync_susp_other_c[NEW])
 				drbd_info(peer_device, "%s => node_id(%d), resync_susp_other_c : false\n", caller, p->node_id);
 
 			if (r == L_PAUSED_SYNC_T && !resync_suspended(p, NEW)) {
-				p->repl_state[NEW] = L_SYNC_TARGET;
+				__change_repl_state(p, L_SYNC_TARGET);
 #ifdef _WIN32				
 				if (device->disk_state[NEW] != D_INCONSISTENT)
 				{
@@ -1118,7 +1118,7 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 				{
 					// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/SyncTarget'.
 					// Set resync_susp_other_c when repl_state is L_BEHIND. L_BEHIND will transition to L_PAUSED_SYNC_T.
-					peer_device->resync_susp_other_c[NEW] = true;
+					__change_resync_susp_other_c(peer_device, true, NULL);
 				}
 #endif
 				return;
@@ -1129,10 +1129,10 @@ static void set_resync_susp_other_c(struct drbd_peer_device *peer_device, bool v
 			if (p == peer_device)
 				continue;
 
-			p->resync_susp_other_c[NEW] = false;
+			__change_resync_susp_other_c(p, false, NULL);
 
 			if (p->repl_state[NEW] == L_PAUSED_SYNC_S && !resync_suspended(p, NEW))
-				p->repl_state[NEW] = L_SYNC_SOURCE;
+				__change_repl_state(p, L_SYNC_SOURCE);
 		}
 	}
 }
@@ -1886,10 +1886,10 @@ static void sanitize_state(struct drbd_resource *resource)
 					   target for an other peer. Delay the sync source
 					   role */
 					nr = L_PAUSED_SYNC_S;
-					peer_device->resync_susp_other_c[NEW] = true;
+					__change_resync_susp_other_c(peer_device, true, NULL);
 					drbd_warn(peer_device, "Finish me\n");
 				}
-				peer_device->repl_state[NEW] = nr;
+				__change_repl_state(peer_device, nr);
 			}
 		}
 	stay_negotiating:
@@ -1930,8 +1930,8 @@ static void sanitize_state(struct drbd_resource *resource)
 			/* Abort resync if a disk fails/detaches */
 			if (repl_state[NEW] > L_ESTABLISHED &&
 			    (disk_state[NEW] <= D_FAILED ||
-			     peer_disk_state[NEW] <= D_FAILED))
-				repl_state[NEW] = L_ESTABLISHED;
+				peer_disk_state[NEW] <= D_FAILED))
+				__change_repl_state(peer_device, L_ESTABLISHED);
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 			// DW-1314: restrict to be sync side when it is not able to.
@@ -1947,7 +1947,7 @@ static void sanitize_state(struct drbd_resource *resource)
 #endif
 				{					
 					drbd_warn(peer_device, "force it to be L_ESTABLISHED due to unsyncable stability\n");
-					repl_state[NEW] = L_ESTABLISHED;
+					__change_repl_state(peer_device, L_ESTABLISHED);
 					set_bit(UNSTABLE_TRIGGER_CP, &peer_device->flags); // DW-1341
 				}
 			}
@@ -1976,8 +1976,8 @@ static void sanitize_state(struct drbd_resource *resource)
 					drbd_print_uuids(peer_device, "updated UUIDs");
 				}
 
-				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");				
-				repl_state[NEW] = L_ESTABLISHED;
+				drbd_info(peer_device, "Abort resync since SyncSource goes secondary\n");	
+				__change_repl_state(peer_device, L_ESTABLISHED);			
 				set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
 #endif
@@ -1987,7 +1987,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			if (((repl_state[NEW] == L_SYNC_TARGET || repl_state[NEW] == L_PAUSED_SYNC_T ) && peer_disk_state[NEW] <= D_INCONSISTENT) ||
 				((repl_state[NEW] == L_SYNC_SOURCE || repl_state[NEW] == L_PAUSED_SYNC_S ) && disk_state[NEW] <= D_INCONSISTENT))
 			{
-				repl_state[NEW] = L_ESTABLISHED;
+				__change_repl_state(peer_device, L_ESTABLISHED);
 				// MODIFIED_BY_MANTECH DW-955: need to set flag to resume aborted resync when it goes syncable.
 				set_bit(RESYNC_ABORTED, &peer_device->flags);
 			}
@@ -2009,7 +2009,7 @@ static void sanitize_state(struct drbd_resource *resource)
 					role[NEW] == R_PRIMARY)
 #endif
 				{
-					repl_state[NEW] = L_SYNC_SOURCE;
+					__change_repl_state(peer_device, L_SYNC_SOURCE);
 					clear_bit(RESYNC_ABORTED, &peer_device->flags);
 				}
 #ifndef _WIN32_DISABLE_RESYNC_FROM_SECONDARY				
@@ -2024,7 +2024,7 @@ static void sanitize_state(struct drbd_resource *resource)
 					peer_role[NEW] == R_PRIMARY)
 #endif
 				{
-					repl_state[NEW] = L_SYNC_TARGET;
+					__change_repl_state(peer_device, L_SYNC_TARGET);
 					clear_bit(RESYNC_ABORTED, &peer_device->flags);
 				}				
 			}
@@ -2034,7 +2034,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			if (connection->agreed_pro_version < 110 &&
 			    repl_state[NEW] >= L_ESTABLISHED && repl_state[NEW] < L_AHEAD) {
 				if (disk_state[NEW] == D_CONSISTENT)
-					__change_disk_state(disk_state, D_UP_TO_DATE);
+					__change_disk_state(device, D_UP_TO_DATE);
 				if (peer_disk_state[NEW] == D_CONSISTENT)
 					__change_peer_disk_state(peer_device, D_UP_TO_DATE);
 			}
@@ -2096,22 +2096,22 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			/* Implications of the repl state on the disk states */
 			if (disk_state[NEW] > max_disk_state) {
-				__change_disk_state(disk_state, max_disk_state);
+				__change_disk_state(device, max_disk_state);
 			}
 
 			if (disk_state[NEW] < min_disk_state) {
-				__change_disk_state(disk_state, min_disk_state);
+				__change_disk_state(device, min_disk_state);
 			}
 
 			if (peer_disk_state[NEW] > max_peer_disk_state)
-				__change_peer_disk_state(peer_disk_state, max_peer_disk_state);
+				__change_peer_disk_state(peer_device, max_peer_disk_state);
 
 			if (peer_disk_state[NEW] < min_peer_disk_state)
 #ifdef _WIN32 // MODIFIED_BY_MANTECH DW-885, DW-897, DW-907: 
 				// Do not discretionally make disk state syncable, syncable repl state would be changed once it tries to change to 'L_(PAUSED_)SYNC_TARGET', depending on disk state.
 				if (repl_state[NEW] != L_STARTING_SYNC_T)
 #endif
-					__change_peer_disk_state(peer_disk_state, min_peer_disk_state);
+					__change_peer_disk_state(peer_device, min_peer_disk_state);
 
 			/* Suspend IO while fence-peer handler runs (peer lost) */
 			if (connection->fencing_policy == FP_STONITH &&
@@ -2130,19 +2130,19 @@ static void sanitize_state(struct drbd_resource *resource)
 
 			/* Pause a SyncSource until it finishes resync as target on other connecitons */
 			if (repl_state[OLD] != L_SYNC_SOURCE && repl_state[NEW] == L_SYNC_SOURCE &&
-			    is_sync_target_other_c(peer_device))
-				peer_device->resync_susp_other_c[NEW] = true;
+				is_sync_target_other_c(peer_device))
+				__change_resync_susp_other_c(peer_device, true, __FUNCTION__);
 
 			if (resync_suspended(peer_device, NEW)) {
 				if (repl_state[NEW] == L_SYNC_SOURCE)
-					repl_state[NEW] = L_PAUSED_SYNC_S;
+					__change_repl_state(peer_device, L_PAUSED_SYNC_S);
 				if (repl_state[NEW] == L_SYNC_TARGET)
-					repl_state[NEW] = L_PAUSED_SYNC_T;
+					__change_repl_state(peer_device, L_PAUSED_SYNC_T);
 			} else {
 				if (repl_state[NEW] == L_PAUSED_SYNC_S)
-					repl_state[NEW] = L_SYNC_SOURCE;
+					__change_repl_state(peer_device, L_SYNC_SOURCE);
 				if (repl_state[NEW] == L_PAUSED_SYNC_T)
-					repl_state[NEW] = L_SYNC_TARGET;
+					__change_repl_state(peer_device, L_SYNC_TARGET);
 			}
 
 			/* This needs to be after the previous block, since we should not set
@@ -2177,7 +2177,7 @@ static void sanitize_state(struct drbd_resource *resource)
 			   state change gets committed prevent D_DISKLESS -> D_FAILED */
 			if (peer_disk_state[OLD] == D_DISKLESS &&
 				(peer_disk_state[NEW] == D_FAILED || peer_disk_state[NEW] == D_DETACHING))
-				__change_peer_disk_state(peer_disk_state, D_DISKLESS);
+				__change_peer_disk_state(peer_device, D_DISKLESS);
 
 			/* Upgrade myself from D_OUTDATED if..
 				1) We connect to stable D_UP_TO_DATE(or D_CONSISTENT) peer without resnyc
@@ -2197,12 +2197,12 @@ static void sanitize_state(struct drbd_resource *resource)
 					__change_disk_state(disk_state, D_UP_TO_DATE);
 			}
 #else
-				__change_disk_state(disk_state, peer_disk_state[NEW]);
+				__change_disk_state(device, peer_disk_state[NEW]);
 #endif
 			/* clause intentional here, the D_CONSISTENT form above might trigger this */
 			if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED &&
 				disk_state[NEW] == D_CONSISTENT && may_be_up_to_date(device))
-				__change_disk_state(disk_state, D_UP_TO_DATE);
+				__change_disk_state(device, D_UP_TO_DATE);
 
 			peer_device->uuid_flags &= ~UUID_FLAG_GOT_STABLE;
 
@@ -2231,11 +2231,11 @@ static void sanitize_state(struct drbd_resource *resource)
 		   !(role[OLD] == R_PRIMARY && good_data_count[OLD] == 0))
 		   __change_io_susp_no_data(resource, true);
 		if (lost_connection && disk_state[NEW] == D_NEGOTIATING)
-			__change_disk_state(disk_state, disk_state_from_md(device));
+			__change_disk_state(device, disk_state_from_md(device));
 
 		if (maybe_crashed_primary && !connected_primaries &&
 			disk_state[NEW] == D_UP_TO_DATE && role[NOW] == R_SECONDARY)
-			__change_disk_state(disk_state, D_CONSISTENT);
+			__change_disk_state(device, D_CONSISTENT);
 	}
 	rcu_read_unlock();
 }
@@ -3923,7 +3923,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				{
 					unsigned long irq_flags;
 					begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-					__change_repl_state(peer_device, L_ESTABLISHED);
+					__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 					end_state_change(device->resource, &irq_flags, __FUNCTION__);
 				}
 			}
@@ -5642,7 +5642,7 @@ void __change_cstate(struct drbd_connection *connection, enum drbd_conn_state cs
 	if (cstate == C_DISCONNECTING)
 		set_bit(DISCONNECT_EXPECTED, &connection->flags);
 
-	connection->cstate[NEW] = cstate;
+	__change_cstate_state(connection, cstate);
 	if (cstate < C_CONNECTED) {
 		struct drbd_peer_device *peer_device;
 		int vnr;
@@ -5653,7 +5653,7 @@ void __change_cstate(struct drbd_connection *connection, enum drbd_conn_state cs
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr)
 #endif
-			__change_repl_state(peer_device, L_OFF);
+			__change_repl_state_and_auto_cstate(peer_device, L_OFF);
 		rcu_read_unlock();
 	}
 }
@@ -5813,11 +5813,21 @@ void __change_peer_role(struct drbd_connection *connection, enum drbd_role peer_
 	connection->peer_role[NEW] = peer_role;
 }
 
+void __change_cstate_state(struct drbd_connection *connection, enum drbd_conn_state cstate)
+{
+	connection->cstate[NEW] = cstate;
+}
+
 void __change_repl_state(struct drbd_peer_device *peer_device, enum drbd_repl_state repl_state)
 {
 	peer_device->repl_state[NEW] = repl_state;
+}
+
+void __change_repl_state_and_auto_cstate(struct drbd_peer_device *peer_device, enum drbd_repl_state repl_state)
+{
+	peer_device->repl_state[NEW] = repl_state;
 	if (repl_state > L_OFF)
-		peer_device->connection->cstate[NEW] = C_CONNECTED;
+		__change_cstate_state(peer_device->connection, C_CONNECTED);
 }
 
 struct change_repl_context {
@@ -5833,7 +5843,7 @@ static bool do_change_repl_state(struct change_context *context, enum change_pha
 	enum drbd_repl_state *repl_state = peer_device->repl_state;
 	enum drbd_repl_state new_repl_state = context->val.conn;
 
-	__change_repl_state(peer_device, new_repl_state);
+	__change_repl_state_and_auto_cstate(peer_device, new_repl_state);
 
 	return phase != PH_PREPARE ||
 		((repl_state[NOW] >= L_ESTABLISHED &&
@@ -5950,5 +5960,14 @@ void __change_resync_susp_dependency(struct drbd_peer_device *peer_device,
 	peer_device->resync_susp_dependency[NEW] = value;
 	if (peer_device->resync_susp_dependency[NOW] != peer_device->resync_susp_dependency[NEW] && caller != NULL) {
 		drbd_info(peer_device, "%s, resync_susp_dependency : %s\n", caller, peer_device->resync_susp_dependency[NEW] ? "true" : "false");
+	}
+}
+
+void __change_resync_susp_other_c(struct drbd_peer_device *peer_device,
+						bool value, const char* caller)
+{
+	peer_device->resync_susp_other_c[NEW] = value;
+	if (peer_device->resync_susp_other_c[NOW] != peer_device->resync_susp_other_c[NEW] && caller != NULL) {
+		drbd_info(peer_device, "%s, resync_susp_other_c : %s\n", caller, peer_device->resync_susp_other_c[NEW] ? "true" : "false");
 	}
 }
