@@ -122,7 +122,6 @@ extern void __change_io_susp_no_data(struct drbd_resource *, bool);
 extern void __change_io_susp_fencing(struct drbd_connection *, bool);
 extern void __change_io_susp_quorum(struct drbd_device *, bool);
 
-extern void __change_disk_state(struct drbd_device *, enum drbd_disk_state);
 extern void __change_disk_states(struct drbd_resource *, enum drbd_disk_state);
 extern enum drbd_state_rv change_disk_state(struct drbd_device *, enum drbd_disk_state, enum chg_state_flags, const char **);
 
@@ -142,18 +141,17 @@ static inline enum drbd_state_rv change_cstate(struct drbd_connection *connectio
 }
 
 
-extern void __change_peer_role(struct drbd_connection *, enum drbd_role);
-
 //DW-1892 
-extern void __change_repl_state(struct drbd_peer_device *, enum drbd_repl_state);
-extern void __change_cstate_state(struct drbd_connection *, enum drbd_conn_state);
-extern void __change_repl_state_and_auto_cstate(struct drbd_peer_device *, enum drbd_repl_state);
-extern void __change_resync_susp_other_c(struct drbd_peer_device *, bool, const char*);
+extern void __change_peer_role(struct drbd_connection *, enum drbd_role, const char*);
+extern void __change_repl_state(struct drbd_peer_device *, enum drbd_repl_state, const char*);
+extern void __change_repl_state_and_auto_cstate(struct drbd_peer_device *, enum drbd_repl_state, const char*);
+extern void __change_peer_disk_state(struct drbd_peer_device *, enum drbd_disk_state, const char*);
+extern void __change_disk_state(struct drbd_device *, enum drbd_disk_state, const char*);
+extern void __change_cstate_state(struct drbd_connection *, enum drbd_conn_state, const char*);
 
 extern enum drbd_state_rv change_repl_state(struct drbd_peer_device *, enum drbd_repl_state, enum chg_state_flags);
 extern enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *, enum drbd_repl_state, enum chg_state_flags);
 
-extern void __change_peer_disk_state(struct drbd_peer_device *, enum drbd_disk_state);
 extern void __change_peer_disk_states(struct drbd_connection *, enum drbd_disk_state);
 extern void __outdate_myself(struct drbd_resource *resource);
 extern enum drbd_state_rv change_peer_disk_state(struct drbd_peer_device *, enum drbd_disk_state, enum chg_state_flags);
@@ -164,6 +162,7 @@ extern void __change_resync_susp_user(struct drbd_peer_device *, bool, const cha
 extern enum drbd_state_rv change_resync_susp_user(struct drbd_peer_device *, bool, enum chg_state_flags, const char *);
 extern void __change_resync_susp_peer(struct drbd_peer_device *, bool, const char*);
 extern void __change_resync_susp_dependency(struct drbd_peer_device *, bool, const char*);
+extern void __change_resync_susp_other_c(struct drbd_peer_device *, bool, const char*);
 
 struct drbd_work;
 extern int abort_nested_twopc_work(struct drbd_work *, int);

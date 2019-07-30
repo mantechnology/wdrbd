@@ -1709,7 +1709,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 
 		begin_state_change_locked(resource, CS_VERBOSE | CS_HARD);
 		if (on_congestion == OC_PULL_AHEAD)
-			__change_repl_state_and_auto_cstate(peer_device, L_AHEAD);
+			__change_repl_state_and_auto_cstate(peer_device, L_AHEAD, __FUNCTION__);
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
 #ifdef _WIN32_RCU_LOCKED
