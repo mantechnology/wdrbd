@@ -5429,7 +5429,7 @@ void __change_disk_state(struct drbd_device *device, enum drbd_disk_state disk_s
 {
 	device->disk_state[NEW] = disk_state;
 	if (caller != NULL && device->disk_state[NEW] != device->disk_state[NOW]) {
-		drbd_info(device, "%s, disk_state : %s\n", caller, drbd_disk_str(device->disk_state[NEW]));
+		drbd_debug(device, "%s, disk_state : %s\n", caller, drbd_disk_str(device->disk_state[NEW]));
 	}
 }
 
@@ -5816,7 +5816,7 @@ void __change_peer_role(struct drbd_connection *connection, enum drbd_role peer_
 {
 	connection->peer_role[NEW] = peer_role;
 	if (caller != NULL && connection->peer_role[NEW] != connection->peer_role[NOW]) {
-		drbd_info(connection, "%s, peer_role : %s\n", caller, drbd_role_str(connection->peer_role[NEW]));
+		drbd_debug(connection, "%s, peer_role : %s\n", caller, drbd_role_str(connection->peer_role[NEW]));
 	}
 }
 
@@ -5824,7 +5824,7 @@ void __change_cstate_state(struct drbd_connection *connection, enum drbd_conn_st
 {
 	connection->cstate[NEW] = cstate;
 	if (caller != NULL && connection->cstate[NEW] != connection->cstate[NOW]) {
-		drbd_info(connection, "%s, cstate : %s\n", caller, drbd_conn_str(connection->cstate[NEW]));
+		drbd_debug(connection, "%s, cstate : %s\n", caller, drbd_conn_str(connection->cstate[NEW]));
 	}
 }
 
@@ -5832,7 +5832,7 @@ void __change_repl_state(struct drbd_peer_device *peer_device, enum drbd_repl_st
 {
 	peer_device->repl_state[NEW] = repl_state;
 	if (caller != NULL && peer_device->repl_state[NEW] != peer_device->repl_state[NOW]) {
-		drbd_info(peer_device, "%s, repl_state : %s\n", caller, drbd_repl_str(peer_device->repl_state[NEW]));
+		drbd_debug(peer_device, "%s, repl_state : %s\n", caller, drbd_repl_str(peer_device->repl_state[NEW]));
 	}
 }
 
@@ -5907,7 +5907,7 @@ void __change_peer_disk_state(struct drbd_peer_device *peer_device, enum drbd_di
 {
 	peer_device->disk_state[NEW] = disk_state;
 	if (caller != NULL && peer_device->disk_state[NEW] != peer_device->disk_state[NOW]) {
-		drbd_info(peer_device, "%s, disk_state : %s\n", caller, drbd_disk_str(peer_device->disk_state[NEW]));
+		drbd_debug(peer_device, "%s, disk_state : %s\n", caller, drbd_disk_str(peer_device->disk_state[NEW]));
 	}
 }
 
@@ -5944,7 +5944,7 @@ void __change_resync_susp_user(struct drbd_peer_device *peer_device,
 {
 	peer_device->resync_susp_user[NEW] = value;
 	if (peer_device->resync_susp_user[NOW] != peer_device->resync_susp_user[NEW] && caller != NULL) {
-		drbd_info(peer_device, "%s, resync_susp_user : %s\n", caller, peer_device->resync_susp_user[NEW] ? "true" : "false");
+		drbd_debug(peer_device, "%s, resync_susp_user : %s\n", caller, peer_device->resync_susp_user[NEW] ? "true" : "false");
 	}
 }
 
@@ -5966,7 +5966,7 @@ void __change_resync_susp_peer(struct drbd_peer_device *peer_device,
 {
 	peer_device->resync_susp_peer[NEW] = value;
 	if (peer_device->resync_susp_peer[NOW] != peer_device->resync_susp_peer[NEW] && caller != NULL) {
-		drbd_info(peer_device, "%s, resync_susp_peer : %s\n", caller, peer_device->resync_susp_peer[NEW] ? "true" : "false");
+		drbd_debug(peer_device, "%s, resync_susp_peer : %s\n", caller, peer_device->resync_susp_peer[NEW] ? "true" : "false");
 	}
 }
 
@@ -5975,7 +5975,7 @@ void __change_resync_susp_dependency(struct drbd_peer_device *peer_device,
 {
 	peer_device->resync_susp_dependency[NEW] = value;
 	if (peer_device->resync_susp_dependency[NOW] != peer_device->resync_susp_dependency[NEW] && caller != NULL) {
-		drbd_info(peer_device, "%s, resync_susp_dependency : %s\n", caller, peer_device->resync_susp_dependency[NEW] ? "true" : "false");
+		drbd_debug(peer_device, "%s, resync_susp_dependency : %s\n", caller, peer_device->resync_susp_dependency[NEW] ? "true" : "false");
 	}
 }
 
@@ -5984,6 +5984,6 @@ void __change_resync_susp_other_c(struct drbd_peer_device *peer_device,
 {
 	peer_device->resync_susp_other_c[NEW] = value;
 	if (peer_device->resync_susp_other_c[NOW] != peer_device->resync_susp_other_c[NEW] && caller != NULL) {
-		drbd_info(peer_device, "%s, resync_susp_other_c : %s\n", caller, peer_device->resync_susp_other_c[NEW] ? "true" : "false");
+		drbd_debug(peer_device, "%s, resync_susp_other_c : %s\n", caller, peer_device->resync_susp_other_c[NEW] ? "true" : "false");
 	}
 }

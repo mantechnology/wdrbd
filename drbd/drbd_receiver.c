@@ -10879,10 +10879,10 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #endif
 			pi.data = buffer;
 			if (cmd) {
-				err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-				drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+				drbd_debug(connection, "receiving %s, e: %d\n", drbd_packet_name(pi.cmd), err);
 #endif
+				err = cmd->fn(connection, &pi);
 			}
 
 			if (err) {
