@@ -10880,13 +10880,16 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 			pi.data = buffer;
 			if (cmd) {
 #ifdef _WIN32
-				drbd_debug(connection, "receiving %s, e: %d\n", drbd_packet_name(pi.cmd), err);
+				drbd_debug(connection, "receiving %s, l: %d\n", drbd_packet_name(pi.cmd), pi.size); 
 #endif
 				err = cmd->fn(connection, &pi);
+				if (err)
+					drbd_debug(connection, "receiving error e: %d\n", err);
 			}
 
 			if (err) {
 #ifdef _WIN32
+
 				if (err == -EINTR && current->sig == SIGXCPU)
 				{
 					//WDRBD_INFO("got SIGXCPU during fn(%s)\n", drbd_packet_name(pi.cmd));
