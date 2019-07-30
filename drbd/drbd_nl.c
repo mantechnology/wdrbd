@@ -6717,7 +6717,7 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 				if (NODE_MASK(peer_device->node_id) & diskfull)
 					drbd_send_uuids(peer_device, UUID_FLAG_SKIP_INITIAL_SYNC, 0);
 				_drbd_uuid_set_bitmap(peer_device, 0);
-				drbd_print_uuids(peer_device, "cleared bitmap UUID");
+				drbd_print_uuids(peer_device, "cleared bitmap UUID", __FUNCTION__);
 			}
 		}
 		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);

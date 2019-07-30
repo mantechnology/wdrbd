@@ -1745,7 +1745,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 				const int node_id = device->resource->res_opts.node_id;
 				int i;
 
-				drbd_print_uuids(peer_device, "updated UUIDs");
+				drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 				peer_device->current_uuid = drbd_current_uuid(device);
 				peer_device->bitmap_uuids[node_id] = drbd_bitmap_uuid(peer_device);
 				for (i = 0; i < ARRAY_SIZE(peer_device->history_uuids); i++)
@@ -1757,7 +1757,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 				__change_peer_disk_state(peer_device, new_peer_disk_state);
 			if (peer_device->connection->agreed_pro_version < 110) {
 				drbd_uuid_set_bitmap(peer_device, 0UL);
-				drbd_print_uuids(peer_device, "updated UUIDs");
+				drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 			}
 		}
 	}

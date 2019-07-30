@@ -4834,7 +4834,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 				rv = L_WF_BITMAP_T;
 			}
 			else {
-				drbd_info(device, "No resync, but %lu bits in bitmap!\n",
+				drbd_info(peer_device, "No resync, but %lu bits in bitmap!\n",
 					drbd_bm_total_weight(peer_device));
 			}
 		}
@@ -6240,7 +6240,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 	}
 
 	if (updated_uuids)
-		drbd_print_uuids(peer_device, "receiver updated UUIDs to");
+		drbd_print_uuids(peer_device, "receiver updated UUIDs to", __FUNCTION__);
 
 	peer_device->uuid_authoritative_nodes =
 		peer_device->uuid_flags & UUID_FLAG_STABLE ? 0 : node_mask;
@@ -8378,7 +8378,7 @@ static int receive_sync_uuid(struct drbd_connection *connection, struct packet_i
 		_drbd_uuid_set_current(device, be64_to_cpu(p->uuid));
 		_drbd_uuid_set_bitmap(peer_device, 0UL);
 
-		drbd_print_uuids(peer_device, "updated sync uuid");
+		drbd_print_uuids(peer_device, "updated sync uuid", __FUNCTION__);
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 
 		put_ldev(device);
