@@ -255,7 +255,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
 	sector_t sector;
-	int do_wake;
+	int do_wake = 0;
 	u64 block_id;
 
 	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
@@ -297,7 +297,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
 	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
-		sector = BM_BIT_TO_SECT(peer_req->first);
+		sector = BM_BIT_TO_SECT(peer_req->s_bb);
 	else
 		sector = peer_req->i.sector;
 
@@ -339,9 +339,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 */
 
 	if (block_id == ID_SYNCER)
-		do_wake = list_empty(&connection->sync_ee);
+		do_wake = 2 << list_empty(&connection->sync_ee);
 	else
-		do_wake = list_empty(&connection->active_ee);
+		do_wake = 1 << list_empty(&connection->active_ee);
 
 	/* FIXME do we want to detach for failed REQ_DISCARD?
 	* ((peer_req->flags & (EE_WAS_ERROR|EE_IS_TRIM)) == EE_WAS_ERROR) */
@@ -356,8 +356,15 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
-	if (do_wake)
+	if (do_wake != 0) {
+		//DW-1601
+		if ((do_wake & 1 << 1) && atomic_read(&peer_device->device->newly_repl_size) != 0) {
+			atomic_set64(&peer_device->device->newly_repl_sector, 0);
+			atomic_set(&peer_device->device->newly_repl_size, 0);
+		}
+
 		wake_up(&connection->ee_wait);
+	}
 
 	put_ldev(device);
 }
@@ -2891,6 +2898,10 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
 		if (side == L_SYNC_TARGET) {
+			//DW-1601
+			atomic_set64(&device->newly_repl_sector, 0);
+			atomic_set(&device->newly_repl_size, 0);
+
 			//DW-1846 bm_resync_fo must be locked and set.
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = 0;
