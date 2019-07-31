@@ -36,7 +36,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl);
 VOID AddEventSource(TCHAR * caPath, TCHAR * csApp);
 DWORD RemoveEventSource(TCHAR *caPath, TCHAR * csApp);
 DWORD RcDrbdStart();
-DWORD RcDrbdStop();
+DWORD RcDrbdStop(bool force);
 
 
 BOOL g_bProcessStarted = TRUE;
@@ -694,7 +694,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 			
 			if (SERVICE_CONTROL_STOP == fdwControl) {
 
-				RcDrbdStop();
+				RcDrbdStop(false);
 
 				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
@@ -713,7 +713,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				_stprintf(sPreShutdownTime, _T("Preshutdown-s-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
 				ExecPreShutDownLog(sPreShutdownTime, NULL);
 
-				RcDrbdStop();
+				RcDrbdStop(true);
 
 				GetLocalTime(&sTime);
 				_stprintf(ePreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
@@ -826,7 +826,7 @@ DWORD RcDrbdStart()
     return ret;
 }
 
-DWORD RcDrbdStop()
+DWORD RcDrbdStop(bool force)
 {
     DWORD dwPID;
     WCHAR szFullPath[MAX_PATH] = {0};
@@ -834,15 +834,22 @@ DWORD RcDrbdStop()
     DWORD dwLength;
     DWORD ret;
 	
-	WriteLog(L"rc_drbd_stop");
+	if (force)
+		WriteLog(L"rc_drbd_stop force");
+	else
+		WriteLog(L"rc_drbd_stop");
 
-    if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4) > MAX_PATH)
+    if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4 + 6) > MAX_PATH)
     {
         wsprintf(tmp, L"Error: cmd too long(%d)\n", dwLength);
         WriteLog(tmp);
         return -1;
     }
     wsprintf(szFullPath, L"\"%ws\\%ws\" %ws", gServicePath, g_pwdrbdRcBat, L"stop");
+	//DW-1874
+	if (force)
+		wsprintf(szFullPath, L"%ws %ws", szFullPath, L"force");
+
     ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
 	
     if (ret)

@@ -106,7 +106,17 @@ REM ------------------------------------------------------------------------
 :stop
 
 @echo off
-echo Stopping all DRBD resources
+
+if "%2" == "force" (
+	echo Force Stopping all DRBD resources
+	drbdadm disconnect --force all
+	timeout /t 3 /NOBREAK > nul
+) else (
+	echo Stopping all DRBD resources
+)
+
+drbdadm down all
+timeout /t 3 /NOBREAK > nul
 
 REM linux
 REM for res in $(drbdsetup all show | sed -ne 's/^resource \(.*\) {$/\1/p'); do
@@ -115,15 +125,15 @@ REM done
 
 REM @echo on
 
-for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
+REM for /f "usebackq tokens=*" %%a in (`drbdadm sh-resource all`) do (
 REM	drbdadm sh-dev %%a > tmp_vol.txt
 REM MVL
 REM for /f "usebackq tokens=*"  %%b in (tmp_vol.txt) do ..\mvl\vollock /l %%b:
 REM	for /f "usebackq tokens=*"  %%b in (tmp_vol.txt) do drbdcon /df %%b
 REM	del tmp_vol.txt
-	drbdadm down %%a
-	timeout /t 3 /NOBREAK > nul
-)
+REM	drbdadm down %%a
+REM	timeout /t 3 /NOBREAK > nul
+REM )
 
 goto :eof
 

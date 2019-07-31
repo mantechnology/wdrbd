@@ -4633,6 +4633,9 @@ static void log_handshake(struct drbd_peer_device *peer_device)
 		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
 	if (drbd_device_stable(device, NULL))
        uuid_flags |= UUID_FLAG_STABLE;
+	//DW-1874
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC))
+		uuid_flags |= UUID_FLAG_IN_PROGRESS_SYNC;
 
 	drbd_info(peer_device, "drbd_sync_handshake:\n");
 	drbd_uuid_dump_self(peer_device, peer_device->comm_bm_set, uuid_flags);
@@ -4833,12 +4836,26 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 				rv = L_WF_BITMAP_T;
 			}
 			else {
-				drbd_info(peer_device, "No resync, but %lu bits in bitmap!\n",
-					drbd_bm_total_weight(peer_device));
+				//DW-1874 If the UUID is the same and the MDF_PEER_IN_PROGRESS_SYNC flag is set, the out of sync is meaningless because resync with other nodes is complete.
+				if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC) ||
+						peer_device->uuid_flags & UUID_FLAG_IN_PROGRESS_SYNC) {
+					drbd_info(peer_device, "ended during synchronization and completed resync with other nodes, clearing bitmap UUID and bitmap content (%lu bits)\n",
+						drbd_bm_total_weight(peer_device));
+					drbd_uuid_set_bitmap(peer_device, 0);
+					drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+				}
+				else {
+					drbd_info(peer_device, "No resync, but %lu bits in bitmap!\n",
+						drbd_bm_total_weight(peer_device));
+				}
 			}
 		}
 	}
 
+	//DW-1874
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC))
+		drbd_md_clear_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC);
+	
 	return rv;
 }
 
@@ -9224,10 +9241,13 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	/* verify or resync related peer requests are read_ee or sync_ee,
-	* drain them first */
-	conn_wait_ee_empty(connection, &connection->read_ee);
-	conn_wait_ee_empty(connection, &connection->sync_ee);
+	//DW-1874 if FORCE_DISCONNECT is set, do not wait
+	if (test_bit(FORCE_DISCONNECT, &connection->flags)) {
+		/* verify or resync related peer requests are read_ee or sync_ee,
+		* drain them first */
+		conn_wait_ee_empty(connection, &connection->read_ee);
+		conn_wait_ee_empty(connection, &connection->sync_ee);
+	}
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -9311,12 +9331,12 @@ void conn_disconnect(struct drbd_connection *connection)
 	drbd_transport_shutdown(connection, CLOSE_CONNECTION);
 	drbd_drop_unsent(connection);
 
-	drain_resync_activity(connection);
-
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
-
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
+
+	//DW-1874 call after active_ee wait
+	drain_resync_activity(connection);
 
 	//DW-1696 : Add the incomplete active_ee, sync_ee
 	spin_lock(&resource->req_lock);	
@@ -9428,6 +9448,9 @@ void conn_disconnect(struct drbd_connection *connection)
 	atomic_set(&connection->current_epoch->active, 0);
 
 	connection->send.seen_any_write_yet = false;
+
+	//DW-1874
+	clear_bit(FORCE_DISCONNECT, &connection->flags); 
 
 	drbd_info(connection, "Connection closed\n");
 

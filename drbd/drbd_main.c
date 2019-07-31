@@ -1701,6 +1701,9 @@ static int _drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags
 		uuid_flags |= UUID_FLAG_INCONSISTENT;
 	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 		uuid_flags |= UUID_FLAG_PRIMARY_IO_ERROR;
+	//DW-1874
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC))
+		uuid_flags |= UUID_FLAG_IN_PROGRESS_SYNC;
 	p->uuid_flags = cpu_to_be64(uuid_flags);
 
 	put_ldev(device);
@@ -1833,6 +1836,10 @@ static int _drbd_send_uuids110(struct drbd_peer_device *peer_device, u64 uuid_fl
 		D_ASSERT(peer_device, node_mask == 0);
 		p->node_mask = cpu_to_be64(authoritative_mask);
 	}
+	//DW-1874
+	if (drbd_md_test_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC))
+		uuid_flags |= UUID_FLAG_IN_PROGRESS_SYNC;
+
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1145: set UUID_FLAG_CONSISTENT_WITH_PRI if my disk is consistent with primary's
 	if (is_consistent_with_primary(device))
