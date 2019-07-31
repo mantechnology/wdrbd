@@ -507,7 +507,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
@@ -620,7 +620,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
@@ -640,7 +640,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
@@ -660,7 +660,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -683,7 +683,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -706,7 +706,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|Win32'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -729,7 +729,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
     </ClCompile>
@@ -748,7 +748,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
@@ -768,7 +768,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <WppEnabled>true</WppEnabled>
       <WppKernelMode>true</WppKernelMode>
@@ -788,7 +788,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -811,7 +811,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -834,7 +834,7 @@ copy /Y "$(OutputPath)\drbd.pdb" %25destdir%25</Command>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);__KERNEL__;POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>

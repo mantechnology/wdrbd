@@ -329,6 +329,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|Win32'">
@@ -345,6 +346,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
@@ -353,6 +355,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </Link>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -369,6 +372,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </Link>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -385,6 +389,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </Link>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -401,6 +406,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </Link>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
     <PostBuildEvent>
       <Command>cd $(ProjectDir)..\
@@ -497,6 +503,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Debug|x64'">
@@ -513,6 +520,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
@@ -529,6 +537,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win10 Release|x64'">
@@ -545,6 +554,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
@@ -561,6 +571,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
@@ -577,6 +588,7 @@ copy /Y "$(OutputPath)\drbdlock.pdb" %25destdir%25</Command>
     </PostBuildEvent>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;%(PreprocessorDefinitions);POOL_NX_OPTIN_AUTO=1</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Server2008 Debug|x64'">
