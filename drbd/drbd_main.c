@@ -1861,22 +1861,22 @@ int drbd_send_uuids(struct drbd_peer_device *peer_device, u64 uuid_flags, u64 no
 		return _drbd_send_uuids(peer_device, uuid_flags);
 }
 
-void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text)
+void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text, const char *caller)
 {
 	struct drbd_device *device = peer_device->device;
 
 	if (get_ldev_if_state(device, D_NEGOTIATING)) {
-		drbd_info(peer_device, "%s %016llX:%016llX:%016llX:%016llX\n",
-			  text,
+		drbd_info(peer_device, "%s, %s %016llX:%016llX:%016llX:%016llX\n",
+			caller, text,
 			  (unsigned long long)drbd_current_uuid(device),
 			  (unsigned long long)drbd_bitmap_uuid(peer_device),
 			  (unsigned long long)drbd_history_uuid(device, 0),
 			  (unsigned long long)drbd_history_uuid(device, 1));
 		put_ldev(device);
 	} else {
-		drbd_info(device, "%s effective data uuid: %016llX\n",
-			  text,
-			  (unsigned long long)device->exposed_data_uuid);
+		drbd_info(device, "%s, %s effective data uuid: %016llX\n",
+			caller, text, 
+			(unsigned long long)device->exposed_data_uuid);
 	}
 }
 
@@ -1907,7 +1907,7 @@ void drbd_gen_and_send_sync_uuid(struct drbd_peer_device *peer_device)
 	else
 		get_random_bytes(&uuid, sizeof(u64));
 	drbd_uuid_set_bitmap(peer_device, uuid);
-	drbd_print_uuids(peer_device, "updated sync UUID");
+	drbd_print_uuids(peer_device, "updated sync UUID", __FUNCTION__);
 	drbd_md_sync(device);
 
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
@@ -6026,7 +6026,7 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
 				peer_md[node_id].bitmap_uuid = 0;
 				if (node_id == peer_device->node_id)
-					drbd_print_uuids(peer_device, "updated UUIDs");
+					drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 				else if (peer_md[node_id].bitmap_index != -1)
 #ifdef _WIN32				
 				{

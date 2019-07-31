@@ -5395,7 +5395,7 @@ static enum drbd_state_rv invalidate_no_resync(struct drbd_device *device) __mus
 			return SS_UNKNOWN_ERROR;
 		}
 	}
-	__change_disk_state(device, D_INCONSISTENT);
+	__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 	rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 
 	if (rv >= SS_SUCCESS) {
@@ -6717,14 +6717,14 @@ int drbd_adm_new_c_uuid(struct sk_buff *skb, struct genl_info *info)
 				if (NODE_MASK(peer_device->node_id) & diskfull)
 					drbd_send_uuids(peer_device, UUID_FLAG_SKIP_INITIAL_SYNC, 0);
 				_drbd_uuid_set_bitmap(peer_device, 0);
-				drbd_print_uuids(peer_device, "cleared bitmap UUID");
+				drbd_print_uuids(peer_device, "cleared bitmap UUID", __FUNCTION__);
 			}
 		}
 		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-		__change_disk_state(device, D_UP_TO_DATE);
+		__change_disk_state(device, D_UP_TO_DATE, __FUNCTION__);
 		for_each_peer_device(peer_device, device) {
 			if (NODE_MASK(peer_device->node_id) & diskfull)
-				__change_peer_disk_state(peer_device, D_UP_TO_DATE);
+				__change_peer_disk_state(peer_device, D_UP_TO_DATE, __FUNCTION__);
 		}
 		end_state_change(device->resource, &irq_flags, __FUNCTION__);
 	}
