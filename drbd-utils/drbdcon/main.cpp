@@ -42,7 +42,10 @@ usage()
         "   /delayedack_enable [ip|guid]\n"
         "   /m [letter] : mount\n"
         /*"   /d[f] : dismount[force] \n"*/
-		"   /get_log [ProviderName] \n"
+		"   /get_log [ProviderName]\n"
+		//DW-1629
+		"   /get_log [ProviderName] [ResourceName : Max Length 250|oos]\n"
+		"   /get_log [ProviderName] [ResourceName : Max Length 250][oos]\n"
 		"   /minlog_lv dbg [Level : 0~7] \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
@@ -64,6 +67,7 @@ usage()
         /*"drbdcon /d F \n"*/
         "drbdcon /m F \n"
 		"drbdcon /get_log drbdService \n"
+		"drbdcon /get_log drbdService r0\n"
 		"drbdcon /minlog_lv dbg 6 \n"
 		"drbdcon /write_log drbdService \"Logging start\" \n"
 		"drbdcon /handler_use 1 \n"
@@ -154,6 +158,7 @@ main(int argc, char* argv [])
 	char	VolumesInfoFlag = 0;
 	char	Drbdlock_status = 0;
 	char	Verbose = 0;
+	char	*resourceName = NULL;
 
     int     Force = 0;
 
@@ -204,10 +209,27 @@ main(int argc, char* argv [])
 				usage();
 #ifdef _WIN32_DEBUG_OOS
 			argIndex++;
-			if (argIndex < argc)
-			{
-				if (strcmp(argv[argIndex], "oos") == 0)
-					OosTrace++;
+
+			//DW-1629
+			for (int num = 0; num < 2; num++) {
+				if (argIndex < argc)
+				{
+					if (strcmp(argv[argIndex], "oos") == 0)
+						OosTrace++;
+					else if (!resourceName)
+					{
+						resourceName = argv[argIndex];
+						//6 additional parsing data length (">drbd ")
+						if (strlen(resourceName) > MAX_PATH - 6)
+							usage();
+					}
+					else
+						usage();
+
+					argIndex++;
+				}
+				else
+					break;
 			}
 #endif
 		}
@@ -538,7 +560,7 @@ main(int argc, char* argv [])
 	if (GetLog)
 	{
 		//res = CreateLogFromEventLog( (LPCSTR)ProviderName );
-		res = MVOL_GetDrbdLog(ProviderName, OosTrace);
+		res = MVOL_GetDrbdLog(ProviderName, resourceName, OosTrace);
 	}
 #ifdef _WIN32_DEBUG_OOS
 	if (ConvertOosLog)
