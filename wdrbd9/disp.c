@@ -517,7 +517,7 @@ NTSTATUS
 mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PVOLUME_EXTENSION VolumeExtension = DeviceObject->DeviceExtension;
-
+	PIO_STACK_LOCATION irpSp = NULL;
     if (DeviceObject == mvolRootDeviceObject)
     {
         WDRBD_TRACE("mvolRootDevice Request\n");
@@ -540,10 +540,11 @@ mvolSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
 
-			Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
-			IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-			return STATUS_INVALID_DEVICE_REQUEST;
+			//DW-1883
+			//Driver Verifier generates a BSOD if IRP_MJ_SYSTEM_CONTROL is not passed to the lower stack driver.
+			//Modify the minor function to be changed to a value that is not currently defined. It will probably return STATUS_NOT_SUPPORTED.
+			irpSp = IoGetCurrentIrpStackLocation(Irp);
+			irpSp->MinorFunction = 0xFF;
 		}
 		// DW-1300: put device reference count when no longer use.
 		else if (device)
