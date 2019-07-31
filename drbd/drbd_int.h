@@ -2037,7 +2037,7 @@ extern int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd
 extern int drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes);
 extern void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *ldev);
 extern void drbd_cleanup_device(struct drbd_device *device);
-extern void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text);
+extern void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text, const char *caller);
 extern void drbd_queue_unplug(struct drbd_device *device);
 
 extern u64 drbd_capacity_to_on_disk_bm_sect(u64 capacity_sect, unsigned int max_peers);
@@ -2946,7 +2946,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				WDRBD_ERROR("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
-				__change_disk_state(device, D_INCONSISTENT);
+				__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2982,7 +2982,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 			set_bit(FORCE_DETACH, &device->flags);
 		if (device->disk_state[NOW] > D_FAILED) {
 			begin_state_change_locked(device->resource, CS_HARD);
-			__change_disk_state(device, D_FAILED);
+			__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -3000,7 +3000,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
 			if (device->disk_state[NOW] > D_FAILED) {
 				begin_state_change_locked(device->resource, CS_HARD);
-				__change_disk_state(device, D_FAILED);
+				__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else

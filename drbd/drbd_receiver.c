@@ -4761,7 +4761,6 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 						   enum drbd_role peer_role,
 						   int hg)
 {
-	struct drbd_device *device = peer_device->device;
 	enum drbd_role role = peer_device->device->resource->role[NOW];
 	enum drbd_repl_state rv;
 
@@ -4846,7 +4845,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 					drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
 				}
 				else {
-					drbd_info(device, "No resync, but %lu bits in bitmap!\n",
+					drbd_info(peer_device, "No resync, but %lu bits in bitmap!\n",
 						drbd_bm_total_weight(peer_device));
 				}
 			}
@@ -6208,8 +6207,8 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 			_drbd_uuid_set_bitmap(peer_device, 0);
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			/* FIXME: Note that req_lock was not taken here before! */
-			__change_disk_state(device, D_UP_TO_DATE);
-			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
+			__change_disk_state(device, D_UP_TO_DATE, __FUNCTION__);
+			__change_peer_disk_state(peer_device, D_UP_TO_DATE, __FUNCTION__);
 			end_state_change(device->resource, &irq_flags, __FUNCTION__);
 			updated_uuids = 1;
 		}
@@ -6229,7 +6228,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 
 				begin_state_change(resource, &irq_flags, CS_VERBOSE);
 				if (device->disk_state[NEW] > D_OUTDATED)
-					__change_disk_state(device, D_OUTDATED);
+					__change_disk_state(device, D_OUTDATED, __FUNCTION__);
 				end_state_change(resource, &irq_flags, __FUNCTION__);
 			}
 		}
@@ -6257,7 +6256,7 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 	}
 
 	if (updated_uuids)
-		drbd_print_uuids(peer_device, "receiver updated UUIDs to");
+		drbd_print_uuids(peer_device, "receiver updated UUIDs to", __FUNCTION__);
 
 	peer_device->uuid_authoritative_nodes =
 		peer_device->uuid_flags & UUID_FLAG_STABLE ? 0 : node_mask;
@@ -6473,7 +6472,7 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 
 			unsigned long irq_flags;
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 			end_state_change(device->resource, &irq_flags, __FUNCTION__);
 		}
 	}
@@ -6581,7 +6580,7 @@ __change_connection_state(struct drbd_connection *connection,
 	}
 	if (mask.peer) {
 		mask.peer ^= -1;
-		__change_peer_role(connection, val.peer);
+		__change_peer_role(connection, val.peer, __FUNCTION__);
 	}
 	if (mask.i) {
 		drbd_info(connection, "Remote state change: request %u/%u not "
@@ -6603,17 +6602,17 @@ __change_peer_device_state(struct drbd_peer_device *peer_device,
 	}
 	if (mask.disk) {
 		mask.disk ^= -1;
-		__change_disk_state(device, val.disk);
+		__change_disk_state(device, val.disk, __FUNCTION__);
 	}
 
 	if (mask.conn) {
 		mask.conn ^= -1;
-		__change_repl_state(peer_device,
-				max_t(enum drbd_repl_state, val.conn, L_OFF));
+		__change_repl_state_and_auto_cstate(peer_device,
+			max_t(enum drbd_repl_state, val.conn, L_OFF), __FUNCTION__);
 	}
 	if (mask.pdsk) {
 		mask.pdsk ^= -1;
-		__change_peer_disk_state(peer_device, val.pdsk);
+		__change_peer_disk_state(peer_device, val.pdsk, __FUNCTION__);
 	}
 	if (mask.user_isp) {
 		mask.user_isp ^= -1;
@@ -8010,7 +8009,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			unsigned long irq_flags;
 
 			begin_state_change(resource, &irq_flags, CS_HARD | CS_VERBOSE);
-			__change_peer_role(connection, R_SECONDARY);
+			__change_peer_role(connection, R_SECONDARY, __FUNCTION__);
 			rv = end_state_change(resource, &irq_flags, __FUNCTION__);
 			if (rv < SS_SUCCESS)
 				goto fail;
@@ -8255,12 +8254,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 	}
 	clear_bit(CONSIDER_RESYNC, &peer_device->flags);
 	if (new_disk_state != D_MASK)
-		__change_disk_state(device, new_disk_state);
+		__change_disk_state(device, new_disk_state, __FUNCTION__);
 	if (device->disk_state[NOW] != D_NEGOTIATING)
-		__change_repl_state(peer_device, new_repl_state);
+		__change_repl_state_and_auto_cstate(peer_device, new_repl_state, __FUNCTION__);
 	if (connection->peer_role[NOW] == R_UNKNOWN || peer_state.role == R_SECONDARY)
-		__change_peer_role(connection, peer_state.role);
-	__change_peer_disk_state(peer_device, peer_disk_state);
+		__change_peer_role(connection, peer_state.role, __FUNCTION__);
+	__change_peer_disk_state(peer_device, peer_disk_state, __FUNCTION__);
 	__change_resync_susp_peer(peer_device, peer_state.aftr_isp | peer_state.user_isp, __FUNCTION__);
 	repl_state = peer_device->repl_state;
 	if (repl_state[OLD] < L_ESTABLISHED && repl_state[NEW] >= L_ESTABLISHED)
@@ -8395,7 +8394,7 @@ static int receive_sync_uuid(struct drbd_connection *connection, struct packet_i
 		_drbd_uuid_set_current(device, be64_to_cpu(p->uuid));
 		_drbd_uuid_set_bitmap(peer_device, 0UL);
 
-		drbd_print_uuids(peer_device, "updated sync uuid");
+		drbd_print_uuids(peer_device, "updated sync uuid", __FUNCTION__);
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 
 		put_ldev(device);
@@ -8924,7 +8923,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 #else
 		idr_for_each_entry(&connection->peer_devices, peer_device, vnr) {
 #endif
-			__change_repl_state(peer_device, new_repl_state);
+			__change_repl_state_and_auto_cstate(peer_device, new_repl_state, __FUNCTION__);
 			set_bit(RECONCILIATION_RESYNC, &peer_device->flags);
 		}
 #ifdef _WIN32 // DW-1632: If the RECONCILIATION_RESYNC flag is set, it will not be updated with the new UUID after resynchronization.
@@ -10903,14 +10902,17 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 #endif
 			pi.data = buffer;
 			if (cmd) {
-				err = cmd->fn(connection, &pi);
 #ifdef _WIN32
-				drbd_debug(connection, "receiving %s, e: %d l: %d\n", drbd_packet_name(pi.cmd), err, pi.size);
+				drbd_debug(connection, "receiving %s, l: %d\n", drbd_packet_name(pi.cmd), pi.size); 
 #endif
+				err = cmd->fn(connection, &pi);
+				if (err)
+					drbd_debug(connection, "receiving error e: %d\n", err);
 			}
 
 			if (err) {
 #ifdef _WIN32
+
 				if (err == -EINTR && current->sig == SIGXCPU)
 				{
 					//WDRBD_INFO("got SIGXCPU during fn(%s)\n", drbd_packet_name(pi.cmd));
