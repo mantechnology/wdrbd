@@ -999,6 +999,8 @@ start:
 #endif
 		clear_bit(INITIAL_STATE_SENT, &peer_device->flags);
 		clear_bit(INITIAL_STATE_RECEIVED, &peer_device->flags);
+		//DW-1799
+		clear_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags);
 	}
 #ifdef _WIN32
 	idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -1287,7 +1289,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #else
 	if (error) {
 #endif
-		ctx->error = error;
+		if (ctx)
+			ctx->error = error;
 		drbd_err(device, "local disk FLUSH FAILED with status %08X\n", error);
 	}
 
@@ -1313,8 +1316,11 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	put_ldev(device);
 	kref_put(&device->kref, drbd_destroy_device);
 
-	if (atomic_dec_and_test(&ctx->pending))
+	if (atomic_dec_and_test(&ctx->pending)) {
 		complete(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		kfree(ctx);
+	}
 	
 	BIO_ENDIO_FN_RETURN;
 }
@@ -1372,17 +1378,26 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	struct drbd_resource *resource = connection->resource;
 	
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
-		struct drbd_device *device;
-		struct issue_flush_context ctx;
 		int vnr;
+		struct drbd_device *device;
+		// DW-1862 
+		// Referencing a local variable in an asynchronous IO completion routine can corrupt stack memory.
+		// Therefore, non-paged pool memory is required.
+		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
+		if (!ctx) {
+			drbd_err(connection, "Could not allocate ctx, CANNOT ISSUE FLUSH\n");
+			/* FIXME: what else can I do now?  disconnecting or detaching
+			* really does not help to improve the state of the world, either.*/
+			return FE_STILL_LIVE;
+		}
 
-		atomic_set(&ctx.pending, 1);
-		ctx.error = 0;
-		init_completion(&ctx.done);
+		atomic_set(&ctx->pending, 1);
+		ctx->error = 0;
+		init_completion(&ctx->done);
 
 		rcu_read_lock();
 #ifdef _WIN32
-        idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
 #else
 		idr_for_each_entry(&resource->devices, device, vnr) {
 #endif
@@ -1391,7 +1406,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 
-			submit_one_flush(device, &ctx);
+			submit_one_flush(device, ctx);
 
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
@@ -1403,18 +1418,20 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx.pending))
-			wait_for_completion(&ctx.done);
+		if (!atomic_dec_and_test(&ctx->pending))
+			wait_for_completion_no_reset_event(&ctx->done);
+		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		else
+			kfree(ctx);
 
-		if (ctx.error) {
+//		Comment out code that is not used in Windows.
+//		if (ctx->error) {
 			/* would rather check on EOPNOTSUPP, but that is not reliable.
 			 * don't try again for ANY return value != 0
 			 * if (rv == -EOPNOTSUPP) */
 			/* Any error is already reported by bio_endio callback. */
-#ifndef _WIN32 // WDRBD support only WRITE_FLUSH
-			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
-#endif
-		}
+//			drbd_bump_write_ordering(connection->resource, NULL, WO_DRAIN_IO);
+//		}
 	}
 
 	return drbd_may_finish_epoch(connection, epoch, EV_BARRIER_DONE);
@@ -1830,6 +1847,7 @@ int drbd_submit_peer_request(struct drbd_device *device,
 	int err = -ENOMEM;
 #ifdef _WIN32 // DW-1598 : Do not submit peer_req if there is no connection
 	if (test_bit(CONNECTION_ALREADY_FREED, &peer_req->peer_device->flags)){
+		drbd_info(device, "node-id : %d, flag : CONNECTION_ALREADY_FREED\n", peer_req->peer_device->node_id);
 		return 0; 
 	}
 #endif
@@ -3888,6 +3906,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		   the block... */
 		peer_req->flags |= EE_RS_THIN_REQ;
 	case P_RS_DATA_REQUEST:
+		//DW-1857 If P_RS_DATA_REQUEST is received, send P_RS_CANCEL unless L_SYNC_SOURCE.
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+			/* If err is set, we will drop the connection... */
+			goto fail3;
+		}
 		peer_req->w.cb = w_e_end_rsdata_req;
 		fault_type = DRBD_FAULT_RS_RD;
 		break;
@@ -5774,7 +5798,8 @@ static int receive_sizes(struct drbd_connection *connection, struct packet_info 
 	is_handshake = (peer_device->repl_state[NOW] == L_OFF);
 	/* Maybe the peer knows something about peers I cannot currently see. */
 	ddsf |= DDSF_IGNORE_PEER_CONSTRAINTS;
-
+	//DW-1799
+	set_bit(INITIAL_SIZE_RECEIVED, &peer_device->flags); 
 	if (get_ldev(device)) {
 		sector_t new_size;
 
@@ -10464,7 +10489,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 {
 	struct drbd_resource *resource = connection->resource;
 	struct p_peer_ack *p = pi->data;
-	struct drbd_device *device;
 	u64 dagtag, in_sync;
 	struct drbd_peer_request *peer_req, *tmp;
 #ifdef _WIN32
@@ -10494,7 +10518,6 @@ static int got_peer_ack(struct drbd_connection *connection, struct packet_info *
 	return -EIO;
 
 found:
-	device = peer_req->peer_device->device;
 	list_cut_position(&work_list, &connection->peer_requests, &peer_req->recv_order);
 	spin_unlock_irq(&resource->req_lock);
 
@@ -10505,6 +10528,8 @@ found:
 #endif
 		struct drbd_peer_device *peer_device = peer_req->peer_device;
 		ULONG_PTR in_sync_b;
+		//DW-1872 you must set the device that matches the peer_request.
+		struct drbd_device *device = peer_req->peer_device->device;
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1099: Do not set or clear sender's out-of-sync, it's only for managing neighbor's out-of-sync.
 		ULONG_PTR set_sync_mask = INTPTR_MAX;

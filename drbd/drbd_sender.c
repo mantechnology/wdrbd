@@ -2577,7 +2577,7 @@ static void do_start_resync(struct drbd_peer_device *peer_device)
 
 	if (atomic_read(&peer_device->unacked_cnt) ||
 	    atomic_read(&peer_device->rs_pending_cnt)) {
-		drbd_warn(peer_device, "postponing start_resync ...\n");
+		drbd_warn(peer_device, "postponing start_resync ... unacked : %d, pending : %d\n", atomic_read(&peer_device->unacked_cnt), atomic_read(&peer_device->rs_pending_cnt));
 		peer_device->start_resync_timer.expires = jiffies + HZ/10;
 		add_timer(&peer_device->start_resync_timer);
 		return;

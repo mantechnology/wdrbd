@@ -818,7 +818,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		bm_ext = find_active_resync_extent(&al_ctx);
 		if (unlikely(bm_ext != NULL)) {
 			set_bme_priority(&al_ctx);
-			drbd_info(device, "active resync extent enr : %lu\n", enr);
+			drbd_debug(device, "active resync extent enr : %lu\n", enr);
 			if (al_ctx.wake_up)
 				return -EBUSY;
 			return -EWOULDBLOCK;
@@ -1145,7 +1145,9 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 #ifdef _WIN32
 			// DW-1640 : Node that are not synctarget or syncsource send P_PEERS_IN_SYNC packtet to synctarget, causing a disk inconsistency. 
 			// Only sync source can send P_PEERS_IN_SYNC to peers. In WDRBD, it can be guaranteed that only primary is sync source. 
-			if (device->resource->role[NOW] == R_PRIMARY || peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
+			if (device->resource->role[NOW] == R_PRIMARY ||
+				// DW-1873 change P_PEER_IN_SYNC send conditions
+				is_sync_source(peer_device)) { //peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
 				struct update_peers_work *upw;
 				upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
 #else

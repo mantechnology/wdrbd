@@ -864,6 +864,11 @@ long wait_for_completion(struct completion *completion)
 	return schedule(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__);
 }
 
+long wait_for_completion_no_reset_event(struct completion *completion)
+{
+	return schedule_ex(&completion->wait, MAX_SCHEDULE_TIMEOUT, __FUNCTION__, __LINE__, false);
+}
+
 long wait_for_completion_timeout(struct completion *completion, long timeout)
 {
     return schedule(&completion->wait, timeout, __FUNCTION__, __LINE__);
@@ -884,7 +889,7 @@ static  void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 	list_add(&new->task_list, &head->task_list);
 }
 
-long schedule(wait_queue_head_t *q, long timeout, char *func, int line) 
+long schedule_ex(wait_queue_head_t *q, long timeout, char *func, int line, bool auto_reset_event) 
 {
 	UNREFERENCED_PARAMETER(line);
 	UNREFERENCED_PARAMETER(func);
@@ -933,7 +938,10 @@ long schedule(wait_queue_head_t *q, long timeout, char *func, int line)
 
             switch (status) {
             case STATUS_WAIT_0:
-                KeResetEvent(&q->wqh_event); // DW-105: use event and polling both.
+				//DW-1862 fflush No event reset is required when waiting for IO to complete. 
+				//So we set the parameters for cases where ResetEvent is not needed.
+				if (auto_reset_event)
+					KeResetEvent(&q->wqh_event); // DW-105: use event and polling both.
                 break;
 
             case STATUS_WAIT_1:
