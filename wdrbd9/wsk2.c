@@ -268,8 +268,9 @@ __in PWSK_BUF WskBuffer
 )
 {
 	ASSERT(WskBuffer);
-
-	MmUnlockPages(WskBuffer->Mdl);
+	//DW-1882 If MmProbeAndLockPages fails, do not call the Unlock function.
+	if (WskBuffer->Mdl->MdlFlags & MDL_PAGES_LOCKED)
+		MmUnlockPages(WskBuffer->Mdl);
 	IoFreeMdl(WskBuffer->Mdl);
 }
 
