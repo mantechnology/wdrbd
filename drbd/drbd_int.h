@@ -1251,6 +1251,16 @@ struct disconnect_work {
 };
 #endif
 
+struct issue_flush_context {
+	atomic_t pending;
+	int error;
+	struct completion done;
+};
+struct one_flush_context {
+	struct drbd_device *device;
+	struct issue_flush_context *ctx;
+};
+
 struct drbd_resource {
 	char *name;
 #ifdef CONFIG_DEBUG_FS
@@ -1354,7 +1364,7 @@ struct drbd_resource {
 #ifdef _WIN32_MULTIVOL_THREAD
 	MVOL_THREAD			WorkThreadInfo;
 #endif
-
+	struct issue_flush_context ctx_flush;
 };
 
 struct drbd_connection {
