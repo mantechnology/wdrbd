@@ -691,9 +691,12 @@ NetlinkWorkThread(PVOID context)
     }
 
 cleanup:
-    pop_msocket_entry(pSock);
-    Disconnect(pSock);
-    CloseSocket(pSock);
+	if (pSock) {
+		pop_msocket_entry(pSock);
+		Disconnect(pSock);
+		CloseSocket(pSock);
+	}
+
     ct_delete_thread(KeGetCurrentThread());
 
 	//ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
