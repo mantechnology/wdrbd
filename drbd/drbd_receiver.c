@@ -10296,6 +10296,11 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 			if (p->block_id == ID_SYNCER_SPLIT_DONE) 
 				dec_rs_pending(peer_device);
+
+			//DW-1601 add DW-1817
+			if (atomic_sub_return64(blksize, &connection->rs_in_flight) < 0)
+				atomic_set64(&connection->rs_in_flight, 0);
+
 			return 0;
 		}
 	}
@@ -10374,6 +10379,11 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 			drbd_rs_failed_io(peer_device, sector, size);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);
+
+			//DW-1601 add DW-1817
+			if (atomic_sub_return64(size, &connection->rs_in_flight) < 0)
+				atomic_set64(&connection->rs_in_flight, 0);
+
 			return 0;
 		}
 
