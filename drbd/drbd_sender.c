@@ -339,9 +339,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 */
 
 	if (block_id == ID_SYNCER)
-		do_wake = 2 << list_empty(&connection->sync_ee);
+		do_wake = list_empty(&connection->sync_ee);
 	else
-		do_wake = 1 << list_empty(&connection->active_ee);
+		do_wake = list_empty(&connection->active_ee);
 
 	/* FIXME do we want to detach for failed REQ_DISCARD?
 	* ((peer_req->flags & (EE_WAS_ERROR|EE_IS_TRIM)) == EE_WAS_ERROR) */
@@ -356,9 +356,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
-	if (do_wake != 0) {
+	if (do_wake) 
 		wake_up(&connection->ee_wait);
-	}
 
 	put_ldev(device);
 }

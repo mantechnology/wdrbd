@@ -795,8 +795,8 @@ struct drbd_peer_request {
 	void* peer_req_databuf;
 
 	struct {
-		ULONG_PTR s_bb;		/* DW-1601 first bitmap bit of split data */
-		ULONG_PTR e_bb;		/* DW-1601 last bitmap bit of split data  */
+		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
+		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
 	};
 #endif
