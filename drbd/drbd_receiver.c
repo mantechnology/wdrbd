@@ -2619,7 +2619,6 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 
 				if (i_bb == gbb->garbage_bit) {
 					//DW-1601 get the start bit and end bit where the garbage bit was found.
-					drbd_info(peer_device, "find garbage bit : %llu\n", i_bb);
 					if (find_garbage_bb)
 						*e_gbb = i_bb;
 					else {
@@ -2643,14 +2642,17 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 							*s_bb == *e_bb ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT);
 
 		if (err) {
-			drbd_err(peer_device, "garbage bit P_NEG_ACK failed (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
+			drbd_err(peer_device, "##garbage bit P_NEG_ACK failed (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
 		}
 		else {
-			drbd_info(peer_device, "garbage bit (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
+			drbd_info(peer_device, "##garbage bit (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
 		}
 
-		drbd_set_out_of_sync(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
-		drbd_rs_failed_io(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
+		if (!(*s_bb == *s_gbb && *e_bb == *e_gbb)) {
+			drbd_set_out_of_sync(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
+			drbd_rs_failed_io(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
+			atomic_add(size >> 9, &peer_device->device->rs_sect_ev);
+		}
 	}
 
 	return find_garbage_bb;
@@ -2730,10 +2732,27 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 		if (is_gbb && s_bb == s_gbb && e_bb == e_gbb) {
 			drbd_info(peer_device, "##all garbage s_bb(%lu) ~ e_bb(%lu), resync!\n", s_bb, e_bb);
+			err = _drbd_send_ack(peer_device,
+				P_NEG_ACK,
+				BM_BIT_TO_SECT(s_bb), BM_SECT_PER_BIT,
+				ID_SYNCER_SPLIT_DONE);
+
+			if (err) {
+				drbd_err(peer_device, "##garbage bit P_NEG_ACK failed\n");
+			}
+
+			u32 size = (u32)(BM_BIT_TO_SECT(e_bb) - BM_BIT_TO_SECT(s_bb) + BM_SECT_PER_BIT) << 9;
+
+			drbd_set_out_of_sync(peer_device, BM_BIT_TO_SECT(s_bb), size);
+			drbd_rs_failed_io(peer_device, BM_BIT_TO_SECT(s_bb), size);
+
 			drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 			atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
 			drbd_free_peer_req(peer_req);
 			dec_unacked(peer_device);
+
+			kfree2(split_count);
+
 			return 0;
 		}
 
@@ -2745,7 +2764,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 			offset = s_bb;
 
-			for (ULONG_PTR i_bb = s_bb; i_bb < e_bb; i_bb++) {
+			for (ULONG_PTR i_bb = offset = s_bb; i_bb < e_bb; i_bb++) {
 				//DW-1601 the sync bit and the garbage bit work the same.
 				if (drbd_bm_test_bit(peer_device, i_bb) == 0 || (is_gbb && (s_gbb <= i_bb && e_gbb >= i_bb))) {
 					if (is_all_sync) {
@@ -2757,8 +2776,11 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						drbd_free_peer_req(peer_req);
 						dec_unacked(peer_device);
 
+						kfree2(split_count);
+
 						return err;
 					}
+
 				submit_peer:
 					//DW-1601 if offset is set to "out of sync" previously, write request to split_peer_req for data in index now from the corresponding offset.
 					if (s_split_request) {
