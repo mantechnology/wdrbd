@@ -2598,55 +2598,62 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 	return split_peer_request;
 }
 
-static unsigned char prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULONG_PTR *s_bb, ULONG_PTR *e_bb, ULONG_PTR *s_gbb, ULONG_PTR *e_gbb)
+static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULONG_PTR *s_bb, ULONG_PTR *e_bb, ULONG_PTR *s_gbb, ULONG_PTR *e_gbb)
 {
-	sector_t ssector, esector;
-	unsigned char garbage_bb = 0;
+	bool find_garbage_bb = false;
+	int err = 0;
+	ULONG_PTR i_bb;
 
-	if (atomic_read(&peer_device->device->newly_repl_size) > 0) {
-		//DW-1601 
-		//If a garbage bit is found, the bit works the same as the one already synchronized. 
-		//If the garbage bit corresponds to the beginning and end of the synchronization data, then the data corresponding to the bit is excluded from the synchronization data.
+	mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+	if (!list_empty(&(peer_device->device->garbage_bits))) {
+		struct drbd_garbage_bit *gbb;
+		i_bb = *s_bb;
+		do {
+			list_for_each_entry(struct drbd_garbage_bit, gbb, &peer_device->device->garbage_bits, garbage_list) {
+				//DW-1601 if it is already in sync, remove it.
+				if (drbd_bm_test_bit(peer_device, i_bb) == 0) {
+					list_del(&gbb->garbage_list);
+					kfree2(gbb);
+					break;
+				}
 
-		ssector = atomic_read64(&peer_device->device->newly_repl_sector);
-		esector = atomic_read64(&peer_device->device->newly_repl_sector) + (atomic_read(&peer_device->device->newly_repl_size) >> 9);
-
-		*s_gbb = BM_SECT_TO_BIT(ssector);
-		*e_gbb = BM_SECT_TO_BIT(esector);
-
-		if (*s_bb <= *s_gbb && *e_bb >= *e_gbb) {
-
-			if (*s_gbb == *e_gbb || ssector != BM_BIT_TO_SECT(*s_gbb)) {
-
-				drbd_info(peer_device, "##set garbage bit %lu, retry resync (first : %lu, last : %lu), (newly_repl_sector : %lu, newly_repl_size : %lu), (ssector : %lu, BM_BIT_TO_SECT(s_gbb) : %lu)\n",
-					BM_SECT_TO_BIT(ssector), *s_bb, (*e_bb - 1), ssector, atomic_read(&peer_device->device->newly_repl_size), ssector, BM_BIT_TO_SECT(*s_gbb));
-
-				if (*s_bb == *s_gbb)
-					*s_bb += 1;
-				else if ((*e_bb - 1) == *s_gbb)
-					*e_bb -= 1;
-
-				drbd_send_ack_and_rs_failed(peer_device, ssector, *s_bb == *e_bb ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT);
-				garbage_bb |= 1;
+				if (i_bb == gbb->garbage_bit) {
+					//DW-1601 get the start bit and end bit where the garbage bit was found.
+					drbd_info(peer_device, "find garbage bit : %llu\n", i_bb);
+					if (find_garbage_bb)
+						*e_gbb = i_bb;
+					else {
+						*s_gbb = *e_gbb = i_bb;
+						find_garbage_bb = true;
+					}
+				}
 			}
+			i_bb += 1;
+		} while (i_bb < *e_bb);
+	}
+	mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
 
-			if (*s_bb != *e_bb && (*s_gbb != *e_gbb && esector != BM_BIT_TO_SECT(*e_gbb))) {
+	if (find_garbage_bb) {
+		u32 size = (u32)(BM_BIT_TO_SECT(*e_gbb) - BM_BIT_TO_SECT(*s_gbb) + BM_SECT_PER_BIT) << 9;
 
-				drbd_info(peer_device, "##set garbage bit %lu, retry resync (first : %lu, last : %lu), (newly_repl_sector : %lu, newly_repl_size : %lu), (esector : %lu, BM_BIT_TO_SECT(e_gbb) : %lu)\n",
-					BM_SECT_TO_BIT(esector), *s_bb, (*e_bb - 1), ssector, atomic_read(&peer_device->device->newly_repl_size), esector, BM_BIT_TO_SECT(*e_gbb));
+		//DW-1601 set garbage bit to failure
+		err = _drbd_send_ack(peer_device, 
+							P_NEG_ACK,
+							BM_BIT_TO_SECT(*s_gbb), size,
+							*s_bb == *e_bb ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT);
 
-				if (*s_bb == *e_gbb)
-					*s_bb += 1;
-				else if ((*e_bb - 1) == *e_gbb)
-					*e_bb -= 1;
-
-				drbd_send_ack_and_rs_failed(peer_device, ssector, *s_bb == *e_bb ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT);
-				garbage_bb |= 1 << 1;
-			}
+		if (err) {
+			drbd_err(peer_device, "garbage bit P_NEG_ACK failed (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
 		}
+		else {
+			drbd_info(peer_device, "garbage bit (bb : %llu ~ : %llu, gbb : %llu ~ %llu)\n", *s_bb, *e_bb, *s_gbb, *s_gbb);
+		}
+
+		drbd_set_out_of_sync(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
+		drbd_rs_failed_io(peer_device, BM_BIT_TO_SECT(*s_gbb), size);
 	}
 
-	return garbage_bb;
+	return find_garbage_bb;
 }
 
 static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULONG_PTR s_bb, ULONG_PTR e_bb, atomic_t *split_count, ULONG_PTR* e_oos)
@@ -2715,13 +2722,14 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	}
 
 	if (peer_device->connection->agreed_pro_version >= 113) {
-		ULONG_PTR s_gbb, e_gbb, garbage_bb;
+		ULONG_PTR s_gbb = 0, e_gbb = 0;
+		bool is_gbb = false;
 
 		//DW-1601 If the garbage bit is the start bit and the end bit, correct the start bit and end bit.
-		garbage_bb = prepare_garbage_bitmap_bit(peer_device, &s_bb, &e_bb, &s_gbb, &e_gbb);
+		is_gbb = prepare_garbage_bitmap_bit(peer_device, &s_bb, &e_bb, &s_gbb, &e_gbb);
 
-		if (garbage_bb && s_bb == e_bb) {
-			drbd_info(peer_device, "##all garbage s_bb(%lu), e_bb(%lu), resync!\n", s_bb, e_bb);
+		if (is_gbb && s_bb == s_gbb && e_bb == e_gbb) {
+			drbd_info(peer_device, "##all garbage s_bb(%lu) ~ e_bb(%lu), resync!\n", s_bb, e_bb);
 			drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 			atomic_add(d->bi_size >> 9, &device->rs_sect_ev);
 			drbd_free_peer_req(peer_req);
@@ -2730,7 +2738,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 		}
 
 		//DW-1601 get the last out of sync bit, bit already synced, split request count information. (It must be called after prepare_garbage_bitmap_bit())
-		if (prepare_split_peer_request(peer_device, s_bb, e_bb, split_count, &e_oos) || garbage_bb) {
+		if (prepare_split_peer_request(peer_device, s_bb, e_bb, split_count, &e_oos) || is_gbb) {
 
 			bool s_split_request = false;
 			bool is_all_sync = (atomic_read(split_count) == 0 ? true : false);
@@ -2739,7 +2747,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 			for (ULONG_PTR i_bb = s_bb; i_bb < e_bb; i_bb++) {
 				//DW-1601 the sync bit and the garbage bit work the same.
-				if (drbd_bm_test_bit(peer_device, i_bb) == 0 || ((garbage_bb & 1) && i_bb == s_gbb) || ((garbage_bb & 1 << 1) && i_bb == e_gbb)) {
+				if (drbd_bm_test_bit(peer_device, i_bb) == 0 || (is_gbb && (s_gbb <= i_bb && e_gbb >= i_bb))) {
 					if (is_all_sync) {
 						//DW-1601 all data is synced.
 						drbd_debug(peer_device, "##all, sync bitmap(%lu), first : %lu, last :%lu\n", i_bb, s_bb, (e_bb - 1));
@@ -2821,6 +2829,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					}
 					else
 						atomic_add(BM_BLOCK_SIZE, &device->rs_sect_ev);
+
+					if (is_gbb && s_gbb == i_bb)
+						i_bb = e_gbb;
 
 					s_split_request = false;
 				}
@@ -3753,10 +3764,40 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
 	{				
-		//DW-1601 store the most recent replication data area information to check garbage bits during synchronization.
+		//DW-1601 if the status is L_SYNC_TARGET, calculate and store the garbage bit.
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
-			atomic_set64(&device->newly_repl_sector, peer_req->i.sector);
-			atomic_set(&device->newly_repl_size, peer_req->i.size);
+			struct drbd_garbage_bit *gb;
+			sector_t ssector, esector;
+			ULONG_PTR s_gbb, e_gbb;
+
+			ssector = peer_req->i.sector;
+			esector = peer_req->i.sector + (peer_req->i.size >> 9);
+
+			s_gbb = BM_SECT_TO_BIT(ssector);
+			e_gbb = BM_SECT_TO_BIT(esector);
+
+			if (BM_BIT_TO_SECT(s_gbb) != ssector && drbd_bm_test_bit(peer_device, s_gbb) == 1) {
+				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+				if (gb != NULL) {
+					gb->garbage_bit = s_gbb;
+					mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+					list_add(&(gb->garbage_list), &device->garbage_bits);
+					mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+				}
+				else
+					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_gbb);
+			}
+			if (s_gbb != e_gbb && BM_BIT_TO_SECT(e_gbb) != esector && drbd_bm_test_bit(peer_device, e_gbb) == 1) {
+				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+				if (gb != NULL) {
+					gb->garbage_bit = e_gbb;
+					mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+					list_add(&(gb->garbage_list), &device->garbage_bits);
+					mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+				}
+				else
+					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_gbb);
+			}
 		}
 
 		drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
@@ -3888,8 +3929,10 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 		db = (unsigned long)(peer_device->rs_mark_left[i] - rs_left);
 		dbdt = Bit2KB(db/dt);
 
-		if (dbdt > c_min_rate)
+		if (dbdt > c_min_rate) {
+			drbd_info(peer_device, "dbdt : %lu, c_min_rate : %lu\n", dbdt, c_min_rate);
 			return true;
+		}
 	}
 	return false;
 }

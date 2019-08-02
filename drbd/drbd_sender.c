@@ -357,12 +357,6 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
 	if (do_wake != 0) {
-		//DW-1601
-		if ((do_wake & 1 << 1) && atomic_read(&peer_device->device->newly_repl_size) != 0) {
-			atomic_set64(&peer_device->device->newly_repl_sector, 0);
-			atomic_set(&peer_device->device->newly_repl_size, 0);
-		}
-
 		wake_up(&connection->ee_wait);
 	}
 
@@ -1117,11 +1111,14 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 #endif
 
-	if (unlikely(cancel))
+	if (unlikely(cancel)) {
+		drbd_info(peer_device, "resync cacnel.\n");
 		return 0;
+	}
 
 	if (peer_device->rs_total == 0) {
 		/* empty resync? */
+		drbd_info(peer_device, "finished because it's rs_total empty\n");
 		drbd_resync_finished(peer_device, D_MASK);
 		return 0;
 	}
@@ -2898,12 +2895,18 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
 		if (side == L_SYNC_TARGET) {
-			//DW-1601
-			atomic_set64(&device->newly_repl_sector, 0);
-			atomic_set(&device->newly_repl_size, 0);
-
 			//DW-1846 bm_resync_fo must be locked and set.
 			mutex_lock(&device->bm_resync_fo_mutex);
+
+			//DW-1601 initialization garbage list 
+			if (!list_empty(&device->garbage_bits)) {
+				struct drbd_garbage_bit *gbb, *tmp;
+				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->garbage_bits, garbage_list) {
+					list_del(&gbb->garbage_list);
+					kfree2(gbb);
+				}
+			}
+
 			device->bm_resync_fo = 0;
 			mutex_unlock(&device->bm_resync_fo_mutex);
 			peer_device->use_csums = use_checksum_based_resync(connection, device);

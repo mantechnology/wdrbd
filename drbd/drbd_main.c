@@ -3489,6 +3489,17 @@ void drbd_destroy_device(struct kref *kref)
 
 	WDRBD_TRACE("%s\n", __FUNCTION__);
 
+	//DW-1601 remove garbage list
+	mutex_lock(&device->bm_resync_fo_mutex);
+	if (!list_empty(&device->garbage_bits)) {
+		struct drbd_garbage_bit *gbb, *tmp;
+		list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &device->garbage_bits, garbage_list) {
+			list_del(&gbb->garbage_list);
+			kfree2(gbb);
+		}
+	}
+	mutex_unlock(&device->bm_resync_fo_mutex);
+
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */
 	if (device->this_bdev)

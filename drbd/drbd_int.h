@@ -1692,6 +1692,12 @@ struct drbd_peer_device {
 	} todo;
 };
 
+//DW-1601
+struct drbd_garbage_bit {
+	u64 garbage_bit;
+	struct list_head garbage_list;
+};
+
 struct submit_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1785,9 +1791,8 @@ struct drbd_device {
 #endif
 	struct mutex bm_resync_fo_mutex;
 
-	//DW-1601 recent replicated data
-	atomic_t64 newly_repl_sector;
-	atomic_t newly_repl_size;
+	//DW-1601 garbage bit list, used for resync
+	struct list_head garbage_bits;
 
 	int open_rw_cnt, open_ro_cnt;
 	/* FIXME clean comments, restructure so it is more obvious which
