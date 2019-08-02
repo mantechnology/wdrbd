@@ -1307,8 +1307,8 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	//A match between barrier_nr and primary_node_id means that 
 	//the barrier is currently waiting for the barrier.If you are not waiting, 
 	//you do not need to do anything.
-	if (atomic_read64(&octx->ctx_sync.barrier_nr) == atomic_read64(&ctx->ctx_sync.barrier_nr) &&
-		atomic_read(&octx->ctx_sync.primary_node_id) == atomic_read(&ctx->ctx_sync.primary_node_id)) {
+	if (octx->ctx_sync.barrier_nr == atomic_read64(&ctx->ctx_sync.barrier_nr) &&
+		octx->ctx_sync.primary_node_id == atomic_read(&ctx->ctx_sync.primary_node_id)) {
 		if (atomic_dec_and_test(&ctx->pending)) {
 			complete(&ctx->done);
 			//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
@@ -1382,10 +1382,10 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 		struct drbd_device *device;
 		
 		kref_get(&resource->kref);
-		resource->ctx_flush.error = 0;
-		atomic_set(&resource->ctx_flush.pending, 1);
 		atomic_set64(&resource->ctx_flush.ctx_sync.barrier_nr, epoch->barrier_nr);
 		atomic_set(&resource->ctx_flush.ctx_sync.primary_node_id, connection->peer_node_id);
+		resource->ctx_flush.error = 0;
+		atomic_set(&resource->ctx_flush.pending, 1);
 		init_completion(&resource->ctx_flush.done);
 
 		rcu_read_lock();
