@@ -255,7 +255,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
 	sector_t sector;
-	int do_wake;
+	int do_wake = 0;
 	u64 block_id;
 
 	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
@@ -297,7 +297,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
 	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
-		sector = BM_BIT_TO_SECT(peer_req->first);
+		sector = BM_BIT_TO_SECT(peer_req->s_bb);
 	else
 		sector = peer_req->i.sector;
 
@@ -356,7 +356,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
-	if (do_wake)
+	if (do_wake) 
 		wake_up(&connection->ee_wait);
 
 	put_ldev(device);
@@ -1110,11 +1110,14 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 #endif
 
-	if (unlikely(cancel))
+	if (unlikely(cancel)) {
+		drbd_info(peer_device, "resync cacnel.\n");
 		return 0;
+	}
 
 	if (peer_device->rs_total == 0) {
 		/* empty resync? */
+		drbd_info(peer_device, "finished because it's rs_total empty\n");
 		drbd_resync_finished(peer_device, D_MASK);
 		return 0;
 	}
@@ -2893,6 +2896,16 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		if (side == L_SYNC_TARGET) {
 			//DW-1846 bm_resync_fo must be locked and set.
 			mutex_lock(&device->bm_resync_fo_mutex);
+
+			//DW-1601 initialization garbage list 
+			if (!list_empty(&device->garbage_bits)) {
+				struct drbd_garbage_bit *gbb, *tmp;
+				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->garbage_bits, garbage_list) {
+					list_del(&gbb->garbage_list);
+					kfree2(gbb);
+				}
+			}
+
 			device->bm_resync_fo = 0;
 			mutex_unlock(&device->bm_resync_fo_mutex);
 			peer_device->use_csums = use_checksum_based_resync(connection, device);

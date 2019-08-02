@@ -795,8 +795,8 @@ struct drbd_peer_request {
 	void* peer_req_databuf;
 
 	struct {
-		ULONG_PTR first;		/* DW-1601 first bitmap bit of split data */
-		ULONG_PTR last;		/* DW-1601 last bitmap bit of split data  */
+		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
+		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
 	};
 #endif
@@ -1709,6 +1709,12 @@ struct drbd_peer_device {
 	} todo;
 };
 
+//DW-1601
+struct drbd_garbage_bit {
+	u64 garbage_bit;
+	struct list_head garbage_list;
+};
+
 struct submit_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1801,6 +1807,9 @@ struct drbd_device {
 	unsigned long bm_resync_fo; /* bit offset for drbd_bm_find_next */
 #endif
 	struct mutex bm_resync_fo_mutex;
+
+	//DW-1601 garbage bit list, used for resync
+	struct list_head garbage_bits;
 
 	int open_rw_cnt, open_ro_cnt;
 	/* FIXME clean comments, restructure so it is more obvious which
