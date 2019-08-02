@@ -1301,18 +1301,20 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 	
-	kfree(octx);
 	bio_put(bio);
 
+	if (atomic_read(&octx->barrier_nr) == atomic_read(&ctx->barrier_nr)) {
+		if (atomic_dec_and_test(&ctx->pending)) {
+			complete(&ctx->done);
+			//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		}
+	}
+
+	kfree(octx);
 	clear_bit(FLUSH_PENDING, &device->flags);
 	put_ldev(device);
 	kref_put(&device->kref, drbd_destroy_device);
 
-	if (atomic_dec_and_test(&ctx->pending)) {
-		complete(&ctx->done);
-		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
-	}
-	
 	BIO_ENDIO_FN_RETURN;
 }
 
@@ -1342,6 +1344,7 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 
 	octx->device = device;
 	octx->ctx = ctx;
+	octx->barrier_nr = ctx->barrier_nr;
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
 	bio->bi_end_io = one_flush_endio;
@@ -1378,6 +1381,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		resource->ctx_flush.error = 0;
 		atomic_set(&resource->ctx_flush.pending, 1);
+		atomic_set(&resource->ctx_flush.barrier_nr, epoch->barrier_nr);
 		init_completion(&resource->ctx_flush.done);
 
 		rcu_read_lock();
@@ -1403,8 +1407,12 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&resource->ctx_flush.pending))
-			wait_for_completion_no_reset_event(&resource->ctx_flush.done);
+		if (!atomic_dec_and_test(&resource->ctx_flush.pending)) {
+			long ret = wait_for_completion_no_reset_event(&resource->ctx_flush.done);
+			if (ret == -DRBD_SIGKILL) {
+				atomic_set(&resource->ctx_flush.barrier_nr, -1);
+			}
+		}
 
 		kref_put(&resource->kref, drbd_destroy_resource);
 		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.

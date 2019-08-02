@@ -1255,10 +1255,12 @@ struct issue_flush_context {
 	atomic_t pending;
 	int error;
 	struct completion done;
+	unsigned int barrier_nr;
 };
 struct one_flush_context {
 	struct drbd_device *device;
 	struct issue_flush_context *ctx;
+	unsigned int barrier_nr;
 };
 
 struct drbd_resource {
