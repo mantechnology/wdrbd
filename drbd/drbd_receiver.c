@@ -1239,15 +1239,6 @@ static int drbd_recv_header_maybe_unplug(struct drbd_connection *connection, str
  * We want to submit to all component volumes in parallel,
  * then wait for all completions.
  */
-struct issue_flush_context {
-	atomic_t pending;
-	int error;
-	struct completion done;
-};
-struct one_flush_context {
-	struct drbd_device *device;
-	struct issue_flush_context *ctx;
-};
 #ifdef _WIN32
 NTSTATUS one_flush_endio(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 #else
@@ -1307,19 +1298,25 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	}
 #endif
 	
-	kfree(octx);
 	bio_put(bio);
 
+	//DW-1895
+	//A match between barrier_nr and primary_node_id means that 
+	//the barrier is currently waiting for the barrier.If you are not waiting, 
+	//you do not need to do anything.
+	if (octx->ctx_sync.barrier_nr == atomic_read64(&ctx->ctx_sync.barrier_nr) &&
+		octx->ctx_sync.primary_node_id == atomic_read(&ctx->ctx_sync.primary_node_id)) {
+		if (atomic_dec_and_test(&ctx->pending)) {
+			complete(&ctx->done);
+			//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
+		}
+	}
+
+	kfree(octx);
 	clear_bit(FLUSH_PENDING, &device->flags);
 	put_ldev(device);
 	kref_put(&device->kref, drbd_destroy_device);
 
-	if (atomic_dec_and_test(&ctx->pending)) {
-		complete(&ctx->done);
-		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
-		kfree(ctx);
-	}
-	
 	BIO_ENDIO_FN_RETURN;
 }
 
@@ -1349,6 +1346,8 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 
 	octx->device = device;
 	octx->ctx = ctx;
+	octx->ctx_sync.barrier_nr = atomic_read64(&ctx->ctx_sync.barrier_nr);
+	octx->ctx_sync.primary_node_id = atomic_read(&ctx->ctx_sync.primary_node_id);
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
 	bio->bi_end_io = one_flush_endio;
@@ -1378,20 +1377,13 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 	if (resource->write_ordering >= WO_BDEV_FLUSH) {
 		int vnr;
 		struct drbd_device *device;
-		// DW-1862 
-		// Referencing a local variable in an asynchronous IO completion routine can corrupt stack memory.
-		// Therefore, non-paged pool memory is required.
-		struct issue_flush_context *ctx = kmalloc(sizeof(*ctx), GFP_NOIO, '79DW');
-		if (!ctx) {
-			drbd_err(connection, "Could not allocate ctx, CANNOT ISSUE FLUSH\n");
-			/* FIXME: what else can I do now?  disconnecting or detaching
-			* really does not help to improve the state of the world, either.*/
-			return FE_STILL_LIVE;
-		}
-
-		atomic_set(&ctx->pending, 1);
-		ctx->error = 0;
-		init_completion(&ctx->done);
+		
+		kref_get(&resource->kref);
+		atomic_set64(&resource->ctx_flush.ctx_sync.barrier_nr, epoch->barrier_nr);
+		atomic_set(&resource->ctx_flush.ctx_sync.primary_node_id, connection->peer_node_id);
+		resource->ctx_flush.error = 0;
+		atomic_set(&resource->ctx_flush.pending, 1);
+		init_completion(&resource->ctx_flush.done);
 
 		rcu_read_lock();
 #ifdef _WIN32
@@ -1404,7 +1396,7 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 			kref_get(&device->kref);
 			rcu_read_unlock();
 
-			submit_one_flush(device, ctx);
+			submit_one_flush(device, &resource->ctx_flush);
 
 #ifdef _WIN32
 			rcu_read_lock_w32_inner();
@@ -1416,11 +1408,22 @@ static enum finish_epoch drbd_flush_after_epoch(struct drbd_connection *connecti
 
 		/* Do we want to add a timeout,
 		 * if disk-timeout is set? */
-		if (!atomic_dec_and_test(&ctx->pending))
-			wait_for_completion_no_reset_event(&ctx->done);
+
+		if (!atomic_dec_and_test(&resource->ctx_flush.pending)) {
+			long ret = wait_for_completion_no_reset_event(&resource->ctx_flush.done);
+			if (ret == -DRBD_SIGKILL) {
+				drbd_warn(resource, "thread signaled and no more wait pending:%d, barrier_nr:%lld, primary_node_id:%d\n", 
+					atomic_read(&resource->ctx_flush.pending), atomic_read64(&resource->ctx_flush.ctx_sync.barrier_nr), atomic_read(&resource->ctx_flush.ctx_sync.primary_node_id));
+			}
+		}
+
+		//DW-1895
+		//The barrier_nr and primary_node_id are set to ctx and octx to ensure that they match in the completion routine.
+		atomic_set64(&resource->ctx_flush.ctx_sync.barrier_nr, -1);
+		atomic_set(&resource->ctx_flush.ctx_sync.primary_node_id, -1);
+
+		kref_put(&resource->kref, drbd_destroy_resource);
 		//DW-1862 When ctx->pending becomes 0, it means that IO of all disks is completed.
-		else
-			kfree(ctx);
 
 //		Comment out code that is not used in Windows.
 //		if (ctx->error) {
