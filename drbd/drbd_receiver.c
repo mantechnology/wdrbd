@@ -1349,8 +1349,8 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 
 	octx->device = device;
 	octx->ctx = ctx;
-	octx->ctx_sync.barrier_nr = ctx->ctx_sync.barrier_nr;
-	octx->ctx_sync.primary_node_id = ctx->ctx_sync.primary_node_id;
+	octx->ctx_sync.barrier_nr = atomic_read64(&ctx->ctx_sync.barrier_nr);
+	octx->ctx_sync.primary_node_id = atomic_read(&ctx->ctx_sync.primary_node_id);
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
 	bio->bi_end_io = one_flush_endio;
