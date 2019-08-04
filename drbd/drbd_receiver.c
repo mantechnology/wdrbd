@@ -2613,7 +2613,7 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 	bool find_garbage_bb = false;
 	ULONG_PTR i_bb;
 
-	mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+	mutex_lock(&peer_device->device->garbage_bits_mutex);
 	if (!list_empty(&(peer_device->device->garbage_bits))) {
 		struct drbd_garbage_bit *gbb;
 		i_bb = *s_bb;
@@ -2639,7 +2639,7 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 			i_bb += 1;
 		} while (i_bb < *e_next_bb);
 	}
-	mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+	mutex_unlock(&peer_device->device->garbage_bits_mutex);
 
 	return find_garbage_bb;
 }
@@ -3856,9 +3856,9 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
 				if (gb != NULL) {
 					gb->garbage_bit = s_gbb;
-					mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+					mutex_lock(&peer_device->device->garbage_bits_mutex);
 					list_add(&(gb->garbage_list), &device->garbage_bits);
-					mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+					mutex_unlock(&peer_device->device->garbage_bits_mutex);
 				}
 				else
 					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_gbb);
@@ -3867,12 +3867,12 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
 				if (gb != NULL) {
 					gb->garbage_bit = e_gbb;
-					mutex_lock(&peer_device->device->bm_resync_fo_mutex);
+					mutex_lock(&peer_device->device->garbage_bits_mutex);
 					list_add(&(gb->garbage_list), &device->garbage_bits);
-					mutex_unlock(&peer_device->device->bm_resync_fo_mutex);
+					mutex_unlock(&peer_device->device->garbage_bits_mutex);
 				}
 				else
-					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_gbb);
+					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_gbb);
 			}
 		}
 

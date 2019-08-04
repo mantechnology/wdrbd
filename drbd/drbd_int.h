@@ -1810,6 +1810,8 @@ struct drbd_device {
 
 	//DW-1601 garbage bit list, used for resync
 	struct list_head garbage_bits;
+	//Dw-1901
+	struct mutex garbage_bits_mutex;
 
 	int open_rw_cnt, open_ro_cnt;
 	/* FIXME clean comments, restructure so it is more obvious which
