@@ -2656,22 +2656,26 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 	return find_garbage_bb;
 }
 
-static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULONG_PTR s_bb, ULONG_PTR e_next_bb, atomic_t *split_count, ULONG_PTR* e_oos)
+static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULONG_PTR s_bb, ULONG_PTR e_next_bb, bool is_gbb, ULONG_PTR s_gbb, ULONG_PTR e_gbb, atomic_t *split_count, ULONG_PTR* e_oos)
 {
 	bool find_isb = false;
 	bool split_request = true;
 
 	//DW-1601 the last out of sync and split_cnt information are obtained before the resync write request.
 	for (ULONG_PTR i = s_bb; i < e_next_bb; i++) {
-		if (drbd_bm_test_bit(peer_device, i) == 1) {
+		if (drbd_bm_test_bit(peer_device, i) == 1 &&
+			//DW-1902 if end out of sync is in the garbage bit range, exclude it.
+			!(is_gbb && s_gbb <= i && e_gbb >= i)) {
+
 			if (split_request) {
 				atomic_inc(split_count);
 				split_request = false;
 			}
+
 			*e_oos = i;
 		}
 		else {
-			drbd_debug(peer_device, "##find in sync bitmap bit : %lu, start (%llu) ~ end (%llu)\n", i, s_bb, (e_next_bb - 1));
+			drbd_debug(peer_device, "##find in sync or garbage bitmap bit : %lu, start (%llu) ~ end (%llu)\n", i, s_bb, (e_next_bb - 1));
 			split_request = true;
 			find_isb = true;
 		}
@@ -2757,8 +2761,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 		if (is_gbb) {
 			u32 size = (u32)(BM_BIT_TO_SECT(e_gbb) - BM_BIT_TO_SECT(s_gbb) + BM_SECT_PER_BIT) << 9;
-			drbd_info(peer_device, "garbage bit size(byte) %u\n", size);
-
 			//DW-1601 set garbage bit to failure
 			err = _drbd_send_ack(peer_device,
 				P_NEG_ACK,
@@ -2799,7 +2801,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 		}
 
 		//DW-1601 get the last out of sync bit, bit already synced, split request count information. (It must be called after prepare_garbage_bitmap_bit())
-		if (prepare_split_peer_request(peer_device, s_bb, e_next_bb, split_count, &e_oos) || is_gbb) {
+		if (prepare_split_peer_request(peer_device, s_bb, e_next_bb, is_gbb, s_gbb, e_gbb, split_count, &e_oos)) {
 
 			bool s_split_request = false;
 			bool is_all_sync = (atomic_read(split_count) == 0 ? true : false);
