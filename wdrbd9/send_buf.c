@@ -221,10 +221,12 @@ signed long long write_ring_buffer(struct drbd_transport *transport, enum drbd_s
 
 				struct drbd_tcp_transport *tcp_transport =
 					container_of(transport, struct drbd_tcp_transport, transport);
-				if (tcp_transport->stream[stream]->buffering_attr.quit == TRUE)
-				{
-					WDRBD_INFO("Stop send and quit\n");
-					return -EIO;
+
+				if (tcp_transport->stream[stream]) {
+					if (tcp_transport->stream[stream]->buffering_attr.quit == TRUE)	{
+						WDRBD_INFO("Stop send and quit\n");
+						return -EIO;
+					}
 				}
 
 				EnterCriticalSection(&ring->cs);
