@@ -2378,6 +2378,93 @@ static int recv_dless_read(struct drbd_peer_device *peer_device, struct drbd_req
 }
 
 /*
+ * e_end_resync_block() is called in ack_sender context via
+ * drbd_finish_peer_reqs().
+ */
+static int e_end_resync_block(struct drbd_work *w, int unused)
+{
+	UNREFERENCED_PARAMETER(unused);
+
+	struct drbd_peer_request *peer_req =
+		container_of(w, struct drbd_peer_request, w);
+	struct drbd_peer_device *peer_device = peer_req->peer_device;
+	sector_t sector = peer_req->i.sector;
+	int err;
+
+	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
+
+	//DW-1846 send P_NEG_ACK if not sync target
+	if (is_sync_target(peer_device)) {
+		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+		}
+		else {
+			/* Record failure to sync */
+			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+
+			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+		}
+	}
+	else {
+		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+	}
+	dec_unacked(peer_device);
+
+	return err;
+}
+
+/**
+* _drbd_send_ack() - Sends an ack packet
+* @device:	DRBD device.
+* @cmd:	Packet command code.
+* @sector:	sector, needs to be in big endian byte order
+* @blksize:	size in byte, needs to be in big endian byte order
+* @block_id:	Id, big endian byte order
+*/
+static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
+	u64 sector, u32 blksize, u64 block_id)
+{
+	struct p_block_ack *p;
+
+	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
+		return -EIO;
+
+	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
+	if (!p)
+		return -EIO;
+	p->sector = sector;
+	p->block_id = block_id;
+	p->blksize = blksize;
+	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
+	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
+}
+
+static int drbd_send_ack_dp(struct drbd_peer_device *peer_device, enum drbd_packet cmd, struct drbd_peer_request_details *d)
+{
+	return _drbd_send_ack(peer_device, cmd,
+		cpu_to_be64(d->sector),
+		cpu_to_be32(d->bi_size),
+		d->block_id);
+}
+
+static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, sector_t sector, uint64_t block_id)
+{
+	struct drbd_peer_request_details d;
+
+	d.sector = sector;
+	d.bi_size = BM_BLOCK_SIZE;
+	d.block_id = block_id;
+
+	drbd_set_out_of_sync(peer_device, sector, 1 << 9);
+	drbd_rs_failed_io(peer_device, sector, 1 << 9);
+
+	return drbd_send_ack_dp(peer_device, P_NEG_ACK, &d);
+}
+
+
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+/*
 * e_end_resync_block() is called in ack_sender context via
 * drbd_finish_peer_reqs().
 */
@@ -2481,91 +2568,6 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	}
 
 	return err;
-}
-
-/*
- * e_end_resync_block() is called in ack_sender context via
- * drbd_finish_peer_reqs().
- */
-static int e_end_resync_block(struct drbd_work *w, int unused)
-{
-	UNREFERENCED_PARAMETER(unused);
-
-	struct drbd_peer_request *peer_req =
-		container_of(w, struct drbd_peer_request, w);
-	struct drbd_peer_device *peer_device = peer_req->peer_device;
-	sector_t sector = peer_req->i.sector;
-	int err;
-
-	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
-
-	//DW-1846 send P_NEG_ACK if not sync target
-	if (is_sync_target(peer_device)) {
-		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-		}
-		else {
-			/* Record failure to sync */
-			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-
-			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-		}
-	}
-	else {
-		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-	}
-	dec_unacked(peer_device);
-
-	return err;
-}
-
-/**
-* _drbd_send_ack() - Sends an ack packet
-* @device:	DRBD device.
-* @cmd:	Packet command code.
-* @sector:	sector, needs to be in big endian byte order
-* @blksize:	size in byte, needs to be in big endian byte order
-* @block_id:	Id, big endian byte order
-*/
-static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-	u64 sector, u32 blksize, u64 block_id)
-{
-	struct p_block_ack *p;
-
-	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
-		return -EIO;
-
-	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
-	if (!p)
-		return -EIO;
-	p->sector = sector;
-	p->block_id = block_id;
-	p->blksize = blksize;
-	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
-	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
-}
-
-static int drbd_send_ack_dp(struct drbd_peer_device *peer_device, enum drbd_packet cmd, struct drbd_peer_request_details *d)
-{
-	return _drbd_send_ack(peer_device, cmd,
-		cpu_to_be64(d->sector),
-		cpu_to_be32(d->bi_size),
-		d->block_id);
-}
-
-static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, sector_t sector, uint64_t block_id)
-{
-	struct drbd_peer_request_details d;
-
-	d.sector = sector;
-	d.bi_size = BM_BLOCK_SIZE;
-	d.block_id = block_id;
-
-	drbd_set_out_of_sync(peer_device, sector, 1 << 9);
-	drbd_rs_failed_io(peer_device, sector, 1 << 9);
-
-	return drbd_send_ack_dp(peer_device, P_NEG_ACK, &d);
 }
 
 static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request *peer_request, sector_t sector, 
@@ -2968,6 +2970,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	drbd_free_peer_req(peer_req);
 	return 0;
 }
+#endif
 
 static int recv_resync_read(struct drbd_peer_device *peer_device,
 			    struct drbd_peer_request_details *d) __releases(local)
@@ -3127,11 +3130,11 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	D_ASSERT(device, d.block_id == ID_SYNCER);
 
 	if (get_ldev(device)) {
-		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE 0
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
-		err = recv_resync_read(peer_device, &d);
+		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		err = split_recv_resync_read(peer_device, &d);
 #else
-		err = split_recv_resync_read(peer_device, &d); 
+		err = recv_resync_read(peer_device, &d);
 #endif
 		if (err)
 			put_ldev(device);
@@ -3841,6 +3844,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
 	{				
 		//DW-1601 if the status is L_SYNC_TARGET, calculate and store the garbage bit.
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 			struct drbd_garbage_bit *gb;
 			sector_t ssector, esector;
@@ -3852,7 +3856,6 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			s_bb = BM_SECT_TO_BIT(ssector);
 			e_next_bb = BM_SECT_TO_BIT(esector);
 
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
 			//DW-1901 check duplicate garbarge bit 
 			struct drbd_garbage_bit *gbb;
 			bool s_find_gbb = false, e_find_gbb = false;
@@ -9301,7 +9304,12 @@ static int receive_rs_deallocated(struct drbd_connection *connection, struct pac
 		peer_req->i.size = size;
 		peer_req->i.sector = sector;
 		peer_req->block_id = ID_SYNCER;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		peer_req->w.cb = split_e_end_resync_block;
+#else
+		peer_req->w.cb = e_end_resync_block;
+#endif
+
 		peer_req->submit_jif = jiffies;
 		peer_req->flags |= EE_IS_TRIM;
 
@@ -10387,7 +10395,7 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		return -EIO;
 	device = peer_device->device;
 
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1601 ID_SYNCER_SPLIT_DONE == ID_SYNCER
 	if (connection->agreed_pro_version >= 113) {
 		if (p->block_id != ID_SYNCER_SPLIT)
@@ -10474,7 +10482,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 	device = peer_device->device;
 
 	//DW-1601 
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	if (connection->agreed_pro_version >= 113) {
 		if (p->block_id != ID_SYNCER_SPLIT)
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));

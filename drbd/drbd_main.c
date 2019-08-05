@@ -3489,7 +3489,7 @@ void drbd_destroy_device(struct kref *kref)
 
 	WDRBD_TRACE("%s\n", __FUNCTION__);
 
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1601 remove garbage list
 	mutex_lock(&device->garbage_bits_mutex);
 	if (!list_empty(&device->garbage_bits)) {
@@ -4579,15 +4579,16 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	//DW-1901
 	mutex_init(&device->garbage_bits_mutex);
-
+	INIT_LIST_HEAD(&device->garbage_bits);
+#endif
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);
 	INIT_LIST_HEAD(&device->pending_completion[0]);
 	INIT_LIST_HEAD(&device->pending_completion[1]);
 
-	//DW-1901
-	INIT_LIST_HEAD(&device->garbage_bits);
 	
 	atomic_set(&device->pending_bitmap_work.n, 0);
 	spin_lock_init(&device->pending_bitmap_work.q_lock);
