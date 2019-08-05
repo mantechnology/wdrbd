@@ -797,7 +797,10 @@ struct drbd_peer_request {
 	struct {
 		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
 		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
-		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
+		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */		
+		ULONG_PTR s_gbb;	/* DW-1902 start garbage bit */
+		ULONG_PTR e_gbb;	/* DW-1902 end garbage bit */
+		bool is_gbb;		/* DW-1902 find garbage bit */
 	};
 #endif
 };
