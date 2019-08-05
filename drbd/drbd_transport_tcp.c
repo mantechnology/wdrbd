@@ -2095,6 +2095,10 @@ randomize:
     status = ControlSocket(dsocket, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status);
+		//DW-1896 
+		//If no error code is returned, dtt_connect is considered successful.
+		//so the following code is executed to reference socket.
+		//but, since socket is NULL, BSOD can occur.
 		err = status;
         goto out;
     }
