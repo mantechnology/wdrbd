@@ -2762,7 +2762,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			//DW-1601 set garbage bit to failure
 			err = _drbd_send_ack(peer_device,
 				P_NEG_ACK,
-				BM_BIT_TO_SECT(s_gbb), size,
+				cpu_to_be64(BM_BIT_TO_SECT(s_gbb)), 
+				cpu_to_be32(size),
 				(s_gbb == s_bb && (e_next_bb == e_gbb || (e_next_bb - 1) == e_gbb)) ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT);
 
 			if (err) {
