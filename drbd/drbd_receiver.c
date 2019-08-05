@@ -2615,6 +2615,7 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 
 	mutex_lock(&peer_device->device->garbage_bits_mutex);
 	if (!list_empty(&(peer_device->device->garbage_bits))) {
+		//drbd_info(peer_device, "%s => s_bb : %llu ~ e_next_bb : %llu\n", __FUNCTION__, *s_bb, *e_next_bb);
 		struct drbd_garbage_bit *gbb;
 		i_bb = *s_bb;
 		do {
@@ -3843,38 +3844,69 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 			struct drbd_garbage_bit *gb;
 			sector_t ssector, esector;
-			ULONG_PTR s_gbb, e_gbb;
+			ULONG_PTR s_bb, e_next_bb;
 
 			ssector = peer_req->i.sector;
 			esector = peer_req->i.sector + (peer_req->i.size >> 9);
 
-			s_gbb = BM_SECT_TO_BIT(ssector);
-			e_gbb = BM_SECT_TO_BIT(esector);
+			s_bb = BM_SECT_TO_BIT(ssector);
+			e_next_bb = BM_SECT_TO_BIT(esector);
 
-			//dw-1601 add the garbage bit to the list only when out of sync bit.
-			if (BM_BIT_TO_SECT(s_gbb) != ssector && drbd_bm_test_bit(peer_device, s_gbb) == 1) {
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+			//DW-1901 check duplicate garbarge bit 
+			struct drbd_garbage_bit *gbb;
+			bool s_find_gbb = false, e_find_gbb = false;
+			mutex_lock(&peer_device->device->garbage_bits_mutex);
+			list_for_each_entry(struct drbd_garbage_bit, gbb, &(device->garbage_bits), garbage_list) {
+				if (s_bb == gbb->garbage_bit) {
+					s_find_gbb = true;
+				}
+					
+				if ((e_next_bb - 1) == gbb->garbage_bit) {
+					e_find_gbb = true;
+				}
+
+				if (s_find_gbb && e_find_gbb)
+					break;
+			}
+			mutex_unlock(&peer_device->device->garbage_bits_mutex);
+
+			//DW-1601 add the garbage bit to the list only when out of sync bit.
+			if (s_find_gbb == false &&
+				drbd_bm_test_bit(peer_device, s_bb) == 1 &&
+				(BM_BIT_TO_SECT(s_bb) != ssector ||
+				//DW-1901 garbage bit if it is smaller than bitmap bit (4096byte or 8sector)
+				(BM_BIT_TO_SECT(s_bb) == ssector && (peer_req->i.size >> 9) < BM_SECT_PER_BIT))) {
 				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
 				if (gb != NULL) {
-					gb->garbage_bit = s_gbb;
+					gb->garbage_bit = s_bb;
 					mutex_lock(&peer_device->device->garbage_bits_mutex);
 					list_add(&(gb->garbage_list), &device->garbage_bits);
 					mutex_unlock(&peer_device->device->garbage_bits_mutex);
 				}
 				else
-					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_gbb);
+					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_bb);
 			}
-			if (s_gbb != e_gbb && BM_BIT_TO_SECT(e_gbb) != esector && drbd_bm_test_bit(peer_device, e_gbb) == 1) {
+
+			if (e_find_gbb == false &&
+				//DW-1901 (e_next_bb - 1) if the actual e_bb is less than or equal to s_bb, do not check.
+				s_bb < (e_next_bb - 1) &&
+				drbd_bm_test_bit(peer_device, (e_next_bb - 1)) == 1 &&
+				BM_BIT_TO_SECT(e_next_bb) != esector) {
 				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
 				if (gb != NULL) {
-					gb->garbage_bit = e_gbb;
+					//DW-1901 
+					gb->garbage_bit = (e_next_bb - 1);
 					mutex_lock(&peer_device->device->garbage_bits_mutex);
 					list_add(&(gb->garbage_list), &device->garbage_bits);
 					mutex_unlock(&peer_device->device->garbage_bits_mutex);
 				}
 				else
-					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_gbb);
+					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
 			}
+			
 		}
+#endif
 
 		drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 #ifdef _WIN32_TRACE_PEER_DAGTAG
@@ -4006,7 +4038,6 @@ bool drbd_rs_c_min_rate_throttle(struct drbd_peer_device *peer_device)
 		dbdt = Bit2KB(db/dt);
 
 		if (dbdt > c_min_rate) {
-			drbd_info(peer_device, "dbdt : %lu, c_min_rate : %lu\n", dbdt, c_min_rate);
 			return true;
 		}
 	}

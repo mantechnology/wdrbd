@@ -3489,6 +3489,7 @@ void drbd_destroy_device(struct kref *kref)
 
 	WDRBD_TRACE("%s\n", __FUNCTION__);
 
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
 	//DW-1601 remove garbage list
 	mutex_lock(&device->garbage_bits_mutex);
 	if (!list_empty(&device->garbage_bits)) {
@@ -3499,6 +3500,7 @@ void drbd_destroy_device(struct kref *kref)
 		}
 	}
 	mutex_unlock(&device->garbage_bits_mutex);
+#endif
 
 	/* cleanup stuff that may have been allocated during
 	 * device (re-)configuration or state changes */

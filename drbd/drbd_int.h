@@ -1807,11 +1807,12 @@ struct drbd_device {
 	unsigned long bm_resync_fo; /* bit offset for drbd_bm_find_next */
 #endif
 	struct mutex bm_resync_fo_mutex;
-
+#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
 	//DW-1601 garbage bit list, used for resync
 	struct list_head garbage_bits;
 	//Dw-1901
 	struct mutex garbage_bits_mutex;
+#endif
 
 	int open_rw_cnt, open_ro_cnt;
 	/* FIXME clean comments, restructure so it is more obvious which
