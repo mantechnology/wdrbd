@@ -2894,9 +2894,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
 		if (side == L_SYNC_TARGET) {
-			//DW-1846 bm_resync_fo must be locked and set.
-			mutex_lock(&device->bm_resync_fo_mutex);
-
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			mutex_lock(&device->garbage_bits_mutex);
 			//DW-1601 initialization garbage list 
 			if (!list_empty(&device->garbage_bits)) {
 				struct drbd_garbage_bit *gbb, *tmp;
@@ -2905,7 +2904,10 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 					kfree2(gbb);
 				}
 			}
-
+			mutex_unlock(&device->garbage_bits_mutex);
+#endif
+			//DW-1846 bm_resync_fo must be locked and set.
+			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = 0;
 			mutex_unlock(&device->bm_resync_fo_mutex);
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
