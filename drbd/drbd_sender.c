@@ -2861,6 +2861,9 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 				kfree2(gbb);
 			}
 		}
+
+		device->s_repl_in_sync_bb = UINT64_MAX;
+		device->e_repl_in_sync_bb = 0;
 #endif
 		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 		init_resync_stable_bits(peer_device);

@@ -2717,6 +2717,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	ULONG_PTR offset;
 
 	int submit_count = 0;
+	bool is_set_repl_in_sync = false;
 
 	peer_req = read_in_block(peer_device, d);
 	if (!peer_req) {
@@ -2739,7 +2740,32 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 		drbd_warn(peer_device, "bug FIMXME!! bi_size(%lu) < BM_BLOCK_SIZE\n", d->bi_size);
 	}
 
-	if (peer_device->connection->agreed_pro_version >= 113) {
+	//DW-1904 check that the resync data is within the out of sync range of the replication data.
+	if (device->e_repl_in_sync_bb > device->s_repl_in_sync_bb) {
+		if ((device->s_repl_in_sync_bb <= s_bb && device->e_repl_in_sync_bb >= s_bb)) {
+			if (device->e_repl_in_sync_bb <= (e_next_bb - 1)) {
+				device->e_repl_in_sync_bb = (s_bb - 1);
+			}
+			is_set_repl_in_sync = true;
+		}
+
+		if (device->s_repl_in_sync_bb <= (e_next_bb - 1) && device->e_repl_in_sync_bb >= (e_next_bb - 1)) {
+			if (device->s_repl_in_sync_bb >= s_bb) {
+				device->s_repl_in_sync_bb = e_next_bb;
+			}
+			is_set_repl_in_sync = true;
+		}
+
+		if ((device->s_repl_in_sync_bb >= s_bb && device->e_repl_in_sync_bb <= (e_next_bb - 1))) {
+			device->s_repl_in_sync_bb = UINT64_MAX;
+			device->e_repl_in_sync_bb = 0;
+			is_set_repl_in_sync = true;
+		}
+	}
+
+	if (peer_device->connection->agreed_pro_version >= 113 && 
+		//DW-1904 if it is not affected by the replication data, it writes the resync data without check(split request, garbage bit). 
+		(!list_empty(&device->garbage_bits) || is_set_repl_in_sync)) {
 		ULONG_PTR s_gbb = 0, e_gbb = 0;
 		bool is_gbb = false;
 		//DW-1601 
@@ -3861,11 +3887,15 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	if (!err)
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
-	{				
+	{
+		int in_sync_count = 0;
+		//DW-1904
+		in_sync_count = drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+
 		//DW-1601 if the status is L_SYNC_TARGET, calculate and store the garbage bit.
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
-			struct drbd_garbage_bit *gb;
+			struct drbd_garbage_bit *sgb = NULL, *egb = NULL;
 			sector_t ssector, esector;
 			ULONG_PTR s_bb, e_next_bb;
 
@@ -3897,10 +3927,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 				(BM_BIT_TO_SECT(s_bb) != ssector ||
 				//DW-1901 garbage bit if it is smaller than bitmap bit (4096byte or 8sector)
 				(BM_BIT_TO_SECT(s_bb) == ssector && (peer_req->i.size >> 9) < BM_SECT_PER_BIT))) {
-				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
-				if (gb != NULL) {
-					gb->garbage_bit = s_bb;
-					list_add(&(gb->garbage_list), &device->garbage_bits);
+				sgb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+				if (sgb != NULL) {
+					sgb->garbage_bit = s_bb;
+					list_add(&(sgb->garbage_list), &device->garbage_bits);
 				}
 				else
 					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_bb);
@@ -3911,20 +3941,34 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 				s_bb < (e_next_bb - 1) &&
 				drbd_bm_test_bit(peer_device, (e_next_bb - 1)) == 1 &&
 				BM_BIT_TO_SECT(e_next_bb) != esector) {
-				gb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
-				if (gb != NULL) {
+				egb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+				if (egb != NULL) {
 					//DW-1901 
-					gb->garbage_bit = (e_next_bb - 1);
-					list_add(&(gb->garbage_list), &device->garbage_bits);
+					egb->garbage_bit = (e_next_bb - 1);
+					list_add(&(egb->garbage_list), &device->garbage_bits);
 				}
 				else
 					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
 			}
-			
+
+			//DW-1904
+			if (in_sync_count) {
+				if (sgb != NULL)
+					s_bb -= 1;
+				if (egb != NULL)
+					e_next_bb -= 1;
+
+				if (device->s_repl_in_sync_bb > s_bb) {
+					device->s_repl_in_sync_bb = s_bb;
+				}
+
+				if (device->e_repl_in_sync_bb < (e_next_bb - 1)) {
+					device->e_repl_in_sync_bb = (e_next_bb - 1);
+				}
+			}
 		}
 #endif
 
-		drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 #ifdef _WIN32_TRACE_PEER_DAGTAG
 		WDRBD_INFO("receive_Data connection->last_dagtag_sector:%llx ack_receiver thread state:%d\n",connection->last_dagtag_sector, get_t_state(&connection->ack_receiver));
 #endif
