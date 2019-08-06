@@ -2629,6 +2629,10 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 		struct drbd_garbage_bit *gbb;
 		i_bb = *s_bb;
 		do {
+			//DW-1904
+			if (drbd_bm_test_bit(peer_device, i_bb) == 0)
+				continue;
+
 			list_for_each_entry(struct drbd_garbage_bit, gbb, &peer_device->device->garbage_bits, garbage_list) {
 				//DW-1904 delete in sync garbage_bit.
 				if (drbd_bm_test_bit(peer_device, gbb->garbage_bit) == 0) {
@@ -2736,6 +2740,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	e_next_bb = d->bi_size == 0 ? s_bb : BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
 	e_oos = 0;
 
+	//DW-1904 set e_recv_resync_bb
+	device->e_recv_resync_bb = (e_next_bb - 1);
+
 	if (d->bi_size < BM_BLOCK_SIZE) {
 		drbd_warn(peer_device, "bug FIMXME!! bi_size(%lu) < BM_BLOCK_SIZE\n", d->bi_size);
 	}
@@ -2776,7 +2783,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 		split_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 		if (!split_count) {
 			drbd_err(peer_device, "failed split count allocate\n");
-			return -EIO;
+			return -ENOMEM;
 		}
 
 		atomic_set(split_count, 0);
@@ -3905,65 +3912,73 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			s_bb = BM_SECT_TO_BIT(ssector);
 			e_next_bb = BM_SECT_TO_BIT(esector);
 
-			//DW-1901 check duplicate garbarge bit 
-			struct drbd_garbage_bit *gbb;
-			bool s_find_gbb = false, e_find_gbb = false;
-			list_for_each_entry(struct drbd_garbage_bit, gbb, &(device->garbage_bits), garbage_list) {
-				if (s_bb == gbb->garbage_bit) {
-					s_find_gbb = true;
-				}
-					
-				if ((e_next_bb - 1) == gbb->garbage_bit) {
-					e_find_gbb = true;
-				}
+			//DW-1904 last bitmap bit for next synchronization data
+			ULONG_PTR next_recv_resync_bb = device->e_recv_resync_bb + BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
 
-				if (s_find_gbb && e_find_gbb)
-					break;
-			}
+			//DW-1904 set the garbage bit, repl_in_sync_bb only for the next resync data area to be received.
+			if ((device->e_recv_resync_bb < (e_next_bb - 1) && next_recv_resync_bb >= (e_next_bb - 1)) ||
+				(device->e_recv_resync_bb < s_bb && next_recv_resync_bb >= s_bb)) {
 
-			//DW-1601 add the garbage bit to the list only when out of sync bit.
-			if (s_find_gbb == false &&
-				drbd_bm_test_bit(peer_device, s_bb) == 1 &&
-				(BM_BIT_TO_SECT(s_bb) != ssector ||
-				//DW-1901 garbage bit if it is smaller than bitmap bit (4096byte or 8sector)
-				(BM_BIT_TO_SECT(s_bb) == ssector && (peer_req->i.size >> 9) < BM_SECT_PER_BIT))) {
-				sgb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
-				if (sgb != NULL) {
-					sgb->garbage_bit = s_bb;
-					list_add(&(sgb->garbage_list), &device->garbage_bits);
-				}
-				else
-					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_bb);
-			}
+				//DW-1901 check duplicate garbarge bit 
+				struct drbd_garbage_bit *gbb;
+				bool s_find_gbb = false, e_find_gbb = false;
+				list_for_each_entry(struct drbd_garbage_bit, gbb, &(device->garbage_bits), garbage_list) {
+					if (s_bb == gbb->garbage_bit) {
+						s_find_gbb = true;
+					}
 
-			if (e_find_gbb == false &&
-				//DW-1901 (e_next_bb - 1) if the actual e_bb is less than or equal to s_bb, do not check.
-				s_bb < (e_next_bb - 1) &&
-				drbd_bm_test_bit(peer_device, (e_next_bb - 1)) == 1 &&
-				BM_BIT_TO_SECT(e_next_bb) != esector) {
-				egb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
-				if (egb != NULL) {
-					//DW-1901 
-					egb->garbage_bit = (e_next_bb - 1);
-					list_add(&(egb->garbage_list), &device->garbage_bits);
-				}
-				else
-					drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
-			}
+					if ((e_next_bb - 1) == gbb->garbage_bit) {
+						e_find_gbb = true;
+					}
 
-			//DW-1904
-			if (in_sync_count) {
-				if (sgb != NULL)
-					s_bb -= 1;
-				if (egb != NULL)
-					e_next_bb -= 1;
-
-				if (device->s_repl_in_sync_bb > s_bb) {
-					device->s_repl_in_sync_bb = s_bb;
+					if (s_find_gbb && e_find_gbb)
+						break;
 				}
 
-				if (device->e_repl_in_sync_bb < (e_next_bb - 1)) {
-					device->e_repl_in_sync_bb = (e_next_bb - 1);
+				//DW-1601 add the garbage bit to the list only when out of sync bit.
+				if (s_find_gbb == false &&
+					drbd_bm_test_bit(peer_device, s_bb) == 1 &&
+					(BM_BIT_TO_SECT(s_bb) != ssector ||
+					//DW-1901 garbage bit if it is smaller than bitmap bit (4096byte or 8sector)
+					(BM_BIT_TO_SECT(s_bb) == ssector && (peer_req->i.size >> 9) < BM_SECT_PER_BIT))) {
+					sgb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+					if (sgb != NULL) {
+						sgb->garbage_bit = s_bb;
+						list_add(&(sgb->garbage_list), &device->garbage_bits);
+					}
+					else
+						drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_bb);
+				}
+
+				if (e_find_gbb == false &&
+					//DW-1901 (e_next_bb - 1) if the actual e_bb is less than or equal to s_bb, do not check.
+					s_bb < (e_next_bb - 1) &&
+					drbd_bm_test_bit(peer_device, (e_next_bb - 1)) == 1 &&
+					BM_BIT_TO_SECT(e_next_bb) != esector) {
+					egb = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_garbage_bit), 'E8DW');
+					if (egb != NULL) {
+						//DW-1901 
+						egb->garbage_bit = (e_next_bb - 1);
+						list_add(&(egb->garbage_list), &device->garbage_bits);
+					}
+					else
+						drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
+				}
+
+				//DW-1904
+				if (in_sync_count) {
+					if (sgb != NULL)
+						s_bb -= 1;
+					if (egb != NULL)
+						e_next_bb -= 1;
+
+					if (device->s_repl_in_sync_bb > s_bb) {
+						device->s_repl_in_sync_bb = s_bb;
+					}
+
+					if (device->e_repl_in_sync_bb < (e_next_bb - 1)) {
+						device->e_repl_in_sync_bb = (e_next_bb - 1);
+					}
 				}
 			}
 		}

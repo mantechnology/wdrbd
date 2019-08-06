@@ -1821,6 +1821,9 @@ struct drbd_device {
 	//used to determine whether to replicate during resync.
 	ULONG_PTR s_repl_in_sync_bb;
 	ULONG_PTR e_repl_in_sync_bb;
+
+	//DW-1904 last recv resync data bitmap bit
+	ULONG_PTR e_recv_resync_bb;
 #endif
 
 	int open_rw_cnt, open_ro_cnt;
