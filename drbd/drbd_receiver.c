@@ -2630,11 +2630,11 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 		i_bb = *s_bb;
 		do {
 			list_for_each_entry(struct drbd_garbage_bit, gbb, &peer_device->device->garbage_bits, garbage_list) {
-				//DW-1601 if it is already in sync, remove it.
-				if (drbd_bm_test_bit(peer_device, i_bb) == 0) {
+				//DW-1904 delete in sync garbage_bit.
+				if (drbd_bm_test_bit(peer_device, gbb->garbage_bit) == 0) {
 					list_del(&gbb->garbage_list);
 					kfree2(gbb);
-					break;
+					continue;
 				}
 
 				if (i_bb == gbb->garbage_bit) {
