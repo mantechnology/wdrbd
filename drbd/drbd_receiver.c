@@ -3915,7 +3915,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			//DW-1904 last bitmap bit for next synchronization data
 			ULONG_PTR next_recv_resync_bb = device->e_recv_resync_bb + BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
 
-			//DW-1904 set the garbage bit, repl_in_sync_bb only for the next resync data area to be received.
+			//DW-1904 set the garbage bit only for the next resync data area to be received.
 			if ((device->e_recv_resync_bb < (e_next_bb - 1) && next_recv_resync_bb >= (e_next_bb - 1)) ||
 				(device->e_recv_resync_bb < s_bb && next_recv_resync_bb >= s_bb)) {
 
