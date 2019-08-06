@@ -2716,21 +2716,11 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	ULONG_PTR s_bb, e_next_bb, e_oos; //s_bb = start bitmap bit, e_next_bb = end bitmap bit next bit, e_oos = end out of sync bit  
 	ULONG_PTR offset;
 
-	//DW-1601 
-	//the number of peer_requests in the bitmap area that are released when the bitmap is found in the synchronization data.
-	//the resyc data write complete routine determines that the active peer_request has completed when the corresponding split_count is zero. (ref. split_e_end_resync_block())
-	atomic_t *split_count;
 	int submit_count = 0;
 
 	peer_req = read_in_block(peer_device, d);
 	if (!peer_req) {
 		drbd_err(peer_device, "failed peer_req allocate\n");
-		return -EIO;
-	}
-
-	split_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
-	if (!split_count) {
-		drbd_err(peer_device, "failed split count allocate\n");
 		return -EIO;
 	}
 
@@ -2740,7 +2730,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	dec_rs_pending(peer_device);
 	inc_unacked(peer_device);
 
-	atomic_set(split_count, 0);
 
 	s_bb = BM_SECT_TO_BIT(d->sector);
 	e_next_bb = d->bi_size == 0 ? s_bb : BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
@@ -2753,6 +2742,18 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	if (peer_device->connection->agreed_pro_version >= 113) {
 		ULONG_PTR s_gbb = 0, e_gbb = 0;
 		bool is_gbb = false;
+		//DW-1601 
+		//the number of peer_requests in the bitmap area that are released when the bitmap is found in the synchronization data.
+		//the resyc data write complete routine determines that the active peer_request has completed when the corresponding split_count is zero. (ref. split_e_end_resync_block())
+		atomic_t *split_count;
+
+		split_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
+		if (!split_count) {
+			drbd_err(peer_device, "failed split count allocate\n");
+			return -EIO;
+		}
+
+		atomic_set(split_count, 0);
 
 		//DW-1601 If the garbage bit is the start bit and the end bit, correct the start bit and end bit.
 		is_gbb = prepare_garbage_bitmap_bit(peer_device, &s_bb, &e_next_bb, &s_gbb, &e_gbb);
@@ -2953,10 +2954,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	}
 	else {
 	all_out_of_sync:
-		//DW-1601 if there is no sync data, do not customize
-		//DW-1601 free split_cnt because it is not used.
-		kfree2(split_count);
-
 		/* corresponding dec_unacked() in e_end_resync_block()
 		* respective _drbd_clear_done_ee */
 		peer_req->w.cb = split_e_end_resync_block;
