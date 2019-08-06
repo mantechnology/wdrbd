@@ -466,12 +466,16 @@ static int dtt_recv(struct drbd_transport *transport, enum drbd_stream stream, v
 	struct drbd_tcp_transport *tcp_transport =
 		container_of(transport, struct drbd_tcp_transport, transport);
 	struct socket *socket = tcp_transport->stream[stream];
+
 #ifdef _WIN32
 	UCHAR *buffer = NULL; 
 #else
 	void *buffer;
 #endif
 	int rv;
+	
+	if (!socket)
+		return SOCKET_ERROR;
 
 	if (flags & CALLER_BUFFER) {
 		buffer = *buf;
@@ -506,6 +510,9 @@ static int dtt_recv_pages(struct drbd_transport *transport, struct drbd_page_cha
 	struct socket *socket = tcp_transport->stream[DATA_STREAM];
 	struct page *page;
 	int err;
+
+	if (!socket)
+		return SOCKET_ERROR;
 
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(DIV_ROUND_UP(size, PAGE_SIZE));
@@ -2088,12 +2095,18 @@ randomize:
     status = ControlSocket(dsocket, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status);
+		//DW-1896 
+		//If no error code is returned, dtt_connect is considered successful.
+		//so the following code is executed to reference socket.
+		//but, since socket is NULL, BSOD can occur.
+		err = status;
         goto out;
     }
 
     status = ControlSocket(csocket, WskSetOption, SO_REUSEADDR, SOL_SOCKET, sizeof(ULONG), &InputBuffer, 0, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         WDRBD_ERROR("ControlSocket: SO_REUSEADDR: failed=0x%x\n", status);
+		err = status;
         goto out;
     }
 #else
@@ -2160,11 +2173,13 @@ static void dtt_set_rcvtimeo(struct drbd_transport *transport, enum drbd_stream 
 		container_of(transport, struct drbd_tcp_transport, transport);
 
 	struct socket *socket = tcp_transport->stream[stream];
+	if (socket) {
 #ifdef _WIN32
-	socket->sk_linux_attr->sk_rcvtimeo = timeout;
+		socket->sk_linux_attr->sk_rcvtimeo = timeout;
 #else
-	socket->sk->sk_rcvtimeo = timeout;
+		socket->sk->sk_rcvtimeo = timeout;
 #endif
+	}
 }
 
 static long dtt_get_rcvtimeo(struct drbd_transport *transport, enum drbd_stream stream)
