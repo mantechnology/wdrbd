@@ -3965,20 +3965,21 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 						drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
 				}
 
-				//DW-1904
-				if (in_sync_count) {
-					if (sgb != NULL)
-						s_bb -= 1;
-					if (egb != NULL)
-						e_next_bb -= 1;
+			}
 
-					if (device->s_repl_in_sync_bb > s_bb) {
-						device->s_repl_in_sync_bb = s_bb;
-					}
+			//DW-1904
+			if (in_sync_count) {
+				if (sgb != NULL)
+					s_bb -= 1;
+				if (egb != NULL)
+					e_next_bb -= 1;
 
-					if (device->e_repl_in_sync_bb < (e_next_bb - 1)) {
-						device->e_repl_in_sync_bb = (e_next_bb - 1);
-					}
+				if (device->s_repl_in_sync_bb > s_bb) {
+					device->s_repl_in_sync_bb = s_bb;
+				}
+
+				if (device->e_repl_in_sync_bb < (e_next_bb - 1)) {
+					device->e_repl_in_sync_bb = (e_next_bb - 1);
 				}
 			}
 		}
