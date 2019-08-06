@@ -3946,8 +3946,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 						sgb->garbage_bit = s_bb;
 						list_add(&(sgb->garbage_list), &device->garbage_bits);
 					}
-					else
-						drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", s_bb);
+					else {
+						drbd_err(peer_device, "garbage allocate failed, s_bb garbage bit : %llu\n", s_bb);
+						return -ENOMEM;
+					}
 				}
 
 				if (e_find_gbb == false &&
@@ -3961,8 +3963,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 						egb->garbage_bit = (e_next_bb - 1);
 						list_add(&(egb->garbage_list), &device->garbage_bits);
 					}
-					else
-						drbd_err(peer_device, "garbage allocate failed, garbage bit : %llu\n", e_next_bb);
+					else {
+						drbd_err(peer_device, "garbage allocate failed, e_bb garbage bit : %llu\n", (e_next_bb - 1));
+						return -ENOMEM;
+					}
 				}
 
 			}
