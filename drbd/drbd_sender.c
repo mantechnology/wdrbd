@@ -2855,22 +2855,24 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	__change_repl_state_and_auto_cstate(peer_device, side, __FUNCTION__);
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-		//DW-1601 initialization garbage list 
-		if (!list_empty(&device->gbb_list)) {
-			struct drbd_garbage_bit *gbb, *tmp;
-			list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
-				list_del(&gbb->garbage_list);
-				kfree2(gbb);
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			//DW-1601 initialization garbage list 
+			if (!list_empty(&device->gbb_list)) {
+				struct drbd_garbage_bit *gbb, *tmp;
+				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
+					list_del(&gbb->garbage_list);
+					kfree2(gbb);
+				}
 			}
-		}
 
-		device->s_rl_bb = UINT64_MAX;
-		device->e_rl_bb = 0;
-		//DW-1908 set start out of sync bit
-		device->e_resync_bb = drbd_bm_find_next(peer_device, 0);
-		//DW-1908
-		device->h_gbb = 0;
-		device->h_isbb = 0;
+			device->s_rl_bb = UINT64_MAX;
+			device->e_rl_bb = 0;
+			//DW-1908 set start out of sync bit
+			device->e_resync_bb = drbd_bm_find_next(peer_device, 0);
+			//DW-1908
+			device->h_gbb = 0;
+			device->h_isbb = 0;
+		}
 #endif
 		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 		init_resync_stable_bits(peer_device);
