@@ -1227,8 +1227,12 @@ static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_d
 {
 	if (rs_done) {
 		if (peer_device->connection->agreed_pro_version <= 95 ||
-		    is_sync_target_state(peer_device, NOW))
+			is_sync_target_state(peer_device, NOW)) {
+			//DW-1908 check for duplicate completion
+			if (test_bit(RS_DONE, &peer_device->flags))
+				return;
 			set_bit(RS_DONE, &peer_device->flags);
+		}
 			/* and also set RS_PROGRESS below */
 
 		/* Else: rather wait for explicit notification via receive_state,
