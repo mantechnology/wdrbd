@@ -2854,6 +2854,20 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #endif
 	__change_repl_state_and_auto_cstate(peer_device, side, __FUNCTION__);
 	if (side == L_SYNC_TARGET) {
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		//DW-1601 initialization garbage list 
+		if (!list_empty(&device->garbage_bits)) {
+			struct drbd_garbage_bit *gbb, *tmp;
+			list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->garbage_bits, garbage_list) {
+				list_del(&gbb->garbage_list);
+				kfree2(gbb);
+			}
+		}
+
+		device->s_repl_in_sync_bb = UINT64_MAX;
+		device->e_repl_in_sync_bb = 0;
+		device->e_recv_resync_bb = 0;
+#endif
 		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 		init_resync_stable_bits(peer_device);
 	} else /* side == L_SYNC_SOURCE */
@@ -2896,18 +2910,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		     (unsigned long) peer_device->rs_total << (BM_BLOCK_SHIFT-10),
 		     (unsigned long) peer_device->rs_total);
 		if (side == L_SYNC_TARGET) {
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-			mutex_lock(&device->garbage_bits_mutex);
-			//DW-1601 initialization garbage list 
-			if (!list_empty(&device->garbage_bits)) {
-				struct drbd_garbage_bit *gbb, *tmp;
-				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->garbage_bits, garbage_list) {
-					list_del(&gbb->garbage_list);
-					kfree2(gbb);
-				}
-			}
-			mutex_unlock(&device->garbage_bits_mutex);
-#endif
 			//DW-1846 bm_resync_fo must be locked and set.
 			mutex_lock(&device->bm_resync_fo_mutex);
 			device->bm_resync_fo = 0;
