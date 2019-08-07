@@ -2626,28 +2626,29 @@ static bool prepare_garbage_bitmap_bit(struct drbd_peer_device *peer_device, ULO
 
 	if (!list_empty(&(peer_device->device->gbb_list))) {
 		//drbd_info(peer_device, "%s => s_bb : %llu ~ e_next_bb : %llu\n", __FUNCTION__, *s_bb, *e_next_bb);
-		struct drbd_garbage_bit *gbb;
+		struct drbd_garbage_bit *gbb, *tmp;
 		i_bb = *s_bb;
 		do {
 			//DW-1904
-			if (drbd_bm_test_bit(peer_device, i_bb) == 0)
-				continue;
+			//DW-1910 check the garbage bit only when i_bb is out of sync
+			if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
+				//DW-1904 safe must be used because the list is removed from within a repeat statement.
+				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
+					//DW-1904 delete in sync garbage_bit.
+					if (drbd_bm_test_bit(peer_device, gbb->garbage_bit) == 0) {
+						list_del(&gbb->garbage_list);
+						kfree2(gbb);
+						continue;
+					}
 
-			list_for_each_entry(struct drbd_garbage_bit, gbb, &peer_device->device->gbb_list, garbage_list) {
-				//DW-1904 delete in sync garbage_bit.
-				if (drbd_bm_test_bit(peer_device, gbb->garbage_bit) == 0) {
-					list_del(&gbb->garbage_list);
-					kfree2(gbb);
-					continue;
-				}
-
-				if (i_bb == gbb->garbage_bit) {
-					//DW-1601 get the start bit and end bit where the garbage bit was found.
-					if (find_garbage_bb)
-						*e_gbb = i_bb;
-					else {
-						*s_gbb = *e_gbb = i_bb;
-						find_garbage_bb = true;
+					if (i_bb == gbb->garbage_bit) {
+						//DW-1601 get the start bit and end bit where the garbage bit was found.
+						if (find_garbage_bb)
+							*e_gbb = i_bb;
+						else {
+							*s_gbb = *e_gbb = i_bb;
+							find_garbage_bb = true;
+						}
 					}
 				}
 			}
