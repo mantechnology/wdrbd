@@ -2464,10 +2464,6 @@ static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, se
 
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-/*
-* e_end_resync_block() is called in ack_sender context via
-* drbd_finish_peer_reqs().
-*/
 static int split_e_end_resync_block(struct drbd_work *w, int unused)
 {
 	UNREFERENCED_PARAMETER(unused);
@@ -3914,7 +3910,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 
 		//DW-1601 if the status is L_SYNC_TARGET, calculate and store the garbage bit.
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-		if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
+		if (peer_device->connection->agreed_pro_version >= 113 && peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 			struct drbd_garbage_bit *sgb = NULL, *egb = NULL;
 			sector_t ssector, esector;
 			ULONG_PTR s_bb, e_next_bb;
