@@ -3491,9 +3491,9 @@ void drbd_destroy_device(struct kref *kref)
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1601 remove garbage list
-	if (!list_empty(&device->garbage_bits)) {
+	if (!list_empty(&device->gbb_list)) {
 		struct drbd_garbage_bit *gbb, *tmp;
-		list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &device->garbage_bits, garbage_list) {
+		list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &device->gbb_list, garbage_list) {
 			list_del(&gbb->garbage_list);
 			kfree2(gbb);
 		}
@@ -4579,10 +4579,10 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	mutex_init(&device->bm_resync_fo_mutex);
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1901
-	INIT_LIST_HEAD(&device->garbage_bits);
-	device->s_repl_in_sync_bb = UINT64_MAX;
-	device->e_repl_in_sync_bb = 0;
-	device->e_recv_resync_bb = 0;
+	INIT_LIST_HEAD(&device->gbb_list);
+	device->s_rl_bb = UINT64_MAX;
+	device->e_rl_bb = 0;
+	device->e_resync_bb = 0;
 #endif
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);

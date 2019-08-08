@@ -1813,17 +1813,21 @@ struct drbd_device {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1601 garbage bit list, used for resync
 
-	//DW-1904 does not use lock because it guarantees synchronization for the use of garbage_bits.
-	//Use lock if you cannot guarantee future garbage_bits synchronization.
-	struct list_head garbage_bits;
+	//DW-1904 does not use lock because it guarantees synchronization for the use of gbb_list.
+	//Use lock if you cannot guarantee future gbb_list synchronization.
+	struct list_head gbb_list;
 
 	//DW-1904 range set from out of sync to in sync as replication data.
 	//used to determine whether to replicate during resync.
-	ULONG_PTR s_repl_in_sync_bb;
-	ULONG_PTR e_repl_in_sync_bb;
+	ULONG_PTR s_rl_bb;
+	ULONG_PTR e_rl_bb;
 
 	//DW-1904 last recv resync data bitmap bit
-	ULONG_PTR e_recv_resync_bb;
+	ULONG_PTR e_resync_bb;
+
+	//DW-1908 hit resync in progress hit garbage,in sync count
+	ULONG_PTR h_gbb;	
+	ULONG_PTR h_isbb;
 #endif
 
 	int open_rw_cnt, open_ro_cnt;
