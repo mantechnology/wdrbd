@@ -798,9 +798,6 @@ struct drbd_peer_request {
 		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
 		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */		
-		ULONG_PTR s_gbb;	/* DW-1902 start garbage bit */
-		ULONG_PTR e_gbb;	/* DW-1902 end garbage bit */
-		bool is_gbb;		/* DW-1902 find garbage bit */
 	};
 #endif
 };
@@ -1712,11 +1709,13 @@ struct drbd_peer_device {
 	} todo;
 };
 
-//DW-1601
-struct drbd_garbage_bit {
-	u64 garbage_bit;
-	struct list_head garbage_list;
+//DW-1911
+struct drbd_marked_replicate {
+	u64 bb;
+	u8 marked_rl;	/* marks the sector as bit. (4k = 8sector = u8(8bit)) */
+	struct list_head marked_rl_list;
 };
+
 
 struct submit_worker {
 	struct workqueue_struct *wq;
@@ -1811,11 +1810,11 @@ struct drbd_device {
 #endif
 	struct mutex bm_resync_fo_mutex;
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-	//DW-1601 garbage bit list, used for resync
-
-	//DW-1904 does not use lock because it guarantees synchronization for the use of gbb_list.
-	//Use lock if you cannot guarantee future gbb_list synchronization.
-	struct list_head gbb_list;
+ 
+	//DW-1911 marked replication list, used for resync
+	//does not use lock because it guarantees synchronization for the use of marked_rl_list.
+	//Use lock if you cannot guarantee future marked_rl_list synchronization
+	struct list_head marked_rl_list;
 
 	//DW-1904 range set from out of sync to in sync as replication data.
 	//used to determine whether to replicate during resync.
@@ -1825,9 +1824,9 @@ struct drbd_device {
 	//DW-1904 last recv resync data bitmap bit
 	ULONG_PTR e_resync_bb;
 
-	//DW-1908 hit resync in progress hit garbage,in sync count
-	ULONG_PTR h_gbb;	
-	ULONG_PTR h_isbb;
+	//DW-1911 hit resync in progress hit marked replicate,in sync count
+	ULONG_PTR h_marked_bb;	
+	ULONG_PTR h_insync_bb;
 #endif
 
 	int open_rw_cnt, open_ro_cnt;
