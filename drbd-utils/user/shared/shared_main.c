@@ -141,7 +141,7 @@ struct ifreq *get_ifreq(void)
 			ifr->ifr_addr.sa_family = -1;	/* what's wrong here? anyways: skip */
 			continue;
 		}
-		if (!(ifr_for_flags.ifr_flags & IFF_UP)) {
+		if (!(ifr_for_flags.ifr_flags & IFF_UP) || !(ifr_for_flags.ifr_flags & IFF_RUNNING)) {
 			ifr->ifr_addr.sa_family = -1;	/* is not up: skip */
 			continue;
 		}
