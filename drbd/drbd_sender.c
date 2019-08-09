@@ -255,7 +255,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
 	sector_t sector;
-	int do_wake;
+	int do_wake = 0;
 	u64 block_id;
 
 	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
@@ -297,7 +297,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 
 	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
 	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
-		sector = BM_BIT_TO_SECT(peer_req->first);
+		sector = BM_BIT_TO_SECT(peer_req->s_bb);
 	else
 		sector = peer_req->i.sector;
 
@@ -356,10 +356,12 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 
-	if (do_wake)
+	if (do_wake) 
 		wake_up(&connection->ee_wait);
 
-	put_ldev(device);
+	//DW-1903 EE_SPLIT_REQUEST is a duplicate request and does not call put_ldev().
+	if (!(flags & EE_SPLIT_REQUEST))
+		put_ldev(device);
 }
 
 /* writes on behalf of the partner, or resync writes,
@@ -1110,11 +1112,14 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 	WDRBD_TRACE_TM("timer callback jiffies(%llu)\n", jiffies);
 #endif
 
-	if (unlikely(cancel))
+	if (unlikely(cancel)) {
+		drbd_info(peer_device, "resync cacnel.\n");
 		return 0;
+	}
 
 	if (peer_device->rs_total == 0) {
 		/* empty resync? */
+		drbd_info(peer_device, "finished because it's rs_total empty\n");
 		drbd_resync_finished(peer_device, D_MASK);
 		return 0;
 	}
@@ -1414,7 +1419,7 @@ static void __outdate_peer_disk_by_mask(struct drbd_device *device, u64 nodes)
 			continue;
 		peer_device = peer_device_by_node_id(device, node_id);
 		if (peer_device && peer_device->disk_state[NEW] >= D_CONSISTENT)
-			__change_peer_disk_state(peer_device, D_OUTDATED);
+			__change_peer_disk_state(peer_device, D_OUTDATED, __FUNCTION__);
 	}
 }
 
@@ -1472,7 +1477,7 @@ static void sanitize_state_after_unstable_resync(struct drbd_peer_device *peer_d
 		if (found_peer->connection->peer_role[NOW] == R_PRIMARY &&
 			drbd_bm_total_weight(found_peer) == 0)
 		{
-			__change_disk_state(device, found_peer->disk_state[NOW]);
+			__change_disk_state(device, found_peer->disk_state[NOW], __FUNCTION__);
 			return;
 		}
 	}
@@ -1481,7 +1486,7 @@ static void sanitize_state_after_unstable_resync(struct drbd_peer_device *peer_d
 	if (drbd_bm_total_weight(peer_device) == 0 &&
 		device->disk_state[NOW] < D_OUTDATED &&
 		peer_device->disk_state[NOW] >= D_OUTDATED)
-		__change_disk_state(device, D_OUTDATED);
+		__change_disk_state(device, D_OUTDATED, __FUNCTION__);
 }
 #endif
 
@@ -1512,10 +1517,10 @@ static void __cancel_other_resyncs(struct drbd_device *device)
 			drbd_md_mark_dirty(device);
 			spin_unlock_irq(&device->ldev->md.uuid_lock);
 
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 		}
 #else
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 #endif
 	}
 }
@@ -1638,11 +1643,11 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	   of application IO), and against connectivity loss just before we arrive here. */
 	if (peer_device->repl_state[NOW] <= L_ESTABLISHED)
 		goto out_unlock;
-	__change_repl_state(peer_device, L_ESTABLISHED);
+	__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 
-	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec)\n",
+	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; garbage %llu)\n",
 	     verify_done ? "Online verify" : "Resync",
-	     dt + peer_device->rs_paused, peer_device->rs_paused, dbdt);
+		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_isbb, device->h_gbb);
 
 	n_oos = drbd_bm_total_weight(peer_device);
 
@@ -1689,11 +1694,11 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		drbd_info(peer_device, "            %lu failed blocks\n", peer_device->rs_failed);
 
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
-			__change_disk_state(device, D_INCONSISTENT);
-			__change_peer_disk_state(peer_device, D_UP_TO_DATE);
+			__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
+			__change_peer_disk_state(peer_device, D_UP_TO_DATE, __FUNCTION__);
 		} else {
-			__change_disk_state(device, D_UP_TO_DATE);
-			__change_peer_disk_state(peer_device, D_INCONSISTENT);
+			__change_disk_state(device, D_UP_TO_DATE, __FUNCTION__);
+			__change_peer_disk_state(peer_device, D_INCONSISTENT, __FUNCTION__);
 		}
 		peer_device->resync_again++;
 	}
@@ -1701,7 +1706,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			bool stable_resync = was_resync_stable(peer_device);
 			if (stable_resync)
-				__change_disk_state(device, peer_device->disk_state[NOW]);
+				__change_disk_state(device, peer_device->disk_state[NOW], __FUNCTION__);
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-955: need to upgrade disk state after unstable resync.
 			else
@@ -1745,7 +1750,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 				const int node_id = device->resource->res_opts.node_id;
 				int i;
 
-				drbd_print_uuids(peer_device, "updated UUIDs");
+				drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 				peer_device->current_uuid = drbd_current_uuid(device);
 				peer_device->bitmap_uuids[node_id] = drbd_bitmap_uuid(peer_device);
 				for (i = 0; i < ARRAY_SIZE(peer_device->history_uuids); i++)
@@ -1754,10 +1759,10 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			}
 		} else if (repl_state[NOW] == L_SYNC_SOURCE || repl_state[NOW] == L_PAUSED_SYNC_S) {
 			if (new_peer_disk_state != D_MASK)
-				__change_peer_disk_state(peer_device, new_peer_disk_state);
+				__change_peer_disk_state(peer_device, new_peer_disk_state, __FUNCTION__);
 			if (peer_device->connection->agreed_pro_version < 110) {
 				drbd_uuid_set_bitmap(peer_device, 0UL);
-				drbd_print_uuids(peer_device, "updated UUIDs");
+				drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 			}
 		}
 	}
@@ -1790,7 +1795,7 @@ out_unlock:
 		if (new_repl_state != L_ESTABLISHED) {
 			peer_device->resync_again--;
 			begin_state_change_locked(device->resource, CS_VERBOSE);
-			__change_repl_state(peer_device, new_repl_state);
+			__change_repl_state_and_auto_cstate(peer_device, new_repl_state, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -1835,6 +1840,9 @@ out:
 		rcu_read_unlock();
 		if (disk_state == D_UP_TO_DATE && pdsk_state == D_UP_TO_DATE)
 			drbd_khelper(NULL, connection, "unfence-peer");
+
+		//DW-1874
+		drbd_md_clear_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC);
 	}
 
 	return 1;
@@ -1955,11 +1963,17 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 		}
 		else {
 			if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
-				inc_rs_pending(peer_device);
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
 				else
 					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
+
+				if (!err) {
+					inc_rs_pending(peer_device);
+					//DW-1817
+					//Add the data size to rs_in_flight before sending the resync data.
+					atomic_add64(peer_req->i.size, &peer_device->connection->rs_in_flight);
+				}
 			}
 			else {
 				if (drbd_ratelimit())
@@ -2739,7 +2753,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		unsigned long irq_flags;
 
 		begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
-		__change_repl_state(peer_device, L_ESTABLISHED);
+		__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED);
 		end_state_change(device->resource, &irq_flags);
 		return;
 	}
@@ -2818,7 +2832,7 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		if (peer_device->repl_state[NOW] > L_ESTABLISHED)
 		{
 			begin_state_change_locked(device->resource, CS_VERBOSE);
-			__change_repl_state(peer_device, L_ESTABLISHED);
+			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2838,12 +2852,32 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #ifdef _WIN32 // DW-900 to avoid the recursive lock
 	rcu_read_unlock();
 #endif
-	__change_repl_state(peer_device, side);
+	__change_repl_state_and_auto_cstate(peer_device, side, __FUNCTION__);
 	if (side == L_SYNC_TARGET) {
-		__change_disk_state(device, D_INCONSISTENT);
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			//DW-1601 initialization garbage list 
+			if (!list_empty(&device->gbb_list)) {
+				struct drbd_garbage_bit *gbb, *tmp;
+				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
+					list_del(&gbb->garbage_list);
+					kfree2(gbb);
+				}
+			}
+
+			device->s_rl_bb = UINT64_MAX;
+			device->e_rl_bb = 0;
+			//DW-1908 set start out of sync bit
+			device->e_resync_bb = drbd_bm_find_next(peer_device, 0);
+			//DW-1908
+			device->h_gbb = 0;
+			device->h_isbb = 0;
+		}
+#endif
+		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 		init_resync_stable_bits(peer_device);
 	} else /* side == L_SYNC_SOURCE */
-		__change_peer_disk_state(peer_device, D_INCONSISTENT);
+		__change_peer_disk_state(peer_device, D_INCONSISTENT, __FUNCTION__);
 	finished_resync_pdsk = peer_device->resync_finished_pdsk;
 	peer_device->resync_finished_pdsk = D_UNKNOWN;
 #ifdef _WIN32_RCU_LOCKED
@@ -2889,6 +2923,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			peer_device->use_csums = use_checksum_based_resync(connection, device);
 		} else {
 			peer_device->use_csums = false;
+			//DW-1874
+			drbd_md_set_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC);
 		}
 
 		if ((side == L_SYNC_TARGET || side == L_PAUSED_SYNC_T) &&

@@ -795,9 +795,12 @@ struct drbd_peer_request {
 	void* peer_req_databuf;
 
 	struct {
-		ULONG_PTR first;		/* DW-1601 first bitmap bit of split data */
-		ULONG_PTR last;		/* DW-1601 last bitmap bit of split data  */
-		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */
+		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
+		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
+		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */		
+		ULONG_PTR s_gbb;	/* DW-1902 start garbage bit */
+		ULONG_PTR e_gbb;	/* DW-1902 end garbage bit */
+		bool is_gbb;		/* DW-1902 find garbage bit */
 	};
 #endif
 };
@@ -1164,6 +1167,8 @@ enum {
 	RECONNECT,
 	CONN_DISCARD_MY_DATA,
 	SEND_STATE_AFTER_AHEAD_C,
+	//DW-1874
+	FORCE_DISCONNECT,
 };
 
 /* flag bits per resource */
@@ -1248,6 +1253,23 @@ struct disconnect_work {
 	struct drbd_resource* resource;
 };
 #endif
+
+struct flush_context_sync {
+	atomic_t primary_node_id;
+	atomic_t64 barrier_nr;
+};
+
+struct issue_flush_context {
+	atomic_t pending;
+	int error;
+	struct completion done;
+	struct flush_context_sync ctx_sync;
+};
+struct one_flush_context {
+	struct drbd_device *device;
+	struct issue_flush_context *ctx;
+	struct flush_context_sync ctx_sync;
+};
 
 struct drbd_resource {
 	char *name;
@@ -1352,7 +1374,7 @@ struct drbd_resource {
 #ifdef _WIN32_MULTIVOL_THREAD
 	MVOL_THREAD			WorkThreadInfo;
 #endif
-
+	struct issue_flush_context ctx_flush; // DW-1895
 };
 
 struct drbd_connection {
@@ -1390,8 +1412,8 @@ struct drbd_connection {
 #else
 	unsigned long last_received;	/* in jiffies, either socket */
 #endif
-	atomic_t64 ap_in_flight; /* App sectors in flight (waiting for ack) */
-
+	atomic_t64 ap_in_flight; /* App bytes in flight (waiting for ack) */
+	atomic_t64 rs_in_flight; /* resync-data bytes in flight*/
 	struct drbd_work connect_timer_work;
 	struct timer_list connect_timer;
 
@@ -1690,6 +1712,12 @@ struct drbd_peer_device {
 	} todo;
 };
 
+//DW-1601
+struct drbd_garbage_bit {
+	u64 garbage_bit;
+	struct list_head garbage_list;
+};
+
 struct submit_worker {
 	struct workqueue_struct *wq;
 	struct work_struct worker;
@@ -1782,6 +1810,25 @@ struct drbd_device {
 	unsigned long bm_resync_fo; /* bit offset for drbd_bm_find_next */
 #endif
 	struct mutex bm_resync_fo_mutex;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	//DW-1601 garbage bit list, used for resync
+
+	//DW-1904 does not use lock because it guarantees synchronization for the use of gbb_list.
+	//Use lock if you cannot guarantee future gbb_list synchronization.
+	struct list_head gbb_list;
+
+	//DW-1904 range set from out of sync to in sync as replication data.
+	//used to determine whether to replicate during resync.
+	ULONG_PTR s_rl_bb;
+	ULONG_PTR e_rl_bb;
+
+	//DW-1904 last recv resync data bitmap bit
+	ULONG_PTR e_resync_bb;
+
+	//DW-1908 hit resync in progress hit garbage,in sync count
+	ULONG_PTR h_gbb;	
+	ULONG_PTR h_isbb;
+#endif
 
 	int open_rw_cnt, open_ro_cnt;
 	/* FIXME clean comments, restructure so it is more obvious which
@@ -2035,7 +2082,7 @@ extern int drbd_send_peer_dagtag(struct drbd_connection *connection, struct drbd
 extern int drbd_send_current_uuid(struct drbd_peer_device *peer_device, u64 current_uuid, u64 weak_nodes);
 extern void drbd_backing_dev_free(struct drbd_device *device, struct drbd_backing_dev *ldev);
 extern void drbd_cleanup_device(struct drbd_device *device);
-extern void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text);
+extern void drbd_print_uuids(struct drbd_peer_device *peer_device, const char *text, const char *caller);
 extern void drbd_queue_unplug(struct drbd_device *device);
 
 extern u64 drbd_capacity_to_on_disk_bm_sect(u64 capacity_sect, unsigned int max_peers);
@@ -2944,7 +2991,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 				WDRBD_ERROR("Local IO failed in %s.\n", where);
 			if (device->disk_state[NOW] > D_INCONSISTENT) {
 				begin_state_change_locked(device->resource, CS_HARD);
-				__change_disk_state(device, D_INCONSISTENT);
+				__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2980,7 +3027,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 			set_bit(FORCE_DETACH, &device->flags);
 		if (device->disk_state[NOW] > D_FAILED) {
 			begin_state_change_locked(device->resource, CS_HARD);
-			__change_disk_state(device, D_FAILED);
+			__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 			end_state_change_locked(device->resource, false, __FUNCTION__);
 #else
@@ -2998,7 +3045,7 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
 			if (device->disk_state[NOW] > D_FAILED) {
 				begin_state_change_locked(device->resource, CS_HARD);
-				__change_disk_state(device, D_FAILED);
+				__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
 				end_state_change_locked(device->resource, false, __FUNCTION__);
 #else

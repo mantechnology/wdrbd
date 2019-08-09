@@ -160,26 +160,27 @@ Return Value:
 	{
 		if (AddProtectedVolume(pVolObj))
 		{			
-			drbdlock_print_log("volume(%ws) has been added as protected\n", ulSize? pNameInfo->Name.Buffer : L"NULL");
+			drbdlock_print_log("volume(%ws) has been added as protected\n", (ulSize && pNameInfo) ? pNameInfo->Name.Buffer : L"NULL");
 		}
 		else
 		{
-			drbdlock_print_log("volume(%ws) add failed\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
+			drbdlock_print_log("volume(%ws) add failed\n", (ulSize && pNameInfo) ? pNameInfo->Name.Buffer : L"NULL");
 		}
 	}
 	else
 	{
 		if (DeleteProtectedVolume(pVolObj))
 		{
-			drbdlock_print_log("volume(%ws) has been deleted from protected volume list\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
+			drbdlock_print_log("volume(%ws) has been deleted from protected volume list\n", (ulSize && pNameInfo) ? pNameInfo->Name.Buffer : L"NULL");
 		}
 		else
 		{
-			drbdlock_print_log("volume(%ws) delete failed\n", ulSize ? pNameInfo->Name.Buffer : L"NULL");
+			drbdlock_print_log("volume(%ws) delete failed\n", (ulSize && pNameInfo) ? pNameInfo->Name.Buffer : L"NULL");
 		}
 	}
 
-
+	if (pNameInfo)
+		ExFreePool(pNameInfo);
 }
 
 NTSTATUS

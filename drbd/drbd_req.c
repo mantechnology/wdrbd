@@ -1090,9 +1090,12 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	}
 
 	if (!(old_net & RQ_NET_DONE) && (set & RQ_NET_DONE)) {
-		if (old_net & RQ_NET_SENT)
+		if (old_net & RQ_NET_SENT) {
 			//atomic_sub(req->i.size >> 9, &peer_device->connection->ap_in_flight);
-			atomic_sub64(req->i.size , &peer_device->connection->ap_in_flight);
+			if (atomic_sub_return64(req->i.size, &peer_device->connection->ap_in_flight) < 0)
+				atomic_set64(&peer_device->connection->ap_in_flight, 0);
+		}
+
 		if (old_net & RQ_EXP_BARR_ACK)
 			++k_put;
 		req->net_done_jif[peer_device->node_id] = jiffies;
@@ -1683,10 +1686,14 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 	if (!get_ldev_if_state(device, D_UP_TO_DATE))
 		return;
 
-	if (nc->cong_fill &&
-	    (__u64)atomic_read64(&connection->ap_in_flight) >= nc->cong_fill) {
-		drbd_info(device, "Congestion-fill threshold reached\n");
-		congested = true;
+	if (nc->cong_fill) {
+		//DW-1817 
+		//To accurately check when to enter AHEAD mode, you should consider the size of the synchronization data in the send buffer.
+		__u64 total_in_flight = atomic_read64(&connection->ap_in_flight) + atomic_read64(&connection->rs_in_flight);
+		if (total_in_flight >= nc->cong_fill) {
+			drbd_info(device, "Congestion-fill threshold reached %lluKB\n", total_in_flight >> 10 );
+			congested = true;
+		}
 	}
 
 	if (device->act_log->used >= nc->cong_extents) {
@@ -1702,7 +1709,7 @@ static void __maybe_pull_ahead(struct drbd_device *device, struct drbd_connectio
 
 		begin_state_change_locked(resource, CS_VERBOSE | CS_HARD);
 		if (on_congestion == OC_PULL_AHEAD)
-			__change_repl_state(peer_device, L_AHEAD);
+			__change_repl_state_and_auto_cstate(peer_device, L_AHEAD, __FUNCTION__);
 		else			/* on_congestion == OC_DISCONNECT */
 			__change_cstate(peer_device->connection, C_DISCONNECTING);
 #ifdef _WIN32_RCU_LOCKED

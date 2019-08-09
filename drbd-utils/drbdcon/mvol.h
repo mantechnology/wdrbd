@@ -61,7 +61,7 @@ DWORD MVOL_SimulDiskIoError(SIMULATION_DISK_IO_ERROR* pSdie);
 
 DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml);
 
-DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace);
+DWORD MVOL_GetDrbdLog(char* pszProviderName, char* resourceName, BOOLEAN oosTrace);
 
 DWORD MVOL_SetHandlerUse(PHANDLER_INFO pHandler);
 

@@ -1200,7 +1200,21 @@ VOID CleanupOosTrace()
 }
 #endif	// _WIN32_DEBUG_OOS
 
-DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
+//DW-1629
+BOOLEAN ExistsTargetString(char* target, char *msg)
+{
+	if (target == NULL)
+		return false;
+
+	char* ptr = strstr(msg, target);
+
+	if (ptr == NULL)
+		return false;
+
+	return true;
+}
+
+DWORD MVOL_GetDrbdLog(char* pszProviderName, char* resourceName, BOOLEAN oosTrace)
 {
 	HANDLE      hDevice = INVALID_HANDLE_VALUE;
 	DWORD       retVal = ERROR_SUCCESS;
@@ -1208,11 +1222,23 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 	DWORD		dwControlCode = 0;
 	BOOL        ret = FALSE;
 	PDRBD_LOG	pDrbdLog = NULL;
+	//DW-1629
+	char tstr[MAX_PATH];
 
 #ifdef _WIN32_DEBUG_OOS
 	if (oosTrace)
 		oosTrace = InitOosTrace();	
 #endif
+
+	if (resourceName != NULL) {
+		memset(tstr, MAX_PATH, 0);
+		//DW-1629 check logs for resource name and additional parsing data
+		//#define __drbd_printk_device ...
+		//#define __drbd_printk_peer_device ...
+		//#define __drbd_printk_resource ...
+		//#define __drbd_printk_connection ...
+		sprintf_s(tstr, ">drbd %s", resourceName);
+	}
 
 	// 1. Open MVOL_DEVICE
 	hDevice = OpenDevice(MVOL_DEVICE);
@@ -1243,7 +1269,11 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 			
 			unsigned int loopcnt = min(pDrbdLog->totalcnt, LOGBUF_MAXCNT);
 			if (pDrbdLog->totalcnt <= LOGBUF_MAXCNT) {
-				for (unsigned int i = 0; i <= (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {					
+				for (unsigned int i = 0; i <= (loopcnt*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {		
+					//DW-1629
+					if (resourceName != NULL && !ExistsTargetString(tstr, &pDrbdLog->LogBuf[i]))
+						continue;
+
 					DWORD dwWritten;
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
@@ -1264,6 +1294,10 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 				pDrbdLog->totalcnt = pDrbdLog->totalcnt%LOGBUF_MAXCNT;
 				
 				for (unsigned int i = (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i < (LOGBUF_MAXCNT*MAX_DRBDLOG_BUF); i += MAX_DRBDLOG_BUF) {
+					//DW-1629
+					if (resourceName != NULL && !ExistsTargetString(tstr, &pDrbdLog->LogBuf[i]))
+						continue;
+
 					DWORD dwWritten;
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)
@@ -1280,6 +1314,10 @@ DWORD MVOL_GetDrbdLog(char* pszProviderName, BOOLEAN oosTrace)
 				}
 
 				for (unsigned int i = 0; i < (pDrbdLog->totalcnt + 1)*MAX_DRBDLOG_BUF; i += MAX_DRBDLOG_BUF) {
+					//DW-1629
+					if (resourceName != NULL && !ExistsTargetString(tstr, &pDrbdLog->LogBuf[i]))
+						continue;
+
 					DWORD dwWritten;
 #ifdef _WIN32_DEBUG_OOS
 					if (oosTrace)

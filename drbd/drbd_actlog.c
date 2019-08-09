@@ -336,7 +336,7 @@ find_active_resync_extent(struct get_activity_log_ref_ctx *al_ctx)
 		if (peer_device == NULL)
 			goto out;
 		//DW-1601 If greater than 112, remove act_log and resync_lru associations
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version <= 112) 
 #endif
 		{
@@ -380,7 +380,7 @@ set_bme_priority(struct get_activity_log_ref_ctx *al_ctx)
 	rcu_read_lock();
 	for_each_peer_device_rcu(peer_device, al_ctx->device) {
 		//DW-1601 If greater than 112, remove act_log and resync_lru associations
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version <= 112)
 #endif
 		{
@@ -1227,8 +1227,12 @@ static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_d
 {
 	if (rs_done) {
 		if (peer_device->connection->agreed_pro_version <= 95 ||
-		    is_sync_target_state(peer_device, NOW))
+			is_sync_target_state(peer_device, NOW)) {
+			//DW-1908 check for duplicate completion
+			if (test_bit(RS_DONE, &peer_device->flags))
+				return;
 			set_bit(RS_DONE, &peer_device->flags);
+		}
 			/* and also set RS_PROGRESS below */
 
 		/* Else: rather wait for explicit notification via receive_state,
@@ -1806,7 +1810,7 @@ int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector, 
 	}
 check_al:
 	//DW-1601 If greater than 112, remove act_log and resync_lru associations
-#ifndef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_ENABLE
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	if (peer_device->connection->agreed_pro_version <= 112) 
 #endif
 	{
