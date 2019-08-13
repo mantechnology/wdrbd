@@ -2489,14 +2489,17 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		is_unmarked = false;
 
 		//DW-1911 if there is a failure, set the EE_WAS_ERROR setting.
-		if ((*peer_req->failed_unmarked))
+		if (atomic_read(peer_req->failed_unmarked) == 1)
 			peer_req->flags |= EE_WAS_ERROR;
+
+		drbd_info(peer_device, "--finished unmarked s_bb(%llu), e_bb(%llu), sector(%llu), res(%s)\n", peer_req->s_bb, (peer_req->e_next_bb - 1), sector, (atomic_read(peer_req->failed_unmarked) == 1 ? "failed" : "success"));
 
 		sector = BM_BIT_TO_SECT(BM_SECT_TO_BIT(peer_req->i.sector));
 		peer_req->i.size = BM_SECT_PER_BIT << 9;
 
 		kfree2(peer_req->unmarked_count);
 		kfree2(peer_req->failed_unmarked);
+
 	}
 
 	if (!is_unmarked && likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
@@ -2507,7 +2510,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	else {
 		//DW-1911 
 		if (is_unmarked && peer_req->failed_unmarked)
-			(*peer_req->failed_unmarked) = true;
+			atomic_set(peer_req->failed_unmarked, 1);
 
 		if (!is_unmarked) {
 			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
@@ -2625,9 +2628,7 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 		memcpy(verify + offset, (char*)peer_request->peer_req_databuf + offset, split_peer_request->i.size);
 	}
 
-	if (flags & EE_SPLIT_LAST_REQUEST)  {
-		drbd_info(peer_device, "EE_SPLIT_LAST_REQUEST, %llu, %llu\n", s_bb, BM_BIT_TO_SECT(s_bb));
-	}
+	drbd_debug(peer_device, "##split request s_bb(%llu), e_bb(%llu), sector(%llu), offset(%u), size(%u)\n", s_bb, (e_next_bb - 1), sector, offset, size);
 
 	return split_peer_request;
 }
@@ -2866,7 +2867,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 					if (marked_rl) {
 						atomic_t *unmarked_count;
-						bool *failed_unmarked;
+						atomic_t *failed_unmarked;
 
 						unmarked_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 
@@ -2885,7 +2886,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						//DW-1911 unmakred sector counting
 						atomic_set(unmarked_count, (sizeof(marked_rl->marked_rl) * 8) - __popcnt(marked_rl->marked_rl));
-						*failed_unmarked = false;
+						atomic_set(failed_unmarked, 0);
 
 						for (int i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
 							//DW-1911 perform writing per unmarked sector.
@@ -2921,8 +2922,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								if (is_sync_target(peer_device))
 									drbd_set_all_out_of_sync(device, split_peer_req->i.sector, split_peer_req->i.size);
 
+								drbd_info(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i);
+
 								if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
-									drbd_err(device, "unmakred, submit failed, triggering re-connect\n");
+									drbd_err(device, "unmarked, submit failed, triggering re-connect\n");
 									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count));
 									if (unmarked_count && 0 == atomic_read(unmarked_count)) {
 										kfree2(failed_unmarked);
@@ -3918,11 +3921,13 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					}
 
 					//DW-1911 set the bit to match the sector.
-					for (u16 i = (u16)(ssector - BM_BIT_TO_SECT(s_bb)); i < (peer_req->i.size >> 9); i++) {
+					u16 offset = (u16)(ssector - BM_BIT_TO_SECT(s_bb));
+					for (u16 i = offset; i < (offset + (peer_req->i.size >> 9)); i++) {
 						if (BM_SECT_TO_BIT(ssector + i) != s_bb)
 							break;
 						s_marked_rl->marked_rl |= 1 << (ssector - BM_BIT_TO_SECT(s_bb) + i);
 					}
+					drbd_info(peer_device, "marking bb(%llu), sector(%llu), marked(%u)\n", s_marked_rl->bb, BM_BIT_TO_SECT(s_marked_rl->bb), s_marked_rl->marked_rl);
 				}
 
 				if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(esector)) != (esector - 1)&&
@@ -3945,6 +3950,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					for (u16 i = 0; i < (esector - BM_BIT_TO_SECT(e_bb)); i++) {
 						e_marked_rl->marked_rl |= 1 << i;
 					}
+					drbd_info(peer_device, "marking bb(%llu), sector(%llu), marked(%u)\n", e_marked_rl->bb, BM_BIT_TO_SECT(e_marked_rl->bb), e_marked_rl->marked_rl);
 				}
 			}
 

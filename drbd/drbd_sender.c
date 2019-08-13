@@ -351,7 +351,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (connection->cstate[NOW] == C_CONNECTED)
 		queue_work(connection->ack_sender, &connection->send_acks_work);
 	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
-	
+
 	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
@@ -2856,6 +2856,13 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
+			//DW-1911
+			struct drbd_marked_replicate *marked_rl, *t;
+			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
+				list_del(&marked_rl->marked_rl_list);
+				kfree2(marked_rl);
+			}
+
 			device->s_rl_bb = UINT64_MAX;
 			device->e_rl_bb = 0;
 			//DW-1908 set start out of sync bit

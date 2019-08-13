@@ -3490,6 +3490,12 @@ void drbd_destroy_device(struct kref *kref)
 	WDRBD_TRACE("%s\n", __FUNCTION__);
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	//DW-1911
+	struct drbd_marked_replicate *marked_rl, *t;
+	list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
+		list_del(&marked_rl->marked_rl_list);
+		kfree2(marked_rl);
+	}
 #endif
 
 	/* cleanup stuff that may have been allocated during

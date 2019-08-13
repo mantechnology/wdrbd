@@ -799,7 +799,7 @@ struct drbd_peer_request {
 		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */		
 		atomic_t *unmarked_count;	/* DW-1911 this is the count for the sector not written in the maked replication bit */
-		bool *failed_unmarked; /* DW-1911 true, if undamaged writing fails */
+		atomic_t *failed_unmarked; /* DW-1911 true, if undamaged writing fails */
 	};
 #endif
 };
