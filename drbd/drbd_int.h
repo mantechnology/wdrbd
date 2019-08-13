@@ -798,6 +798,7 @@ struct drbd_peer_request {
 		ULONG_PTR s_bb;		/* DW-1601 start bitmap bit of split data */
 		ULONG_PTR e_next_bb;/* DW-1601 end next bitmap bit of split data  */
 		atomic_t *count;	/* DW-1601 total split request (bitmap bit) */		
+		atomic_t *unmarked_count;	/* DW-1911 this is the count for the sector not written in the maked replication bit */
 	};
 #endif
 };
@@ -1714,6 +1715,7 @@ struct drbd_marked_replicate {
 	u64 bb;
 	u8 marked_rl;	/* marks the sector as bit. (4k = 8sector = u8(8bit)) */
 	struct list_head marked_rl_list;
+	u16 end_unmarked_rl;
 };
 
 
