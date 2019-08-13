@@ -2482,22 +2482,38 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	//DW-1911 do not apply DW-1846 for a split request when resync writing is complete.
 
+	bool is_unmarked = peer_req->unmarked_count != NULL;
+
 	//DW-1911 set to in sync when all the unmakred are written.
 	if (peer_req->unmarked_count && 0 == atomic_dec_return(peer_req->unmarked_count)) {
+		is_unmarked = false;
+
+		//DW-1911 if there is a failure, set the EE_WAS_ERROR setting.
+		if ((*peer_req->failed_unmarked))
+			peer_req->flags |= EE_WAS_ERROR;
+
 		sector = BM_BIT_TO_SECT(BM_SECT_TO_BIT(peer_req->i.sector));
 		peer_req->i.size = BM_SECT_PER_BIT << 9;
+
 		kfree2(peer_req->unmarked_count);
+		kfree2(peer_req->failed_unmarked);
 	}
 
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+	if (!is_unmarked && likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
 		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
 			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 	}
 	else {
-		drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST)) {
-			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+		//DW-1911 
+		if (is_unmarked && peer_req->failed_unmarked)
+			(*peer_req->failed_unmarked) = true;
+
+		if (!is_unmarked) {
+			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+			if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST)) {
+				err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+			}
 		}
 	}
 
@@ -2600,6 +2616,7 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 	split_peer_request->s_bb = s_bb;
 	split_peer_request->e_next_bb = e_next_bb;
 	split_peer_request->unmarked_count = NULL;
+	split_peer_request->failed_unmarked = NULL;
 
 	split_peer_request->w.cb = split_e_end_resync_block;
 	split_peer_request->submit_jif = jiffies;
@@ -2849,6 +2866,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 					if (marked_rl) {
 						atomic_t *unmarked_count;
+						bool *failed_unmarked;
 
 						unmarked_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 
@@ -2857,8 +2875,17 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							return -ENOMEM;
 						}
 
+						failed_unmarked = kzalloc(sizeof(bool), GFP_KERNEL, 'FFDW');
+
+						if (!failed_unmarked) {
+							drbd_err(peer_device, "failed failed unmarked allocate\n");
+							kfree2(unmarked_count);
+							return -ENOMEM;
+						}
+
 						//DW-1911 unmakred sector counting
 						atomic_set(unmarked_count, (sizeof(marked_rl->marked_rl) * 8) - __popcnt(marked_rl->marked_rl));
+						*failed_unmarked = false;
 
 						for (int i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
 							//DW-1911 perform writing per unmarked sector.
@@ -2874,13 +2901,16 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								if (!split_peer_req) {
 									drbd_err(peer_device, "marked split_peer_req alloc failed , %llu\n", i_bb);
 									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count));
-									if (unmarked_count && 0 == atomic_read(unmarked_count))
+									if (unmarked_count && 0 == atomic_read(unmarked_count)) {
+										kfree2(failed_unmarked);
 										kfree2(unmarked_count);
+									}
 
 									goto split_error_clear;
 								}
 
 								split_peer_req->unmarked_count = unmarked_count;
+								split_peer_req->failed_unmarked = failed_unmarked;
 
 								spin_lock_irq(&device->resource->req_lock);
 								list_add_tail(&split_peer_req->w.list, &peer_device->connection->sync_ee);
@@ -2894,8 +2924,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
 									drbd_err(device, "unmakred, submit failed, triggering re-connect\n");
 									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count));
-									if (unmarked_count && 0 == atomic_read(unmarked_count))
+									if (unmarked_count && 0 == atomic_read(unmarked_count)) {
+										kfree2(failed_unmarked);
 										kfree2(unmarked_count);
+									}
 									goto error_clear;
 								}
 
