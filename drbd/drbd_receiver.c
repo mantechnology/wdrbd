@@ -2876,7 +2876,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							return -ENOMEM;
 						}
 
-						failed_unmarked = kzalloc(sizeof(bool), GFP_KERNEL, 'FFDW');
+						failed_unmarked = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 
 						if (!failed_unmarked) {
 							drbd_err(peer_device, "failed failed unmarked allocate\n");
@@ -2922,7 +2922,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								if (is_sync_target(peer_device))
 									drbd_set_all_out_of_sync(device, split_peer_req->i.sector, split_peer_req->i.size);
 
-								drbd_info(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i);
+								drbd_info(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i, atomic_read(unmarked_count));
 
 								if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
 									drbd_err(device, "unmarked, submit failed, triggering re-connect\n");
