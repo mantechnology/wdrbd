@@ -2502,10 +2502,12 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	}
 
-	if (!is_unmarked && likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-		if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
-			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+		if (!is_unmarked) {
+			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+			if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
+				err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+		}
 	}
 	else {
 		//DW-1911 
@@ -3921,13 +3923,13 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					}
 
 					//DW-1911 set the bit to match the sector.
-					u16 offset = (u16)(ssector - BM_BIT_TO_SECT(s_bb));
+					u16 offset = (u16)(ssector - BM_BIT_TO_SECT(s_bb));;
 					for (u16 i = offset; i < (offset + (peer_req->i.size >> 9)); i++) {
-						if (BM_SECT_TO_BIT(ssector + i) != s_bb)
+						if (BM_SECT_TO_BIT(BM_BIT_TO_SECT(s_bb) + i) != s_bb)
 							break;
-						s_marked_rl->marked_rl |= 1 << (ssector - BM_BIT_TO_SECT(s_bb) + i);
+						s_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "marking bb(%llu), sector(%llu), marked(%u)\n", s_marked_rl->bb, BM_BIT_TO_SECT(s_marked_rl->bb), s_marked_rl->marked_rl);
+					drbd_info(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", s_marked_rl->bb, ssector, BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
 				}
 
 				if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(esector)) != (esector - 1)&&
@@ -3950,7 +3952,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					for (u16 i = 0; i < (esector - BM_BIT_TO_SECT(e_bb)); i++) {
 						e_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "marking bb(%llu), sector(%llu), marked(%u)\n", e_marked_rl->bb, BM_BIT_TO_SECT(e_marked_rl->bb), e_marked_rl->marked_rl);
+					drbd_info(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", e_marked_rl->bb, esector, BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
 				}
 			}
 
