@@ -2743,7 +2743,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 	int err = 0;
 
-	ULONG_PTR s_bb, e_next_bb, e_oos; //s_bb = start bitmap bit, e_next_bb = end bitmap bit next bit, e_oos = end out of sync bit  split marked rl 
+	ULONG_PTR s_bb, e_next_bb, e_oos; //s_bb = start bitmap bit, e_next_bb = end bitmap bit next bit, e_oos = end out of sync bit 
 	ULONG_PTR offset;
 
 	int submit_count = 0;
@@ -2844,7 +2844,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							drbd_set_all_out_of_sync(device, split_peer_req->i.sector, split_peer_req->i.size);
 
 						if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
-							drbd_err(device, "out of sync, submit failed, triggering re-connect\n");
+							drbd_err(device, "submit failed, triggering re-connect\n");
 						error_clear:
 							spin_lock_irq(&device->resource->req_lock);
 							list_del(&split_peer_req->w.list);
