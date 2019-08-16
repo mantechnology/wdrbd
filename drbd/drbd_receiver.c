@@ -6780,6 +6780,29 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
 #endif
 		{
+			if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
+				struct drbd_peer_device* p;
+
+				for_each_peer_device(p, device) {
+					if (p == peer_device)
+						continue;
+
+					drbd_info(peer_device, "UUID peer(%016llX), p(%016llX)\n", peer_device->current_uuid, p->current_uuid);
+
+					//DW-1815 if the peer_device has the same current uuid as the sync source, copy the bitmap.
+					if (peer_device->current_uuid == p->current_uuid) {
+						drbd_info(peer_device, "bitmap copy, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], p->bitmap_index, device->bitmap->bm_set[p->bitmap_index]);
+						drbd_suspend_io(device, WRITE_ONLY);
+						drbd_bm_lock(device, "receive_uuids110()", BM_LOCK_ALL);
+						drbd_bm_copy_slot(device, peer_device->bitmap_index, p->bitmap_index);
+						drbd_bm_unlock(device);
+						drbd_resume_io(device);
+						drbd_md_mark_dirty(device);
+						drbd_info(peer_device, "finished bitmap copy, to index(%d) out of sync (%llu)\n", p->bitmap_index, device->bitmap->bm_set[p->bitmap_index]);
+					}
+				}
+			}
+
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
 			unsigned long irq_flags;
