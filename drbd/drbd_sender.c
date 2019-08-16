@@ -351,7 +351,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (connection->cstate[NOW] == C_CONNECTED)
 		queue_work(connection->ack_sender, &connection->send_acks_work);
 	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
-	
+
 	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
 	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
@@ -1645,9 +1645,9 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		goto out_unlock;
 	__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 
-	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; garbage %llu)\n",
+	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; marked rl %llu)\n",
 	     verify_done ? "Online verify" : "Resync",
-		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_isbb, device->h_gbb);
+		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_insync_bb, device->h_marked_bb);
 
 	n_oos = drbd_bm_total_weight(peer_device);
 
@@ -2856,13 +2856,11 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
-			//DW-1601 initialization garbage list 
-			if (!list_empty(&device->gbb_list)) {
-				struct drbd_garbage_bit *gbb, *tmp;
-				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
-					list_del(&gbb->garbage_list);
-					kfree2(gbb);
-				}
+			//DW-1911
+			struct drbd_marked_replicate *marked_rl, *t;
+			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
+				list_del(&marked_rl->marked_rl_list);
+				kfree2(marked_rl);
 			}
 
 			device->s_rl_bb = UINT64_MAX;
@@ -2870,8 +2868,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			//DW-1908 set start out of sync bit
 			device->e_resync_bb = drbd_bm_find_next(peer_device, 0);
 			//DW-1908
-			device->h_gbb = 0;
-			device->h_isbb = 0;
+			device->h_marked_bb = 0;
+			device->h_insync_bb = 0;
 		}
 #endif
 		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
