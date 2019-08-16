@@ -2498,7 +2498,9 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		peer_req->i.size = BM_SECT_PER_BIT << 9;
 
 		kfree2(peer_req->unmarked_count);
-		kfree2(peer_req->failed_unmarked);
+
+		if (peer_req->failed_unmarked)
+			kfree2(peer_req->failed_unmarked);
 
 	}
 
@@ -2522,7 +2524,9 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		}
 	}
 
+	//DW-1911 check split request
 	if (peer_req->flags & EE_SPLIT_REQUEST || peer_req->flags & EE_SPLIT_LAST_REQUEST) {
+		//DW-1911 check that all split requests are completed.
 		if (peer_req->count && 0 == atomic_dec_return(peer_req->count)) {
 			bool is_in_sync = false;	//true : in sync, false : out of sync
 			ULONG_PTR s_bb = peer_req->s_bb;
