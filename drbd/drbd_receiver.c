@@ -2507,6 +2507,18 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		if (!is_unmarked) {
 			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
+
+			//DW-1815 set in sync for peer_device with the same current_uuid.
+			struct drbd_peer_device* pd;
+			for_each_peer_device(pd, peer_device->device) {
+				if (pd == peer_device)
+					continue;
+
+				if (pd->current_uuid == peer_device->current_uuid) {
+					drbd_set_in_sync(pd, sector, peer_req->i.size);
+				}
+			}
+
 			if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
 				err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 		}
@@ -2979,7 +2991,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 		/* Seting all peer out of sync here. Sync source peer will be set
 		in sync when the write completes. Other peers will be set in
 		sync by the sync source with a P_PEERS_IN_SYNC packet soon. */
-		//DW-1601, /DW-1846 do not set out of sync unless it is a sync target.
+		//DW-1601, DW-1846 do not set out of sync unless it is a sync target.
 		if (is_sync_target(peer_device)) 
 			drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
 
@@ -3876,6 +3888,19 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		int in_sync = 0;
 		//DW-1904
 		in_sync = drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+
+		//DW-1815 if the replication is in sync during resync, set it to peer_device with the same current_uuid. set to sync for peer_device that is the same current_uuid.
+		if (is_sync_target(peer_device) && in_sync) {
+			struct drbd_peer_device* pd;
+			for_each_peer_device(pd, peer_device->device) {
+				if (pd == peer_device)
+					continue;
+			
+				if (pd->current_uuid == peer_device->current_uuid) {
+					drbd_set_in_sync(pd, peer_req->i.sector, peer_req->i.size);
+				}
+			}
+		}
 
 		//DW-1601 if the status is L_SYNC_TARGET calculate
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
@@ -6780,29 +6805,6 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
 #endif
 		{
-			if (peer_device->repl_state[NOW] == L_SYNC_TARGET) {
-				struct drbd_peer_device* p;
-
-				for_each_peer_device(p, device) {
-					if (p == peer_device)
-						continue;
-
-					drbd_info(peer_device, "UUID peer(%016llX), p(%016llX)\n", peer_device->current_uuid, p->current_uuid);
-
-					//DW-1815 if the peer_device has the same current uuid as the sync source, copy the bitmap.
-					if (peer_device->current_uuid == p->current_uuid) {
-						drbd_info(peer_device, "bitmap copy, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], p->bitmap_index, device->bitmap->bm_set[p->bitmap_index]);
-						drbd_suspend_io(device, WRITE_ONLY);
-						drbd_bm_lock(device, "receive_uuids110()", BM_LOCK_ALL);
-						drbd_bm_copy_slot(device, peer_device->bitmap_index, p->bitmap_index);
-						drbd_bm_unlock(device);
-						drbd_resume_io(device);
-						drbd_md_mark_dirty(device);
-						drbd_info(peer_device, "finished bitmap copy, to index(%d) out of sync (%llu)\n", p->bitmap_index, device->bitmap->bm_set[p->bitmap_index]);
-					}
-				}
-			}
-
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
 			unsigned long irq_flags;
@@ -9050,6 +9052,33 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 			rv = stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
 			D_ASSERT(device, rv == SS_SUCCESS);
 		} else {
+			//DW-1815 merge the peer_device bitmap into the same current_uuid.
+			struct drbd_peer_device* pd;
+
+			for_each_peer_device(pd, device) {
+				if (pd == peer_device)
+					continue;
+
+				if (pd->current_uuid == peer_device->current_uuid) {
+					int allow_size = 512;
+					ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, 'E8DW');
+
+					memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
+
+					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], 
+																																		pd->bitmap_index, device->bitmap->bm_set[pd->bitmap_index]);
+
+					for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_total_weight(peer_device); offset += allow_size) {
+						drbd_bm_get_lel(peer_device, offset, 512, bb);
+						drbd_bm_merge_lel(pd, offset, 512, bb);
+					}
+
+					drbd_info(peer_device, "finished bitmap merge, to index(%d) out of sync (%llu)\n", pd->bitmap_index, device->bitmap->bm_set[pd->bitmap_index]);
+
+					kfree2(bb);
+				}
+			}
+
 			drbd_start_resync(peer_device, L_SYNC_TARGET);
 		}
 	} else if (peer_device->repl_state[NOW] != L_WF_BITMAP_S) {
