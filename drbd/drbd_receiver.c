@@ -9070,15 +9070,15 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 					
 					memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
 
-					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], 
-																																		pd->bitmap_index, device->bitmap->bm_set[pd->bitmap_index]);
+					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, drbd_bm_total_weight(peer_device),
+																																		pd->bitmap_index, drbd_bm_total_weight(pd));
 
 					for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_bits(device); offset += allow_size) {
-						drbd_bm_get_lel(peer_device, offset, 512, bb);
-						drbd_bm_merge_lel(pd, offset, 512, bb);
+						drbd_bm_get_lel(peer_device, offset, allow_size, bb);
+						drbd_bm_merge_lel(pd, offset, allow_size, bb);
 					}
 
-					drbd_info(peer_device, "finished bitmap merge, to index(%d) out of sync (%llu)\n", pd->bitmap_index, device->bitmap->bm_set[pd->bitmap_index]);
+					drbd_info(peer_device, "finished bitmap merge, to index(%d) out of sync (%llu)\n", pd->bitmap_index, drbd_bm_total_weight(pd));
 
 					kfree2(bb);
 				}
