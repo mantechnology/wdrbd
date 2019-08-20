@@ -109,8 +109,13 @@ include ../shared_prereqs.mk
 
 tools: drbdadm drbdmeta drbdsetup
 
+ifdef is_win32
 drbdadm: $(drbdadm-obj)
 	$(LINK.c) $(LDFLAGS) -o $@ $^ -liphlpapi
+else
+drbdadm: $(drbdadm-obj)
+	$(LINK.c) $(LDFLAGS) -o $@ $^
+endif	
 
 drbdadm_scanner.c: drbdadm_scanner.fl drbdadm_parser.h
 	flex -s -odrbdadm_scanner.c drbdadm_scanner.fl
