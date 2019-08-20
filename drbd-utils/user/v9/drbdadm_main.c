@@ -158,7 +158,11 @@ char *parse_file = NULL;
 #endif
 struct resources config = STAILQ_HEAD_INITIALIZER(config);
 struct d_resource *common = NULL;
+#ifdef _WIN32
+struct IP_ADDRESS_STRING *ip_list = NULL;
+#else
 struct ifreq *ifreq_list = NULL;
+#endif
 int is_drbd_top;
 enum { NORMAL, STACKED, IGNORED, __N_RESOURCE_TYPES };
 int nr_resources[__N_RESOURCE_TYPES];
@@ -1112,7 +1116,12 @@ static void free_config()
 		free_options(&common->handlers);
 		free(common);
 	}
+
+#ifdef _WIN32
+	free(ip_list); 
+#else
 	free(ifreq_list);
+#endif
 }
 
 static void find_drbdcmd(char **cmd, char **pathes)
