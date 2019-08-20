@@ -9063,6 +9063,11 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 					int allow_size = 512;
 					ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, '8EDW');
 
+					if (bb == NULL) {
+						drbd_err(peer_device, "bitmap bit buffer allocate failed\n");
+						return -ENOMEM;
+					}
+					
 					memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
 
 					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], 
