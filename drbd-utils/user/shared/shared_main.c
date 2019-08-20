@@ -55,12 +55,21 @@
 #include <getopt.h>
 #include <signal.h>
 #include <time.h>
+#ifdef _WIN32
+#include <Windows.h>
+#include <iphlpapi.h>
+#endif
 
 #include "drbd_endian.h"
 #include "shared_main.h"
 #include "shared_tool.h"
 
+#ifdef _WIN32
+extern struct IP_ADDRESS_STRING *ip_list;
+#else
 extern struct ifreq *ifreq_list;
+#endif
+
 
 struct d_globals global_options = {
 
@@ -93,6 +102,64 @@ unsigned minor_by_id(const char *id)
  * once, and be done.
  * But anyways....
  */
+
+/* DW-1744
+ * There is currently no way to obtain an IP address via the ioctl function, 
+ * but sometimes an IP address is given for the old network card information left in the registry.
+ * Seems to be a problem with cygwin.If you get the IP through the Windows API, that problem is solved.
+ * There is no problem with the Linux operating system, so wrap it in ifdef to work only on Windows.
+ */
+#ifdef _WIN32
+struct IP_ADDRESS_STRING *get_ip_list(void)
+{
+	PIP_ADAPTER_INFO p = NULL;
+	ULONG len = 0;
+	DWORD dw = 0;
+
+	len = sizeof(IP_ADAPTER_INFO);
+	p = (IP_ADAPTER_INFO*)malloc(sizeof(IP_ADAPTER_INFO));
+
+	dw = GetAdaptersInfo(p, &len);
+	if (dw == ERROR_BUFFER_OVERFLOW) {
+		free(p);
+		p = (IP_ADAPTER_INFO*)malloc(len);
+	}
+
+	dw = GetAdaptersInfo(p, &len);
+	if (dw != ERROR_SUCCESS) {
+		perror("Cannot get adapters info");
+		free(p);
+		p = NULL;
+	}
+
+	return p;
+}
+
+int have_ip_ipv4(const char *ip)
+{
+	PIP_ADAPTER_INFO p = NULL;
+	IP_ADDR_STRING * ns = NULL;
+
+	if (!ip_list)
+		ip_list = get_ip_list();
+
+	p = ip_list;
+	while (p) {
+		ns = &p->IpAddressList;
+		while (ns) {
+			if (strcmp(ip, ns->IpAddress.String) == 0)
+				return 1;
+
+			ns = ns->Next;
+		}
+
+		p = p->Next;
+	}
+
+	return 0;
+}
+
+#else
 
 struct ifreq *get_ifreq(void)
 {
@@ -178,6 +245,7 @@ int have_ip_ipv4(const char *ip)
 	}
 	return 0;
 }
+#endif
 
 int have_ip_ipv6(const char *ip)
 {

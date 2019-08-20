@@ -110,7 +110,7 @@ include ../shared_prereqs.mk
 tools: drbdadm drbdmeta drbdsetup
 
 drbdadm: $(drbdadm-obj)
-	$(LINK.c) $(LDFLAGS) -o $@ $^
+	$(LINK.c) $(LDFLAGS) -o $@ $^ -liphlpapi
 
 drbdadm_scanner.c: drbdadm_scanner.fl drbdadm_parser.h
 	flex -s -odrbdadm_scanner.c drbdadm_scanner.fl
