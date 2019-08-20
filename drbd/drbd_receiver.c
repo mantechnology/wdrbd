@@ -9061,7 +9061,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 
 				if (pd->current_uuid == peer_device->current_uuid) {
 					int allow_size = 512;
-					ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, 'E8DW');
+					ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, '8EDW');
 
 					memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
 
