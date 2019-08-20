@@ -9073,7 +9073,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n", peer_device->bitmap_index, device->bitmap->bm_set[peer_device->bitmap_index], 
 																																		pd->bitmap_index, device->bitmap->bm_set[pd->bitmap_index]);
 
-					for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_total_weight(peer_device); offset += allow_size) {
+					for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_bits(device); offset += allow_size) {
 						drbd_bm_get_lel(peer_device, offset, 512, bb);
 						drbd_bm_merge_lel(pd, offset, 512, bb);
 					}
