@@ -118,11 +118,19 @@ struct IP_ADDRESS_STRING *get_ip_list(void)
 
 	len = sizeof(IP_ADAPTER_INFO);
 	p = (IP_ADAPTER_INFO*)malloc(sizeof(IP_ADAPTER_INFO));
+	if (!p) {
+		perror("Out of memory.");
+		return NULL;
+	}
 
 	dw = GetAdaptersInfo(p, &len);
 	if (dw == ERROR_BUFFER_OVERFLOW) {
 		free(p);
 		p = (IP_ADAPTER_INFO*)malloc(len);
+		if (!p) {
+			perror("Out of memory.");
+			return NULL;
+		}
 	}
 
 	dw = GetAdaptersInfo(p, &len);
@@ -152,10 +160,8 @@ int have_ip_ipv4(const char *ip)
 
 			ns = ns->Next;
 		}
-
 		p = p->Next;
 	}
-
 	return 0;
 }
 
