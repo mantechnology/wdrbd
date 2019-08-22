@@ -2332,6 +2332,11 @@ static void initialize_resync(struct drbd_peer_device *peer_device)
 	peer_device->rs_last_sect_ev = 0;
 	peer_device->rs_total = tw;
 	peer_device->rs_start = now;
+	//DW-1886
+	peer_device->rs_send_req = 0;
+	peer_device->rs_recv_res = 0;
+	atomic_set64(&peer_device->rs_written, 0);
+	
 	for (i = 0; i < DRBD_SYNC_MARKS; i++) {
 		peer_device->rs_mark_left[i] = tw;
 		peer_device->rs_mark_time[i] = now;

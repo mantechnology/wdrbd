@@ -2787,7 +2787,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	if (d->bi_size < BM_BLOCK_SIZE) {
 		drbd_warn(peer_device, "bug FIMXME!! bi_size(%lu) < BM_BLOCK_SIZE\n", d->bi_size);
 	}
-	
+
+	//DW-1886
+	peer_device->rs_recv_res += d->bi_size;
+
 	if (peer_device->connection->agreed_pro_version >= 113 && 
 		//DW-1904 if it is not affected by the replication data, it writes the resync data without check(split request, marked replicate list). 
 		(!list_empty(&device->marked_rl_list) || is_set_area_replicate_out_of_sync(device, s_bb, e_next_bb))) {
@@ -2812,12 +2815,20 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			bool is_all_sync = (atomic_read(split_count) == 0 ? true : false);
 			struct drbd_peer_request *split_peer_req = NULL;
 			struct drbd_marked_replicate *marked_rl;
+			bool already_in_sync_bb = false;
+			bool is_marked_bb = false;
 
 			offset = s_bb;
 
 			for (ULONG_PTR i_bb = offset = s_bb; i_bb < e_next_bb; i_bb++) {
-				if (is_marked_rl_bb(peer_device, &marked_rl, i_bb) || drbd_bm_test_bit(peer_device, i_bb) == 0) {
+				already_in_sync_bb = (drbd_bm_test_bit(peer_device, i_bb) == 0);
+				is_marked_bb = is_marked_rl_bb(peer_device, &marked_rl, i_bb);
+
+				if (is_marked_bb || already_in_sync_bb) {
 					if (is_all_sync) {
+						//DW-1886
+						atomic_add64(d->bi_size, &peer_device->rs_written);
+
 						//DW-1601 all data is synced.
 						drbd_info(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", i_bb, s_bb, (e_next_bb - 1));
 						err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
@@ -2830,6 +2841,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						return err;
 					}
+
+					//DW-1886
+					if (already_in_sync_bb)
+						atomic_add64(BM_BLOCK_SIZE, &peer_device->rs_written);
 
 				submit_peer:
 					//DW-1601 if offset is set to out of sync previously, write request to split_peer_req for data in index now from the corresponding offset.
@@ -2953,6 +2968,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								}
 
 								submit_count += 1;
+							}
+							else {
+								//DW-1886
+								atomic_add64(1 << 9, &peer_device->rs_written);
 							}
 						}
 					}
@@ -9608,6 +9627,14 @@ static void cleanup_resync_leftovers(struct drbd_peer_device *peer_device)
 	resync_timer_fn((unsigned long)peer_device);
 #endif 
 	del_timer_sync(&peer_device->start_resync_timer);
+
+	//DW-1886
+	if (peer_device->rs_send_req != peer_device->rs_recv_res ||
+		peer_device->rs_recv_res != (ULONG_PTR)atomic_read64(&peer_device->rs_written)) {
+		drbd_info(peer_device, "incomplete resync exit, rs_send_req(%llu), rs_recv_res(%llu), rs_written(%lld)\n",
+			peer_device->rs_send_req, peer_device->rs_recv_res, atomic_read64(&peer_device->rs_written));
+	}
+	
 }
 
 static void drain_resync_activity(struct drbd_connection *connection)
@@ -10709,6 +10736,11 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 
 	if (get_ldev_if_state(device, D_DETACHING)) {
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
+
+		//DW-1886
+		if (is_sync_target(peer_device))
+			peer_device->rs_send_req -= size;
+
 		switch (pi->cmd) {
 		case P_NEG_RS_DREPLY:
 			drbd_rs_failed_io(peer_device, sector, size);

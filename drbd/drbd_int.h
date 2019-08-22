@@ -1630,6 +1630,14 @@ struct drbd_peer_device {
     ULONG_PTR rs_paused;
     /* skipped because csum was equal [unit BM_BLOCK_SIZE] */
     ULONG_PTR rs_same_csum;
+
+	//DW-1886 add a log for resync to check the data flow.
+	/* size of send resync data request */
+	ULONG_PTR rs_send_req;
+	/* size of receive resync data */
+	ULONG_PTR rs_recv_res;
+	/* write completed size (failed and success) */
+	atomic_t64 rs_written;
 #else
 	/* blocks to resync in this run [unit BM_BLOCK_SIZE] */
 	unsigned long rs_total;
