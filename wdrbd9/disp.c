@@ -883,6 +883,10 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 				break;
 			}
 
+			//DW-1700
+			//When offline, bdev-> bd_contains-> d_size is zero. 
+			//The IOCTL command can be called repeatedly, 
+			//so get the disk size only when you change from offline to online.
 			if (bdev->bd_contains->d_size != 0) {
 				break;
 			}
