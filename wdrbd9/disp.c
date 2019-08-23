@@ -20,6 +20,7 @@
 #include <wdm.h>
 #include <ntstrsafe.h>
 #include <ntddk.h>
+#include <ntdddisk.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	
 #include "disp.h"
@@ -773,7 +774,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     NTSTATUS		status;
     PIO_STACK_LOCATION	irpSp = NULL;
     PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
-
+	struct block_device *bdev = VolumeExtension->dev;
     irpSp = IoGetCurrentIrpStackLocation(Irp);
     switch (irpSp->Parameters.DeviceIoControl.IoControlCode)
     {
@@ -875,6 +876,28 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			status = IOCTL_SetHandlerUse(DeviceObject, Irp); // Set handler_use value.
 			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
+		case IOCTL_DISK_GET_LENGTH_INFO:
+		{
+			if (!bdev || !bdev->bd_contains) {
+				WDRBD_WARN("block device is null.\n");
+				break;
+			}
+
+			if (bdev->bd_contains->d_size != 0) {
+				break;
+			}
+
+			//DW-1700 
+			//Update the volume size by checking the result of the IOCTL command to obtain the volume size.
+			status = mvolRunIrpSynchronous(DeviceObject, Irp);
+			PGET_LENGTH_INFORMATION li = (PGET_LENGTH_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+			if (li)
+				bdev->bd_contains->d_size = li->Length.QuadPart;
+
+			Irp->IoStatus.Status = status;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}	
     }
 
     if (DeviceObject == mvolRootDeviceObject ||
