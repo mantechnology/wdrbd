@@ -883,7 +883,7 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			//After the IOCTL_VOLUME_ONLINE command completes, you can get the size of the volume.
 			status = mvolRunIrpSynchronous(DeviceObject, Irp);
 			if(bdev->bd_contains)
-				bdev->bd_contains->bd_disk = get_targetdev_volsize(VolumeExtension);
+				bdev->bd_contains->d_size = get_targetdev_volsize(VolumeExtension);
 
 			Irp->IoStatus.Status = status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
