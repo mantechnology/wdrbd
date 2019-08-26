@@ -20,7 +20,7 @@
 #include <wdm.h>
 #include <ntstrsafe.h>
 #include <ntddk.h>
-#include <ntdddisk.h>
+#include <ntddvol.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	
 #include "disp.h"
@@ -876,32 +876,19 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			status = IOCTL_SetHandlerUse(DeviceObject, Irp); // Set handler_use value.
 			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
 		}
-		case IOCTL_DISK_GET_LENGTH_INFO:
+		case IOCTL_VOLUME_ONLINE:
 		{
-			if (!bdev || !bdev->bd_contains) {
-				WDRBD_WARN("block device is null.\n");
-				break;
-			}
-
 			//DW-1700
-			//When offline, bdev-> bd_contains-> d_size is zero. 
-			//The IOCTL command can be called repeatedly, 
-			//so get the disk size only when you change from offline to online.
-			if (bdev->bd_contains->d_size != 0) {
-				break;
-			}
-
-			//DW-1700 
-			//Update the volume size by checking the result of the IOCTL command to obtain the volume size.
+			//Update the volume size when the disk is online.
+			//After the IOCTL_VOLUME_ONLINE command completes, you can get the size of the volume.
 			status = mvolRunIrpSynchronous(DeviceObject, Irp);
-			PGET_LENGTH_INFORMATION li = (PGET_LENGTH_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
-			if (li)
-				bdev->bd_contains->d_size = li->Length.QuadPart;
+			if(bdev->bd_contains)
+				bdev->bd_contains->bd_disk = get_targetdev_volsize(VolumeExtension);
 
 			Irp->IoStatus.Status = status;
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
 			return status;
-		}	
+		}
     }
 
     if (DeviceObject == mvolRootDeviceObject ||
