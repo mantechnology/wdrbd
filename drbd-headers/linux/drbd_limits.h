@@ -92,7 +92,7 @@
  /* timeout for the ping packets.*/
 #define DRBD_PING_TIMEO_MIN  1
 #define DRBD_PING_TIMEO_MAX  300
-#if _WIN32
+#ifdef _WIN32
 //DW-763
 #define DRBD_PING_TIMEO_DEF  30 /* 1/10 seconds */
 #else

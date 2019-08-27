@@ -2287,10 +2287,10 @@ __drbd_next_peer_device_ref(u64 *, struct drbd_peer_device *, struct drbd_device
 #ifdef _WIN32 // DW-1335 
 #define DRBD_MAX_SECTORS_FIXED_BM \
 	  (((256 << 20 >> 9) - (32768 >> 9) - (4096 >> 9)) * (1LL<<(BM_EXT_SHIFT-9))) 
-#else \
+#else 
 #define DRBD_MAX_SECTORS_FIXED_BM \
 	  (((128 << 20 >> 9) - (32768 >> 9) - (4096 >> 9)) * (1LL<<(BM_EXT_SHIFT-9)))
-#endif \
+#endif 
 	  
 #if !defined(CONFIG_LBDAF) && !defined(CONFIG_LBD) && BITS_PER_LONG == 32
 #define DRBD_MAX_SECTORS      DRBD_MAX_SECTORS_32
