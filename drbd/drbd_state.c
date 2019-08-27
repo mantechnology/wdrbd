@@ -4828,7 +4828,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	// MODIFIED_BY_MANTECH DW-1204: sending twopc prepare needs to wait crowded send buffer, takes too much time. no more retry.
 	if (bDisconnecting 
 #ifdef _WIN32_SIMPLE_TWOPC // DW-1408
-		 && rv == SS_TIMEOUT 
+		&& (rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG)	// DW-1705 set C_DISCONNECT when the result value is SS_CONCURRENT_ST_CHG
 #else
 		 && rv == SS_TIMEOUT 
 		 && retries >= TWOPC_TIMEOUT_RETRY_COUNT
