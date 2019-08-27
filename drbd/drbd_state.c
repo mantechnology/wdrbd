@@ -5897,7 +5897,7 @@ enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device
 					    enum drbd_repl_state repl_state,
 					    enum chg_state_flags flags)
 {
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	enum drbd_state_rv rv = SS_SUCCESS;
 	stable_state_change(rv, peer_device->device->resource,
 		change_repl_state(peer_device, repl_state, flags));

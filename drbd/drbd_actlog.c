@@ -1174,8 +1174,8 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 
 				ext->rs_failed = 0;
 				return true;
-			}
 #ifdef _WIN32 // DW-1640
+			}
 			else {
 				return true;
 			}

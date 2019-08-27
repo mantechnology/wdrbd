@@ -1244,7 +1244,7 @@ retry:
 			kfree(err_str);
 			err_str = NULL;
 		}
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 		stable_state_change(rv, resource,
 			change_role(resource, role, flags, with_force, &err_str));
 #else
@@ -1557,7 +1557,7 @@ retry:
 	// step 5 : change role with timeout , just retry 1 time.
 	while (try_val++ < max_tries) {
 		// step 5-1 : change role with timeout
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 		stable_state_change(rv, resource,
 			change_role_timeout(resource, R_SECONDARY,
 				CS_ALREADY_SERIALIZED | CS_DONT_RETRY | CS_WAIT_COMPLETE,
@@ -1593,7 +1593,7 @@ retry:
 			goto out;
 		
 		if (rv < SS_SUCCESS) {
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 			stable_state_change(rv, resource,
 				change_role_timeout(resource, R_SECONDARY,
 					CS_VERBOSE | CS_ALREADY_SERIALIZED |
@@ -3306,7 +3306,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	drbd_flush_workqueue(&resource->work);
 #endif
 
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	stable_state_change(rv, resource,
 		change_disk_state(device, D_ATTACHING, CS_VERBOSE | CS_SERIALIZE, NULL));
 #else
@@ -3634,7 +3634,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* change_disk_state uses disk_state_from_md(device); in case D_NEGOTIATING not
 	   necessary, and falls back to a local state change */
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	stable_state_change(rv, resource,
 		change_disk_state(device, D_NEGOTIATING, CS_VERBOSE | CS_SERIALIZE, NULL));
 #else
@@ -3704,7 +3704,7 @@ static int adm_detach(struct drbd_device *device, int force, struct sk_buff *rep
 	}
 
 	drbd_suspend_io(device, READ_AND_WRITE); /* so no-one is stuck in drbd_al_begin_io */
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	stable_state_change(retcode, device->resource,
 		change_disk_state(device, D_DETACHING,
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, &err_str));
@@ -5731,7 +5731,7 @@ int drbd_adm_suspend_io(struct sk_buff *skb, struct genl_info *info)
 #endif
 	
 //	mutex_lock(&resource->adm_mutex);
-//#if _WIN32 // DW-1605
+//#ifdef _WIN32 // DW-1605
 //	stable_state_change(retcode, resource,
 //		change_io_susp_user(resource, true,
 //			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE));
@@ -5810,7 +5810,7 @@ int drbd_adm_outdate(struct sk_buff *skb, struct genl_info *info)
 	if (!adm_ctx.reply_skb)
 		return retcode;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	stable_state_change(retcode, adm_ctx.device->resource,
 		change_disk_state(adm_ctx.device, D_OUTDATED,
 			CS_VERBOSE | CS_WAIT_COMPLETE | CS_SERIALIZE, NULL));
