@@ -848,7 +848,7 @@ extern struct gendisk *alloc_disk(int minors);
 extern void put_disk(struct gendisk *disk);
 extern void del_gendisk(struct gendisk *disk);
 extern void set_disk_ro(struct gendisk *disk, int flag);
-
+extern void adjust_changes_to_volume(PVOID pParam);
 
 #define PREPARE_WORK(_work, _func)                                      \
 	do {                                                            \
