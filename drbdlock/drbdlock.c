@@ -116,6 +116,11 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 		drbdlockPreOperation,
 		drbdlockPostOperation },
 
+		{ IRP_MJ_QUERY_VOLUME_INFORMATION,
+		0,
+		drbdlockPreOperation,
+		drbdlockPostOperation },
+
 #if 0 // TODO - List all of the requests to filter.
     { IRP_MJ_CREATE,
       0,
@@ -670,6 +675,25 @@ Return Value:
 
 			}
 
+			break;
+		}		
+		case IRP_MJ_QUERY_VOLUME_INFORMATION:
+		{
+			NTSTATUS status = STATUS_UNSUCCESSFUL;
+			PDEVICE_OBJECT pDiskDev = NULL;
+		
+			status = FltGetDiskDeviceObject(FltObjects->Volume, &pDiskDev);
+		
+			if (NT_SUCCESS(status) &&
+				isProtectedVolume(pDiskDev))
+			{
+				//DW-1868 set up STAUS_ACCESS_DENIED for the IRP_MJ_QUERY_VOLUME_INFORMATION code to prevent the use of volume expansion/shrinkage 
+				Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+				Data->IoStatus.Information = 0;
+		
+				return FLT_PREOP_COMPLETE;
+			}
+		
 			break;
 		}
 	}
