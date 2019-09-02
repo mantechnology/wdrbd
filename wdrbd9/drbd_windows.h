@@ -1014,6 +1014,15 @@ struct scatterlist {
 		}	\
 	} while (false,false)
 
+//DW-1918 add output at debug level
+#define DEBUG_BUG_ON(_condition)	\
+	do {		\
+		if (_condition) {	\
+			\
+				WDRBD_TRACE("BUG: failure [ %s ]\n", #_condition); \
+				}	\
+		} while (false,false)
+
 #ifdef WIN_AL_BUG_ON
 #define AL_BUG_ON(_condition, str_condition, lc, e)	\
     do {	\
@@ -1027,14 +1036,14 @@ struct scatterlist {
 #endif
 
 
-#define BUG_ON_INT16_OVER(_value) BUG_ON(INT16_MAX < _value)
-#define BUG_ON_UINT16_OVER(_value) BUG_ON(UINT16_MAX < _value)
+#define BUG_ON_INT16_OVER(_value) DEBUG_BUG_ON(INT16_MAX < _value)
+#define BUG_ON_UINT16_OVER(_value) DEBUG_BUG_ON(UINT16_MAX < _value)
 
-#define BUG_ON_INT32_OVER(_value) BUG_ON(INT32_MAX < _value)
-#define BUG_ON_UINT32_OVER(_value) BUG_ON(UINT32_MAX < _value)
+#define BUG_ON_INT32_OVER(_value) DEBUG_BUG_ON(INT32_MAX < _value)
+#define BUG_ON_UINT32_OVER(_value) DEBUG_BUG_ON(UINT32_MAX < _value)
 
-#define BUG_ON_INT64_OVER(_value) BUG_ON(INT64_MAX < _value)
-#define BUG_ON_UINT64_OVER(_value) BUG_ON(UINT64_MAX < _value)
+#define BUG_ON_INT64_OVER(_value) DEBUG_BUG_ON(INT64_MAX < _value)
+#define BUG_ON_UINT64_OVER(_value) DEBUG_BUG_ON(UINT64_MAX < _value)
 
 extern struct workqueue_struct *create_singlethread_workqueue(void * name);
 #ifdef _WIN32
