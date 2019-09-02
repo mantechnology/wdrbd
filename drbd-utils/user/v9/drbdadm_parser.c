@@ -1688,6 +1688,7 @@ static struct connection *parse_connection(enum pr_flags flags)
 			EXP(TK_INTEGER);
 			peer_device = parse_peer_device(atoi(yylval.txt));
 			peer_device->connection = conn;
+			TRACE_PRINT("INSERT_TAIL, peer_devcies, vnr : %d\n", peer_device->vnr);
 			STAILQ_INSERT_TAIL(&conn->peer_devices, peer_device, connection_link);
 			break;
 		case TK__IS_STANDALONE:
