@@ -918,6 +918,11 @@ void clear_remote_state_change(struct drbd_resource *resource) {
 	spin_unlock_irqrestore(&resource->req_lock, irq_flags);
 }
 
+//DW-1894
+void clear_remote_state_change_without_lock(struct drbd_resource *resource) {
+	__clear_remote_state_change(resource);
+}
+
 static union drbd_state drbd_get_resource_state(struct drbd_resource *resource, enum which_state which)
 {
 	union drbd_state rv = { {
