@@ -612,6 +612,7 @@ void schedule_deferred_cmd(struct adm_cmd *cmd,
 	d->ctx = *ctx;
 	d->ctx.cmd = cmd;
 
+	TRACE_PRINT("INSERT_TAIL, %s\n", d->ctx.cmd->name);
 	STAILQ_INSERT_TAIL(&deferred_cmds[stage], d, link);
 }
 
@@ -640,6 +641,7 @@ static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 
 		for_each_path(path, &tmp_ctx.conn->paths) {
 			tmp_ctx.path = path;
+			TRACE_PRINT("tmp_ctx.function, %s\n", tmp_ctx.cmd->name);
 			rv = tmp_ctx.cmd->function(&tmp_ctx);
 			if (rv >= 20) {
 				if (on_error == EXIT_ON_FAIL)
@@ -648,6 +650,7 @@ static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 
 		}
 	} else {
+		TRACE_PRINT("cmd->function, %s\n", ctx->cmd->name);
 		rv = ctx->cmd->function(ctx);
 		if (rv >= 20) {
 			if (on_error == EXIT_ON_FAIL)
