@@ -2778,8 +2778,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	inc_unacked(peer_device);
 
 
-	s_bb = BM_SECT_TO_BIT(d->sector);
-	e_next_bb = d->bi_size == 0 ? s_bb : BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
+	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(d->sector);
+	e_next_bb = d->bi_size == 0 ? s_bb : (ULONG_PTR)BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
 	e_oos = 0;
 
 	//DW-1904 set e_resync_bb
@@ -3959,8 +3959,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			ssector = peer_req->i.sector;
 			esector = peer_req->i.sector + (peer_req->i.size >> 9);
 
-			s_bb = BM_SECT_TO_BIT(ssector);
-			e_bb = BM_SECT_TO_BIT(esector);
+			s_bb = (ULONG_PTR)BM_SECT_TO_BIT(ssector);
+			e_bb = (ULONG_PTR)BM_SECT_TO_BIT(esector);
 
 			//DW-1911 use e_bb instead of e_next_b for replication.
 			if (BM_BIT_TO_SECT(e_bb) == esector)

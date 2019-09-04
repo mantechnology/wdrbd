@@ -1651,9 +1651,14 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		goto out_unlock;
 	__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; marked rl %llu)\n",
 	     verify_done ? "Online verify" : "Resync",
 		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_insync_bb, device->h_marked_bb);
+#else
+	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec)\n",
+		verify_done ? "Online verify" : "Resync", dt + peer_device->rs_paused, peer_device->rs_paused, dbdt);
+#endif
 
 	n_oos = drbd_bm_total_weight(peer_device);
 

@@ -1721,7 +1721,7 @@ struct drbd_peer_device {
 
 //DW-1911
 struct drbd_marked_replicate {
-	u64 bb;	/* current bitmap bit */
+	ULONG_PTR bb;	/* current bitmap bit */
 	u8 marked_rl;	/* marks the sector as bit. (4k = 8sector = u8(8bit)) */
 	struct list_head marked_rl_list;
 	u16 end_unmarked_rl;
