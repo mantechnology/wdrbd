@@ -4718,6 +4718,10 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	atomic_set(&device->io_error_count, 0);
 
+	//DW-1920
+	atomic_set(&device->io_hang_count, 0);
+	atomic_set64(&device->io_hang_min_jif, 0);
+
 	locked = true;
 	spin_lock_irq(&resource->req_lock);
 	id = idr_alloc(&drbd_devices, device, minor, minor + 1, GFP_NOWAIT);

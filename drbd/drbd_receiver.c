@@ -9788,24 +9788,58 @@ void conn_disconnect(struct drbd_connection *connection)
 	spin_lock(&resource->req_lock);	
 	//DW-1732 : Initialization active_ee(bitmap, al) 
 	struct drbd_peer_request *peer_req;
-	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->active_ee, w.list) {
-		struct drbd_peer_device *peer_device = peer_req->peer_device;
-		struct drbd_device *device = peer_device->device;
 
-		if (get_ldev(device)) {
+	if (!list_empty(&connection->active_ee)) {
+		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->active_ee, w.list) {
+			struct drbd_peer_device *peer_device = peer_req->peer_device;
+			struct drbd_device *device = peer_device->device;
+
 			//DW-1812 set inactive_ee to out of sync.
 			drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
-			drbd_al_complete_io(device, &peer_req->i);
-			put_ldev(device);
+			list_del(&peer_req->recv_order);
+
+			//DW-1920 
+			atomic_inc(&device->io_hang_count);
+			if (atomic_read64(&device->io_hang_min_jif) == 0 ||
+				(ULONG_PTR)atomic_read64(&device->io_hang_min_jif) > peer_req->submit_jif)
+				atomic_set64(&device->io_hang_min_jif, peer_req->submit_jif);
+
+			drbd_info(device, "add, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
-		list_del(&peer_req->recv_order);
-		drbd_info(connection, "add, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+
+		list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	}
-	
-	list_splice_init(&connection->active_ee, &connection->inactive_ee);
-	list_splice_init(&connection->sync_ee, &connection->inactive_ee);
-	//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
-	list_splice_init(&connection->read_ee, &connection->inactive_ee);
+
+	//DW-1920 
+	if (!list_empty(&connection->sync_ee)) {
+		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->sync_ee, w.list) {
+			struct drbd_device *device = peer_req->peer_device->device;
+
+			atomic_inc(&device->io_hang_count);
+			if (atomic_read64(&device->io_hang_min_jif) == 0 ||
+				(ULONG_PTR)atomic_read64(&device->io_hang_min_jif) > peer_req->submit_jif)
+				atomic_set64(&device->io_hang_min_jif, peer_req->submit_jif);
+
+			drbd_info(device, "add, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+		}
+		list_splice_init(&connection->sync_ee, &connection->inactive_ee);
+	}
+
+	if (!list_empty(&connection->read_ee)) {
+		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->read_ee, w.list) {
+			struct drbd_device *device = peer_req->peer_device->device;
+
+			atomic_inc(&device->io_hang_count);
+			if (atomic_read64(&device->io_hang_min_jif) == 0 ||
+				(ULONG_PTR)atomic_read64(&device->io_hang_min_jif) > peer_req->submit_jif)
+				atomic_set64(&device->io_hang_min_jif, peer_req->submit_jif);
+
+			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+		}
+		//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
+		list_splice_init(&connection->read_ee, &connection->inactive_ee);
+	}
+
 	spin_unlock(&resource->req_lock);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
