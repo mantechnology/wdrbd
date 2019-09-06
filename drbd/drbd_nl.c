@@ -5987,10 +5987,7 @@ static void device_to_statistics(struct device_statistics *s,
 				      (1 << WB_sync_congested));
 #endif
 		//DW-1920 
-		s->dev_hang_count = atomic_read(&device->io_hang_count);
-		if (atomic_read64(&device->io_hang_min_jif) != 0)
-			s->dev_hang_max_delay_time = ((jiffies - (ULONG_PTR)atomic_read64(&device->io_hang_min_jif)) / 1000);
-
+		s->dev_io_pending = atomic_read(&device->inactive_pending);
 		put_ldev(device);
 	}
 	s->dev_size = drbd_get_capacity(device->this_bdev);

@@ -273,8 +273,7 @@ GENL_struct(DRBD_NLA_DEVICE_STATISTICS, 20, device_statistics,
 	__u32_field(13, 0, dev_disk_flags)
 	__bin_field(14, 0, history_uuids, HISTORY_UUIDS * sizeof(__u64))
 	//DW-1920
-	__u32_field(15, 0, dev_hang_count)
-	__u64_field(16, 0, dev_hang_max_delay_time)	/* second */
+	__u32_field(15, 0, dev_io_pending)
 )
 
 GENL_struct(DRBD_NLA_CONNECTION_STATISTICS, 21, connection_statistics,

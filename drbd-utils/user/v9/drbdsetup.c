@@ -2324,8 +2324,7 @@ void print_device_statistics(int indent,
 				wrap_printf(indent, " al-suspended:%s",
 					    new->dev_al_suspended ? "yes" : "no");
 			//DW-1920
-			wrap_printf(indent, " hang-count:" U32, new->dev_hang_count);
-			wrap_printf(indent, " hang-delay:" U64, new->dev_hang_max_delay_time);
+			wrap_printf(indent, " inactive-pending:" U32, new->dev_inactive_pending);
 		}
 	}
 	if ((!old ||

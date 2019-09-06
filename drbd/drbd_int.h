@@ -1874,11 +1874,8 @@ struct drbd_device {
 	because they will occur only in a specific sector. */
 	atomic_t io_error_count;
 
-	//DW-1920 the hang judging criteria is I/O that was not completed during reconnection. (inactive_ee)
-	//count of hang that occurred.
-	atomic_t io_hang_count; 
-	//I/O request time for the oldest hang.
-	atomic_t64 io_hang_min_jif;
+	//DW-1920 element count on inactive_ee list
+	atomic_t inactive_pending; 
 };
 
 struct drbd_bm_aio_ctx {

@@ -218,19 +218,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 			drbd_free_peer_req(peer_req);
 
 			//DW-1920 
-			atomic_dec(&device->io_hang_count);
-			
-			if (!list_empty(&connection->inactive_ee)) {
-				if (atomic_read64(&device->io_hang_min_jif) == 0 || 
-					(ULONG_PTR)atomic_read64(&device->io_hang_min_jif) == submit_jif) {
-					list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
-						if (submit_jif >= p_req->submit_jif)
-							atomic_set64(&device->io_hang_min_jif, p_req->submit_jif);
-					}
-				}
-			}
-			else
-				atomic_set64(&device->io_hang_min_jif, 0);
+			atomic_dec(&device->inactive_pending);
 			spin_unlock_irqrestore(&device->resource->req_lock, flags);
 
 			put_ldev(device);
@@ -297,18 +285,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 			drbd_free_peer_req(peer_req);
 
 			//DW-1920 
-			atomic_dec(&device->io_hang_count);
-			if (!list_empty(&connection->inactive_ee)) {
-				if (atomic_read64(&device->io_hang_min_jif) == 0 ||
-					(ULONG_PTR)atomic_read64(&device->io_hang_min_jif) == submit_jif) {
-					list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
-						if (submit_jif >= p_req->submit_jif)
-							atomic_set64(&device->io_hang_min_jif, p_req->submit_jif);
-					}
-				}
-			}
-			else
-				atomic_set64(&device->io_hang_min_jif, 0);
+			atomic_dec(&device->inactive_pending);
 			spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
 
 			put_ldev(device);
