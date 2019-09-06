@@ -637,7 +637,7 @@ main(int argc, char* argv [])
 		int oos_trace_lv = 0;
 
 		if (GetLogLevel(sys_evt_lv, dbglog_lv, oos_trace_lv))
-			printf("system-event-log level:%d,  debug-log level:%d,  oos-trace-log level:%d\n", sys_evt_lv, dbglog_lv, oos_trace_lv);
+			printf("system-log :%d\ndebug-log :%d\noos-trace :%d\n", sys_evt_lv, dbglog_lv, oos_trace_lv);
 		else
 			printf("Failed to get log level.\n");
 
