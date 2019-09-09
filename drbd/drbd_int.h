@@ -1873,9 +1873,6 @@ struct drbd_device {
 	the list counts will not increase in a large amount 
 	because they will occur only in a specific sector. */
 	atomic_t io_error_count;
-
-	//DW-1920 element count on inactive_ee list
-	atomic_t inactive_pending; 
 };
 
 struct drbd_bm_aio_ctx {
