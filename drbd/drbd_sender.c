@@ -210,10 +210,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	struct drbd_peer_request *p_req, *t_inative;
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			ULONG_PTR submit_jif;
-
 			drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
-			submit_jif = peer_req->submit_jif;
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 
@@ -269,8 +266,6 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			ULONG_PTR submit_jif;
-
 			if (peer_req->block_id != ID_SYNCER) {
 				//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
 				drbd_al_complete_io(device, &peer_req->i); 
@@ -280,7 +275,6 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 				drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			}
 
-			submit_jif = peer_req->submit_jif;
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 
