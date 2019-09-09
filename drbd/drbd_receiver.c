@@ -2862,6 +2862,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						if (!split_peer_req) {
 							drbd_err(peer_device, "in sync split_peer_req alloc failed , %llu\n", i_bb);
+							err = -ENOMEM;
 							goto split_error_clear;
 						}
 
@@ -2876,6 +2877,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							drbd_set_all_out_of_sync(device, split_peer_req->i.sector, split_peer_req->i.size);
 
 						if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
+							err = -EIO;
 							drbd_err(device, "submit failed, triggering re-connect\n");
 						error_clear:
 							spin_lock_irq(&device->resource->req_lock);
@@ -2891,7 +2893,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 							drbd_free_peer_req(peer_req);
 
-							return -EIO;
+							return err;
 						}
 						//DW-1601 submit_count is used for the split_cnt value in case of failure..
 						submit_count += 1;
@@ -2907,7 +2909,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						if (!unmarked_count) {
 							drbd_err(peer_device, "failed unmakred count allocate\n");
-							return -ENOMEM;
+							//DW-1923
+							err = -ENOMEM;
+							goto split_error_clear;
 						}
 
 						failed_unmarked = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
@@ -2915,7 +2919,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						if (!failed_unmarked) {
 							drbd_err(peer_device, "failed failed unmarked allocate\n");
 							kfree2(unmarked_count);
-							return -ENOMEM;
+							//DW-1923
+							err = -ENOMEM;
+							goto split_error_clear;
 						}
 
 						//DW-1911 unmakred sector counting
@@ -2941,6 +2947,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 										kfree2(unmarked_count);
 									}
 
+									err = -ENOMEM;
 									goto split_error_clear;
 								}
 
@@ -2979,6 +2986,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 										kfree2(failed_unmarked);
 										kfree2(unmarked_count);
 									}
+									err = -EIO;
 									goto error_clear;
 								}
 
