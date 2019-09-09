@@ -1124,6 +1124,12 @@ struct context_def create_md_ctx = {
 		{ } },
 };
 
+struct context_def wipe_md_ctx = {
+	.fields = {
+		{ .name = "force", .argument_is_optional = true },
+		{} },
+};
+
 struct context_def adjust_ctx = {
 	.fields = {
 		{ "skip-disk", .argument_is_optional = true },
