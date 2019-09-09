@@ -205,18 +205,17 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
 
-
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
 	struct drbd_peer_request *p_req, *t_inative;
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 			spin_unlock_irqrestore(&device->resource->req_lock, flags);
+			put_ldev(device);
 			return;
-			
 		}
 	}
 
@@ -263,10 +262,18 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			if (peer_req->block_id != ID_SYNCER) {
+				//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
+				drbd_al_complete_io(device, &peer_req->i);
+				drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			}
+			else {
+				drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			}
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 			spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
+			put_ldev(device);
 			return;
 		}
 	}
