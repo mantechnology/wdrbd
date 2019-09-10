@@ -1418,9 +1418,6 @@ return true;</string>
                       <void property="wait">
                         <boolean>true</boolean>
                       </void>
-                      <void property="waitForStreams">
-                        <boolean>false</boolean>
-                      </void>
                       <void property="workingDirectory">
                         <object class="java.io.File">
                           <string>bin</string>
@@ -1452,10 +1449,9 @@ else
                         <object class="com.install4j.api.beans.ScriptProperty">
                           <void property="value">
                             <string>String wipe_md_result = (String)context.getVariable("wipe_md_result");
-
-if(wipe_md_result.contains("terminated"))
+if(wipe_md_result.contains("wipe-md --force' terminated"))
 {
-    Util.showMessage("");
+    Util.showMessage(context.getMessage("FailWipeMd"));
 }
 return true;</string>
                           </void>
