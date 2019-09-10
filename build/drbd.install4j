@@ -3,7 +3,7 @@
   <directoryPresets config="I:/wdrbd9/build/drbd" />
   <application name="${compiler:productName}" distributionSourceDir="" applicationId="1928-3996-4668-9110" mediaDir="${compiler:target}" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" compression="6" lzmaCompression="false" pack200Compression="false" excludeSignedFromPacking="true" commonExternalFiles="false" createMd5Sums="true" shrinkRuntime="true" shortName="${compiler:shartName}" publisher="Man Technology Inc." publisherWeb="http://www.mantech.co.kr" version="${compiler:productVersion}" allPathsRelative="false" backupOnSave="false" autoSave="false" convertDotsToUnderscores="true" macSignature="????" installerName="" javaMinVersion="1.5" javaMaxVersion="" allowBetaVM="false" jdkMode="runtimeJre" jdkName="">
     <languages skipLanguageSelection="false" languageSelectionInPrincipalLanguage="false">
-      <principalLanguage id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
+      <principalLanguage id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
       <additionalLanguages>
         <language id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
         <language id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
@@ -1379,6 +1379,60 @@ return true;</string>
                 </serializedBean>
                 <condition />
               </action>
+              <action name="" id="2692" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="3">
+                          <void index="0">
+                            <string>wipe-md</string>
+                          </void>
+                          <void index="1">
+                            <string>all</string>
+                          </void>
+                          <void index="2">
+                            <string>--force</string>
+                          </void>
+                        </array>
+                      </void>
+                      <void property="executable">
+                        <object class="java.io.File">
+                          <string>drbdadm.exe</string>
+                        </object>
+                      </void>
+                      <void property="keepConsoleWindow">
+                        <boolean>true</boolean>
+                      </void>
+                      <void property="wait">
+                        <boolean>true</boolean>
+                      </void>
+                      <void property="waitForStreams">
+                        <boolean>false</boolean>
+                      </void>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition>String WipeMd = context.getMessage("QuestionUninstallWipeMd");
+String ButtonYes = context.getMessage("ButtonYes");
+String ButtonNo = context.getMessage("ButtonNo");
+String[] options = {ButtonYes, ButtonNo};
+int nResult = Util.showOptionDialog(WipeMd,  options, JOptionPane.PLAIN_MESSAGE);
+if( nResult == 0 )
+{
+    return true;   
+}
+else
+{
+    return false;         
+}
+</condition>
+              </action>
               <action name="uninstall drbdService" id="636" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
@@ -1595,7 +1649,6 @@ return true;</string>
     </windows>
   </mediaSets>
   <buildIds buildAll="false">
-    <mediaSet refId="194" />
     <mediaSet refId="572" />
   </buildIds>
   <buildOptions verbose="false" faster="false" disableSigning="false" debug="false" />

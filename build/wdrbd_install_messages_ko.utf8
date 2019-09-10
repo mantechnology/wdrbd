@@ -6,4 +6,5 @@ SendTextLabel1=소프트웨어 사용 현황 분석을 위해 다음의 정보�
 SendTextContent1=운영체제 버전
 SnedTextContent2=소프트웨어 버전
 SendTextLabel2=이외의 시스템 또는 사용자에 관련된 어떠한 정보도 전송하지 않습니다.
- 
+ConfirmUninstall=운영 중인 복제 리소를 모두 비활성화하고 구성 요소들을 완전히 제거합니다. 계속 진행하시겠습니까?
+QuestionUninstallWipeMd=기존 구성했던 메타디스크를 모두 초기화 하시겠습니까?
