@@ -2498,7 +2498,6 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		peer_req->i.size = BM_SECT_PER_BIT << 9;
 
 		kfree2(peer_req->unmarked_count);
-
 		if (peer_req->failed_unmarked)
 			kfree2(peer_req->failed_unmarked);
 
@@ -2862,6 +2861,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						if (!split_peer_req) {
 							drbd_err(peer_device, "in sync split_peer_req alloc failed , %llu\n", i_bb);
+							err = -ENOMEM;
 							goto split_error_clear;
 						}
 
@@ -2876,6 +2876,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							drbd_set_all_out_of_sync(device, split_peer_req->i.sector, split_peer_req->i.size);
 
 						if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
+							err = -EIO;
 							drbd_err(device, "submit failed, triggering re-connect\n");
 						error_clear:
 							spin_lock_irq(&device->resource->req_lock);
@@ -2885,13 +2886,14 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 							//DW-1601 If the drbd_submit_peer_request() fails, remove split_count - submit_count from the previously acquired split_cnt and turn off split_cnt if 0.
 						split_error_clear:
-							atomic_set(split_count, atomic_read(split_count) - (atomic_read(split_count) - submit_count));
-							if (split_count && 0 == atomic_read(split_count))
+							//DW-1923 for interparameter synchronization, an additional 1 was added for the remaining count and modified to use atomic_dec_return.
+							atomic_set(split_count, atomic_read(split_count) - (atomic_read(split_count) - submit_count) + 1);
+							if (split_count && 0 == atomic_dec_return(split_count))
 								kfree2(split_count);
 
 							drbd_free_peer_req(peer_req);
 
-							return -EIO;
+							return err;
 						}
 						//DW-1601 submit_count is used for the split_cnt value in case of failure..
 						submit_count += 1;
@@ -2907,7 +2909,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						if (!unmarked_count) {
 							drbd_err(peer_device, "failed unmakred count allocate\n");
-							return -ENOMEM;
+							//DW-1923 to free allocation memory, go to the split_error_clean label.
+							err = -ENOMEM;
+							goto split_error_clear;
 						}
 
 						failed_unmarked = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
@@ -2915,7 +2919,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						if (!failed_unmarked) {
 							drbd_err(peer_device, "failed failed unmarked allocate\n");
 							kfree2(unmarked_count);
-							return -ENOMEM;
+							//DW-1923
+							err = -ENOMEM;
+							goto split_error_clear;
 						}
 
 						//DW-1911 unmakred sector counting
@@ -2935,12 +2941,13 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 								if (!split_peer_req) {
 									drbd_err(peer_device, "marked split_peer_req alloc failed , %llu\n", i_bb);
-									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count));
-									if (unmarked_count && 0 == atomic_read(unmarked_count)) {
+									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count) + 1);
+									if (unmarked_count && 0 == atomic_dec_return(unmarked_count)) {
 										kfree2(failed_unmarked);
 										kfree2(unmarked_count);
 									}
 
+									err = -ENOMEM;
 									goto split_error_clear;
 								}
 
@@ -2974,11 +2981,13 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 								if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
 									drbd_err(device, "unmarked, submit failed, triggering re-connect\n");
-									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count));
-									if (unmarked_count && 0 == atomic_read(unmarked_count)) {
+									//DW-1923 for interparameter synchronization, an additional 1 was added for the remaining count and modified to use atomic_dec_return.
+									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count) + 1);
+									if (unmarked_count && 0 == atomic_dec_return(unmarked_count)) {
 										kfree2(failed_unmarked);
 										kfree2(unmarked_count);
 									}
+									err = -EIO;
 									goto error_clear;
 								}
 
