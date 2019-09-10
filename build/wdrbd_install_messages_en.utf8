@@ -6,5 +6,5 @@ SendTextLabel1=Send following infomation for software usage analysus
 SendTextContent1=Operation System Version
 SnedTextContent2=Software Version
 SendTextLabel2=Any information related to the system or the user does not send
-ConfirmUninstall=Disable all active replication resources and completely remove the components. Do you want to continue?
+ConfirmUninstall=Deleting a program disables all replication resources, which can lead to abnormal termination of application execution. Please exit the application and proceed with the deletion. Would you like to continue?
 QuestionUninstallWipeMd=Do you want to initialize all existing meta-disks?
