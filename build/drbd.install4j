@@ -1288,7 +1288,9 @@ return true;</string>
           </java>
         </serializedBean>
         <launcherIds />
-        <variables />
+        <variables>
+          <variable name="wipe_md_result" value="" description="" category="" valueClass="string" />
+        </variables>
         <startup>
           <screen name="" id="14" customizedId="" beanClass="com.install4j.runtime.beans.screens.StartupScreen" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="2" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
             <serializedBean>
@@ -1401,8 +1403,17 @@ return true;</string>
                           <string>drbdadm.exe</string>
                         </object>
                       </void>
-                      <void property="keepConsoleWindow">
-                        <boolean>true</boolean>
+                      <void property="stderrRedirectionMode">
+                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
+                      </void>
+                      <void property="stderrVariableName">
+                        <string>wipe_md_result</string>
+                      </void>
+                      <void property="stdoutRedirectionMode">
+                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
+                      </void>
+                      <void property="stdoutVariableName">
+                        <string>wipe_md_result</string>
                       </void>
                       <void property="wait">
                         <boolean>true</boolean>
@@ -1432,6 +1443,28 @@ else
     return false;         
 }
 </condition>
+              </action>
+              <action name="" id="2726" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>String wipe_md_result = (String)context.getVariable("wipe_md_result");
+
+if(wipe_md_result.contains("terminated"))
+{
+    Util.showMessage("");
+}
+return true;</string>
+                          </void>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
               </action>
               <action name="uninstall drbdService" id="636" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
                 <serializedBean>

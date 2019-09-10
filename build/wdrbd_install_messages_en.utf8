@@ -8,3 +8,4 @@ SnedTextContent2=Software Version
 SendTextLabel2=Any information related to the system or the user does not send
 ConfirmUninstall=Deleting a program disables all replication resources, which can lead to abnormal termination of application execution. Please exit the application and proceed with the deletion. Would you like to continue?
 QuestionUninstallWipeMd=Do you want to initialize all existing meta-disks?
+FailWipeMd=Failed to initialize Metadisk.
