@@ -3,7 +3,7 @@
   <directoryPresets config="I:/wdrbd9/build/drbd" />
   <application name="${compiler:productName}" distributionSourceDir="" applicationId="1928-3996-4668-9110" mediaDir="${compiler:target}" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" compression="6" lzmaCompression="false" pack200Compression="false" excludeSignedFromPacking="true" commonExternalFiles="false" createMd5Sums="true" shrinkRuntime="true" shortName="${compiler:shartName}" publisher="Man Technology Inc." publisherWeb="http://www.mantech.co.kr" version="${compiler:productVersion}" allPathsRelative="false" backupOnSave="false" autoSave="false" convertDotsToUnderscores="true" macSignature="????" installerName="" javaMinVersion="1.5" javaMaxVersion="" allowBetaVM="false" jdkMode="runtimeJre" jdkName="">
     <languages skipLanguageSelection="false" languageSelectionInPrincipalLanguage="false">
-      <principalLanguage id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
+      <principalLanguage id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
       <additionalLanguages>
         <language id="en" customLocalizationFile="wdrbd_install_messages_en.utf8" />
         <language id="ko" customLocalizationFile="wdrbd_install_messages_ko.utf8" />
