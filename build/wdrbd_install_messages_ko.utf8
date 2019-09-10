@@ -6,4 +6,6 @@ SendTextLabel1=소프트웨어 사용 현황 분석을 위해 다음의 정보�
 SendTextContent1=운영체제 버전
 SnedTextContent2=소프트웨어 버전
 SendTextLabel2=이외의 시스템 또는 사용자에 관련된 어떠한 정보도 전송하지 않습니다.
- 
+ConfirmUninstall=프로그램을 삭제하면 모든 복제 리소스가 비활성화 되어 실행중인 응용 프로그램이 비정상 종료될 수 있습니다. 응용 프로그램을 정상 종료후 삭제를 진행하십시오. 계속 진행하시겠습니까?
+QuestionUninstallWipeMd=기존 구성했던 메타디스크를 모두 폐기 하시겠습니까?
+FailWipeMd=메타디스크를 폐기하는데 실패하였습니다. 수동으로 메타디스크를 폐기하십시오.
