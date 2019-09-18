@@ -5747,7 +5747,11 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->repl_state[NOW] == L_SYNC_TARGET ||
-		    peer_device->repl_state[NOW] == L_PAUSED_SYNC_T) {
+			peer_device->repl_state[NOW] == L_PAUSED_SYNC_T ||
+			//DW-1924 
+			//Added a condition because there was a problem applying new UUID during synchronization.
+			peer_device->repl_state[NOW] == L_BEHIND ||
+			peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
 			peer_device->current_uuid = val;
 			set_current = false;
 		}
