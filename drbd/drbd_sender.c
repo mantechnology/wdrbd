@@ -205,18 +205,17 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	struct drbd_device *device = peer_device->device;
 	struct drbd_connection *connection = peer_device->connection;
 
-
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
 	struct drbd_peer_request *p_req, *t_inative;
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 			spin_unlock_irqrestore(&device->resource->req_lock, flags);
+			put_ldev(device);
 			return;
-			
 		}
 	}
 
@@ -263,10 +262,18 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 		if (peer_req == p_req) {
-			drbd_info(connection, "destroy, inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			if (peer_req->block_id != ID_SYNCER) {
+				//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
+				drbd_al_complete_io(device, &peer_req->i); 
+				drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			}
+			else {
+				drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			}
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 			spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
+			put_ldev(device);
 			return;
 		}
 	}
@@ -351,10 +358,14 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (connection->cstate[NOW] == C_CONNECTED)
 		queue_work(connection->ack_sender, &connection->send_acks_work);
 	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
-	
+
 	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
-	if (block_id == ID_SYNCER && !(flags & EE_SPLIT_REQUEST))
-		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
+	//DW-1886
+	if (block_id == ID_SYNCER) {
+		if (!(flags & EE_SPLIT_REQUEST))
+			drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
+		atomic_add64(peer_req->i.size, &peer_device->rs_written);
+	}
 
 	if (do_wake) 
 		wake_up(&connection->ee_wait);
@@ -1272,6 +1283,8 @@ next_sector:
 				put_ldev(device);
 				return err;
 			}
+			//DW-1886
+			peer_device->rs_send_req += size;
 		}
 	}
 
@@ -1645,9 +1658,14 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 		goto out_unlock;
 	__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 
-	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; garbage %llu)\n",
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec), hit bit (in sync %llu; marked rl %llu)\n",
 	     verify_done ? "Online verify" : "Resync",
-		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_isbb, device->h_gbb);
+		 dt + peer_device->rs_paused, peer_device->rs_paused, dbdt, device->h_insync_bb, device->h_marked_bb);
+#else
+	drbd_info(peer_device, "%s done (total %lu sec; paused %lu sec; %lu K/sec)\n",
+		verify_done ? "Online verify" : "Resync", dt + peer_device->rs_paused, peer_device->rs_paused, dbdt);
+#endif
 
 	n_oos = drbd_bm_total_weight(peer_device);
 
@@ -2856,13 +2874,11 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
-			//DW-1601 initialization garbage list 
-			if (!list_empty(&device->gbb_list)) {
-				struct drbd_garbage_bit *gbb, *tmp;
-				list_for_each_entry_safe(struct drbd_garbage_bit, gbb, tmp, &peer_device->device->gbb_list, garbage_list) {
-					list_del(&gbb->garbage_list);
-					kfree2(gbb);
-				}
+			//DW-1911
+			struct drbd_marked_replicate *marked_rl, *t;
+			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
+				list_del(&marked_rl->marked_rl_list);
+				kfree2(marked_rl);
 			}
 
 			device->s_rl_bb = UINT64_MAX;
@@ -2870,8 +2886,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			//DW-1908 set start out of sync bit
 			device->e_resync_bb = drbd_bm_find_next(peer_device, 0);
 			//DW-1908
-			device->h_gbb = 0;
-			device->h_isbb = 0;
+			device->h_marked_bb = 0;
+			device->h_insync_bb = 0;
 		}
 #endif
 		__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);

@@ -793,12 +793,15 @@ static void create_implicit_connections(struct d_resource *res)
 				ha->faked_hostname = 1;
 				ha->parsed_address = 1; /* not true, but makes dump nicer */
 			}
+			TRACE_PRINT("INSERT_TAIL, %s, hosts %s\n", res->name, ha->name);
 			STAILQ_INSERT_TAIL(&path->hname_address_pairs, ha, link);
 		}
 	}
 
-	if (hosts == 2)
+	if (hosts == 2) {
+		TRACE_PRINT("INSERT_TAIL, %s, hosts(2)\n", res->name);
 		STAILQ_INSERT_TAIL(&res->connections, conn, link);
+	}
 	else
 		free_connection(conn);
 }
@@ -850,13 +853,16 @@ static void create_connections_from_mesh(struct d_resource *res, struct mesh *me
 			ha = alloc_hname_address();
 			ha->host_info = hi1;
 			ha->name = STAILQ_FIRST(&hi1->on_hosts)->name;
+			TRACE_PRINT("INSERT_TAIL, hosts1, %s\n", ha->name);
 			STAILQ_INSERT_TAIL(&path->hname_address_pairs, ha, link);
 
 			ha = alloc_hname_address();
 			ha->host_info = hi2;
 			ha->name = STAILQ_FIRST(&hi2->on_hosts)->name;
+			TRACE_PRINT("INSERT_TAIL, hosts2, %s\n", ha->name);
 			STAILQ_INSERT_TAIL(&path->hname_address_pairs, ha, link);
 
+			TRACE_PRINT("INSERT_TAIL, connections, %s\n", res->name);
 			STAILQ_INSERT_TAIL(&res->connections, conn, link);
 		skip:
 			hname2 = STAILQ_NEXT(hname2, link);
@@ -1069,6 +1075,7 @@ static void fixup_peer_devices(struct d_resource *res)
 			peer_device->vnr = vol->vnr;
 			peer_device->implicit = 1;
 			peer_device->connection = conn;
+			TRACE_PRINT("INSERT_TAIL, peer_devices, volume vnr : %d\n", vol->vnr);
 			STAILQ_INSERT_TAIL(&conn->peer_devices, peer_device, connection_link);
 		}
 	}

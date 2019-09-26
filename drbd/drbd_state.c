@@ -918,6 +918,11 @@ void clear_remote_state_change(struct drbd_resource *resource) {
 	spin_unlock_irqrestore(&resource->req_lock, irq_flags);
 }
 
+//DW-1894
+void clear_remote_state_change_without_lock(struct drbd_resource *resource) {
+	__clear_remote_state_change(resource);
+}
+
 static union drbd_state drbd_get_resource_state(struct drbd_resource *resource, enum which_state which)
 {
 	union drbd_state rv = { {
@@ -2332,6 +2337,11 @@ static void initialize_resync(struct drbd_peer_device *peer_device)
 	peer_device->rs_last_sect_ev = 0;
 	peer_device->rs_total = tw;
 	peer_device->rs_start = now;
+	//DW-1886
+	peer_device->rs_send_req = 0;
+	peer_device->rs_recv_res = 0;
+	atomic_set64(&peer_device->rs_written, 0);
+	
 	for (i = 0; i < DRBD_SYNC_MARKS; i++) {
 		peer_device->rs_mark_left[i] = tw;
 		peer_device->rs_mark_time[i] = now;
@@ -4823,7 +4833,7 @@ change_cluster_wide_state(bool (*change)(struct change_context *, enum change_ph
 	// MODIFIED_BY_MANTECH DW-1204: sending twopc prepare needs to wait crowded send buffer, takes too much time. no more retry.
 	if (bDisconnecting 
 #ifdef _WIN32_SIMPLE_TWOPC // DW-1408
-		 && rv == SS_TIMEOUT 
+		&& (rv == SS_TIMEOUT || rv == SS_CONCURRENT_ST_CHG)	// DW-1705 set C_DISCONNECT when the result value is SS_CONCURRENT_ST_CHG
 #else
 		 && rv == SS_TIMEOUT 
 		 && retries >= TWOPC_TIMEOUT_RETRY_COUNT
@@ -5892,7 +5902,7 @@ enum drbd_state_rv stable_change_repl_state(struct drbd_peer_device *peer_device
 					    enum drbd_repl_state repl_state,
 					    enum chg_state_flags flags)
 {
-#if _WIN32 // DW-1605
+#ifdef _WIN32 // DW-1605
 	enum drbd_state_rv rv = SS_SUCCESS;
 	stable_state_change(rv, peer_device->device->resource,
 		change_repl_state(peer_device, repl_state, flags));

@@ -1124,6 +1124,15 @@ struct context_def create_md_ctx = {
 		{ } },
 };
 
+//DW-1922
+//Apply `--force` option to use the wipe-md command when uninstall.
+//Invisible in help because it's only used internally.
+struct context_def wipe_md_ctx = {
+	.fields = {
+		{ .name = "force", .argument_is_optional = true },
+		{} },
+};
+
 struct context_def adjust_ctx = {
 	.fields = {
 		{ "skip-disk", .argument_is_optional = true },

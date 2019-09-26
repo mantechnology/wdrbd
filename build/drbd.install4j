@@ -1288,7 +1288,9 @@ return true;</string>
           </java>
         </serializedBean>
         <launcherIds />
-        <variables />
+        <variables>
+          <variable name="wipe_md_result" value="" description="" category="" valueClass="string" />
+        </variables>
         <startup>
           <screen name="" id="14" customizedId="" beanClass="com.install4j.runtime.beans.screens.StartupScreen" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" backButton="2" finishScreen="false" wizardIndexChangeType="unchanged" wizardIndexKey="">
             <serializedBean>
@@ -1373,6 +1375,87 @@ return true;</string>
                       </void>
                       <void property="serviceName">
                         <string>drbdService</string>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition />
+              </action>
+              <action name="" id="2692" customizedId="" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" enabled="true" commentSet="false" comment="" actionElevationType="elevated" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.misc.RunExecutableAction">
+                      <void property="arguments">
+                        <array class="java.lang.String" length="3">
+                          <void index="0">
+                            <string>wipe-md</string>
+                          </void>
+                          <void index="1">
+                            <string>all</string>
+                          </void>
+                          <void index="2">
+                            <string>--force</string>
+                          </void>
+                        </array>
+                      </void>
+                      <void property="executable">
+                        <object class="java.io.File">
+                          <string>drbdadm.exe</string>
+                        </object>
+                      </void>
+                      <void property="stderrRedirectionMode">
+                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
+                      </void>
+                      <void property="stderrVariableName">
+                        <string>wipe_md_result</string>
+                      </void>
+                      <void property="stdoutRedirectionMode">
+                        <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
+                      </void>
+                      <void property="stdoutVariableName">
+                        <string>wipe_md_result</string>
+                      </void>
+                      <void property="wait">
+                        <boolean>true</boolean>
+                      </void>
+                      <void property="workingDirectory">
+                        <object class="java.io.File">
+                          <string>bin</string>
+                        </object>
+                      </void>
+                    </object>
+                  </java>
+                </serializedBean>
+                <condition>String WipeMd = context.getMessage("QuestionUninstallWipeMd");
+String ButtonYes = context.getMessage("ButtonYes");
+String ButtonNo = context.getMessage("ButtonNo");
+String[] options = {ButtonYes, ButtonNo};
+int nResult = Util.showOptionDialog(WipeMd,  options, JOptionPane.PLAIN_MESSAGE);
+if( nResult == 0 )
+{
+    return true;   
+}
+else
+{
+    return false;         
+}
+</condition>
+              </action>
+              <action name="" id="2726" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+                <serializedBean>
+                  <java class="java.beans.XMLDecoder">
+                    <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
+                      <void property="script">
+                        <object class="com.install4j.api.beans.ScriptProperty">
+                          <void property="value">
+                            <string>String wipe_md_result = (String)context.getVariable("wipe_md_result");
+if(wipe_md_result.contains("wipe-md --force' terminated"))
+{
+    Util.showMessage(context.getMessage("FailWipeMd"));
+}
+return true;</string>
+                          </void>
+                        </object>
                       </void>
                     </object>
                   </java>

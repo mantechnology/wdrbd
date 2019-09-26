@@ -158,7 +158,11 @@ char *parse_file = NULL;
 #endif
 struct resources config = STAILQ_HEAD_INITIALIZER(config);
 struct d_resource *common = NULL;
+#ifdef _WIN32
+struct IP_ADDRESS_STRING *ip_list = NULL;
+#else
 struct ifreq *ifreq_list = NULL;
+#endif
 int is_drbd_top;
 enum { NORMAL, STACKED, IGNORED, __N_RESOURCE_TYPES };
 int nr_resources[__N_RESOURCE_TYPES];
@@ -381,7 +385,8 @@ static struct adm_cmd create_md_cmd = {"create-md", adm_create_md, &create_md_ct
 static struct adm_cmd show_gi_cmd = {"show-gi", adm_setup_and_meta, ACF1_PEER_DEVICE .disk_required = 1};
 static struct adm_cmd get_gi_cmd = {"get-gi", adm_setup_and_meta, ACF1_PEER_DEVICE .disk_required = 1};
 static struct adm_cmd dump_md_cmd = {"dump-md", adm_drbdmeta, ACF1_MINOR_ONLY };
-static struct adm_cmd wipe_md_cmd = {"wipe-md", adm_drbdmeta, ACF1_MINOR_ONLY };
+//DW-1922
+static struct adm_cmd wipe_md_cmd = { "wipe-md", adm_drbdmeta, &wipe_md_ctx, ACF1_MINOR_ONLY }; 
 static struct adm_cmd apply_al_cmd = {"apply-al", adm_drbdmeta, ACF1_MINOR_ONLY };
 static struct adm_cmd forget_peer_cmd = {"forget-peer", adm_forget_peer, ACF1_DISCONNECT };
 
@@ -608,6 +613,7 @@ void schedule_deferred_cmd(struct adm_cmd *cmd,
 	d->ctx = *ctx;
 	d->ctx.cmd = cmd;
 
+	TRACE_PRINT("INSERT_TAIL, %s\n", d->ctx.cmd->name);
 	STAILQ_INSERT_TAIL(&deferred_cmds[stage], d, link);
 }
 
@@ -636,6 +642,7 @@ static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 
 		for_each_path(path, &tmp_ctx.conn->paths) {
 			tmp_ctx.path = path;
+			TRACE_PRINT("tmp_ctx.function, %s\n", tmp_ctx.cmd->name);
 			rv = tmp_ctx.cmd->function(&tmp_ctx);
 			if (rv >= 20) {
 				if (on_error == EXIT_ON_FAIL)
@@ -644,6 +651,7 @@ static int __call_cmd_fn(const struct cfg_ctx *ctx, enum on_error on_error)
 
 		}
 	} else {
+		TRACE_PRINT("cmd->function, %s\n", ctx->cmd->name);
 		rv = ctx->cmd->function(ctx);
 		if (rv >= 20) {
 			if (on_error == EXIT_ON_FAIL)
@@ -1112,7 +1120,12 @@ static void free_config()
 		free_options(&common->handlers);
 		free(common);
 	}
+
+#ifdef _WIN32
+	free(ip_list); 
+#else
 	free(ifreq_list);
+#endif
 }
 
 static void find_drbdcmd(char **cmd, char **pathes)

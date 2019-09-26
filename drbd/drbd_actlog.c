@@ -522,7 +522,8 @@ static int __al_write_transaction(struct drbd_device *device, struct al_transact
 			break;
 		}
 		BUG_ON_UINT16_OVER(e->lc_index);
-		BUG_ON_UINT16_OVER(e->lc_new_number);
+		//DW-1918 the value of lc_new_number MAX should be verified by UINT32.
+		BUG_ON_UINT32_OVER(e->lc_new_number);
 
 		buffer->update_slot_nr[i] = cpu_to_be16((u16)e->lc_index);
 		buffer->update_extent_nr[i] = cpu_to_be32((u32)e->lc_new_number);
@@ -1146,7 +1147,7 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 			// DW-1640 : Node that are not synctarget or syncsource send P_PEERS_IN_SYNC packtet to synctarget, causing a disk inconsistency. 
 			// Only sync source can send P_PEERS_IN_SYNC to peers. In WDRBD, it can be guaranteed that only primary is sync source. 
 			if (device->resource->role[NOW] == R_PRIMARY ||
-				// DW-1873 change P_PEER_IN_SYNC send conditions
+				// DW-1873 change P_PEERS_IN_SYNC send conditions
 				is_sync_source(peer_device)) { //peer_device->repl_state[NOW] == L_SYNC_SOURCE){	
 				struct update_peers_work *upw;
 				upw = kmalloc(sizeof(*upw), GFP_ATOMIC | __GFP_NOWARN, '40DW');
@@ -1174,8 +1175,8 @@ static bool update_rs_extent(struct drbd_peer_device *peer_device,
 
 				ext->rs_failed = 0;
 				return true;
-			}
 #ifdef _WIN32 // DW-1640
+			}
 			else {
 				return true;
 			}

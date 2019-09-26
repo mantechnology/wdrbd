@@ -20,6 +20,7 @@
 #include <wdm.h>
 #include <ntstrsafe.h>
 #include <ntddk.h>
+#include <ntddvol.h>
 #include "drbd_windows.h"
 #include "drbd_wingenl.h"	
 #include "disp.h"
@@ -773,7 +774,6 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     NTSTATUS		status;
     PIO_STACK_LOCATION	irpSp = NULL;
     PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
-
     irpSp = IoGetCurrentIrpStackLocation(Irp);
     switch (irpSp->Parameters.DeviceIoControl.IoControlCode)
     {
@@ -874,6 +874,25 @@ mvolDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		{
 			status = IOCTL_SetHandlerUse(DeviceObject, Irp); // Set handler_use value.
 			MVOL_IOCOMPLETE_REQ(Irp, status, 0);
+		}
+		case IOCTL_VOLUME_ONLINE:
+		{
+			//DW-1700
+			//Update the volume size when the disk is online.
+			//After the IOCTL_VOLUME_ONLINE command completes, you can get the size of the volume.
+			LONGLONG size;
+			struct block_device *bdev = VolumeExtension->dev;
+			status = mvolRunIrpSynchronous(DeviceObject, Irp);
+			if (bdev && bdev->bd_contains) {
+				size = get_targetdev_volsize(VolumeExtension);
+				bdev->bd_contains->d_size = size;
+				//DW-1917 max_hw_sectors value must be set.
+				bdev->bd_disk->queue->max_hw_sectors = size ? (size >> 9) : DRBD_MAX_BIO_SIZE;
+			}
+
+			Irp->IoStatus.Status = status;
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
 		}
     }
 
