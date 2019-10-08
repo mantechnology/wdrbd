@@ -2650,6 +2650,19 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 	return split_peer_request;
 }
 
+//DW-1928
+static bool is_marked_rl_bb(struct drbd_peer_device *peer_device, struct drbd_marked_replicate **marked_rl, ULONG_PTR bb)
+{
+	list_for_each_entry(struct drbd_marked_replicate, (*marked_rl), &(peer_device->device->marked_rl_list), marked_rl_list) {
+		if ((*marked_rl)->bb == bb) {
+			return true;
+		}
+	}
+
+	(*marked_rl) = NULL;
+	return false;
+}
+
 static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULONG_PTR s_bb, ULONG_PTR e_next_bb, atomic_t *split_count, ULONG_PTR* e_oos)
 {
 	bool find_isb = false;
@@ -2672,11 +2685,14 @@ static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULO
 			kfree2(marked_rl);
 			continue;
 		}
+	}
 
-		if (s_bb <= marked_rl->bb && marked_rl->bb < e_next_bb) {
-			find_isb = true;
+	//DW-1601 the last out of sync and split_cnt information are obtained before the resync write request.
+	for (ULONG_PTR ibb = s_bb; ibb < e_next_bb; ibb++) {
+		// DW-1928 modify split_count calculation method
+		if (is_marked_rl_bb(peer_device, &marked_rl, ibb)) {
 			for (u16 i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
-				//DW-1911 obtain the end unmakred sector.
+				// DW-1911 obtain the end unmakred sector.
 				if (!(marked_rl->marked_rl & 1 << i)) {
 					if (marked_rl->end_unmarked_rl < i)
 						marked_rl->end_unmarked_rl = i;
@@ -2684,44 +2700,30 @@ static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULO
 					atomic_inc(split_count);
 				}
 			}
-		}
-	}
+			split_request = true;
+			find_isb = true;
 
-	//DW-1601 the last out of sync and split_cnt information are obtained before the resync write request.
-	for (ULONG_PTR i = s_bb; i < e_next_bb; i++) {
-		if (drbd_bm_test_bit(peer_device, i) == 1) {
+			*e_oos = ibb;
+		}
+		else if (drbd_bm_test_bit(peer_device, ibb) == 1) {
 			if (split_request) {
 				atomic_inc(split_count);
 				split_request = false;
 			}
-			*e_oos = i;
+
+			*e_oos = ibb;
 		}
 		else {
-			drbd_debug(peer_device, "##find in sync bitmap bit : %lu, start (%llu) ~ end (%llu)\n", i, s_bb, (e_next_bb - 1));
+			drbd_debug(peer_device, "##find in sync bitmap bit : %llu, start (%llu) ~ end (%llu)\n",
+				(unsigned long long)ibb,
+				(unsigned long long)s_bb,
+				(unsigned long long)(e_next_bb - 1));
 			split_request = true;
 			find_isb = true;
 		}
 	}
 
 	return find_isb;
-}
-
-static bool is_marked_rl_bb(struct drbd_peer_device *peer_device, struct drbd_marked_replicate **marked_rl, ULONG_PTR bb) {
-	struct drbd_marked_replicate *tmp;
-
-	list_for_each_entry_safe(struct drbd_marked_replicate, (*marked_rl), tmp, &(peer_device->device->marked_rl_list), marked_rl_list) {
-		if (drbd_bm_test_bit(peer_device, (*marked_rl)->bb) == 0) {
-			list_del(&(*marked_rl)->marked_rl_list);
-			kfree2((*marked_rl));
-			continue;
-		}
-		if ((*marked_rl)->bb == bb) {
-			return true;
-		}
-	}
-
-	(*marked_rl) = NULL;
-	return false;
 }
 
 bool is_set_area_replicate_out_of_sync(struct drbd_device *device, ULONG_PTR s_bb, ULONG_PTR e_next_bb)
@@ -2975,7 +2977,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 									}
 								}
 
-								drbd_set_sync(device, peer_req->i.sector, peer_req->i.size, bits, mask);
+								// DW-1928 set out of sync for split_request.
+								drbd_set_sync(device, split_peer_req->i.sector, split_peer_req->i.size, bits, mask);
 
 								drbd_info(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i, atomic_read(unmarked_count));
 
@@ -2999,6 +3002,11 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							}
 						}
 					}
+
+					// DW-1928 exit split because last out of sync request was made
+					if (e_oos == (i_bb - 1))
+						break;
+
 					s_split_request = false;
 				}
 				else {
@@ -3976,7 +3984,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 				e_bb -= 1;
 
 			//DW-1904 next resync data range(device->e_resync_bb ~ n_resync_bb)
-			ULONG_PTR n_resync_bb = device->e_resync_bb + BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
+			ULONG_PTR n_resync_bb = device->e_resync_bb + (ULONG_PTR)BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
 			struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
 
 			if ((device->e_resync_bb < e_bb && n_resync_bb >= e_bb) ||

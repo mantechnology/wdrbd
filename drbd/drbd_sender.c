@@ -256,6 +256,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	sector_t sector;
 	int do_wake = 0;
 	u64 block_id;
+	//DW-1928 
+	unsigned int size;
 
 	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
 	struct drbd_peer_request *p_req, *t_inative;
@@ -335,6 +337,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
 	device->writ_cnt += peer_req->i.size >> 9;
 	atomic_inc(&connection->done_ee_cnt);
+	//DW-1928 
+	size = peer_req->i.size;
 	list_move_tail(&peer_req->w.list, &connection->done_ee);
 
 	/*
@@ -364,7 +368,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (block_id == ID_SYNCER) {
 		if (!(flags & EE_SPLIT_REQUEST))
 			drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
-		atomic_add64(peer_req->i.size, &peer_device->rs_written);
+		//DW-1928
+		atomic_add64(size, &peer_device->rs_written);
 	}
 
 	if (do_wake) 
