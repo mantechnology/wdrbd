@@ -4042,6 +4042,7 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
+	// DW-1927 If the send buffer is not NULL, the del-peer command has not been executed.
 	if (connection->ptxbab[DATA_STREAM] != NULL) {
 		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
 			retcode = ERR_CANT_CHANGE_SNDBUF_SIZE_WITHOUT_DEL_PEER;

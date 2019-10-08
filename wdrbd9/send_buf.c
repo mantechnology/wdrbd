@@ -67,6 +67,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 				goto $ALLOC_FAIL;
 			}
 
+			// DW-1927 Sets the size value when the buffer is allocated.
 			ring->length = nconf->sndbuf_size + 1;
 		} __except(EXCEPTION_EXECUTE_HANDLER) {
 			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
@@ -85,6 +86,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
 				goto $ALLOC_FAIL;
 			}
+			// DW-1927 Sets the size value when the buffer is allocated.
 			ring->length = CONTROL_BUFF_SIZE + 1;
 		} __except (EXCEPTION_EXECUTE_HANDLER) {
 			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
