@@ -3871,7 +3871,7 @@ _check_net_options(struct drbd_connection *connection, struct net_conf *old_net_
 
 #ifdef _WIN32 // DW-1436 sndbuf-size must be at least 10M 
 	if (new_net_conf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN && new_net_conf->sndbuf_size > 0){
-		return ERR_CONG_SNDBUF_SIZE;
+		return ERR_SNDBUF_SIZE_TOO_SMALL;
 	}
 #endif 
 
@@ -4037,10 +4037,19 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	// DW-1436 unable to change send buffer size dynamically
 	if (connection->cstate[NOW] >= C_CONNECTED){
 		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
-			retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+			retcode = ERR_CANT_CHANGE_SNDBUF_SIZE_WHEN_CONNECTED;
 			goto fail;
 		}
 	}
+
+	// DW-1927 If the send buffer is not NULL, the del-peer command has not been executed.
+	if (connection->ptxbab[DATA_STREAM] != NULL) {
+		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+			retcode = ERR_CANT_CHANGE_SNDBUF_SIZE_WITHOUT_DEL_PEER;
+			goto fail;
+		}
+	}
+
 #endif
 
 	/* re-sync running */

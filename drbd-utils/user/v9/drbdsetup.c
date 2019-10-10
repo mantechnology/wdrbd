@@ -1,4 +1,4 @@
-﻿/*
+/*
  * DRBD setup via genetlink
  *
  * This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -666,8 +666,9 @@ static const char *error_messages[] = {
 	EM(ERR_INVALID_PEER_NODE_ID) = "Invalid peer-node-id\n",
 	EM(ERR_CREATE_TRANSPORT) = "Failed to create transport (drbd_transport_xxx module missing?)\n",
 	EM(ERR_LOCAL_AND_PEER_ADDR) = "Combination of local address(port) and remote address(port) already in use\n",
-	EM(ERR_CONG_SNDBUF_SIZE) = "sndbuf-size must be at least 10M to use send buffer\n",
-	EM(ERR_CONG_CANT_CHANGE_SNDBUF_SIZE) = "Cannot change sndbuf-size when connected. Please disconnect first and change the attribute value with adjust command\n",
+	EM(ERR_SNDBUF_SIZE_TOO_SMALL) = "sndbuf-size must be at least 10M to use send buffer\n",
+	EM(ERR_CANT_CHANGE_SNDBUF_SIZE_WHEN_CONNECTED) = "Cannot change sndbuf-size when connected. Please disconnect first and change the attribute value with adjust command\n",
+	EM(ERR_CANT_CHANGE_SNDBUF_SIZE_WITHOUT_DEL_PEER) = "Cannot change sndbuf-size without del-peer command. Please run the 'del-peer' command first and change the attribute value with adjust command \n",
 };
 #define MAX_ERROR (sizeof(error_messages)/sizeof(*error_messages))
 

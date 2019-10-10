@@ -66,6 +66,9 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 				WDRBD_INFO("alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				goto $ALLOC_FAIL;
 			}
+
+			// DW-1927 Sets the size value when the buffer is allocated.
+			ring->length = nconf->sndbuf_size + 1;
 		} __except(EXCEPTION_EXECUTE_HANDLER) {
 			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 			if(ring) {
@@ -76,13 +79,15 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 		
 		connection->ptxbab[DATA_STREAM] = ring;
 		__try {
-			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
+			sz = sizeof(*ring) + CONTROL_BUFF_SIZE; // meta bab is about 5MB
 			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool | POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '2ADW');
 			if(!ring) {
 				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
 				goto $ALLOC_FAIL;
 			}
+			// DW-1927 Sets the size value when the buffer is allocated.
+			ring->length = CONTROL_BUFF_SIZE + 1;
 		} __except (EXCEPTION_EXECUTE_HANDLER) {
 			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
 			if(ring) {
@@ -134,7 +139,6 @@ ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, 
 	}
 	if (ring) {
 		ring->mem = (char*) (ring + 1);
-		ring->length = length + 1;
 		ring->read_pos = 0;
 		ring->write_pos = 0;
 		ring->que = 0;

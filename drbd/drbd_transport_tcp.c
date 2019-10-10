@@ -2545,7 +2545,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, signed lon
 
 				if (i == CONTROL_STREAM)
 				{
-					size = 1024 * 5120; // meta bab is about 5MB
+					size = CONTROL_BUFF_SIZE; // meta bab is about 5MB
 				}
 
 				if ((attr->bab = create_ring_buffer(connection, tcp_transport->stream[i]->name, size, i)) != NULL)
