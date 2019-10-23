@@ -1372,8 +1372,8 @@ struct drbd_resource {
 #endif
 	struct issue_flush_context ctx_flush; // DW-1895
 
-	atomic_t max_req_write_cnt;			// DW-1925
-	atomic_t max_req_write_MB;	// DW-1925
+	atomic_t req_write_cnt;			// DW-1925
+	atomic_t req_write_MB;	// DW-1925
 };
 
 struct drbd_connection {
@@ -3688,14 +3688,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 		max_req_write_MB = (LONGLONG)DRBD_MAX_REQ_WRITE_MB_DEF;    // use default if value is invalid.    
 	}
 
-	if (atomic_read(&device->resource->max_req_write_cnt) > max_req_write_cnt||
-		atomic_read(&device->resource->max_req_write_MB) > max_req_write_MB) {
+	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt||
+		atomic_read(&device->resource->req_write_MB) > max_req_write_MB) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit()) {
 			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur max_req_write_cnt(%d), max_req_write_MB(%d), max cnt(%d), max MB(%d)\n", 
-				atomic_read(&device->resource->max_req_write_cnt), 
-				atomic_read(&device->resource->max_req_write_MB), 
+				atomic_read(&device->resource->req_write_cnt),
+				atomic_read(&device->resource->req_write_MB),
 				max_req_write_cnt,
 				max_req_write_MB);
 		}

@@ -2296,6 +2296,9 @@ void print_resource_statistics(int indent,
 	    write_ordering_str[wo]) {
 		wrap_printf(indent, " write-ordering:%s", write_ordering_str[wo]);
 	}
+
+	wrap_printf(indent, " req_:" U64,
+		(uint64_t)new->dev_read / 2);
 }
 
 void print_device_statistics(int indent,

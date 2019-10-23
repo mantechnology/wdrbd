@@ -95,15 +95,15 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 
 	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
 	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
-	atomic_inc(&device->resource->max_req_write_cnt);
-	atomic_add(sizeof(struct drbd_request), &device->resource->max_req_write_MB);
+	atomic_inc(&device->resource->req_write_cnt);
+	atomic_add(sizeof(struct drbd_request), &device->resource->req_write_MB);
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
 	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
 	if (!req->req_databuf)
 	{
-		atomic_dec(&device->resource->max_req_write_cnt);
-		atomic_sub(sizeof(struct drbd_request), &device->resource->max_req_write_MB);
+		atomic_dec(&device->resource->req_write_cnt);
+		atomic_sub(sizeof(struct drbd_request), &device->resource->req_write_MB);
 		WDRBD_ERROR("req->req_databuf failed\n");
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		
@@ -118,8 +118,8 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     if (drbd_req_make_private_bio(req, bio_src) == FALSE)
     {
 		kfree2(req->req_databuf);
-		atomic_dec(&device->resource->max_req_write_cnt);
-		atomic_sub(sizeof(struct drbd_request), &device->resource->max_req_write_MB);
+		atomic_dec(&device->resource->req_write_cnt);
+		atomic_sub(sizeof(struct drbd_request), &device->resource->req_write_MB);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		// DW-1539
@@ -203,8 +203,8 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
             kfree2(req->req_databuf);
         }
 
-		atomic_dec(&resource->max_req_write_cnt);
-		atomic_sub(sizeof(struct drbd_request), &resource->max_req_write_MB);
+		atomic_dec(&resource->req_write_cnt);
+		atomic_sub(sizeof(struct drbd_request), &resource->req_write_MB);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		// DW-1539
@@ -442,8 +442,8 @@ void drbd_req_destroy(struct kref *kref)
 					kfree2(peer_ack_req->req_databuf);
 				}
 
-				atomic_dec(&resource->max_req_write_cnt);
-				atomic_sub(sizeof(struct drbd_request), &resource->max_req_write_MB);
+				atomic_dec(&resource->req_write_cnt);
+				atomic_sub(sizeof(struct drbd_request), &resource->req_write_MB);
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 				peer_ack_req = NULL;
 				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
@@ -467,8 +467,8 @@ void drbd_req_destroy(struct kref *kref)
     	{
     		kfree2(req->req_databuf);
     	}
-		atomic_dec(&req->device->resource->max_req_write_cnt);
-		atomic_sub(sizeof(struct drbd_request), &req->device->resource->max_req_write_MB);
+		atomic_dec(&req->device->resource->req_write_cnt);
+		atomic_sub(sizeof(struct drbd_request), &req->device->resource->req_write_MB);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
 		// DW-1539

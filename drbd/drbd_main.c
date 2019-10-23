@@ -4189,8 +4189,8 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 	list_add_tail_rcu(&resource->resources, &drbd_resources);
 
-	atomic_set(&resource->max_req_write_cnt, 0);
-	atomic_set(&resource->max_req_write_MB, 0);
+	atomic_set(&resource->req_write_cnt, 0);
+	atomic_set(&resource->req_write_MB, 0);
 
 	return resource;
 
