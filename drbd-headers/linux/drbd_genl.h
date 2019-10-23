@@ -144,9 +144,10 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__u32_field_def(10,    0 /* OPTIONAL */,    nr_requests, DRBD_NR_REQUESTS_DEF)
 	__s32_field_def(11, 0 /* OPTIONAL */, quorum, DRBD_QUORUM_DEF)
 	__u32_field_def(12, 0 /* OPTIONAL */, on_no_quorum, DRBD_ON_NO_QUORUM_DEF)
-	__u32_field_def(13, 0 /* OPTIONAL */, req_buf_size, DRBD_REQ_BUF_SIZE_DEF)        /* MODIFIED_BY_MANTECH DW-1200: request buffer maximum size */
+	__u32_field_def(13, 0 /* OPTIONAL */, max_req_write_cnt, DRBD_MAX_REQ_WRITE_CNT_DEF)        /* MODIFIED_BY_MANTECH DW-1200: request buffer maximum size */
 	__flg_field_def(14, 0 /* OPTIONAL */, svc_autostart, DRBD_SVC_AUTOSTART_DEF)	  /* DW-1249: auto-start by svc*/
 	__u32_field_def(15, 0 /* OPTIONAL */, io_error_retry_count, DRBD_IO_ERROR_RETRY_COUNT_DEF)        /* DW-1716: retry count for I/O error*/
+	__u32_field_def(16, 0 /* OPTIONAL */, max_req_write_MB, DRBD_MAX_REQ_WRITE_MB_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,

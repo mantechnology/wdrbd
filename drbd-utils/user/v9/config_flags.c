@@ -1055,7 +1055,8 @@ struct context_def resource_options_ctx = {
 		{ "on-no-quorum", ENUM(on_no_quorum, ON_NO_QUORUM) },
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-		{ "req-buf-size", NUMERIC(req_buf_size, REQ_BUF_SIZE), .unit = "bytes" },
+		{ "max-req-write-cnt", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT), .unit = "count" },
+		{ "max-req-write-MB", NUMERIC(max_req_write_MB, MAX_REQ_WRITE_MB), .unit = "MBytes" },
 		// DW-1249: auto-start by svc
 		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },
 		{ "io-error-retry-count", NUMERIC(io_error_retry_count, IO_ERROR_RETRY_COUNT) },

@@ -4189,6 +4189,9 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 	list_add_tail_rcu(&resource->resources, &drbd_resources);
 
+	atomic_set(&resource->max_req_write_cnt, 0);
+	atomic_set(&resource->max_req_write_MB, 0);
+
 	return resource;
 
 fail_free_name:
@@ -4572,7 +4575,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	atomic_set(&device->local_cnt, 0);
 	atomic_set(&device->rs_sect_ev, 0);
 	atomic_set(&device->md_io.in_use, 0);
-	atomic_set(&device->max_req_write_cnt, 0);
 
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);

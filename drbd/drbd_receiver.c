@@ -10314,7 +10314,8 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
         kfree2(req->req_databuf);
     }
 
-	atomic_dec(&req->device->max_req_write_cnt);
+	atomic_dec(&req->device->resource->max_req_write_cnt);
+	atomic_sub(sizeof(struct drbd_request), &req->device->resource->max_req_write_MB);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 	
 #else
@@ -11168,7 +11169,8 @@ static void destroy_request(struct kref *kref)
         kfree2(req->req_databuf);
     }
 
-	atomic_dec(&req->device->max_req_write_cnt);
+	atomic_dec(&req->device->resource->max_req_write_cnt);
+	atomic_sub(sizeof(struct drbd_request), &req->device->resource->max_req_write_MB);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 
 #else
