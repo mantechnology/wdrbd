@@ -112,11 +112,6 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-extern atomic_t64 g_total_req_buf_bytes;
-#endif
-
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -1805,7 +1800,7 @@ struct drbd_device {
 	atomic_t ap_actlog_cnt;  /* Requests waiting for activity log */
 	atomic_t local_cnt;	 /* Waiting for local completion */
 	atomic_t suspend_cnt;
-
+	atomic_t max_req_write_cnt; // DW-1925
 	/* Interval trees of pending local requests */
 	struct rb_root read_requests;
 	struct rb_root write_requests;
@@ -3681,11 +3676,11 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
 		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
 	}
-	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
+	if (atomic_read(&device->max_req_write_cnt) > req_buf_size_max) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit())
-			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read(&device->max_req_write_cnt), req_buf_size_max);
 		rv = false;
 	} else {
 		device->resource->breqbuf_overflow_alarm = FALSE;

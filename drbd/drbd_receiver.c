@@ -89,11 +89,6 @@ enum resync_reason {
 	DISKLESS_PRIMARY,
 };
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-extern atomic_t64 g_total_req_buf_bytes;
-#endif
-
 IO_COMPLETION_ROUTINE one_flush_endio;
 
 int drbd_do_features(struct drbd_connection *connection);
@@ -10319,10 +10314,9 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
         kfree2(req->req_databuf);
     }
 
+	atomic_dec(&req->device->max_req_write_cnt);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-	// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
-	atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
+	
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
@@ -11174,10 +11168,9 @@ static void destroy_request(struct kref *kref)
         kfree2(req->req_databuf);
     }
 
+	atomic_dec(&req->device->max_req_write_cnt);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-	// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-	// DW-1539
-	atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
+
 #else
 	mempool_free(req, drbd_request_mempool);
 #endif
