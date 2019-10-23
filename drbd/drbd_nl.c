@@ -5950,6 +5950,9 @@ put_result:
 	if (err)
 		goto out;
 	resource_statistics.res_stat_write_ordering = resource->write_ordering;
+	resource_statistics.res_stat_req_write_cnt = resource->req_write_cnt;
+	resource_statistics.res_stat_req_write_MB = resource->req_write_MB;
+	
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;

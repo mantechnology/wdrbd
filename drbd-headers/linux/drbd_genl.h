@@ -256,6 +256,8 @@ GENL_struct(DRBD_NLA_PEER_DEVICE_INFO, 18, peer_device_info,
 
 GENL_struct(DRBD_NLA_RESOURCE_STATISTICS, 19, resource_statistics,
 	__u32_field(1, 0, res_stat_write_ordering)
+	__s32_field(2, 0, res_stat_req_write_cnt)
+	__s32_field(3, 0, res_stat_req_write_MB)
 )
 
 GENL_struct(DRBD_NLA_DEVICE_STATISTICS, 20, device_statistics,
