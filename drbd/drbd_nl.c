@@ -7224,8 +7224,18 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	for_each_connection_ref(connection, im, resource) {
 		retcode = conn_try_disconnect(connection, 0, adm_ctx.reply_skb);
 		if (retcode >= SS_SUCCESS) {
+
 			mutex_lock(&resource->conf_update);
+#ifdef _WIN32
+			// DW-1931 vol_ctl_mutex deadlock in function SetOOSAllocatedCluster()
+			mutex_unlock(&adm_ctx.resource->vol_ctl_mutex);
+#endif
 			del_connection(connection);
+#ifdef _WIN32
+			// DW-1931  
+			mutex_lock(&adm_ctx.resource->vol_ctl_mutex);
+
+#endif
 			mutex_unlock(&resource->conf_update);
 		} else {
 			drbd_info(connection, "conn_try_disconnect retcode : %d, connection ref : %d\n", retcode, connection->kref);
