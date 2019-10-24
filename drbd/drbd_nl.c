@@ -5939,7 +5939,12 @@ put_result:
 		goto out;
 	dh->minor = UINT32_MAX;
 	dh->ret_code = NO_ERROR;
+
+	// DW-1932 modify deadlock of rcu_read_lock
+	rcu_read_unlock();
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL);
+	rcu_read_lock_w32_inner();
+
 	if (err)
 		goto out;
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
@@ -6112,7 +6117,12 @@ put_result:
 	dh->minor = UINT32_MAX;
 	if (retcode == NO_ERROR) {
 		dh->minor = device->minor;
-		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL);
+
+		// DW-1932 modify deadlock of rcu_read_lock
+		rcu_read_unlock();
+		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL); 
+		rcu_read_lock_w32_inner();
+
 		if (err)
 			goto out;
 		if (get_ldev(device)) {
@@ -6346,7 +6356,11 @@ put_result:
 	if (retcode == NO_ERROR) {
 		struct net_conf *net_conf;
 
+		// DW-1932 modify deadlock of rcu_read_lock
+		rcu_read_unlock();
 		err = nla_put_drbd_cfg_context(skb, resource, connection, NULL, NULL);
+		rcu_read_lock_w32_inner();
+
 		if (err)
 			goto out;
 		net_conf = rcu_dereference(connection->transport.net_conf);
