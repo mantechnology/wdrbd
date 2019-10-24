@@ -116,7 +116,6 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 
 	// DW-1925 improvement req-buf-size
 	atomic_inc(&device->resource->req_write_cnt);
-	atomic_add64(sizeof(struct drbd_request), &device->resource->req_write_bytes);
 #else
 	drbd_req_make_private_bio(req, bio_src);
 #endif
@@ -196,7 +195,6 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
 
 		// DW-1925 improvement req-buf-size
 		atomic_dec(&resource->req_write_cnt);
-		atomic_sub64(sizeof(struct drbd_request), &resource->req_write_bytes);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }
 #else
@@ -434,7 +432,6 @@ tail_recursion:
 
 				// DW-1925 improvement req-buf-size
 				atomic_dec(&resource->req_write_cnt);
-				atomic_sub64(sizeof(struct drbd_request), &resource->req_write_bytes);
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 				peer_ack_req = NULL;
 			}
@@ -459,7 +456,6 @@ tail_recursion:
 
 		// DW-1925 improvement req-buf-size
 		atomic_dec(&req->device->resource->req_write_cnt);
-		atomic_sub64(sizeof(struct drbd_request), &req->device->resource->req_write_bytes);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
     }
 #else

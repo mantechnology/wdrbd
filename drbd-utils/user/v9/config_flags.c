@@ -1062,7 +1062,6 @@ struct context_def resource_options_ctx = {
 #ifdef _WIN32
 		// DW-1925 number and size of request objects can be set
 		{ "max-req-write-count", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT) },
-		{ "max-req-write-MB", NUMERIC(max_req_write_MB, MAX_REQ_WRITE_MB), .unit = "MBytes" },
 		{ "on-req-write-congestion", ENUM(on_req_write_congestion, ON_REQ_WRITE_CONGESTION) },
 		// DW-1249: auto-start by svc
 		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },

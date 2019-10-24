@@ -10316,7 +10316,6 @@ void req_destroy_after_send_peer_ack(struct kref *kref)
 
 	// DW-1925 improvement req-buf-size
 	atomic_dec(&req->device->resource->req_write_cnt);
-	atomic_sub64(sizeof(struct drbd_request), &req->device->resource->req_write_bytes);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 	
 #else
@@ -11172,7 +11171,6 @@ static void destroy_request(struct kref *kref)
 
 	// DW-1925 improvement req-buf-size
 	atomic_dec(&req->device->resource->req_write_cnt);
-	atomic_sub64(sizeof(struct drbd_request), &req->device->resource->req_write_bytes);
     ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 
 #else

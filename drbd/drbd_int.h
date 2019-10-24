@@ -1372,7 +1372,6 @@ struct drbd_resource {
 	struct issue_flush_context ctx_flush; // DW-1895
 
 	atomic_t req_write_cnt;			// DW-1925
-	atomic_t64 req_write_bytes;		// DW-1925 
 };
 
 struct drbd_connection {
@@ -3662,7 +3661,6 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
 	int max_req_write_cnt;
-	LONGLONG max_req_write_bytes;
 #endif
 
 	spin_lock_irq(&device->resource->req_lock);
@@ -3679,26 +3677,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 		max_req_write_cnt = (LONGLONG)DRBD_MAX_REQ_WRITE_CNT_DEF;    // use default if value is invalid.    
 	}
 
-	if (device->resource->res_opts.max_req_write_MB < (LONGLONG)DRBD_MAX_REQ_WRITE_MB_MIN ||
-		device->resource->res_opts.max_req_write_MB >(LONGLONG)DRBD_MAX_REQ_WRITE_MB_MAX)
-	{
-		drbd_err(device, "got invalid max_req_write_MB(%lld), use default value(%d)\n", device->resource->res_opts.max_req_write_MB, (LONGLONG)DRBD_MAX_REQ_WRITE_MB_DEF);
-		max_req_write_bytes = (LONGLONG)DRBD_MAX_REQ_WRITE_MB_DEF;    // use default if value is invalid.    
-	}
-	else
-		max_req_write_bytes = (LONGLONG)device->resource->res_opts.max_req_write_MB << 20; //This option is in MB but should be Bytes when compared.
-
 	// DW-1925 postpone if only one of the number or size of req exceeds the maximum
-	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt||
-		atomic_read64(&device->resource->req_write_bytes) > max_req_write_bytes) {
+	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit()) {
-			drbd_warn(device, "request count or size exceeds maximum, postponing I/O until we get enough memory. req_write_cnt(%d), req_write_bytes(%lld), max cnt(%d), max MB(%lld)\n", 
+			drbd_warn(device, "request count exceeds maximum, postponing I/O until we get enough memory. req_write_cnt(%d), max cnt(%d)\n", 
 				atomic_read(&device->resource->req_write_cnt),
-				atomic_read64(&device->resource->req_write_bytes),
-				max_req_write_cnt,
-				max_req_write_bytes);
+				max_req_write_cnt);
 		}
 		rv = false;
 	} else {
