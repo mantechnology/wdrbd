@@ -579,7 +579,6 @@ extern int w_notify_io_error(struct drbd_work *w, int cancel);
 
 struct drbd_request {
 	struct drbd_device *device;
-	struct drbd_resource *resource;
 	/* if local IO is not allowed, will be NULL.
 	 * if local IO _is_ allowed, holds the locally submitted bio clone,
 	 * or, after local IO completion, the ERR_PTR(error).
@@ -3688,12 +3687,6 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	}
 	else
 		max_req_write_bytes = (LONGLONG)device->resource->res_opts.max_req_write_MB << 20; //This option is in MB but should be Bytes when compared.
-
-	drbd_warn(device, "cur max_req_write_cnt(%d), max_req_write_MB(%lld), max cnt(%d), max MB(%lld)\n",
-		atomic_read(&device->resource->req_write_cnt),
-		atomic_read64(&device->resource->req_write_bytes),
-		max_req_write_cnt,
-		max_req_write_bytes);
 
 	// DW-1925 postpone if only one of the number or size of req exceeds the maximum
 	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt||
