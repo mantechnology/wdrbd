@@ -818,6 +818,12 @@ const char *on_no_data_map[] = {
 	[OND_SUSPEND_IO] = "suspend-io",
 };
 
+// DW-1925
+const char *on_req_write_congestion_map[] = {
+	[ORWC_DISCONNECT] = "disconnect",
+	[ORWC_BLOCK] = "block",
+};
+
 #define on_no_quorum_map on_no_data_map
 /* ONQ_XX == OND_XX */
 
@@ -1055,8 +1061,9 @@ struct context_def resource_options_ctx = {
 		{ "on-no-quorum", ENUM(on_no_quorum, ON_NO_QUORUM) },
 #ifdef _WIN32
 		// DW-1925 number and size of request objects can be set
-		{ "max-req-write-cnt", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT) },
+		{ "max-req-write-count", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT) },
 		{ "max-req-write-MB", NUMERIC(max_req_write_MB, MAX_REQ_WRITE_MB), .unit = "MBytes" },
+		{ "on-req-write-congestion", ENUM(on_req_write_congestion, ON_REQ_WRITE_CONGESTION) },
 		// DW-1249: auto-start by svc
 		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },
 		{ "io-error-retry-count", NUMERIC(io_error_retry_count, IO_ERROR_RETRY_COUNT) },

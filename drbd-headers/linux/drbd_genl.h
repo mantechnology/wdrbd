@@ -148,6 +148,7 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__flg_field_def(14, 0 /* OPTIONAL */, svc_autostart, DRBD_SVC_AUTOSTART_DEF)	  /* DW-1249: auto-start by svc*/
 	__u32_field_def(15, 0 /* OPTIONAL */, io_error_retry_count, DRBD_IO_ERROR_RETRY_COUNT_DEF)        /* DW-1716: retry count for I/O error*/
 	__u32_field_def(16, 0 /* OPTIONAL */, max_req_write_MB, DRBD_MAX_REQ_WRITE_MB_DEF)
+	__u32_field_def(17, 0 /* OPTIONAL */, on_req_write_congestion, DRBD_ON_REQ_WRITE_CONGESTION_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,

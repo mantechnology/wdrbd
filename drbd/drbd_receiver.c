@@ -11296,7 +11296,8 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 
 #ifdef _WIN32
 		// DW-1539 alarm req-buf overflow and disconnect
-		if(connection->resource->breqbuf_overflow_alarm == TRUE) {
+		if(connection->resource->breqbuf_overflow_alarm == TRUE && 
+		   connection->resource->res_opts.on_req_write_congestion == ORWC_DISCONNECT) { 	// DW-1925 DISCONNECT or not based on on-req-write-congestion
 			drbd_err(connection, "drbd_resource:%p drbd_req overflow alarm\n",connection->resource);
 			goto reconnect;
 		}
