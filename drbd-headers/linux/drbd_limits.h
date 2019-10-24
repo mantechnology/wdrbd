@@ -349,8 +349,8 @@
 
 #define DRBD_MAX_REQ_WRITE_MB_MIN        10
 #define DRBD_MAX_REQ_WRITE_MB_DEF        100
-#define DRBD_MAX_REQ_WRITE_MB_MAX        1024
-#define DRBD_MAX_REQ_WRITE_MB_SCALE        'M'
+#define DRBD_MAX_REQ_WRITE_MB_MAX        10240
+#define DRBD_MAX_REQ_WRITE_MB_SCALE        '1'
 
 #endif
 

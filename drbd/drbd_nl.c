@@ -5951,8 +5951,6 @@ put_result:
 		goto out;
 	resource_statistics.res_stat_write_ordering = resource->write_ordering;
 	resource_statistics.res_stat_req_write_cnt = resource->req_write_cnt;
-	resource_statistics.res_stat_req_write_bytes = resource->req_write_bytes;
-	
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
@@ -7343,7 +7341,6 @@ void notify_resource_state(struct sk_buff *skb,
 		goto nla_put_failure;
 	resource_statistics.res_stat_write_ordering = resource->write_ordering;
 	resource_statistics.res_stat_req_write_cnt = resource->req_write_cnt;
-	resource_statistics.res_stat_req_write_bytes = resource->req_write_bytes;
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto nla_put_failure;

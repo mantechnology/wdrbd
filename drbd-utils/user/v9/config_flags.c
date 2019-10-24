@@ -1054,8 +1054,8 @@ struct context_def resource_options_ctx = {
 		{ "quorum", ENUM_NUM(quorum, QUORUM, 1, DRBD_PEERS_MAX) },
 		{ "on-no-quorum", ENUM(on_no_quorum, ON_NO_QUORUM) },
 #ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-		{ "max-req-write-cnt", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT), .unit = "count" },
+		// DW-1925 number and size of request objects can be set
+		{ "max-req-write-cnt", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT) },
 		{ "max-req-write-MB", NUMERIC(max_req_write_MB, MAX_REQ_WRITE_MB), .unit = "MBytes" },
 		// DW-1249: auto-start by svc
 		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },

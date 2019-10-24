@@ -2297,10 +2297,8 @@ void print_resource_statistics(int indent,
 		wrap_printf(indent, " write-ordering:%s", write_ordering_str[wo]);
 	}
 
-	wrap_printf(indent, " req_write_cnt:" U32,
+	wrap_printf(indent, " req-pending:" U32,
 		(int)new->res_stat_req_write_cnt);
-	wrap_printf(indent, " req_write_bytes:" U64,
-		new->res_stat_req_write_bytes);
 }
 
 void print_device_statistics(int indent,
