@@ -112,11 +112,6 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-extern atomic_t64 g_total_req_buf_bytes;
-#endif
-
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -584,7 +579,6 @@ extern int w_notify_io_error(struct drbd_work *w, int cancel);
 
 struct drbd_request {
 	struct drbd_device *device;
-
 	/* if local IO is not allowed, will be NULL.
 	 * if local IO _is_ allowed, holds the locally submitted bio clone,
 	 * or, after local IO completion, the ERR_PTR(error).
@@ -1376,6 +1370,8 @@ struct drbd_resource {
 	MVOL_THREAD			WorkThreadInfo;
 #endif
 	struct issue_flush_context ctx_flush; // DW-1895
+
+	atomic_t req_write_cnt;			// DW-1925
 };
 
 struct drbd_connection {
@@ -1805,7 +1801,6 @@ struct drbd_device {
 	atomic_t ap_actlog_cnt;  /* Requests waiting for activity log */
 	atomic_t local_cnt;	 /* Waiting for local completion */
 	atomic_t suspend_cnt;
-
 	/* Interval trees of pending local requests */
 	struct rb_root read_requests;
 	struct rb_root write_requests;
@@ -3665,7 +3660,7 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	unsigned int nr_requests;
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-	LONGLONG req_buf_size_max;
+	int max_req_write_cnt;
 #endif
 
 	spin_lock_irq(&device->resource->req_lock);
@@ -3673,19 +3668,24 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	rv = may_inc_ap_bio(device) && (unsigned int)atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
 
 #ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
-	req_buf_size_max = ((LONGLONG)device->resource->res_opts.req_buf_size << 10);    // convert to byte
-	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
-		req_buf_size_max >((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
+	// DW-1925 postpone I/O if current request count is too big.
+	max_req_write_cnt = device->resource->res_opts.max_req_write_cnt;   
+	if (max_req_write_cnt < DRBD_MAX_REQ_WRITE_CNT_MIN ||
+		max_req_write_cnt > DRBD_MAX_REQ_WRITE_CNT_MAX)
 	{
-		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
-		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
+		drbd_err(device, "got invalid max_req_write_cnt(%llu), use default value(%llu)\n", max_req_write_cnt, (LONGLONG)DRBD_MAX_REQ_WRITE_CNT_DEF);
+		max_req_write_cnt = (LONGLONG)DRBD_MAX_REQ_WRITE_CNT_DEF;    // use default if value is invalid.    
 	}
-	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
+
+	// DW-1925 postpone if only one of the number or size of req exceeds the maximum
+	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
-		if (drbd_ratelimit())
-			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+		if (drbd_ratelimit()) {
+			drbd_warn(device, "request count exceeds maximum, postponing I/O until we get enough memory. req_write_cnt(%d), max cnt(%d)\n", 
+				atomic_read(&device->resource->req_write_cnt),
+				max_req_write_cnt);
+		}
 		rv = false;
 	} else {
 		device->resource->breqbuf_overflow_alarm = FALSE;

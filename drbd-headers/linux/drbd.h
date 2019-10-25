@@ -100,6 +100,12 @@ enum drbd_on_congestion {
 	OC_DISCONNECT,
 };
 
+// DW-1925
+enum drbd_on_req_write_congestion {
+	ORWC_DISCONNECT,
+	ORWC_BLOCK,
+};
+
 enum drbd_read_balancing {
 	RB_PREFER_LOCAL,
 	RB_PREFER_REMOTE,

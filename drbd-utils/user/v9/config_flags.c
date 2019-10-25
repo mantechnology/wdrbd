@@ -1,4 +1,4 @@
-﻿#include <stdbool.h>
+#include <stdbool.h>
 #include <string.h>
 #include <assert.h>
 
@@ -818,6 +818,12 @@ const char *on_no_data_map[] = {
 	[OND_SUSPEND_IO] = "suspend-io",
 };
 
+// DW-1925
+const char *on_req_write_congestion_map[] = {
+	[ORWC_DISCONNECT] = "disconnect",
+	[ORWC_BLOCK] = "block",
+};
+
 #define on_no_quorum_map on_no_data_map
 /* ONQ_XX == OND_XX */
 
@@ -1054,8 +1060,9 @@ struct context_def resource_options_ctx = {
 		{ "quorum", ENUM_NUM(quorum, QUORUM, 1, DRBD_PEERS_MAX) },
 		{ "on-no-quorum", ENUM(on_no_quorum, ON_NO_QUORUM) },
 #ifdef _WIN32
-		// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-		{ "req-buf-size", NUMERIC(req_buf_size, REQ_BUF_SIZE), .unit = "bytes" },
+		// DW-1925 number and size of request objects can be set
+		{ "max-req-write-count", NUMERIC(max_req_write_cnt, MAX_REQ_WRITE_CNT) },
+		{ "on-req-write-congestion", ENUM(on_req_write_congestion, ON_REQ_WRITE_CONGESTION) },
 		// DW-1249: auto-start by svc
 		{ "svc-autostart", BOOLEAN(svc_autostart, SVC_AUTOSTART) },
 		{ "io-error-retry-count", NUMERIC(io_error_retry_count, IO_ERROR_RETRY_COUNT) },
