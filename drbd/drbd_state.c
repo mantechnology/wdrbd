@@ -841,7 +841,7 @@ static bool all_peer_devices_connected(struct drbd_connection *connection)
 
 #ifdef _WIN32
 	if (need_spinlock)
-		spin_unlock(&connection->resource->req_lock);
+		spin_lock(&connection->resource->req_lock);
 #endif
 
 	return rv;
