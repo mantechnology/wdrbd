@@ -1366,6 +1366,19 @@ void local_irq_enable()
 	spin_unlock_irq(&g_irqLock);
 }
 
+// DW-1933
+BOOLEAN is_spin_lock_in_current_thread(spinlock_t *lock)
+{
+	PKTHREAD curthread = KeGetCurrentThread();
+
+	if (KeTestSpinLock(&lock->spinLock)) {
+		if (curthread == lock->OwnerThread)
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 BOOLEAN spin_trylock(spinlock_t *lock)
 {
 	if (FALSE == KeTestSpinLock(&lock->spinLock))

@@ -816,6 +816,16 @@ static bool all_peer_devices_connected(struct drbd_connection *connection)
 	int vnr;
 	bool rv = true;
 
+	// DW-1933
+#ifdef _WIN32
+	bool need_spinlock = false;
+
+	if (is_spin_lock_in_current_thread(&connection->resource->req_lock)) {
+		spin_unlock(&connection->resource->req_lock);
+		need_spinlock = true;
+	}
+#endif
+
 	rcu_read_lock();
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -828,6 +838,11 @@ static bool all_peer_devices_connected(struct drbd_connection *connection)
 		}
 	}
 	rcu_read_unlock();
+
+#ifdef _WIN32
+	if (need_spinlock)
+		spin_unlock(&connection->resource->req_lock);
+#endif
 
 	return rv;
 }
