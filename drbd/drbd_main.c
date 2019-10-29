@@ -4894,7 +4894,11 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	int vnr;
 
-	spin_lock_irq(&resource->req_lock);
+#ifdef _WIN32
+	// DW-1465 Requires rcu wlock because list_del_rcu().
+	// DW-1933 move code from del_connection() here
+	synchronize_rcu_w32_wlock();
+#endif
 	set_bit(C_UNREGISTERED, &connection->flags);
 	smp_wmb();
 #ifdef _WIN32
@@ -4905,6 +4909,12 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 		list_del_rcu(&peer_device->peer_devices);
 		list_add(&peer_device->peer_devices, &work_list);
 	}
+
+#ifdef _WIN32
+	synchronize_rcu();
+#endif
+	// DW-1933 repositioned req_lock to resolve deadlock.
+	spin_lock_irq(&resource->req_lock);
 	list_del_rcu(&connection->connections);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32

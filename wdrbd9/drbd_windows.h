@@ -800,7 +800,7 @@ extern void spin_unlock(spinlock_t *lock);
 extern void spin_unlock_irq(spinlock_t *lock);
 extern void spin_unlock_irqrestore(spinlock_t *lock, long flags);
 extern long _spin_lock_irqsave(spinlock_t* lock);
-
+extern BOOLEAN is_spin_lock_in_current_thread(spinlock_t* lock);
 #define spin_lock_irqsave(lock, flags) flags = _spin_lock_irqsave(lock); 
 
 extern void read_lock(spinlock_t *lock);
