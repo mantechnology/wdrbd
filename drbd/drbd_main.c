@@ -4371,15 +4371,14 @@ void drbd_destroy_connection(struct kref *kref)
 
 	//DW-1829 : inactive_ee must be free before peer_device.
 	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
+	//DW-1934 remove unnecessary lock 
 	struct drbd_peer_request *peer_req, *t;
-	spin_lock(&resource->req_lock);
 	if (!list_empty(&connection->inactive_ee)) {
 		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
 			list_del(&peer_req->w.list);
 			drbd_free_peer_req(peer_req);
 		}
 	}
-	spin_unlock(&resource->req_lock);
 
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -4395,9 +4394,8 @@ void drbd_destroy_connection(struct kref *kref)
 		free_peer_device(peer_device);
 
 		//DW-1791 fix memory leak
-		spin_lock_irq(&resource->req_lock);
+		//DW-1934 remove unnecessary lock 
 		idr_remove(&connection->peer_devices, vnr);
-		spin_unlock_irq(&resource->req_lock);
 	}
 
 
