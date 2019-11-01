@@ -3725,8 +3725,13 @@ static int adm_detach(struct drbd_device *device, int force, struct sk_buff *rep
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
 #endif
-	if (retcode >= SS_SUCCESS)
+	if (retcode >= SS_SUCCESS) {
+		int res;
+		// DW-1936
+		/* wait for completion of drbd_ldev_destroy() */
+		wait_event_interruptible(res, device->misc_wait, !test_bit(GOING_DISKLESS, &device->flags));
 		drbd_cleanup_device(device);
+	}
 	if (retcode == SS_IS_DISKLESS)
 		retcode = SS_NOTHING_TO_DO;
 	if (ret)
@@ -6980,6 +6985,11 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 	for_each_peer_device_ref(peer_device, im, device)
 		stable_change_repl_state(peer_device, L_OFF,
 					 CS_VERBOSE | CS_WAIT_COMPLETE);
+
+	// DW-1936
+	/* If the worker still has to find it to call drbd_ldev_destroy(),
+	* we must not unregister the device yet. */
+	wait_event(device->misc_wait, !test_bit(GOING_DISKLESS, &device->flags));
 
 	/*
 	 * Flush the resource work queue to make sure that no more events like
