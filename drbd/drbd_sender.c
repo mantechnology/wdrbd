@@ -1986,16 +1986,22 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 		}
 		else {
 			if (likely(peer_device->disk_state[NOW] >= D_INCONSISTENT)) {
+
+				// DW-1938 fix potential rs_in_flight incorrect calculation
+				inc_rs_pending(peer_device);
+				//DW-1817
+				//Add the data size to rs_in_flight before sending the resync data.
+				atomic_add64(peer_req->i.size, &peer_device->connection->rs_in_flight);
+
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
 				else
 					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
-
-				if (!err) {
-					inc_rs_pending(peer_device);
-					//DW-1817
-					//Add the data size to rs_in_flight before sending the resync data.
-					atomic_add64(peer_req->i.size, &peer_device->connection->rs_in_flight);
+				
+				// DW-1938 fix potential rs_in_flight incorrect calculation
+				if (err) {
+					dec_rs_pending(peer_device);
+					atomic_sub64(peer_req->i.size, &peer_device->connection->rs_in_flight);
 				}
 			}
 			else {
