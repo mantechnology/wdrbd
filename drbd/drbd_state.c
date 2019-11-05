@@ -682,11 +682,11 @@ static enum drbd_state_rv ___end_state_change(struct drbd_resource *resource, st
 
 		for_each_peer_device(peer_device, device) {
 			peer_device->disk_state[NOW] = peer_device->disk_state[NEW];
-#ifndef _WIN32	
-			// MODIFIED_BY_MANTECH DW-1131
-			// Move to queue_after_state_change_work.
-			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
-#endif			
+
+			// MODIFIED_BY_MANTECH DW-1131 Move to queue_after_state_change_work.                        
+			// DW-1936 keep the updates repl_state
+			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];		
+
 			peer_device->resync_susp_user[NOW] =
 				peer_device->resync_susp_user[NEW];
 			peer_device->resync_susp_peer[NOW] =
@@ -2302,9 +2302,6 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	struct after_state_change_work *work;
 	gfp_t gfp = GFP_ATOMIC;
 #ifdef _WIN32
-	struct drbd_device *device;
-	int vnr;
-
 	work = kmalloc(sizeof(*work), gfp, '83DW');
 #else
 	work = kmalloc(sizeof(*work), gfp);
@@ -2312,18 +2309,26 @@ static void queue_after_state_change_work(struct drbd_resource *resource,
 	if (work)
 		work->state_change = remember_state_change(resource, gfp);
 
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1131
-	// Updating repl_state, before w_after_state_change add to drbd_work_queue. 
-	idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
-		struct drbd_peer_device *peer_device;
-		for_each_peer_device(peer_device, device) {			
-			peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
-		}
-	}
-#endif
-	
 	if (work && work->state_change) {
+#ifdef _WIN32
+		// DW-1936 if the new disk state value is D_DETACHING, it will be reflected immediately.
+		struct drbd_device *device;
+		struct drbd_peer_device *peer_device;
+		int vnr;
+
+		idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr) {
+			if (device->disk_state[NEW] == D_DETACHING &&
+				device->disk_state[NOW] != D_DETACHING)
+				device->disk_state[NOW] = device->disk_state[NEW];
+
+			for_each_peer_device(peer_device, device) {
+				// DW-1131 updating repl_state, before w_after_state_change add to drbd_work_queue. 
+				// DW-1936 update only in the specified state (L_WF_BITMAP_S, L_WF_BITMAP_T)
+				if (peer_device->repl_state[NEW] == L_WF_BITMAP_S || peer_device->repl_state[NEW] == L_WF_BITMAP_T)
+					peer_device->repl_state[NOW] = peer_device->repl_state[NEW];
+			}
+		}
+#endif
 		work->w.cb = w_after_state_change;
 		work->done = done;
 		drbd_queue_work(&resource->work, &work->w);
