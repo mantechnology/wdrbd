@@ -2889,8 +2889,10 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
+
+// DW-1941 add parameter locked(rcu_read_lock)
 extern int update_sync_bits(struct drbd_peer_device *peer_device,
-	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode);
+	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode, bool locked);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif

@@ -1251,7 +1251,7 @@ static void maybe_schedule_on_disk_bitmap_update(struct drbd_peer_device *peer_d
 // DW-844
 int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long sbnr, unsigned long ebnr,
-		update_sync_bits_mode mode)
+		update_sync_bits_mode mode, bool locked)
 #else
 static int update_sync_bits(struct drbd_peer_device *peer_device,
 		unsigned long sbnr, unsigned long ebnr,
@@ -1320,9 +1320,21 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 		if (peer_device->repl_state[NOW] == L_AHEAD && mode == SET_OUT_OF_SYNC) {
 			struct net_conf *nc;
 
+			// DW-1941
+#ifdef _WIN32
+			unsigned char oldIrql_rLock = 0;
+
+			if (!locked)
+				rcu_read_lock_w32_inner();
+#else // _LIN
 			rcu_read_lock();
+#endif
 			nc = rcu_dereference(peer_device->connection->transport.net_conf);
-			rcu_read_unlock();
+
+#ifdef _WIN32
+			if (!locked)
+#endif
+				rcu_read_unlock();
 
 			if (device->act_log->used < nc->cong_extents)
 				wake_up(&device->al_wait);
@@ -1424,7 +1436,7 @@ int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, in
 	BUG_ON_UINT32_OVER(ebnr);
 #endif
 
-	count = update_sync_bits(peer_device, (unsigned long)sbnr, (unsigned long)ebnr, mode);
+	count = update_sync_bits(peer_device, (unsigned long)sbnr, (unsigned long)ebnr, mode, false);
 out:
 	put_ldev(device);
 	return count;
@@ -1534,7 +1546,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1191: caller needs to know if the bits has been set at least.
 		{
-			if (update_sync_bits(peer_device, (unsigned long)set_start, (unsigned long)set_end, SET_OUT_OF_SYNC) > 0)
+			if (update_sync_bits(peer_device, (unsigned long)set_start, (unsigned long)set_end, SET_OUT_OF_SYNC, true) > 0)
 				set_bits |= (1 << bitmap_index);
 		}
 #else
@@ -1542,7 +1554,7 @@ bool drbd_set_sync(struct drbd_device *device, sector_t sector, int size,
 #endif
 		//DW-1871
 		else if (clear_start <= clear_end && !skip_clear)
-			update_sync_bits(peer_device, (unsigned long)clear_start, (unsigned long)clear_end, SET_IN_SYNC);
+			update_sync_bits(peer_device, (unsigned long)clear_start, (unsigned long)clear_end, SET_IN_SYNC, true);
 	}
 	rcu_read_unlock();
 	if (mask) {
