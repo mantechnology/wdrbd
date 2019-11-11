@@ -71,6 +71,7 @@ static void process_io_error(struct bio *bio, struct drbd_device *device, unsign
  */
 
 struct mutex resources_mutex;
+spinlock_t g_inactive_lock; // DW-1935
 
 /* used for synchronous meta data and bitmap IO
  * submitted by drbd_md_sync_page_io()
@@ -201,24 +202,49 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __releases(local)
 {
 	unsigned long flags = 0;
-	struct drbd_peer_device *peer_device = peer_req->peer_device;
-	struct drbd_device *device = peer_device->device;
-	struct drbd_connection *connection = peer_device->connection;
+	struct drbd_peer_device *peer_device;
+	struct drbd_device *device;
+	struct drbd_connection *connection;
+
+	spin_lock(&g_inactive_lock);
+	if (test_bit(__EE_WAS_INACTIVE_REQ, &peer_req->flags)) {
+		if (!test_bit(__EE_WAS_LOST_REQ, &peer_req->flags)) {
+
+			peer_device = peer_req->peer_device;
+			device = peer_device->device;
+			connection = peer_device->connection;
+
+			//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
+			struct drbd_peer_request *p_req, *t_inative;
+
+			list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
+				if (peer_req == p_req) {
+					drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+					// DW-1935
+					list_del(&peer_req->w.list);
+					drbd_free_peer_req(peer_req);
+					atomic_dec(&connection->inacitve_ee_cnt);
+					put_ldev(device);
+					break;
+				}
+			}
+		}
+		else {
+			WDRBD_INFO("destroy, read lost inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_free_peer_req(peer_req);
+		}
+
+		spin_unlock(&g_inactive_lock);
+		return;
+	}
+	spin_unlock(&g_inactive_lock);
+
+	// DW-1935
+	peer_device = peer_req->peer_device;
+	device = peer_device->device;
+	connection = peer_device->connection;
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
-	//DW-1735 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
-	struct drbd_peer_request *p_req, *t_inative;
-	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
-		if (peer_req == p_req) {
-			drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
-			list_del(&peer_req->w.list);
-			drbd_free_peer_req(peer_req);
-			spin_unlock_irqrestore(&device->resource->req_lock, flags);
-			put_ldev(device);
-			return;
-		}
-	}
-
 	device->read_cnt += peer_req->i.size >> 9;
 	list_del(&peer_req->w.list);
 	if (list_empty(&connection->read_ee))
@@ -250,36 +276,56 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 {
 	long lock_flags = 0;
 	ULONG_PTR flags = 0;
-	struct drbd_peer_device *peer_device = peer_req->peer_device;
-	struct drbd_device *device = peer_device->device;
-	struct drbd_connection *connection = peer_device->connection;
+	struct drbd_peer_device *peer_device;
+	struct drbd_device *device;
+	struct drbd_connection *connection;
 	sector_t sector;
 	int do_wake = 0;
 	u64 block_id;
-	//DW-1928 
+	// DW-1928 
 	unsigned int size;
+	// DW-1696 In case of the same peer_request, destroy it in inactive_ee and exit the function.
+	// DW-1935
+	spin_lock(&g_inactive_lock);
+	if (test_bit(__EE_WAS_INACTIVE_REQ, &peer_req->flags)) {
+		if (!test_bit(__EE_WAS_LOST_REQ, &peer_req->flags)) {
+			struct drbd_peer_request *p_req, *t_inative;
 
-	//DW-1696 : In case of the same peer_request, destroy it in inactive_ee and exit the function.
-	struct drbd_peer_request *p_req, *t_inative;
-	spin_lock_irqsave(&device->resource->req_lock, lock_flags);
-	list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
-		if (peer_req == p_req) {
-			if (peer_req->block_id != ID_SYNCER) {
-				//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
-				drbd_al_complete_io(device, &peer_req->i); 
-				drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			peer_device = peer_req->peer_device;
+			device = peer_device->device;
+			connection = peer_device->connection;
+
+			list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
+				if (peer_req == p_req) {
+					if (peer_req->block_id != ID_SYNCER) {
+						//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
+						drbd_al_complete_io(device, &peer_req->i);
+						drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+					}
+					else {
+						drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+					}
+					// DW-1935
+					list_del(&peer_req->w.list);
+					drbd_free_peer_req(peer_req);
+					atomic_dec(&connection->inacitve_ee_cnt);
+					put_ldev(device);
+					break;
+				}
 			}
-			else {
-				drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
-			}
-			list_del(&peer_req->w.list);
-			drbd_free_peer_req(peer_req);
-			spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
-			put_ldev(device);
-			return;
 		}
+		else {
+			WDRBD_INFO("destroy, wrtie inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_free_peer_req(peer_req);
+		}
+		spin_unlock(&g_inactive_lock);
+		return;
 	}
-	spin_unlock_irqrestore(&device->resource->req_lock, lock_flags);
+	spin_unlock(&g_inactive_lock);
+
+	peer_device = peer_req->peer_device;
+	device = peer_device->device;
+	connection = peer_device->connection;
 
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
@@ -305,7 +351,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	 * (as soon as we release the req_lock) */
 
 	//DW-1601 the last split uses the sector of the first bit for resync_lru matching.
-	if (peer_req->flags & EE_SPLIT_LAST_REQUEST)
+	if (peer_req->flags & EE_SPLIT_LAST_REQ)
 		sector = BM_BIT_TO_SECT(peer_req->s_bb);
 	else
 		sector = peer_req->i.sector;
@@ -366,7 +412,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	//DW-1601 calls drbd_rs_complete_io() after all data is complete.
 	//DW-1886
 	if (block_id == ID_SYNCER) {
-		if (!(flags & EE_SPLIT_REQUEST))
+		if (!(flags & EE_SPLIT_REQ))
 			drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		//DW-1928
 		atomic_add64(size, &peer_device->rs_written);
@@ -375,8 +421,8 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	if (do_wake) 
 		wake_up(&connection->ee_wait);
 
-	//DW-1903 EE_SPLIT_REQUEST is a duplicate request and does not call put_ldev().
-	if (!(flags & EE_SPLIT_REQUEST))
+	//DW-1903 EE_SPLIT_REQ is a duplicate request and does not call put_ldev().
+	if (!(flags & EE_SPLIT_REQ))
 		put_ldev(device);
 }
 
