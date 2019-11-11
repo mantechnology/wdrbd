@@ -143,6 +143,7 @@ static int fault_count;
 int fault_devs;
 #endif
 int two_phase_commit_fail;
+extern spinlock_t g_inactive_lock;
 
 #ifndef _WIN32
 /* bitmap of enabled faults */
@@ -4272,7 +4273,8 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	INIT_LIST_HEAD(&connection->read_ee);
 	INIT_LIST_HEAD(&connection->net_ee);
 	INIT_LIST_HEAD(&connection->done_ee);
-	INIT_LIST_HEAD(&connection->inactive_ee);	//DW-1696
+	INIT_LIST_HEAD(&connection->inactive_ee);	// DW-1696
+	atomic_set(&connection->inacitve_ee_cnt, 0); // DW-1935
 	init_waitqueue_head(&connection->ee_wait);
 
 	kref_init(&connection->kref);
@@ -4369,15 +4371,17 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
-	//DW-1829 : inactive_ee must be free before peer_device.
-	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
-	//DW-1934 remove unnecessary lock 
-	struct drbd_peer_request *peer_req, *t;
-	if (!list_empty(&connection->inactive_ee)) {
+	// DW-1935 if the inactive_ee is not removed, a memory leak may occur, but BSOD may occur when removing it, so do not remove it. (priority of BSOD is higher than memory leak.)
+	//	inacitve_ee processing logic not completed is required (cancellation, etc.)
+	if (atomic_read(&connection->inacitve_ee_cnt)) {
+		struct drbd_peer_request *peer_req, *t;
+		drbd_info(connection, "inactive_ee count not completed:%u\n", atomic_read(&connection->inacitve_ee_cnt));
+
+		spin_lock(&g_inactive_lock);
 		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
-			list_del(&peer_req->w.list);
-			drbd_free_peer_req(peer_req);
+			set_bit(__EE_WAS_LOST_REQ, &peer_req->flags);
 		}
+		spin_unlock(&g_inactive_lock);
 	}
 
 #ifdef _WIN32
@@ -4973,6 +4977,8 @@ static int __init drbd_init(void)
 	mutex_init(&g_genl_mutex);
 	mutex_init(&notification_mutex);
 	mutex_init(&att_mod_mutex); 
+	// DW-1935
+	spin_lock_init(&g_inactive_lock);
 #endif
 
 #ifdef _WIN32

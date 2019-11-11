@@ -94,6 +94,8 @@ IO_COMPLETION_ROUTINE one_flush_endio;
 int drbd_do_features(struct drbd_connection *connection);
 int drbd_do_auth(struct drbd_connection *connection);
 
+extern spinlock_t g_inactive_lock;
+
 static enum finish_epoch drbd_may_finish_epoch(struct drbd_connection *, struct drbd_epoch *, enum epoch_event);
 static int e_end_block(struct drbd_work *, int);
 static void cleanup_unacked_peer_requests(struct drbd_connection *connection);
@@ -584,7 +586,6 @@ drbd_alloc_peer_req(struct drbd_peer_device *peer_device, gfp_t gfp_mask) __must
 
 void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 {
-	struct drbd_peer_device *peer_device = peer_req->peer_device;
 #ifndef _WIN32
 	might_sleep();
 #else
@@ -597,9 +598,16 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 
 	if (peer_req->flags & EE_HAS_DIGEST)
 		kfree(peer_req->digest);
-	D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
-	D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
-	drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
+
+	if (!(peer_req->flags & EE_WAS_LOST_REQ)) {
+		struct drbd_peer_device *peer_device = peer_req->peer_device;
+
+		D_ASSERT(peer_device, atomic_read(&peer_req->pending_bios) == 0);
+		D_ASSERT(peer_device, drbd_interval_empty(&peer_req->i));
+
+		//DW-1935
+		drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
+	}
 #ifdef _WIN32
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
 #else
@@ -2513,7 +2521,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 				}
 			}
 
-			if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST))
+			if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ))
 				err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 		}
 	}
@@ -2524,14 +2532,14 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 		if (!is_unmarked) {
 			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-			if (!(peer_req->flags & EE_SPLIT_REQUEST) && !(peer_req->flags & EE_SPLIT_LAST_REQUEST)) {
+			if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
 				err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 			}
 		}
 	}
 
 	//DW-1911 check split request
-	if (peer_req->flags & EE_SPLIT_REQUEST || peer_req->flags & EE_SPLIT_LAST_REQUEST) {
+	if (peer_req->flags & EE_SPLIT_REQ || peer_req->flags & EE_SPLIT_LAST_REQ) {
 		//DW-1911 check that all split requests are completed.
 		if (peer_req->count && 0 == atomic_dec_return(peer_req->count)) {
 			bool is_in_sync = false;	//true : in sync, false : out of sync
@@ -2853,7 +2861,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 															BM_BIT_TO_SECT(offset), (BM_BIT_TO_SECT(offset - s_bb) << 9),
 															(unsigned int)(BM_BIT_TO_SECT(i_bb - offset) << 9),
 															s_bb,  e_next_bb, 
-															((e_oos == (i_bb - 1) && !marked_rl ) ? EE_SPLIT_LAST_REQUEST : EE_SPLIT_REQUEST),
+															((e_oos == (i_bb - 1) && !marked_rl ) ? EE_SPLIT_LAST_REQ : EE_SPLIT_REQ),
 															split_count, NULL);
 
 						if (!split_peer_req) {
@@ -2933,7 +2941,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 																	((BM_BIT_TO_SECT(marked_rl->bb - s_bb) + i) << 9),
 																	1 << 9,
 																	s_bb, e_next_bb,
-																	((marked_rl->bb == e_oos && marked_rl->end_unmarked_rl == i) ? EE_SPLIT_LAST_REQUEST : EE_SPLIT_REQUEST),
+																	((marked_rl->bb == e_oos && marked_rl->end_unmarked_rl == i) ? EE_SPLIT_LAST_REQ : EE_SPLIT_REQ),
 																	split_count, NULL);
 
 								if (!split_peer_req) {
@@ -7880,8 +7888,6 @@ enum drbd_state_rv drbd_support_2pc_resize(struct drbd_resource *resource)
     return rv;
 }
 
-
-
 static int process_twopc(struct drbd_connection *connection,
 			 struct twopc_reply *reply,
 			 struct packet_info *pi,
@@ -9793,14 +9799,16 @@ void conn_disconnect(struct drbd_connection *connection)
 	* peer_request queued to the submitter workqueue. */
 	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
 
-	//DW-1874 call after active_ee wait
+	// DW-1874 call after active_ee wait
 	drain_resync_activity(connection);
 
-	//DW-1696 : Add the incomplete active_ee, sync_ee
+	// DW-1696 add the incomplete active_ee, sync_ee, read_ee
 	spin_lock(&resource->req_lock);	
-	//DW-1732 : Initialization active_ee(bitmap, al) 
+	// DW-1732 initialization active_ee(bitmap, al) 
 	struct drbd_peer_request *peer_req;
 
+	// DW-1935
+	spin_lock(&g_inactive_lock);
 	if (!list_empty(&connection->active_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->active_ee, w.list) {
 			struct drbd_peer_device *peer_device = peer_req->peer_device;
@@ -9816,7 +9824,7 @@ void conn_disconnect(struct drbd_connection *connection)
 		list_splice_init(&connection->active_ee, &connection->inactive_ee);
 	}
 
-	//DW-1920 
+	// DW-1920 
 	if (!list_empty(&connection->sync_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->sync_ee, w.list) {
 			struct drbd_device *device = peer_req->peer_device->device;
@@ -9830,10 +9838,17 @@ void conn_disconnect(struct drbd_connection *connection)
 			struct drbd_device *device = peer_req->peer_device->device;
 			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
-		//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
+		// DW-1735 If the list is not empty because it has been moved to inactive_ee, it as a bug
 		list_splice_init(&connection->read_ee, &connection->inactive_ee);
 	}
 
+	// DW-1935
+	atomic_set(&connection->inacitve_ee_cnt, 0);
+	list_for_each_entry(struct drbd_peer_request, peer_req, &connection->inactive_ee, w.list) {
+		set_bit(__EE_WAS_INACTIVE_REQ, &peer_req->flags);
+		atomic_inc(&connection->inacitve_ee_cnt);
+	}
+	spin_unlock(&g_inactive_lock);
 	spin_unlock(&resource->req_lock);
 
 	/* wait for all w_e_end_data_req, w_e_end_rsdata_req, w_send_barrier,
