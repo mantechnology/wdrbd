@@ -240,6 +240,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	spin_unlock(&g_inactive_lock);
 
 	// DW-1935
+	// TODO - peer_device, connection object can be removed while in use if subsequent operation of the function is later than completion of del_connection() and adm_detach().
 	peer_device = peer_req->peer_device;
 	device = peer_device->device;
 	connection = peer_device->connection;
