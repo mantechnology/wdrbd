@@ -809,7 +809,7 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		if (!al->pending_changes)
 			set_bit(__LC_STARVING, &device->act_log->flags);
 
-		drbd_info(device, "insufficient al_extent slots. nr_al_extents : %lu, available_update_slots : %lu\n", nr_al_extents, available_update_slots);
+		drbd_info(device, "insufficient al_extent slots. nr_al_ext:lu available_us:%lu used:%u pending:\n", nr_al_extents, available_update_slots, al->used, al->pending_changes);
 		return -ENOBUFS;
 	}
 
