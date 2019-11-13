@@ -10870,6 +10870,11 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 		switch (pi->cmd) {
 		case P_NEG_RS_DREPLY:
 			drbd_rs_failed_io(peer_device, sector, size);
+
+			// DW-1946 fix bug that Synchronization stops when SyncSource io-error occurs continuously.
+			// Increase rs_sect_in to decrease the value of rs_in_flight normally in drbd_rs_number_requests().
+			atomic_add(size >> 9, &peer_device->rs_sect_in);
+
 			break;
 		case P_RS_CANCEL:
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
