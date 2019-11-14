@@ -6012,7 +6012,7 @@ static void device_to_statistics(struct device_statistics *s,
 	s->dev_lower_pending = atomic_read(&device->local_cnt);
 	s->dev_al_suspended = test_bit(AL_SUSPENDED, &device->flags);
 	s->dev_exposed_data_uuid = device->exposed_data_uuid;
-	// DW-1945 Added log to determine status when AL bottleneck occurs
+	// DW-1945 check status of Activity-Log
 	if (device->act_log) {
 		s->dev_al_pending_changes = device->act_log->pending_changes;
 		s->dev_al_used = device->act_log->used;
