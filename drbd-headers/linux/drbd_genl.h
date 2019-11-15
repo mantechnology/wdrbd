@@ -275,6 +275,8 @@ GENL_struct(DRBD_NLA_DEVICE_STATISTICS, 20, device_statistics,
 	__u64_field(12, 0, dev_current_uuid)
 	__u32_field(13, 0, dev_disk_flags)
 	__bin_field(14, 0, history_uuids, HISTORY_UUIDS * sizeof(__u64))
+	__u32_field(15, 0, dev_al_pending_changes) /* Number of AL extents currently waiting to commit */
+	__u32_field(16, 0, dev_al_used)  /* Number of AL extents currently in use */
 )
 
 GENL_struct(DRBD_NLA_CONNECTION_STATISTICS, 21, connection_statistics,

@@ -809,7 +809,13 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		if (!al->pending_changes)
 			set_bit(__LC_STARVING, &device->act_log->flags);
 
-		drbd_info(device, "insufficient al_extent slots. nr_al_extents : %lu, available_update_slots : %lu\n", nr_al_extents, available_update_slots);
+		// DW-1945 fixup that Log debug logs when pending_changes are insufficient.
+		// because insufficient of slots for pending_changes can occur frequently.
+		if (al->max_pending_changes - al->pending_changes < nr_al_extents)
+			drbd_dbg(device, "insufficient al_extent slots for 'pending_changes' nr_al_extents:%lu pending:%lu\n", nr_al_extents, al->pending_changes);
+		else
+			drbd_info(device, "insufficient al_extent slots for 'used' nr_al_extents:%lu used:%lu\n", nr_al_extents, al->used);
+
 		return -ENOBUFS;
 	}
 

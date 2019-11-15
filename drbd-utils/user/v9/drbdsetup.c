@@ -2327,6 +2327,13 @@ void print_device_statistics(int indent,
 			    old->dev_al_suspended != new->dev_al_suspended)
 				wrap_printf(indent, " al-suspended:%s",
 					    new->dev_al_suspended ? "yes" : "no");
+
+			wrap_printf(indent, " al-pending-changes:" U32,
+				new->dev_al_pending_changes);
+
+			wrap_printf(indent, " al-used:" U32,
+				new->dev_al_used);
+
 		}
 	}
 	if ((!old ||
