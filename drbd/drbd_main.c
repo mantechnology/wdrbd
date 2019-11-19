@@ -4896,6 +4896,10 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	int vnr;
 
+	// DW-1933 repositioned req_lock to resolve deadlock.
+	// DW-1943 req_lock spinlock should precede the rcu lock.
+	// false the locked parameter at end_state_change_locked() in wdrbd causes synchronization problems, the parameter is false if it is locked by recq_lock spinlock.
+	spin_lock_irq(&resource->req_lock);
 #ifdef _WIN32
 	// DW-1465 Requires rcu wlock because list_del_rcu().
 	// DW-1933 move code from del_connection() here
@@ -4915,8 +4919,6 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 #ifdef _WIN32
 	synchronize_rcu();
 #endif
-	// DW-1933 repositioned req_lock to resolve deadlock.
-	spin_lock_irq(&resource->req_lock);
 	list_del_rcu(&connection->connections);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
