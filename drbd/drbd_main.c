@@ -2565,7 +2565,7 @@ void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_
 		return NULL;
 
 	p->sector = cpu_to_be64(peer_req->i.sector);
-	p->block_id = ID_SYNCER /* unused */;
+	p->block_id = peer_req->block_id; // DW-1942 used to notify source of io failure.
 	p->blksize = cpu_to_be32(peer_req->i.size);
 
 	return p + 1; /* digest should be placed behind the struct */
