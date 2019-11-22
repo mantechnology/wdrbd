@@ -8252,6 +8252,14 @@ static int process_twopc(struct drbd_connection *connection,
 			rv = drbd_support_2pc_resize(resource);		
 		break;
 	}
+	
+	// DW-1948 set standalone and split-brain after two primary check
+	if (rv == SS_TWO_PRIMARIES) {
+		change_cstate_ex(connection, C_DISCONNECTING, CS_HARD);
+		drbd_alert(connection, "Split-Brain since more primaries than allowed; dropping connection!\n");
+		drbd_khelper(NULL, connection, "split-brain");
+		return 0;
+	}
 
 	if (flags & CS_PREPARE) {
 		spin_lock_irq(&resource->req_lock);
