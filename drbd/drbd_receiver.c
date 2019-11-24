@@ -4221,6 +4221,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	struct p_block_req *p =	pi->data;
 	enum drbd_disk_state min_d_state;
 	int err;
+	uint64_t block_id;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
 	if (!peer_device)
@@ -4324,6 +4325,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 
 	case P_OV_REPLY:
 	case P_CSUM_RS_REQUEST:
+		block_id = peer_req->block_id;
 		fault_type = DRBD_FAULT_RS_RD;
 #ifdef _WIN32
         di = kmalloc(sizeof(*di) + pi->size, GFP_NOIO, '42DW');
@@ -4343,6 +4345,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		err = drbd_recv_into(connection, di->digest, pi->size); 
 		if (err)
 			goto fail2;
+
+		// DW-1942 Check for io failure on the SyncTarget.
+		if (block_id == ID_CSUM_SYNC_IO_ERROR) {
+			drbd_rs_failed_io(peer_device, peer_req->i.sector, peer_req->i.size);
+			goto fail2;
+		}
 
 		if (pi->cmd == P_CSUM_RS_REQUEST) {
 			D_ASSERT(device, connection->agreed_pro_version >= 89);
@@ -10574,6 +10582,8 @@ static int got_IsInSync(struct drbd_connection *connection, struct packet_info *
 		drbd_set_in_sync(peer_device, sector, blksize);
 		/* rs_same_csums is supposed to count in units of BM_BLOCK_SIZE */
 		peer_device->rs_same_csum += (blksize >> BM_BLOCK_SHIFT);
+		// DW-1942 applied to release io-error value.
+		check_and_clear_io_error_in_secondary(peer_device);
 		put_ldev(device);
 	}
 	dec_rs_pending(peer_device);

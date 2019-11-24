@@ -129,6 +129,7 @@ extern char usermode_helper[];
 
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
+#define ID_CSUM_SYNC_IO_ERROR (4713ULL) // DW-1942 io-error of SyncTarget during checksum synchronization
 #define ID_SYNCER (UINT64_MAX)
 //DW-1601 Add define values for split peer request processing and already sync processing
 #define ID_SYNCER_SPLIT_DONE ID_SYNCER
