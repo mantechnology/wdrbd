@@ -263,7 +263,7 @@ enum rq_flag_bits {
 #define MSG_MORE				102
 
 #define MAX_ERRNO				4095
-#define IS_ERR_VALUE(_x)		((_x) >= (unsigned long) -MAX_ERRNO)
+#define IS_ERR_VALUE(_x)		((_x) >= (ULONG_PTR) -MAX_ERRNO)
 
 #define WRITE_SYNC				WRITE	// REQ_SYNC | REQ_NOIDLE not used.
 
@@ -1304,9 +1304,10 @@ extern int generic_make_request(struct bio *bio); // return value is changed for
 extern int call_usermodehelper(char *path, char **argv, char **envp, unsigned int wait);
 
 extern void * ERR_PTR(long error);
+// DW-1952 modify to use data type for 32-bit/64-bit address
 extern long PTR_ERR(const void *ptr);
-extern long IS_ERR_OR_NULL(const void *ptr);
-extern int IS_ERR(void *err);
+extern bool IS_ERR_OR_NULL(const void *ptr);
+extern bool IS_ERR(void *err);
 
 extern struct block_device *blkdev_get_by_link(UNICODE_STRING * name, bool bUpdatetargetdev);
 extern struct block_device *blkdev_get_by_path(const char *path, fmode_t mode, void *holder, bool bUpdatetargetdev);
