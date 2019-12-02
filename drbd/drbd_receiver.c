@@ -9842,7 +9842,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
 
-	// DW-1954 after CONN_WAIT_TIMEOUT (default 3 seconds), wait until the e is not empty and the e is not the same as before.
+	// DW-1954 wait CONN_WAIT_TIMEOUT (default 3 seconds) and keep waiting if ee is not empty and ee is the same as before.
 	conn_wait_ee_empty_and_update_timeout(connection, &connection->active_ee);
 
 	// DW-1874 call after active_ee wait
