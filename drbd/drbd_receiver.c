@@ -1799,12 +1799,16 @@ static bool conn_wait_ee_cond(struct drbd_connection *connection, struct list_he
 	return done;
 }
 
+#define CONN_WAIT_TIMEOUT 3
+
 // DW-1682 Added 3 sec timeout for active_ee when disconnecting 
-static void conn_wait_ee_empty_timeout(struct drbd_connection *connection, struct list_head *head)
+static long conn_wait_ee_empty_timeout(struct drbd_connection *connection, struct list_head *head)
 {
 	long t, timeout;	
-	t = timeout = 3 * HZ; // 3 sec
+	t = timeout = CONN_WAIT_TIMEOUT * HZ; // 3 sec
 	wait_event_timeout(t, connection->ee_wait, conn_wait_ee_cond(connection, head), timeout);
+
+	return t;
 }
 
 static void conn_wait_ee_empty(struct drbd_connection *connection, struct list_head *head)
@@ -1816,6 +1820,30 @@ static void conn_wait_ee_empty_or_disconnect(struct drbd_connection *connection,
 {
 	wait_event(connection->ee_wait,
 		conn_wait_ee_cond(connection, head) || connection->cstate[NOW] < C_CONNECTED);
+}
+
+// DW-1954 if ee is not empty, wait for CONN_WAIT_TIMEOUT seconds.
+static void conn_wait_ee_empty_and_update_timeout(struct drbd_connection *connection, struct list_head *head)
+{
+	long res;
+	ULONG_PTR ee_before_cnt = 0, ee_after_cnt = 0;
+	struct drbd_peer_request *peer_req;
+
+	for (;;) {
+		res = conn_wait_ee_empty_timeout(connection, head);
+		if (res != 0) {
+			break;
+		}
+		ee_after_cnt = 0;
+		spin_lock(&connection->resource->req_lock);
+		list_for_each_entry(struct drbd_peer_request, peer_req, head, w.list) {
+			ee_after_cnt++;
+		}
+		spin_unlock(&connection->resource->req_lock);
+		if (ee_before_cnt == ee_after_cnt)
+			break;
+		ee_before_cnt = ee_after_cnt;
+	}
 }
 
 /**
@@ -9813,7 +9841,9 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	/* Wait for current activity to cease.  This includes waiting for
 	* peer_request queued to the submitter workqueue. */
-	conn_wait_ee_empty_timeout(connection, &connection->active_ee);
+
+	// DW-1954 wait CONN_WAIT_TIMEOUT (default 3 seconds) and keep waiting if ee is not empty and ee is the same as before.
+	conn_wait_ee_empty_and_update_timeout(connection, &connection->active_ee);
 
 	// DW-1874 call after active_ee wait
 	drain_resync_activity(connection);
