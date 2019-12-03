@@ -3925,6 +3925,7 @@ int drbd_worker(struct drbd_thread *thi)
 	LIST_HEAD(work_list);
 	struct drbd_resource *resource = thi->resource;
 	struct drbd_work *w;
+	bool is_null_callback_print = false;
 
 	while (get_t_state(thi) == RUNNING) {
 		drbd_thread_current_set_cpu(thi);
@@ -3977,8 +3978,8 @@ int drbd_worker(struct drbd_thread *thi)
 		if (get_t_state(thi) != RUNNING)
 			break;
 
-		
-		int i = 0; 
+		is_null_callback_print = false;
+
 		while (!list_empty(&work_list)) {
 			w = list_first_entry(&work_list, struct drbd_work, list);
 			list_del_init(&w->list);
@@ -3986,13 +3987,14 @@ int drbd_worker(struct drbd_thread *thi)
 #ifdef _WIN32 // DW- fix callback pointer's NULL case
 			if (w->cb != NULL) {
 				w->cb(w, 0);
-			} else {
-				// DW-1257 exit the loop when looped around 100 times
-				if (i >= 100){
-					drbd_warn(resource, "Worker got an NULL-callback list. (%s)->twopc_work.cb may be NULL(0x%x) !!!\n", resource->name, resource->twopc_work.cb);
-					break; 
+			}
+			else {
+				// DW-1953 logs are printed only once per work_list.
+				if (is_null_callback_print == false) {
+					// DW-1953 do not use "break" because you must call a non-null callback.
+					drbd_warn(resource, "worker got an null-callback list. resource name (%s), twopc_work(%p) : w(%p)\n", resource->name, &(resource->twopc_work), w);
+					is_null_callback_print = true;
 				}
-				i++; 
 			}
 #else
 			w->cb(w, 0);
