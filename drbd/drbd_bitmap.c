@@ -1960,7 +1960,7 @@ unsigned long _drbd_bm_find_next_zero(struct drbd_peer_device *peer_device, unsi
 		    BM_OP_FIND_ZERO_BIT, NULL, KM_USER0);
 }
 #ifdef _WIN32
-unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
+ULONG_PTR drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
     ULONG_PTR start, ULONG_PTR end)
 #else
 unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
@@ -1971,7 +1971,7 @@ unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_in
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
 #endif
-	return (unsigned int)count;
+	return count;
 }
 #ifdef _WIN32
 static __inline void
@@ -2061,7 +2061,7 @@ void drbd_bm_clear_all(struct drbd_device *device)
 		__bm_many_bits_op(device, bitmap_index, 0, DRBD_END_OF_BITMAP, BM_OP_CLEAR);
 }
 #ifdef _WIN32
-unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
+ULONG_PTR drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
     ULONG_PTR start, ULONG_PTR end)
 #else
 unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
@@ -2072,7 +2072,7 @@ unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
 #endif
-	return (unsigned int)count;
+	return count;
 }
 
 /* returns bit state
@@ -2109,7 +2109,7 @@ int drbd_bm_test_bit(struct drbd_peer_device *peer_device, const unsigned long b
 
 /* returns number of bits set in the range [s, e] */
 #ifdef _WIN32
-int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, ULONG_PTR s, ULONG_PTR e)
+ULONG_PTR drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, ULONG_PTR s, ULONG_PTR e)
 #else
 int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, unsigned long s, unsigned long e)
 #endif
@@ -2118,7 +2118,7 @@ int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, un
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(count);
 #endif
-	return (int)count;
+	return count;
 }
 
 void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsigned int to_index)

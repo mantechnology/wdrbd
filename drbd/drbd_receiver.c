@@ -3953,7 +3953,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1012: The data just received is the newest, ignore previously received out-of-sync.
 	{
-		int in_sync = 0;
+		ULONG_PTR in_sync = 0;
 		//DW-1904
 		in_sync = drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 
