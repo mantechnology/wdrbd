@@ -6325,7 +6325,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 // set out-of-sync from provided bitmap
 ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
 {
-	LONG_PTR llStartBit = -1, llEndBit = -1;
+	ULONG_PTR llStartBit = DRBD_END_OF_BITMAP, llEndBit = DRBD_END_OF_BITMAP;
 	ULONG_PTR count = 0;
 	PCHAR pByte = NULL;
 	
@@ -6340,42 +6340,40 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	pByte = (PCHAR)pBitmap->Buffer;
 	
 	// find continuously set bits and set out-of-sync.
-	for (LONGLONG llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
+	for (ULONG_PTR llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
 	{
-		for (LONGLONG llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
+		for (ULONG_PTR llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
 		{
 			CHAR pBit = (pByte[llBytePos] >> llBitPosInByte) & 0x1;
 
 			// found first set bit.
-			if (llStartBit == -1 &&
-				pBit == 1)
+			if (llStartBit == DRBD_END_OF_BITMAP && pBit == 1)
 			{
-				llStartBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
+				llStartBit = (ULONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
 				continue;
 			}
 
 			// found last set bit. set out-of-sync.
-			if (llStartBit != -1 &&
-				pBit == 0)
+			if (llStartBit != DRBD_END_OF_BITMAP && pBit == 0)
 			{
-				llEndBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
+				llEndBit = (ULONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
 				count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC, false);
 
-				llStartBit = -1;
-				llEndBit = -1;
+				llStartBit = DRBD_END_OF_BITMAP;
+				llEndBit = DRBD_END_OF_BITMAP;
 				continue;
 			}
 		}
 	}
 
 	// met last bit while finding zero bit.
-	if (llStartBit != -1)
+	if (llStartBit != DRBD_END_OF_BITMAP)
 	{
-		llEndBit = (LONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		llEndBit = (ULONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
 		count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC, false);
 
-		llStartBit = -1;
-		llEndBit = -1;
+		llStartBit = DRBD_END_OF_BITMAP;
+		llEndBit = DRBD_END_OF_BITMAP;
 	}
 
 	return count;
