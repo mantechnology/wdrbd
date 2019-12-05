@@ -322,6 +322,7 @@ extern atomic_t g_dbglog_lv_min;
 #ifdef _WIN32_DEBUG_OOS
 extern atomic_t g_oos_trace;
 #endif
+extern atomic_t g_latency_trace;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
@@ -336,6 +337,7 @@ extern atomic_t g_oos_trace;
 #ifdef _WIN32_DEBUG_OOS
 #define LOG_LV_BIT_POS_OOS_TRACE	(LOG_LV_BIT_POS_DBG + 3)
 #endif
+#define LOG_LV_BIT_POS_LATENCY_TRACE	(LOG_LV_BIT_POS_OOS_TRACE + 1)
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
@@ -348,7 +350,8 @@ extern atomic_t g_oos_trace;
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
-	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1);
+	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1); \
+	atomic_set(&g_latency_trace, (log_level >> LOG_LV_BIT_POS_LATENCY_TRACE) & 0x1);
 
 #define Get_log_lv() \
 	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_oos_trace) << LOG_LV_BIT_POS_OOS_TRACE)

@@ -65,6 +65,7 @@ atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
 #ifdef _WIN32_DEBUG_OOS
 atomic_t g_oos_trace = 0;
 #endif
+atomic_t g_latency_trace = 0;
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;

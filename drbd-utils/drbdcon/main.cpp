@@ -438,6 +438,10 @@ main(int argc, char* argv [])
 					lml.nType = LOGGING_TYPE_OOSLOG;
 				}
 #endif
+				else if (strcmp(argv[argIndex], "latency") == 0)
+				{
+					lml.nType = LOGGING_TYPE_LATENCYLOG;
+				}
 				else
 					usage();				
 			}

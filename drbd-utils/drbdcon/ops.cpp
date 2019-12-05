@@ -874,9 +874,9 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 
 	if (pLml == NULL ||
 #ifdef _WIN32_DEBUG_OOS
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_OOSLOG) ||
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_OOSLOG && pLml->nType != LOGGING_TYPE_LATENCYLOG) ||
 #else
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_LATENCYLOG) ||
 #endif
 		(pLml->nErrLvMin < 0 || pLml->nErrLvMin > 7))
 	{

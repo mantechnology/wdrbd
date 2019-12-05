@@ -337,7 +337,12 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 				atomic_set(&g_oos_trace, FALSE);
 		}
 #endif
-
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_LATENCYLOG) {
+			if (pLoggingMinLv->nErrLvMin)
+				atomic_set(&g_latency_trace, TRUE);
+			else
+				atomic_set(&g_latency_trace, FALSE);
+		}
 		// DW-1432: Modified to see if command was successful 
 		Status = SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
 		WDRBD_ALL("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d status = %lu\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin, Status);

@@ -128,6 +128,7 @@ typedef struct _LOGGING_MIN_LV {
 // DW-1153
 #define LOGGING_TYPE_OOSLOG		2
 #endif
+#define LOGGING_TYPE_LATENCYLOG	3
 
 #ifdef _WIN32_DEBUG_OOS
 //#pragma warning (disable : 4055)
