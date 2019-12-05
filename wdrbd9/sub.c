@@ -749,7 +749,7 @@ void _printk(const char * func, const char * format, ...)
 		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+offset, "WDRBD_WARN", LEVEL_OFFSET); break;
 	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
 		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
-	case KERN_DEBUG_NUM: 
+	case KERN_DEBUG_NUM: case KERN_LATENCY_NUM:
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
 	default: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;

@@ -6340,7 +6340,7 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	pByte = (PCHAR)pBitmap->Buffer;
 	
 	// find continuously set bits and set out-of-sync.
-	for (ULONG_PTR llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
+	for (ULONG_PTR llBytePos = 0; (LONGLONG)llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
 	{
 		for (ULONG_PTR llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
 		{

@@ -84,9 +84,8 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
-#ifdef _WIN32_DEBUG_OOS
 #define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
-#endif
+#define KERN_LATENCY	"<9>"	/* DW-1961: IO latency check */
 
 enum
 {
@@ -97,7 +96,8 @@ enum
 	KERN_WARNING_NUM,
 	KERN_NOTICE_NUM,
 	KERN_INFO_NUM,
-	KERN_DEBUG_NUM
+	KERN_DEBUG_NUM,
+	KERN_LATENCY_NUM
 };
 
 
@@ -417,6 +417,12 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO ##_m_, __VA_ARGS__)
+#endif
+
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY_CHECK ##_m_, __VA_ARGS__)
 #endif
 
 #if defined (WDRBD_THREAD_POINTER) 
