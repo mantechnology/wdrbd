@@ -84,8 +84,7 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
-#define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
-#define KERN_LATENCY	"<9>"	/* DW-1961: IO latency check */
+#define KERN_FEATURE			"<8>"	/* DW-1961 feature log */ 
 
 enum
 {
@@ -97,7 +96,7 @@ enum
 	KERN_NOTICE_NUM,
 	KERN_INFO_NUM,
 	KERN_DEBUG_NUM,
-	KERN_LATENCY_NUM
+	KERN_FEATURE_NUM
 };
 
 
@@ -319,10 +318,7 @@ typedef unsigned int                fmode_t;
 
 extern atomic_t g_eventlog_lv_min;
 extern atomic_t g_dbglog_lv_min;
-#ifdef _WIN32_DEBUG_OOS
-extern atomic_t g_oos_trace;
-#endif
-extern atomic_t g_latency_trace;
+extern atomic_t g_featurelog_flag;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
@@ -334,10 +330,7 @@ extern atomic_t g_latency_trace;
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
 #define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
-#ifdef _WIN32_DEBUG_OOS
-#define LOG_LV_BIT_POS_OOS_TRACE	(LOG_LV_BIT_POS_DBG + 3)
-#endif
-#define LOG_LV_BIT_POS_LATENCY_TRACE	(LOG_LV_BIT_POS_OOS_TRACE + 1)
+#define LOG_LV_BIT_POS_FEATURELOG	(LOG_LV_BIT_POS_DBG + 3)
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
@@ -346,23 +339,16 @@ extern atomic_t g_latency_trace;
 
 #define LOG_LV_MASK			0x7
 
-#ifdef _WIN32_DEBUG_OOS
+#define FEATURELOG_FLAG_OOS 		(1 << 0)
+#define FEATURELOG_FLAG_LATENCY 	(1 << 1)
+
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
-	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1); \
-	atomic_set(&g_latency_trace, (log_level >> LOG_LV_BIT_POS_LATENCY_TRACE) & 0x1);
+	atomic_set(&g_featurelog_flag, (log_level >> LOG_LV_BIT_POS_FEATURELOG) & LOG_LV_MASK);
 
 #define Get_log_lv() \
-	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_oos_trace) << LOG_LV_BIT_POS_OOS_TRACE)
-#else
-#define Set_log_lv(log_level) \
-	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
-	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
-
-#define Get_log_lv() \
-	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
-#endif
+	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_featurelog_flag) << LOG_LV_BIT_POS_FEATURELOG)
 
 
 #define MAX_TEXT_BUF                256
@@ -423,9 +409,9 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #endif
 
 #if defined (WDRBD_THREAD_POINTER)
-#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_FEATURE "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
-#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY_CHECK ##_m_, __VA_ARGS__)
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_FEATURE ##_m_, __VA_ARGS__)
 #endif
 
 #if defined (WDRBD_THREAD_POINTER) 

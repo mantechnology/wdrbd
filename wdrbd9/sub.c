@@ -682,9 +682,8 @@ void _printk(const char * func, const char * format, ...)
 	int printLevel = 0;
 	BOOLEAN bEventLog = FALSE;
 	BOOLEAN bDbgLog = FALSE;
-#ifdef _WIN32_DEBUG_OOS
 	BOOLEAN bOosLog = FALSE;
-#endif
+	BOOLEAN bLatency = FALSE;
 	LARGE_INTEGER systemTime, localTime;
     TIME_FIELDS timeFields = {0,};
 	LONGLONG	totallogcnt = 0;
@@ -697,17 +696,15 @@ void _printk(const char * func, const char * format, ...)
 	// to print through debugger.
 	if (level_index <= atomic_read(&g_dbglog_lv_min))
 		bDbgLog = TRUE;
-#ifdef _WIN32_DEBUG_OOS
-	if (TRUE == atomic_read(&g_oos_trace))
-		bOosLog = TRUE;
-#endif
 	
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS) {
+		bOosLog = TRUE;
+	}
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+		bLatency = TRUE;
+
 	// nothing to log.
-#ifdef _WIN32_DEBUG_OOS
-	if (!bEventLog && !bDbgLog && !bOosLog) {
-#else
-	if (!bEventLog && !bDbgLog) {
-#endif
+	if (!bEventLog && !bDbgLog && !bOosLog & !bLatency) {
 		return;
 	}
 	
@@ -749,8 +746,10 @@ void _printk(const char * func, const char * format, ...)
 		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+offset, "WDRBD_WARN", LEVEL_OFFSET); break;
 	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
 		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
-	case KERN_DEBUG_NUM: case KERN_LATENCY_NUM:
+	case KERN_DEBUG_NUM: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
+	case KERN_FEATURE_NUM:
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_FEAT", LEVEL_OFFSET); break;
 	default: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
 	}
@@ -779,7 +778,7 @@ void _printk(const char * func, const char * format, ...)
 		save_to_system_event(buf, length, level_index);
 	}
 	
-	if (bDbgLog || bOosLog)
+	if (bDbgLog || bOosLog || bLatency)
 		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
 
 #endif
@@ -1020,12 +1019,12 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 	CHAR buf[MAX_DRBDLOG_BUF] = { 0, };
 
 	// getting stack frames may overload with frequent bitmap operation, just return if oos trace is disabled.
-	if (FALSE == atomic_read(&g_oos_trace))
+	if (!(atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS))
 	{
 		return;
 	}
 
-	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_DEBUG_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_FEATURE_NUM, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 

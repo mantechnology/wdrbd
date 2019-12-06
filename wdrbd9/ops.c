@@ -329,20 +329,9 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 			atomic_set(&g_eventlog_lv_min, pLoggingMinLv->nErrLvMin);
 		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
-#ifdef _WIN32_DEBUG_OOS
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_OOSLOG) {
-			if (pLoggingMinLv->nErrLvMin)
-				atomic_set(&g_oos_trace, TRUE);
-			else
-				atomic_set(&g_oos_trace, FALSE);
-		}
-#endif
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_LATENCYLOG) {
-			if (pLoggingMinLv->nErrLvMin)
-				atomic_set(&g_latency_trace, TRUE);
-			else
-				atomic_set(&g_latency_trace, FALSE);
-		}
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) 
+			atomic_set(&g_featurelog_flag, pLoggingMinLv->nErrLvMin);
+
 		// DW-1432: Modified to see if command was successful 
 		Status = SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
 		WDRBD_ALL("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d status = %lu\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin, Status);

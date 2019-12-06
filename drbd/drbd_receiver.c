@@ -8536,11 +8536,10 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				/* TODO: Since DRBD9 we experience that SyncSource still has
 				   bits set... NEED TO UNDERSTAND AND FIX! */
 				if (drbd_bm_total_weight(peer_device) > peer_device->rs_failed)
-#ifdef _WIN32_DEBUG_OOS
 				{
 					// DW-1199: print log for remaining out-of-sync to recogsize which sector has to be traced
 					drbd_info(peer_device, "SyncSource still sees bits set!! FIXME\n");
-					if(TRUE == atomic_read(&g_oos_trace))
+					if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS)
 					{
 						ULONG_PTR bit = 0;
 						sector_t sector = 0;
@@ -8556,7 +8555,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 							sector = BM_BIT_TO_SECT(bit);
 
-							printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d), out-of-sync for sector(%llu) is remaining\n", KERN_DEBUG_OOS,
+							printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d), out-of-sync for sector(%llu) is remaining\n", KERN_FEATURE,
 								peer_device->node_id, peer_device->bitmap_index, sector);
 
 							bm_resync_fo = bit + 1;
@@ -8564,9 +8563,6 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 						} while (true, true);
 					}
 				}
-#else
-					drbd_warn(peer_device, "SyncSource still sees bits set!! FIXME\n");
-#endif
 
 				drbd_resync_finished(peer_device, peer_state.disk);
 				peer_device->last_repl_state = peer_state.conn;
@@ -10711,7 +10707,6 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
 			drbd_set_in_sync(peer_device, sector, blksize);
-
 			//DW-1601 add DW-1859
 			if (device->resource->role[NOW] == R_PRIMARY)
 				check_and_clear_io_error_in_primary(device);
@@ -10958,6 +10953,8 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 
 	try_change_ahead_to_sync_source(connection);
 
+
+	WDRBD_LATENCY("latency!!!feature:%08X (latency:%d)\n", g_featurelog_flag, g_featurelog_flag & FEATURELOG_FLAG_LATENCY);
 	return 0;
 }
 

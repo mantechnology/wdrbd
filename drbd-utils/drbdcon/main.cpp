@@ -432,15 +432,9 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
 				}
-#ifdef _WIN32_DEBUG_OOS
-				else if (strcmp(argv[argIndex], "oos") == 0)
+				else if (strcmp(argv[argIndex], "feature") == 0)
 				{
-					lml.nType = LOGGING_TYPE_OOSLOG;
-				}
-#endif
-				else if (strcmp(argv[argIndex], "latency") == 0)
-				{
-					lml.nType = LOGGING_TYPE_LATENCYLOG;
+					lml.nType = LOGGING_TYPE_FEATURELOG;
 				}
 				else
 					usage();				
