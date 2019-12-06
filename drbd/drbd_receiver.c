@@ -9934,6 +9934,11 @@ void conn_disconnect(struct drbd_connection *connection)
 		kref_get(&device->kref);
 		rcu_read_unlock();
 
+		// DW-1965 initialize values that need to be answered or set after completion of I/O.
+		atomic_set(&peer_device->unacked_cnt, 0);
+		atomic_set(&peer_device->rs_pending_cnt, 0);
+		atomic_set(&peer_device->rs_sect_in, 0);
+
 		peer_device_disconnected(peer_device);
 	
 		kref_put(&device->kref, drbd_destroy_device);
