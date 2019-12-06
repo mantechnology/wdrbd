@@ -914,7 +914,7 @@ extern int atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
 extern LONGLONG atomic_read64(const atomic_t64 *v);
 extern int atomic_xchg(atomic_t *v, int n);
-
+extern LARGE_INTEGER g_frequency;
 // from rcu_list.h
 
 
@@ -962,7 +962,25 @@ static __inline ULONG_PTR JIFFIES()
 	return (ULONG_PTR)Elapse.QuadPart;
 }
 
+// DW-1961
+static __inline LONGLONG timestamp()
+{
+	LARGE_INTEGER time_stamp = KeQueryPerformanceCounter(NULL);
+	return time_stamp.QuadPart;
+}
+
+static __inline LONGLONG timestamp_elapse(LONGLONG begin_ts, LONGLONG end_ts)
+{
+	LONGLONG microsec_elapse = end_ts - begin_ts;
+	microsec_elapse *= 1000000;
+	microsec_elapse /= g_frequency.QuadPart;
+	return microsec_elapse;
+}
+
+
 #define jiffies				JIFFIES()
+
+
 
 #define time_after(_a,_b)		((LONG_PTR)((LONG_PTR)(_b) - (LONG_PTR)(_a)) < 0)
 #define time_after_eq(_a,_b)		((LONG_PTR)((LONG_PTR)(_a) - (LONG_PTR)(_b)) >= 0)

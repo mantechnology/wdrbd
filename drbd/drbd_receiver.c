@@ -3608,7 +3608,7 @@ static void fail_postponed_requests(struct drbd_peer_request *peer_req)
 		spin_unlock_irq(&device->resource->req_lock);
 		if (m.bio)
 #ifdef _WIN32
-			complete_master_bio(device, &m, __func__ , __LINE__ );
+			complete_master_bio(device, &m, req, __func__, __LINE__);
 #else
 			complete_master_bio(device, &m);
 #endif
@@ -10645,7 +10645,7 @@ validate_req_change_req_state(struct drbd_peer_device *peer_device, u64 id, sect
 
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, __func__, __LINE__ );
+		complete_master_bio(device, &m, req, __func__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif

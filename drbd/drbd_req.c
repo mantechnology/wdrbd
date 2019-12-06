@@ -522,7 +522,7 @@ int w_notify_io_error(struct drbd_work *w, int cancel)
 
 #ifdef _WIN32
 void complete_master_bio(struct drbd_device *device,
-    struct bio_and_error *m, char *func, int line)
+    struct bio_and_error *m, struct drbd_request *req, char *func, int line)
 #else
 void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
@@ -2219,7 +2219,7 @@ out:
 #endif
 	if (m.bio)
 #ifdef _WIN32
-        complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+		complete_master_bio(device, &m, req, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif

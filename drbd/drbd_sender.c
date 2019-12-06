@@ -743,7 +743,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+		complete_master_bio(device, &m, req, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -3500,7 +3500,7 @@ restart:
 			spin_unlock_irq(&connection->resource->req_lock);
 			if (m.bio)
 #ifdef _WIN32
-				complete_master_bio(device, &m, __func__, __LINE__ );
+				complete_master_bio(device, &m, req, __func__, __LINE__);
 #else
 				complete_master_bio(device, &m);
 #endif
@@ -3774,7 +3774,7 @@ static int process_one_request(struct drbd_connection *connection)
 
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, __func__, __LINE__ );
+		complete_master_bio(device, &m, req, __func__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -3901,7 +3901,7 @@ int drbd_sender(struct drbd_thread *thi)
 		spin_unlock_irq(&connection->resource->req_lock);
 		if (m.bio)
 #ifdef _WIN32
-			complete_master_bio(device, &m, __func__, __LINE__ );
+			complete_master_bio(device, &m, req, __func__, __LINE__);
 #else
 			complete_master_bio(device, &m);
 #endif
