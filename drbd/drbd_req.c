@@ -522,7 +522,7 @@ int w_notify_io_error(struct drbd_work *w, int cancel)
 
 #ifdef _WIN32
 void complete_master_bio(struct drbd_device *device,
-    struct bio_and_error *m, struct drbd_request *req, char *func, int line)
+    struct bio_and_error *m, char *func, int line)
 #else
 void complete_master_bio(struct drbd_device *device,
 		struct bio_and_error *m)
@@ -549,11 +549,6 @@ void complete_master_bio(struct drbd_device *device,
 
 		master_bio = m->bio; // if pMasterIrp is exist, bio is master bio.
 		NTSTATUS status = m->error;
-
-		req->io_complete_ts = timestamp();
-		if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
-			WDRBD_LATENCY("latency info : al(%lldus) disk-io(%lldus)\n", timestamp_elapse(req->in_actlog_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
-		}
 
 		// In diskless mode, if irp was sent to peer,
 		// then would be completed success,
@@ -1021,7 +1016,8 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			atomic_add64(req->i.size, &peer_device->connection->ap_in_flight);
 			set_if_null_req_not_net_done(peer_device, req);
 
-			req->net_sent_ts = timestamp();
+			if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+				req->net_sent_ts[peer_device->node_id] = timestamp();
 		}
 		if (req->rq_state[idx] & RQ_NET_PENDING)
 			set_if_null_req_ack_pending(peer_device, req);
@@ -1069,7 +1065,6 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	if ((old_net & RQ_NET_PENDING) && (clear & RQ_NET_PENDING)) {
 		dec_ap_pending(peer_device);
 		++c_put;
-		req->acked_jif[peer_device->node_id] = jiffies;
 		advance_conn_req_ack_pending(peer_device, req);
 	}
 
@@ -1090,17 +1085,16 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			//atomic_sub(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			if (atomic_sub_return64(req->i.size, &peer_device->connection->ap_in_flight) < 0)
 				atomic_set64(&peer_device->connection->ap_in_flight, 0);
-
-			req->net_done_ts = timestamp();
-			if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
-				WDRBD_LATENCY("latency info : net (RQ_NET_SENT ~ RQ_NET_DONE)(%lldus)\n", timestamp_elapse(req->net_sent_ts, req->net_done_ts));
-			}
-
 		}
 
 		if (old_net & RQ_EXP_BARR_ACK)
 			++k_put;
-		req->net_done_jif[peer_device->node_id] = jiffies;
+
+		// DW-1961 Calculate and Log IO Latency
+		if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+			req->net_done_ts[peer_device->node_id] = timestamp();
+			WDRBD_LATENCY("req latency : net(%lldus)\n", timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
+		}
 
 		/* in ahead/behind mode, or just in case,
 		 * before we finally destroy this request,
@@ -1892,6 +1886,9 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 			generic_make_request(bio);
 #else
 		else {
+			// DW-1961 Save timestamp for IO latency measuremen
+			if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+				req->io_request_ts = timestamp();
 			if (generic_make_request(bio)) {
 				bio_endio(bio, -EIO);
 			}
@@ -1940,6 +1937,11 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 		bio_endio(bio, -ENOMEM);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	// DW-1961 Save timestamp for IO latency measuremen
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		req->created_ts = timestamp();
+
 	req->start_jif = start_jif;
 
 	if (!get_ldev(device)) {
@@ -1964,8 +1966,6 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 			if (!drbd_al_begin_io_fastpath(device, &req->i))
 				goto queue_for_submitter_thread;
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
-			req->in_actlog_ts = timestamp();
 		}
 	}
 	return req;
@@ -2191,7 +2191,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	if (req->private_bio) {
 		/* needs to be marked within the same spinlock */
 		req->pre_submit_jif = jiffies;
-		req->io_request_ts = timestamp();
 		list_add_tail(&req->req_pending_local,
 			&device->pending_completion[rw == WRITE]);
 		_req_mod(req, TO_BE_SUBMITTED, NULL);
@@ -2234,7 +2233,7 @@ out:
 #endif
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, req, __FUNCTION__, __LINE__);
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -2364,8 +2363,6 @@ static void submit_fast_path(struct drbd_device *device, struct waiting_for_act_
 				continue;
 
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
-			req->in_actlog_ts = timestamp();
 			atomic_dec(&device->ap_actlog_cnt);
 		}
 
@@ -2469,8 +2466,6 @@ static void send_and_submit_pending(struct drbd_device *device, struct waiting_f
 	list_for_each_entry_safe(req, tmp, &wfa->requests.pending, tl_requests) {
 #endif 
 		req->rq_state[0] |= RQ_IN_ACT_LOG;
-		req->in_actlog_jif = jiffies;
-		req->in_actlog_ts = timestamp();
 		atomic_dec(&device->ap_actlog_cnt);
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);

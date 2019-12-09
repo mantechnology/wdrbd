@@ -1280,6 +1280,10 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	BIO_ENDIO_FN_START;
 
 #ifdef _WIN32
+	// DW-1961 Calculate and Log IO Latency
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) 
+		WDRBD_LATENCY("flush latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
+
 	if (NT_ERROR(error)) {
 #else
 	if (error) {
@@ -1357,8 +1361,10 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 	bio->bi_bdev = device->ldev->backing_bdev;
 	bio->bi_private = octx;
 	bio->bi_end_io = one_flush_endio;
+	// DW-1961 Save timestamp for flush IO latency measurement
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		bio->flush_ts = timestamp();
 
-	device->flush_jif = jiffies;
 	set_bit(FLUSH_PENDING, &device->flags);
 	atomic_inc(&ctx->pending);
 	bio_set_op_attrs(bio, REQ_OP_FLUSH, WRITE_FLUSH);
@@ -2011,6 +2017,10 @@ next_bio:
 	atomic_set(&peer_req->pending_bios, n_bios);
 	/* for debugfs: update timestamp, mark as submitted */
 	peer_req->submit_jif = jiffies;
+
+	// DW-1961 Save timestamp for IO latency measurement
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		peer_req->io_request_ts = timestamp();
 	peer_req->flags |= EE_SUBMITTED;
 	do {
 		bio = bios;
@@ -2276,6 +2286,9 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	peer_req->i.sector = d->sector;
 	peer_req->block_id = d->block_id;
 	peer_req->flags |= EE_WRITE;
+	// DW-1961 Save timestamp for IO latency measurement
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		peer_req->created_ts = timestamp();
 	if (d->length == 0)
 		return peer_req;
 
@@ -2423,6 +2436,12 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	int err;
 
 	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
+
+	// DW-1961 Calculate and Log IO Latency
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+		peer_req->io_complete_ts = timestamp();
+		WDRBD_LATENCY("peer_req latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+	}
 
 	//DW-1846 send P_NEG_ACK if not sync target
 	if (is_sync_target(peer_device)) {
@@ -2653,7 +2672,10 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 	split_peer_request->flags |= EE_WRITE;
 	split_peer_request->flags |= flags;
 
+	// DW-1961 Save timestamp for IO latency measurement
 	split_peer_request->block_id = peer_request->block_id;
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		split_peer_request->created_ts = timestamp();
 
 	drbd_alloc_page_chain(transport, &split_peer_request->page_chain, DIV_ROUND_UP(split_peer_request->i.size, PAGE_SIZE), GFP_TRY);
 	if (split_peer_request->page_chain.head == NULL) {
@@ -3608,7 +3630,7 @@ static void fail_postponed_requests(struct drbd_peer_request *peer_req)
 		spin_unlock_irq(&device->resource->req_lock);
 		if (m.bio)
 #ifdef _WIN32
-			complete_master_bio(device, &m, req, __func__, __LINE__);
+			complete_master_bio(device, &m, __func__, __LINE__);
 #else
 			complete_master_bio(device, &m);
 #endif
@@ -4323,6 +4345,9 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	peer_req->i.size = size;
 	peer_req->i.sector = sector;
 	peer_req->block_id = p->block_id;
+	// DW-1961 Save timestamp for IO latency measuremen
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		peer_req->created_ts = timestamp();
 	/* no longer valid, about to call drbd_recv again for the digest... */
 	p = pi->data = NULL;
 
@@ -10645,7 +10670,7 @@ validate_req_change_req_state(struct drbd_peer_device *peer_device, u64 id, sect
 
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, req, __func__, __LINE__);
+		complete_master_bio(device, &m, __func__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -10746,6 +10771,8 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 			//DW-1929
 			try_change_ahead_to_sync_source(connection);
+
+			
 
 			return 0;
 		}
@@ -10953,8 +10980,6 @@ static int got_BarrierAck(struct drbd_connection *connection, struct packet_info
 
 	try_change_ahead_to_sync_source(connection);
 
-
-	WDRBD_LATENCY("latency!!!feature:%08X (latency:%d)\n", g_featurelog_flag, g_featurelog_flag & FEATURELOG_FLAG_LATENCY);
 	return 0;
 }
 

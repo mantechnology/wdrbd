@@ -728,6 +728,7 @@ struct bio {
 	struct bio_vec			bi_io_vec[1]; // only one!!!
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
 	unsigned int 			io_retry;
+	LONGLONG				flush_ts;		// DW-1961
 };
 
 struct bio_set {
@@ -971,9 +972,9 @@ static __inline LONGLONG timestamp()
 
 static __inline LONGLONG timestamp_elapse(LONGLONG begin_ts, LONGLONG end_ts)
 {
-	if (begin_ts > end_ts) {
+	if (begin_ts > end_ts || begin_ts <= 0 || end_ts <= 0) {
 		WDRBD_ERROR("timestamp is invalid\n");
-		return MAXLONGLONG;
+		return -1;
 	}
 
 	LONGLONG microsec_elapse = end_ts - begin_ts;

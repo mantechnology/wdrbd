@@ -126,7 +126,9 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 	int r;
 	long t;
 	
-	device->md_io.prepare_ts = timestamp();
+	// DW-1961 Measure how long the metadisk waits for use
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		device->md_io.prepare_ts = timestamp();
 #ifdef _WIN32
     wait_event_timeout(t, device->misc_wait,
         (r = atomic_cmpxchg(&device->md_io.in_use, 0, 1)) == 0 ||
@@ -145,20 +147,12 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 		return NULL;
 
 	device->md_io.current_use = intent;
-	device->md_io.start_jif = jiffies;
-	device->md_io.start_ts = timestamp();
-	device->md_io.end_ts = 0;
-	device->md_io.submit_jif = device->md_io.start_jif - 1;
+
 	return page_address(device->md_io.page);
 }
 
 void drbd_md_put_buffer(struct drbd_device *device)
 {
-	device->md_io.end_ts = timestamp();
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
-		WDRBD_LATENCY("latency info : prepare(%lldus) md-io(%lldus)\n", timestamp_elapse(device->md_io.prepare_ts, device->md_io.start_ts), timestamp_elapse(device->md_io.start_ts, device->md_io.end_ts));
-	}
-
 	if (atomic_dec_and_test(&device->md_io.in_use))
 		wake_up(&device->misc_wait);
 }
@@ -239,7 +233,9 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 
 	bio_get(bio); /* one bio_put() is in the completion handler */
 	atomic_inc(&device->md_io.in_use); /* drbd_md_put_buffer() is in the completion handler */
-	device->md_io.submit_jif = jiffies;
+	// DW-1961 Save timestamp for IO latency measurement
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+		device->md_io.io_request_ts = timestamp();
 
 	if (drbd_insert_fault(device, (op == REQ_OP_WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
 		bio_endio(bio, -EIO);
@@ -255,6 +251,12 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 #endif
 
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
+	// DW-1961 Calculate and Log IO Latency
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+		device->md_io.io_complete_ts = timestamp();
+		WDRBD_LATENCY("md latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(device->md_io.prepare_ts, device->md_io.io_request_ts), timestamp_elapse(device->md_io.io_request_ts, device->md_io.io_complete_ts));
+	}
+	
 	err = device->md_io.error;
 #ifdef _WIN32
     if(err == STATUS_NO_SUCH_DEVICE) {
