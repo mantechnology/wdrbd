@@ -8585,7 +8585,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 
 							sector = BM_BIT_TO_SECT(bit);
 
-							printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d), out-of-sync for sector(%llu) is remaining\n", KERN_FEATURE,
+							printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d), out-of-sync for sector(%llu) is remaining\n", KERN_OOS,
 								peer_device->node_id, peer_device->bitmap_index, sector);
 
 							bm_resync_fo = bit + 1;

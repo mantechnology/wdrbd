@@ -697,10 +697,10 @@ void _printk(const char * func, const char * format, ...)
 	if (level_index <= atomic_read(&g_dbglog_lv_min))
 		bDbgLog = TRUE;
 	
-	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS) {
+	// DW-1961
+	if ((atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS) && (level_index == KERN_OOS_NUM))
 		bOosLog = TRUE;
-	}
-	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+	if ((atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) && (level_index == KERN_LATENCY_NUM))
 		bLatency = TRUE;
 
 	// nothing to log.
@@ -748,8 +748,10 @@ void _printk(const char * func, const char * format, ...)
 		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
 	case KERN_DEBUG_NUM: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
-	case KERN_FEATURE_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_FEAT", LEVEL_OFFSET); break;
+	case KERN_OOS_NUM:
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_OOS ", LEVEL_OFFSET); break;
+	case KERN_LATENCY_NUM:
+		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_LATE", LEVEL_OFFSET); break;
 	default: 
 		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
 	}
@@ -1024,7 +1026,7 @@ VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR endBit, UL
 		return;
 	}
 
-	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_FEATURE_NUM, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
+	_snprintf(buf, sizeof(buf) - 1, "%s["OOS_TRACE_STRING"] %s %Iu bits for bitmap_index(%d), pos(%Iu ~ %Iu), sector(%Iu ~ %Iu)", KERN_OOS, mode == SET_IN_SYNC ? "Clear" : "Set", bitsCount, bitmap_index, startBit, endBit, BM_BIT_TO_SECT(startBit), (BM_BIT_TO_SECT(endBit) | 0x7));
 
 	stackFrames = (PVOID*)ExAllocatePoolWithTag(NonPagedPool, sizeof(PVOID) * frameCount, '22DW');
 

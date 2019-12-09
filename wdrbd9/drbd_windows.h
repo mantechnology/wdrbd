@@ -84,7 +84,8 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
-#define KERN_FEATURE			"<8>"	/* DW-1961 feature log */ 
+#define KERN_OOS				"<8>"	/* DW-1153: debug-oos */
+#define KERN_LATENCY			"<9>"	/* DW-1961 feature log */ 
 
 enum
 {
@@ -96,7 +97,8 @@ enum
 	KERN_NOTICE_NUM,
 	KERN_INFO_NUM,
 	KERN_DEBUG_NUM,
-	KERN_FEATURE_NUM
+	KERN_OOS_NUM,
+	KERN_LATENCY_NUM
 };
 
 
@@ -326,7 +328,7 @@ extern atomic_t g_featurelog_flag;
    00000000 00000000 00000000 00000000
                                    ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
                                 |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
-                               |	   1 bit on 6 indicates if oos is being traced. (0 or 1), it is valid only when _WIN32_DEBUG_OOS is defined.
+                              ||	   2 bit indicates feature log flag (0x01: oos trace, 0x02: latency)
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
 #define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
@@ -409,7 +411,13 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #endif
 
 #if defined (WDRBD_THREAD_POINTER)
-#define WDRBD_LATENCY(_m_, ...)    printk(KERN_FEATURE "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#define WDRBD_OOS(_m_, ...)    printk(KERN_OOS "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_OOS(_m_, ...)    printk(KERN_FEATURE ##_m_, __VA_ARGS__)
+#endif
+
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
 #define WDRBD_LATENCY(_m_, ...)    printk(KERN_FEATURE ##_m_, __VA_ARGS__)
 #endif
