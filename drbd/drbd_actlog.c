@@ -126,6 +126,7 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 	int r;
 	long t;
 	
+	device->md_io.prepare_ts = timestamp();
 #ifdef _WIN32
     wait_event_timeout(t, device->misc_wait,
         (r = atomic_cmpxchg(&device->md_io.in_use, 0, 1)) == 0 ||
@@ -145,12 +146,19 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 
 	device->md_io.current_use = intent;
 	device->md_io.start_jif = jiffies;
+	device->md_io.start_ts = timestamp();
+	device->md_io.end_ts = 0;
 	device->md_io.submit_jif = device->md_io.start_jif - 1;
 	return page_address(device->md_io.page);
 }
 
 void drbd_md_put_buffer(struct drbd_device *device)
 {
+	device->md_io.end_ts = timestamp();
+	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+		WDRBD_LATENCY("latency info : prepare(%lldus) md-io(%lldus)\n", timestamp_elapse(device->md_io.prepare_ts, device->md_io.start_ts), timestamp_elapse(device->md_io.start_ts, device->md_io.end_ts));
+	}
+
 	if (atomic_dec_and_test(&device->md_io.in_use))
 		wake_up(&device->misc_wait);
 }

@@ -661,6 +661,11 @@ struct drbd_request {
 	unsigned long net_done_jif[DRBD_PEERS_MAX];
 #endif
 
+	LONGLONG in_actlog_ts;			// Before entering AL operation
+	LONGLONG io_request_ts;			// Before delivering an io request to disk
+	LONGLONG io_complete_ts;		// Received io completion from disk
+	LONGLONG net_sent_ts;			// Send request to peer
+	LONGLONG net_done_ts;			// Received a response from peer
 	/* Possibly even more detail to track each phase:
 	 *  master_completion_jif
 	 *      how long did it take to complete the master bio
@@ -1118,8 +1123,13 @@ struct drbd_backing_dev {
 struct drbd_md_io {
 	struct page *page;
 #ifdef _WIN32
+	// DW-1961
     ULONG_PTR start_jif;	/* last call to drbd_md_get_buffer */
     ULONG_PTR submit_jif;	/* last _drbd_md_sync_page_io() submit */
+	// DW-1961
+	LONGLONG prepare_ts;	// prepare md io request
+	LONGLONG start_ts;		// before requesting md io to disk
+	LONGLONG end_ts;		// receive md io complete
 #else
 	unsigned long start_jif;	/* last call to drbd_md_get_buffer */
 	unsigned long submit_jif;	/* last _drbd_md_sync_page_io() submit */

@@ -971,6 +971,11 @@ static __inline LONGLONG timestamp()
 
 static __inline LONGLONG timestamp_elapse(LONGLONG begin_ts, LONGLONG end_ts)
 {
+	if (begin_ts > end_ts) {
+		WDRBD_ERROR("timestamp is invalid\n");
+		return MAXLONGLONG;
+	}
+
 	LONGLONG microsec_elapse = end_ts - begin_ts;
 	microsec_elapse *= 1000000;
 	microsec_elapse /= g_frequency.QuadPart;
