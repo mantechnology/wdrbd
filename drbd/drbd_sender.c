@@ -223,9 +223,12 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 
 					//DW-1965 apply an I/O error when it is not __EE_WAS_LOST_REQ.
 					if (peer_req->flags & EE_WAS_ERROR) {
-						drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
 						atomic_inc(&device->io_error_count);
 						drbd_md_set_flag(device, MDF_IO_ERROR);
+						if (device->resource->role[NOW] == R_PRIMARY) {
+							drbd_md_set_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+						}
+						__drbd_chk_io_error(device, DRBD_READ_ERROR);
 					}
 
 					// DW-1935
