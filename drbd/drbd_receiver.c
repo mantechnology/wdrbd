@@ -2445,7 +2445,7 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
-		WDRBD_LATENCY("peer_req latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+		WDRBD_LATENCY("peer_req latency : type(%s) prepare(%lldus) disk io(%lldus)\n", (peer_req->flags & EE_WRITE) ? "write" : "read", timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	}
 
 	//DW-1846 send P_NEG_ACK if not sync target
