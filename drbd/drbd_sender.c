@@ -220,6 +220,17 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 			list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 				if (peer_req == p_req) {
 					drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+
+					//DW-1965 apply an I/O error when it is not __EE_WAS_LOST_REQ.
+					if (peer_req->flags & EE_WAS_ERROR) {
+						atomic_inc(&device->io_error_count);
+						drbd_md_set_flag(device, MDF_IO_ERROR);
+						if (device->resource->role[NOW] == R_PRIMARY) {
+							drbd_md_set_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR);
+						}
+						__drbd_chk_io_error(device, DRBD_READ_ERROR);
+					}
+
 					// DW-1935
 					list_del(&peer_req->w.list);
 					drbd_free_peer_req(peer_req);
@@ -304,8 +315,19 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 						drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 					}
 					else {
+						//DW-1965 in inactive_ee, the resync data calls drbd_rs_complete_io() upon completion of the write.
+						if (!(peer_req->flags & EE_SPLIT_REQ)) 
+							drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 						drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 					}
+
+					//DW-1965 apply an I/O error when it is not __EE_WAS_LOST_REQ.
+					if (peer_req->flags & EE_WAS_ERROR) {
+						drbd_set_all_out_of_sync(device, peer_req->i.sector, peer_req->i.size);
+						atomic_inc(&device->io_error_count);
+						drbd_md_set_flag(device, MDF_IO_ERROR);
+					}
+
 					// DW-1935
 					list_del(&peer_req->w.list);
 					drbd_free_peer_req(peer_req);

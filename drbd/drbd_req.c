@@ -2247,10 +2247,16 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 #ifdef _WIN32
-	if ((LONG_PTR)req == -ENOMEM) //only memory allocation fail case
+	//only memory allocation fail case
+	if ((LONG_PTR)req == -ENOMEM) 
 		return STATUS_UNSUCCESSFUL;
-	if (IS_ERR_OR_NULL(req)) //retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
+	//retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
+	if (IS_ERR_OR_NULL(req)) {
+		if (req)
+			drbd_err(device, "FIXME!!, bug!? failed to local request prepare, bio(%p), sector(%llu), size(%u)\n", bio, bio->bi_sector, bio->bi_size);
+
 		return STATUS_SUCCESS;
+	}
 #else
 	if (IS_ERR_OR_NULL(req))
 		return;

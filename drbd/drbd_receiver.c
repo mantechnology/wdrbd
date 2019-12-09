@@ -1834,20 +1834,25 @@ static void conn_wait_ee_empty_and_update_timeout(struct drbd_connection *connec
 	long res;
 	ULONG_PTR ee_before_cnt = 0, ee_after_cnt = 0;
 	struct drbd_peer_request *peer_req;
-
+	unsigned int wait_cnt = 0;
 	for (;;) {
 		res = conn_wait_ee_empty_timeout(connection, head);
 		if (res != 0) {
 			break;
 		}
+		wait_cnt += 1;
 		ee_after_cnt = 0;
 		spin_lock(&connection->resource->req_lock);
 		list_for_each_entry(struct drbd_peer_request, peer_req, head, w.list) {
 			ee_after_cnt++;
 		}
 		spin_unlock(&connection->resource->req_lock);
-		if (ee_before_cnt == ee_after_cnt)
+		if (ee_before_cnt == ee_after_cnt) {
+			drbd_debug(connection, "ee not empty, count(%u), wait time(%u)\n", ee_after_cnt, wait_cnt * CONN_WAIT_TIMEOUT);
 			break;
+		}
+
+		drbd_debug(connection, "ee count, before(%u) : after(%u), wait time(%u)\n", ee_before_cnt, ee_after_cnt, wait_cnt * CONN_WAIT_TIMEOUT);
 		ee_before_cnt = ee_after_cnt;
 	}
 }
@@ -2542,7 +2547,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 		if (atomic_read(peer_req->failed_unmarked) == 1)
 			peer_req->flags |= EE_WAS_ERROR;
 
-		drbd_info(peer_device, "--finished unmarked s_bb(%llu), e_bb(%llu), sector(%llu), res(%s)\n", peer_req->s_bb, (peer_req->e_next_bb - 1), sector, (atomic_read(peer_req->failed_unmarked) == 1 ? "failed" : "success"));
+		drbd_debug(peer_device, "--finished unmarked s_bb(%llu), e_bb(%llu), sector(%llu), res(%s)\n", peer_req->s_bb, (peer_req->e_next_bb - 1), sector, (atomic_read(peer_req->failed_unmarked) == 1 ? "failed" : "success"));
 
 		sector = BM_BIT_TO_SECT(BM_SECT_TO_BIT(peer_req->i.sector));
 		peer_req->i.size = BM_SECT_PER_BIT << 9;
@@ -2601,7 +2606,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 						//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
 						peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
 						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-						drbd_info(peer_device, "--set in sync, bitmap bit start : %lu, range : %lu ~ %lu, size %lu\n", peer_req->s_bb, s_bb, (i_bb - 1), (BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+						drbd_debug(peer_device, "--set in sync, bitmap bit start : %lu, range : %lu ~ %lu, size %lu\n", peer_req->s_bb, s_bb, (i_bb - 1), (BM_BIT_TO_SECT(i_bb - s_bb) << 9));
 						if (i_bb == e_next_bb)
 							peer_req->block_id = ID_SYNCER_SPLIT_DONE;
 						else
@@ -2624,7 +2629,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 						//DW-1601 If out of sync is found within range, it is set as a failure.
 						peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
 						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-						drbd_info(peer_device, "--set failed io, bitmap bit start : %lu, range : %lu ~ %lu, size %lu\n", peer_req->s_bb, s_bb, (i_bb - 1), (BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+						drbd_err(peer_device, "--set failed to I/O, bitmap bit start : %lu, range : %lu ~ %lu, size %lu\n", peer_req->s_bb, s_bb, (i_bb - 1), (BM_BIT_TO_SECT(i_bb - s_bb) << 9));
 						if (i_bb == e_next_bb)
 							peer_req->block_id = ID_SYNCER_SPLIT_DONE;
 						else
@@ -2821,7 +2826,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 	peer_req = read_in_block(peer_device, d);
 	if (!peer_req) {
-		drbd_err(peer_device, "failed peer_req allocate\n");
+		drbd_err(peer_device, "failed to allocate peer_req\n");
 		return -EIO;
 	}
 
@@ -2857,7 +2862,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 		split_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 		if (!split_count) {
-			drbd_err(peer_device, "failed split count allocate\n");
+			drbd_err(peer_device, "failed to allocate split count\n");
 			return -ENOMEM;
 		}
 
@@ -2885,7 +2890,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						atomic_add64(d->bi_size, &peer_device->rs_written);
 
 						//DW-1601 all data is synced.
-						drbd_info(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", i_bb, s_bb, (e_next_bb - 1));
+						drbd_debug(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", i_bb, s_bb, (e_next_bb - 1));
 						err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 						drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
 						atomic_add(d->bi_size >> 9, &device->rs_sect_ev); 
@@ -2904,7 +2909,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				submit_peer:
 					//DW-1601 if offset is set to out of sync previously, write request to split_peer_req for data in index now from the corresponding offset.
 					if (s_split_request) {
-						drbd_info(peer_device, "##sync bitmap bit %llu, split request %llu ~ %lu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
+						drbd_debug(peer_device, "##sync bitmap bit %llu, split request %llu ~ %lu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
 							(i_bb - 1), offset, (i_bb - 1), (BM_BIT_TO_SECT(i_bb - offset) << 9), s_bb, (e_next_bb - 1), e_oos);
 
 						split_peer_req = split_read_in_block(peer_device, peer_req,
@@ -2915,7 +2920,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 															split_count, NULL);
 
 						if (!split_peer_req) {
-							drbd_err(peer_device, "in sync split_peer_req alloc failed , %llu\n", i_bb);
+							drbd_err(peer_device, "failed to alloc split_peer_req, %llu\n", i_bb);
 							err = -ENOMEM;
 							goto split_error_clear;
 						}
@@ -2963,7 +2968,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						unmarked_count = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 
 						if (!unmarked_count) {
-							drbd_err(peer_device, "failed unmakred count allocate\n");
+							drbd_err(peer_device, "failed to allocate unmakred_count\n");
 							//DW-1923 to free allocation memory, go to the split_error_clean label.
 							err = -ENOMEM;
 							goto split_error_clear;
@@ -2972,7 +2977,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						failed_unmarked = kzalloc(sizeof(atomic_t), GFP_KERNEL, 'FFDW');
 
 						if (!failed_unmarked) {
-							drbd_err(peer_device, "failed failed unmarked allocate\n");
+							drbd_err(peer_device, "failed to allocate failed_unmarked\n");
 							kfree2(unmarked_count);
 							//DW-1923
 							err = -ENOMEM;
@@ -2995,7 +3000,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 																	split_count, NULL);
 
 								if (!split_peer_req) {
-									drbd_err(peer_device, "marked split_peer_req alloc failed , %llu\n", i_bb);
+									drbd_err(peer_device, "failed to allocate split_peer_req, %llu\n", i_bb);
 									atomic_set(unmarked_count, atomic_read(unmarked_count) - (atomic_read(unmarked_count) - submit_count) + 1);
 									if (unmarked_count && 0 == atomic_dec_return(unmarked_count)) {
 										kfree2(failed_unmarked);
@@ -3033,7 +3038,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 								// DW-1928 set out of sync for split_request.
 								drbd_set_sync(device, split_peer_req->i.sector, split_peer_req->i.size, bits, mask);
 
-								drbd_info(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i, atomic_read(unmarked_count));
+								drbd_debug(peer_device, "##unmarked bb(%llu), sector(%llu), offset(%u), count(%u)\n", marked_rl->bb, BM_BIT_TO_SECT(marked_rl->bb) + i, i, atomic_read(unmarked_count));
 
 								if (!drbd_submit_peer_request(device, split_peer_req, REQ_OP_WRITE, 0, DRBD_FAULT_RS_WR) == 0) {
 									drbd_err(device, "unmarked, submit failed, triggering re-connect\n");
@@ -4064,7 +4069,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							list_add(&(s_marked_rl->marked_rl_list), &device->marked_rl_list);
 						}
 						else {
-							drbd_err(peer_device, "marked replicate allocate failed, bit : %llu\n", s_bb);
+							drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", s_bb);
 							return -ENOMEM;
 						}
 					}
@@ -4076,7 +4081,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							break;
 						s_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", s_marked_rl->bb, ssector, BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
+					drbd_debug(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", s_marked_rl->bb, ssector, BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
 				}
 
 				if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(esector)) != (esector - 1)&&
@@ -4090,7 +4095,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							list_add(&(e_marked_rl->marked_rl_list), &device->marked_rl_list);
 						}
 						else {
-							drbd_err(peer_device, "marked replicate allocate failed, bit : %llu\n", e_bb);
+							drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", e_bb);
 							return -ENOMEM;
 						}
 					}
@@ -4099,7 +4104,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					for (u16 i = 0; i < (esector - BM_BIT_TO_SECT(e_bb)); i++) {
 						e_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", e_marked_rl->bb, esector, BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
+					drbd_debug(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", e_marked_rl->bb, esector, BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
 				}
 			}
 
@@ -9949,6 +9954,11 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
+
+		// DW-1965 initialize values that need to be answered or set after completion of I/O.
+		atomic_set(&peer_device->unacked_cnt, 0);
+		atomic_set(&peer_device->rs_pending_cnt, 0);
+		atomic_set(&peer_device->rs_sect_in, 0);
 
 		peer_device_disconnected(peer_device);
 	
