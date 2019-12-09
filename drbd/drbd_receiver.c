@@ -4047,7 +4047,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							list_add(&(s_marked_rl->marked_rl_list), &device->marked_rl_list);
 						}
 						else {
-							drbd_err(peer_device, "marked replicate allocate failed, bit : %llu\n", s_bb);
+							drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", s_bb);
 							return -ENOMEM;
 						}
 					}
@@ -4059,7 +4059,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							break;
 						s_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", s_marked_rl->bb, ssector, BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
+					drbd_debug(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", s_marked_rl->bb, ssector, BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
 				}
 
 				if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(esector)) != (esector - 1)&&
@@ -4073,7 +4073,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 							list_add(&(e_marked_rl->marked_rl_list), &device->marked_rl_list);
 						}
 						else {
-							drbd_err(peer_device, "marked replicate allocate failed, bit : %llu\n", e_bb);
+							drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", e_bb);
 							return -ENOMEM;
 						}
 					}
@@ -4082,7 +4082,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					for (u16 i = 0; i < (esector - BM_BIT_TO_SECT(e_bb)); i++) {
 						e_marked_rl->marked_rl |= 1 << i;
 					}
-					drbd_info(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", e_marked_rl->bb, esector, BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
+					drbd_debug(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n", e_marked_rl->bb, esector, BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
 				}
 			}
 
@@ -9933,6 +9933,11 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
+
+		// DW-1965 initialize values that need to be answered or set after completion of I/O.
+		atomic_set(&peer_device->unacked_cnt, 0);
+		atomic_set(&peer_device->rs_pending_cnt, 0);
+		atomic_set(&peer_device->rs_sect_in, 0);
 
 		peer_device_disconnected(peer_device);
 	
