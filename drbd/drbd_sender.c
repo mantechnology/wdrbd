@@ -515,7 +515,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
 	
 	// DW-1961 Save timestamp for IO latency measuremen
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
 		if (bio->bi_rw == WRITE_FLUSH)
 			WDRBD_LATENCY("flush latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
@@ -679,7 +679,7 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	BIO_ENDIO_FN_START;
 	// DW-1961 Calculate and Log IO Latency
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		req->io_complete_ts = timestamp();
 		WDRBD_LATENCY("req latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
 	}

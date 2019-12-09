@@ -127,7 +127,7 @@ void *drbd_md_get_buffer(struct drbd_device *device, const char *intent)
 	long t;
 	
 	// DW-1961 Measure how long the metadisk waits for use
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		device->md_io.prepare_ts = timestamp();
 #ifdef _WIN32
     wait_event_timeout(t, device->misc_wait,
@@ -234,7 +234,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 	bio_get(bio); /* one bio_put() is in the completion handler */
 	atomic_inc(&device->md_io.in_use); /* drbd_md_put_buffer() is in the completion handler */
 	// DW-1961 Save timestamp for IO latency measurement
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		device->md_io.io_request_ts = timestamp();
 
 	if (drbd_insert_fault(device, (op == REQ_OP_WRITE) ? DRBD_FAULT_MD_WR : DRBD_FAULT_MD_RD))
@@ -252,7 +252,7 @@ static int _drbd_md_sync_page_io(struct drbd_device *device,
 
 	wait_until_done_or_force_detached(device, bdev, &device->md_io.done);
 	// DW-1961 Calculate and Log IO Latency
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		device->md_io.io_complete_ts = timestamp();
 		WDRBD_LATENCY("md latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(device->md_io.prepare_ts, device->md_io.io_request_ts), timestamp_elapse(device->md_io.io_request_ts, device->md_io.io_complete_ts));
 	}

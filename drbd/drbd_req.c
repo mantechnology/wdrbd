@@ -1016,7 +1016,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			atomic_add64(req->i.size, &peer_device->connection->ap_in_flight);
 			set_if_null_req_not_net_done(peer_device, req);
 
-			if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 				req->net_sent_ts[peer_device->node_id] = timestamp();
 		}
 		if (req->rq_state[idx] & RQ_NET_PENDING)
@@ -1091,7 +1091,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			++k_put;
 
 		// DW-1961 Calculate and Log IO Latency
-		if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 			req->net_done_ts[peer_device->node_id] = timestamp();
 			WDRBD_LATENCY("req latency : net(%lldus)\n", timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
 		}
@@ -1887,7 +1887,7 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 #else
 		else {
 			// DW-1961 Save timestamp for IO latency measuremen
-			if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 				req->io_request_ts = timestamp();
 			if (generic_make_request(bio)) {
 				bio_endio(bio, -EIO);
@@ -1939,7 +1939,7 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 	}
 
 	// DW-1961 Save timestamp for IO latency measuremen
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		req->created_ts = timestamp();
 
 	req->start_jif = start_jif;

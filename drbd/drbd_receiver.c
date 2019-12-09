@@ -1281,7 +1281,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 #ifdef _WIN32
 	// DW-1961 Calculate and Log IO Latency
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) 
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
 		WDRBD_LATENCY("flush latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
 
 	if (NT_ERROR(error)) {
@@ -1362,7 +1362,7 @@ static void submit_one_flush(struct drbd_device *device, struct issue_flush_cont
 	bio->bi_private = octx;
 	bio->bi_end_io = one_flush_endio;
 	// DW-1961 Save timestamp for flush IO latency measurement
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		bio->flush_ts = timestamp();
 
 	set_bit(FLUSH_PENDING, &device->flags);
@@ -2024,7 +2024,7 @@ next_bio:
 	peer_req->submit_jif = jiffies;
 
 	// DW-1961 Save timestamp for IO latency measurement
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		peer_req->io_request_ts = timestamp();
 	peer_req->flags |= EE_SUBMITTED;
 	do {
@@ -2292,7 +2292,7 @@ read_in_block(struct drbd_peer_device *peer_device, struct drbd_peer_request_det
 	peer_req->block_id = d->block_id;
 	peer_req->flags |= EE_WRITE;
 	// DW-1961 Save timestamp for IO latency measurement
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		peer_req->created_ts = timestamp();
 	if (d->length == 0)
 		return peer_req;
@@ -2443,7 +2443,7 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	D_ASSERT(device, drbd_interval_empty(&peer_req->i));
 
 	// DW-1961 Calculate and Log IO Latency
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
 		WDRBD_LATENCY("peer_req latency : prepare(%lldus) disk io(%lldus)\n", timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	}
@@ -2679,7 +2679,7 @@ static struct drbd_peer_request *split_read_in_block(struct drbd_peer_device *pe
 
 	// DW-1961 Save timestamp for IO latency measurement
 	split_peer_request->block_id = peer_request->block_id;
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		split_peer_request->created_ts = timestamp();
 
 	drbd_alloc_page_chain(transport, &split_peer_request->page_chain, DIV_ROUND_UP(split_peer_request->i.size, PAGE_SIZE), GFP_TRY);
@@ -4351,7 +4351,7 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	peer_req->i.sector = sector;
 	peer_req->block_id = p->block_id;
 	// DW-1961 Save timestamp for IO latency measuremen
-	if (g_featurelog_flag & FEATURELOG_FLAG_LATENCY)
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		peer_req->created_ts = timestamp();
 	/* no longer valid, about to call drbd_recv again for the digest... */
 	p = pi->data = NULL;
