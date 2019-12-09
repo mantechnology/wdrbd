@@ -765,6 +765,8 @@ struct drbd_peer_request {
 	struct drbd_interval i;
 #ifdef _WIN32
     ULONG_PTR flags; /* see comments on ee flag bits below */
+	// DW-1966 I/O error number
+	int error;
 #else
 	unsigned long flags; /* see comments on ee flag bits below */
 #endif
