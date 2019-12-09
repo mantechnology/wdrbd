@@ -1282,7 +1282,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
-		WDRBD_LATENCY("flush latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
+		WDRBD_LATENCY("flush IO latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
 
 	if (NT_ERROR(error)) {
 #else
@@ -2445,7 +2445,9 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
-		WDRBD_LATENCY("peer_req latency : type(%s) prepare(%lldus) disk io(%lldus)\n", (peer_req->flags & EE_WRITE) ? "write" : "read", timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+		WDRBD_LATENCY("peer_req(%p) IO latency : type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
+			peer_req, (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size, 
+			timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	}
 
 	//DW-1846 send P_NEG_ACK if not sync target
