@@ -608,6 +608,10 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 		//DW-1935
 		drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	}
+
+	WDRBD_LATENCY("peer_req(%p) IO latency : epoch(%u) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus) \n", 
+		peer_req, peer_req->epoch->barrier_nr, (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size,
+		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 #ifdef _WIN32
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
 #else
@@ -2445,9 +2449,6 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
-		WDRBD_LATENCY("peer_req(%p) IO latency : type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
-			peer_req, (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size, 
-			timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	}
 
 	//DW-1846 send P_NEG_ACK if not sync target

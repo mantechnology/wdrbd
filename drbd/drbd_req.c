@@ -1093,8 +1093,8 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		// DW-1961 Calculate and Log IO Latency
 		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 			req->net_done_ts[peer_device->node_id] = timestamp();
-			WDRBD_LATENCY("req(%p) NET latency : node_id(%u) prpl(%s) type(%s) sector(%llu) size(%u) net(%lldus)\n", 
-				req, peer_device->node_id, drbd_repl_str((peer_device)->repl_state[NOW]), (req->rq_state[0] & RQ_WRITE) ? "write" : "read", req->i.sector, req->i.size, timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
+			WDRBD_LATENCY("req(%p) NET latency : epoch(%u) node_id(%u) prpl(%s) type(%s) sector(%llu) size(%u) net(%lldus)\n", 
+				req, req->epoch, peer_device->node_id, drbd_repl_str((peer_device)->repl_state[NOW]), (req->rq_state[0] & RQ_WRITE) ? "write" : "read", req->i.sector, req->i.size, timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
 		}
 
 		/* in ahead/behind mode, or just in case,
