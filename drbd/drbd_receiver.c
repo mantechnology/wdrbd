@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_receiver.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -3996,6 +3996,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			goto disconnect_during_al_begin_io;
 			}
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
+			peer_req->do_submit = true;
 			drbd_queue_peer_request(device, peer_req);
 			return 0;
 		}

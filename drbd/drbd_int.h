@@ -1,4 +1,4 @@
-﻿/*
+/*
   drbd_int.h
 
   This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -660,6 +660,7 @@ struct drbd_request {
 #endif
 
 	// DW-1961
+	bool	 do_submit;				// Whether do_submit logic passed
 	LONGLONG created_ts;			// req created
 	LONGLONG io_request_ts;			// Before delivering an io request to disk
 	LONGLONG io_complete_ts;		// Received io completion from disk
@@ -781,6 +782,7 @@ struct drbd_peer_request {
 			ULONG_PTR submit_jif;
 
 			// DW-1961
+			bool	 do_submit;				// Whether do_submit logic passed
 			LONGLONG created_ts;			// req created
 			LONGLONG io_request_ts;			// Before delivering an io request to disk
 			LONGLONG io_complete_ts;		// Received io completion from disk

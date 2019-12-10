@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_sender.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -259,7 +259,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	connection = peer_device->connection;
 
 	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(read) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
-		peer_req, (bool)(peer_req->flags & EE_IN_ACTLOG), device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
 		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
@@ -362,7 +362,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	connection = peer_device->connection;
 
 	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(write) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
-		peer_req, (bool)(peer_req->flags & EE_IN_ACTLOG), device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
 		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
