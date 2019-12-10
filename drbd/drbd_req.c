@@ -2564,7 +2564,7 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &wfa);
 			if (!wfa_lists_empty(&wfa, pending)) {
 				if(al_wait_count)
-					drbd_debug(device, "al_wait retry count : %lu\n", al_wait_count);
+					drbd_debug(device, "al_wait retry count : %llu\n", (unsigned long long)al_wait_count);
 				al_wait_count = 0;
 				break;
 			}
@@ -2575,7 +2575,7 @@ void do_submit(struct work_struct *ws)
 #ifdef _WIN32 // DW-1513, DW-1546, DW-1761 : If al_wait event is not received during AL_WAIT_TIMEOUT, disconnect.
 			if(!schedule(&device->al_wait, AL_WAIT_TIMEOUT, __FUNCTION__, __LINE__))
 			{
-				drbd_err(device, "al_wait timeout... disconnect, retry %lu\n", al_wait_count);
+				drbd_err(device, "al_wait timeout... disconnect, retry %llu\n", (unsigned long long)al_wait_count);
 
 				struct drbd_peer_device *peer_device;
 				for_each_peer_device_rcu(peer_device, device) {
