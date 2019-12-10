@@ -2604,9 +2604,9 @@ extern void repost_up_to_date_fn(unsigned long data);
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
 	if (peer_device->ov_last_oos_size) {
-		drbd_err(peer_device, "Out of sync: start=%llu, size=%lu (sectors)\n",
+		drbd_err(peer_device, "Out of sync: start=%llu, size=%llu (sectors)\n",
 		     (unsigned long long)peer_device->ov_last_oos_start,
-		     (unsigned long)peer_device->ov_last_oos_size);
+		     (unsigned long long)peer_device->ov_last_oos_size);
 	}
 	peer_device->ov_last_oos_size = 0;
 }
@@ -3689,8 +3689,8 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	if (max_req_write_cnt < DRBD_MAX_REQ_WRITE_CNT_MIN ||
 		max_req_write_cnt > DRBD_MAX_REQ_WRITE_CNT_MAX)
 	{
-		drbd_err(device, "got invalid max_req_write_cnt(%llu), use default value(%llu)\n", max_req_write_cnt, (LONGLONG)DRBD_MAX_REQ_WRITE_CNT_DEF);
-		max_req_write_cnt = (LONGLONG)DRBD_MAX_REQ_WRITE_CNT_DEF;    // use default if value is invalid.    
+		drbd_err(device, "got invalid max_req_write_cnt(%d), use default value(%d)\n", max_req_write_cnt, (int)DRBD_MAX_REQ_WRITE_CNT_DEF);
+		max_req_write_cnt = (int)DRBD_MAX_REQ_WRITE_CNT_DEF;    // use default if value is invalid.    
 	}
 
 	// DW-1925 postpone if only one of the number or size of req exceeds the maximum

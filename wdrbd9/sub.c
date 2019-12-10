@@ -513,7 +513,7 @@ mvolUpdateMountPointInfoByExtension(PVOLUME_EXTENSION pvext)
 			.MaximumLength = p->SymbolicLinkNameLength,
 			.Buffer = (PWCH)(otbuf + p->SymbolicLinkNameOffset) };
 
-		WDRBD_INFO("SymbolicLink num:%d %wZ\n",i,&name);
+		WDRBD_INFO("SymbolicLink num:%lu %wZ\n",i,&name);
 
 		if (MOUNTMGR_IS_DRIVE_LETTER(&name)) {
 
