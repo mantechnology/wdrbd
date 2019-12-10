@@ -1282,7 +1282,7 @@ BIO_ENDIO_TYPE one_flush_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #ifdef _WIN32
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
-		WDRBD_LATENCY("flush IO latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
+		WDRBD_LATENCY("flush IO latency : minor(%u) %lldus\n", device->minor, timestamp_elapse(bio->flush_ts, timestamp()));
 
 	if (NT_ERROR(error)) {
 #else

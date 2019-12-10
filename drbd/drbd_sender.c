@@ -518,11 +518,11 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		peer_req->io_complete_ts = timestamp();
 		if (bio->bi_rw == WRITE_FLUSH)
-			WDRBD_LATENCY("flush IO latency : %lldus\n", timestamp_elapse(bio->flush_ts, timestamp()));
+			WDRBD_LATENCY("flush IO latency : minor(%u) ds(%s) %lldus\n", device->minor, drbd_disk_str(device->disk_state[NOW]), timestamp_elapse(bio->flush_ts, timestamp()));
 		else
-			WDRBD_LATENCY("peer_req(%p) IO latency : type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
-			peer_req, (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size, 
-			timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+			WDRBD_LATENCY("peer_req(%p) IO latency : minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
+				peer_req, device->minor, drbd_disk_str(device->disk_state[NOW]), (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size,
+				timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	}
 
 	BIO_ENDIO_FN_START;
@@ -683,7 +683,9 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
 		req->io_complete_ts = timestamp();
-		WDRBD_LATENCY("req(%p) IO latency : type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", req, "write", req->i.sector, req->i.size, timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
+		WDRBD_LATENCY("req(%p) IO latency : minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
+			req, device->minor, drbd_disk_str(device->disk_state[NOW]), "write", req->i.sector, req->i.size, 
+			timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
 	}
 
 	/* If this request was aborted locally before,
