@@ -524,6 +524,17 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	//struct drbd_device *device = peer_req->peer_device->device;
 	bool is_write = bio_data_dir(bio) == WRITE;
 	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
+	
+	// DW-1961 Save timestamp for IO latency measuremen
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+		peer_req->io_complete_ts = timestamp();
+		if (bio->bi_rw == WRITE_FLUSH)
+			WDRBD_LATENCY("flush IO latency : minor(%u) ds(%s) %lldus\n", device->minor, drbd_disk_str(device->disk_state[NOW]), timestamp_elapse(bio->flush_ts, timestamp()));
+		else
+			WDRBD_LATENCY("peer_req(%p) IO latency : epoch(%u) minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
+			peer_req, peer_req->epoch->barrier_nr, device->minor, drbd_disk_str(device->disk_state[NOW]), (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size,
+				timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+	}
 
 	BIO_ENDIO_FN_START;
 #ifdef _WIN32 
@@ -683,6 +694,13 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 	BIO_ENDIO_FN_START;
+	// DW-1961 Calculate and Log IO Latency
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+		req->io_complete_ts = timestamp();
+		WDRBD_LATENCY("req(%p) IO latency : epoch(%u) minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
+			req, req->epoch, device->minor, drbd_disk_str(device->disk_state[NOW]), "write", req->i.sector, req->i.size, 
+			timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
+	}
 
 	/* If this request was aborted locally before,
 	 * but now was completed "successfully",
@@ -1997,9 +2015,9 @@ int w_e_end_data_req(struct drbd_work *w, int cancel)
 		return 0;
 	}
 
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) 
 		err = drbd_send_block(peer_device, P_DATA_REPLY, peer_req);
-	} else {
+	else {
 		if (drbd_ratelimit())
 			drbd_err(peer_device, "Sending NegDReply. sector=%llus.\n",
 			    (unsigned long long)peer_req->i.sector);
@@ -2088,8 +2106,9 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
-				else
+				else {
 					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
+				}
 				
 				// DW-1938 fix potential rs_in_flight incorrect calculation
 				if (err) {
@@ -3536,7 +3555,7 @@ restart:
 			spin_unlock_irq(&connection->resource->req_lock);
 			if (m.bio)
 #ifdef _WIN32
-				complete_master_bio(device, &m, __func__, __LINE__ );
+				complete_master_bio(device, &m, __func__, __LINE__);
 #else
 				complete_master_bio(device, &m);
 #endif
@@ -3810,7 +3829,7 @@ static int process_one_request(struct drbd_connection *connection)
 
 	if (m.bio)
 #ifdef _WIN32
-		complete_master_bio(device, &m, __func__, __LINE__ );
+		complete_master_bio(device, &m, __func__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -3937,7 +3956,7 @@ int drbd_sender(struct drbd_thread *thi)
 		spin_unlock_irq(&connection->resource->req_lock);
 		if (m.bio)
 #ifdef _WIN32
-			complete_master_bio(device, &m, __func__, __LINE__ );
+			complete_master_bio(device, &m, __func__, __LINE__);
 #else
 			complete_master_bio(device, &m);
 #endif

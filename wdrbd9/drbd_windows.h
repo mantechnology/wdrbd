@@ -84,9 +84,8 @@
 #define	KERN_NOTICE				"<5>"	/* normal but significant condition	*/
 #define	KERN_INFO				"<6>"	/* informational			*/
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
-#ifdef _WIN32_DEBUG_OOS
-#define KERN_DEBUG_OOS			"<8>"	/* DW-1153: debug-oos */
-#endif
+#define KERN_OOS				"<8>"	/* DW-1153: debug-oos */
+#define KERN_LATENCY			"<9>"	/* DW-1961 feature log */ 
 
 enum
 {
@@ -97,7 +96,10 @@ enum
 	KERN_WARNING_NUM,
 	KERN_NOTICE_NUM,
 	KERN_INFO_NUM,
-	KERN_DEBUG_NUM
+	KERN_DEBUG_NUM,
+	KERN_OOS_NUM,
+	KERN_LATENCY_NUM,
+	KERN_NUM_END
 };
 
 
@@ -319,9 +321,7 @@ typedef unsigned int                fmode_t;
 
 extern atomic_t g_eventlog_lv_min;
 extern atomic_t g_dbglog_lv_min;
-#ifdef _WIN32_DEBUG_OOS
-extern atomic_t g_oos_trace;
-#endif
+extern atomic_t g_featurelog_flag;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
@@ -329,13 +329,11 @@ extern atomic_t g_oos_trace;
    00000000 00000000 00000000 00000000
                                    ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
                                 |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
-                               |	   1 bit on 6 indicates if oos is being traced. (0 or 1), it is valid only when _WIN32_DEBUG_OOS is defined.
+                              ||	   2 bit indicates feature log flag (0x01: oos trace, 0x02: latency)
 */
 #define LOG_LV_BIT_POS_EVENTLOG		(0)
 #define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
-#ifdef _WIN32_DEBUG_OOS
-#define LOG_LV_BIT_POS_OOS_TRACE	(LOG_LV_BIT_POS_DBG + 3)
-#endif
+#define LOG_LV_BIT_POS_FEATURELOG	(LOG_LV_BIT_POS_DBG + 3)
 
 // Default values are used when log_level value doesn't exist.
 #define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
@@ -344,22 +342,16 @@ extern atomic_t g_oos_trace;
 
 #define LOG_LV_MASK			0x7
 
-#ifdef _WIN32_DEBUG_OOS
+#define FEATURELOG_FLAG_OOS 		(1 << 0)
+#define FEATURELOG_FLAG_LATENCY 	(1 << 1)
+
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
-	atomic_set(&g_oos_trace, (log_level >> LOG_LV_BIT_POS_OOS_TRACE) & 0x1);
+	atomic_set(&g_featurelog_flag, (log_level >> LOG_LV_BIT_POS_FEATURELOG) & LOG_LV_MASK);
 
 #define Get_log_lv() \
-	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_oos_trace) << LOG_LV_BIT_POS_OOS_TRACE)
-#else
-#define Set_log_lv(log_level) \
-	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
-	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);
-
-#define Get_log_lv() \
-	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG)
-#endif
+	(atomic_read(&g_eventlog_lv_min) << LOG_LV_BIT_POS_EVENTLOG) | (atomic_read(&g_dbglog_lv_min) << LOG_LV_BIT_POS_DBG) | (atomic_read(&g_featurelog_flag) << LOG_LV_BIT_POS_FEATURELOG)
 
 
 #define MAX_TEXT_BUF                256
@@ -417,6 +409,18 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 #else
 #define WDRBD_INFO(_m_, ...)    printk(KERN_INFO ##_m_, __VA_ARGS__)
+#endif
+
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_OOS(_m_, ...)    printk(KERN_OOS "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_OOS(_m_, ...)    printk(KERN_FEATURE ##_m_, __VA_ARGS__)
+#endif
+
+#if defined (WDRBD_THREAD_POINTER)
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_LATENCY "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
+#else
+#define WDRBD_LATENCY(_m_, ...)    printk(KERN_FEATURE ##_m_, __VA_ARGS__)
 #endif
 
 #if defined (WDRBD_THREAD_POINTER) 
@@ -733,6 +737,7 @@ struct bio {
 	struct bio_vec			bi_io_vec[1]; // only one!!!
 	UCHAR					MasterIrpStackFlags; //Stack Location's Flag
 	unsigned int 			io_retry;
+	LONGLONG				flush_ts;		// DW-1961
 };
 
 struct bio_set {
@@ -919,7 +924,7 @@ extern int atomic_cmpxchg(atomic_t *v, int old, int new);
 extern int atomic_read(const atomic_t *v);
 extern LONGLONG atomic_read64(const atomic_t64 *v);
 extern int atomic_xchg(atomic_t *v, int n);
-
+extern LARGE_INTEGER g_frequency;
 // from rcu_list.h
 
 
@@ -967,7 +972,30 @@ static __inline ULONG_PTR JIFFIES()
 	return (ULONG_PTR)Elapse.QuadPart;
 }
 
+// DW-1961
+static __inline LONGLONG timestamp()
+{
+	LARGE_INTEGER time_stamp = KeQueryPerformanceCounter(NULL);
+	return time_stamp.QuadPart;
+}
+
+static __inline LONGLONG timestamp_elapse(LONGLONG begin_ts, LONGLONG end_ts)
+{
+	if (begin_ts > end_ts || begin_ts <= 0 || end_ts <= 0) {
+		WDRBD_ERROR("timestamp is invalid\n");
+		return -1;
+	}
+
+	LONGLONG microsec_elapse = end_ts - begin_ts;
+	microsec_elapse *= 1000000;
+	microsec_elapse /= g_frequency.QuadPart;
+	return microsec_elapse;
+}
+
+
 #define jiffies				JIFFIES()
+
+
 
 #define time_after(_a,_b)		((LONG_PTR)((LONG_PTR)(_b) - (LONG_PTR)(_a)) < 0)
 #define time_after_eq(_a,_b)		((LONG_PTR)((LONG_PTR)(_a) - (LONG_PTR)(_b)) >= 0)

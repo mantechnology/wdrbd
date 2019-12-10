@@ -873,11 +873,7 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 	BOOL        ret = FALSE;
 
 	if (pLml == NULL ||
-#ifdef _WIN32_DEBUG_OOS
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_OOSLOG) ||
-#else
-		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG) ||
-#endif
+		(pLml->nType != LOGGING_TYPE_SYSLOG && pLml->nType != LOGGING_TYPE_DBGLOG && pLml->nType != LOGGING_TYPE_FEATURELOG) ||
 		(pLml->nErrLvMin < 0 || pLml->nErrLvMin > 7))
 	{
 		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);

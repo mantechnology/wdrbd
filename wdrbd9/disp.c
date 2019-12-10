@@ -130,7 +130,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
 	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
-	
+	// DW-1961 The frequency of the performance counter is fixed at system boot and is consistent across all processors. 
+	// Therefore, driver cache the frequency of the performance counter during initialization.
+	KeQueryPerformanceCounter(&g_frequency);	
 #ifdef _WIN32_WPP
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
 	DoTraceMessage(TRCINFO, "WDRBD V9(1:1) MVF Driver loaded.");

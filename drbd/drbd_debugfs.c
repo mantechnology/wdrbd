@@ -1,4 +1,5 @@
-﻿#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
+#ifdef DEBUGFS
+#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
 #ifdef _WIN32
 #include "linux-compat/seq_file.h"
 #include "linux-compat/jiffies.h"
@@ -1579,4 +1580,5 @@ fail:
 	else
 		return -EINVAL;
 }
+#endif
 #endif
