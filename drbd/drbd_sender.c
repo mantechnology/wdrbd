@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_sender.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -258,6 +258,10 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	device = peer_device->device;
 	connection = peer_device->connection;
 
+	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(read) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
+		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	device->read_cnt += peer_req->i.size >> 9;
 	list_del(&peer_req->w.list);
@@ -357,6 +361,9 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	device = peer_device->device;
 	connection = peer_device->connection;
 
+	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(write) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
+		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
 #ifdef _WIN64
@@ -524,17 +531,9 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	//struct drbd_device *device = peer_req->peer_device->device;
 	bool is_write = bio_data_dir(bio) == WRITE;
 	bool is_discard = bio_op(bio) == REQ_OP_DISCARD;
-	
 	// DW-1961 Save timestamp for IO latency measuremen
-	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
 		peer_req->io_complete_ts = timestamp();
-		if (bio->bi_rw == WRITE_FLUSH)
-			WDRBD_LATENCY("flush IO latency : minor(%u) ds(%s) %lldus\n", device->minor, drbd_disk_str(device->disk_state[NOW]), timestamp_elapse(bio->flush_ts, timestamp()));
-		else
-			WDRBD_LATENCY("peer_req(%p) IO latency : epoch(%u) minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
-			peer_req, peer_req->epoch->barrier_nr, device->minor, drbd_disk_str(device->disk_state[NOW]), (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size,
-				timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
-	}
 
 	BIO_ENDIO_FN_START;
 #ifdef _WIN32 
@@ -593,7 +592,7 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (atomic_dec_and_test(&peer_req->pending_bios)) {
 		if (is_write)
 			drbd_endio_write_sec_final(peer_req);
-		else
+		else 
 			drbd_endio_read_sec_final(peer_req);
 	}
 #ifdef DRBD_TRACE
@@ -694,13 +693,12 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 #endif
 
 	BIO_ENDIO_FN_START;
+
+
 	// DW-1961 Calculate and Log IO Latency
-	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
 		req->io_complete_ts = timestamp();
-		WDRBD_LATENCY("req(%p) IO latency : epoch(%u) minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n", 
-			req, req->epoch, device->minor, drbd_disk_str(device->disk_state[NOW]), "write", req->i.sector, req->i.size, 
-			timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts));
-	}
+
 
 	/* If this request was aborted locally before,
 	 * but now was completed "successfully",

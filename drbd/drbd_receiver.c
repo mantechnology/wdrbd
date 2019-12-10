@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_receiver.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -609,9 +609,6 @@ void __drbd_free_peer_req(struct drbd_peer_request *peer_req, int is_net)
 		drbd_free_page_chain(&peer_device->connection->transport, &peer_req->page_chain, is_net);
 	}
 
-	WDRBD_LATENCY("peer_req(%p) IO latency : epoch(%u) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus) \n", 
-		peer_req, peer_req->epoch->barrier_nr, (peer_req->flags & EE_WRITE) ? "write" : "read", peer_req->i.sector, peer_req->i.size,
-		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
 #ifdef _WIN32
 	ExFreeToNPagedLookasideList(&drbd_ee_mempool, peer_req);
 #else
@@ -4003,6 +4000,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			goto disconnect_during_al_begin_io;
 			}
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
+			peer_req->do_submit = true;
 			drbd_queue_peer_request(device, peer_req);
 			return 0;
 		}
