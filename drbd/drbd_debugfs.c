@@ -1,4 +1,4 @@
-﻿#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
+#define pr_fmt(fmt)	KBUILD_MODNAME " debugfs: " fmt
 #ifdef _WIN32
 #include "linux-compat/seq_file.h"
 #include "linux-compat/jiffies.h"
@@ -496,7 +496,7 @@ static int resource_in_flight_summary_show(struct seq_file *m, void *pos)
 
 	jif = jiffies - jif;
 	if (jif)
-		seq_printf(m, "generated in %d ms\n", jiffies_to_msecs(jif));
+		seq_printf(m, "generated in %u ms\n", jiffies_to_msecs(jif));
 	kref_put(&connection->kref, drbd_destroy_connection);
 	return 0;
 }
@@ -550,7 +550,7 @@ static int resource_state_twopc_show(struct seq_file *m, void *pos)
 		} else {
 			/* The timer is only relevant for twopcs initiated by other nodes */
 			jif = resource->twopc_timer.expires - jiffies;
-			seq_printf(m, "  timer expires in: %d ms\n", jiffies_to_msecs(jif));
+			seq_printf(m, "  timer expires in: %u ms\n", jiffies_to_msecs(jif));
 		}
 	} else {
 		seq_puts(m, "No ongoing two phase state transaction\n");

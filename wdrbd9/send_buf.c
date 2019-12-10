@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright(C) 2007-2016, ManTechnology Co., LTD.
 	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
 
@@ -127,7 +127,7 @@ ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, 
 
 	if (length == 0 || length > DRBD_SNDBUF_SIZE_MAX)
 	{
-		WDRBD_ERROR("bab(%s) size(%d) is bad. max(%d)\n", name, length, DRBD_SNDBUF_SIZE_MAX);
+		WDRBD_ERROR("bab(%s) size(%lld) is bad. max(%d)\n", name, length, DRBD_SNDBUF_SIZE_MAX);
 		return NULL;
 	}
 

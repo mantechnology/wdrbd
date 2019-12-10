@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_main.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -4654,7 +4654,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%d", minor);
+	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%u", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4669,7 +4669,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %llu sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4994,7 +4994,7 @@ static int __init drbd_init(void)
 	initialize_kref_debugging();
 
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
-		pr_err("invalid minor_count (%d)\n", minor_count);
+		pr_err("invalid minor_count (%u)\n", minor_count);
 #ifdef MODULE
 		return -EINVAL;
 #else
@@ -6082,8 +6082,8 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
-							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (ULONG)found_peer->flags);
+						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
 				}

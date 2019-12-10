@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_bitmap.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -1391,7 +1391,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE4) {
 			if(IsDiskError()) {
-				WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....ErrorFlag:%u ErrorCount:%u\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
@@ -1448,11 +1448,11 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		/* Not identical to on disk version of it.
 		 * Is BM_PAGE_IO_ERROR enough? */
 		if (drbd_ratelimit())
-			drbd_err(device, "IO ERROR %d on bitmap page idx %lu\n",
+			drbd_err(device, "IO ERROR %d on bitmap page idx %llu\n",
 					error, idx);
 	} else {
 		bm_clear_page_io_err(b->bm_pages[idx]);
-		dynamic_drbd_dbg(device, "bitmap page idx %lu completed\n", idx);
+		dynamic_drbd_dbg(device, "bitmap page idx %llu completed\n", idx);
 	}
 
 	bm_page_unlock_io(device, (int)idx);

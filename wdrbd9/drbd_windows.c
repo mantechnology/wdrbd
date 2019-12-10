@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright(C) 2007-2016, ManTechnology Co., LTD.
 	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
 
@@ -2772,7 +2772,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, 'A3DW');
     if (!keyInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
-        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%d)\n", size);
+        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%u)\n", size);
         goto cleanup;
     }
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_receiver.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -9869,7 +9869,7 @@ void conn_disconnect(struct drbd_connection *connection)
 			drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 			list_del(&peer_req->recv_order);
 
-			drbd_info(device, "add, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, active_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 
 		list_splice_init(&connection->active_ee, &connection->inactive_ee);
@@ -9879,7 +9879,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (!list_empty(&connection->sync_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->sync_ee, w.list) {
 			struct drbd_device *device = peer_req->peer_device->device;
-			drbd_info(device, "add, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, sync_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 		list_splice_init(&connection->sync_ee, &connection->inactive_ee);
 	}
@@ -9887,7 +9887,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (!list_empty(&connection->read_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->read_ee, w.list) {
 			struct drbd_device *device = peer_req->peer_device->device;
-			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 		// DW-1735 If the list is not empty because it has been moved to inactive_ee, it as a bug
 		list_splice_init(&connection->read_ee, &connection->inactive_ee);

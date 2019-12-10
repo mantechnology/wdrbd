@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_sender.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -219,7 +219,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 
 			list_for_each_entry_safe(struct drbd_peer_request, p_req, t_inative, &connection->inactive_ee, w.list) {
 				if (peer_req == p_req) {
-					drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+					drbd_info(device, "destroy, read inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 
 					//DW-1965 apply an I/O error when it is not __EE_WAS_LOST_REQ.
 					if (peer_req->flags & EE_WAS_ERROR) {
@@ -241,7 +241,7 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 			}
 		}
 		else {
-			WDRBD_INFO("destroy, read lost inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			WDRBD_INFO("destroy, read lost inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			drbd_free_peer_req(peer_req);
 		}
 
@@ -312,13 +312,13 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 					if (peer_req->block_id != ID_SYNCER) {
 						//DW-1920 in inactive_ee, the replication data calls drbd_al_complete_io() upon completion of the write.
 						drbd_al_complete_io(device, &peer_req->i);
-						drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+						drbd_info(device, "destroy, active_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 					}
 					else {
 						//DW-1965 in inactive_ee, the resync data calls drbd_rs_complete_io() upon completion of the write.
 						if (!(peer_req->flags & EE_SPLIT_REQ)) 
 							drbd_rs_complete_io(peer_device, peer_req->i.sector, __FUNCTION__);
-						drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+						drbd_info(device, "destroy, sync_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 					}
 
 					//DW-1965 apply an I/O error when it is not __EE_WAS_LOST_REQ.
@@ -338,7 +338,7 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 			}
 		}
 		else {
-			WDRBD_INFO("destroy, wrtie inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			WDRBD_INFO("destroy, wrtie inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 			drbd_free_peer_req(peer_req);
 		}
 		spin_unlock(&g_inactive_lock);
