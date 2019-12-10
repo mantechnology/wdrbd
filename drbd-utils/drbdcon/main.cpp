@@ -51,6 +51,7 @@ usage()
 		"   /get_log [ProviderName] [ResourceName : Max Length 250|oos]\n"
 		"   /get_log [ProviderName] [ResourceName : Max Length 250][oos]\n"
 		"   /minlog_lv dbg [Level : 0~7] \n"
+		"   /minlog_lv feature [flag : 1~3] (1:oos, 2:latency, 3:all) \n"
 		"   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
 		"	/drbdlock_status\n"
@@ -74,6 +75,7 @@ usage()
 		"drbdcon /get_log drbdService \n"
 		"drbdcon /get_log drbdService r0\n"
 		"drbdcon /minlog_lv dbg 6 \n"
+		"drbdcon /minlog_lv feature 2\n"
 		"drbdcon /write_log drbdService \"Logging start\" \n"
 		"drbdcon /handler_use 1 \n"
 		"drbdcon /get_log_lv \n"
@@ -432,12 +434,10 @@ main(int argc, char* argv [])
 				{
 					lml.nType = LOGGING_TYPE_DBGLOG;
 				}
-#ifdef _WIN32_DEBUG_OOS
-				else if (strcmp(argv[argIndex], "oos") == 0)
+				else if (strcmp(argv[argIndex], "feature") == 0)
 				{
-					lml.nType = LOGGING_TYPE_OOSLOG;
+					lml.nType = LOGGING_TYPE_FEATURELOG;
 				}
-#endif
 				else
 					usage();				
 			}

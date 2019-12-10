@@ -653,14 +653,18 @@ struct drbd_request {
 	/* per connection */
 #ifdef _WIN32
 	ULONG_PTR pre_send_jif[DRBD_PEERS_MAX];
-	ULONG_PTR acked_jif[DRBD_PEERS_MAX];
-	ULONG_PTR net_done_jif[DRBD_PEERS_MAX];
 #else
 	unsigned long pre_send_jif[DRBD_PEERS_MAX];
 	unsigned long acked_jif[DRBD_PEERS_MAX];
 	unsigned long net_done_jif[DRBD_PEERS_MAX];
 #endif
 
+	// DW-1961
+	LONGLONG created_ts;			// req created
+	LONGLONG io_request_ts;			// Before delivering an io request to disk
+	LONGLONG io_complete_ts;		// Received io completion from disk
+	LONGLONG net_sent_ts[DRBD_PEERS_MAX];			// Send request to peer
+	LONGLONG net_done_ts[DRBD_PEERS_MAX];			// Received a response from peer
 	/* Possibly even more detail to track each phase:
 	 *  master_completion_jif
 	 *      how long did it take to complete the master bio
@@ -765,6 +769,8 @@ struct drbd_peer_request {
 	struct drbd_interval i;
 #ifdef _WIN32
     ULONG_PTR flags; /* see comments on ee flag bits below */
+	// DW-1966 I/O error number
+	int error;
 #else
 	unsigned long flags; /* see comments on ee flag bits below */
 #endif
@@ -773,8 +779,11 @@ struct drbd_peer_request {
 			struct drbd_epoch *epoch; /* for writes */
 #ifdef _WIN32
 			ULONG_PTR submit_jif;
-#else
-			unsigned long submit_jif;
+
+			// DW-1961
+			LONGLONG created_ts;			// req created
+			LONGLONG io_request_ts;			// Before delivering an io request to disk
+			LONGLONG io_complete_ts;		// Received io completion from disk
 #endif 
 			union {
 				u64 block_id;
@@ -1118,8 +1127,13 @@ struct drbd_backing_dev {
 struct drbd_md_io {
 	struct page *page;
 #ifdef _WIN32
+	// DW-1961
     ULONG_PTR start_jif;	/* last call to drbd_md_get_buffer */
     ULONG_PTR submit_jif;	/* last _drbd_md_sync_page_io() submit */
+	// DW-1961
+	LONGLONG prepare_ts;	// prepare md io request
+	LONGLONG io_request_ts;		// before requesting md io to disk
+	LONGLONG io_complete_ts;		// receive md io complete
 #else
 	unsigned long start_jif;	/* last call to drbd_md_get_buffer */
 	unsigned long submit_jif;	/* last _drbd_md_sync_page_io() submit */

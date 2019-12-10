@@ -58,13 +58,12 @@ int g_mj_flush_buffers_filter;
 int g_use_volume_lock;
 int g_netlink_tcp_port;
 int g_daemon_tcp_port;
+LARGE_INTEGER g_frequency = { .QuadPart = 0 };		// DW-1961
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
 atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
-#ifdef _WIN32_DEBUG_OOS
-atomic_t g_oos_trace = 0;
-#endif
+atomic_t g_featurelog_flag = 0;		// DW-1961 feature log
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;
@@ -1876,6 +1875,9 @@ int generic_make_request(struct bio *bio)
 		buffer = NULL;
 		bio->bi_size = 0;
 		offset.QuadPart = 0;
+		// DW-1961 Save timestamp for IO latency measurement
+		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+			bio->flush_ts = timestamp();
 	} else {
 		if (bio->bi_rw & WRITE) {
 			io = IRP_MJ_WRITE;

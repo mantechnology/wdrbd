@@ -1015,6 +1015,9 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			//atomic_add(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			atomic_add64(req->i.size, &peer_device->connection->ap_in_flight);
 			set_if_null_req_not_net_done(peer_device, req);
+
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+				req->net_sent_ts[peer_device->node_id] = timestamp();
 		}
 		if (req->rq_state[idx] & RQ_NET_PENDING)
 			set_if_null_req_ack_pending(peer_device, req);
@@ -1062,7 +1065,6 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	if ((old_net & RQ_NET_PENDING) && (clear & RQ_NET_PENDING)) {
 		dec_ap_pending(peer_device);
 		++c_put;
-		req->acked_jif[peer_device->node_id] = jiffies;
 		advance_conn_req_ack_pending(peer_device, req);
 	}
 
@@ -1087,7 +1089,13 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 		if (old_net & RQ_EXP_BARR_ACK)
 			++k_put;
-		req->net_done_jif[peer_device->node_id] = jiffies;
+
+		// DW-1961 Calculate and Log IO Latency
+		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+			req->net_done_ts[peer_device->node_id] = timestamp();
+			WDRBD_LATENCY("req(%p) NET latency : epoch(%u) node_id(%u) prpl(%s) type(%s) sector(%llu) size(%u) net(%lldus)\n", 
+				req, req->epoch, peer_device->node_id, drbd_repl_str((peer_device)->repl_state[NOW]), (req->rq_state[0] & RQ_WRITE) ? "write" : "read", req->i.sector, req->i.size, timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
+		}
 
 		/* in ahead/behind mode, or just in case,
 		 * before we finally destroy this request,
@@ -1812,7 +1820,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 #ifdef _WIN32_DEBUG_OOS
 		// DW-1153: Write log when process I/O
-		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_DEBUG_OOS,
+		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_OOS,
 			peer_device->node_id, peer_device->bitmap_index, req, remote, send_oos, req->i.sector, req->i.sector + (req->i.size / 512));
 #endif
 
@@ -1879,6 +1887,9 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 			generic_make_request(bio);
 #else
 		else {
+			// DW-1961 Save timestamp for IO latency measuremen
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+				req->io_request_ts = timestamp();
 			if (generic_make_request(bio)) {
 				bio_endio(bio, -EIO);
 			}
@@ -1927,6 +1938,11 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 		bio_endio(bio, -ENOMEM);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	// DW-1961 Save timestamp for IO latency measuremen
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+		req->created_ts = timestamp();
+
 	req->start_jif = start_jif;
 
 	if (!get_ldev(device)) {
@@ -1951,7 +1967,6 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 			if (!drbd_al_begin_io_fastpath(device, &req->i))
 				goto queue_for_submitter_thread;
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
 		}
 	}
 	return req;
@@ -2219,7 +2234,7 @@ out:
 #endif
 	if (m.bio)
 #ifdef _WIN32
-        complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -2355,7 +2370,6 @@ static void submit_fast_path(struct drbd_device *device, struct waiting_for_act_
 				continue;
 
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
 			atomic_dec(&device->ap_actlog_cnt);
 		}
 
@@ -2459,7 +2473,6 @@ static void send_and_submit_pending(struct drbd_device *device, struct waiting_f
 	list_for_each_entry_safe(req, tmp, &wfa->requests.pending, tl_requests) {
 #endif 
 		req->rq_state[0] |= RQ_IN_ACT_LOG;
-		req->in_actlog_jif = jiffies;
 		atomic_dec(&device->ap_actlog_cnt);
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
