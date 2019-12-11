@@ -258,9 +258,12 @@ static void drbd_endio_read_sec_final(struct drbd_peer_request *peer_req) __rele
 	device = peer_device->device;
 	connection = peer_device->connection;
 
-	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(read) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
-		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
-		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+		WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(read) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
+			peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+			timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+	}
 
 	spin_lock_irqsave(&device->resource->req_lock, flags);
 	device->read_cnt += peer_req->i.size >> 9;
@@ -361,9 +364,11 @@ void drbd_endio_write_sec_final(struct drbd_peer_request *peer_req) __releases(l
 	device = peer_device->device;
 	connection = peer_device->connection;
 
-	WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(write) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
-		peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
-		timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+		WDRBD_LATENCY("peer_req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(write) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus)\n",
+			peer_req, peer_req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), peer_req->i.sector, peer_req->i.size,
+			timestamp_elapse(peer_req->created_ts, peer_req->io_request_ts), timestamp_elapse(peer_req->io_request_ts, peer_req->io_complete_ts));
+	}
 	/* if this is a failed barrier request, disable use of barriers,
 	 * and schedule for resubmission */
 #ifdef _WIN64
