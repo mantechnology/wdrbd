@@ -56,7 +56,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 
 	do {
 		if(nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN ) {
-			WDRBD_INFO("alloc bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			WDRBD_INFO("alloc bab fail nconf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN connection->peer_node_id:%u nconf->sndbuf_size:%llu\n", connection->peer_node_id, nconf->sndbuf_size);
 			goto $ALLOC_FAIL;
 		}
 		__try {
@@ -67,7 +67,7 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 				goto $ALLOC_FAIL;
 			}
 		} __except(EXCEPTION_EXECUTE_HANDLER) {
-			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc data bab fail connection->peer_node_id:%u nconf->sndbuf_size:%llu\n", connection->peer_node_id, nconf->sndbuf_size);
 			if(ring) {
 				ExFreePool(ring);
 			}
@@ -79,12 +79,12 @@ bool alloc_bab(struct drbd_connection* connection, struct net_conf* nconf)
 			sz = sizeof(*ring) + (1024 * 5120); // meta bab is about 5MB
 			ring = (ring_buffer*)ExAllocatePoolWithTag(NonPagedPool | POOL_RAISE_IF_ALLOCATION_FAILURE, (size_t)sz, '2ADW');
 			if(!ring) {
-				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+				WDRBD_INFO("alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%llu\n", connection->peer_node_id, nconf->sndbuf_size);
 				kfree(connection->ptxbab[DATA_STREAM]); // fail, clean data bab
 				goto $ALLOC_FAIL;
 			}
 		} __except (EXCEPTION_EXECUTE_HANDLER) {
-			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%lld\n", connection->peer_node_id, nconf->sndbuf_size);
+			WDRBD_INFO("EXCEPTION_EXECUTE_HANDLER alloc meta bab fail connection->peer_node_id:%d nconf->sndbuf_size:%llu\n", connection->peer_node_id, nconf->sndbuf_size);
 			if(ring) {
 				ExFreePool(ring);
 			}
@@ -122,7 +122,7 @@ ring_buffer *create_ring_buffer(struct drbd_connection* connection, char *name, 
 
 	if (length == 0 || length > DRBD_SNDBUF_SIZE_MAX)
 	{
-		WDRBD_ERROR("bab(%s) size(%d) is bad. max(%d)\n", name, length, DRBD_SNDBUF_SIZE_MAX);
+		WDRBD_ERROR("bab(%s) size(%lld) is bad. max(%d)\n", name, length, DRBD_SNDBUF_SIZE_MAX);
 		return NULL;
 	}
 

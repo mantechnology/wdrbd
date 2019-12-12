@@ -1022,11 +1022,11 @@ start:
 
 		send_buffring = transport->ops->start_send_buffring(transport, nc->sndbuf_size);
 		if (send_buffring)
-			drbd_info(connection, "send-buffering ok size(%lld) cong_fill(%lld)\n", nc->sndbuf_size, (nc->cong_fill));
+			drbd_info(connection, "send-buffering ok size(%llu) cong_fill(%llu)\n", nc->sndbuf_size, (nc->cong_fill));
 		else
 			drbd_warn(connection, "send-buffering disabled\n");
 	} else {
-		drbd_warn(connection, "send-buffering disabled nc->sndbuf_size:%lld\n",nc->sndbuf_size);
+		drbd_warn(connection, "send-buffering disabled nc->sndbuf_size:%llu\n",nc->sndbuf_size);
 	}
 #endif
 
@@ -2824,8 +2824,8 @@ find_request(struct drbd_device *device, struct rb_root *root, u64 id,
 	if (drbd_contains_interval(root, sector, &req->i) && req->i.local)
 		return req;
 	if (!missing_ok) {
-		drbd_err(device, "%s: failed to find request 0x%lx, sector %llus\n", func,
-			(unsigned long)id, (unsigned long long)sector);
+		drbd_err(device, "%s: failed to find request 0x%llx, sector %llus\n", func,
+			id, (unsigned long long)sector);
 	}
 	return NULL;
 }
@@ -3826,12 +3826,12 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 	size   = be32_to_cpu(p->blksize);
 
 	if (size <= 0 || !IS_ALIGNED(size, 512) || size > DRBD_MAX_BIO_SIZE) {
-		drbd_err(device, "%s:%d: sector: %llus, size: %u\n", __FILE__, __LINE__,
+		drbd_err(device, "%s:%d: sector: %llus, size: %d\n", __FILE__, __LINE__,
 				(unsigned long long)sector, size);
 		return -EINVAL;
 	}
 	if (sector + (size>>9) > capacity) {
-		drbd_err(device, "%s:%d: sector: %llus, size: %u\n", __FILE__, __LINE__,
+		drbd_err(device, "%s:%d: sector: %llus, size: %d\n", __FILE__, __LINE__,
 				(unsigned long long)sector, size);
 		return -EINVAL;
 	}
@@ -4807,7 +4807,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 	} else {
 		rv = L_ESTABLISHED;
 		if (drbd_bitmap_uuid(peer_device)) {
-			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%lu bits)\n",
+			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%llu bits)\n",
 				  drbd_bm_total_weight(peer_device));
 			drbd_uuid_set_bitmap(peer_device, 0);
 			drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
@@ -8403,7 +8403,7 @@ receive_bitmap_plain(struct drbd_peer_device *peer_device, unsigned int size,
 
 
 	if (want != size) {
-		drbd_err(peer_device, "%s:want (%u) != size (%u)\n", __func__, want, size);
+		drbd_err(peer_device, "%s:want (%llu) != size (%u)\n", __func__, want, size);
 		return -EIO;
 	}
 	if (want == 0)
@@ -9164,11 +9164,11 @@ static void drbdd(struct drbd_connection *connection)
 
 		update_receiver_timing_details(connection, cmd->fn);
 #ifdef _WIN32
-		drbd_debug(connection, "receiving %s, size: %d vnr: %d\n", drbd_packet_name(pi.cmd), pi.size, pi.vnr);
+		drbd_debug(connection, "receiving %s, size: %u vnr: %d\n", drbd_packet_name(pi.cmd), pi.size, pi.vnr);
 #endif
 		err = cmd->fn(connection, &pi);
 		if (err) {
-			drbd_err(connection, "error receiving %s, e: %d l: %d!\n",
+			drbd_err(connection, "error receiving %s, e: %d l: %u!\n",
 				 drbd_packet_name(pi.cmd), err, pi.size);
 			goto err_out;
 		}
@@ -9324,7 +9324,7 @@ void conn_disconnect(struct drbd_connection *connection)
 			drbd_set_out_of_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 			list_del(&peer_req->recv_order);
 
-			drbd_info(device, "add, active_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, active_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 
 		list_splice_init(&connection->active_ee, &connection->inactive_ee);
@@ -9334,7 +9334,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (!list_empty(&connection->sync_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->sync_ee, w.list) {
 			struct drbd_device *device = peer_req->peer_device->device;
-			drbd_info(device, "add, sync_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, sync_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 		list_splice_init(&connection->sync_ee, &connection->inactive_ee);
 	}
@@ -9342,7 +9342,7 @@ void conn_disconnect(struct drbd_connection *connection)
 	if (!list_empty(&connection->read_ee)) {
 		list_for_each_entry(struct drbd_peer_request, peer_req, &connection->read_ee, w.list) {
 			struct drbd_device *device = peer_req->peer_device->device;
-			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%d)\n", peer_req, peer_req->i.sector, peer_req->i.size);
+			drbd_info(device, "add, read_ee => inactive_ee(%p), sector(%llu), size(%u)\n", peer_req, peer_req->i.sector, peer_req->i.size);
 		}
 		//DW-1735 : If the list is not empty because it has been moved to inactive_ee, it as a bug
 		list_splice_init(&connection->read_ee, &connection->inactive_ee);
@@ -9391,16 +9391,16 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	i = drbd_free_peer_reqs(resource, &connection->read_ee, true);
 	if (i)
-		drbd_err(connection, "read_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "read_ee not empty, killed %d entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->active_ee, true);
 	if (i)
-		drbd_err(connection, "active_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "active_ee not empty, killed %d entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->sync_ee, true);
 	if (i)
-		drbd_err(connection, "sync_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "sync_ee not empty, killed %d entries\n", i);
 	i = drbd_free_peer_reqs(resource, &connection->net_ee, true);
 	if (i)
-		drbd_err(connection, "net_ee not empty, killed %u entries\n", i);
+		drbd_err(connection, "net_ee not empty, killed %d entries\n", i);
 
 	cleanup_unacked_peer_requests(connection);
 	cleanup_peer_ack_list(connection);
@@ -10862,7 +10862,7 @@ int drbd_ack_receiver(struct drbd_thread *thi)
 			}
 			expect = (int)(header_size + cmd->pkt_size);
 			if (pi.size != expect - header_size) {
-				drbd_err(connection, "Wrong packet size on meta (c: %d, l: %d)\n",
+				drbd_err(connection, "Wrong packet size on meta (c: %d, l: %u)\n",
 					pi.cmd, pi.size);
 				goto reconnect;
 			}

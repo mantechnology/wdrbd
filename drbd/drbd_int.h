@@ -2299,9 +2299,9 @@ extern void drbd_bm_set_all(struct drbd_device *device);
 extern void drbd_bm_clear_all(struct drbd_device *device);
 #ifdef _WIN32
 /* set/clear/test only a few bits at a time */
-extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
 /* bm_set_bits variant for use while holding drbd_bm_lock,
 * may process the whole bitmap in one go */
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
@@ -2551,9 +2551,9 @@ extern void repost_up_to_date_fn(unsigned long data);
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
 	if (peer_device->ov_last_oos_size) {
-		drbd_err(peer_device, "Out of sync: start=%llu, size=%lu (sectors)\n",
-		     (unsigned long long)peer_device->ov_last_oos_start,
-		     (unsigned long)peer_device->ov_last_oos_size);
+		drbd_err(peer_device, "Out of sync: start=%llu, size=%llu (sectors)\n",
+		     peer_device->ov_last_oos_start,
+		     peer_device->ov_last_oos_size);
 	}
 	peer_device->ov_last_oos_size = 0;
 }
@@ -2850,12 +2850,12 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
-extern int update_sync_bits(struct drbd_peer_device *peer_device,
-	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode);
+extern ULONG_PTR update_sync_bits(struct drbd_peer_device *peer_device,
+	ULONG_PTR sbnr, ULONG_PTR ebnr, update_sync_bits_mode mode);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
-extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
+extern ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
 		update_sync_bits_mode mode);
 #define drbd_set_in_sync(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
@@ -3634,14 +3634,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
 		req_buf_size_max >((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
 	{
-		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
+		drbd_err(device, "got invalid req_buf_size(%lld), use default value(%lld)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
 		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
 	}
 	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit())
-			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%lld), max(%lld)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
 		rv = false;
 	} else {
 		device->resource->breqbuf_overflow_alarm = FALSE;

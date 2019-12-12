@@ -2303,7 +2303,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		 * can only happen if bitmap is modified while we scan it. */
 		if (rl == 0) {
 			drbd_err(peer_device, "unexpected zero runlength while encoding bitmap "
-			    "t:%u bo:%lu\n", toggle, c->bit_offset);
+			    "t:%u bo:%llu\n", toggle, c->bit_offset);
 			return -1;
 		}
 
@@ -4626,7 +4626,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%d", minor);
+	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%u", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4641,7 +4641,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %llu sectors, device->this_bdev->d_size: %llu bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4952,7 +4952,7 @@ static int __init drbd_init(void)
 	initialize_kref_debugging();
 
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
-		pr_err("invalid minor_count (%d)\n", minor_count);
+		pr_err("invalid minor_count (%u)\n", minor_count);
 #ifdef MODULE
 		return -EINVAL;
 #else
@@ -5849,7 +5849,7 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
 	rcu_read_lock();
 	name = name_of_node_id(device->resource, node_id);
-	drbd_info(device, "clearing bitmap UUID and content (%lu bits) for node %d (%s)(slot %d)\n",
+	drbd_info(device, "clearing bitmap UUID and content (%llu bits) for node %d (%s)(slot %d)\n",
 		  _drbd_bm_total_weight(device, bitmap_index), node_id, name, bitmap_index);
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
@@ -6036,8 +6036,8 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
-							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (ULONG)found_peer->flags);
+						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
 				}
@@ -6222,7 +6222,7 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
 	for_each_peer_device_rcu(p, device) {
-		if (!update_sync_bits(p, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
+		if (!update_sync_bits(p, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
 			drbd_bm_set_many_bits(p, 0, DRBD_END_OF_BITMAP);
@@ -6249,7 +6249,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 	drbd_md_sync(device);
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
-	if (!update_sync_bits(peer_device, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
+	if (!update_sync_bits(peer_device, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC))
 	{
 		drbd_err(peer_device, "no sync bit has been set, set whole bits without updating resync extent instead.\n");
 		drbd_bm_set_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
@@ -6275,7 +6275,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 // set out-of-sync from provided bitmap
 ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
 {
-	LONG_PTR llStartBit = -1, llEndBit = -1;
+	ULONG_PTR llStartBit = DRBD_END_OF_BITMAP, llEndBit = DRBD_END_OF_BITMAP;
 	ULONG_PTR count = 0;
 	PCHAR pByte = NULL;
 	
@@ -6292,40 +6292,38 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	// find continuously set bits and set out-of-sync.
 	for (LONGLONG llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
 	{
-		for (LONGLONG llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
+		for (unsigned short llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
 		{
 			CHAR pBit = (pByte[llBytePos] >> llBitPosInByte) & 0x1;
 
 			// found first set bit.
-			if (llStartBit == -1 &&
-				pBit == 1)
+			if (llStartBit == DRBD_END_OF_BITMAP && pBit == 1)
 			{
 				llStartBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
 				continue;
 			}
 
 			// found last set bit. set out-of-sync.
-			if (llStartBit != -1 &&
-				pBit == 0)
+			if (llStartBit != DRBD_END_OF_BITMAP && pBit == 0)
 			{
 				llEndBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
-				count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
+				count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
 
-				llStartBit = -1;
-				llEndBit = -1;
+				llStartBit = DRBD_END_OF_BITMAP;
+				llEndBit = DRBD_END_OF_BITMAP;
 				continue;
 			}
 		}
 	}
 
 	// met last bit while finding zero bit.
-	if (llStartBit != -1)
+	if (llStartBit != DRBD_END_OF_BITMAP)
 	{
-		llEndBit = (LONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
-		count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
+		llEndBit = (ULONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC);
 
-		llStartBit = -1;
-		llEndBit = -1;
+		llStartBit = DRBD_END_OF_BITMAP;
+		llEndBit = DRBD_END_OF_BITMAP;
 	}
 
 	return count;
@@ -6458,7 +6456,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		bRet = false;
 	}
 	else{
-		drbd_info(peer_device, "%lu bits(%lu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		drbd_info(peer_device, "%llu bits(%llu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
 		bRet = true;
 	}
 		
