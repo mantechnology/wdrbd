@@ -630,7 +630,7 @@ static int al_write_transaction(struct drbd_device *device)
 	return err;
 }
 
-static int bm_e_weight(struct drbd_peer_device *peer_device, unsigned long enr);
+static int bm_e_weight(struct drbd_peer_device *peer_device, ULONG_PTR enr);
 
 bool drbd_al_try_lock(struct drbd_device *device)
 {
@@ -1034,13 +1034,13 @@ static int w_update_peers(struct drbd_work *w, int unused)
  * reference count of some bitmap extent element from some lru instead...
  *
  */
-static int bm_e_weight(struct drbd_peer_device *peer_device, unsigned long enr)
+static int bm_e_weight(struct drbd_peer_device *peer_device, ULONG_PTR enr)
 {
 	ULONG_PTR start, end;
 	int count;
 
-	start = (ULONG_PTR)enr << (BM_EXT_SHIFT - BM_BLOCK_SHIFT);
-	end = (ULONG_PTR)((enr + 1) << (BM_EXT_SHIFT - BM_BLOCK_SHIFT)) - 1;
+	start = enr << (BM_EXT_SHIFT - BM_BLOCK_SHIFT);
+	end = ((enr + 1) << (BM_EXT_SHIFT - BM_BLOCK_SHIFT)) - 1;
 	count = (unsigned int)drbd_bm_count_bits(peer_device->device, peer_device->bitmap_index, start, end);
 #if DUMP_MD >= 3
 	drbd_info(peer_device, "enr=%lu weight=%d\n", enr, count);
