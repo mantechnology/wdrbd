@@ -2179,7 +2179,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 		drbd_md_write(device, buffer);
 
 		if (rs)
-			drbd_info(device, "Changed AL layout to al-stripes = %d, al-stripe-size-kB = %d\n",
+			drbd_info(device, "Changed AL layout to al-stripes = %u, al-stripe-size-kB = %u\n",
 				 md->al_stripes, md->al_stripe_size_4k * 4);
 	}
 
@@ -2407,7 +2407,7 @@ static int drbd_check_al_size(struct drbd_device *device, struct disk_conf *dc)
 		for (i = 0; i < t->nr_elements; i++) {
 			e = lc_element_by_index(t, i);
 			if (e->refcnt)
-				drbd_err(device, "refcnt(%d)==%d\n",
+				drbd_err(device, "refcnt(%u)==%u\n",
 				    e->lc_number, e->refcnt);
 			in_use += e->refcnt;
 		}
@@ -2751,7 +2751,7 @@ static void sanitize_disk_conf(struct drbd_device *device, struct disk_conf *dis
 			disk_conf->rs_discard_granularity = q->limits.max_discard_sectors << 9;
 
 		if (disk_conf->rs_discard_granularity != (unsigned int)orig_value)
-			drbd_info(device, "rs_discard_granularity changed to %d\n",
+			drbd_info(device, "rs_discard_granularity changed to %u\n",
 				  disk_conf->rs_discard_granularity);
 	}
 }
@@ -3378,7 +3378,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* Make sure the local node id matches or is unassigned */
 	if (nbc->md.node_id != -1 && (unsigned int)nbc->md.node_id != resource->res_opts.node_id) {
-		drbd_err(device, "Local node id %d differs from local "
+		drbd_err(device, "Local node id %u differs from local "
 			 "node id %d on device\n",
 			 resource->res_opts.node_id,
 			 nbc->md.node_id);
@@ -3388,7 +3388,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* Make sure no bitmap slot has our own node id */
 	if (nbc->md.peers[resource->res_opts.node_id].bitmap_index != -1) {
-		drbd_err(device, "There is a bitmap for my own node id (%d)\n",
+		drbd_err(device, "There is a bitmap for my own node id (%u)\n",
 			 resource->res_opts.node_id);
 		retcode = ERR_INVALID_REQUEST;
 		goto force_diskless_dec;
@@ -3410,7 +3410,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 		if (slots_needed > slots_available) {
 			drbd_err(device, "Not enough free bitmap "
-				 "slots (available=%d, needed=%d)\n",
+				 "slots (available=%u, needed=%u)\n",
 				 slots_available,
 				 slots_needed);
 			retcode = ERR_INVALID_REQUEST;
@@ -4300,7 +4300,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	if (adm_ctx->connection) {
 #ifdef _WIN32
         struct drbd_resource * resource = adm_ctx->resource;
-        drbd_err(resource, "Connection for peer node id %d already exists\n",
+        drbd_err(resource, "Connection for peer node id %u already exists\n",
             adm_ctx->peer_node_id);
 #else
 		drbd_err(adm_ctx->resource, "Connection for peer node id %d already exists\n",

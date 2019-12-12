@@ -2303,7 +2303,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		 * can only happen if bitmap is modified while we scan it. */
 		if (rl == 0) {
 			drbd_err(peer_device, "unexpected zero runlength while encoding bitmap "
-			    "t:%u bo:%lu\n", toggle, c->bit_offset);
+			    "t:%u bo:%llu\n", toggle, c->bit_offset);
 			return -1;
 		}
 
@@ -4626,7 +4626,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%d", minor);
+	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%u", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4641,7 +4641,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %llu sectors, device->this_bdev->d_size: %llu bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4952,7 +4952,7 @@ static int __init drbd_init(void)
 	initialize_kref_debugging();
 
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
-		pr_err("invalid minor_count (%d)\n", minor_count);
+		pr_err("invalid minor_count (%u)\n", minor_count);
 #ifdef MODULE
 		return -EINVAL;
 #else
@@ -5849,7 +5849,7 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
 	rcu_read_lock();
 	name = name_of_node_id(device->resource, node_id);
-	drbd_info(device, "clearing bitmap UUID and content (%lu bits) for node %d (%s)(slot %d)\n",
+	drbd_info(device, "clearing bitmap UUID and content (%llu bits) for node %d (%s)(slot %d)\n",
 		  _drbd_bm_total_weight(device, bitmap_index), node_id, name, bitmap_index);
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
@@ -6036,8 +6036,8 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
-							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (ULONG)found_peer->flags);
+						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
 				}
@@ -6456,7 +6456,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		bRet = false;
 	}
 	else{
-		drbd_info(peer_device, "%lu bits(%lu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		drbd_info(peer_device, "%llu bits(%llu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
 		bRet = true;
 	}
 		

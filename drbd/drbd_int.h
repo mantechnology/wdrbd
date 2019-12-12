@@ -2551,9 +2551,9 @@ extern void repost_up_to_date_fn(unsigned long data);
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
 	if (peer_device->ov_last_oos_size) {
-		drbd_err(peer_device, "Out of sync: start=%llu, size=%lu (sectors)\n",
-		     (unsigned long long)peer_device->ov_last_oos_start,
-		     (unsigned long)peer_device->ov_last_oos_size);
+		drbd_err(peer_device, "Out of sync: start=%llu, size=%llu (sectors)\n",
+		     peer_device->ov_last_oos_start,
+		     peer_device->ov_last_oos_size);
 	}
 	peer_device->ov_last_oos_size = 0;
 }
@@ -3634,14 +3634,14 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
 		req_buf_size_max >((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
 	{
-		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
+		drbd_err(device, "got invalid req_buf_size(%lld), use default value(%lld)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
 		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
 	}
 	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
 		if (drbd_ratelimit())
-			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%lld), max(%lld)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
 		rv = false;
 	} else {
 		device->resource->breqbuf_overflow_alarm = FALSE;
