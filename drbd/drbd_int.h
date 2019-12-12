@@ -2299,9 +2299,9 @@ extern void drbd_bm_set_all(struct drbd_device *device);
 extern void drbd_bm_clear_all(struct drbd_device *device);
 #ifdef _WIN32
 /* set/clear/test only a few bits at a time */
-extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
 /* bm_set_bits variant for use while holding drbd_bm_lock,
 * may process the whole bitmap in one go */
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
@@ -2850,12 +2850,12 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
-extern int update_sync_bits(struct drbd_peer_device *peer_device,
-	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode);
+extern ULONG_PTR update_sync_bits(struct drbd_peer_device *peer_device,
+	ULONG_PTR sbnr, ULONG_PTR ebnr, update_sync_bits_mode mode);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
-extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
+extern ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
 		update_sync_bits_mode mode);
 #define drbd_set_in_sync(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
