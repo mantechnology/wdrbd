@@ -1190,7 +1190,7 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 				break;
 			}
 
-			if (bit >= drbd_bm_bits(device) + 1) {
+			if (bit >= drbd_bm_bits(device)) {
 				device->bm_resync_fo = drbd_bm_bits(device);
 				drbd_info(peer_device, "DRBD_END_OF_BITMAP(%llu), device->bm_resync_fo : %llu, bm_set : %llu\n", bit, device->bm_resync_fo, drbd_bm_total_weight(peer_device));
 				put_ldev(device);
