@@ -2342,6 +2342,8 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
 #define DRBD_END_OF_BITMAP	UINTPTR_MAX
+// DW-1978
+extern ULONG_PTR drbd_bm_range_find_next(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
 extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
