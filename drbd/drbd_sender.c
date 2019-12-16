@@ -1222,6 +1222,9 @@ static int drbd_rs_number_requests(struct drbd_peer_device *peer_device)
 	return number;
 }
 
+// DW-1978 25000000 is 100 Gbyte (1bit = 4k) 
+#define RANGE_FIND_NEXT_BIT 25000000 
+
 static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 {
 	struct drbd_device *device = peer_device->device;
@@ -1297,21 +1300,35 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 				requeue = 1;
 				transport->ops->hint(transport, DATA_STREAM, NOSPACE);
 			}
-		} else
+		} 
+		else
 			requeue = 1;
+
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 		if (requeue)
 			goto requeue;
 
 next_sector:
 		size = BM_BLOCK_SIZE;
-		bit  = drbd_bm_find_next(peer_device, device->bm_resync_fo);
+		for (;;) {
+			// DW-1978
+			bit = drbd_bm_range_find_next(peer_device, device->bm_resync_fo, device->bm_resync_fo + RANGE_FIND_NEXT_BIT);
+			if (bit < (device->bm_resync_fo + RANGE_FIND_NEXT_BIT + 1)) {
+				break;
+			}
 
-		if (bit == DRBD_END_OF_BITMAP) {
-			device->bm_resync_fo = drbd_bm_bits(device);
-			drbd_info(peer_device, "DRBD_END_OF_BITMAP, device->bm_resync_fo : %llu, bm_set : %llu\n", (unsigned long long)device->bm_resync_fo, (unsigned long long)drbd_bm_total_weight(peer_device));
-			put_ldev(device);
-			return 0;
+			if (bit >= drbd_bm_bits(device)) {
+				device->bm_resync_fo = drbd_bm_bits(device);
+				drbd_info(peer_device, "DRBD_END_OF_BITMAP(%llu), device->bm_resync_fo : %llu, bm_set : %llu\n", bit, device->bm_resync_fo, drbd_bm_total_weight(peer_device));
+				put_ldev(device);
+				return 0;
+			}
+
+			// DW-1978 it may have been completed with replication or the connection may have been terminated.
+			if (peer_device->rs_total == 0)
+				goto requeue;
+
+			device->bm_resync_fo = bit;
 		}
 
 		sector = BM_BIT_TO_SECT(bit);
