@@ -9527,8 +9527,13 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	if (connection->peer_role[NOW] == R_UNKNOWN)
 		return 0;
 
-	if (current_uuid == drbd_current_uuid(device))
+	// DW-1975 When the peer sets a new uuid, it removes the previously rotated bitmap_uuid due to resync.
+	if ((current_uuid & ~R_PRIMARY) == (drbd_current_uuid(device) & ~R_PRIMARY)) {
+		if (peer_device->uuid_flags & UUID_FLAG_ROTATED_IN_RESYNC)
+			_drbd_uuid_set_bitmap(peer_device, 0);
+
 		return 0;
+	}
 #ifndef _WIN32
 	// MODIFIED_BY_MANTECH DW-977
 	peer_device->current_uuid = current_uuid;
