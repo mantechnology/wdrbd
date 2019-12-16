@@ -5607,7 +5607,7 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 			// DW-1975 Set UUID_FLAG_ROTATED_IN_RESYNC flag if rotated during resync.
 			if ((prpl == L_SYNC_SOURCE || prpl == L_PAUSED_SYNC_S || prpl == L_AHEAD || prpl == L_WF_BITMAP_S) && do_it) {
 				peer_device->uuid_flags |= UUID_FLAG_ROTATED_IN_RESYNC;
-				drbd_info(peer_device, "GI will be rotated during resync. uuid:%016llX\n", peer_device->current_uuid);
+				drbd_info(peer_device, "Bitmap_uuid will be rotated during resync. uuid:%016llX\n", peer_device->current_uuid);
 			}
 
 #ifdef _WIN32
@@ -6093,7 +6093,7 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+						drbd_info(device, "bitmap_uuid will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
 							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (unsigned long long)found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
