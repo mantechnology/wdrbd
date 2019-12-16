@@ -6079,8 +6079,10 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
 				peer_md[node_id].bitmap_uuid = 0;
 				// DW-1975 Removed UUID_FLAG_SENT_NEW_UUID_IN_RESYNC flag if new UUID is applied successfully.
-				peer_device->uuid_flags &= ~((u64)UUID_FLAG_ROTATED_IN_RESYNC);
-				drbd_info(peer_device, "Clear rotated bitmap_uuid during resync. cur_uuid:%016llX bm_uuid:%016llX\n", peer_current_uuid, peer_md[node_id].bitmap_uuid);
+				if (peer_device->uuid_flags & UUID_FLAG_ROTATED_IN_RESYNC) {
+					peer_device->uuid_flags &= ~((u64)UUID_FLAG_ROTATED_IN_RESYNC);
+					drbd_info(peer_device, "Clear rotated bitmap_uuid during resync. cur_uuid:%016llX bm_uuid:%016llX\n", peer_current_uuid, peer_md[node_id].bitmap_uuid);
+				}
 				if (node_id == peer_device->node_id)
 					drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 				else if (peer_md[node_id].bitmap_index != -1)

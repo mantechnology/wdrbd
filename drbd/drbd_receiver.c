@@ -9528,7 +9528,7 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 		return 0;
 
 	// DW-1975 When the peer sets a new uuid, it removes the previously rotated bitmap_uuid due to resync.
-	if ((current_uuid & ~R_PRIMARY) == (drbd_current_uuid(device) & ~R_PRIMARY)) {
+	if ((current_uuid & ~UUID_PRIMARY) == (drbd_current_uuid(device) & ~UUID_PRIMARY)) {
 		if (peer_device->uuid_flags & UUID_FLAG_ROTATED_IN_RESYNC) {
 			struct drbd_device *device = peer_device->device;
 			struct drbd_peer_md *peer_md = &device->ldev->md.peers[peer_device->node_id];
