@@ -5605,8 +5605,10 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 				(NODE_MASK(node_id) & weak_nodes);
 
 			// DW-1975 Set UUID_FLAG_ROTATED_IN_RESYNC flag if rotated during resync.
-			if ((prpl == L_SYNC_SOURCE || prpl == L_PAUSED_SYNC_S || prpl == L_AHEAD || prpl == L_WF_BITMAP_S) && do_it)
+			if ((prpl == L_SYNC_SOURCE || prpl == L_PAUSED_SYNC_S || prpl == L_AHEAD || prpl == L_WF_BITMAP_S) && do_it) {
 				peer_device->uuid_flags |= UUID_FLAG_ROTATED_IN_RESYNC;
+				drbd_info(peer_device, "rotate bitmap_uuid during resync. cur_uuid:%016llX\n", peer_device->current_uuid);
+			}
 
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
