@@ -1197,6 +1197,10 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 				return 0;
 			}
 
+			// DW-1978 it may have been completed with replication or the connection may have been terminated.
+			if (peer_device->rs_total == 0)
+				goto requeue;
+
 			device->bm_resync_fo = bit;
 		}
 
