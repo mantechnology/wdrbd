@@ -2525,6 +2525,7 @@ void do_submit(struct work_struct *ws)
 	struct waiting_for_act_log wfa;
 	//DW-1780 retry the same request with al_timeout
 	ULONG_PTR al_wait_count = 0; 
+	LONGLONG ts = 0;
 	wfa_init(&wfa);
 
 	grab_new_incoming_requests(device, &wfa, false);
@@ -2652,7 +2653,20 @@ void do_submit(struct work_struct *ws)
 				break;
 		}
 
+		if (device->resource->role[NOW] == R_SECONDARY)
+			ts = timestamp();
+		else
+			ts = 0;
+		
 		drbd_al_begin_io_commit(device);
+
+		// DW-1977
+		if (device->resource->role[NOW] == R_SECONDARY && ts != 0) {
+			ts = timestamp_elapse(ts, timestamp());
+			if (ts > ((3 * 1000) * HZ)) {
+				drbd_warn(device, "actlog commit takes a long time(%lldus)\n", ts);
+			}
+		}
 
 		ensure_current_uuid(device);
 
