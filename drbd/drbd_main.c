@@ -5593,7 +5593,8 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 		peer_device = peer_device_by_node_id(device, node_id);
 		if (peer_device) {
 			enum drbd_disk_state pdsk = peer_device->disk_state[NOW];
-			
+			enum drbd_repl_state prpl = peer_device->repl_state[NOW];
+
 			if (peer_device->bitmap_index == -1) {
 				struct peer_device_conf *pdc;
 				pdc = rcu_dereference(peer_device->conf);
@@ -5602,6 +5603,13 @@ static u64 rotate_current_into_bitmap(struct drbd_device *device, u64 weak_nodes
 			}
 			do_it = (pdsk <= D_UNKNOWN && pdsk != D_NEGOTIATING) ||
 				(NODE_MASK(node_id) & weak_nodes);
+
+			// DW-1975 Set UUID_FLAG_ROTATED_IN_RESYNC flag if rotated during resync.
+			if ((prpl == L_STARTING_SYNC_S || prpl == L_SYNC_SOURCE || prpl == L_PAUSED_SYNC_S || prpl == L_AHEAD || prpl == L_WF_BITMAP_S) && do_it) {
+				peer_device->uuid_flags |= UUID_FLAG_ROTATED_IN_RESYNC;
+				drbd_info(peer_device, "Bitmap_uuid will be rotated during resync. uuid:%016llX\n", peer_device->current_uuid);
+			}
+
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-1195 : bump current uuid when disconnecting with inconsistent peer.
 			do_it = do_it || ((peer_device->connection->cstate[NEW] < C_CONNECTED) && (pdsk == D_INCONSISTENT));
@@ -5849,7 +5857,6 @@ static u64 __test_bitmap_slots_of_peer(struct drbd_peer_device *peer_device) __m
 	return set_bitmap_slots;
 }
 
-
 u64 drbd_uuid_resync_finished(struct drbd_peer_device *peer_device) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
@@ -6070,6 +6077,11 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 				
 				_drbd_uuid_push_history(device, peer_md[node_id].bitmap_uuid);
 				peer_md[node_id].bitmap_uuid = 0;
+				// DW-1975 Removed UUID_FLAG_SENT_NEW_UUID_IN_RESYNC flag if new UUID is applied successfully.
+				if (peer_device->uuid_flags & UUID_FLAG_ROTATED_IN_RESYNC) {
+					peer_device->uuid_flags &= ~((u64)UUID_FLAG_ROTATED_IN_RESYNC);
+					drbd_info(peer_device, "Clear rotated bitmap_uuid during resync. cur_uuid:%016llX bm_uuid:%016llX\n", peer_current_uuid, peer_md[node_id].bitmap_uuid);
+				}
 				if (node_id == peer_device->node_id)
 					drbd_print_uuids(peer_device, "updated UUIDs", __FUNCTION__);
 				else if (peer_md[node_id].bitmap_index != -1)
@@ -6082,7 +6094,7 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n",
 							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (unsigned long long)found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
