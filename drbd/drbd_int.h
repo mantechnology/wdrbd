@@ -1424,6 +1424,8 @@ struct drbd_connection {
 #else
 	unsigned long flags;
 #endif
+	// DW-1977
+	enum drbd_packet last_send_packet;
 	
 	enum drbd_fencing_policy fencing_policy;
 	wait_queue_head_t ping_wait;	/* Woken upon reception of a ping, and a state change */

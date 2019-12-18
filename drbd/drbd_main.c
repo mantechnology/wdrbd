@@ -1439,6 +1439,13 @@ int __send_command(struct drbd_connection *connection, int vnr,
 		if (!err && flush)
 			tr_ops->hint(transport, drbd_stream, NODELAY);
 
+		if (drbd_stream == DATA_STREAM) {
+			if (!err)
+				connection->last_send_packet = cmd;
+			// DW-1977 last successful protocol may not be correct because it is a transfer to the buffer
+			else
+				drbd_info(connection, "last successful protocol %s\n", drbd_packet_name(cmd));
+		}
 	}
 
 	return err;
