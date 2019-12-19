@@ -4442,6 +4442,7 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	peer_device->device = device;
 	peer_device->disk_state[NOW] = D_UNKNOWN;
 	peer_device->repl_state[NOW] = L_OFF;
+	peer_device->bm_ctx.count = 0;
 	spin_lock_init(&peer_device->peer_seq_lock);
 
 	//DW-1806 default value is TRUE
