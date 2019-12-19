@@ -1290,7 +1290,6 @@ LONG NTAPI Receive(
             break;
 
         case STATUS_TIMEOUT:
-			WDRBD_INFO("RECV(%s) wsk(0x%p) Timeout(%lu) err(0x%x:%s) size(%lu)\n", thread->comm, WskSocket, Timeout, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize);
             BytesReceived = -EAGAIN;
             break;
 
