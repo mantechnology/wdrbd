@@ -9195,7 +9195,6 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 {
 	struct drbd_peer_device *peer_device;
 	struct drbd_device *device;
-	bool send_bitmap = false;
 	int err;
 
 	peer_device = conn_peer_device(connection, pi->vnr);
