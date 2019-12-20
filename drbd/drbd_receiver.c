@@ -9107,7 +9107,6 @@ static enum drbd_disk_state read_disk_state(struct drbd_device *device)
 // DW-1981
 static int process_send_bitmap(struct drbd_connection *connection, struct drbd_peer_device *peer_device)
 {
-	int err = 0;
 	struct drbd_device *device = peer_device->device;
 	if (!device)
 		return -EIO;
@@ -9117,54 +9116,11 @@ static int process_send_bitmap(struct drbd_connection *connection, struct drbd_p
 	INFO_bm_xfer_stats(peer_device, "receive", &peer_device->bm_ctx);
 
 	if (peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
-		enum drbd_state_rv rv;
-
-		err = drbd_send_bitmap(device, peer_device);
-		if (err)
-			goto out;
-		/* Omit CS_WAIT_COMPLETE and CS_SERIALIZE with this state
-		* transition to avoid deadlocks. */
-
-		if (connection->agreed_pro_version < 110) {
-			rv = stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
-			D_ASSERT(device, rv == SS_SUCCESS);
-		}
-		else {
-			//DW-1815 merge the peer_device bitmap into the same current_uuid.
-			struct drbd_peer_device* pd;
-
-			for_each_peer_device(pd, device) {
-				if (pd == peer_device)
-					continue;
-
-				if (pd->current_uuid == peer_device->current_uuid) {
-					int allow_size = 512;
-					ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, '8EDW');
-
-					if (bb == NULL) {
-						drbd_err(peer_device, "bitmap bit buffer allocate failed\n");
-						return -ENOMEM;
-					}
-
-					memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
-
-					drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n",
-						peer_device->bitmap_index, (unsigned long long)drbd_bm_total_weight(peer_device),
-						pd->bitmap_index, (unsigned long long)drbd_bm_total_weight(pd));
-
-					for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_bits(device); offset += allow_size) {
-						drbd_bm_get_lel(peer_device, offset, allow_size, bb);
-						drbd_bm_merge_lel(pd, offset, allow_size, bb);
-					}
-
-					drbd_info(peer_device, "finished bitmap merge, to index(%d) out of sync (%llu)\n", pd->bitmap_index, (unsigned long long)drbd_bm_total_weight(pd));
-
-					kfree2(bb);
-				}
-			}
-
-			drbd_start_resync(peer_device, L_SYNC_TARGET);
-		}
+		// DW-1979
+		drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_target_complete,
+			"send_bitmap (WFBitMapT)",
+			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT,
+			peer_device);
 	}
 	else if (peer_device->repl_state[NOW] != L_WF_BITMAP_S) {
 		/* admin may have requested C_DISCONNECTING,
@@ -9174,13 +9130,11 @@ static int process_send_bitmap(struct drbd_connection *connection, struct drbd_p
 		//DW-1613 : Reconnect the UUID because it might not be received properly due to a synchronization issue.
 		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
-	err = 0;
 
-out:
-	if (!err && peer_device->repl_state[NOW] == L_WF_BITMAP_S) {
+	if (peer_device->repl_state[NOW] == L_WF_BITMAP_S) {
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
 	}
-	return err;
+	return 0;
 }
 
 /* Since we are processing the bitfield from lower addresses to higher,

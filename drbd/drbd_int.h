@@ -2113,6 +2113,8 @@ extern int drbd_send_drequest(struct drbd_peer_device *, int cmd,
 extern void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_size);
 extern int drbd_send_ov_request(struct drbd_peer_device *, sector_t sector, int size);
 
+// DW-1979
+extern void drbd_send_bitmap_target_complete(struct drbd_device *, struct drbd_peer_device *, int);
 extern int drbd_send_bitmap(struct drbd_device *, struct drbd_peer_device *);
 extern int drbd_send_dagtag(struct drbd_connection *connection, u64 dagtag);
 extern void drbd_send_sr_reply(struct drbd_connection *connection, int vnr,
@@ -2417,6 +2419,10 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
 #define DRBD_END_OF_BITMAP	UINTPTR_MAX
+// DW-1979 25000000 is 100 Gbyte (1bit = 4k) 
+#define RANGE_FIND_NEXT_BIT 25000000 
+
+extern ULONG_PTR drbd_bm_range_find_next_zero(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 // DW-1978
 extern ULONG_PTR drbd_bm_range_find_next(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
@@ -3602,13 +3608,12 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 
 			/* Allow IO in BM exchange states with new protocols */
 		case L_WF_BITMAP_S:
-#ifndef _WIN32
+
+			// DW-1979 remove the DW-1121, DW-1391 issue as I/O hang can occur 
 			// MODIFIED_BY_MANTECH DW-1121: sending out-of-sync when repl state is WFBitmapS possibly causes stopping resync, by setting new out-of-sync sector which bm_resync_fo has been already swept.
 			if (peer_device->connection->agreed_pro_version < 96)
-#else
 			// DW-1391 : Allow IO while getting the volume bitmap.
-			if (atomic_read(&device->resource->bGetVolBitmapDone))
-#endif
+			//if (atomic_read(&device->resource->bGetVolBitmapDone))
 				stable = false;
 			break;
 

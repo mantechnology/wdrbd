@@ -500,6 +500,8 @@ enum bitmap_operations {
 	BM_OP_FIND_ZERO_BIT,
 	// DW-1978 used to find bit the range.
 	BM_OP_RANGE_FIND_BIT,
+	// DW-1979 used to find zero bit the range.
+	BM_OP_RANGE_FIND_ZERO_BIT,
 };
 #ifdef _WIN32
 static __inline ULONG_PTR interleaved_word32(struct drbd_bitmap *bitmap,
@@ -600,7 +602,8 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 #endif
 	ULONG_PTR real_end = 0;
 
-	if (op == BM_OP_RANGE_FIND_BIT)
+	if (op == BM_OP_RANGE_FIND_BIT ||
+		op == BM_OP_RANGE_FIND_ZERO_BIT)
 		real_end = end + 1;
 
 	if (end >= bitmap->bm_bits)
@@ -654,6 +657,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 					goto found;
 				bit_in_page = last + 1;
 				break;
+			case BM_OP_RANGE_FIND_ZERO_BIT:
 			case BM_OP_FIND_ZERO_BIT:
 				count = find_next_zero_bit_le(addr, last + 1, bit_in_page);
 				if (count < last + 1)
@@ -698,6 +702,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 				if (count < bit_in_page + 32)
 					goto found;
 				break;
+			case BM_OP_RANGE_FIND_ZERO_BIT:
 			case BM_OP_FIND_ZERO_BIT:
 				count = find_next_zero_bit_le(addr, bit_in_page + 32, bit_in_page);
 				if (count < bit_in_page + 32)
@@ -768,6 +773,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 				start = end + 1;
 			}
 			break;
+		case BM_OP_RANGE_FIND_ZERO_BIT:
 		case BM_OP_FIND_ZERO_BIT:
 			{
 				ULONG_PTR last = bit_in_page + (end - start);
@@ -831,6 +837,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 			bitmap->bm_set[bitmap_index] += total;
 #endif
 		break;
+	case BM_OP_RANGE_FIND_ZERO_BIT:
 	case BM_OP_RANGE_FIND_BIT:
 		total = real_end;
 		break;
@@ -906,6 +913,7 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 		case BM_OP_FIND_BIT:
 		case BM_OP_FIND_ZERO_BIT:
 		case BM_OP_RANGE_FIND_BIT:
+		case BM_OP_RANGE_FIND_ZERO_BIT:
 			if (bitmap->bm_flags & BM_LOCK_TEST)
 				bm_print_lock_info(device);
 			break;
@@ -1938,6 +1946,12 @@ extern ULONG_PTR drbd_bm_range_find_next(struct drbd_peer_device *peer_device, U
 		BM_OP_RANGE_FIND_BIT, NULL);
 }
 
+// DW-1979
+extern ULONG_PTR drbd_bm_range_find_next_zero(struct drbd_peer_device *peer_device, ULONG_PTR start, ULONG_PTR end)
+{
+	return bm_op(peer_device->device, peer_device->bitmap_index, start, end,
+		BM_OP_RANGE_FIND_ZERO_BIT, NULL);
+}
 #ifdef _WIN32
 ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *peer_device, ULONG_PTR start)
 #else
