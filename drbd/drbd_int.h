@@ -465,6 +465,7 @@ struct bm_xfer_ctx {
 	/* statistics; index: (h->command == P_BITMAP) */
 	unsigned packets[2];
 	unsigned bytes[2];
+	unsigned int count;  // DW-1981
 };
 
 extern void INFO_bm_xfer_stats(struct drbd_peer_device *, const char *, struct bm_xfer_ctx *);
@@ -1747,6 +1748,9 @@ struct drbd_peer_device {
 	struct {/* sender todo per peer_device */
 		bool was_ahead;
 	} todo;
+
+	// DW-1981
+	struct bm_xfer_ctx bm_ctx;
 };
 
 //DW-1911
