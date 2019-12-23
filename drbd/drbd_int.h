@@ -1650,8 +1650,12 @@ struct drbd_peer_device {
 	atomic_t rs_pending_cnt; /* RS request/data packets on the wire */
 	atomic_t wait_for_actlog;	
 	
-	// DW-1979 it is set when the requested resync data is received. (0, 1)
-	atomic_t is_recv_rsreply;
+	// DW-1979 the value used by the syncaget to match the "out of sync" with the sync source when exchanging the bitmap.
+	// set to 1 when waiting for a response to a resync request.
+	atomic_t wait_recv_rs_reply;
+	// DW-1979 used to determine whether the bitmap exchange is complete on the syncsource.
+	// set to 1 to wait for bitmap exchange.
+	atomic_t wait_for_recv_bitmap;
 
 	/* use checksums for *this* resync */
 	bool use_csums;
