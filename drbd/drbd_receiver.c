@@ -9123,7 +9123,7 @@ static enum drbd_disk_state read_disk_state(struct drbd_device *device)
 }
 
 // DW-1981
-static int process_send_bitmap(struct drbd_connection *connection, struct drbd_peer_device *peer_device)
+static int receive_bitmap_finished(struct drbd_connection *connection, struct drbd_peer_device *peer_device)
 {
 	struct drbd_device *device = peer_device->device;
 	if (!device)
@@ -9242,7 +9242,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 
 		// DW-1979
 		atomic_set(&peer_device->is_recv_rsreply, 0);
-		err = process_send_bitmap(connection, peer_device);
+		err = receive_bitmap_finished(connection, peer_device);
 	}
 	else
 		err = 0;
