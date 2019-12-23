@@ -4019,7 +4019,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	{
 		// DW-1979 do not set "in sync" before starting resync.
 		if (peer_device->repl_state[NOW] == L_WF_BITMAP_T ||
-			peer_device->repl_state[NOW] == L_SYNC_TARGET && !atomic_read(&peer_device->wait_recv_rs_reply)) {
+			(peer_device->repl_state[NOW] == L_SYNC_TARGET && atomic_read(&peer_device->wait_recv_rs_reply))) {
 			// DW-1979 set to D_INCONSISTENT when replication data occurs during resync start.
 			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT &&
 				peer_device->device->disk_state[NEW] != D_INCONSISTENT) {
@@ -9142,9 +9142,9 @@ static int receive_bitmap_finished(struct drbd_connection *connection, struct dr
 			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
 			peer_device);
 	}
-	else if ((peer_device->repl_state[NOW] != L_WF_BITMAP_S &&
+	else if (peer_device->repl_state[NOW] != L_WF_BITMAP_S &&
 		// DW-1979
-		peer_device->repl_state[NOW] != L_AHEAD)) {
+		peer_device->repl_state[NOW] != L_AHEAD) {
 		/* admin may have requested C_DISCONNECTING,
 		* other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
