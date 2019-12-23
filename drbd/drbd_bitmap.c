@@ -194,7 +194,8 @@ _drbd_bm_lock(struct drbd_device *device, struct drbd_peer_device *peer_device,
 	}
 	if (b->bm_flags & BM_LOCK_ALL)
 		drbd_err(device, "FIXME bitmap already locked in bm_lock\n");
-	b->bm_flags |= flags & BM_LOCK_ALL;
+	// DW-1979
+	b->bm_flags |= (flags & BM_LOCK_ALL | flags & BM_LOCK_POINTLESS);
 
 	b->bm_why  = why;
 	b->bm_task = current;
@@ -222,7 +223,8 @@ void drbd_bm_unlock(struct drbd_device *device)
 	if (!(device->bitmap->bm_flags & BM_LOCK_ALL))
 		drbd_err(device, "FIXME bitmap not locked in bm_unlock\n");
 
-	b->bm_flags &= ~BM_LOCK_ALL;
+	// DW-1979
+	b->bm_flags &= ~(BM_LOCK_ALL | BM_LOCK_POINTLESS);
 	b->bm_why  = NULL;
 	b->bm_task = NULL;
 	b->bm_locked_peer = NULL;
@@ -899,12 +901,12 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 	if (bitmap->bm_task != current) {
 		switch(op) {
 		case BM_OP_CLEAR:
-			if (bitmap->bm_flags & BM_LOCK_CLEAR)
+			if (bitmap->bm_flags & BM_LOCK_CLEAR && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		case BM_OP_SET:
 		case BM_OP_MERGE:
-			if (bitmap->bm_flags & BM_LOCK_SET)
+			if (bitmap->bm_flags & BM_LOCK_SET && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		case BM_OP_TEST:
@@ -914,7 +916,7 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 		case BM_OP_FIND_ZERO_BIT:
 		case BM_OP_RANGE_FIND_BIT:
 		case BM_OP_RANGE_FIND_ZERO_BIT:
-			if (bitmap->bm_flags & BM_LOCK_TEST)
+			if (bitmap->bm_flags & BM_LOCK_TEST && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		}

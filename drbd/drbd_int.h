@@ -465,7 +465,7 @@ struct bm_xfer_ctx {
 	/* statistics; index: (h->command == P_BITMAP) */
 	unsigned packets[2];
 	unsigned bytes[2];
-	unsigned int count;  // DW-1981
+	ULONG_PTR count;  // DW-1981
 };
 
 extern void INFO_bm_xfer_stats(struct drbd_peer_device *, const char *, struct bm_xfer_ctx *);
@@ -1040,6 +1040,8 @@ enum bm_flag {
 	BM_LOCK_ALL = BM_LOCK_TEST | BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK,
 
 	BM_LOCK_SINGLE_SLOT = 0x10,
+	// DW-1979 used to avoid printing unnecessary FIXME logs by modifying issues (send, receive bitmap)
+	BM_LOCK_POINTLESS = 0x20,
 };
 
 struct drbd_bitmap {
@@ -1646,7 +1648,10 @@ struct drbd_peer_device {
 	atomic_t ap_pending_cnt; /* AP data packets on the wire, ack expected */
 	atomic_t unacked_cnt;	 /* Need to send replies for */
 	atomic_t rs_pending_cnt; /* RS request/data packets on the wire */
-	atomic_t wait_for_actlog;
+	atomic_t wait_for_actlog;	
+	
+	// DW-1979 it is set when the requested resync data is received. (0, 1)
+	atomic_t is_recv_rsreply;
 
 	/* use checksums for *this* resync */
 	bool use_csums;
