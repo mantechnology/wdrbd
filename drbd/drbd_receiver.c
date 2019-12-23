@@ -3301,7 +3301,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 
 	if (get_ldev(device)) {
 		// DW-1979
-		atomic_set(&peer_device->is_recv_rsreply, 1);
+		atomic_set(&peer_device->wait_recv_rs_reply, 0);
 
 		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
@@ -4019,7 +4019,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	{
 		// DW-1979 do not set "in sync" before starting resync.
 		if (peer_device->repl_state[NOW] == L_WF_BITMAP_T ||
-			peer_device->repl_state[NOW] == L_SYNC_TARGET && !atomic_read(&peer_device->is_recv_rsreply)) {
+			peer_device->repl_state[NOW] == L_SYNC_TARGET && !atomic_read(&peer_device->wait_recv_rs_reply)) {
 			// DW-1979 set to D_INCONSISTENT when replication data occurs during resync start.
 			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT &&
 				peer_device->device->disk_state[NEW] != D_INCONSISTENT) {
@@ -9133,14 +9133,18 @@ static int process_send_bitmap(struct drbd_connection *connection, struct drbd_p
 	peer_device->bm_ctx.count = 0;
 	INFO_bm_xfer_stats(peer_device, "receive", &peer_device->bm_ctx);
 
-	if (peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
+	if (peer_device->repl_state[NOW] == L_WF_BITMAP_T ||
+		// DW-1979
+		peer_device->repl_state[NOW] == L_BEHIND) {
 		// DW-1979
 		drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_target_complete,
 			"send_bitmap (WFBitMapT)",
 			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
 			peer_device);
 	}
-	else if (peer_device->repl_state[NOW] != L_WF_BITMAP_S) {
+	else if ((peer_device->repl_state[NOW] != L_WF_BITMAP_S &&
+		// DW-1979
+		peer_device->repl_state[NOW] != L_AHEAD)) {
 		/* admin may have requested C_DISCONNECTING,
 		* other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
@@ -9149,9 +9153,15 @@ static int process_send_bitmap(struct drbd_connection *connection, struct drbd_p
 		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
 	}
 
-	if (peer_device->repl_state[NOW] == L_WF_BITMAP_S) {
+	if (peer_device->repl_state[NOW] == L_WF_BITMAP_S ||
+		// DW-1979
+		peer_device->repl_state[NOW] == L_AHEAD) {
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
 	}
+
+	// DW-1979
+	atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+
 	return 0;
 }
 
@@ -9241,7 +9251,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 			goto out;
 
 		// DW-1979
-		atomic_set(&peer_device->is_recv_rsreply, 0);
+		atomic_set(&peer_device->wait_recv_rs_reply, 0);
 		err = process_send_bitmap(connection, peer_device);
 	}
 	else
@@ -9967,6 +9977,10 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
+
+		// DW-1979
+		atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+		atomic_set(&peer_device->wait_recv_rs_reply, 0);
 
 		// DW-1965 initialize values that need to be answered or set after completion of I/O.
 		atomic_set(&peer_device->unacked_cnt, 0);
