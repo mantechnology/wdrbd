@@ -9105,7 +9105,7 @@ static enum drbd_disk_state read_disk_state(struct drbd_device *device)
 }
 
 // DW-1981
-static int process_bitmap_and_start_resync(struct drbd_connection *connection, struct drbd_peer_device *peer_device)
+static int send_bitmap_finished(struct drbd_connection *connection, struct drbd_peer_device *peer_device)
 {
 	int err = 0;
 	struct drbd_device *device = peer_device->device;
@@ -9268,7 +9268,7 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		if (err < 0)
 			goto out;
 
-		err = process_bitmap_and_start_resync(connection, peer_device);
+		err = send_bitmap_finished(connection, peer_device);
 	}
 	else
 		err = 0;
