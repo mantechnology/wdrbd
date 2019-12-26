@@ -2589,8 +2589,11 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 	mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
 	if (peer_transport->ops->stream_ok(peer_transport, DATA_STREAM)) {
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
+		// DW-1988 in synctarget, wait_for_recv_bitmap should not be used, so it has been modified to be set only under certain conditions.
 		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_bitmap, 1);
+		if (peer_device->repl_state[NOW] == L_WF_BITMAP_S ||
+			peer_device->repl_state[NOW] == L_AHEAD)
+			atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 		err = !_drbd_send_bitmap(device, peer_device);
 	}
 	else
