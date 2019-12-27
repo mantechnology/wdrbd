@@ -9137,6 +9137,8 @@ static int receive_bitmap_finished(struct drbd_connection *connection, struct dr
 		// DW-1979
 		peer_device->repl_state[NOW] == L_BEHIND) {
 		// DW-1979
+		atomic_set(&peer_device->wait_for_recv_rs_reply, 1);
+
 		drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_target_complete,
 			"send_bitmap (WFBitMapT)",
 			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
@@ -9250,8 +9252,6 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		if (err < 0)
 			goto out;
 
-		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 		err = receive_bitmap_finished(connection, peer_device);
 	}
 	else
