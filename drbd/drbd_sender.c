@@ -1946,6 +1946,7 @@ out_unlock:
 	peer_device->rs_total  = 0;
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
+	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =

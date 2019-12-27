@@ -3301,7 +3301,7 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 
 	if (get_ldev(device)) {
 		// DW-1979
-		atomic_set(&peer_device->wait_recv_rs_reply, 0);
+		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
@@ -4019,7 +4019,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	{
 		// DW-1979 do not set "in sync" before starting resync.
 		if (peer_device->repl_state[NOW] == L_WF_BITMAP_T ||
-			(peer_device->repl_state[NOW] == L_SYNC_TARGET && atomic_read(&peer_device->wait_recv_rs_reply))) {
+			(peer_device->repl_state[NOW] == L_SYNC_TARGET && atomic_read(&peer_device->wait_for_recv_rs_reply))) {
 			// DW-1979 set to D_INCONSISTENT when replication data occurs during resync start.
 			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT &&
 				peer_device->device->disk_state[NEW] != D_INCONSISTENT) {
@@ -9137,6 +9137,8 @@ static int receive_bitmap_finished(struct drbd_connection *connection, struct dr
 		// DW-1979
 		peer_device->repl_state[NOW] == L_BEHIND) {
 		// DW-1979
+		atomic_set(&peer_device->wait_for_recv_rs_reply, 1);
+
 		drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_target_complete,
 			"send_bitmap (WFBitMapT)",
 			BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
@@ -9250,8 +9252,6 @@ static int receive_bitmap(struct drbd_connection *connection, struct packet_info
 		if (err < 0)
 			goto out;
 
-		// DW-1979
-		atomic_set(&peer_device->wait_recv_rs_reply, 0);
 		err = receive_bitmap_finished(connection, peer_device);
 	}
 	else
@@ -9980,7 +9980,7 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		// DW-1979
 		atomic_set(&peer_device->wait_for_recv_bitmap, 0);
-		atomic_set(&peer_device->wait_recv_rs_reply, 0);
+		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 		// DW-1965 initialize values that need to be answered or set after completion of I/O.
 		atomic_set(&peer_device->unacked_cnt, 0);
