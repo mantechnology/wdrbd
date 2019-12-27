@@ -4591,7 +4591,7 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->wait_for_actlog, 0);
 	atomic_set(&peer_device->rs_sect_in, 0);	
 	atomic_set(&peer_device->wait_for_recv_bitmap, 0);
-	atomic_set(&peer_device->wait_recv_rs_reply, 0);
+	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;

@@ -1399,6 +1399,10 @@ retry:
 #endif
 			if (get_ldev(device)) {
 				device->ldev->md.current_uuid &= ~UUID_PRIMARY;
+				// DW-1985 remove NEW_CUR_UUID, __NEW_CUR_UUID when role is secondary.
+				clear_bit(__NEW_CUR_UUID, &device->flags);
+				clear_bit(NEW_CUR_UUID, &device->flags);
+
 				put_ldev(device);
 			}
 		}

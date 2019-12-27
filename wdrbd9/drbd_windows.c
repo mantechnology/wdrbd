@@ -1509,8 +1509,6 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     timer->expires = expires;
 
-	BUG_ON_UINT32_OVER(expires);
-
     if (current_milisec >= expires)
     {
 		nWaitTime.QuadPart = -1;
@@ -1518,6 +1516,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 	else
 	{
 		expires -= current_milisec;
+		BUG_ON_UINT32_OVER(expires);
 		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS((LONG)expires)));
 	}
 
