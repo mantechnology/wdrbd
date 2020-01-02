@@ -1431,7 +1431,8 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 #ifdef _WIN32_DEBUG_OOS
 			// MODIFIED_BY_MANTECH DW-1153: add error log
 		{
-			drbd_err(peer_device, "unexpected error, sector(%llu), esector(%llu)\n", sector, esector);
+			// DW-1992 it is a normal operation, not an error, so it is output at the info level.
+			drbd_info(peer_device, "not in sync because it is smaller than bitmap bit size, sector(%llu) ~ sector(%llu)\n", sector, esector);
 			goto out;
 		}
 #else
