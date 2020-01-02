@@ -6000,13 +6000,13 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
 	drbd_bm_lock(device, "forget_bitmap()", BM_LOCK_TEST | BM_LOCK_SET);
-	_drbd_bm_clear_many_bits(device, bitmap_index, 0, DRBD_END_OF_BITMAP);
+	drbd_bm_clear_many_bits(device, bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_unlock(device);
 	drbd_resume_io(device);
 	drbd_md_mark_dirty(device);
 	spin_lock_irq(&device->ldev->md.uuid_lock);
 }
-
+#ifndef _WIN32 
 static void copy_bitmap(struct drbd_device *device, int from_id, int to_id) __must_hold(local)
 {
 	int from_index = device->ldev->md.peers[from_id].bitmap_index;
@@ -6028,6 +6028,7 @@ static void copy_bitmap(struct drbd_device *device, int from_id, int to_id) __mu
 	drbd_md_mark_dirty(device);
 	spin_lock_irq(&device->ldev->md.uuid_lock);
 }
+#endif
 
 static int find_node_id_by_bitmap_uuid(struct drbd_device *device, u64 bm_uuid) __must_hold(local)
 {
@@ -6064,6 +6065,7 @@ static bool node_connected(struct drbd_resource *resource, int node_id)
 	return r;
 }
 
+#ifndef _WIN32 
 static bool detect_copy_ops_on_peer(struct drbd_peer_device *peer_device) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
@@ -6133,6 +6135,7 @@ found:
 
 	return modified;
 }
+#endif
 
 void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -6515,7 +6518,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	if (bitmap_lock)
 		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
-	drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+	drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_write(device, NULL);
 	if (bitmap_lock)
 		drbd_bm_slot_unlock(peer_device);

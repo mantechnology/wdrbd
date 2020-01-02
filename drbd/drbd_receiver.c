@@ -5316,7 +5316,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 			drbd_info(peer_device, "clearing bitmap UUID and bitmap content (%llu bits)\n",
 				(unsigned long long)drbd_bm_total_weight(peer_device));
 			drbd_uuid_set_bitmap(peer_device, 0);
-			drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+			drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 		} else if (drbd_bm_total_weight(peer_device)) {
 
 			/* DW-1843
@@ -5339,7 +5339,7 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 					drbd_info(peer_device, "ended during synchronization and completed resync with other nodes, clearing bitmap UUID and bitmap content (%llu bits)\n",
 						(unsigned long long)drbd_bm_total_weight(peer_device));
 					drbd_uuid_set_bitmap(peer_device, 0);
-					drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+					drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 				}
 				else {
 					drbd_info(peer_device, "No resync, but %llu bits in bitmap!\n",
@@ -8605,9 +8605,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 						{
 							bit = drbd_bm_find_next(peer_device, bm_resync_fo);
 							if (bit == DRBD_END_OF_BITMAP)
-							{
 								break;
-							}
 
 							sector = BM_BIT_TO_SECT(bit);
 
@@ -9490,7 +9488,7 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			// DW-1365 : fixup secondary's diskless case for crashed primary.
 			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
 			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
-				drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+				drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 				put_ldev (peer_device->device);
 			} else {
 				drbd_info(connection, "No drbd_bm_clear_many_bits, disk_state:%d peer disk_state:%d\n",

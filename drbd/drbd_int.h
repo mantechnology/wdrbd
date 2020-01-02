@@ -2391,8 +2391,10 @@ extern ULONG_PTR drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PT
 /* bm_set_bits variant for use while holding drbd_bm_lock,
 * may process the whole bitmap in one go */
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
-extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
-extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
+
+// DW-1996
+extern void drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
+//extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
 extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
 #else
 /* set/clear/test only a few bits at a time */
@@ -2468,7 +2470,9 @@ extern void drbd_bm_lock(struct drbd_device *device, char *why, enum bm_flag fla
 extern void drbd_bm_unlock(struct drbd_device *device);
 extern void drbd_bm_slot_lock(struct drbd_peer_device *peer_device, char *why, enum bm_flag flags);
 extern void drbd_bm_slot_unlock(struct drbd_peer_device *peer_device);
+#ifndef _WIN32 
 extern void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsigned int to_index);
+#endif
 /* drbd_main.c */
 
 #ifdef _WIN32
