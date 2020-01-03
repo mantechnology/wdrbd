@@ -852,7 +852,9 @@ Send(
 			goto $Send_fail;
 		}
 		else if (Status == STATUS_SUCCESS) {
-			WDRBD_INFO("%s, SUCCESS, Current state : %d(0x%p) size(%lu) elapse(%lldus)\n", __FUNCTION__, pSock->sk_state, WskSocket, BufferSize, timestamp_elapse(send_ts, timestamp()));
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+				WDRBD_LATENCY("%s, SUCCESS, Current state : %d(0x%p) size(%lu) elapse(%lldus)\n", __FUNCTION__, pSock->sk_state, WskSocket, BufferSize, timestamp_elapse(send_ts, timestamp()));
+			}
 		}
 	}
 
@@ -1282,7 +1284,10 @@ LONG NTAPI Receive(
         case STATUS_WAIT_0: // waitObjects[0] CompletionEvent
             if (Irp->IoStatus.Status == STATUS_SUCCESS) {
                 BytesReceived = (LONG) Irp->IoStatus.Information;
-				WDRBD_INFO("RECV(%s) wsk(0x%p) SUCCESS err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
+
+				if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+					WDRBD_INFO("RECV(%s) wsk(0x%p) SUCCESS err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
+				}
             } else {
 				WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
 				if(Irp->IoStatus.Status) {
