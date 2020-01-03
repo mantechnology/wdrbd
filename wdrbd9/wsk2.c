@@ -823,7 +823,9 @@ Send(
 		goto $Send_fail;
 	}
 
-	send_ts = timestamp();
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+		send_ts = timestamp();
+
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskSend(
 																			WskSocket,
 																			WskBuffer,
@@ -1255,7 +1257,9 @@ LONG NTAPI Receive(
 		return SOCKET_ERROR;
 	}
 
-	recv_ts = timestamp();
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+		recv_ts = timestamp();
+
 	Status = ((PWSK_PROVIDER_CONNECTION_DISPATCH) WskSocket->Dispatch)->WskReceive(
 				WskSocket,
 				&WskBuffer,
