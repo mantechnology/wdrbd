@@ -1286,7 +1286,7 @@ LONG NTAPI Receive(
                 BytesReceived = (LONG) Irp->IoStatus.Information;
 
 				if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
-					WDRBD_INFO("RECV(%s) wsk(0x%p) SUCCESS err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
+					WDRBD_LATENCY("RECV(%s) wsk(0x%p) SUCCESS err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
 				}
             } else {
 				WDRBD_INFO("RECV(%s) wsk(0x%p) multiWait err(0x%x:%s) size(%lu) elapse(%lldus)\n", thread->comm, WskSocket, Irp->IoStatus.Status, GetSockErrorString(Irp->IoStatus.Status), BufferSize, timestamp_elapse(recv_ts, timestamp()));
