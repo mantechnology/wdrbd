@@ -136,8 +136,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>signtool sign /sha1 679164F5D8E90F9C50277D456AE5D59938D1A2B9 /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -174,8 +173,7 @@ copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Comm
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>signtool sign /sha1 679164F5D8E90F9C50277D456AE5D59938D1A2B9 /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -215,8 +213,7 @@ copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Comm
       <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>signtool sign /sha1 679164F5D8E90F9C50277D456AE5D59938D1A2B9 /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -255,8 +252,7 @@ copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Comm
       <AdditionalDependencies>odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>signtool sign /sha1 679164F5D8E90F9C50277D456AE5D59938D1A2B9 /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\$(PlatformTarget)\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -368,13 +368,7 @@
       <Command>"$(SolutionDir)\build\scripts\cygwinBuild.bat" "$(SolutionDir)\build\scripts\buildCli.sh" $(PlatformTarget)</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdadm.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdmeta.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdsetup.exe"
-
-</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -395,11 +389,7 @@ signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology In
       <Command>"$(SolutionDir)\build\scripts\cygwinBuild.bat" "$(SolutionDir)\build\scripts\buildCli.sh" $(PlatformTarget)</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdadm.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdmeta.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdsetup.exe"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -426,13 +416,7 @@ signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology In
       <Command>"$(SolutionDir)\build\scripts\cygwinBuild.bat" "$(SolutionDir)\build\scripts\buildCli.sh" $(PlatformTarget)</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdadm.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdmeta.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x86\bin\drbdsetup.exe"
-
-</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -459,11 +443,7 @@ signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology In
       <Command>"$(SolutionDir)\build\scripts\cygwinBuild.bat" "$(SolutionDir)\build\scripts\buildCli.sh" $(PlatformTarget)</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll $(TargetPath)
-copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdadm.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdmeta.exe"
-signtool sign /v /ac ..\build\cert\MSCV-VSClass3.cer /s my /n "Man Technology Inc." /t http://timestamp.verisign.com/scripts/timstamp.dll "$(SolutionDir)\build\drbd\x64\bin\drbdsetup.exe"</Command>
+      <Command>copy /Y "$(TargetPath)" "$(SolutionDir)\build\drbd\bin\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
