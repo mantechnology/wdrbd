@@ -255,6 +255,9 @@ EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
 struct mutex g_genl_mutex;
 // DW-1495: change att_mod_mutex(DW-1293) to global mutex because it can be a problem if IO also occurs on othere resouces on the same disk. 
 struct mutex att_mod_mutex; 
+// DW-1998
+u8 g_genl_run_cmd;
+struct mutex g_genl_run_cmd_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
 #ifndef _WIN32
@@ -5077,6 +5080,10 @@ static int __init drbd_init(void)
 	g_rcuLock = 0; // init RCU lock
 	
 	mutex_init(&g_genl_mutex);
+	// DW-1998
+	g_genl_run_cmd = 0;
+	mutex_init(&g_genl_run_cmd_mutex);
+
 	mutex_init(&notification_mutex);
 	mutex_init(&att_mod_mutex); 
 	// DW-1935

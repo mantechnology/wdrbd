@@ -122,6 +122,9 @@ static struct genl_family drbd_genl_family  = {
 // globals
 
 extern struct mutex g_genl_mutex;
+// DW-1988
+extern u8 g_genl_run_cmd;
+extern struct mutex g_genl_run_cmd_mutex;
 
 static ERESOURCE    genl_multi_socket_res_lock;
 
@@ -679,6 +682,7 @@ NetlinkWorkThread(PVOID context)
 
         if (pops) {
 			NTSTATUS status = STATUS_UNSUCCESSFUL;
+			bool locked = true;
 
 			// DW-1432 Except status log
 			// DW-1699 fixup netlink log level. the get series commands are adjusted to log at the trace log level.
@@ -691,9 +695,29 @@ NetlinkWorkThread(PVOID context)
             }
 			status = mutex_lock_timeout(&g_genl_mutex, CMD_TIMEOUT_SHORT_DEF * 1000);
 
+			// DW-1998 set STATUS_SUCNESS under the following conditions even if the mutex is not obtained.
+			mutex_lock(&g_genl_run_cmd_mutex);
+			// DW-1988 add an exception condition for the mutex when running DRBD_ADM_GET_INITIAL_STATE
+			if (status != STATUS_SUCCESS &&
+				DRBD_ADM_GET_INITIAL_STATE == cmd &&
+				DRBD_ADM_ATTACH == g_genl_run_cmd) {
+				status = STATUS_SUCCESS;
+				locked = false;
+			}
+
 			if (STATUS_SUCCESS == status) {
+				g_genl_run_cmd = cmd;
+				// DW-1998 if locked is true, unlock before call _genl_ops().
+				if (locked)
+					mutex_unlock(&g_genl_run_cmd_mutex);
 				err = _genl_ops(pops, pinfo);
-				mutex_unlock(&g_genl_mutex);
+
+				// DW-1998
+				if (locked)
+					mutex_unlock(&g_genl_mutex);
+				else
+					mutex_unlock(&g_genl_run_cmd_mutex);
+
 				if (err) {
 					WDRBD_ERROR("netlink cmd failed while operating. cmd(%u), error(%d)\n", cmd, err);
 					errcnt++;
@@ -703,7 +727,9 @@ NetlinkWorkThread(PVOID context)
 				} else {
 					WDRBD_INFO("drbd netlink cmd(%s:%u) done <-\n", pops->str, cmd);
 				}
-			} else {
+			}
+			else {
+				mutex_unlock(&g_genl_run_cmd_mutex);
 				WDRBD_INFO("drbd netlink cmd(%s:%u) Failed to acquire the mutex status: 0x%x\n", pops->str, cmd, status);
 			}
 
