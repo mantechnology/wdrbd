@@ -122,7 +122,7 @@ static struct genl_family drbd_genl_family  = {
 // globals
 
 extern struct mutex g_genl_mutex;
-// DW-1988
+// DW-1998
 extern u8 g_genl_run_cmd;
 extern struct mutex g_genl_run_cmd_mutex;
 
@@ -697,7 +697,7 @@ NetlinkWorkThread(PVOID context)
 
 			// DW-1998 set STATUS_SUCNESS under the following conditions even if the mutex is not obtained.
 			mutex_lock(&g_genl_run_cmd_mutex);
-			// DW-1988 add an exception condition for the mutex when running DRBD_ADM_GET_INITIAL_STATE
+			// DW-1998 add an exception condition for the mutex when running DRBD_ADM_GET_INITIAL_STATE
 			if (status != STATUS_SUCCESS &&
 				DRBD_ADM_GET_INITIAL_STATE == cmd &&
 				DRBD_ADM_ATTACH == g_genl_run_cmd) {
