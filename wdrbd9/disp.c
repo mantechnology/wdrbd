@@ -699,6 +699,11 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 #ifdef _WIN32_MULTIVOL_THREAD
+
+			// DW-1999 If the completion routine is called before status_pending is returned to the filesystem, the verifier causes a bugcheck.
+			// Therefore, change the calling position of IoMarkIrpPending to set it in advance.
+			IoMarkIrpPending(Irp);
+
 			//It is processed in 2 passes according to IRQL.
 			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
 			//2. Otherwise, Directly call mvolwritedispatch
@@ -725,8 +730,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
 #endif
-			// DW-1999 IoMarkIrpPending must be called when returning status_pending.
-			IoMarkIrpPending(Irp);
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
             return STATUS_PENDING;
