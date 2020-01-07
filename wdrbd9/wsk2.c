@@ -863,17 +863,17 @@ Send(
 	if (SendStatus != STATUS_SUCCESS) {
 		switch (SendStatus) {
 		case STATUS_IO_TIMEOUT:
-			WDRBD_INFO("Send timeout... wsk(0x%p) size(%lu) elapse(%lldus)\n", WskSocket, BufferSize);
+			WDRBD_INFO("Send timeout... wsk(0x%p) size(%lu)\n", WskSocket, BufferSize);
 			BytesSent = -EAGAIN;
 			break;
 		case STATUS_INVALID_DEVICE_STATE:
 		case STATUS_FILE_FORCED_CLOSED:
-			WDRBD_INFO("Send invalid WSK Socket state (%s) wsk(0x%p) size(%lu) elapse(%lldus)\n", GetSockErrorString(SendStatus), WskSocket, BufferSize);
+			WDRBD_INFO("Send invalid WSK Socket state (%s) wsk(0x%p) size(%lu)\n", GetSockErrorString(SendStatus), WskSocket, BufferSize);
 			pSock->sk_state = WSK_INVALID_DEVICE;
 			BytesSent = -ECONNRESET;
 			break;
 		default:
-			WDRBD_INFO("Send error, default state(%s) wsk(0x%p) size(%lu) elapse(%lldus)\n", GetSockErrorString(SendStatus), WskSocket, BufferSize);
+			WDRBD_INFO("Send error, default state(%s) wsk(0x%p) size(%lu)\n", GetSockErrorString(SendStatus), WskSocket, BufferSize);
 			BytesSent = -ECONNRESET;
 			break;
 		}
