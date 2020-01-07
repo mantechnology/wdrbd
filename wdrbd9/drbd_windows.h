@@ -982,7 +982,7 @@ static __inline LONGLONG timestamp()
 static __inline LONGLONG timestamp_elapse(LONGLONG begin_ts, LONGLONG end_ts)
 {
 	if (begin_ts > end_ts || begin_ts <= 0 || end_ts <= 0) {
-		WDRBD_ERROR("timestamp is invalid\n");
+		WDRBD_INFO("timestamp is invalid\n");
 		return -1;
 	}
 

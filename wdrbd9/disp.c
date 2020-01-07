@@ -713,7 +713,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 	return status;
             	}	
 			} else {
-				IoMarkIrpPending(Irp);
 				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
 			}
 			
@@ -726,7 +725,8 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
 #endif
-
+			// DW-1999 IoMarkIrpPending must be called when returning status_pending.
+			IoMarkIrpPending(Irp);
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
             return STATUS_PENDING;
