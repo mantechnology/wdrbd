@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_req.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -33,11 +33,6 @@
 #include <linux/drbd.h>
 #include "drbd_int.h"
 #include "drbd_req.h"
-#endif
-
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-atomic_t64 g_total_req_buf_bytes = 0;
 #endif
 
 static bool drbd_may_do_local_read(struct drbd_device *device, sector_t sector, int size);
@@ -98,16 +93,11 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
 	if (!req)
 		return NULL;
 
-	// MODIFIED_BY_MANTECH DW-1200: add allocated request buffer size.
-	// DW-1539 change g_total_req_buf_bytes's usage to drbd_req's allocated size
-	atomic_add64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
-	
 	memset(req, 0, sizeof(*req));
 #ifdef _WIN32
 	req->req_databuf = kmalloc(bio_src->bi_size, 0, '63DW');
 	if (!req->req_databuf)
 	{
-		WDRBD_ERROR("req->req_databuf failed\n");
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
 		return NULL;
 	}
@@ -121,11 +111,11 @@ static struct drbd_request *drbd_req_new(struct drbd_device *device, struct bio 
     {
 		kfree2(req->req_databuf);
 		ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		// DW-1539
-		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
         return NULL;
     }
+
+	// DW-1925 improvement req-buf-size
+	atomic_inc(&device->resource->req_write_cnt);
 #else
 	drbd_req_make_private_bio(req, bio_src);
 #endif
@@ -203,10 +193,9 @@ void drbd_queue_peer_ack(struct drbd_resource *resource, struct drbd_request *re
             kfree2(req->req_databuf);
         }
 
+		// DW-1925 improvement req-buf-size
+		atomic_dec(&resource->req_write_cnt);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		// DW-1539
-		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -261,7 +250,7 @@ void drbd_req_destroy(struct kref *kref)
 	unsigned int s, device_refs = 0;
 	bool was_last_ref = false;
 
- tail_recursion:
+tail_recursion:
 	if (device_refs > 0 && device != req->device) {
 		/* We accumulate device refs to put, it is very likely that we
 		 * destroy a number of requests for the same volume in a row.
@@ -421,6 +410,12 @@ void drbd_req_destroy(struct kref *kref)
 			}
 		}
 	}
+	
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+		WDRBD_LATENCY("req(%p) IO latency : in_act(%d) minor(%u) ds(%s) type(%s) sector(%llu) size(%u) prepare(%lldus) disk io(%lldus) total(%lldus) io_depth(%d)\n",
+			req, req->do_submit, device->minor, drbd_disk_str(device->disk_state[NOW]), "write", req->i.sector, req->i.size,
+			timestamp_elapse(req->created_ts, req->io_request_ts), timestamp_elapse(req->io_request_ts, req->io_complete_ts), timestamp_elapse(req->created_ts, timestamp()), atomic_read(&device->ap_bio_cnt[WRITE]));
+	}
 
 	device_refs++; /* In both branches of the if the reference to device gets released */
 	if (s & RQ_WRITE && req->i.size) {
@@ -440,17 +435,17 @@ void drbd_req_destroy(struct kref *kref)
 				{
 					kfree2(peer_ack_req->req_databuf);
 				}
+
+				// DW-1925 improvement req-buf-size
+				atomic_dec(&resource->req_write_cnt);
 				ExFreeToNPagedLookasideList(&drbd_request_mempool, peer_ack_req);
 				peer_ack_req = NULL;
-				// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-				// DW-1539
-				atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
 			}
 #else
 				mempool_free(peer_ack_req, drbd_request_mempool);
 #endif
 		}
-		req->device = NULL;
+
 		resource->peer_ack_req = req;
 		mod_timer(&resource->peer_ack_timer,
 			  jiffies + resource->res_opts.peer_ack_delay * HZ / 1000);
@@ -464,10 +459,10 @@ void drbd_req_destroy(struct kref *kref)
     	{
     		kfree2(req->req_databuf);
     	}
+
+		// DW-1925 improvement req-buf-size
+		atomic_dec(&req->device->resource->req_write_cnt);
         ExFreeToNPagedLookasideList(&drbd_request_mempool, req);
-		// MODIFIED_BY_MANTECH DW-1200: subtract freed request buffer size.
-		// DW-1539
-		atomic_sub64(sizeof(struct drbd_request), &g_total_req_buf_bytes);
     }
 #else
 		mempool_free(req, drbd_request_mempool);
@@ -1026,6 +1021,9 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 			//atomic_add(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			atomic_add64(req->i.size, &peer_device->connection->ap_in_flight);
 			set_if_null_req_not_net_done(peer_device, req);
+
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+				req->net_sent_ts[peer_device->node_id] = timestamp();
 		}
 		if (req->rq_state[idx] & RQ_NET_PENDING)
 			set_if_null_req_ack_pending(peer_device, req);
@@ -1073,7 +1071,6 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	if ((old_net & RQ_NET_PENDING) && (clear & RQ_NET_PENDING)) {
 		dec_ap_pending(peer_device);
 		++c_put;
-		req->acked_jif[peer_device->node_id] = jiffies;
 		advance_conn_req_ack_pending(peer_device, req);
 	}
 
@@ -1098,7 +1095,14 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 		if (old_net & RQ_EXP_BARR_ACK)
 			++k_put;
-		req->net_done_jif[peer_device->node_id] = jiffies;
+
+		// DW-1961 Calculate and Log IO Latency
+		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) {
+			req->net_done_ts[peer_device->node_id] = timestamp();
+			WDRBD_LATENCY("req(%p) NET latency : in_act(%d) node_id(%u) prpl(%s) type(%s) sector(%llu) size(%u) net(%lldus)\n", 
+				req, req->do_submit, peer_device->node_id, drbd_repl_str((peer_device)->repl_state[NOW]), (req->rq_state[0] & RQ_WRITE) ? "write" : "read",
+				req->i.sector, req->i.size, timestamp_elapse(req->net_sent_ts[peer_device->node_id], req->net_done_ts[peer_device->node_id]));
+		}
 
 		/* in ahead/behind mode, or just in case,
 		 * before we finally destroy this request,
@@ -1738,7 +1742,9 @@ bool drbd_should_do_remote(struct drbd_peer_device *peer_device, enum which_stat
 	return peer_disk_state == D_UP_TO_DATE ||
 		(peer_disk_state == D_INCONSISTENT &&
 		(repl_state == L_ESTABLISHED ||
-		(repl_state >= L_WF_BITMAP_T && repl_state < L_AHEAD)));
+		(repl_state >= L_WF_BITMAP_T && repl_state < L_AHEAD)) ||
+		// DW-1979 add drbd_should_do-remote() allowed state
+		repl_state == L_WF_BITMAP_S);
 	/* Before proto 96 that was >= CONNECTED instead of >= L_WF_BITMAP_T.
 	That is equivalent since before 96 IO was frozen in the L_WF_BITMAP*
 	states. */
@@ -1823,7 +1829,7 @@ static int drbd_process_write_request(struct drbd_request *req)
 
 #ifdef _WIN32_DEBUG_OOS
 		// DW-1153: Write log when process I/O
-		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_DEBUG_OOS,
+		printk("%s["OOS_TRACE_STRING"] pnode-id(%d), bitmap_index(%d) req(%p), remote(%d), send_oos(%d), sector(%lu ~ %lu)\n", KERN_OOS,
 			peer_device->node_id, peer_device->bitmap_index, req, remote, send_oos, req->i.sector, req->i.sector + (req->i.size / 512));
 #endif
 
@@ -1890,6 +1896,9 @@ drbd_submit_req_private_bio(struct drbd_request *req)
 			generic_make_request(bio);
 #else
 		else {
+			// DW-1961 Save timestamp for IO latency measuremen
+			if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+				req->io_request_ts = timestamp();
 			if (generic_make_request(bio)) {
 				bio_endio(bio, -EIO);
 			}
@@ -1938,6 +1947,11 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 		bio_endio(bio, -ENOMEM);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	// DW-1961 Save timestamp for IO latency measuremen
+	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+		req->created_ts = timestamp();
+
 	req->start_jif = start_jif;
 
 	if (!get_ldev(device)) {
@@ -1962,12 +1976,12 @@ drbd_request_prepare(struct drbd_device *device, struct bio *bio, unsigned long 
 			if (!drbd_al_begin_io_fastpath(device, &req->i))
 				goto queue_for_submitter_thread;
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
 		}
 	}
 	return req;
 
- queue_for_submitter_thread:
+queue_for_submitter_thread:
+	req->do_submit = true;
 	drbd_queue_write(device, req);
 	return NULL;
 }
@@ -2230,7 +2244,7 @@ out:
 #endif
 	if (m.bio)
 #ifdef _WIN32
-        complete_master_bio(device, &m, __FUNCTION__, __LINE__);
+		complete_master_bio(device, &m, __FUNCTION__, __LINE__);
 #else
 		complete_master_bio(device, &m);
 #endif
@@ -2244,10 +2258,16 @@ void __drbd_make_request(struct drbd_device *device, struct bio *bio, unsigned l
 {
 	struct drbd_request *req = drbd_request_prepare(device, bio, start_jif);
 #ifdef _WIN32
-	if ((LONG_PTR)req == -ENOMEM) //only memory allocation fail case
+	//only memory allocation fail case
+	if ((LONG_PTR)req == -ENOMEM) 
 		return STATUS_UNSUCCESSFUL;
-	if (IS_ERR_OR_NULL(req)) //retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
+	//retry case in drbd_request_prepare. don't retrun STATUS_UNSUCCESSFUL.
+	if (IS_ERR_OR_NULL(req)) {
+		if (req)
+			drbd_err(device, "FIXME!!, bug!? failed to local request prepare, bio(%p), sector(%llu), size(%u)\n", bio, bio->bi_sector, bio->bi_size);
+
 		return STATUS_SUCCESS;
+	}
 #else
 	if (IS_ERR_OR_NULL(req))
 		return;
@@ -2360,7 +2380,6 @@ static void submit_fast_path(struct drbd_device *device, struct waiting_for_act_
 				continue;
 
 			req->rq_state[0] |= RQ_IN_ACT_LOG;
-			req->in_actlog_jif = jiffies;
 			atomic_dec(&device->ap_actlog_cnt);
 		}
 
@@ -2464,7 +2483,6 @@ static void send_and_submit_pending(struct drbd_device *device, struct waiting_f
 	list_for_each_entry_safe(req, tmp, &wfa->requests.pending, tl_requests) {
 #endif 
 		req->rq_state[0] |= RQ_IN_ACT_LOG;
-		req->in_actlog_jif = jiffies;
 		atomic_dec(&device->ap_actlog_cnt);
 		list_del_init(&req->tl_requests);
 		drbd_send_and_submit(device, req);
@@ -2509,6 +2527,7 @@ void do_submit(struct work_struct *ws)
 	struct waiting_for_act_log wfa;
 	//DW-1780 retry the same request with al_timeout
 	ULONG_PTR al_wait_count = 0; 
+	LONGLONG ts = 0;
 	wfa_init(&wfa);
 
 	grab_new_incoming_requests(device, &wfa, false);
@@ -2556,7 +2575,7 @@ void do_submit(struct work_struct *ws)
 			prepare_al_transaction_nonblock(device, &wfa);
 			if (!wfa_lists_empty(&wfa, pending)) {
 				if(al_wait_count)
-					drbd_debug(device, "al_wait retry count : %lu\n", al_wait_count);
+					drbd_debug(device, "al_wait retry count : %llu\n", (unsigned long long)al_wait_count);
 				al_wait_count = 0;
 				break;
 			}
@@ -2567,7 +2586,7 @@ void do_submit(struct work_struct *ws)
 #ifdef _WIN32 // DW-1513, DW-1546, DW-1761 : If al_wait event is not received during AL_WAIT_TIMEOUT, disconnect.
 			if(!schedule(&device->al_wait, AL_WAIT_TIMEOUT, __FUNCTION__, __LINE__))
 			{
-				drbd_err(device, "al_wait timeout... disconnect, retry %lu\n", al_wait_count);
+				drbd_err(device, "al_wait timeout... disconnect, retry %llu\n", (unsigned long long)al_wait_count);
 
 				struct drbd_peer_device *peer_device;
 				for_each_peer_device_rcu(peer_device, device) {
@@ -2636,7 +2655,20 @@ void do_submit(struct work_struct *ws)
 				break;
 		}
 
+		if (device->resource->role[NOW] == R_SECONDARY)
+			ts = timestamp();
+		else
+			ts = 0;
+		
 		drbd_al_begin_io_commit(device);
+
+		// DW-1977
+		if (device->resource->role[NOW] == R_SECONDARY && ts != 0) {
+			ts = timestamp_elapse(ts, timestamp());
+			if (ts > ((3 * 1000) * HZ)) {
+				drbd_warn(device, "actlog commit takes a long time(%lldus)\n", ts);
+			}
+		}
 
 		ensure_current_uuid(device);
 

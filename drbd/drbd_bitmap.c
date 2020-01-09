@@ -194,7 +194,8 @@ _drbd_bm_lock(struct drbd_device *device, struct drbd_peer_device *peer_device,
 	}
 	if (b->bm_flags & BM_LOCK_ALL)
 		drbd_err(device, "FIXME bitmap already locked in bm_lock\n");
-	b->bm_flags |= flags & BM_LOCK_ALL;
+	// DW-1979
+	b->bm_flags |= (flags & BM_LOCK_ALL | flags & BM_LOCK_POINTLESS);
 
 	b->bm_why  = why;
 	b->bm_task = current;
@@ -222,7 +223,8 @@ void drbd_bm_unlock(struct drbd_device *device)
 	if (!(device->bitmap->bm_flags & BM_LOCK_ALL))
 		drbd_err(device, "FIXME bitmap not locked in bm_unlock\n");
 
-	b->bm_flags &= ~BM_LOCK_ALL;
+	// DW-1979
+	b->bm_flags &= ~(BM_LOCK_ALL | BM_LOCK_POINTLESS);
 	b->bm_why  = NULL;
 	b->bm_task = NULL;
 	b->bm_locked_peer = NULL;
@@ -498,6 +500,10 @@ enum bitmap_operations {
 	BM_OP_EXTRACT,
 	BM_OP_FIND_BIT,
 	BM_OP_FIND_ZERO_BIT,
+	// DW-1978 used to find bit the range.
+	BM_OP_RANGE_FIND_BIT,
+	// DW-1979 used to find zero bit the range.
+	BM_OP_RANGE_FIND_ZERO_BIT,
 };
 #ifdef _WIN32
 static __inline ULONG_PTR interleaved_word32(struct drbd_bitmap *bitmap,
@@ -596,6 +602,11 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 #ifdef _WIN32_DEBUG_OOS	
 	ULONG_PTR init_start = start;
 #endif
+	ULONG_PTR real_end = 0;
+
+	if (op == BM_OP_RANGE_FIND_BIT ||
+		op == BM_OP_RANGE_FIND_ZERO_BIT)
+		real_end = end + 1;
 
 	if (end >= bitmap->bm_bits)
 		end = bitmap->bm_bits - 1;
@@ -641,12 +652,14 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 			case BM_OP_EXTRACT:
 				BUG();
 				break;
+			case BM_OP_RANGE_FIND_BIT:
 			case BM_OP_FIND_BIT:
 				count = find_next_bit_le(addr, last + 1, bit_in_page);
 				if (count < last + 1)
 					goto found;
 				bit_in_page = last + 1;
 				break;
+			case BM_OP_RANGE_FIND_ZERO_BIT:
 			case BM_OP_FIND_ZERO_BIT:
 				count = find_next_zero_bit_le(addr, last + 1, bit_in_page);
 				if (count < last + 1)
@@ -685,11 +698,13 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 			case BM_OP_EXTRACT:
 				*buffer++ = *p;
 				break;
+			case BM_OP_RANGE_FIND_BIT:
 			case BM_OP_FIND_BIT:
 				count = find_next_bit_le(addr, bit_in_page + 32, bit_in_page);
 				if (count < bit_in_page + 32)
 					goto found;
 				break;
+			case BM_OP_RANGE_FIND_ZERO_BIT:
 			case BM_OP_FIND_ZERO_BIT:
 				count = find_next_zero_bit_le(addr, bit_in_page + 32, bit_in_page);
 				if (count < bit_in_page + 32)
@@ -749,6 +764,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 				start = end + 1;
 			}
 			break;
+		case BM_OP_RANGE_FIND_BIT:
 		case BM_OP_FIND_BIT:
 			{
 				ULONG_PTR last = bit_in_page + (end - start);
@@ -759,6 +775,7 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 				start = end + 1;
 			}
 			break;
+		case BM_OP_RANGE_FIND_ZERO_BIT:
 		case BM_OP_FIND_ZERO_BIT:
 			{
 				ULONG_PTR last = bit_in_page + (end - start);
@@ -822,6 +839,10 @@ ____bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long s
 			bitmap->bm_set[bitmap_index] += total;
 #endif
 		break;
+	case BM_OP_RANGE_FIND_ZERO_BIT:
+	case BM_OP_RANGE_FIND_BIT:
+		total = real_end;
+		break;
 	case BM_OP_FIND_BIT:
 	case BM_OP_FIND_ZERO_BIT:
 		total = DRBD_END_OF_BITMAP;
@@ -849,7 +870,7 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(device, "unexpected error, could not get bitmap, start(%lu)\n", start);
+		drbd_err(device, "unexpected error, could not get bitmap, start(%llu)\n", (unsigned long long)start);
 		return 1;
 	}
 #else
@@ -859,7 +880,7 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(device, "unexpected error, could not get bitmap->bm_pages, start(%lu)\n", start);
+		drbd_err(device, "unexpected error, could not get bitmap->bm_pages, start(%llu)\n", (unsigned long long)start);
 		return 0;
 	}
 #else
@@ -870,7 +891,7 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(device, "unexpected error, bitmap->bm_bits is 0, start(%lu)\n", start);
+		drbd_err(device, "unexpected error, bitmap->bm_bits is 0, start(%llu)\n", (unsigned long long)start);
 		return 0;
 	}
 #else
@@ -880,12 +901,12 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 	if (bitmap->bm_task != current) {
 		switch(op) {
 		case BM_OP_CLEAR:
-			if (bitmap->bm_flags & BM_LOCK_CLEAR)
+			if (bitmap->bm_flags & BM_LOCK_CLEAR && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		case BM_OP_SET:
 		case BM_OP_MERGE:
-			if (bitmap->bm_flags & BM_LOCK_SET)
+			if (bitmap->bm_flags & BM_LOCK_SET && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		case BM_OP_TEST:
@@ -893,7 +914,9 @@ __bm_op(struct drbd_device *device, unsigned int bitmap_index, unsigned long sta
 		case BM_OP_EXTRACT:
 		case BM_OP_FIND_BIT:
 		case BM_OP_FIND_ZERO_BIT:
-			if (bitmap->bm_flags & BM_LOCK_TEST)
+		case BM_OP_RANGE_FIND_BIT:
+		case BM_OP_RANGE_FIND_ZERO_BIT:
+			if (bitmap->bm_flags & BM_LOCK_TEST && !(bitmap->bm_flags & BM_LOCK_POINTLESS))
 				bm_print_lock_info(device);
 			break;
 		}
@@ -1067,8 +1090,8 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		put_ldev(device);
 		if (bits > bits_on_disk) {
 #ifdef _WIN32
-			drbd_err(device, "Not enough space for bitmap: %lu > %lu\n",
-				(ULONG_PTR)bits, (ULONG_PTR)bits_on_disk);
+			drbd_err(device, "Not enough space for bitmap: %llu > %llu\n",
+				(unsigned long long)bits, bits_on_disk);
 #else
 			drbd_err(device, "Not enough space for bitmap: %lu > %lu\n",
 				(unsigned long)bits, (unsigned long)bits_on_disk);
@@ -1138,7 +1161,7 @@ int drbd_bm_resize(struct drbd_device *device, sector_t capacity, int set_new_bi
 		kvfree(opages);
 	if (!growing)
 		bm_count_bits(device);
-	drbd_info(device, "resync bitmap: bits=%lu words=%lu pages=%lu\n", bits, words, want);
+	drbd_info(device, "resync bitmap: bits=%llu words=%llu pages=%llu\n", (unsigned long long)bits, (unsigned long long)words, (unsigned long long)want);
 
  out:
 	drbd_bm_unlock(device);
@@ -1391,7 +1414,7 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		//
 		if(gSimulDiskIoError.ErrorFlag && gSimulDiskIoError.ErrorType == SIMUL_DISK_IO_ERROR_TYPE4) {
 			if(IsDiskError()) {
-				WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....ErrorFlag:%d ErrorCount:%d\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
+				WDRBD_ERROR("SimulDiskIoError: Bitmap I/O Error type4.....ErrorFlag:%u ErrorCount:%u\n",gSimulDiskIoError.ErrorFlag, gSimulDiskIoError.ErrorCount);
 				error = STATUS_UNSUCCESSFUL;
 			}
 		}
@@ -1437,8 +1460,8 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	BUG_ON_INT32_OVER(idx);
 #endif
 	if ((ctx->flags & BM_AIO_COPY_PAGES) == 0 &&
-	    !bm_test_page_unchanged(b->bm_pages[idx]))
-		drbd_warn(device, "bitmap page idx %lu changed during IO!\n", idx);
+		!bm_test_page_unchanged(b->bm_pages[idx]))
+		drbd_warn(device, "bitmap page idx %llu changed during IO!\n", (unsigned long long)idx);
 
 	if (error) {
 		/* ctx error will hold the completed-last non-zero error code,
@@ -1448,11 +1471,11 @@ static BIO_ENDIO_TYPE drbd_bm_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		/* Not identical to on disk version of it.
 		 * Is BM_PAGE_IO_ERROR enough? */
 		if (drbd_ratelimit())
-			drbd_err(device, "IO ERROR %d on bitmap page idx %lu\n",
-					error, idx);
+			drbd_err(device, "IO ERROR %d on bitmap page idx %llu\n",
+					error, (unsigned long long)idx);
 	} else {
 		bm_clear_page_io_err(b->bm_pages[idx]);
-		dynamic_drbd_dbg(device, "bitmap page idx %lu completed\n", idx);
+		dynamic_drbd_dbg(device, "bitmap page idx %llu completed\n", (unsigned long long)idx);
 	}
 
 	bm_page_unlock_io(device, (int)idx);
@@ -1771,9 +1794,9 @@ static int bm_rw_range(struct drbd_device *device,
 	if (flags == 0 && count) {
 		unsigned int ms = jiffies_to_msecs(jiffies - now);
 		if (ms > 5) {
-			drbd_info(device, "bitmap %s of %u pages took %u ms\n",
+			drbd_info(device, "bitmap %s of %llu pages took %u ms\n",
 				 (flags & BM_AIO_READ) ? "READ" : "WRITE",
-				 count, ms);
+				 (unsigned long long)count, ms);
 		}
 	}
 
@@ -1918,6 +1941,19 @@ int drbd_bm_write_hinted(struct drbd_device *device) __must_hold(local)
 {
 	return bm_rw(device, BM_AIO_WRITE_HINTED | BM_AIO_COPY_PAGES);
 }
+
+extern ULONG_PTR drbd_bm_range_find_next(struct drbd_peer_device *peer_device, ULONG_PTR start, ULONG_PTR end)
+{
+	return bm_op(peer_device->device, peer_device->bitmap_index, start, end,
+		BM_OP_RANGE_FIND_BIT, NULL);
+}
+
+// DW-1979
+extern ULONG_PTR drbd_bm_range_find_next_zero(struct drbd_peer_device *peer_device, ULONG_PTR start, ULONG_PTR end)
+{
+	return bm_op(peer_device->device, peer_device->bitmap_index, start, end,
+		BM_OP_RANGE_FIND_ZERO_BIT, NULL);
+}
 #ifdef _WIN32
 ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *peer_device, ULONG_PTR start)
 #else
@@ -1960,7 +1996,7 @@ unsigned long _drbd_bm_find_next_zero(struct drbd_peer_device *peer_device, unsi
 		    BM_OP_FIND_ZERO_BIT, NULL, KM_USER0);
 }
 #ifdef _WIN32
-unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
+ULONG_PTR drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
     ULONG_PTR start, ULONG_PTR end)
 #else
 unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_index,
@@ -1971,7 +2007,7 @@ unsigned int drbd_bm_set_bits(struct drbd_device *device, unsigned int bitmap_in
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
 #endif
-	return (unsigned int)count;
+	return count;
 }
 #ifdef _WIN32
 static __inline void
@@ -1986,6 +2022,7 @@ __bm_many_bits_op(struct drbd_device *device, unsigned int bitmap_index, unsigne
 	struct drbd_bitmap *bitmap = device->bitmap;
 #ifdef _WIN32
     ULONG_PTR bit = start;
+	ULONG_PTR offset = start;
 #else
 	unsigned long bit = start;
 #endif
@@ -2006,11 +2043,22 @@ __bm_many_bits_op(struct drbd_device *device, unsigned int bitmap_index, unsigne
 
 		__bm_op(device, bitmap_index, bit, last_bit, op, NULL);
 		bit = last_bit + 1;
+
+		// DW-1996 use windows instead of need_resched()
+#ifdef _WIN32
+		if (1 <= ((bit - offset) / RANGE_FIND_NEXT_BIT)) {
+			spin_unlock_irq(&bitmap->bm_lock);
+			offset = bit;
+			spin_lock_irq(&bitmap->bm_lock);
+		}
+#else
 		if (need_resched()) {
 			spin_unlock_irq(&bitmap->bm_lock);
 			cond_resched();
 			spin_lock_irq(&bitmap->bm_lock);
 		}
+#endif
+
 	}
 	spin_unlock_irq(&bitmap->bm_lock);
 }
@@ -2023,23 +2071,23 @@ void drbd_bm_set_many_bits(struct drbd_peer_device *peer_device, unsigned long s
 	__bm_many_bits_op(peer_device->device, peer_device->bitmap_index, start, end, BM_OP_SET);
 }
 #ifdef _WIN32
-void drbd_bm_clear_many_bits(struct drbd_peer_device *peer_device, ULONG_PTR start, ULONG_PTR end)
+void drbd_bm_clear_many_bits(struct drbd_device *device, int bitmap_index, ULONG_PTR start, ULONG_PTR end)
 #else
 void drbd_bm_clear_many_bits(struct drbd_peer_device *peer_device, unsigned long start, unsigned long end)
 #endif
 {
-	__bm_many_bits_op(peer_device->device, peer_device->bitmap_index, start, end, BM_OP_CLEAR);
+	__bm_many_bits_op(device, bitmap_index, start, end, BM_OP_CLEAR);
 }
 #ifdef _WIN32
-void
-_drbd_bm_clear_many_bits(struct drbd_device *device, int bitmap_index, ULONG_PTR start, ULONG_PTR end)
+//void
+//_drbd_bm_clear_many_bits(struct drbd_device *device, int bitmap_index, ULONG_PTR start, ULONG_PTR end)
 #else
 void
 _drbd_bm_clear_many_bits(struct drbd_device *device, int bitmap_index, unsigned long start, unsigned long end)
 #endif
-{
-	__bm_many_bits_op(device, bitmap_index, start, end, BM_OP_CLEAR);
-}
+//{
+//	__bm_many_bits_op(device, bitmap_index, start, end, BM_OP_CLEAR);
+//}
 
 /* set all bits in the bitmap */
 void drbd_bm_set_all(struct drbd_device *device)
@@ -2061,7 +2109,7 @@ void drbd_bm_clear_all(struct drbd_device *device)
 		__bm_many_bits_op(device, bitmap_index, 0, DRBD_END_OF_BITMAP, BM_OP_CLEAR);
 }
 #ifdef _WIN32
-unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
+ULONG_PTR drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
     ULONG_PTR start, ULONG_PTR end)
 #else
 unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_index,
@@ -2072,7 +2120,7 @@ unsigned int drbd_bm_clear_bits(struct drbd_device *device, unsigned int bitmap_
 #ifdef _WIN64
 	BUG_ON_UINT32_OVER(count);
 #endif
-	return (unsigned int)count;
+	return count;
 }
 
 /* returns bit state
@@ -2109,7 +2157,7 @@ int drbd_bm_test_bit(struct drbd_peer_device *peer_device, const unsigned long b
 
 /* returns number of bits set in the range [s, e] */
 #ifdef _WIN32
-int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, ULONG_PTR s, ULONG_PTR e)
+ULONG_PTR drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, ULONG_PTR s, ULONG_PTR e)
 #else
 int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, unsigned long s, unsigned long e)
 #endif
@@ -2118,9 +2166,9 @@ int drbd_bm_count_bits(struct drbd_device *device, unsigned int bitmap_index, un
 #ifdef _WIN64
 	BUG_ON_INT32_OVER(count);
 #endif
-	return (int)count;
+	return count;
 }
-
+#ifndef _WIN32 
 void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsigned int to_index)
 {
 	struct drbd_bitmap *bitmap = device->bitmap;
@@ -2180,3 +2228,4 @@ void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsi
 
 	spin_unlock_irq(&bitmap->bm_lock);
 }
+#endif

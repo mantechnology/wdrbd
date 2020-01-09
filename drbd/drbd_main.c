@@ -143,6 +143,7 @@ static int fault_count;
 int fault_devs;
 #endif
 int two_phase_commit_fail;
+extern spinlock_t g_inactive_lock;
 
 #ifndef _WIN32
 /* bitmap of enabled faults */
@@ -254,6 +255,9 @@ EX_SPIN_LOCK g_rcuLock; //rcu lock is ported with spinlock
 struct mutex g_genl_mutex;
 // DW-1495: change att_mod_mutex(DW-1293) to global mutex because it can be a problem if IO also occurs on othere resouces on the same disk. 
 struct mutex att_mod_mutex; 
+// DW-1998
+u8 g_genl_run_cmd;
+struct mutex g_genl_run_cmd_mutex;
 #endif
 static const struct block_device_operations drbd_ops = {
 #ifndef _WIN32
@@ -1438,6 +1442,13 @@ int __send_command(struct drbd_connection *connection, int vnr,
 		if (!err && flush)
 			tr_ops->hint(transport, drbd_stream, NODELAY);
 
+		if (drbd_stream == DATA_STREAM) {
+			if (!err)
+				connection->last_send_packet = cmd;
+			// DW-1977 last successful protocol may not be correct because it is a transfer to the buffer
+			else
+				drbd_info(connection, "last successful protocol %s\n", drbd_packet_name(cmd));
+		}
 	}
 
 	return err;
@@ -2254,6 +2265,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	ULONG_PTR plain_bits;
 	ULONG_PTR tmp;
 	ULONG_PTR rl;
+	ULONG_PTR offset;
 #else
 	unsigned long plain_bits;
 	unsigned long tmp;
@@ -2287,10 +2299,20 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 	/* see how much plain bits we can stuff into one packet
 	 * using RLE and VLI. */
 	do {
-		tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
-				    : _drbd_bm_find_next(peer_device, c->bit_offset);
+		//tmp = (toggle == 0) ? _drbd_bm_find_next_zero(peer_device, c->bit_offset)
+		//		    : _drbd_bm_find_next(peer_device, c->bit_offset);
 
-		if (tmp == DRBD_END_OF_BITMAP)
+		// DW-1979 to avoid lock occupancy, divide and find.
+		offset = c->bit_offset;
+		for (;;) {
+			tmp = (toggle == 0) ? drbd_bm_range_find_next_zero(peer_device, offset, offset + RANGE_FIND_NEXT_BIT) :
+				drbd_bm_range_find_next(peer_device, offset, offset + RANGE_FIND_NEXT_BIT);
+			if (tmp >= c->bm_bits || tmp < (offset + RANGE_FIND_NEXT_BIT + 1))
+				break;
+			offset = tmp;
+		}
+
+		if (tmp > c->bm_bits)
 			tmp = c->bm_bits;
 
 		rl = tmp - c->bit_offset;
@@ -2310,7 +2332,7 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		 * can only happen if bitmap is modified while we scan it. */
 		if (rl == 0) {
 			drbd_err(peer_device, "unexpected zero runlength while encoding bitmap "
-			    "t:%u bo:%lu\n", toggle, c->bit_offset);
+				"t:%u bo:%llu\n", toggle, (unsigned long long)c->bit_offset);
 			return -1;
 		}
 
@@ -2360,14 +2382,17 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 {
 	struct drbd_device *device = peer_device->device;
 	unsigned int header_size = drbd_header_size(peer_device->connection);
-	struct p_compressed_bm *pc;
+	struct p_compressed_bm *pc, *tpc;
 	int len, err;
 
-	pc = (struct p_compressed_bm *)
-		(alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size);
+	tpc = (struct p_compressed_bm *)kzalloc(DRBD_SOCKET_BUFFER_SIZE, GFP_NOIO | __GFP_NOWARN, '70DW');
 
-	len = fill_bitmap_rle_bits(peer_device, pc,
-			DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*pc), c);
+	if (!tpc) {
+		drbd_err(peer_device, "allocate failed\n");
+		return -ENOMEM;
+	}
+
+	len = fill_bitmap_rle_bits(peer_device, tpc, DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*tpc), c);
 	if (len < 0)
 	{
 #ifdef _WIN32
@@ -2375,6 +2400,16 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 #endif
 		return -EIO;
 	}
+
+	// DW-1979
+	mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
+
+	pc = (struct p_compressed_bm *)
+		(alloc_send_buffer(peer_device->connection, DRBD_SOCKET_BUFFER_SIZE, DATA_STREAM) + header_size);
+
+	pc->encoding = tpc->encoding;
+	memcpy(pc->code, tpc->code, DRBD_SOCKET_BUFFER_SIZE - header_size - sizeof(*pc));
+	kfree(tpc);
 
 	if (len) {
 		dcbp_set_code(pc, RLE_VLI_Bits);
@@ -2429,6 +2464,9 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 		if (c->bit_offset > c->bm_bits)
 			c->bit_offset = c->bm_bits;
 	}
+	
+	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
+
 	if (!err) {
 		if (len == 0) {
 			INFO_bm_xfer_stats(peer_device, "send", c);
@@ -2437,6 +2475,61 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 			return 1;
 	}
 	return -EIO;
+}
+
+void drbd_send_bitmap_target_complete(struct drbd_device *device, struct drbd_peer_device *peer_device, int err)
+{
+	UNREFERENCED_PARAMETER(device);
+
+	if (err) {
+		drbd_err(peer_device, "synctarget send bitmap failed err(%d)\n", err);
+		change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+	}
+
+	/* Omit CS_WAIT_COMPLETE and CS_SERIALIZE with this state
+	* transition to avoid deadlocks. */
+
+	if (peer_device->connection->agreed_pro_version < 110) {
+		enum drbd_state_rv rv;
+		rv = stable_change_repl_state(peer_device, L_WF_SYNC_UUID, CS_VERBOSE);
+		D_ASSERT(device, rv == SS_SUCCESS);
+	}
+	else {
+		//DW-1815 merge the peer_device bitmap into the same current_uuid.
+		struct drbd_peer_device* pd;
+		for_each_peer_device(pd, device) {
+			if (pd == peer_device)
+				continue;
+
+			if (pd->current_uuid == peer_device->current_uuid) {
+				int allow_size = 512;
+				ULONG_PTR *bb = ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG_PTR) * allow_size, '8EDW');
+
+				if (bb == NULL) {
+					drbd_err(peer_device, "bitmap bit buffer allocate failed\n");
+					change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+					return;
+				}
+
+				memset(bb, 0, sizeof(ULONG_PTR) * allow_size);
+
+				drbd_info(peer_device, "bitmap merge, from index(%d) out of sync(%llu), to bitmap index(%d) out of sync (%llu)\n",
+					peer_device->bitmap_index, (unsigned long long)drbd_bm_total_weight(peer_device),
+					pd->bitmap_index, (unsigned long long)drbd_bm_total_weight(pd));
+
+				for (ULONG_PTR offset = drbd_bm_find_next(peer_device, 0); offset < drbd_bm_bits(device); offset += allow_size) {
+					drbd_bm_get_lel(peer_device, offset, allow_size, bb);
+					drbd_bm_merge_lel(pd, offset, allow_size, bb);
+				}
+
+				drbd_info(peer_device, "finished bitmap merge, to index(%d) out of sync (%llu)\n", pd->bitmap_index, (unsigned long long)drbd_bm_total_weight(pd));
+
+				kfree2(bb);
+			}
+		}
+
+		drbd_start_resync(peer_device, L_SYNC_TARGET);
+	}
 }
 
 /* See the comment at receive_bitmap() */
@@ -2497,9 +2590,17 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 	}
 
 	mutex_lock(&peer_device->connection->mutex[DATA_STREAM]);
-	if (peer_transport->ops->stream_ok(peer_transport, DATA_STREAM))
+	if (peer_transport->ops->stream_ok(peer_transport, DATA_STREAM)) {
+		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
+		// DW-1988 in synctarget, wait_for_recv_bitmap should not be used, so it has been modified to be set only under certain conditions.
+		// DW-1979
+		if (peer_device->repl_state[NOW] == L_WF_BITMAP_S ||
+			peer_device->repl_state[NOW] == L_AHEAD)
+			atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 		err = !_drbd_send_bitmap(device, peer_device);
-	mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
+	}
+	else
+		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
 
 	return err;
 }
@@ -2564,7 +2665,7 @@ void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_
 		return NULL;
 
 	p->sector = cpu_to_be64(peer_req->i.sector);
-	p->block_id = ID_SYNCER /* unused */;
+	p->block_id = peer_req->block_id; // DW-1942 used to notify source of io failure.
 	p->blksize = cpu_to_be32(peer_req->i.size);
 
 	return p + 1; /* digest should be placed behind the struct */
@@ -4189,6 +4290,8 @@ struct drbd_resource *drbd_create_resource(const char *name,
 
 	list_add_tail_rcu(&resource->resources, &drbd_resources);
 
+	atomic_set(&resource->req_write_cnt, 0);
+
 	return resource;
 
 fail_free_name:
@@ -4270,7 +4373,8 @@ struct drbd_connection *drbd_create_connection(struct drbd_resource *resource,
 	INIT_LIST_HEAD(&connection->read_ee);
 	INIT_LIST_HEAD(&connection->net_ee);
 	INIT_LIST_HEAD(&connection->done_ee);
-	INIT_LIST_HEAD(&connection->inactive_ee);	//DW-1696
+	INIT_LIST_HEAD(&connection->inactive_ee);	// DW-1696
+	atomic_set(&connection->inacitve_ee_cnt, 0); // DW-1935
 	init_waitqueue_head(&connection->ee_wait);
 
 	kref_init(&connection->kref);
@@ -4367,17 +4471,18 @@ void drbd_destroy_connection(struct kref *kref)
 		drbd_err(connection, "epoch_size:%d\n", atomic_read(&connection->current_epoch->epoch_size));
 	kfree(connection->current_epoch);
 
-	//DW-1829 : inactive_ee must be free before peer_device.
-	//DW-1696 : If the connecting object is destroyed, it also destroys the inactive_ee.
-	struct drbd_peer_request *peer_req, *t;
-	spin_lock(&resource->req_lock);
-	if (!list_empty(&connection->inactive_ee)) {
+	// DW-1935 if the inactive_ee is not removed, a memory leak may occur, but BSOD may occur when removing it, so do not remove it. (priority of BSOD is higher than memory leak.)
+	//	inacitve_ee processing logic not completed is required (cancellation, etc.)
+	if (atomic_read(&connection->inacitve_ee_cnt)) {
+		struct drbd_peer_request *peer_req, *t;
+		drbd_info(connection, "inactive_ee count not completed:%d\n", atomic_read(&connection->inacitve_ee_cnt));
+
+		spin_lock(&g_inactive_lock);
 		list_for_each_entry_safe(struct drbd_peer_request, peer_req, t, &connection->inactive_ee, w.list) {
-			list_del(&peer_req->w.list);
-			drbd_free_peer_req(peer_req);
+			set_bit(__EE_WAS_LOST_REQ, &peer_req->flags);
 		}
+		spin_unlock(&g_inactive_lock);
 	}
-	spin_unlock(&resource->req_lock);
 
 #ifdef _WIN32
     idr_for_each_entry(struct drbd_peer_device *, &connection->peer_devices, peer_device, vnr) {
@@ -4393,9 +4498,8 @@ void drbd_destroy_connection(struct kref *kref)
 		free_peer_device(peer_device);
 
 		//DW-1791 fix memory leak
-		spin_lock_irq(&resource->req_lock);
+		//DW-1934 remove unnecessary lock 
 		idr_remove(&connection->peer_devices, vnr);
-		spin_unlock_irq(&resource->req_lock);
 	}
 
 
@@ -4431,6 +4535,7 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	peer_device->device = device;
 	peer_device->disk_state[NOW] = D_UNKNOWN;
 	peer_device->repl_state[NOW] = L_OFF;
+	peer_device->bm_ctx.count = 0;
 	spin_lock_init(&peer_device->peer_seq_lock);
 
 	//DW-1806 default value is TRUE
@@ -4487,7 +4592,9 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->unacked_cnt, 0);
 	atomic_set(&peer_device->rs_pending_cnt, 0);
 	atomic_set(&peer_device->wait_for_actlog, 0);
-	atomic_set(&peer_device->rs_sect_in, 0);
+	atomic_set(&peer_device->rs_sect_in, 0);	
+	atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;
@@ -4650,7 +4757,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	disk->first_minor = minor;
 #endif
 	disk->fops = &drbd_ops;
-	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%d", minor);
+	_snprintf(disk->disk_name, sizeof(disk->disk_name) - 1, "drbd%u", minor);
 	disk->private_data = device;
 #ifndef _WIN32
 	device->this_bdev = bdget(MKDEV(DRBD_MAJOR, minor));
@@ -4665,7 +4772,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 	// DW-1406 max_hw_sectors must be valued as number of maximum sectors.
 	// DW-1510 recalculate this_bdev->d_size
 	q->max_hw_sectors = ( device->this_bdev->d_size = get_targetdev_volsize(pvext) ) >> 9;
-	WDRBD_INFO("device:%p q->max_hw_sectors: %x sectors, device->this_bdev->d_size: %lld bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
+	WDRBD_INFO("device:%p q->max_hw_sectors: %llu sectors, device->this_bdev->d_size: %llu bytes\n", device, q->max_hw_sectors, device->this_bdev->d_size);
 #endif
 	q->backing_dev_info.congested_fn = drbd_congested;
 	q->backing_dev_info.congested_data = device;
@@ -4892,7 +4999,15 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 	LIST_HEAD(work_list);
 	int vnr;
 
+	// DW-1933 repositioned req_lock to resolve deadlock.
+	// DW-1943 req_lock spinlock should precede the rcu lock.
+	// false the locked parameter at end_state_change_locked() in wdrbd causes synchronization problems, the parameter is false if it is locked by recq_lock spinlock.
 	spin_lock_irq(&resource->req_lock);
+#ifdef _WIN32
+	// DW-1465 Requires rcu wlock because list_del_rcu().
+	// DW-1933 move code from del_connection() here
+	synchronize_rcu_w32_wlock();
+#endif
 	set_bit(C_UNREGISTERED, &connection->flags);
 	smp_wmb();
 #ifdef _WIN32
@@ -4903,6 +5018,10 @@ void drbd_unregister_connection(struct drbd_connection *connection)
 		list_del_rcu(&peer_device->peer_devices);
 		list_add(&peer_device->peer_devices, &work_list);
 	}
+
+#ifdef _WIN32
+	synchronize_rcu();
+#endif
 	list_del_rcu(&connection->connections);
 	spin_unlock_irq(&resource->req_lock);
 #ifdef _WIN32
@@ -4961,8 +5080,14 @@ static int __init drbd_init(void)
 	g_rcuLock = 0; // init RCU lock
 	
 	mutex_init(&g_genl_mutex);
+	// DW-1998
+	g_genl_run_cmd = 0;
+	mutex_init(&g_genl_run_cmd_mutex);
+
 	mutex_init(&notification_mutex);
 	mutex_init(&att_mod_mutex); 
+	// DW-1935
+	spin_lock_init(&g_inactive_lock);
 #endif
 
 #ifdef _WIN32
@@ -4976,7 +5101,7 @@ static int __init drbd_init(void)
 	initialize_kref_debugging();
 
 	if (minor_count < DRBD_MINOR_COUNT_MIN || minor_count > DRBD_MINOR_COUNT_MAX) {
-		pr_err("invalid minor_count (%d)\n", minor_count);
+		pr_err("invalid minor_count (%u)\n", minor_count);
 #ifdef MODULE
 		return -EINVAL;
 #else
@@ -5877,18 +6002,18 @@ static void forget_bitmap(struct drbd_device *device, int node_id) __must_hold(l
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
 	rcu_read_lock();
 	name = name_of_node_id(device->resource, node_id);
-	drbd_info(device, "clearing bitmap UUID and content (%lu bits) for node %d (%s)(slot %d)\n",
-		  _drbd_bm_total_weight(device, bitmap_index), node_id, name, bitmap_index);
+	drbd_info(device, "clearing bitmap UUID and content (%llu bits) for node %d (%s)(slot %d)\n",
+		(unsigned long long)_drbd_bm_total_weight(device, bitmap_index), node_id, name, bitmap_index);
 	rcu_read_unlock();
 	drbd_suspend_io(device, WRITE_ONLY);
 	drbd_bm_lock(device, "forget_bitmap()", BM_LOCK_TEST | BM_LOCK_SET);
-	_drbd_bm_clear_many_bits(device, bitmap_index, 0, DRBD_END_OF_BITMAP);
+	drbd_bm_clear_many_bits(device, bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_unlock(device);
 	drbd_resume_io(device);
 	drbd_md_mark_dirty(device);
 	spin_lock_irq(&device->ldev->md.uuid_lock);
 }
-
+#ifndef _WIN32 
 static void copy_bitmap(struct drbd_device *device, int from_id, int to_id) __must_hold(local)
 {
 	int from_index = device->ldev->md.peers[from_id].bitmap_index;
@@ -5910,6 +6035,7 @@ static void copy_bitmap(struct drbd_device *device, int from_id, int to_id) __mu
 	drbd_md_mark_dirty(device);
 	spin_lock_irq(&device->ldev->md.uuid_lock);
 }
+#endif
 
 static int find_node_id_by_bitmap_uuid(struct drbd_device *device, u64 bm_uuid) __must_hold(local)
 {
@@ -5946,6 +6072,7 @@ static bool node_connected(struct drbd_resource *resource, int node_id)
 	return r;
 }
 
+#ifndef _WIN32 
 static bool detect_copy_ops_on_peer(struct drbd_peer_device *peer_device) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
@@ -6015,6 +6142,7 @@ found:
 
 	return modified;
 }
+#endif
 
 void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __must_hold(local)
 {
@@ -6064,8 +6192,8 @@ void drbd_uuid_detect_finished_resyncs(struct drbd_peer_device *peer_device) __m
 						isForgettableReplState(found_peer->repl_state[NOW]) && !drbd_md_test_peer_flag(peer_device, MDF_PEER_PRIMARY_IO_ERROR))
 					{
 						// MODIFIED_BY_MANTECH DW-955: print log to recognize where forget_bitmap is called.
-						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%x)\n", 
-							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (ULONG)found_peer->flags);
+						drbd_info(device, "bitmap will be cleared due to other resync, pdisk(%d), prepl(%d), peerdirty(%llu), pdvflag(%llx)\n", 
+							found_peer->disk_state[NOW], found_peer->repl_state[NOW], found_peer->dirty_bits, (unsigned long long)found_peer->flags);
 						forget_bitmap(device, node_id);
 					}					
 				}
@@ -6249,13 +6377,17 @@ int drbd_bmio_set_all_n_write(struct drbd_device *device,
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
 	struct drbd_peer_device *p;
+	
+	// DW-1941 add rcu_read_lock()
+	rcu_read_lock();
 	for_each_peer_device_rcu(p, device) {
-		if (!update_sync_bits(p, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
+		if (!update_sync_bits(p, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC, true))
 		{
 			drbd_err(device, "no sync bit has been set for peer(%d), set whole bits without updating resync extent instead.\n", p->node_id);
 			drbd_bm_set_many_bits(p, 0, DRBD_END_OF_BITMAP);
 		}
 	}
+	rcu_read_unlock();
 #else
 	drbd_bm_set_all(device);
 #endif
@@ -6277,7 +6409,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 	drbd_md_sync(device);
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1333: set whole bits and update resync extent.
-	if (!update_sync_bits(peer_device, 0, (unsigned long)drbd_bm_bits(device), SET_OUT_OF_SYNC))
+	if (!update_sync_bits(peer_device, 0, drbd_bm_bits(device), SET_OUT_OF_SYNC, false))
 	{
 		drbd_err(peer_device, "no sync bit has been set, set whole bits without updating resync extent instead.\n");
 		drbd_bm_set_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
@@ -6303,7 +6435,7 @@ int drbd_bmio_set_n_write(struct drbd_device *device,
 // set out-of-sync from provided bitmap
 ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_device *peer_device)
 {
-	LONG_PTR llStartBit = -1, llEndBit = -1;
+	ULONG_PTR llStartBit = DRBD_END_OF_BITMAP, llEndBit = DRBD_END_OF_BITMAP;
 	ULONG_PTR count = 0;
 	PCHAR pByte = NULL;
 	
@@ -6320,40 +6452,38 @@ ULONG_PTR SetOOSFromBitmap(PVOLUME_BITMAP_BUFFER pBitmap, struct drbd_peer_devic
 	// find continuously set bits and set out-of-sync.
 	for (LONGLONG llBytePos = 0; llBytePos < pBitmap->BitmapSize.QuadPart; llBytePos++)
 	{
-		for (LONGLONG llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
+		for (short llBitPosInByte = 0; llBitPosInByte < BITS_PER_BYTE; llBitPosInByte++)
 		{
 			CHAR pBit = (pByte[llBytePos] >> llBitPosInByte) & 0x1;
 
 			// found first set bit.
-			if (llStartBit == -1 &&
-				pBit == 1)
+			if (llStartBit == DRBD_END_OF_BITMAP && pBit == 1)
 			{
-				llStartBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
+				llStartBit = (ULONG_PTR)GetBitPos(llBytePos, llBitPosInByte);
 				continue;
 			}
 
 			// found last set bit. set out-of-sync.
-			if (llStartBit != -1 &&
-				pBit == 0)
+			if (llStartBit != DRBD_END_OF_BITMAP && pBit == 0)
 			{
-				llEndBit = (LONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
-				count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
+				llEndBit = (ULONG_PTR)GetBitPos(llBytePos, llBitPosInByte) - 1;
+				count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC, false);
 
-				llStartBit = -1;
-				llEndBit = -1;
+				llStartBit = DRBD_END_OF_BITMAP;
+				llEndBit = DRBD_END_OF_BITMAP;
 				continue;
 			}
 		}
 	}
 
 	// met last bit while finding zero bit.
-	if (llStartBit != -1)
+	if (llStartBit != DRBD_END_OF_BITMAP)
 	{
-		llEndBit = (LONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
-		count += update_sync_bits(peer_device, (unsigned long)llStartBit, (unsigned long)llEndBit, SET_OUT_OF_SYNC);
+		llEndBit = (ULONG_PTR)pBitmap->BitmapSize.QuadPart * BITS_PER_BYTE - 1;	// last cluster
+		count += update_sync_bits(peer_device, llStartBit, llEndBit, SET_OUT_OF_SYNC, false);
 
-		llStartBit = -1;
-		llEndBit = -1;
+		llStartBit = DRBD_END_OF_BITMAP;
+		llEndBit = DRBD_END_OF_BITMAP;
 	}
 
 	return count;
@@ -6395,7 +6525,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// clear all bits before start initial sync. (clear bits only for this peer device)	
 	if (bitmap_lock)
 		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
-	drbd_bm_clear_many_bits(peer_device, 0, DRBD_END_OF_BITMAP);
+	drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_write(device, NULL);
 	if (bitmap_lock)
 		drbd_bm_slot_unlock(peer_device);
@@ -6486,7 +6616,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		bRet = false;
 	}
 	else{
-		drbd_info(peer_device, "%lu bits(%lu KB) are set as out-of-sync\n", count, (count << (BM_BLOCK_SHIFT - 10)));
+		drbd_info(peer_device, "%llu bits(%llu KB) are set as out-of-sync\n", (unsigned long long)count, (unsigned long long)(count << (BM_BLOCK_SHIFT - 10)));
 		bRet = true;
 	}
 		
@@ -6528,6 +6658,12 @@ static int w_bitmap_io(struct drbd_work *w, int unused)
 	struct drbd_device *device = work->device;
 	int rv = -EIO;
 
+	// DW-1979 drbd_send_bitmap function does not lock.
+	if (&drbd_send_bitmap == work->io_fn) {
+		if (atomic_dec_and_test(&device->pending_bitmap_work.n))
+			wake_up(&device->misc_wait);
+	}
+
 	if (get_ldev(device)) {
 		if (work->flags & BM_LOCK_SINGLE_SLOT)
 			drbd_bm_slot_lock(work->peer_device, work->why, work->flags);
@@ -6544,8 +6680,12 @@ static int w_bitmap_io(struct drbd_work *w, int unused)
 	if (work->done)
 		work->done(device, work->peer_device, rv);
 
-	if (atomic_dec_and_test(&device->pending_bitmap_work.n))
-		wake_up(&device->misc_wait);
+	// DW-1979
+	if (&drbd_send_bitmap != work->io_fn) {
+		if (atomic_dec_and_test(&device->pending_bitmap_work.n))
+			wake_up(&device->misc_wait);
+	}
+
 	kfree(work);
 
 	return 0;
@@ -6586,11 +6726,15 @@ void drbd_queue_bitmap_io(struct drbd_device *device,
 {
 	struct bm_io_work *bm_io_work;
 
-	D_ASSERT(device, current == device->resource->worker.task);
+	// DW-1979 other threads are also used(drbd_receiver()), so i changed to the info level log to output
+	//D_ASSERT(device, current == device->resource->worker.task);
+	if (current == device->resource->worker.task)
+		drbd_info(device, "%s, worker.task(%p), current(%p)\n", why ? why : "?", device->resource->worker.task, current);
+
 #ifdef _WIN32    
 	bm_io_work = kmalloc(sizeof(*bm_io_work), GFP_NOIO, '21DW');
 	if(!bm_io_work) {
-		drbd_err(peer_device, "Could not allocate bm io work.\n");
+		drbd_err(device, "Could not allocate bm io work.\n");
 		done(device, peer_device, -ENOMEM);
 		return;
 	}

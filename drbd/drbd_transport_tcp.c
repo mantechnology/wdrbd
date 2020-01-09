@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_transport_tcp.c
 
    This file is part of DRBD.
@@ -1304,7 +1304,7 @@ static int dtt_receive_first_packet(struct drbd_tcp_transport *tcp_transport, st
 
 	err = dtt_recv_short(socket, h, header_size, 0);
 #ifdef _WIN32
-    WDRBD_TRACE_SK("socket(0x%p) err(%d) header_size(%d)\n", socket, err, header_size);
+    WDRBD_TRACE_SK("socket(0x%p) err(%d) header_size(%u)\n", socket, err, header_size);
 #endif
 	if (err != (int)header_size) {
 		if (err >= 0)
@@ -2545,7 +2545,7 @@ static bool dtt_start_send_buffring(struct drbd_transport *transport, signed lon
 
 				if (i == CONTROL_STREAM)
 				{
-					size = 1024 * 5120; // meta bab is about 5MB
+					size = CONTROL_BUFF_SIZE; // meta bab is about 5MB
 				}
 
 				if ((attr->bab = create_ring_buffer(connection, tcp_transport->stream[i]->name, size, i)) != NULL)

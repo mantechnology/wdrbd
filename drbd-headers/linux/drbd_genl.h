@@ -144,9 +144,11 @@ GENL_struct(DRBD_NLA_RESOURCE_OPTS, 4, res_opts,
 	__u32_field_def(10,    0 /* OPTIONAL */,    nr_requests, DRBD_NR_REQUESTS_DEF)
 	__s32_field_def(11, 0 /* OPTIONAL */, quorum, DRBD_QUORUM_DEF)
 	__u32_field_def(12, 0 /* OPTIONAL */, on_no_quorum, DRBD_ON_NO_QUORUM_DEF)
-	__u32_field_def(13, 0 /* OPTIONAL */, req_buf_size, DRBD_REQ_BUF_SIZE_DEF)        /* MODIFIED_BY_MANTECH DW-1200: request buffer maximum size */
+	__s32_field_def(13, 0 /* OPTIONAL */, max_req_write_cnt, DRBD_MAX_REQ_WRITE_CNT_DEF)        /* MODIFIED_BY_MANTECH DW-1200: request buffer maximum size */
 	__flg_field_def(14, 0 /* OPTIONAL */, svc_autostart, DRBD_SVC_AUTOSTART_DEF)	  /* DW-1249: auto-start by svc*/
 	__u32_field_def(15, 0 /* OPTIONAL */, io_error_retry_count, DRBD_IO_ERROR_RETRY_COUNT_DEF)        /* DW-1716: retry count for I/O error*/
+	__u32_field_def(16, 0 /* OPTIONAL */, max_req_write_MB, DRBD_MAX_REQ_WRITE_MB_DEF)
+	__u32_field_def(17, 0 /* OPTIONAL */, on_req_write_congestion, DRBD_ON_REQ_WRITE_CONGESTION_DEF)
 )
 
 GENL_struct(DRBD_NLA_NET_CONF, 5, net_conf,
@@ -255,6 +257,7 @@ GENL_struct(DRBD_NLA_PEER_DEVICE_INFO, 18, peer_device_info,
 
 GENL_struct(DRBD_NLA_RESOURCE_STATISTICS, 19, resource_statistics,
 	__u32_field(1, 0, res_stat_write_ordering)
+	__s32_field(2, 0, res_stat_req_write_cnt)
 )
 
 GENL_struct(DRBD_NLA_DEVICE_STATISTICS, 20, device_statistics,
@@ -272,6 +275,8 @@ GENL_struct(DRBD_NLA_DEVICE_STATISTICS, 20, device_statistics,
 	__u64_field(12, 0, dev_current_uuid)
 	__u32_field(13, 0, dev_disk_flags)
 	__bin_field(14, 0, history_uuids, HISTORY_UUIDS * sizeof(__u64))
+	__u32_field(15, 0, dev_al_pending_changes) /* Number of AL extents currently waiting to commit */
+	__u32_field(16, 0, dev_al_used)  /* Number of AL extents currently in use */
 )
 
 GENL_struct(DRBD_NLA_CONNECTION_STATISTICS, 21, connection_statistics,

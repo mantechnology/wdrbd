@@ -1,4 +1,4 @@
-﻿/*
+/*
   drbd_int.h
 
   This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -112,11 +112,6 @@ extern int fault_devs;
 extern int two_phase_commit_fail;
 #endif
 
-#ifdef _WIN32
-// MODIFIED_BY_MANTECH DW-1200: currently allocated request buffer size in byte.
-extern atomic_t64 g_total_req_buf_bytes;
-#endif
-
 extern char usermode_helper[];
 
 #ifndef DRBD_MAJOR
@@ -134,6 +129,7 @@ extern char usermode_helper[];
 
 #define ID_IN_SYNC      (4711ULL)
 #define ID_OUT_OF_SYNC  (4712ULL)
+#define ID_CSUM_SYNC_IO_ERROR (4713ULL) // DW-1942 io-error of SyncTarget during checksum synchronization
 #define ID_SYNCER (UINT64_MAX)
 //DW-1601 Add define values for split peer request processing and already sync processing
 #define ID_SYNCER_SPLIT_DONE ID_SYNCER
@@ -141,6 +137,8 @@ extern char usermode_helper[];
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
+//DW-1927
+#define CONTROL_BUFF_SIZE	1024 * 5120
 struct drbd_device;
 struct drbd_connection;
 
@@ -467,6 +465,7 @@ struct bm_xfer_ctx {
 	/* statistics; index: (h->command == P_BITMAP) */
 	unsigned packets[2];
 	unsigned bytes[2];
+	ULONG_PTR count;  // DW-1981
 };
 
 extern void INFO_bm_xfer_stats(struct drbd_peer_device *, const char *, struct bm_xfer_ctx *);
@@ -582,7 +581,6 @@ extern int w_notify_io_error(struct drbd_work *w, int cancel);
 
 struct drbd_request {
 	struct drbd_device *device;
-
 	/* if local IO is not allowed, will be NULL.
 	 * if local IO _is_ allowed, holds the locally submitted bio clone,
 	 * or, after local IO completion, the ERR_PTR(error).
@@ -656,14 +654,19 @@ struct drbd_request {
 	/* per connection */
 #ifdef _WIN32
 	ULONG_PTR pre_send_jif[DRBD_PEERS_MAX];
-	ULONG_PTR acked_jif[DRBD_PEERS_MAX];
-	ULONG_PTR net_done_jif[DRBD_PEERS_MAX];
 #else
 	unsigned long pre_send_jif[DRBD_PEERS_MAX];
 	unsigned long acked_jif[DRBD_PEERS_MAX];
 	unsigned long net_done_jif[DRBD_PEERS_MAX];
 #endif
 
+	// DW-1961
+	bool	 do_submit;				// Whether do_submit logic passed
+	LONGLONG created_ts;			// req created
+	LONGLONG io_request_ts;			// Before delivering an io request to disk
+	LONGLONG io_complete_ts;		// Received io completion from disk
+	LONGLONG net_sent_ts[DRBD_PEERS_MAX];			// Send request to peer
+	LONGLONG net_done_ts[DRBD_PEERS_MAX];			// Received a response from peer
 	/* Possibly even more detail to track each phase:
 	 *  master_completion_jif
 	 *      how long did it take to complete the master bio
@@ -768,6 +771,8 @@ struct drbd_peer_request {
 	struct drbd_interval i;
 #ifdef _WIN32
     ULONG_PTR flags; /* see comments on ee flag bits below */
+	// DW-1966 I/O error number
+	int error;
 #else
 	unsigned long flags; /* see comments on ee flag bits below */
 #endif
@@ -776,8 +781,12 @@ struct drbd_peer_request {
 			struct drbd_epoch *epoch; /* for writes */
 #ifdef _WIN32
 			ULONG_PTR submit_jif;
-#else
-			unsigned long submit_jif;
+
+			// DW-1961
+			bool	 do_submit;				// Whether do_submit logic passed
+			LONGLONG created_ts;			// req created
+			LONGLONG io_request_ts;			// Before delivering an io request to disk
+			LONGLONG io_complete_ts;		// Received io completion from disk
 #endif 
 			union {
 				u64 block_id;
@@ -876,13 +885,23 @@ enum {
 	/* Hold reference in activity log */
 	__EE_IN_ACTLOG,
 
-	//DW-1601
-	/* split request */
-	__EE_SPLIT_REQUEST,
+	// DW-1601
+	/* this is/was a split request */
+	__EE_SPLIT_REQ,
 
-	//DW-1601
-	/* last split request */
-	__EE_SPLIT_LAST_REQUEST,
+	// DW-1601
+	/* this is/was a last split request */
+	__EE_SPLIT_LAST_REQ,
+
+	// DW-1935
+	/* this is/was a inacitve request
+	* request not completed until connection is closed */
+	__EE_WAS_INACTIVE_REQ,
+
+	// DW-1935
+	/* this is/was a lost request 
+	* Request not completed until connection is destroyed */
+	__EE_WAS_LOST_REQ,
 };
 #define EE_MAY_SET_IN_SYNC     		(1<<__EE_MAY_SET_IN_SYNC)			//LSB bit field:0
 #define EE_IS_BARRIER          		(1<<__EE_IS_BARRIER)				//LSB bit field:1
@@ -900,10 +919,12 @@ enum {
 #define EE_APPLICATION				(1<<__EE_APPLICATION)				//LSB bit field:13
 #define EE_RS_THIN_REQ				(1<<__EE_RS_THIN_REQ)				//LSB bit field:14
 #define EE_IN_ACTLOG				(1<<__EE_IN_ACTLOG)					//LSB bit field:15
-//DW-1601
-#define EE_SPLIT_REQUEST			(1<<__EE_SPLIT_REQUEST)				//LSB bit field:16 
-#define EE_SPLIT_LAST_REQUEST		(1<<__EE_SPLIT_LAST_REQUEST)				//LSB bit field:17
-
+// DW-1601
+#define EE_SPLIT_REQ			(1<<__EE_SPLIT_REQ)					//LSB bit field:16 
+#define EE_SPLIT_LAST_REQ		(1<<__EE_SPLIT_LAST_REQ)				//LSB bit field:17
+// DW-1935
+#define EE_WAS_INACTIVE_REQ			(1<<__EE_WAS_INACTIVE_REQ)			//LSB bit field:18
+#define EE_WAS_LOST_REQ				(1<<__EE_WAS_LOST_REQ)				//LSB bit field:19
 /* flag bits per device */
 enum {
 	UNPLUG_QUEUED,		/* only relevant with kernel 2.4 */
@@ -1019,6 +1040,8 @@ enum bm_flag {
 	BM_LOCK_ALL = BM_LOCK_TEST | BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK,
 
 	BM_LOCK_SINGLE_SLOT = 0x10,
+	// DW-1979 used to avoid printing unnecessary FIXME logs by modifying issues (send, receive bitmap)
+	BM_LOCK_POINTLESS = 0x20,
 };
 
 struct drbd_bitmap {
@@ -1109,8 +1132,13 @@ struct drbd_backing_dev {
 struct drbd_md_io {
 	struct page *page;
 #ifdef _WIN32
+	// DW-1961
     ULONG_PTR start_jif;	/* last call to drbd_md_get_buffer */
     ULONG_PTR submit_jif;	/* last _drbd_md_sync_page_io() submit */
+	// DW-1961
+	LONGLONG prepare_ts;	// prepare md io request
+	LONGLONG io_request_ts;		// before requesting md io to disk
+	LONGLONG io_complete_ts;		// receive md io complete
 #else
 	unsigned long start_jif;	/* last call to drbd_md_get_buffer */
 	unsigned long submit_jif;	/* last _drbd_md_sync_page_io() submit */
@@ -1374,6 +1402,8 @@ struct drbd_resource {
 	MVOL_THREAD			WorkThreadInfo;
 #endif
 	struct issue_flush_context ctx_flush; // DW-1895
+
+	atomic_t req_write_cnt;			// DW-1925
 };
 
 struct drbd_connection {
@@ -1397,6 +1427,8 @@ struct drbd_connection {
 #else
 	unsigned long flags;
 #endif
+	// DW-1977
+	enum drbd_packet last_send_packet;
 	
 	enum drbd_fencing_policy fencing_policy;
 	wait_queue_head_t ping_wait;	/* Woken upon reception of a ping, and a state change */
@@ -1454,7 +1486,8 @@ struct drbd_connection {
 	struct list_head net_ee;    /* zero-copy network send in progress */
 	struct list_head done_ee;   /* need to send P_WRITE_ACK */
 
-	struct list_head inactive_ee;	//DW-1696 : List of active_ee, sync_ee not processed at the end of the connection
+	struct list_head inactive_ee;	// DW-1696 List of active_ee, sync_ee not processed at the end of the connection
+	atomic_t inacitve_ee_cnt; // DW-1935 inactive_ee count not completed until connection destroy
 
 	atomic_t done_ee_cnt;
 	struct work_struct send_acks_work;
@@ -1615,7 +1648,14 @@ struct drbd_peer_device {
 	atomic_t ap_pending_cnt; /* AP data packets on the wire, ack expected */
 	atomic_t unacked_cnt;	 /* Need to send replies for */
 	atomic_t rs_pending_cnt; /* RS request/data packets on the wire */
-	atomic_t wait_for_actlog;
+	atomic_t wait_for_actlog;	
+	
+	// DW-1979 the value used by the syncaget to match the "out of sync" with the sync source when exchanging the bitmap.
+	// set to 1 when waiting for a response to a resync request.
+	atomic_t wait_for_recv_rs_reply;
+	// DW-1979 used to determine whether the bitmap exchange is complete on the syncsource.
+	// set to 1 to wait for bitmap exchange.
+	atomic_t wait_for_recv_bitmap;
 
 	/* use checksums for *this* resync */
 	bool use_csums;
@@ -1717,6 +1757,9 @@ struct drbd_peer_device {
 	struct {/* sender todo per peer_device */
 		bool was_ahead;
 	} todo;
+
+	// DW-1981
+	struct bm_xfer_ctx bm_ctx;
 };
 
 //DW-1911
@@ -1803,7 +1846,6 @@ struct drbd_device {
 	atomic_t ap_actlog_cnt;  /* Requests waiting for activity log */
 	atomic_t local_cnt;	 /* Waiting for local completion */
 	atomic_t suspend_cnt;
-
 	/* Interval trees of pending local requests */
 	struct rb_root read_requests;
 	struct rb_root write_requests;
@@ -2080,6 +2122,8 @@ extern int drbd_send_drequest(struct drbd_peer_device *, int cmd,
 extern void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_size);
 extern int drbd_send_ov_request(struct drbd_peer_device *, sector_t sector, int size);
 
+// DW-1979
+extern void drbd_send_bitmap_target_complete(struct drbd_device *, struct drbd_peer_device *, int);
 extern int drbd_send_bitmap(struct drbd_device *, struct drbd_peer_device *);
 extern int drbd_send_dagtag(struct drbd_connection *connection, u64 dagtag);
 extern void drbd_send_sr_reply(struct drbd_connection *connection, int vnr,
@@ -2341,14 +2385,16 @@ extern void drbd_bm_set_all(struct drbd_device *device);
 extern void drbd_bm_clear_all(struct drbd_device *device);
 #ifdef _WIN32
 /* set/clear/test only a few bits at a time */
-extern unsigned int drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern unsigned int drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
-extern int drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_set_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_clear_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
+extern ULONG_PTR drbd_bm_count_bits(struct drbd_device *, unsigned int, ULONG_PTR, ULONG_PTR);
 /* bm_set_bits variant for use while holding drbd_bm_lock,
 * may process the whole bitmap in one go */
 extern void drbd_bm_set_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
-extern void drbd_bm_clear_many_bits(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
-extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
+
+// DW-1996
+extern void drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
+//extern void _drbd_bm_clear_many_bits(struct drbd_device *, int, ULONG_PTR, ULONG_PTR);
 extern ULONG_PTR drbd_bm_test_bit(struct drbd_peer_device *, const ULONG_PTR);
 #else
 /* set/clear/test only a few bits at a time */
@@ -2384,6 +2430,12 @@ extern unsigned long drbd_bm_bits(struct drbd_device *device);
 extern sector_t      drbd_bm_capacity(struct drbd_device *device);
 #ifdef _WIN32
 #define DRBD_END_OF_BITMAP	UINTPTR_MAX
+// DW-1979 25000000 is 100 Gbyte (1bit = 4k) 
+#define RANGE_FIND_NEXT_BIT 25000000 
+
+extern ULONG_PTR drbd_bm_range_find_next_zero(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
+// DW-1978
+extern ULONG_PTR drbd_bm_range_find_next(struct drbd_peer_device *, ULONG_PTR, ULONG_PTR);
 extern ULONG_PTR drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
 /* bm_find_next variants for use while you hold drbd_bm_lock() */
 extern ULONG_PTR _drbd_bm_find_next(struct drbd_peer_device *, ULONG_PTR);
@@ -2418,7 +2470,9 @@ extern void drbd_bm_lock(struct drbd_device *device, char *why, enum bm_flag fla
 extern void drbd_bm_unlock(struct drbd_device *device);
 extern void drbd_bm_slot_lock(struct drbd_peer_device *peer_device, char *why, enum bm_flag flags);
 extern void drbd_bm_slot_unlock(struct drbd_peer_device *peer_device);
+#ifndef _WIN32 
 extern void drbd_bm_copy_slot(struct drbd_device *device, unsigned int from_index, unsigned int to_index);
+#endif
 /* drbd_main.c */
 
 #ifdef _WIN32
@@ -2593,9 +2647,9 @@ extern void repost_up_to_date_fn(unsigned long data);
 static inline void ov_out_of_sync_print(struct drbd_peer_device *peer_device)
 {
 	if (peer_device->ov_last_oos_size) {
-		drbd_err(peer_device, "Out of sync: start=%llu, size=%lu (sectors)\n",
+		drbd_err(peer_device, "Out of sync: start=%llu, size=%llu (sectors)\n",
 		     (unsigned long long)peer_device->ov_last_oos_start,
-		     (unsigned long)peer_device->ov_last_oos_size);
+		     (unsigned long long)peer_device->ov_last_oos_size);
 	}
 	peer_device->ov_last_oos_size = 0;
 }
@@ -2892,12 +2946,14 @@ extern void drbd_advance_rs_marks(struct drbd_peer_device *, unsigned long);
 extern bool drbd_set_all_out_of_sync(struct drbd_device *, sector_t, int);
 #ifdef _WIN32
 extern unsigned long drbd_set_sync(struct drbd_device *, sector_t, int, ULONG_PTR, ULONG_PTR);
-extern int update_sync_bits(struct drbd_peer_device *peer_device,
-	unsigned long sbnr, unsigned long ebnr, update_sync_bits_mode mode);
+
+// DW-1941 add parameter locked(rcu_read_lock)
+extern ULONG_PTR update_sync_bits(struct drbd_peer_device *peer_device,
+	ULONG_PTR sbnr, ULONG_PTR ebnr, update_sync_bits_mode mode, bool locked);
 #else
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
-extern int __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
+extern ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
 		update_sync_bits_mode mode);
 #define drbd_set_in_sync(peer_device, sector, size) \
 	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
@@ -3565,13 +3621,12 @@ static inline bool drbd_state_is_stable(struct drbd_device *device)
 
 			/* Allow IO in BM exchange states with new protocols */
 		case L_WF_BITMAP_S:
-#ifndef _WIN32
+
+			// DW-1979 remove the DW-1121, DW-1391 issue as I/O hang can occur 
 			// MODIFIED_BY_MANTECH DW-1121: sending out-of-sync when repl state is WFBitmapS possibly causes stopping resync, by setting new out-of-sync sector which bm_resync_fo has been already swept.
 			if (peer_device->connection->agreed_pro_version < 96)
-#else
 			// DW-1391 : Allow IO while getting the volume bitmap.
-			if (atomic_read(&device->resource->bGetVolBitmapDone))
-#endif
+			//if (atomic_read(&device->resource->bGetVolBitmapDone))
 				stable = false;
 			break;
 
@@ -3663,7 +3718,7 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	unsigned int nr_requests;
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1200: request buffer maximum size.
-	LONGLONG req_buf_size_max;
+	int max_req_write_cnt;
 #endif
 
 	spin_lock_irq(&device->resource->req_lock);
@@ -3671,19 +3726,24 @@ static inline bool inc_ap_bio_cond(struct drbd_device *device, int rw)
 	rv = may_inc_ap_bio(device) && (unsigned int)atomic_read(&device->ap_bio_cnt[rw]) < nr_requests;
 
 #ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-1200: postpone I/O if current request buffer size is too big.
-	req_buf_size_max = ((LONGLONG)device->resource->res_opts.req_buf_size << 10);    // convert to byte
-	if (req_buf_size_max < ((LONGLONG)DRBD_REQ_BUF_SIZE_MIN << 10) ||
-		req_buf_size_max >((LONGLONG)DRBD_REQ_BUF_SIZE_MAX << 10))
+	// DW-1925 postpone I/O if current request count is too big.
+	max_req_write_cnt = device->resource->res_opts.max_req_write_cnt;   
+	if (max_req_write_cnt < DRBD_MAX_REQ_WRITE_CNT_MIN ||
+		max_req_write_cnt > DRBD_MAX_REQ_WRITE_CNT_MAX)
 	{
-		drbd_err(device, "got invalid req_buf_size(%llu), use default value(%llu)\n", req_buf_size_max, ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10));
-		req_buf_size_max = ((LONGLONG)DRBD_REQ_BUF_SIZE_DEF << 10);    // use default if value is invalid.    
+		drbd_err(device, "got invalid max_req_write_cnt(%d), use default value(%d)\n", max_req_write_cnt, (int)DRBD_MAX_REQ_WRITE_CNT_DEF);
+		max_req_write_cnt = (int)DRBD_MAX_REQ_WRITE_CNT_DEF;    // use default if value is invalid.    
 	}
-	if (atomic_read64(&g_total_req_buf_bytes) > req_buf_size_max) {
+
+	// DW-1925 postpone if only one of the number or size of req exceeds the maximum
+	if (atomic_read(&device->resource->req_write_cnt) > max_req_write_cnt) {
 		device->resource->breqbuf_overflow_alarm = TRUE;
 	
-		if (drbd_ratelimit())
-			drbd_warn(device, "request buffer is full, postponing I/O until we get enough memory. cur req_buf_size(%llu), max(%llu)\n", atomic_read64(&g_total_req_buf_bytes), req_buf_size_max);
+		if (drbd_ratelimit()) {
+			drbd_warn(device, "request count exceeds maximum, postponing I/O until we get enough memory. req_write_cnt(%d), max cnt(%d)\n", 
+				atomic_read(&device->resource->req_write_cnt),
+				max_req_write_cnt);
+		}
 		rv = false;
 	} else {
 		device->resource->breqbuf_overflow_alarm = FALSE;

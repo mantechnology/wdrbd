@@ -100,6 +100,12 @@ enum drbd_on_congestion {
 	OC_DISCONNECT,
 };
 
+// DW-1925
+enum drbd_on_req_write_congestion {
+	ORWC_DISCONNECT,
+	ORWC_BLOCK,
+};
+
 enum drbd_read_balancing {
 	RB_PREFER_LOCAL,
 	RB_PREFER_REMOTE,
@@ -183,8 +189,9 @@ enum drbd_ret_code {
 	ERR_INVALID_PEER_NODE_ID = 171,
 	ERR_CREATE_TRANSPORT    = 172,
 	ERR_LOCAL_AND_PEER_ADDR = 173,
-	ERR_CONG_SNDBUF_SIZE = 174, 
-	ERR_CONG_CANT_CHANGE_SNDBUF_SIZE = 175, 
+	ERR_SNDBUF_SIZE_TOO_SMALL = 174, 
+	ERR_CANT_CHANGE_SNDBUF_SIZE_WHEN_CONNECTED = 175,
+	ERR_CANT_CHANGE_SNDBUF_SIZE_WITHOUT_DEL_PEER = 176,
 	/* insert new ones above this line */
 	AFTER_LAST_ERR_CODE
 };

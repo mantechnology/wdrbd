@@ -1,4 +1,4 @@
-﻿/*
+/*
    drbd_nl.c
 
    This file is part of DRBD by Philipp Reisner and Lars Ellenberg.
@@ -1399,6 +1399,10 @@ retry:
 #endif
 			if (get_ldev(device)) {
 				device->ldev->md.current_uuid &= ~UUID_PRIMARY;
+				// DW-1985 remove NEW_CUR_UUID, __NEW_CUR_UUID when role is secondary.
+				clear_bit(__NEW_CUR_UUID, &device->flags);
+				clear_bit(NEW_CUR_UUID, &device->flags);
+
 				put_ldev(device);
 			}
 		}
@@ -1434,8 +1438,10 @@ retry:
 				}
 			} 
 
-			if (forced || younger_primary == true)
+			if (forced)
 				drbd_uuid_new_current(device, true);
+			else if (younger_primary)
+				drbd_uuid_new_current(device, false); // DW-1944 set UUID_FLAG_NEW_DATAGEN when sending new current UUID
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
 			
@@ -2183,7 +2189,7 @@ drbd_determine_dev_size(struct drbd_device *device, sector_t peer_current_size,
 		drbd_md_write(device, buffer);
 
 		if (rs)
-			drbd_info(device, "Changed AL layout to al-stripes = %d, al-stripe-size-kB = %d\n",
+			drbd_info(device, "Changed AL layout to al-stripes = %u, al-stripe-size-kB = %u\n",
 				 md->al_stripes, md->al_stripe_size_4k * 4);
 	}
 
@@ -2413,7 +2419,7 @@ static int drbd_check_al_size(struct drbd_device *device, struct disk_conf *dc)
 		for (i = 0; i < t->nr_elements; i++) {
 			e = lc_element_by_index(t, i);
 			if (e->refcnt)
-				drbd_err(device, "refcnt(%d)==%d\n",
+				drbd_err(device, "refcnt(%u)==%u\n",
 				    e->lc_number, e->refcnt);
 			in_use += e->refcnt;
 		}
@@ -2757,7 +2763,7 @@ static void sanitize_disk_conf(struct drbd_device *device, struct disk_conf *dis
 			disk_conf->rs_discard_granularity = q->limits.max_discard_sectors << 9;
 
 		if (disk_conf->rs_discard_granularity != (unsigned int)orig_value)
-			drbd_info(device, "rs_discard_granularity changed to %d\n",
+			drbd_info(device, "rs_discard_granularity changed to %u\n",
 				  disk_conf->rs_discard_granularity);
 	}
 }
@@ -3384,7 +3390,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* Make sure the local node id matches or is unassigned */
 	if (nbc->md.node_id != -1 && (unsigned int)nbc->md.node_id != resource->res_opts.node_id) {
-		drbd_err(device, "Local node id %d differs from local "
+		drbd_err(device, "Local node id %u differs from local "
 			 "node id %d on device\n",
 			 resource->res_opts.node_id,
 			 nbc->md.node_id);
@@ -3394,7 +3400,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 	/* Make sure no bitmap slot has our own node id */
 	if (nbc->md.peers[resource->res_opts.node_id].bitmap_index != -1) {
-		drbd_err(device, "There is a bitmap for my own node id (%d)\n",
+		drbd_err(device, "There is a bitmap for my own node id (%u)\n",
 			 resource->res_opts.node_id);
 		retcode = ERR_INVALID_REQUEST;
 		goto force_diskless_dec;
@@ -3416,7 +3422,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 
 		if (slots_needed > slots_available) {
 			drbd_err(device, "Not enough free bitmap "
-				 "slots (available=%d, needed=%d)\n",
+				 "slots (available=%u, needed=%u)\n",
 				 slots_available,
 				 slots_needed);
 			retcode = ERR_INVALID_REQUEST;
@@ -3725,8 +3731,13 @@ static int adm_detach(struct drbd_device *device, int force, struct sk_buff *rep
 	ret = wait_event_interruptible(device->misc_wait,
 			get_disk_state(device) != D_DETACHING);
 #endif
-	if (retcode >= SS_SUCCESS)
+	if (retcode >= SS_SUCCESS) {
+		int res;
+		// DW-1936
+		/* wait for completion of drbd_ldev_destroy() */
+		wait_event_interruptible(res, device->misc_wait, !test_bit(GOING_DISKLESS, &device->flags));
 		drbd_cleanup_device(device);
+	}
 	if (retcode == SS_IS_DISKLESS)
 		retcode = SS_NOTHING_TO_DO;
 	if (ret)
@@ -3871,7 +3882,7 @@ _check_net_options(struct drbd_connection *connection, struct net_conf *old_net_
 
 #ifdef _WIN32 // DW-1436 sndbuf-size must be at least 10M 
 	if (new_net_conf->sndbuf_size < DRBD_SNDBUF_SIZE_MIN && new_net_conf->sndbuf_size > 0){
-		return ERR_CONG_SNDBUF_SIZE;
+		return ERR_SNDBUF_SIZE_TOO_SMALL;
 	}
 #endif 
 
@@ -4037,10 +4048,19 @@ int drbd_adm_net_opts(struct sk_buff *skb, struct genl_info *info)
 	// DW-1436 unable to change send buffer size dynamically
 	if (connection->cstate[NOW] >= C_CONNECTED){
 		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
-			retcode = ERR_CONG_CANT_CHANGE_SNDBUF_SIZE;
+			retcode = ERR_CANT_CHANGE_SNDBUF_SIZE_WHEN_CONNECTED;
 			goto fail;
 		}
 	}
+
+	// DW-1927 If the send buffer is not NULL, the del-peer command has not been executed.
+	if (connection->ptxbab[DATA_STREAM] != NULL) {
+		if (old_net_conf->sndbuf_size != new_net_conf->sndbuf_size){
+			retcode = ERR_CANT_CHANGE_SNDBUF_SIZE_WITHOUT_DEL_PEER;
+			goto fail;
+		}
+	}
+
 #endif
 
 	/* re-sync running */
@@ -4306,7 +4326,7 @@ static int adm_new_connection(struct drbd_connection **ret_conn,
 	if (adm_ctx->connection) {
 #ifdef _WIN32
         struct drbd_resource * resource = adm_ctx->resource;
-        drbd_err(resource, "Connection for peer node id %d already exists\n",
+        drbd_err(resource, "Connection for peer node id %u already exists\n",
             adm_ctx->peer_node_id);
 #else
 		drbd_err(adm_ctx->resource, "Connection for peer node id %d already exists\n",
@@ -4488,11 +4508,10 @@ unlock_fail_free_connection:
 	mutex_unlock(&adm_ctx->resource->conf_update);
 fail_free_connection:
 	if (!list_empty(&connection->connections)) {
-#ifdef _WIN32
-        synchronize_rcu_w32_wlock();
-#endif
 		drbd_unregister_connection(connection);
+#ifndef _WIN32
 		synchronize_rcu();
+#endif
 	}
 	drbd_put_connection(connection);
 fail_put_transport:
@@ -4970,14 +4989,7 @@ void del_connection(struct drbd_connection *connection)
 	 */
 	drbd_thread_stop(&connection->sender);
 
-#ifdef _WIN32    
-	// DW-1465 : Requires rcu wlock because list_del_rcu().
-	synchronize_rcu_w32_wlock();
-#endif
 	drbd_unregister_connection(connection);
-#ifdef _WIN32
-	synchronize_rcu();
-#endif
 
 	/*
 	 * Flush the resource work queue to make sure that no more
@@ -5930,7 +5942,12 @@ put_result:
 		goto out;
 	dh->minor = UINT32_MAX;
 	dh->ret_code = NO_ERROR;
+
+	// DW-1932 modify deadlock of rcu_read_lock
+	rcu_read_unlock();
 	err = nla_put_drbd_cfg_context(skb, resource, NULL, NULL, NULL);
+	rcu_read_lock_w32_inner();
+
 	if (err)
 		goto out;
 	err = res_opts_to_skb(skb, &resource->res_opts, !capable(CAP_SYS_ADMIN));
@@ -5941,6 +5958,7 @@ put_result:
 	if (err)
 		goto out;
 	resource_statistics.res_stat_write_ordering = resource->write_ordering;
+	resource_statistics.res_stat_req_write_cnt = resource->req_write_cnt;
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto out;
@@ -5998,6 +6016,11 @@ static void device_to_statistics(struct device_statistics *s,
 	s->dev_lower_pending = atomic_read(&device->local_cnt);
 	s->dev_al_suspended = test_bit(AL_SUSPENDED, &device->flags);
 	s->dev_exposed_data_uuid = device->exposed_data_uuid;
+	// DW-1945 check status of Activity-Log
+	if (device->act_log) {
+		s->dev_al_pending_changes = device->act_log->pending_changes;
+		s->dev_al_used = device->act_log->used;
+	}
 }
 
 static int put_resource_in_arg0(struct netlink_callback *cb, int holder_nr)
@@ -6103,7 +6126,12 @@ put_result:
 	dh->minor = UINT32_MAX;
 	if (retcode == NO_ERROR) {
 		dh->minor = device->minor;
-		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL);
+
+		// DW-1932 modify deadlock of rcu_read_lock
+		rcu_read_unlock();
+		err = nla_put_drbd_cfg_context(skb, device->resource, NULL, device, NULL); 
+		rcu_read_lock_w32_inner();
+
 		if (err)
 			goto out;
 		if (get_ldev(device)) {
@@ -6337,7 +6365,11 @@ put_result:
 	if (retcode == NO_ERROR) {
 		struct net_conf *net_conf;
 
+		// DW-1932 modify deadlock of rcu_read_lock
+		rcu_read_unlock();
 		err = nla_put_drbd_cfg_context(skb, resource, connection, NULL, NULL);
+		rcu_read_lock_w32_inner();
+
 		if (err)
 			goto out;
 		net_conf = rcu_dereference(connection->transport.net_conf);
@@ -6965,6 +6997,11 @@ static enum drbd_ret_code adm_del_minor(struct drbd_device *device)
 		stable_change_repl_state(peer_device, L_OFF,
 					 CS_VERBOSE | CS_WAIT_COMPLETE);
 
+	// DW-1936
+	/* If the worker still has to find it to call drbd_ldev_destroy(),
+	* we must not unregister the device yet. */
+	wait_event(device->misc_wait, !test_bit(GOING_DISKLESS, &device->flags));
+
 	/*
 	 * Flush the resource work queue to make sure that no more events like
 	 * state change notifications for this device are queued: we want the
@@ -7214,8 +7251,18 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	for_each_connection_ref(connection, im, resource) {
 		retcode = conn_try_disconnect(connection, 0, adm_ctx.reply_skb);
 		if (retcode >= SS_SUCCESS) {
+
 			mutex_lock(&resource->conf_update);
+#ifdef _WIN32
+			// DW-1931 vol_ctl_mutex deadlock in function SetOOSAllocatedCluster()
+			mutex_unlock(&adm_ctx.resource->vol_ctl_mutex);
+#endif
 			del_connection(connection);
+#ifdef _WIN32
+			// DW-1931  
+			mutex_lock(&adm_ctx.resource->vol_ctl_mutex);
+
+#endif
 			mutex_unlock(&resource->conf_update);
 		} else {
 			drbd_info(connection, "conn_try_disconnect retcode : %d, connection ref : %d\n", retcode, connection->kref);
@@ -7330,6 +7377,7 @@ void notify_resource_state(struct sk_buff *skb,
 	     resource_info_to_skb(skb, resource_info, true)))
 		goto nla_put_failure;
 	resource_statistics.res_stat_write_ordering = resource->write_ordering;
+	resource_statistics.res_stat_req_write_cnt = resource->req_write_cnt;
 	err = resource_statistics_to_skb(skb, &resource_statistics, !capable(CAP_SYS_ADMIN));
 	if (err)
 		goto nla_put_failure;

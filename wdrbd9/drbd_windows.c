@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright(C) 2007-2016, ManTechnology Co., LTD.
 	Copyright(C) 2007-2016, wdrbd@mantech.co.kr
 
@@ -58,13 +58,12 @@ int g_mj_flush_buffers_filter;
 int g_use_volume_lock;
 int g_netlink_tcp_port;
 int g_daemon_tcp_port;
+LARGE_INTEGER g_frequency = { .QuadPart = 0 };		// DW-1961
 
 // minimum levels of logging, below indicates default values. it can be changed when WDRBD receives IOCTL_MVOL_SET_LOGLV_MIN.
 atomic_t g_eventlog_lv_min = LOG_LV_DEFAULT_EVENTLOG;
 atomic_t g_dbglog_lv_min = LOG_LV_DEFAULT_DBG;
-#ifdef _WIN32_DEBUG_OOS
-atomic_t g_oos_trace = 0;
-#endif
+atomic_t g_featurelog_flag = 0;		// DW-1961 feature log
 
 #ifdef _WIN32_HANDLER_TIMEOUT
 int g_handler_use;
@@ -820,9 +819,9 @@ int bio_add_page(struct bio *bio, struct page *page, unsigned int len,unsigned i
 
 #include "drbd_int.h"
 
-long IS_ERR_OR_NULL(const void *ptr)
+bool IS_ERR_OR_NULL(const void *ptr)
 {
-	return !ptr || IS_ERR_VALUE((unsigned long) ptr); 
+	return !ptr || IS_ERR_VALUE((ULONG_PTR)ptr);
 }
 
 void *ERR_PTR(long error)
@@ -835,9 +834,9 @@ long PTR_ERR(const void *ptr)
 	return (long)ptr;
 }
 
-int IS_ERR(void *ptr)
+bool IS_ERR(void *ptr)
 {
-	return IS_ERR_VALUE((unsigned long) ptr);
+	return IS_ERR_VALUE((ULONG_PTR)ptr);
 }
 
 void wake_up_process(struct drbd_thread *thi)
@@ -1366,6 +1365,19 @@ void local_irq_enable()
 	spin_unlock_irq(&g_irqLock);
 }
 
+// DW-1933
+BOOLEAN is_spin_lock_in_current_thread(spinlock_t *lock)
+{
+	PKTHREAD curthread = KeGetCurrentThread();
+
+	if (KeTestSpinLock(&lock->spinLock)) {
+		if (curthread == lock->OwnerThread)
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 BOOLEAN spin_trylock(spinlock_t *lock)
 {
 	if (FALSE == KeTestSpinLock(&lock->spinLock))
@@ -1497,8 +1509,6 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 
     timer->expires = expires;
 
-	BUG_ON_UINT32_OVER(expires);
-
     if (current_milisec >= expires)
     {
 		nWaitTime.QuadPart = -1;
@@ -1506,6 +1516,7 @@ __mod_timer(struct timer_list *timer, ULONG_PTR expires, bool pending_only)
 	else
 	{
 		expires -= current_milisec;
+		BUG_ON_UINT32_OVER(expires);
 		nWaitTime = RtlConvertLongToLargeInteger(RELATIVE(MILLISECONDS((LONG)expires)));
 	}
 
@@ -1863,6 +1874,9 @@ int generic_make_request(struct bio *bio)
 		buffer = NULL;
 		bio->bi_size = 0;
 		offset.QuadPart = 0;
+		// DW-1961 Save timestamp for IO latency measurement
+		if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
+			bio->flush_ts = timestamp();
 	} else {
 		if (bio->bi_rw & WRITE) {
 			io = IRP_MJ_WRITE;
@@ -2759,7 +2773,7 @@ BOOLEAN do_add_minor(unsigned int minor)
     keyInfo = (PKEY_FULL_INFORMATION)ExAllocatePoolWithTag(PagedPool, size, 'A3DW');
     if (!keyInfo) {
         status = STATUS_INSUFFICIENT_RESOURCES;
-        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%d)\n", size);
+        WDRBD_ERROR("Failed to ExAllocatePoolWithTag() size(%u)\n", size);
         goto cleanup;
     }
 

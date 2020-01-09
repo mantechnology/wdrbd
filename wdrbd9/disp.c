@@ -130,7 +130,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
     KeInitializeMutex(&mvolMutex, 0);
     KeInitializeMutex(&eventlogMutex, 0);
 	downup_rwlock_init(&transport_classes_lock); //init spinlock for transport 
-	
+	// DW-1961 The frequency of the performance counter is fixed at system boot and is consistent across all processors. 
+	// Therefore, driver cache the frequency of the performance counter during initialization.
+	KeQueryPerformanceCounter(&g_frequency);	
 #ifdef _WIN32_WPP
 	WPP_INIT_TRACING(DriverObject, RegistryPath);
 	DoTraceMessage(TRCINFO, "WDRBD V9(1:1) MVF Driver loaded.");
@@ -697,6 +699,11 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 #endif
 
 #ifdef _WIN32_MULTIVOL_THREAD
+
+			// DW-1999 If the completion routine is called before status_pending is returned to the filesystem, the verifier causes a bugcheck.
+			// Therefore, change the calling position of IoMarkIrpPending to set it in advance.
+			IoMarkIrpPending(Irp);
+
 			//It is processed in 2 passes according to IRQL.
 			//1. If IRQL is greater than or equal to DISPATCH LEVEL, Queue write I/O.
 			//2. Otherwise, Directly call mvolwritedispatch
@@ -711,7 +718,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 	return status;
             	}	
 			} else {
-				IoMarkIrpPending(Irp);
 				mvolQueueWork(VolumeExtension->WorkThreadInfo, DeviceObject, Irp);
 			}
 			
@@ -724,7 +730,6 @@ mvolWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
                 &Irp->Tail.Overlay.ListEntry, &pThreadInfo->ListLock);
             IO_THREAD_SIG(pThreadInfo);
 #endif
-
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
             return STATUS_PENDING;
