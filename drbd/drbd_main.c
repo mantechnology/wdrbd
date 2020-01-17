@@ -6498,19 +6498,25 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// DW-1317: to support fast sync from secondary sync source whose volume is NOT mounted.
 	bool bSecondary = false;
 
-	if (NULL == device ||
-		NULL == peer_device ||
-		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
-	{
-		drbd_err(peer_device,"Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
-		return false;
-	}
-
 	// DW-2017 in this function, to avoid deadlock a bitmap lock within the vol_ctl_mutex should not be used.
 	// if bitmap_lock is true, it was called from drbd_receiver() and the object is guaranteed to be removed after completion
 	if (!bitmap_lock)
 		// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
 		mutex_lock(&device->resource->vol_ctl_mutex);
+
+	// DW-2017 after locking, access to the object shall be made.
+	if (NULL == device ||
+		NULL == peer_device ||
+		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
+	{
+		// DW-2017 change log output based on peer_device status
+		if (peer_device)
+			drbd_err(peer_device,"Invalid parameter side(%s)\n", drbd_repl_str(side));
+		else
+			WDRBD_ERROR("Invalid parameter side(%s)\n", drbd_repl_str(side));
+
+		return false;
+	}
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1317: inspect resync side first, before get the allocated bitmap.
