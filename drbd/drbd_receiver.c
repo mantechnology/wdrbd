@@ -9536,13 +9536,16 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	if (connection->peer_role[NOW] == R_UNKNOWN)
 		return 0;
 
+	// DW-1975 If the current uuid is updated, the remaining bitmap uuid is also removed.
 	if (current_uuid == drbd_current_uuid(device)) {
-		// DW-1975 If the current uuid is updated, the remaining bitmap uuid is also removed.
 		struct drbd_device *device = peer_device->device;
-		struct drbd_peer_md *peer_md = &device->ldev->md.peers[peer_device->node_id];
-		if (peer_md->bitmap_uuid != 0) { 
-			drbd_info(peer_device, "Clear bitmap_uuid (cur_uuid:%016llX bm_uuid:%016llX)\n", current_uuid, peer_md->bitmap_uuid);
-			drbd_uuid_set_bitmap(peer_device, 0);
+		// DW-2009 initialize the bitmap uuid only in specific condition
+		if (drbd_current_uuid(device) != 0 && device->ldev) {
+			struct drbd_peer_md *peer_md = &device->ldev->md.peers[peer_device->node_id];
+			if (peer_md->bitmap_uuid != 0) {
+				drbd_info(peer_device, "Clear bitmap_uuid (cur_uuid:%016llX bm_uuid:%016llX)\n", current_uuid, peer_md->bitmap_uuid);
+				drbd_uuid_set_bitmap(peer_device, 0);
+			}
 		}
 
 		return 0;
