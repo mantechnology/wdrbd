@@ -6498,16 +6498,25 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	// DW-1317: to support fast sync from secondary sync source whose volume is NOT mounted.
 	bool bSecondary = false;
 
+	// DW-2017 in this function, to avoid deadlock a bitmap lock within the vol_ctl_mutex should not be used.
+	// if bitmap_lock is true, it was called from drbd_receiver() and the object is guaranteed to be removed after completion
+	if (!bitmap_lock)
+		// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
+		mutex_lock(&device->resource->vol_ctl_mutex);
+
+	// DW-2017 after locking, access to the object shall be made.
 	if (NULL == device ||
 		NULL == peer_device ||
 		(side != L_SYNC_SOURCE && side != L_SYNC_TARGET))
 	{
-		drbd_err(peer_device,"Invalid parameter, device(0x%p), peer_device(0x%p), side(%s)\n", device, peer_device, drbd_repl_str(side));
+		// DW-2017 change log output based on peer_device status
+		if (peer_device)
+			drbd_err(peer_device,"Invalid parameter side(%s)\n", drbd_repl_str(side));
+		else
+			WDRBD_ERROR("Invalid parameter side(%s)\n", drbd_repl_str(side));
+
 		return false;
 	}
-
-	// DW-1317: prevent from writing smt on volume, such as being primary and getting resync data, it doesn't allow to dismount volume also.
-	mutex_lock(&device->resource->vol_ctl_mutex);
 
 #ifdef _WIN32_STABLE_SYNCSOURCE
 	// DW-1317: inspect resync side first, before get the allocated bitmap.
@@ -6518,6 +6527,8 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 #endif
 	{
 		drbd_warn(peer_device, "can't be %s\n", drbd_repl_str(side));
+		if (!bitmap_lock)
+			mutex_unlock(&device->resource->vol_ctl_mutex);
 		goto out;
 	}
 #endif
@@ -6527,9 +6538,12 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		drbd_bm_slot_lock(peer_device, "initial sync for allocated cluster", BM_LOCK_BULK);
 	drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 	drbd_bm_write(device, NULL);
-	if (bitmap_lock)
+	if (bitmap_lock) {
 		drbd_bm_slot_unlock(peer_device);
-	
+		// DW-2017
+		mutex_lock(&device->resource->vol_ctl_mutex);
+	}
+
 	if (device->resource->role[NOW] == R_SECONDARY)
 	{
 		// DW-1317: set read-only attribute and mount for temporary.
@@ -6542,6 +6556,7 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		{
 			drbd_info(peer_device,"I am a sync target, wait to receive source's bitmap\n");
 			bRet = true;
+			mutex_unlock(&device->resource->vol_ctl_mutex);
 			goto out;			
 		}
 	}
@@ -6604,8 +6619,11 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 
 	// DW-1495: Change location due to deadlock(bm_change)
 	// Set out-of-sync for allocated cluster.
-	if (bitmap_lock)
+	if (bitmap_lock) {
+		// DW-2017
+		mutex_unlock(&device->resource->vol_ctl_mutex);
 		drbd_bm_lock(device, "Set out-of-sync for allocated cluster", BM_LOCK_CLEAR | BM_LOCK_BULK);
+	}
 	count = SetOOSFromBitmap(pBitmap, peer_device);
 	if (bitmap_lock)
 		drbd_bm_unlock(device);
@@ -6628,8 +6646,6 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 	}
 
 out:
-	mutex_unlock(&device->resource->vol_ctl_mutex);
-
 	return bRet;
 }
 #endif	// _WIN32
