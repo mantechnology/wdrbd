@@ -107,14 +107,7 @@ REM ------------------------------------------------------------------------
 
 @echo off
 
-if "%2" == "force" (
-	echo Force Stopping all DRBD resources
-	drbdadm disconnect --force all
-	timeout /t 3 /NOBREAK > nul
-) else (
-	echo Stopping all DRBD resources
-)
-
+echo Stopping all DRBD resources
 drbdadm down all
 timeout /t 3 /NOBREAK > nul
 

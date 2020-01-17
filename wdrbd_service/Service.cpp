@@ -36,7 +36,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl);
 VOID AddEventSource(TCHAR * caPath, TCHAR * csApp);
 DWORD RemoveEventSource(TCHAR *caPath, TCHAR * csApp);
 DWORD RcDrbdStart();
-DWORD RcDrbdStop(bool force);
+DWORD RcDrbdStop();
 
 
 BOOL g_bProcessStarted = TRUE;
@@ -694,7 +694,7 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 			
 			if (SERVICE_CONTROL_STOP == fdwControl) {
 
-				RcDrbdStop(false);
+				RcDrbdStop();
 
 				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws"), gServicePath, _T("drbdcon"), _T("/get_log"), _T("..\\log\\ServiceStop.log"));
@@ -705,15 +705,28 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				}
 			}
 			else {
-				//DW-1821 log before running RcDrbdStop() when the system shuts down.
+				TCHAR szFullPath[MAX_PATH] = { 0 }; DWORD ret; TCHAR tmp[256] = { 0, }; DWORD dwPID;
 				TCHAR sPreShutdownTime[MAX_PATH], ePreShutdownTime[MAX_PATH];
 				SYSTEMTIME sTime;
 
+				// DW-2004 modify to generate logs after connection termination
+				_stprintf_s(tmp, _T("presuhtdown force disconnect\n"));
+				WriteLog(tmp);
+
+				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws %ws"), gServicePath, _T("drbdadm"), _T("disconnect"), _T("--force"), _T("all"));
+				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
+				
+				if (ret) {
+					_stprintf_s(tmp, _T("force disconnect fail:%d\n"), ret);
+					WriteLog(tmp);
+				}
+
+				// DW-1821 log before running RcDrbdStop() when the system shuts down.
 				GetLocalTime(&sTime);
 				_stprintf(sPreShutdownTime, _T("Preshutdown-s-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
 				ExecPreShutDownLog(sPreShutdownTime, NULL);
 
-				RcDrbdStop(true);
+				RcDrbdStop();
 
 				GetLocalTime(&sTime);
 				_stprintf(ePreShutdownTime, _T("Preshutdown-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);
@@ -826,7 +839,7 @@ DWORD RcDrbdStart()
     return ret;
 }
 
-DWORD RcDrbdStop(bool force)
+DWORD RcDrbdStop()
 {
     DWORD dwPID;
     WCHAR szFullPath[MAX_PATH] = {0};
@@ -834,10 +847,7 @@ DWORD RcDrbdStop(bool force)
     DWORD dwLength;
     DWORD ret;
 	
-	if (force)
-		WriteLog(L"rc_drbd_stop force");
-	else
-		WriteLog(L"rc_drbd_stop");
+	WriteLog(L"rc_drbd_stop");
 
     if ((dwLength = wcslen(gServicePath) + wcslen(g_pwdrbdRcBat) + 4 + 6) > MAX_PATH)
     {
@@ -846,9 +856,6 @@ DWORD RcDrbdStop(bool force)
         return -1;
     }
     wsprintf(szFullPath, L"\"%ws\\%ws\" %ws", gServicePath, g_pwdrbdRcBat, L"stop");
-	//DW-1874
-	if (force)
-		wsprintf(szFullPath, L"%ws %ws", szFullPath, L"force");
 
     ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
 	
