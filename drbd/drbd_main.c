@@ -6515,6 +6515,9 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		else
 			WDRBD_ERROR("Invalid parameter side(%s)\n", drbd_repl_str(side));
 
+		if (!bitmap_lock)
+			mutex_unlock(&device->resource->vol_ctl_mutex);
+
 		return false;
 	}
 
@@ -6645,6 +6648,8 @@ bool SetOOSAllocatedCluster(struct drbd_device *device, struct drbd_peer_device 
 		pBitmap = NULL;
 	}
 
+	if (!bitmap_lock)
+		mutex_unlock(&device->resource->vol_ctl_mutex);
 out:
 	return bRet;
 }
