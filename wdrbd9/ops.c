@@ -334,7 +334,11 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 		// DW-1432: Modified to see if command was successful 
 		Status = SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
-		WDRBD_ALL("IOCTL_MVOL_SET_LOGLV_MIN LogType:%d Minimum Level:%d status = %lu\n", pLoggingMinLv->nType, pLoggingMinLv->nErrLvMin, Status);
+		// DW-2008
+		WDRBD_ALL("set minimum log level, type : %s(%d), minumum level : %s(%d), result : %lu\n", 
+					g_log_type_str[pLoggingMinLv->nType], pLoggingMinLv->nType, 
+					(pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[pLoggingMinLv->nErrLvMin] : g_default_lv_str[pLoggingMinLv->nErrLvMin], pLoggingMinLv->nErrLvMin,
+					Status);
 		if (Status != STATUS_SUCCESS){
 			return STATUS_UNSUCCESSFUL; 
 		}

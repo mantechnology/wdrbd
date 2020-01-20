@@ -87,22 +87,6 @@
 #define KERN_OOS				"<8>"	/* DW-1153: debug-oos */
 #define KERN_LATENCY			"<9>"	/* DW-1961 feature log */ 
 
-enum
-{
-	KERN_EMERG_NUM = 0,
-	KERN_ALERT_NUM,
-	KERN_CRIT_NUM,
-	KERN_ERR_NUM,
-	KERN_WARNING_NUM,
-	KERN_NOTICE_NUM,
-	KERN_INFO_NUM,
-	KERN_DEBUG_NUM,
-	KERN_OOS_NUM,
-	KERN_LATENCY_NUM,
-	KERN_NUM_END
-};
-
-
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()
 #define smp_wmb()				KeMemoryBarrier()
@@ -324,26 +308,6 @@ extern atomic_t g_dbglog_lv_min;
 extern atomic_t g_featurelog_flag;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
-
-/* Log level value is 32-bit integer
-   00000000 00000000 00000000 00000000
-                                   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-                                |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
-                              ||	   2 bit indicates feature log flag (0x01: oos trace, 0x02: latency)
-*/
-#define LOG_LV_BIT_POS_EVENTLOG		(0)
-#define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
-#define LOG_LV_BIT_POS_FEATURELOG	(LOG_LV_BIT_POS_DBG + 3)
-
-// Default values are used when log_level value doesn't exist.
-#define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
-#define LOG_LV_DEFAULT_DBG		KERN_INFO_NUM
-#define LOG_LV_DEFAULT			(LOG_LV_DEFAULT_EVENTLOG << LOG_LV_BIT_POS_EVENTLOG) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
-
-#define LOG_LV_MASK			0x7
-
-#define FEATURELOG_FLAG_OOS 		(1 << 0)
-#define FEATURELOG_FLAG_LATENCY 	(1 << 1)
 
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\

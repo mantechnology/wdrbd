@@ -4,10 +4,6 @@
 #include "mvol.h"
 #include "LogManager.h"
 
-#define LOG_LV_MASK					0x7
-#define LOG_LV_DEFAULT_EVENTLOG		3
-#define LOG_LV_DEFAULT_DBG			6
-
 void
 disk_error_usage()
 {
@@ -40,24 +36,37 @@ usage()
 {
 	printf("usage: drbdcon cmds options \n\n"
 		"cmds:\n"
-/*		"   /proc/drbd \n"*/
-/*		"   /get_volume_size \n"*/
+		/*		"   /proc/drbd \n"*/
+		/*		"   /get_volume_size \n"*/
 		"   /nodelayedack [ip|guid]\n"
-        "   /delayedack_enable [ip|guid]\n"
-        "   /m [letter] : mount\n"
-        /*"   /d[f] : dismount[force] \n"*/
+		"   /delayedack_enable [ip|guid]\n"
+		"   /m [letter] : mount\n"
+		/*"   /d[f] : dismount[force] \n"*/
 		"   /get_log [ProviderName]\n"
 		//DW-1629
 		"   /get_log [ProviderName] [ResourceName : Max Length 250|oos]\n"
 		"   /get_log [ProviderName] [ResourceName : Max Length 250][oos]\n"
-		"   /minlog_lv dbg [Level : 0~7] \n"
-		"   /minlog_lv feature [flag : 1~3] (1:oos, 2:latency, 3:all) \n"
-		"   /write_log [ProviderName] \"[LogData]\" \n"
+		"   /minlog_lv [sys, dbg] [Level : 0~7]\n");
+	// DW-2008
+	printf("\t level info,");
+	for (int i = 0; i < 8; i++) {
+		printf(" %s(%d)", g_default_lv_str[i], i);
+	}
+	printf("\n");
+
+	printf("   /minlog_lv feature [flag : 1~3]\n");
+	printf("\t level info,");
+	for (int i = 0; i < 3; i++) {
+		printf(" %s(%d)", g_feature_lv_str[i], i);
+	}
+	printf("\n");
+
+	printf("   /write_log [ProviderName] \"[LogData]\" \n"
 		"   /handler_use [0,1]\n"
-		"	/drbdlock_status\n"
+		"   /drbdlock_status\n"
 		"   /info\n"
 		"   /status : drbd version\n"
-		"	/get_log_lv\n"
+		"   /get_log_lv\n"
 
 		"\n\n"
 
@@ -75,6 +84,7 @@ usage()
 		"drbdcon /get_log drbdService \n"
 		"drbdcon /get_log drbdService r0\n"
 		"drbdcon /minlog_lv dbg 6 \n"
+		"drbdcon /minlog_lv sys 3 \n"
 		"drbdcon /minlog_lv feature 2\n"
 		"drbdcon /write_log drbdService \"Logging start\" \n"
 		"drbdcon /handler_use 1 \n"
@@ -138,7 +148,7 @@ DWORD DeleteVolumeReg(TCHAR letter)
 
 //DW-1921
 //Print log_level through the current registry value.
-BOOL GetLogLevel(int &sys_evtlog_lv, int &dbglog_lv, int &oos_trace_lv)
+BOOL GetLogLevel(int *sys_evtlog_lv, int *dbglog_lv, int *feature_lv)
 {
 	HKEY hKey = NULL;
 	LONG lResult = ERROR_SUCCESS;
@@ -160,9 +170,9 @@ BOOL GetLogLevel(int &sys_evtlog_lv, int &dbglog_lv, int &oos_trace_lv)
 		if (lResult == ERROR_FILE_NOT_FOUND) {
 			// DW-1921
 			//It is not an error that no key exists.Just set it to the default value.
-			sys_evtlog_lv = LOG_LV_DEFAULT_EVENTLOG;
-			dbglog_lv = LOG_LV_DEFAULT_DBG;
-			oos_trace_lv = 0;
+			*sys_evtlog_lv = LOG_LV_DEFAULT_EVENTLOG;
+			*dbglog_lv = LOG_LV_DEFAULT_DBG;
+			*feature_lv = LOG_LV_DEFAULT_FEATURE;
 
 			return TRUE;
 		}
@@ -170,9 +180,9 @@ BOOL GetLogLevel(int &sys_evtlog_lv, int &dbglog_lv, int &oos_trace_lv)
 			return TRUE;
 	}
 
-	sys_evtlog_lv = (logLevel >> 0) & LOG_LV_MASK;
-	dbglog_lv = (logLevel >> 3) & LOG_LV_MASK;
-	oos_trace_lv = (logLevel >> 6) & 0x01;
+	*sys_evtlog_lv = (logLevel >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK;
+	*dbglog_lv = (logLevel >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK;
+	*feature_lv = (logLevel >> LOG_LV_BIT_POS_FEATURELOG) & LOG_LV_MASK;
 
 	return TRUE;
 }
@@ -656,10 +666,13 @@ main(int argc, char* argv [])
 	{
 		int sys_evt_lv = 0;
 		int dbglog_lv = 0;
-		int oos_trace_lv = 0;
+		int feature_lv = 0;
 
-		if (GetLogLevel(sys_evt_lv, dbglog_lv, oos_trace_lv))
-			printf("system-log :%d\ndebug-log :%d\noos-trace :%d\n", sys_evt_lv, dbglog_lv, oos_trace_lv);
+		// DW-2008
+		if (GetLogLevel(&sys_evt_lv, &dbglog_lv, &feature_lv))
+			printf("system-lv : %s(%d)\ndebug-lv : %s(%d)\nfeature-lv : %d\n\toos-trace : %s(%d)\n\tlatency-trace : %s(%d)\n", 
+			g_default_lv_str[sys_evt_lv], sys_evt_lv, g_default_lv_str[dbglog_lv], dbglog_lv, 
+			feature_lv, (feature_lv & 1) ? "on" : "off", (feature_lv & 1), (feature_lv & 2) ? "on" : "off", (feature_lv & 2));
 		else
 			printf("Failed to get log level.\n");
 

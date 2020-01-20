@@ -126,6 +126,49 @@ typedef struct _LOGGING_MIN_LV {
 #define LOGGING_TYPE_DBGLOG		1
 #define LOGGING_TYPE_FEATURELOG 2
 
+// DW-2008 log level,type string
+static char *g_default_lv_str[] = { "none", "emerg", "alert", "criti", "warning", "notice", "info", "debug" };
+static char *g_feature_lv_str[] = { "none", "latency", "all" };
+static char *g_log_type_str[] = { "sys", "dbg", "feature" };
+
+// DW-2008 move here from drbd_window.h
+enum
+{
+	KERN_EMERG_NUM = 0,
+	KERN_ALERT_NUM,
+	KERN_CRIT_NUM,
+	KERN_ERR_NUM,
+	KERN_WARNING_NUM,
+	KERN_NOTICE_NUM,
+	KERN_INFO_NUM,
+	KERN_DEBUG_NUM,
+	KERN_OOS_NUM,
+	KERN_LATENCY_NUM,
+	KERN_NUM_END
+};
+
+/* Log level value is 32-bit integer
+00000000 00000000 00000000 00000000
+||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
+|||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
+||	   2 bit indicates feature log flag (0x01: oos trace, 0x02: latency)
+*/
+#define LOG_LV_BIT_POS_EVENTLOG		(0)
+#define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
+#define LOG_LV_BIT_POS_FEATURELOG	(LOG_LV_BIT_POS_DBG + 3)
+
+// Default values are used when log_level value doesn't exist.
+#define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
+#define LOG_LV_DEFAULT_DBG		KERN_INFO_NUM
+#define LOG_LV_DEFAULT_FEATURE		0
+#define LOG_LV_DEFAULT			(LOG_LV_DEFAULT_EVENTLOG << LOG_LV_BIT_POS_EVENTLOG) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
+
+#define LOG_LV_MASK			0x7
+
+#define FEATURELOG_FLAG_OOS 		(1 << 0)
+#define FEATURELOG_FLAG_LATENCY 	(1 << 1)
+//
+
 #define FRAME_DELIMITER		"@"
 #define OOS_TRACE_STRING	"oos_trace"
 #define STACK_FRAME_CAPTURE_COUNT	(10)
