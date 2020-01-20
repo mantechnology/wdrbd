@@ -127,9 +127,12 @@ typedef struct _LOGGING_MIN_LV {
 #define LOGGING_TYPE_FEATURELOG 2
 
 // DW-2008 log level,type string
-static char *g_default_lv_str[] = { "none", "emerg", "alert", "criti", "warning", "notice", "info", "debug" };
-static char *g_feature_lv_str[] = { "none", "latency", "all" };
+static char *g_default_lv_str[] = { "emerg", "alert", "criti", "err", "warning", "notice", "info", "debug" };
+static char *g_feature_lv_str[] = { "none", "oos", "latency", "all" };
 static char *g_log_type_str[] = { "sys", "dbg", "feature" };
+
+#define LOG_DEFAULT_MAX_LEVEL 8
+#define LOG_FEATURE_MAX_LEVEL 4
 
 // DW-2008 move here from drbd_window.h
 enum

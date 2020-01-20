@@ -49,14 +49,14 @@ usage()
 		"   /minlog_lv [sys, dbg] [Level : 0~7]\n");
 	// DW-2008
 	printf("\t level info,");
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < LOG_DEFAULT_MAX_LEVEL; i++) {
 		printf(" %s(%d)", g_default_lv_str[i], i);
 	}
 	printf("\n");
 
 	printf("   /minlog_lv feature [flag : 1~3]\n");
 	printf("\t level info,");
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < LOG_FEATURE_MAX_LEVEL; i++) {
 		printf(" %s(%d)", g_feature_lv_str[i], i);
 	}
 	printf("\n");
@@ -669,10 +669,11 @@ main(int argc, char* argv [])
 		int feature_lv = 0;
 
 		// DW-2008
-		if (GetLogLevel(&sys_evt_lv, &dbglog_lv, &feature_lv))
-			printf("system-lv : %s(%d)\ndebug-lv : %s(%d)\nfeature-lv : %d\n\toos-trace : %s(%d)\n\tlatency-trace : %s(%d)\n", 
-			g_default_lv_str[sys_evt_lv], sys_evt_lv, g_default_lv_str[dbglog_lv], dbglog_lv, 
-			feature_lv, (feature_lv & 1) ? "on" : "off", (feature_lv & 1), (feature_lv & 2) ? "on" : "off", (feature_lv & 2));
+		if (GetLogLevel(&sys_evt_lv, &dbglog_lv, &feature_lv)) {
+			printf("system-lv : %s(%d)\ndebug-lv : %s(%d)\nfeature-lv : %d\n\toos-trace : %s(%d)\n\tlatency-trace : %s(%d)\n",
+				g_default_lv_str[sys_evt_lv], sys_evt_lv, g_default_lv_str[dbglog_lv], dbglog_lv,
+				feature_lv, (feature_lv & 1) ? "on" : "off", (feature_lv & 1), (feature_lv & 2) ? "on" : "off", (feature_lv & 2));
+		}
 		else
 			printf("Failed to get log level.\n");
 
