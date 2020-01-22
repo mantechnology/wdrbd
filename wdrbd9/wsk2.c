@@ -1320,7 +1320,7 @@ LONG NTAPI Receive(
 			switch (Irp->IoStatus.Status) {
 			case STATUS_IO_TIMEOUT:
 				BytesReceived = -EAGAIN;
-				WDRBD_INFO("WskReceive timeout... wsk(0x%p) size(%lu)\n", BufferSize, WskSocket);
+				WDRBD_INFO("WskReceive timeout... wsk(0x%p) size(%lu)\n", WskSocket, BufferSize);
 				break;
 			case STATUS_INVALID_DEVICE_STATE:
 			case STATUS_FILE_FORCED_CLOSED:
