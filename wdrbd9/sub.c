@@ -119,12 +119,12 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 
-	// we should call acuire removelock before pass down irp.
-	// if acuire-removelock fail, we should return fail(STATUS_DELETE_PENDING).
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		// the value of IoAcquireRemoveLock() return has STATUS_SUCCESS or STATUS_DELETE_PENDING and the value of STATUS_DELETE_PENDING is returned when already in progress.
 		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
 		if(!NT_SUCCESS(status)) {
-			Irp->IoStatus.Status = status;
+			// DW-2028 when irp is completed in remove, it must always be in STATUS_SUCCESS state.
+			Irp->IoStatus.Status = STATUS_SUCCESS;
 			Irp->IoStatus.Information = 0;
 
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
