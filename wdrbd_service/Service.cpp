@@ -709,18 +709,6 @@ VOID WINAPI ServiceHandler(DWORD fdwControl)
 				TCHAR sPreShutdownTime[MAX_PATH], ePreShutdownTime[MAX_PATH];
 				SYSTEMTIME sTime;
 
-				// DW-2004 modify to generate logs after connection termination
-				_stprintf_s(tmp, _T("presuhtdown force disconnect\n"));
-				WriteLog(tmp);
-
-				_stprintf_s(szFullPath, _T("\"%ws\\%ws\" %ws %ws %ws"), gServicePath, _T("drbdadm"), _T("disconnect"), _T("--force"), _T("all"));
-				ret = RunProcess(EXEC_MODE_CMD, SW_NORMAL, NULL, szFullPath, gServicePath, dwPID, BATCH_TIMEOUT, NULL, NULL);
-				
-				if (ret) {
-					_stprintf_s(tmp, _T("force disconnect fail:%d\n"), ret);
-					WriteLog(tmp);
-				}
-
 				// DW-1821 log before running RcDrbdStop() when the system shuts down.
 				GetLocalTime(&sTime);
 				_stprintf(sPreShutdownTime, _T("Preshutdown-s-%02d-%02d-%02d-%02d-%02d.log"), sTime.wYear, sTime.wMonth, sTime.wDay, sTime.wHour, sTime.wMinute);

@@ -1194,8 +1194,8 @@ enum {
 	RECONNECT,
 	CONN_DISCARD_MY_DATA,
 	SEND_STATE_AFTER_AHEAD_C,
-	//DW-1874
-	FORCE_DISCONNECT,
+	// DW-2035 set only when command down is in role secondary
+	DISCONN_NO_WAIT_RESYNC,
 };
 
 /* flag bits per resource */
@@ -2154,7 +2154,7 @@ extern void drbd_uuid_received_new_current(struct drbd_peer_device *, u64 , u64)
 extern void drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_current(struct drbd_device *device, u64 val) __must_hold(local);
-extern void drbd_uuid_new_current(struct drbd_device *device, bool forced);
+extern void drbd_uuid_new_current(struct drbd_device *device, bool forced, char* caller);
 extern void drbd_uuid_new_current_by_user(struct drbd_device *device);
 extern void _drbd_uuid_push_history(struct drbd_device *device, u64 val) __must_hold(local);
 extern u64 _drbd_uuid_pull_history(struct drbd_peer_device *peer_device) __must_hold(local);
