@@ -3704,13 +3704,15 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 
 #ifdef _WIN32 
-			// DW-1447
-			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T
-				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
-			{
-				send_state = true;
-			}			
-
+			if (repl_state[NEW] == L_WF_BITMAP_T &&
+				peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
+				// DW-1447
+				if (repl_state[OLD] == L_STARTING_SYNC_T)
+					send_state = true;
+				// DW-2026 if the status is not L_STARTING_SYNC_T, the status is not send.
+				else
+					drbd_info(peer_device, "not sending state because of old repl_state(%s)\n", drbd_repl_str(repl_state[OLD]));
+			}
 #endif
 
 			if (peer_disk_state[NEW] < D_INCONSISTENT && get_ldev(device)) {
