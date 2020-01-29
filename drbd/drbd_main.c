@@ -5763,7 +5763,7 @@ u64 drbd_weak_nodes_device(struct drbd_device *device)
 }
 
 
-static void __drbd_uuid_new_current(struct drbd_device *device, bool forced, bool send) __must_hold(local)
+static void __drbd_uuid_new_current(struct drbd_device *device, bool forced, bool send, char* caller) __must_hold(local)
 {
 	struct drbd_peer_device *peer_device;
 	u64 got_new_bitmap_uuid, weak_nodes, val;
@@ -5782,7 +5782,7 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced, boo
 	__drbd_uuid_set_current(device, val);
 	spin_unlock_irq(&device->ldev->md.uuid_lock);
 	weak_nodes = drbd_weak_nodes_device(device);
-	drbd_info(device, "new current UUID: %016llX weak: %016llX\n",
+	drbd_info(device, "%s, new current UUID: %016llX weak: %016llX\n", caller,
 		  device->ldev->md.current_uuid, weak_nodes);
 
 	/* get it to stable storage _now_ */
@@ -5804,10 +5804,10 @@ static void __drbd_uuid_new_current(struct drbd_device *device, bool forced, boo
  * the bitmap slot. Causes an incremental resync upon next connect.
  * The caller must hold adm_mutex or conf_update
  */
-void drbd_uuid_new_current(struct drbd_device *device, bool forced)
+void drbd_uuid_new_current(struct drbd_device *device, bool forced, char* caller)
 {
 	if (get_ldev_if_state(device, D_UP_TO_DATE)) {
-		__drbd_uuid_new_current(device, forced, true);
+		__drbd_uuid_new_current(device, forced, true, caller);
 		put_ldev(device);
 	} else {
 		struct drbd_peer_device *peer_device;
@@ -5816,7 +5816,7 @@ void drbd_uuid_new_current(struct drbd_device *device, bool forced)
 		get_random_bytes(&current_uuid, sizeof(u64));
 		current_uuid &= ~UUID_PRIMARY;
 		drbd_set_exposed_data_uuid(device, current_uuid);
-		drbd_info(device, "sending new current UUID: %016llX\n", current_uuid);
+		drbd_info(device, "%s, sending new current UUID: %016llX\n", caller, current_uuid);
 
 		weak_nodes = drbd_weak_nodes_device(device);
 		for_each_peer_device(peer_device, device) {
@@ -5829,7 +5829,7 @@ void drbd_uuid_new_current(struct drbd_device *device, bool forced)
 void drbd_uuid_new_current_by_user(struct drbd_device *device)
 {
 	if (get_ldev(device)) {
-		__drbd_uuid_new_current(device, false, false);
+		__drbd_uuid_new_current(device, false, false, __FUNCTION__);
 		put_ldev(device);
 	}
 }

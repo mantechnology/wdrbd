@@ -8792,7 +8792,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		drbd_err(device, "Aborting Connect, can not thaw IO with an only Consistent peer\n");
 		tl_clear(connection);
 		mutex_lock(&resource->conf_update);
-		drbd_uuid_new_current(device, false);
+		drbd_uuid_new_current(device, false, __FUNCTION__);
 		mutex_unlock(&resource->conf_update);
 		begin_state_change(resource, &irq_flags, CS_HARD);
 		__change_cstate(connection, C_PROTOCOL_ERROR);
@@ -9798,13 +9798,13 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	//DW-1874 if FORCE_DISCONNECT is set, do not wait
-	if (test_bit(FORCE_DISCONNECT, &connection->flags)) {
+	// DW-2035 if DISCONN_NO_WAIT_RESYNC is set, don't wait for sync_ee.
+	if (test_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags)) {
 		/* verify or resync related peer requests are read_ee or sync_ee,
 		* drain them first */
-		conn_wait_ee_empty(connection, &connection->read_ee);
 		conn_wait_ee_empty(connection, &connection->sync_ee);
 	}
+	conn_wait_ee_empty(connection, &connection->read_ee);
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -10048,8 +10048,8 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	connection->send.seen_any_write_yet = false;
 
-	//DW-1874
-	clear_bit(FORCE_DISCONNECT, &connection->flags); 
+	// DW-2035
+	clear_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags);
 
 	drbd_info(connection, "Connection closed\n");
 

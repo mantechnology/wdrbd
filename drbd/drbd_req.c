@@ -2500,7 +2500,7 @@ static void ensure_current_uuid(struct drbd_device *device)
 		if (device->disk_state[NOW] != D_FAILED) {
 			struct drbd_resource *resource = device->resource;
 			mutex_lock(&resource->conf_update);
-			drbd_uuid_new_current(device, false);
+			drbd_uuid_new_current(device, false, __FUNCTION__);
 			mutex_unlock(&resource->conf_update);
 		}
 	}

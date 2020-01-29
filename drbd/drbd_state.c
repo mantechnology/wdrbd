@@ -3408,7 +3408,7 @@ static void check_may_resume_io_after_fencing(struct drbd_state_change *state_ch
 #endif
 			struct drbd_device *device = peer_device->device;
 			if (test_and_clear_bit(NEW_CUR_UUID, &device->flags))
-				drbd_uuid_new_current(device, false);
+				drbd_uuid_new_current(device, false, __FUNCTION__);
 		}
 		mutex_unlock(&resource->conf_update);
 		begin_state_change(resource, &irq_flags, CS_VERBOSE);
@@ -3976,7 +3976,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				/* When a peer disk goes from D_UP_TO_DATE to D_FAILED or D_INCONSISTENT
 				   we know that a write failed on that node. Therefore we need to create
 				   the new UUID right now (not wait for the next write to come in) */
-				drbd_uuid_new_current(device, false);
+				drbd_uuid_new_current(device, false, __FUNCTION__);
 			}
 
 
