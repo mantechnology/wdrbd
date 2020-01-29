@@ -313,7 +313,8 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	ULONG			inlen;
 	PLOGGING_MIN_LV pLoggingMinLv = NULL;
 	NTSTATUS	Status;
-
+	// DW-2041
+	int previous_lv_min = 0;
 	PIO_STACK_LOCATION	irpSp = IoGetCurrentIrpStackLocation(Irp);
 	inlen = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 
@@ -325,21 +326,32 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (Irp->AssociatedIrp.SystemBuffer) {
 		pLoggingMinLv = (PLOGGING_MIN_LV)Irp->AssociatedIrp.SystemBuffer;
 
-		if (pLoggingMinLv->nType == LOGGING_TYPE_SYSLOG)
+		if (pLoggingMinLv->nType == LOGGING_TYPE_SYSLOG) {
+			previous_lv_min = atomic_read(&g_eventlog_lv_min);
 			atomic_set(&g_eventlog_lv_min, pLoggingMinLv->nErrLvMin);
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG)
+		}
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_DBGLOG) {
+			previous_lv_min = atomic_read(&g_dbglog_lv_min);
 			atomic_set(&g_dbglog_lv_min, pLoggingMinLv->nErrLvMin);
-		else if (pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) 
+		}
+		else if (pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) {
+			previous_lv_min = atomic_read(&g_featurelog_flag);
 			atomic_set(&g_featurelog_flag, pLoggingMinLv->nErrLvMin);
+		}
+		else {
+			WDRBD_WARN("invalidate logging type(%d)\n", pLoggingMinLv->nType);
+		}
 
 		// DW-1432: Modified to see if command was successful 
 		Status = SaveCurrentValue(LOG_LV_REG_VALUE_NAME, Get_log_lv());
 		// DW-2008
-		WDRBD_INFO("set minimum log level, type : %s(%d), minumum level : %s(%d), result : %lu\n", 
+		WDRBD_INFO("set minimum log level, type : %s(%d), minumum level : %s(%d) => %s(%d), result : %lu\n", 
 					g_log_type_str[pLoggingMinLv->nType], pLoggingMinLv->nType, 
-					(pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[pLoggingMinLv->nErrLvMin] : g_default_lv_str[pLoggingMinLv->nErrLvMin], pLoggingMinLv->nErrLvMin,
+					// DW-2041
+					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[previous_lv_min] : g_default_lv_str[previous_lv_min]), previous_lv_min, 
+					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[pLoggingMinLv->nErrLvMin] : g_default_lv_str[pLoggingMinLv->nErrLvMin]), pLoggingMinLv->nErrLvMin,
 					Status);
-		if (Status != STATUS_SUCCESS){
+		if (Status != STATUS_SUCCESS) {
 			return STATUS_UNSUCCESSFUL; 
 		}
 	}
