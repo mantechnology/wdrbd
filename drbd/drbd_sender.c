@@ -117,8 +117,10 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
         bio = (struct bio *)Irp;
     }
 #endif
-	if (!bio)
+	if (!bio) {
+		WDRBD_TRACE("null bio\n");
 		BIO_ENDIO_FN_RETURN;
+	}
 
 	/* DW-1822
 	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
@@ -145,6 +147,8 @@ BIO_ENDIO_TYPE drbd_md_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	
 	if (device->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
 		put_ldev(device);
+	else
+		drbd_debug(device, "ldev null\n");
 
 #ifdef _WIN32
 	if ((ULONG_PTR)DeviceObject != FAULT_TEST_FLAG) {
@@ -670,9 +674,10 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 		bio = (struct bio *)Irp;
 	}
 
-	if (!bio)
+	if (!bio) {
+		WDRBD_TRACE("null bio\n");
 		BIO_ENDIO_FN_RETURN;
-
+	}
 	/* DW-1822
 	 * The generic_make_request calls IoAcquireRemoveLock before the IRP is created
 	 * and is freed from the completion routine functions.
@@ -3016,6 +3021,8 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #endif
 		}
 		unlock_all_resources();
+		// DW-2031 add put_ldev() due to ldev leak occurrence
+		put_ldev(device);
 		goto out;
 	}
 #endif

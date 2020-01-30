@@ -2954,13 +2954,13 @@ extern ULONG_PTR update_sync_bits(struct drbd_peer_device *peer_device,
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
 extern ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		update_sync_bits_mode mode);
+		update_sync_bits_mode mode, char* caller);
 #define drbd_set_in_sync(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
+	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC, __FUNCTION__)
 #define drbd_set_out_of_sync(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, SET_OUT_OF_SYNC)
+	__drbd_change_sync(peer_device, sector, size, SET_OUT_OF_SYNC, __FUNCTION__)
 #define drbd_rs_failed_io(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED)
+	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED, __FUNCTION__)
 
 extern void drbd_al_shrink(struct drbd_device *device);
 extern bool drbd_sector_has_priority(struct drbd_peer_device *, sector_t);

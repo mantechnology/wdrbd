@@ -5453,12 +5453,15 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 			(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
 		{
 #ifdef _WIN32_RCU_LOCKED
-			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, false))
+			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, false)) {
 #else
 			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))
 #endif
 				retcode = ERR_CODE_BASE;
-				goto out_no_ldev;
+			}
+			// DW-2031 add put_ldev() due to ldev leak occurrence
+			put_ldev(device);
+			goto out_no_ldev;
 		}
 	}
 #endif

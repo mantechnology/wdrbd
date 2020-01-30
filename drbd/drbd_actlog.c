@@ -1376,7 +1376,7 @@ static bool plausible_request_size(int size)
  *
  */
 ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		update_sync_bits_mode mode)
+								update_sync_bits_mode mode, char* caller)
 {
 	/* Is called from worker and receiver context _only_ */
 	struct drbd_device *device = peer_device->device;
@@ -1389,7 +1389,8 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 		return 0;
 
 	if (!plausible_request_size(size)) {
-		drbd_err(device, "%s: sector=%llus size=%u nonsense!\n",
+		drbd_err(device, "%s => %s: sector=%llus size=%u nonsense!\n",
+				caller, 
 				drbd_change_sync_fname[mode],
 				(unsigned long long)sector, size);
 		return 0;
@@ -1399,7 +1400,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(device, "get_ldev failed, sector(%llu)\n", sector);
+		drbd_err(device, "%s => get_ldev failed, sector(%llu), mode(%u)\n", caller, sector, mode);
 		return 0; /* no disk, no metadata, no bitmap to manipulate bits in */
 	}
 #else
@@ -1413,7 +1414,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(peer_device, "unexpected error, sector(%llu) < nr_sectors(%llu)\n", sector, nr_sectors);
+		drbd_err(peer_device, "%s => unexpected error, sector(%llu) < nr_sectors(%llu)\n", caller, sector, nr_sectors);
 		goto out;
 	}
 #else
@@ -1432,7 +1433,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 			// MODIFIED_BY_MANTECH DW-1153: add error log
 		{
 			// DW-1992 it is a normal operation, not an error, so it is output at the info level.
-			drbd_info(peer_device, "not in sync because it is smaller than bitmap bit size, sector(%llu) ~ sector(%llu)\n", sector, esector);
+			drbd_info(peer_device, "%s => not in sync because it is smaller than bitmap bit size, sector(%llu) ~ sector(%llu)\n", caller, sector, esector);
 			goto out;
 		}
 #else
