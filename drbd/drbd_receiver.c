@@ -9494,7 +9494,8 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
 			// DW-1365 : fixup secondary's diskless case for crashed primary.
 			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
-			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
+			// DW-2031 add put_ldev() due to ldev leak occurrence
+			if (peer_device->disk_state[NOW] > D_INCONSISTENT && get_ldev_if_state(peer_device->device, D_OUTDATED)) {
 				drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 				put_ldev (peer_device->device);
 			} else {
