@@ -1770,6 +1770,12 @@ struct drbd_marked_replicate {
 	u16 end_unmarked_rl;
 };
 
+// DW-2042
+struct drbd_resync_pending_sectors {
+	sector_t sst;	/* start sector number */
+	sector_t est;	/* end sector number */
+	struct list_head pending_sectors;
+};
 
 struct submit_worker {
 	struct workqueue_struct *wq;
@@ -1863,7 +1869,9 @@ struct drbd_device {
 #endif
 	struct mutex bm_resync_fo_mutex;
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
- 
+	// DW-2042
+	struct list_head resync_pending_sectors;
+
 	//DW-1911 marked replication list, used for resync
 	//does not use lock because it guarantees synchronization for the use of marked_rl_list.
 	//Use lock if you cannot guarantee future marked_rl_list synchronization

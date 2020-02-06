@@ -2164,6 +2164,28 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			put_ldev(device);
 			goto nodata;
 		}
+
+		// DW-2042
+		/* If it took the fast path in drbd_request_prepare, add it here.
+		* The slow path has added it already. */
+		if (list_empty(&req->req_pending_master_completion))
+			list_add_tail(&req->req_pending_master_completion,
+			&device->pending_master_completion[rw == WRITE]);
+
+		atomic_inc(&req->req_databuf_ref);
+		
+		if (req->private_bio) {
+			spin_unlock_irq(&resource->req_lock);
+			/* needs to be marked within the same spinlock */
+			req->pre_submit_jif = jiffies;
+			list_add_tail(&req->req_pending_local,
+				&device->pending_completion[rw == WRITE]);
+			_req_mod(req, TO_BE_SUBMITTED, NULL);
+
+			drbd_submit_req_private_bio(req);
+			submit_private_bio = true;
+			spin_lock_irq(&resource->req_lock);
+		}
 		/* Need to replicate writes.  Unless it is an empty flush,
 		 * which is better mapped to a DRBD P_BARRIER packet,
 		 * also for drbd wire protocol compatibility reasons.
@@ -2176,6 +2198,10 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			_req_mod(req, QUEUE_AS_DRBD_BARRIER, NULL);
 		} else if (!drbd_process_write_request(req))
 			no_remote = true;
+
+		if (0 == atomic_dec(&req->req_databuf_ref)) {
+			kfree2(req->req_databuf);
+		}
 		wake_all_senders(resource);
 	} else {
 		if (peer_device) {
@@ -2184,6 +2210,26 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			wake_up(&peer_device->connection->sender_work.q_wait);
 		} else
 			no_remote = true;
+
+		// DW-2042
+		/* If it took the fast path in drbd_request_prepare, add it here.
+		* The slow path has added it already. */
+		if (list_empty(&req->req_pending_master_completion))
+			list_add_tail(&req->req_pending_master_completion,
+			&device->pending_master_completion[rw == WRITE]);
+
+		if (req->private_bio) {
+			spin_unlock_irq(&resource->req_lock);
+			/* needs to be marked within the same spinlock */
+			req->pre_submit_jif = jiffies;
+			list_add_tail(&req->req_pending_local,
+				&device->pending_completion[rw == WRITE]);
+			_req_mod(req, TO_BE_SUBMITTED, NULL);
+
+			drbd_submit_req_private_bio(req);
+			submit_private_bio = true;
+			spin_lock_irq(&resource->req_lock);
+		}
 	}
 
 #ifndef _WIN32
@@ -2194,20 +2240,7 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	}
 #endif
 
-	/* If it took the fast path in drbd_request_prepare, add it here.
-	 * The slow path has added it already. */
-	if (list_empty(&req->req_pending_master_completion))
-		list_add_tail(&req->req_pending_master_completion,
-			&device->pending_master_completion[rw == WRITE]);
-	if (req->private_bio) {
-		/* needs to be marked within the same spinlock */
-		req->pre_submit_jif = jiffies;
-		list_add_tail(&req->req_pending_local,
-			&device->pending_completion[rw == WRITE]);
-		_req_mod(req, TO_BE_SUBMITTED, NULL);
-		/* but we need to give up the spinlock to submit */
-		submit_private_bio = true;
-	} else if (no_remote) {
+	if (!submit_private_bio && no_remote) {
 nodata:
 		if (drbd_ratelimit())
 #ifdef _WIN32
@@ -2229,14 +2262,6 @@ out:
 		kref_put(&req->kref, drbd_req_destroy);
 	spin_unlock_irq(&resource->req_lock);
 
-	/* Even though above is a kref_put(), this is safe.
-	 * As long as we still need to submit our private bio,
-	 * we hold a completion ref, and the request cannot disappear.
-	 * If however this request did not even have a private bio to submit
-	 * (e.g. remote read), req may already be invalid now.
-	 * That's why we cannot check on req->private_bio. */
-	if (submit_private_bio)
-		drbd_submit_req_private_bio(req);
 #ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */

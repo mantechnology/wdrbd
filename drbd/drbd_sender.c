@@ -1432,6 +1432,8 @@ next_sector:
 				put_ldev(device);
 				return err;
 			}
+			drbd_info(peer_device, "%s => req rsdata %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (size >> 9)));
+
 			//DW-1886
 			peer_device->rs_send_req += size;
 		}
@@ -2141,6 +2143,8 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
 				else {
+					drbd_info(peer_device, "%llu ~ %llu, peer_req->peer_req_databuf\n", 
+						(unsigned long long)BM_SECT_TO_BIT(peer_req->i.sector), (unsigned long long)BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
 				}
 				

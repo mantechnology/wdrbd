@@ -3094,6 +3094,8 @@ int drbd_send_out_of_sync(struct drbd_peer_device *peer_device, struct drbd_inte
 	p = drbd_prepare_command(peer_device, sizeof(*p), DATA_STREAM);
 	if (!p)
 		return -EIO;
+
+	drbd_info(peer_device, "%s => out of sync %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(i->sector), BM_SECT_TO_BIT(i->sector + (i->size >> 9)));
 	p->sector = cpu_to_be64(i->sector);
 	p->blksize = cpu_to_be32(i->size);
 	return drbd_send_command(peer_device, P_OUT_OF_SYNC, DATA_STREAM);
