@@ -544,6 +544,11 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
 		peer_req->io_complete_ts = timestamp();
 
+	if (!((bio)->bi_rw & (RW_MASK))) {
+		WDRBD_INFO("read complete sector(bit) %llu(%llu) ~ %llu(%llu)\n", 
+			peer_req->i.sector, BM_SECT_TO_BIT(peer_req->i.sector), peer_req->i.sector + (peer_req->i.size >> 9), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+	}
+
 	BIO_ENDIO_FN_START;
 #ifdef _WIN32 
 	if (NT_ERROR(error) && drbd_ratelimit())
@@ -695,6 +700,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	req = bio->bi_private; 
 	device = req->device;
 	uptodate = bio_flagged(bio, BIO_UPTODATE);
+
+
+	if ((bio)->bi_rw & (RW_MASK)) {
+		drbd_info(device, "write complete sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9),BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
+	}
 #else
 	struct drbd_request *req = bio->bi_private;
 	struct drbd_device *device = req->device;
@@ -1860,7 +1870,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 	}
 
 	if (peer_device->rs_failed) {
-		drbd_info(peer_device, "            %llu failed blocks\n", (unsigned long long)peer_device->rs_failed);
+		drbd_info(peer_device, "            %llu failed blocks (out of sync :%llu)\n", (unsigned long long)peer_device->rs_failed, (unsigned long long)n_oos);
 
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
 			__change_disk_state(device, D_INCONSISTENT, __FUNCTION__);
@@ -3043,9 +3053,16 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
+			//DW-2042
+			struct drbd_resync_pending_sectors *pending_st, *t1;
+			list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, t1, &(device->resync_pending_sectors), pending_sectors) {
+				list_del(&pending_st->pending_sectors);
+				kfree2(pending_st);
+			}
+
 			//DW-1911
-			struct drbd_marked_replicate *marked_rl, *t;
-			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
+			struct drbd_marked_replicate *marked_rl, *t2;
+			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t2, &(device->marked_rl_list), marked_rl_list) {
 				list_del(&marked_rl->marked_rl_list);
 				kfree2(marked_rl);
 			}

@@ -360,7 +360,7 @@ tail_recursion:
 								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
 						struct drbd_oos_no_req* send_oos = NULL;
 
-						drbd_debug(peer_device,"found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+						drbd_info(peer_device,"found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
 
 						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
 						if (send_oos)
@@ -2182,7 +2182,9 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 				&device->pending_completion[rw == WRITE]);
 			_req_mod(req, TO_BE_SUBMITTED, NULL);
 
+			drbd_info(device, "request write sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9), BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
 			drbd_submit_req_private_bio(req);
+			drbd_info(device, "request finished sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9), BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
 			submit_private_bio = true;
 			spin_lock_irq(&resource->req_lock);
 		}

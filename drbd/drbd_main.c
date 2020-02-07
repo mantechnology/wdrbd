@@ -4687,6 +4687,9 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1901
 	INIT_LIST_HEAD(&device->marked_rl_list);
+	//DW-2042
+	INIT_LIST_HEAD(&device->resync_pending_sectors);
+
 	device->s_rl_bb = UINT64_MAX;
 	device->e_rl_bb = 0;
 	device->e_resync_bb = 0;
