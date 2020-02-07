@@ -2520,8 +2520,8 @@ static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, se
 
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-// DW-2042 set in sync only when not in range resync_pending
-bool is_resync_pending(struct drbd_peer_device* peer_device, sector_t sst, sector_t est)
+// DW-2042 
+bool check_resync_pending_and_set_rs_failed(struct drbd_peer_device* peer_device, sector_t sst, sector_t est)
 {
 	struct drbd_resync_pending_sectors *target;
 	bool find_resync_pending = false;
@@ -2531,11 +2531,17 @@ bool is_resync_pending(struct drbd_peer_device* peer_device, sector_t sst, secto
 			break;
 		}
 
-		if ((sst >= target->sst && est <= target->est) ||
-			sst < target->sst && (est <= target->est || est >= target->est)) {
-			drbd_info(peer_device, "all.. ignore resync pending sectors %llu ~ %llu, target %llu ~ %llu\n", sst, est, target->sst, target->est);
+		if ((sst >= target->sst && est <= target->est)) {
+			drbd_info(peer_device, "find resync pending sectors %llu ~ %llu, target %llu ~ %llu, rs_failed %llu\n", sst, est, target->sst, target->est, peer_device->rs_failed);
 			find_resync_pending = true;
-			break;
+
+			return find_resync_pending;
+		}
+
+		if (sst < target->sst && (est <= target->est || est >= target->est)) {
+			peer_device->rs_failed += BM_SECT_TO_BIT(target->sst - sst);
+			drbd_info(peer_device, "find resync pending sectors %llu ~ %llu, target %llu ~ %llu, rs_failed %llu\n", sst, est, target->sst, target->est, peer_device->rs_failed);
+			find_resync_pending = true;
 		}
 
 		if (target->est > sst) {
@@ -2543,6 +2549,11 @@ bool is_resync_pending(struct drbd_peer_device* peer_device, sector_t sst, secto
 			if (sst > est)
 				break;
 		}
+	}
+
+	if (find_resync_pending && sst < est) {
+		peer_device->rs_failed += BM_SECT_TO_BIT(est - sst);
+		drbd_info(peer_device, "find resync pending sectors %llu ~ %llu, rs_failed %llu\n", sst, est);
 	}
 
 	return find_resync_pending;
@@ -2593,7 +2604,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 			drbd_info(peer_device, "%s => write %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (peer_req->i.size >> 9)));
 
 			// DW-2042
-			if (is_resync_pending(peer_device, sector, (sector + (peer_req->i.size >> 9)))) {
+			if (check_resync_pending_and_set_rs_failed(peer_device, sector, (sector + (peer_req->i.size >> 9)))) {
 				for_each_peer_device(target, peer_device->device) {
 					if (target == peer_device) {
 						drbd_set_out_of_sync(target, sector, peer_req->i.size);
@@ -2603,7 +2614,6 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 					if (target->current_uuid == peer_device->current_uuid) {
 						drbd_set_out_of_sync(target, sector, peer_req->i.size);
 					}
-
 				}
 				if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ))
 					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
@@ -3830,6 +3840,7 @@ static void drbd_queue_peer_request(struct drbd_device *device, struct drbd_peer
 	wake_up(&device->al_wait);
 }
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 // DW-2042 remove duplicate area from resync pending list
 static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, sector_t sst, sector_t est, ULONG_PTR *dup_cnt)
 {
@@ -3985,6 +3996,7 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 
 	return 0;
 }
+#endif
 
 /* mirrored write */
 static int receive_Data(struct drbd_connection *connection, struct packet_info *pi)
@@ -4261,8 +4273,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			if (peer_device->connection->agreed_pro_version >= 113 && peer_device->repl_state[NOW] == L_SYNC_TARGET) {
 				err = list_add_marked(peer_device, peer_req->i.sector, peer_req->i.sector + (peer_req->i.size >> 9), peer_req->i.size, in_sync);
 			}
-		}
 #endif
+		}
 
 #ifdef _WIN32_TRACE_PEER_DAGTAG
 		WDRBD_INFO("receive_Data connection->last_dagtag_sector:%llx ack_receiver thread state:%d\n",connection->last_dagtag_sector, get_t_state(&connection->ack_receiver));
@@ -9407,7 +9419,7 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 
 	return 0;
 }
-
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 // DW-2042 examine and expand the overlapping ranges.
 static struct drbd_resync_pending_sectors *resync_pending_check_and_expand_dup(struct drbd_device* device, sector_t sst, sector_t est, ULONG_PTR *dup_cnt)
 {
@@ -9563,6 +9575,7 @@ static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sec
 
 	return 0;
 }
+#endif 
 
 static int receive_out_of_sync(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -9584,23 +9597,25 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	device = peer_device->device;
 	
 	sector = be64_to_cpu(p->sector); 
+
+	mutex_lock(&device->bm_resync_fo_mutex);
+	drbd_info(peer_device, "%s => out of sync %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (be32_to_cpu(p->blksize) >> 9)));
+	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
+
 	switch (peer_device->repl_state[NOW]) {
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
 		break; 
 	case L_SYNC_TARGET: 
-		mutex_lock(&device->bm_resync_fo_mutex);
 #ifdef _WIN32
 		// DW-2042
 		// MODIFIED_BY_MANTECH DW-1354: I am a sync target and find offset points the end, does mean no more requeueing resync timer.
 		//bResetTimer = (device->bm_resync_fo == drbd_bm_bits(device));
 #endif
 		bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
-		if (bit < device->bm_resync_fo) {
 
-		drbd_info(peer_device, "%s => out of sync %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (be32_to_cpu(p->blksize) >> 9)));
-		drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
+		if (bit < device->bm_resync_fo) {
 		// DW-2042
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			if (peer_device->connection->agreed_pro_version >= 113) {
@@ -9614,7 +9629,6 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 			//device->bm_resync_fo = bit;
 		}
 
-		mutex_unlock(&device->bm_resync_fo_mutex);
 		break; 
 	default:
 #ifdef _WIN32
@@ -9625,11 +9639,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				drbd_repl_str(peer_device->repl_state[NOW]));
 #endif
 	}
-
-	if (peer_device->repl_state[NOW] != L_SYNC_TARGET) {
-		drbd_info(peer_device, "%s => out of sync %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (be32_to_cpu(p->blksize) >> 9)));
-		drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
-	}
+	mutex_unlock(&device->bm_resync_fo_mutex);
 
 #ifdef _WIN32
 	// DW-2042

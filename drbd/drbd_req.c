@@ -974,6 +974,11 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		BUG_ON(clear);
 	}
 
+	// DW-2042
+	if ((set & RQ_OOS_NET_QUEUED) && !(req->rq_state[idx] & RQ_OOS_PENDING)) {
+		return;
+	}
+
 	if (drbd_suspended(req->device) && !((old_local | clear_local) & RQ_COMPLETION_SUSP))
 		set_local |= RQ_COMPLETION_SUSP;
 
@@ -1348,8 +1353,12 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 			start_new_tl_epoch(device->resource);
 		break;
 
+	case QUEUE_FOR_PENDING_OOS:
+		mod_rq_state(req, m, peer_device, 0, RQ_OOS_PENDING|RQ_NET_PENDING);
+		break;
+
 	case QUEUE_FOR_SEND_OOS:
-		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED);
+		mod_rq_state(req, m, peer_device, RQ_OOS_PENDING|RQ_NET_PENDING, RQ_OOS_NET_QUEUED | RQ_NET_QUEUED);
 		break;
 
 	case READ_RETRY_REMOTE_CANCELED:
@@ -1365,7 +1374,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		if (is_pending_write_protocol_A(req, idx))
 			/* this is what is dangerous about protocol A:
 			 * pretend it was successfully written on the peer. */
-			mod_rq_state(req, m, peer_device, RQ_NET_QUEUED|RQ_NET_PENDING,
+			 mod_rq_state(req, m, peer_device, RQ_NET_QUEUED|RQ_NET_PENDING,
 				     RQ_NET_SENT|RQ_NET_OK);
 		else
 			mod_rq_state(req, m, peer_device, RQ_NET_QUEUED, RQ_NET_SENT);
@@ -1850,9 +1859,11 @@ static int drbd_process_write_request(struct drbd_request *req)
 				in_tree = true;
 			}
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
-		} else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size))
-			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
-
+		}
+		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
+			// DW-2042
+			_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
+		}
 	}
 
 	return count;
@@ -2164,30 +2175,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			put_ldev(device);
 			goto nodata;
 		}
-
-		// DW-2042
-		/* If it took the fast path in drbd_request_prepare, add it here.
-		* The slow path has added it already. */
-		if (list_empty(&req->req_pending_master_completion))
-			list_add_tail(&req->req_pending_master_completion,
-			&device->pending_master_completion[rw == WRITE]);
-
-		atomic_inc(&req->req_databuf_ref);
-		
-		if (req->private_bio) {
-			spin_unlock_irq(&resource->req_lock);
-			/* needs to be marked within the same spinlock */
-			req->pre_submit_jif = jiffies;
-			list_add_tail(&req->req_pending_local,
-				&device->pending_completion[rw == WRITE]);
-			_req_mod(req, TO_BE_SUBMITTED, NULL);
-
-			drbd_info(device, "request write sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9), BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
-			drbd_submit_req_private_bio(req);
-			drbd_info(device, "request finished sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9), BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
-			submit_private_bio = true;
-			spin_lock_irq(&resource->req_lock);
-		}
 		/* Need to replicate writes.  Unless it is an empty flush,
 		 * which is better mapped to a DRBD P_BARRIER packet,
 		 * also for drbd wire protocol compatibility reasons.
@@ -2200,10 +2187,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			_req_mod(req, QUEUE_AS_DRBD_BARRIER, NULL);
 		} else if (!drbd_process_write_request(req))
 			no_remote = true;
-
-		if (0 == atomic_dec(&req->req_databuf_ref)) {
-			kfree2(req->req_databuf);
-		}
 		wake_all_senders(resource);
 	} else {
 		if (peer_device) {
@@ -2212,26 +2195,6 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 			wake_up(&peer_device->connection->sender_work.q_wait);
 		} else
 			no_remote = true;
-
-		// DW-2042
-		/* If it took the fast path in drbd_request_prepare, add it here.
-		* The slow path has added it already. */
-		if (list_empty(&req->req_pending_master_completion))
-			list_add_tail(&req->req_pending_master_completion,
-			&device->pending_master_completion[rw == WRITE]);
-
-		if (req->private_bio) {
-			spin_unlock_irq(&resource->req_lock);
-			/* needs to be marked within the same spinlock */
-			req->pre_submit_jif = jiffies;
-			list_add_tail(&req->req_pending_local,
-				&device->pending_completion[rw == WRITE]);
-			_req_mod(req, TO_BE_SUBMITTED, NULL);
-
-			drbd_submit_req_private_bio(req);
-			submit_private_bio = true;
-			spin_lock_irq(&resource->req_lock);
-		}
 	}
 
 #ifndef _WIN32
@@ -2242,7 +2205,20 @@ static void drbd_send_and_submit(struct drbd_device *device, struct drbd_request
 	}
 #endif
 
-	if (!submit_private_bio && no_remote) {
+	/* If it took the fast path in drbd_request_prepare, add it here.
+	 * The slow path has added it already. */
+	if (list_empty(&req->req_pending_master_completion))
+		list_add_tail(&req->req_pending_master_completion,
+			&device->pending_master_completion[rw == WRITE]);
+	if (req->private_bio) {
+		/* needs to be marked within the same spinlock */
+		req->pre_submit_jif = jiffies;
+		list_add_tail(&req->req_pending_local,
+			&device->pending_completion[rw == WRITE]);
+		_req_mod(req, TO_BE_SUBMITTED, NULL);
+		/* but we need to give up the spinlock to submit */
+		submit_private_bio = true;
+	} else if (no_remote) {
 nodata:
 		if (drbd_ratelimit())
 #ifdef _WIN32
@@ -2264,6 +2240,14 @@ out:
 		kref_put(&req->kref, drbd_req_destroy);
 	spin_unlock_irq(&resource->req_lock);
 
+	/* Even though above is a kref_put(), this is safe.
+	 * As long as we still need to submit our private bio,
+	 * we hold a completion ref, and the request cannot disappear.
+	 * If however this request did not even have a private bio to submit
+	 * (e.g. remote read), req may already be invalid now.
+	 * That's why we cannot check on req->private_bio. */
+	if (submit_private_bio)
+		drbd_submit_req_private_bio(req);
 #ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */
