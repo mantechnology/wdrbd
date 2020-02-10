@@ -2331,9 +2331,17 @@ static int fill_bitmap_rle_bits(struct drbd_peer_device *peer_device,
 		/* paranoia: catch zero runlength.
 		 * can only happen if bitmap is modified while we scan it. */
 		if (rl == 0) {
-			drbd_err(peer_device, "unexpected zero runlength while encoding bitmap "
+			drbd_warn(peer_device, "unexpected zero runlength while encoding bitmap "
 				"t:%u bo:%llu\n", toggle, (unsigned long long)c->bit_offset);
-			return -1;
+			// DW-2037 replication I/O can cause bitmap changes, in which case this code will restore.
+			if (toggle == 0) {
+				update_sync_bits(peer_device, offset, offset, SET_OUT_OF_SYNC, false);
+				continue;
+			}
+			else {
+				drbd_err(peer_device, "unexpected out-of-sync has occurred\n");
+				return -1;
+			}
 		}
 
 		bits = vli_encode_bits(&bs, rl);
@@ -2598,6 +2606,10 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 			peer_device->repl_state[NOW] == L_AHEAD)
 			atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 		err = !_drbd_send_bitmap(device, peer_device);
+		// DW-2037 reconnect if the bitmap cannot be restored.
+		if (err != 0) {
+			change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+		}
 	}
 	else
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
