@@ -2605,7 +2605,7 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 		if (peer_device->repl_state[NOW] == L_WF_BITMAP_S ||
 			peer_device->repl_state[NOW] == L_AHEAD)
 			atomic_set(&peer_device->wait_for_recv_bitmap, 1);
-		err = !_drbd_send_bitmap(device, peer_device);	
+		err = !_drbd_send_bitmap(device, peer_device);
 	}
 	else
 		mutex_unlock(&peer_device->connection->mutex[DATA_STREAM]);
@@ -6700,9 +6700,9 @@ static int w_bitmap_io(struct drbd_work *w, int unused)
 			drbd_bm_lock(device, work->why, work->flags);
 		rv = work->io_fn(device, work->peer_device);
 		// DW-2037 reconnect if the bitmap cannot be restored.
-		if (rv != 0) {
+		if (rv == 1)
 			change_cstate_ex(work->peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
-		}
+
 		if (work->flags & BM_LOCK_SINGLE_SLOT)
 			drbd_bm_slot_unlock(work->peer_device);
 		else
