@@ -2520,33 +2520,43 @@ static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, se
 
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-// DW-2042 check if resync pending is included
+// DW-2042 get duplicate or non-redundant ranges from sst to est (cst is the last search sector)
 static bool get_resync_pending_range(struct drbd_peer_device* peer_device, sector_t sst, sector_t est, sector_t *cst)
 {
 	struct drbd_resync_pending_sectors *target = NULL;
 
 	list_for_each_entry(struct drbd_resync_pending_sectors, target, &(peer_device->device->resync_pending_sectors), pending_sectors) {
 		if (est <= target->sst) {
+			// all ranges are not duplicated with resync pending
+			// cst (current sector)
 			*cst = est;
+			// return false not duplicate
 			return false;
 		}
 		else if ((sst >= target->sst && est <= target->est)) {
+			// all ranges are duplicated with resync pending
+			drbd_info(peer_device, "dup all out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)sst, (unsigned long long)est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = est;
+			// return true duplicate 
 			return true;
 		}
 		else if (sst < target->sst && est > target->sst) {
+			// not all ranges duplicated
 			*cst = target->sst;
 			return false;
 		}
 		else if (sst < target->sst && (est <= target->est || est >= target->est)) {
-			drbd_info(peer_device, "b. resync pending front out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
-				(unsigned long long)target->sst, (unsigned long long)(target->est < est ? target->est : est), sst, est, (unsigned long long)target->sst, (unsigned long long)target->est);
+			// front range duplicated
+			drbd_info(peer_device, "dup front out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)target->sst, (unsigned long long)(target->est < est ? target->est : est), (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = (target->est < est ? target->est : est);
 			return true;
 		}
 		else if (sst >= target->sst && sst < target->est && est > target->est) {
-			drbd_info(peer_device, "b. resync pending end out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
-				(unsigned long long)sst, (unsigned long long)target->est, sst, est, (unsigned long long)target->sst, (unsigned long long)target->est);
+			// end range duplicated 
+			drbd_info(peer_device, "dup end out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)sst, (unsigned long long)target->est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = target->est;
 			return true;
 		}
@@ -2621,6 +2631,7 @@ static int split_request_complete(struct drbd_peer_device* peer_device, struct d
 	return err;
 }
 
+// DW-2042 after the duplicate inspection, the bitmap setting and the results are sent.
 static void dup_verification_and_processing(struct drbd_peer_device* peer_device, struct drbd_peer_request *peer_req)
 {
 	sector_t sst, offset, est = peer_req->i.sector + (peer_req->i.size >> 9);
@@ -2631,6 +2642,7 @@ static void dup_verification_and_processing(struct drbd_peer_device* peer_device
 
 	while (offset < est && offset >= sst) {
 		if (!get_resync_pending_range(peer_device, offset, est, &offset)) {
+			// return false indicates ranges in sync.
 			for_each_peer_device(tmp, peer_device->device) {
 				if (tmp == peer_device ||
 					tmp->current_uuid == peer_device->current_uuid) {
@@ -2640,6 +2652,7 @@ static void dup_verification_and_processing(struct drbd_peer_device* peer_device
 			}
 		}
 		else {
+			// return true indicates ranges out of sync (duplicate ranges)
 			for_each_peer_device(tmp, peer_device->device) {
 				if (tmp == peer_device ||
 					tmp->current_uuid == peer_device->current_uuid) {
@@ -2649,6 +2662,8 @@ static void dup_verification_and_processing(struct drbd_peer_device* peer_device
 			}
 		}
 
+		// send the result only when it is not a split request.
+		// (if it is a split request, set the bitmap only and send the result from the split_request_complet())
 		if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
 			_drbd_send_ack(peer_device, cmd, cpu_to_be64(sst), cpu_to_be32((int)(offset - sst) << 9),
 				((offset == est) ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT));
@@ -3854,7 +3869,7 @@ static void drbd_queue_peer_request(struct drbd_device *device, struct drbd_peer
 }
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-// DW-2042 remove areas within the range
+// DW-2042 remove the duplicate range.(examined for all/front/middle/end)
 static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, sector_t sst, sector_t est, ULONG_PTR *dup_cnt)
 {
 	struct drbd_resync_pending_sectors *target, *tmp;
@@ -9435,7 +9450,7 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 	return 0;
 }
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-// DW-2042 validate that range is already included (null return if not included)
+// DW-2042 validate that range is already (null return if not already)
 static struct drbd_resync_pending_sectors *resync_pending_check_and_expand_dup(struct drbd_device* device, sector_t sst, sector_t est, ULONG_PTR *dup_cnt)
 {
 	struct drbd_resync_pending_sectors *pending_st = NULL;
@@ -9445,7 +9460,7 @@ static struct drbd_resync_pending_sectors *resync_pending_check_and_expand_dup(s
 
 	list_for_each_entry(struct drbd_resync_pending_sectors, pending_st, &(device->resync_pending_sectors), pending_sectors) {
 		if (sst >= pending_st->sst && sst <= pending_st->est && est <= pending_st->est) {
-			// ignore them because they already have the same rangs.
+			// ignore them because they already have the all rangs.
 			return pending_st;
 		}
 
@@ -9473,11 +9488,11 @@ static struct drbd_resync_pending_sectors *resync_pending_check_and_expand_dup(s
 			return pending_st;
 		}
 	}
-
+	// there is no equal range.
 	return NULL;
 }
 
-// DW-2042 examine whether the range is included and remove if it is included.
+// DW-2042 if you already have a range, remove the duplicate entry. (all list item)
 static void resync_pending_list_all_check_and_dedup(struct drbd_device* device, struct drbd_resync_pending_sectors *pending_st, ULONG_PTR *dup_cnt)
 {
 	struct drbd_resync_pending_sectors *target, *tmp;
@@ -9515,6 +9530,7 @@ static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sec
 
 	int i = 0;
 
+	// remove duplicates from items you want to add.
 	pending_st = resync_pending_check_and_expand_dup(device, sst, est, rs_failed_cnt);
 	if (pending_st) {
 		resync_pending_list_all_check_and_dedup(device, pending_st, rs_failed_cnt);
