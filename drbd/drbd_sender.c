@@ -544,11 +544,6 @@ BIO_ENDIO_TYPE drbd_peer_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) 
 		peer_req->io_complete_ts = timestamp();
 
-	if (!((bio)->bi_rw & (RW_MASK))) {
-		WDRBD_INFO("read complete sector(bit) %llu(%llu) ~ %llu(%llu)\n", 
-			peer_req->i.sector, BM_SECT_TO_BIT(peer_req->i.sector), peer_req->i.sector + (peer_req->i.size >> 9), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
-	}
-
 	BIO_ENDIO_FN_START;
 #ifdef _WIN32 
 	if (NT_ERROR(error) && drbd_ratelimit())
@@ -700,11 +695,6 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	req = bio->bi_private; 
 	device = req->device;
 	uptodate = bio_flagged(bio, BIO_UPTODATE);
-
-
-	if ((bio)->bi_rw & (RW_MASK)) {
-		drbd_info(device, "write complete sector(bit) %llu(%llu) ~ %llu(%llu)\n", req->i.sector, req->i.sector + (req->i.size >> 9),BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
-	}
 #else
 	struct drbd_request *req = bio->bi_private;
 	struct drbd_device *device = req->device;
@@ -809,10 +799,12 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	// DW-2042
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	struct drbd_peer_device* peer_device;
-
+	
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->connection->agreed_pro_version >= 113) {
-			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+			int idx = peer_device ? 1 + peer_device->node_id : 0;
+			if (req->rq_state[idx] & RQ_OOS_PENDING)
+				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
 		}
 	}
 #endif
@@ -1453,7 +1445,6 @@ next_sector:
 				put_ldev(device);
 				return err;
 			}
-			drbd_info(peer_device, "%s => req rsdata %llu ~ %llu\n", __FUNCTION__, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (size >> 9)));
 
 			//DW-1886
 			peer_device->rs_send_req += size;
@@ -2164,8 +2155,6 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
 				else {
-					drbd_info(peer_device, "%llu ~ %llu, peer_req->peer_req_databuf\n", 
-						(unsigned long long)BM_SECT_TO_BIT(peer_req->i.sector), (unsigned long long)BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 					err = drbd_send_block(peer_device, P_RS_DATA_REPLY, peer_req);
 				}
 				
