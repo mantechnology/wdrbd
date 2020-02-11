@@ -4284,6 +4284,40 @@ change_peer_state(struct drbd_connection *connection, int vnr,
 	return rv;
 }
 
+// DW-2029
+static enum drbd_state_rv
+conn_send_twopc(struct drbd_resource *resource, struct drbd_connection *connection, struct p_twopc_request *request,
+			int vnr, enum drbd_packet cmd, u64 reach_immediately)
+{
+	u64 mask;
+	enum drbd_state_rv rv = SS_SUCCESS;
+
+	clear_bit(TWOPC_PREPARED, &connection->flags);
+
+	if (connection->agreed_pro_version < 110)
+		return rv;
+
+	mask = NODE_MASK(connection->peer_node_id);
+	if (reach_immediately & mask)
+		set_bit(TWOPC_PREPARED, &connection->flags);
+	else
+		return rv;
+
+	clear_bit(TWOPC_YES, &connection->flags);
+	clear_bit(TWOPC_NO, &connection->flags);
+	clear_bit(TWOPC_RETRY, &connection->flags);
+
+	if (!conn_send_twopc_request(connection, vnr, cmd, request)) {
+		rv = SS_CW_SUCCESS;
+	}
+	else {
+		clear_bit(TWOPC_PREPARED, &connection->flags);
+		wake_up(&resource->work.q_wait);
+	}
+	
+	return rv;
+}
+
 static enum drbd_state_rv
 __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet cmd,
 		       struct p_twopc_request *request, u64 reach_immediately)
@@ -4291,30 +4325,22 @@ __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet
 	struct drbd_connection *connection;
 	enum drbd_state_rv rv = SS_SUCCESS;
 	u64 im;
+	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
 
-	for_each_connection_ref(connection, im, resource) {
-		u64 mask;
-
-		clear_bit(TWOPC_PREPARED, &connection->flags);
-
-		if (connection->agreed_pro_version < 110)
-			continue;
-		mask = NODE_MASK(connection->peer_node_id);
-		if (reach_immediately & mask)
-			set_bit(TWOPC_PREPARED, &connection->flags);
-		else
-			continue;
-
-		clear_bit(TWOPC_YES, &connection->flags);
-		clear_bit(TWOPC_NO, &connection->flags);
-		clear_bit(TWOPC_RETRY, &connection->flags);
-
-		if (!conn_send_twopc_request(connection, vnr, cmd, request)) {
+	// DW-2029 send a twopc request to target node first	
+	connection = drbd_get_connection_by_node_id(resource, target_node_id);
+	if (connection) {
+		if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
 			rv = SS_CW_SUCCESS;
-		} else {
-			clear_bit(TWOPC_PREPARED, &connection->flags);
-			wake_up(&resource->work.q_wait);
-		}
+	}
+
+	// send to other nodes
+	for_each_connection_ref(connection, im, resource) {
+		if (target_node_id == connection->peer_node_id)
+			continue;
+
+		if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
+			rv = SS_CW_SUCCESS;
 	}
 	return rv;
 }
@@ -4515,9 +4541,20 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
 	enum drbd_packet twopc_cmd = success ? P_TWOPC_COMMIT : P_TWOPC_ABORT;
 	struct drbd_connection *connection;
 	u64 im;
+	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
+	
+	// DW-2029 send a twopc request to target node first
+	connection = drbd_connection_by_node_id(resource, target_node_id);
+	if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
+		conn_send_twopc_request(connection, vnr, twopc_cmd, request);
 
+	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
 		u64 mask = NODE_MASK(connection->peer_node_id);
+
+		if (target_node_id == connection->peer_node_id)
+			continue;
+
 		if (!(reach_immediately & mask))
 			continue;
 
