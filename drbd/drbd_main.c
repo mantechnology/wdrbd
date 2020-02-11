@@ -2485,6 +2485,17 @@ send_bitmap_rle_or_plain(struct drbd_peer_device *peer_device, struct bm_xfer_ct
 	return -EIO;
 }
 
+void drbd_send_bitmap_source_complete(struct drbd_device *device, struct drbd_peer_device *peer_device, int err)
+{
+	UNREFERENCED_PARAMETER(device);
+
+	// DW-2037 reconnect if the bitmap cannot be restored.
+	if (err) {
+		drbd_err(peer_device, "syncsource send bitmap failed err(%d)\n", err);
+		change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+	}
+}
+
 void drbd_send_bitmap_target_complete(struct drbd_device *device, struct drbd_peer_device *peer_device, int err)
 {
 	UNREFERENCED_PARAMETER(device);
@@ -6698,10 +6709,8 @@ static int w_bitmap_io(struct drbd_work *w, int unused)
 			drbd_bm_slot_lock(work->peer_device, work->why, work->flags);
 		else
 			drbd_bm_lock(device, work->why, work->flags);
+
 		rv = work->io_fn(device, work->peer_device);
-		// DW-2037 reconnect if the bitmap cannot be restored.
-		if (rv == 1)
-			change_cstate_ex(work->peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
 
 		if (work->flags & BM_LOCK_SINGLE_SLOT)
 			drbd_bm_slot_unlock(work->peer_device);

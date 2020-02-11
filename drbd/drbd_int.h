@@ -2122,6 +2122,8 @@ extern int drbd_send_drequest(struct drbd_peer_device *, int cmd,
 extern void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_size);
 extern int drbd_send_ov_request(struct drbd_peer_device *, sector_t sector, int size);
 
+// DW-2037
+extern void drbd_send_bitmap_source_complete(struct drbd_device *, struct drbd_peer_device *, int);
 // DW-1979
 extern void drbd_send_bitmap_target_complete(struct drbd_device *, struct drbd_peer_device *, int);
 extern int drbd_send_bitmap(struct drbd_device *, struct drbd_peer_device *);
