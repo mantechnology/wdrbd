@@ -3696,7 +3696,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
 			{
 #endif
-				drbd_queue_bitmap_io(device, &drbd_send_bitmap, NULL,
+				drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_source_complete,
 						"send_bitmap (WFBitMapS)",
 						BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
 						peer_device);
