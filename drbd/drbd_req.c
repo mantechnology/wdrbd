@@ -974,10 +974,12 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		BUG_ON(clear);
 	}
 
-	// DW-2042
+	// DW-2042 When setting RQ_OOS_NET_QUEUED, RQ_OOS_PENDING shall be set.
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	if ((set & RQ_OOS_NET_QUEUED) && !(req->rq_state[idx] & RQ_OOS_PENDING)) {
 		return;
 	}
+#endif
 
 	if (drbd_suspended(req->device) && !((old_local | clear_local) & RQ_COMPLETION_SUSP))
 		set_local |= RQ_COMPLETION_SUSP;
@@ -1353,12 +1355,18 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 			start_new_tl_epoch(device->resource);
 		break;
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	case QUEUE_FOR_PENDING_OOS:
 		mod_rq_state(req, m, peer_device, 0, RQ_OOS_PENDING|RQ_NET_PENDING);
 		break;
+#endif
 
 	case QUEUE_FOR_SEND_OOS:
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		mod_rq_state(req, m, peer_device, RQ_OOS_PENDING|RQ_NET_PENDING, RQ_OOS_NET_QUEUED | RQ_NET_QUEUED);
+#else
+		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED);
+#endif
 		break;
 
 	case READ_RETRY_REMOTE_CANCELED:
@@ -1861,8 +1869,13 @@ static int drbd_process_write_request(struct drbd_request *req)
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
 		}
 		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
-			// DW-2042
-			_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113)
+			// DW-2042 set QUEUE_FOR_SEND_OOS after completion of writing and send QUEUE_FOR_PENDING_OOS. For transmission, QUEUE_FOR_PENDING_OOS must be set before setting QUEUE_FOR_SEND_OOS.
+				_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
+			else
+#endif
+				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
 		}
 	}
 

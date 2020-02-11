@@ -91,6 +91,8 @@ enum drbd_req_event {
 	 * oh, well... */
 	QUEUE_FOR_NET_WRITE,
 	QUEUE_FOR_NET_READ,
+
+	// DW-2042
 	QUEUE_FOR_PENDING_OOS,
 	QUEUE_FOR_SEND_OOS,
 
@@ -244,9 +246,9 @@ enum drbd_req_state_bits {
 	__RQ_PEER_ACK,
 
 	// DW-2042
-	/**/
+	/* this is a flag that you set if you are in the L_AHEAD state when replication occurs. */
 	__RQ_OOS_PENDING,
-	/**/
+	/* flag set to send out of sync when write is complete (__RQ_OOS_PENDING shall be previously set) */
 	__RQ_OOS_NET_QUEUED,
 };
 

@@ -806,13 +806,17 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	/* not req_mod(), we need irqsave here! */
 	spin_lock_irqsave(&device->resource->req_lock, flags);
-
 	// DW-2042
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	struct drbd_peer_device* peer_device;
 
 	for_each_peer_device(peer_device, device) {
-		_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+		}
 	}
+#endif
+
 #ifdef DRBD_TRACE	
 	WDRBD_TRACE("(%s) drbd_request_endio: before __req_mod! IRQL(%d) \n", current->comm, KeGetCurrentIrql());
 #endif
