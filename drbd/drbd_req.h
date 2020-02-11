@@ -91,6 +91,9 @@ enum drbd_req_event {
 	 * oh, well... */
 	QUEUE_FOR_NET_WRITE,
 	QUEUE_FOR_NET_READ,
+
+	// DW-2042
+	QUEUE_FOR_PENDING_OOS,
 	QUEUE_FOR_SEND_OOS,
 
 	/* An empty flush is queued as P_BARRIER,
@@ -241,6 +244,12 @@ enum drbd_req_state_bits {
 
 	/* p_peer_ack packet needs to be sent */
 	__RQ_PEER_ACK,
+
+	// DW-2042
+	/* this is a flag that you set if you are in the L_AHEAD state when replication occurs. */
+	__RQ_OOS_PENDING,
+	/* flag set to send out of sync when write is complete (__RQ_OOS_PENDING shall be previously set) */
+	__RQ_OOS_NET_QUEUED,
 };
 
 #define RQ_LOCAL_PENDING   (1UL << __RQ_LOCAL_PENDING)
@@ -270,6 +279,8 @@ enum drbd_req_state_bits {
 #define RQ_EXP_WRITE_ACK   (1UL << __RQ_EXP_WRITE_ACK)
 #define RQ_EXP_BARR_ACK    (1UL << __RQ_EXP_BARR_ACK)
 #define RQ_PEER_ACK	   (1UL << __RQ_PEER_ACK)
+#define RQ_OOS_PENDING (1UL << __RQ_OOS_PENDING)
+#define RQ_OOS_NET_QUEUED (1UL << __RQ_OOS_NET_QUEUED)
 
 /* these flags go into rq_state[0],
  * orhter flags go into their respective rq_state[idx] */
