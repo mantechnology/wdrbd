@@ -4329,7 +4329,7 @@ __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet
 
 	// DW-2029 send a twopc request to target node first
 	if (target_node_id != -1) {
-		connection = drbd_get_connection_by_node_id(resource, target_node_id);
+		connection = drbd_connection_by_node_id(resource, target_node_id);
 		if (connection) {
 			if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
 				rv = SS_CW_SUCCESS;
