@@ -2574,54 +2574,57 @@ static int split_request_complete(struct drbd_peer_device* peer_device, struct d
 	ULONG_PTR e_next_bb = peer_req->e_next_bb;
 	int err = 0;
 
-	for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
-		if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
-			if (is_in_sync == true && i_bb != peer_req->s_bb) {
-			complete_end_sync:
-				//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
-				peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
-				peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-				drbd_debug(peer_device, "--set in sync, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
-					(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
-				if (i_bb == e_next_bb)
-					peer_req->block_id = ID_SYNCER_SPLIT_DONE;
-				else
-					peer_req->block_id = ID_SYNCER_SPLIT;
+	// DW-2055 resync data write complete should be set only when synctarget
+	if (is_sync_target(peer_device)) {
+		for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
+			if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
+				if (is_in_sync == true && i_bb != peer_req->s_bb) {
+				complete_end_sync:
+					//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
+					peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
+					peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
+					drbd_debug(peer_device, "--set in sync, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
+						(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+					if (i_bb == e_next_bb)
+						peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+					else
+						peer_req->block_id = ID_SYNCER_SPLIT;
 
-				err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-				s_bb = i_bb;
+					err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+					s_bb = i_bb;
+				}
+
+				if ((i_bb + 1) == e_next_bb) {
+					i_bb = e_next_bb;
+					goto complete_end_out_of_sync;
+				}
+
+				is_in_sync = false;
 			}
+			else {
+				if (is_in_sync == false && i_bb != peer_req->s_bb) {
+				complete_end_out_of_sync:
+					//DW-1601 If out of sync is found within range, it is set as a failure.
+					peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
+					peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
+					drbd_err(peer_device, "--set failed to I/O, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
+						(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+					if (i_bb == e_next_bb)
+						peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+					else
+						peer_req->block_id = ID_SYNCER_SPLIT;
 
-			if ((i_bb + 1) == e_next_bb) {
-				i_bb = e_next_bb;
-				goto complete_end_out_of_sync;
+					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+					s_bb = i_bb;
+				}
+
+				if ((i_bb + 1) == e_next_bb) {
+					i_bb = e_next_bb;
+					goto complete_end_sync;
+				}
+
+				is_in_sync = true;
 			}
-
-			is_in_sync = false;
-		}
-		else {
-			if (is_in_sync == false && i_bb != peer_req->s_bb) {
-			complete_end_out_of_sync:
-				//DW-1601 If out of sync is found within range, it is set as a failure.
-				peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
-				peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-				drbd_err(peer_device, "--set failed to I/O, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
-					(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
-				if (i_bb == e_next_bb)
-					peer_req->block_id = ID_SYNCER_SPLIT_DONE;
-				else
-					peer_req->block_id = ID_SYNCER_SPLIT;
-
-				err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-				s_bb = i_bb;
-			}
-
-			if ((i_bb + 1) == e_next_bb) {
-				i_bb = e_next_bb;
-				goto complete_end_sync;
-			}
-
-			is_in_sync = true;
 		}
 	}
 
@@ -2720,19 +2723,22 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	drbd_debug(peer_device, "--bitmap bit : %llu ~ %llu\n", BM_SECT_TO_BIT(peer_req->i.sector), (BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)) - 1));
 
-	bool is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
+	// DW-2055 resync data write complete should be set only when synctarget
+	if (is_sync_target(peer_device)) {
+		bool is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		if (!is_unmarked) {
-			// DW-2042
-			dup_verification_and_processing(peer_device, peer_req);
+		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+			if (!is_unmarked) {
+				// DW-2042
+				dup_verification_and_processing(peer_device, peer_req);
+			}
 		}
-	}
-	else {
-		if (!is_unmarked) {
-			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-			if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
-				err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+		else {
+			if (!is_unmarked) {
+				drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+				if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
+					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+				}
 			}
 		}
 	}
@@ -4554,7 +4560,8 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		peer_req->flags |= EE_RS_THIN_REQ;
 	case P_RS_DATA_REQUEST:
 		//DW-1857 If P_RS_DATA_REQUEST is received, send P_RS_CANCEL unless L_SYNC_SOURCE.
-		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+		// DW-2055 primary is always the syncsource of resync, so send the resync data.
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE && device->resource->role[NOW] != R_PRIMARY) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 			/* If err is set, we will drop the connection... */
 			goto fail3;
