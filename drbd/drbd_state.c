@@ -4327,16 +4327,18 @@ __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet
 	u64 im;
 	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
 
-	// DW-2029 send a twopc request to target node first	
-	connection = drbd_get_connection_by_node_id(resource, target_node_id);
-	if (connection) {
-		if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
-			rv = SS_CW_SUCCESS;
+	// DW-2029 send a twopc request to target node first
+	if (target_node_id != -1) {
+		connection = drbd_get_connection_by_node_id(resource, target_node_id);
+		if (connection) {
+			if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
+				rv = SS_CW_SUCCESS;
+		}
 	}
 
 	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
-		if (target_node_id == connection->peer_node_id)
+		if (target_node_id != -1 && target_node_id == connection->peer_node_id)
 			continue;
 
 		if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
@@ -4544,15 +4546,16 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
 	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
 	
 	// DW-2029 send a twopc request to target node first
-	connection = drbd_connection_by_node_id(resource, target_node_id);
-	if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
-		conn_send_twopc_request(connection, vnr, twopc_cmd, request);
-
+	if (target_node_id != -1) {
+		connection = drbd_connection_by_node_id(resource, target_node_id);
+		if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
+			conn_send_twopc_request(connection, vnr, twopc_cmd, request);
+	}
 	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
 		u64 mask = NODE_MASK(connection->peer_node_id);
 
-		if (target_node_id == connection->peer_node_id)
+		if (target_node_id != -1 && target_node_id == connection->peer_node_id)
 			continue;
 
 		if (!(reach_immediately & mask))

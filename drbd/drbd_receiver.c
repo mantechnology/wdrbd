@@ -7831,13 +7831,14 @@ static void nested_twopc_abort(struct drbd_resource *resource, int vnr, enum drb
 
 
 	// DW-2029 send a twopc request to target node first
-	connection = drbd_connection_by_node_id(resource, target_node_id);
-	if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
-		conn_send_twopc_request(connection, vnr, cmd, request);
-
+	if (target_node_id != -1) {
+		connection = drbd_connection_by_node_id(resource, target_node_id);
+		if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
+			conn_send_twopc_request(connection, vnr, cmd, request);
+	}
 	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
-		if (target_node_id == connection->peer_node_id)
+		if (target_node_id != -1 && target_node_id == connection->peer_node_id)
 			continue;
 
 		u64 mask = NODE_MASK(connection->peer_node_id);
