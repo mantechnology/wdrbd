@@ -2718,14 +2718,16 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	sector_t sector = peer_req->i.sector;
 	int err = 0;
+	bool is_unmarked = false;
 
 	D_ASSERT((struct drbd_device *)peer_device->device, drbd_interval_empty(&peer_req->i));
 
 	drbd_debug(peer_device, "--bitmap bit : %llu ~ %llu\n", BM_SECT_TO_BIT(peer_req->i.sector), (BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)) - 1));
 
+	is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
+
 	// DW-2055 resync data write complete should be set only when synctarget
 	if (is_sync_target(peer_device)) {
-		bool is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 			if (!is_unmarked) {
