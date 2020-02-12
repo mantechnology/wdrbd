@@ -2450,7 +2450,8 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	}
 
 	//DW-1846 send P_NEG_ACK if not sync target
-	if (is_sync_target(peer_device)) {
+	// DW-2055 
+	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
 			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
@@ -2458,7 +2459,6 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 		else {
 			/* Record failure to sync */
 			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
 	}
@@ -2575,7 +2575,7 @@ static int split_request_complete(struct drbd_peer_device* peer_device, struct d
 	int err = 0;
 
 	// DW-2055 resync data write complete should be set only when synctarget
-	if (is_sync_target(peer_device)) {
+	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
 		for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
 			if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
 				if (is_in_sync == true && i_bb != peer_req->s_bb) {
@@ -2626,6 +2626,12 @@ static int split_request_complete(struct drbd_peer_device* peer_device, struct d
 				is_in_sync = true;
 			}
 		}
+	}
+	else {
+		peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+		peer_req->i.sector = BM_BIT_TO_SECT(peer_req->s_bb);
+		peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(peer_req->e_next_bb - peer_req->s_bb) << 9;
+		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 	}
 
 	if (peer_req->count)
@@ -2727,8 +2733,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
 	// DW-2055 resync data write complete should be set only when synctarget
-	if (is_sync_target(peer_device)) {
-
+	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 			if (!is_unmarked) {
 				// DW-2042
@@ -2742,6 +2747,12 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 				}
 			}
+		}
+	}
+	else  {
+		drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
+		if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
+			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
 	}
 
