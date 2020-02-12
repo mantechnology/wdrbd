@@ -2140,7 +2140,8 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 	else if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 		//DW-1807 send P_RS_CANCEL if resync is not in progress
 		//DW-1846 The request should also be processed when the resync is stopped.
-		if (!is_sync_source(peer_device)) {
+		// DW-2055 primary is always the syncsource of resync, so send the resync data.
+		if (!is_sync_source(peer_device) && device->resource->role[NOW] != R_PRIMARY) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 		}
 		else {
