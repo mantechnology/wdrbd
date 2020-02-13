@@ -1657,6 +1657,9 @@ struct drbd_peer_device {
 	// set to 1 to wait for bitmap exchange.
 	atomic_t wait_for_recv_bitmap;
 
+	// DW-2058 number of incomplete write requests to send out of sync
+	atomic_t rq_pending_oos_cnt;
+
 	/* use checksums for *this* resync */
 	bool use_csums;
 #ifdef _WIN32
@@ -1871,6 +1874,8 @@ struct drbd_device {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	// DW-2042
 	struct list_head resync_pending_sectors;
+	// DW-2058 mutex for resync pending list
+	struct mutex resync_pending_fo_mutex;
 
 	//DW-1911 marked replication list, used for resync
 	//does not use lock because it guarantees synchronization for the use of marked_rl_list.

@@ -1003,6 +1003,11 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		atomic_inc(&req->completion_ref);
 
 	if (!(old_net & RQ_NET_PENDING) && (set & RQ_NET_PENDING)) {
+		// DW-2058 inc rq_pending_oos_cnt
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if ((peer_device->connection->agreed_pro_version >= 113) && (set & RQ_OOS_PENDING))
+			atomic_inc(&peer_device->rq_pending_oos_cnt);
+#endif
 		inc_ap_pending(peer_device);
 		atomic_inc(&req->completion_ref);
 	}
@@ -1769,7 +1774,9 @@ bool drbd_should_do_remote(struct drbd_peer_device *peer_device, enum which_stat
 
 static bool drbd_should_send_out_of_sync(struct drbd_peer_device *peer_device)
 {
-	return peer_device->repl_state[NOW] == L_AHEAD || peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+	return peer_device->repl_state[NOW] == L_AHEAD;
+	// DW-2058 Modify DW-1979 to remove the L_WF_BITMAPS_S condition
+	// || peer_device->repl_state[NOW] == L_WF_BITMAP_S;
 	/* pdsk = D_INCONSISTENT as a consequence. Protocol 96 check not necessary
 	   since we enter state L_AHEAD only if proto >= 96 */
 }

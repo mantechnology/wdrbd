@@ -2525,11 +2525,13 @@ static bool get_resync_pending_range(struct drbd_peer_device* peer_device, secto
 {
 	struct drbd_resync_pending_sectors *target = NULL;
 
+	mutex_lock(&peer_device->device->resync_pending_fo_mutex);
 	list_for_each_entry(struct drbd_resync_pending_sectors, target, &(peer_device->device->resync_pending_sectors), pending_sectors) {
 		if (est <= target->sst) {
 			// all ranges are not duplicated with resync pending
 			// cst (current sector)
 			*cst = est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 			// return false not duplicate
 			return false;
 		}
@@ -2538,12 +2540,14 @@ static bool get_resync_pending_range(struct drbd_peer_device* peer_device, secto
 			drbd_info(peer_device, "dup all out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
 				(unsigned long long)sst, (unsigned long long)est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 			// return true duplicate 
 			return true;
 		}
 		else if (sst < target->sst && est > target->sst) {
 			// not all ranges duplicated
 			*cst = target->sst;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 			return false;
 		}
 		else if (sst < target->sst && (est <= target->est || est >= target->est)) {
@@ -2551,6 +2555,7 @@ static bool get_resync_pending_range(struct drbd_peer_device* peer_device, secto
 			drbd_info(peer_device, "dup front out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
 				(unsigned long long)target->sst, (unsigned long long)(target->est < est ? target->est : est), (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = (target->est < est ? target->est : est);
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 			return true;
 		}
 		else if (sst >= target->sst && sst < target->est && est > target->est) {
@@ -2558,11 +2563,13 @@ static bool get_resync_pending_range(struct drbd_peer_device* peer_device, secto
 			drbd_info(peer_device, "dup end out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
 				(unsigned long long)sst, (unsigned long long)target->est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
 			*cst = target->est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 			return true;
 		}
 	}
-
 	*cst = est;
+	mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+
 	return false;
 }
 
@@ -3893,6 +3900,7 @@ static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, secto
 {
 	struct drbd_resync_pending_sectors *target, *tmp;
 
+	mutex_lock(&peer_device->device->resync_pending_fo_mutex);
 	list_for_each_entry_safe(struct drbd_resync_pending_sectors, target, tmp, &(peer_device->device->resync_pending_sectors), pending_sectors) {
 		if (sst <= target->sst && est >= target->est) {
 			*dup_cnt -= (target->est - target->sst);
@@ -3912,6 +3920,7 @@ static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, secto
 			pending_st = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_resync_pending_sectors), 'E9DW');
 			if (!pending_st) {
 				drbd_err(peer_device, "failed to resync pending bits allocate, sector : %llu ~ %llu\n", (unsigned long long)sst, (unsigned long long)est);
+				mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 				return -ENOMEM;
 			}
 
@@ -3943,6 +3952,7 @@ static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, secto
 				(unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est), (unsigned long long)*dup_cnt);
 		}
 	}
+	mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
 
 	return 0;
 }
@@ -9580,6 +9590,7 @@ static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sec
 	int i = 0;
 
 	// remove duplicates from items you want to add.
+	mutex_lock(&device->resync_pending_fo_mutex);
 	pending_st = resync_pending_check_and_expand_dup(device, sst, est, rs_failed_cnt);
 	if (pending_st) {
 		resync_pending_list_all_check_and_dedup(device, pending_st, rs_failed_cnt);
@@ -9590,6 +9601,7 @@ static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sec
 		pending_st = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_resync_pending_sectors), 'E9DW');
 		if (!pending_st) {
 			drbd_err(device, "failed to resync pending bits allocate, sector : %llu ~ %llu\n", (unsigned long long)sst, (unsigned long long)est);
+			mutex_unlock(&device->resync_pending_fo_mutex);
 			return -ENOMEM;
 		}
 
@@ -9621,6 +9633,7 @@ static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sec
 eof:
 	list_for_each_entry(struct drbd_resync_pending_sectors, target, &(device->resync_pending_sectors), pending_sectors)
 		drbd_info(device, "%d. resync pending sector %llu(%llu) ~ %llu(%llu)\n", i++, (unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+	mutex_unlock(&device->resync_pending_fo_mutex);
 
 	return 0;
 }
@@ -10343,6 +10356,9 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
+
+		// DW-2058
+		atomic_set(&peer_device->rq_pending_oos_cnt, 0);
 
 		// DW-2026 Initialize resync_again
 		peer_device->resync_again = 0;

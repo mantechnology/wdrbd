@@ -803,8 +803,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 	for_each_peer_device(peer_device, device) {
 		if (peer_device->connection->agreed_pro_version >= 113) {
 			int idx = peer_device ? 1 + peer_device->node_id : 0;
-			if (req->rq_state[idx] & RQ_OOS_PENDING)
+			if (req->rq_state[idx] & RQ_OOS_PENDING) {
+				// DW-2058 set out of sync again before sending.
+				drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
 				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+			}
 		}
 	}
 #endif
@@ -3055,11 +3058,13 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
 			//DW-2042
+			mutex_lock(&device->resync_pending_fo_mutex);
 			struct drbd_resync_pending_sectors *pending_st, *t1;
 			list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, t1, &(device->resync_pending_sectors), pending_sectors) {
 				list_del(&pending_st->pending_sectors);
 				kfree2(pending_st);
 			}
+			mutex_unlock(&device->resync_pending_fo_mutex);
 
 			//DW-1911
 			struct drbd_marked_replicate *marked_rl, *t2;
@@ -3851,7 +3856,6 @@ static int process_one_request(struct drbd_connection *connection)
 				kfree2(req->req_databuf);
 			}
 #endif
-
 		} else {
 			/* this time, no connection->send.current_epoch_writes++;
 			 * If it was sent, it was the closing barrier for the last
@@ -3864,6 +3868,22 @@ static int process_one_request(struct drbd_connection *connection)
 				drbd_send_current_state(peer_device);
 			}
 			err = drbd_send_out_of_sync(peer_device, &req->i);
+
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			// DW-2058 if all request(pending out of sync) is sent when the current status is L_ESTABLISHED and out of sync remains, start resync.
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
+					// dec rq_pending_oos_cnt
+					atomic_dec_return(&peer_device->rq_pending_oos_cnt) == 0 &&
+					drbd_bm_total_weight(peer_device)) {
+
+					drbd_info(peer_device, "start resync again because there is out of sync(%llu) in L_ESTABLISHED state\n", (unsigned long long)drbd_bm_total_weight(peer_device)); 
+					peer_device->start_resync_side = L_SYNC_SOURCE;
+					peer_device->start_resync_timer.expires = jiffies + HZ;
+					add_timer(&peer_device->start_resync_timer);
+				}
+			}
+#endif
 			what = OOS_HANDED_TO_NETWORK;
 		}
 	} else {
