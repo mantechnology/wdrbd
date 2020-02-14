@@ -165,7 +165,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, FALSE);
 		if (device)
 		{
-			if (get_disk_state2(device) >= D_INCONSISTENT)
+			// DW-2033 If a disk is removed while attaching, change to diskless
+			if (get_disk_state2(device) >= D_INCONSISTENT || get_disk_state2(device) == D_ATTACHING)
 			{
 				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
 
@@ -198,7 +199,10 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	
 	FreeUnicodeString(&VolumeExtension->MountPoint);
 	FreeUnicodeString(&VolumeExtension->VolumeGuid);
-	
+
+	// DW-2033 to avoid potential BSOD in mvolGetVolumeSize()
+	VolumeExtension->TargetDeviceObject = NULL;
+
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;

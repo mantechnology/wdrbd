@@ -3101,7 +3101,8 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		 */
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
-		if (device->disk_state[NOW] > D_FAILED) {
+		// DW-2033 Change to Failed even at Attaching
+		if (device->disk_state[NOW] > D_FAILED || device->disk_state[NOW] == D_ATTACHING) {
 			begin_state_change_locked(device->resource, CS_HARD);
 			__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
@@ -3119,7 +3120,8 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
 		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
-			if (device->disk_state[NOW] > D_FAILED) {
+			// DW-2033 Change to Failed even at Attaching
+			if (device->disk_state[NOW] > D_FAILED || device->disk_state[NOW] == D_ATTACHING) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
