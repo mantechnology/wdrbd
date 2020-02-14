@@ -165,8 +165,8 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, FALSE);
 		if (device)
 		{
-			// DW-2033 If a disk is removed while attaching, change to diskless
-			if (get_disk_state2(device) >= D_INCONSISTENT || get_disk_state2(device) == D_ATTACHING)
+			// DW-2033 If a disk is removed while attaching, change to diskless. even in negotiating
+			if (get_disk_state2(device) >= D_NEGOTIATING || get_disk_state2(device) == D_ATTACHING)
 			{
 				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
 
