@@ -3009,6 +3009,22 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
+
+
+// DW-2058
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	//DW-2042
+	if (peer_device->connection->agreed_pro_version >= 113) {
+		mutex_lock(&device->resync_pending_fo_mutex);
+		struct drbd_resync_pending_sectors *pending_st, *t;
+		list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, t, &(device->resync_pending_sectors), pending_sectors) {
+			list_del(&pending_st->pending_sectors);
+			kfree2(pending_st);
+		}
+		mutex_unlock(&device->resync_pending_fo_mutex);
+	}
+#endif
+
 	lock_all_resources();
 	clear_bit(B_RS_H_DONE, &peer_device->flags);
 	if (connection->cstate[NOW] < C_CONNECTED ||
@@ -3057,18 +3073,9 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 	if (side == L_SYNC_TARGET) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		if (peer_device->connection->agreed_pro_version >= 113) {
-			//DW-2042
-			mutex_lock(&device->resync_pending_fo_mutex);
-			struct drbd_resync_pending_sectors *pending_st, *t1;
-			list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, t1, &(device->resync_pending_sectors), pending_sectors) {
-				list_del(&pending_st->pending_sectors);
-				kfree2(pending_st);
-			}
-			mutex_unlock(&device->resync_pending_fo_mutex);
-
 			//DW-1911
-			struct drbd_marked_replicate *marked_rl, *t2;
-			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t2, &(device->marked_rl_list), marked_rl_list) {
+			struct drbd_marked_replicate *marked_rl, *t;
+			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
 				list_del(&marked_rl->marked_rl_list);
 				kfree2(marked_rl);
 			}

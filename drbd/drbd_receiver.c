@@ -10356,7 +10356,7 @@ void conn_disconnect(struct drbd_connection *connection)
 		peer_device->resync_again = 0;
 
 		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+		atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 		// DW-1965 initialize values that need to be answered or set after completion of I/O.
@@ -11242,7 +11242,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 			set_bit(GOT_NEG_ACK, &peer_device->flags);
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			drbd_info(connection, "drbd_rs_failed_io secotr : %llu, size %d\n", sector, size);
+			drbd_info(connection, "drbd_rs_failed_io sector : %llu, size %d\n", sector, size);
 			drbd_rs_failed_io(peer_device, sector, size);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);
