@@ -9685,10 +9685,9 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				if (err < 0)
 					return err;
 			}
-			else
 #endif
-				// DW-2042 resume resync using rs_failed
-				device->bm_resync_fo = bit;
+			// DW-2042 resume resync using rs_failed
+			device->bm_resync_fo = bit;
 		}
 
 		break; 
@@ -9703,18 +9702,11 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	}
 	mutex_unlock(&device->bm_resync_fo_mutex);
 
-	// DW-2042 resume resync using rs_failed
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-	if (peer_device->connection->agreed_pro_version < 113) {
-#endif
-		// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
-		if (bResetTimer) {
-			drbd_info(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
-			mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
-		}
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
+	if (bResetTimer) {
+		drbd_info(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
+		mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 	}
-#endif
 
 	return err;
 }
