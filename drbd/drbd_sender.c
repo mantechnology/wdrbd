@@ -1881,7 +1881,7 @@ int drbd_resync_finished(struct drbd_peer_device *peer_device,
 			__change_disk_state(device, D_UP_TO_DATE, __FUNCTION__);
 			__change_peer_disk_state(peer_device, D_INCONSISTENT, __FUNCTION__);
 		}
-		peer_device->resync_again++;
+		peer_device->resync_again = true;
 	}
 	else {
 		if (repl_state[NOW] == L_SYNC_TARGET || repl_state[NOW] == L_PAUSED_SYNC_T) {
@@ -1974,8 +1974,10 @@ out_unlock:
 			old_repl_state == L_SYNC_SOURCE || old_repl_state == L_PAUSED_SYNC_S ?
 			L_WF_BITMAP_S : L_ESTABLISHED;
 
+		// DW-2062 set resync_again to true/false because it cannot be duplicated.
+		// if resync is started and completed in the future, it is not necessary to try again, so set it to false.
+		peer_device->resync_again = false;
 		if (new_repl_state != L_ESTABLISHED) {
-			peer_device->resync_again--;
 			begin_state_change_locked(device->resource, CS_VERBOSE);
 			__change_repl_state_and_auto_cstate(peer_device, new_repl_state, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
