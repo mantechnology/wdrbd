@@ -3669,8 +3669,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			// If the SEND_BITMAP_WORK_PENDING flag is set, also check the peer's repl_state. if L_WF_BITMAP_T, queuing send_bitmap().
 			if (test_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags))
 			{
-				if (repl_state[NEW] == L_WF_BITMAP_S && peer_device->repl_state[NOW] == L_WF_BITMAP_S && 
-					peer_device->last_repl_state == L_WF_BITMAP_T)
+				if (repl_state[NEW] == L_WF_BITMAP_S && 
+					((peer_device->repl_state[NOW] == L_WF_BITMAP_S && peer_device->last_repl_state == L_WF_BITMAP_T) ||
+					// DW-2064 send bitmap when L_AHEAD is in state and wait_for_recv_bitmap is set
+					(peer_device->repl_state[NOW] == L_AHEAD && atomic_read(&peer_device->wait_for_recv_bitmap))))
 				{
 					send_bitmap = true;
 					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
@@ -3681,7 +3683,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				}
 			}
 			else if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
-				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+				((peer_device->repl_state[NOW] == L_WF_BITMAP_S) ||
+				// DW-2064 send bitmap when L_AHEAD is in state and wait_for_recv_bitmap is set
+				(peer_device->repl_state[NOW] == L_AHEAD && atomic_read(&peer_device->wait_for_recv_bitmap))))
 			{
 				send_bitmap = true;
 			}
