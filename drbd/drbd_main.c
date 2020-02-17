@@ -1594,21 +1594,13 @@ int drbd_send_sync_param(struct drbd_peer_device *peer_device)
 #endif
 	nc = rcu_dereference(peer_device->connection->transport.net_conf);
 
-	if (get_ldev(peer_device->device)) {
-		pdc = rcu_dereference(peer_device->conf);
-		p->resync_rate = cpu_to_be32(pdc->resync_rate);
-		p->c_plan_ahead = cpu_to_be32(pdc->c_plan_ahead);
-		p->c_delay_target = cpu_to_be32(pdc->c_delay_target);
-		p->c_fill_target = cpu_to_be32(pdc->c_fill_target);
-		p->c_max_rate = cpu_to_be32(pdc->c_max_rate);
-		put_ldev(peer_device->device);
-	} else {
-		p->resync_rate = cpu_to_be32(DRBD_RESYNC_RATE_DEF);
-		p->c_plan_ahead = cpu_to_be32(DRBD_C_PLAN_AHEAD_DEF);
-		p->c_delay_target = cpu_to_be32(DRBD_C_DELAY_TARGET_DEF);
-		p->c_fill_target = cpu_to_be32(DRBD_C_FILL_TARGET_DEF);
-		p->c_max_rate = cpu_to_be32(DRBD_C_MAX_RATE_DEF);
-	}
+	// DW-2023 fix incorrect resync-rate setting
+	pdc = rcu_dereference(peer_device->conf);
+	p->resync_rate = cpu_to_be32(pdc->resync_rate);
+	p->c_plan_ahead = cpu_to_be32(pdc->c_plan_ahead);
+	p->c_delay_target = cpu_to_be32(pdc->c_delay_target);
+	p->c_fill_target = cpu_to_be32(pdc->c_fill_target);
+	p->c_max_rate = cpu_to_be32(pdc->c_max_rate);	
 
 	if (apv >= 88)
 		strncpy(p->verify_alg, nc->verify_alg, sizeof(p->verify_alg) - 1);
