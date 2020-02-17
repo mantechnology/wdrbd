@@ -4606,13 +4606,16 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	INIT_WORK(&peer_device->send_oos_work, drbd_send_out_of_sync_wf);
 	spin_lock_init(&peer_device->send_oos_lock);
 #endif
-	
+
+	// DW-2058
+	atomic_set(&peer_device->rq_pending_oos_cnt, 0);
+
 	atomic_set(&peer_device->ap_pending_cnt, 0);
 	atomic_set(&peer_device->unacked_cnt, 0);
 	atomic_set(&peer_device->rs_pending_cnt, 0);
 	atomic_set(&peer_device->wait_for_actlog, 0);
 	atomic_set(&peer_device->rs_sect_in, 0);	
-	atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+	atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
 
 	peer_device->bitmap_index = -1;
@@ -4701,6 +4704,7 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
+	mutex_init(&device->resync_pending_fo_mutex);
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-1901
 	INIT_LIST_HEAD(&device->marked_rl_list);
