@@ -2352,6 +2352,14 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 	while (size) {
 		int s = min_t(int, size, DRBD_SOCKET_BUFFER_SIZE);
 		int rv = drbd_recv(connection, &data_to_ignore, s, 0);
+
+		// DW-2052 fix infinite loop
+		if (rv != s) {
+			if (rv >= 0) {
+				rv = -EIO;
+			}
+		}
+		
 		if (rv < 0)
 			return rv;
 
