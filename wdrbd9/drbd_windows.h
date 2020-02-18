@@ -20,6 +20,7 @@
 
 #ifndef DRBD_WINDOWS_H
 #define DRBD_WINDOWS_H
+#include <ntddk.h>
 #include <wdm.h>
 #include <stdint.h>
 #include <ntstrsafe.h>
