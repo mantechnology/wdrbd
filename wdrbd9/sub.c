@@ -781,7 +781,8 @@ void _printk(const char * func, const char * format, ...)
 #else
 	
 	if (bEventLog) {
-		save_to_system_event(buf, length, level_index);
+		// DW-2066 outputs shall be for object information and message only
+		save_to_system_event(buf + offset + LEVEL_OFFSET, length - (offset + LEVEL_OFFSET), level_index);
 	}
 	
 	if (bDbgLog || bOosLog || bLatency)
