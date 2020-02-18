@@ -648,10 +648,14 @@ void save_to_system_event(char * buf, int length, int level_index)
 {
 	int offset = 3;
 	char *p = buf + offset;
+	DWORD msgid = msgids[level_index];
 
 	while (offset < length)
 	{
-		int line_sz = WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p);
+		if (offset != 3)
+			msgid = PRINTK_NON;
+
+		int line_sz = WriteEventLogEntryData(msgid, 0, 0, 1, L"%S", p);
 		if (line_sz > 0)
 		{
 			offset = offset + (line_sz / 2);
@@ -781,7 +785,8 @@ void _printk(const char * func, const char * format, ...)
 #else
 	
 	if (bEventLog) {
-		save_to_system_event(buf, length, level_index);
+		// DW-2066 outputs shall be for object information and message only
+		save_to_system_event(buf + offset + LEVEL_OFFSET, length - (offset + LEVEL_OFFSET), level_index);
 	}
 	
 	if (bDbgLog || bOosLog || bLatency)
