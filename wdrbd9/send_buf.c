@@ -384,6 +384,8 @@ VOID NTAPI send_buf_thread(PVOID p)
 	LARGE_INTEGER nWaitTime;
 	LARGE_INTEGER *pTime;
 
+	ct_add_thread(KeGetCurrentThread(), "sendbuf", FALSE, '25DW');
+
 	buffering_attr->quit = FALSE;
 
 	//KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
@@ -424,6 +426,7 @@ done:
 	WDRBD_INFO("send_buf_killack_event!\n");
 	KeSetEvent(&buffering_attr->send_buf_killack_event, 0, FALSE);
 	WDRBD_INFO("sendbuf thread[%p] terminate!!\n",KeGetCurrentThread());
+	ct_delete_thread(KeGetCurrentThread());
 	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
