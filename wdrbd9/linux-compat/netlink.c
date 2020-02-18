@@ -65,6 +65,7 @@ extern void drbd_adm_send_reply(struct sk_buff *skb, struct genl_info *info);
 extern int _drbd_adm_get_status(struct sk_buff *skb, struct genl_info * pinfo);
 
 WORKER_THREAD_ROUTINE NetlinkWorkThread;
+static int netlink_work_thread_cnt = 0;
 /*
 static struct genl_ops drbd_genl_ops[] = {
 { .doit = drbd_adm_new_minor, .flags = 0x01, .cmd = DRBD_ADM_NEW_MINOR, .policy = drbd_tla_nl_policy, },
@@ -586,7 +587,9 @@ NetlinkWorkThread(PVOID context)
 	KeSetPriorityThread(KeGetCurrentThread(), HIGH_PRIORITY);
 
 	WDRBD_TRACE("NetlinkWorkThread:%p begin...accept socket:%p remote port:%d\n",KeGetCurrentThread(),socket, HTON_SHORT(((PNETLINK_WORK_ITEM)context)->RemotePort));
-    
+
+	netlink_work_thread_cnt++;
+
 	pSock = kzalloc(sizeof(struct socket), 0, '42DW'); 
 	if(!pSock) {
 		WDRBD_ERROR("Failed to allocate struct socket memory. size(%d)\n", sizeof(struct socket));
@@ -721,9 +724,9 @@ NetlinkWorkThread(PVOID context)
 					errcnt++;
 				}
 				if( (DRBD_ADM_GET_RESOURCES <= cmd)  && (cmd <= DRBD_ADM_GET_PEER_DEVICES) ) {
-					WDRBD_TRACE("drbd netlink cmd(%s:%u) done <-\n", pops->str, cmd);
+					WDRBD_TRACE("drbd netlink cmd(%s:%u) done (cmd_pending:%d) <-\n", pops->str, cmd, netlink_work_thread_cnt-1);
 				} else {
-					WDRBD_INFO("drbd netlink cmd(%s:%u) done <-\n", pops->str, cmd);
+					WDRBD_INFO("drbd netlink cmd(%s:%u) done (cmd_pending:%d) <-\n", pops->str, cmd, netlink_work_thread_cnt-1);
 				}
 			}
 			else {
@@ -742,6 +745,8 @@ cleanup:
 		Disconnect(pSock);
 		CloseSocket(pSock);
 	}
+
+	netlink_work_thread_cnt--;
 
 	//ObDereferenceObject(pNetlinkCtx->NetlinkEThread);
 
