@@ -5188,27 +5188,11 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			test_bit(RECONNECT, &peer_device->connection->flags))
 			return 0;
 
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-		/* Peer crashed as primary, I survived, resync from me */
-		if (peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY &&
-		    test_bit(RECONNECT, &peer_device->connection->flags))
-			return 1;
-
-		/* I am a crashed primary, peer survived, resync to me */
-		if (test_bit(CRASHED_PRIMARY, &device->flags) &&
-		    peer_device->uuid_flags & UUID_FLAG_RECONNECT)
-			return -1;
-
-		/* One of us had a connection to the other node before.
-		   i.e. this is not a common power failure. */
-		if (peer_device->uuid_flags & UUID_FLAG_RECONNECT ||
-		    test_bit(RECONNECT, &peer_device->connection->flags))
-			return 0;
-#endif
-
 		/* Common power [off|failure]? */
 		*rule_nr = 40;
-		if (test_bit(CRASHED_PRIMARY, &device->flags)) {
+		if (test_bit(CRASHED_PRIMARY, &device->flags) &&
+				// DW-2044
+				drbd_md_test_peer_flag(peer_device, MDF_CRASHED_PRIMARY_WORK_PENDING)) {
 			if ((peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY) &&
 			    test_bit(RESOLVE_CONFLICTS, &connection->transport.flags))
 				return -1;
@@ -5549,30 +5533,11 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 }
 
 static void disk_states_to_goodness(struct drbd_device *device,
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-// MODIFIED_BY_MANTECH DW-1357: need to see peer device md flags.
-					struct drbd_peer_device *peer_device,
-#endif
 				    enum drbd_disk_state peer_disk_state,
 				    int *hg, int rule_nr)
 {
 	enum drbd_disk_state disk_state = device->disk_state[NOW];
 	bool p = false;
-
-#ifdef _WIN32
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	/* MODIFIED_BY_MANTECH DW-1357: one of node is crashed primary, but need to ignore if..
-		1. crashed primary's disk state is higher than peer's, crashed primary will be sync source.
-		2. we've already done resync(by #1).
-	*/
-	if (abs(*hg) == 1)
-	{
-		if ((disk_state - peer_disk_state) * (*hg) < 0 ||
-			drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
-			*hg = 0;
-	}		
-#endif
-#endif
 
 	if (*hg != 0 && rule_nr != 40)
 		return;
@@ -5689,11 +5654,7 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 		return -1;
 
 	bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	disk_states_to_goodness(peer_device->device, peer_device, peer_disk_state, &hg, rule_nr);
-#else
 	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg, rule_nr);
-#endif
 
 	return goodness_to_repl_state(peer_device, peer_device->connection->peer_role[NOW], hg);
 }
@@ -5726,11 +5687,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 		return -1;
 	}
 
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	disk_states_to_goodness(device, peer_device, peer_disk_state, &hg, rule_nr);
-#else
 	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
-#endif
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
@@ -6701,20 +6658,11 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, reason == DISKLESS_PRIMARY);
 
 #ifdef _WIN32
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
-	if (reason == AFTER_UNSTABLE)
-	{
-		disk_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], &hg, rule_nr);
-		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
-	}
-#else
 	if (!hg && reason == AFTER_UNSTABLE)
 	{
 		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
 		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
 	}
-#endif
 #endif
 	new_repl_state = hg < -4 || hg > 4 ? -1 : goodness_to_repl_state(peer_device, peer_role, hg);
 
