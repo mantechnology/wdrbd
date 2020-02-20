@@ -6853,8 +6853,11 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 		}
 
 		if (peer_device->uuid_flags & UUID_FLAG_NEW_DATAGEN) {
-			drbd_warn(peer_device, "received new current UUID: %016llX\n", peer_device->current_uuid);
+			drbd_info(peer_device, "received new current UUID: %016llX\n", peer_device->current_uuid);
 			drbd_uuid_received_new_current(peer_device, peer_device->current_uuid, node_mask);
+		}
+		else {
+			drbd_warn(peer_device, "receive new current but not update UUID: %016llX\n", peer_device->current_uuid);
 		}
 
 		if (device->disk_state[NOW] > D_OUTDATED) {
@@ -8707,6 +8710,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			D_INCONSISTENT : D_CONSISTENT;
 		drbd_info(device, "real peer disk state = %s\n", drbd_disk_str(peer_disk_state));
 	}
+	// DW-2054 if state is received in D_ATTACHING condition, it induces re-connection.
+	else if (device->disk_state[NOW] == D_ATTACHING) {
+		drbd_info(device, "reconnect because initialization packets were received in D_ATTACHING state");
+		change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+		return 0;
+	}
 
 	spin_lock_irq(&resource->req_lock);
 	old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
@@ -9869,6 +9878,10 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 			drbd_uuid_received_new_current(peer_device, current_uuid, weak_nodes);
 			drbd_md_sync_if_dirty(device);
 		}
+		else
+			drbd_warn(peer_device, "receive new current but not update UUID: %016llX "
+									"weak_nodes=%016llX\n", current_uuid, weak_nodes);
+
 		put_ldev(device);
 	} else if (device->disk_state[NOW] == D_DISKLESS && resource->role[NOW] == R_PRIMARY) {
 		drbd_set_exposed_data_uuid(device, peer_device->current_uuid);

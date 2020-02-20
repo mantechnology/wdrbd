@@ -5900,8 +5900,9 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1340: do not update current uuid if my disk is outdated. the node sent uuid has my current uuid as bitmap uuid, and will start resync as soon as we do handshake.
-	if (device->disk_state[NOW] == D_OUTDATED)
+	if (device->disk_state[NOW] == D_OUTDATED) {
 		set_current = false;
+	}
 #endif
 
 	if (set_current) {
@@ -5922,6 +5923,9 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
 		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
 	}
+	else
+		drbd_warn(peer_device, "receive new current but not update UUID: %016llX\n", peer_device->current_uuid);
+
 	drbd_propagate_uuids(device, got_new_bitmap_uuid);
 }
 
