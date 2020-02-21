@@ -685,6 +685,9 @@ void _printk(const char * func, const char * format, ...)
 	int ret = 0;
 	va_list args;
 	char* buf = NULL;
+	int length = 0;
+	char *ebuf = NULL;
+	int elength = 0;
 	long logcnt = 0;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
@@ -710,72 +713,68 @@ void _printk(const char * func, const char * format, ...)
 		bOosLog = TRUE;
 	if ((atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) && (level_index == KERN_LATENCY_NUM))
 		bLatency = TRUE;
-
-	// nothing to log.
-	if (!bEventLog && !bDbgLog && !bOosLog & !bLatency) {
-		return;
-	}
 	
-	logcnt = InterlockedIncrement(&gLogCnt);
-	if(logcnt >= LOGBUF_MAXCNT) {
-		InterlockedExchange(&gLogCnt, 0);
-		logcnt = 0;
-	}
-	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
-	
-	buf = gLogBuf[logcnt];
-	RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
-//#define TOTALCNT_OFFSET	(9)
-//#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
-	KeQuerySystemTime(&systemTime);
-    ExSystemTimeToLocalTime(&systemTime, &localTime);
+	// DW-2034 if only eventlogs are to be recorded, they are not recorded in the log buffer.
+	if (bDbgLog || bOosLog || bLatency) {
+		logcnt = InterlockedIncrement(&gLogCnt);
+		if (logcnt >= LOGBUF_MAXCNT) {
+			InterlockedExchange(&gLogCnt, 0);
+			logcnt = 0;
+		}
+		totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
 
-    RtlTimeToTimeFields(&localTime, &timeFields);
+		buf = gLogBuf[logcnt];
+		RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
+		//#define TOTALCNT_OFFSET	(9)
+		//#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
+		KeQuerySystemTime(&systemTime);
+		ExSystemTimeToLocalTime(&systemTime, &localTime);
 
-	offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
-										totallogcnt,
-										timeFields.Month,
-										timeFields.Day,
-										timeFields.Year,
-										timeFields.Hour,
-										timeFields.Minute,
-										timeFields.Second,
-										timeFields.Milliseconds,
-										func);
+		RtlTimeToTimeFields(&localTime, &timeFields);
+
+		offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+			totallogcnt,
+			timeFields.Month,
+			timeFields.Day,
+			timeFields.Year,
+			timeFields.Hour,
+			timeFields.Minute,
+			timeFields.Second,
+			timeFields.Milliseconds,
+			func);
 
 #define LEVEL_OFFSET	10
 
-	switch (level_index) {
-	case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_FATA", LEVEL_OFFSET); break;
-	case KERN_ERR_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_ERRO", LEVEL_OFFSET); break;
-	case KERN_WARNING_NUM: 
-		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+offset, "WDRBD_WARN", LEVEL_OFFSET); break;
-	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
-		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
-	case KERN_DEBUG_NUM: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
-	case KERN_OOS_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_OOS ", LEVEL_OFFSET); break;
-	case KERN_LATENCY_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_LATE", LEVEL_OFFSET); break;
-	default: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
-	}
-	
-	va_start(args, format);
-	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
-	va_end(args);
-#ifdef _WIN64
-	BUG_ON_INT32_OVER(strlen(buf));
-#endif
-	int length = (int)strlen(buf);
-	if (length > MAX_DRBDLOG_BUF) {
-		length = MAX_DRBDLOG_BUF - 1;
-		buf[MAX_DRBDLOG_BUF - 1] = 0;
-	} else {
-		// TODO: chekc min?
+		switch (level_index) {
+		case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf + offset, "WDRBD_FATA", LEVEL_OFFSET); break;
+		case KERN_ERR_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf + offset, "WDRBD_ERRO", LEVEL_OFFSET); break;
+		case KERN_WARNING_NUM:
+			printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf + offset, "WDRBD_WARN", LEVEL_OFFSET); break;
+		case KERN_NOTICE_NUM: case KERN_INFO_NUM:
+			printLevel = DPFLTR_INFO_LEVEL; memcpy(buf + offset, "WDRBD_INFO", LEVEL_OFFSET); break;
+		case KERN_DEBUG_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
+		case KERN_OOS_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_OOS ", LEVEL_OFFSET); break;
+		case KERN_LATENCY_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_LATE", LEVEL_OFFSET); break;
+		default:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
+		}
+
+		va_start(args, format);
+		ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
+		va_end(args);
+
+		length = (int)strlen(buf);
+		if (length > MAX_DRBDLOG_BUF) {
+			length = MAX_DRBDLOG_BUF - 1;
+			buf[MAX_DRBDLOG_BUF - 1] = 0;
+		}
+
+		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
 	}
 	
 #ifdef _WIN32_WPP
@@ -785,13 +784,31 @@ void _printk(const char * func, const char * format, ...)
 #else
 	
 	if (bEventLog) {
-		// DW-2066 outputs shall be for object information and message only
-		save_to_system_event(buf + offset + LEVEL_OFFSET, length - (offset + LEVEL_OFFSET), level_index);
-	}
-	
-	if (bDbgLog || bOosLog || bLatency)
-		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
+		char tbuf[MAX_DRBDLOG_BUF] = {0,};
 
+		if (buf) {
+			ebuf = buf + offset + LEVEL_OFFSET;
+			elength = length - (offset + LEVEL_OFFSET);
+		}
+		else {
+			// DW-2034 log event logs only
+			va_start(args, format);
+			ret = _vsnprintf(tbuf, MAX_DRBDLOG_BUF - 1, format, args); 
+			va_end(args);
+
+			length = (int)strlen(tbuf);
+			if (length > MAX_DRBDLOG_BUF) {
+				length = MAX_DRBDLOG_BUF - 1;
+				tbuf[MAX_DRBDLOG_BUF - 1] = 0;
+			}
+
+			ebuf = tbuf;
+			elength = length;
+		}
+
+		// DW-2066 outputs shall be for object information and message only
+		save_to_system_event(ebuf, elength, level_index);
+	}
 #endif
 }
 #endif
