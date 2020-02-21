@@ -2914,10 +2914,11 @@ static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULO
 	return find_isb;
 }
 
-bool is_set_area_replicate_out_of_sync(struct drbd_device *device, ULONG_PTR s_bb, ULONG_PTR e_next_bb)
+bool is_out_of_sync_after_replication(struct drbd_device *device, ULONG_PTR s_bb, ULONG_PTR e_next_bb)
 {
-	//DW-1904 check that the resync data is within the out of sync range of the replication data.
-	if (device->e_rl_bb > device->s_rl_bb) {
+	// DW-1904 check that the resync data is within the out of sync range of the replication data.
+	// DW-2065 modify to incorrect conditions
+	if (device->e_rl_bb >= device->s_rl_bb) {
 		if ((device->s_rl_bb <= s_bb && device->e_rl_bb >= s_bb)) {
 			if (device->e_rl_bb <= (e_next_bb - 1)) {
 				device->e_rl_bb = (s_bb - 1);
@@ -2982,7 +2983,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 	if (peer_device->connection->agreed_pro_version >= 113 && 
 		//DW-1904 if it is not affected by the replication data, it writes the resync data without check(split request, marked replicate list). 
-		(!list_empty(&device->marked_rl_list) || is_set_area_replicate_out_of_sync(device, s_bb, e_next_bb))) {
+		(!list_empty(&device->marked_rl_list) || is_out_of_sync_after_replication(device, s_bb, e_next_bb))) {
 
 		//DW-1601 
 		//the number of peer_requests in the bitmap area that are released when the bitmap is found in the synchronization data.
@@ -3038,7 +3039,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				submit_peer:
 					//DW-1601 if offset is set to out of sync previously, write request to split_peer_req for data in index now from the corresponding offset.
 					if (s_split_request) {
-						drbd_debug(peer_device, "##sync bitmap bit %llu, split request %llu ~ %lu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
+						drbd_debug(peer_device, "##sync bitmap bit %llu, split request %llu ~ %llu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
 							(unsigned long long)(i_bb - 1), (unsigned long long)offset, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - offset) << 9), (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1), (unsigned long long)e_oos);
 
 						split_peer_req = split_read_in_block(peer_device, peer_req,
@@ -3992,8 +3993,8 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 				break;
 		}
 
-		if ((BM_BIT_TO_SECT(s_bb) != sst || (BM_BIT_TO_SECT(s_bb) == sst && s_bb == s_bb)) &&
-			drbd_bm_test_bit(peer_device, s_bb) == 1) {
+		// DW-2065 modify to incorrect conditions
+		if ((BM_BIT_TO_SECT(s_bb) != sst || (BM_BIT_TO_SECT(s_bb) == sst && s_bb == e_bb)) && drbd_bm_test_bit(peer_device, s_bb) == 1) {
 			if (!s_marked_rl) {
 				s_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
 				if (s_marked_rl != NULL) {
@@ -4019,8 +4020,8 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 				(unsigned long long)s_marked_rl->bb, (unsigned long long)sst, (unsigned long long)BM_BIT_TO_SECT(s_marked_rl->bb), (size >> 9), s_marked_rl->marked_rl, offset);
 		}
 
-		if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(est)) != (est - 1) &&
-			drbd_bm_test_bit(peer_device, e_bb) == 1) {
+		// DW-2065 modify to incorrect conditions
+		if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(est)) != est && drbd_bm_test_bit(peer_device, e_bb) == 1) {
 			if (!e_marked_rl) {
 				e_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
 				if (e_marked_rl != NULL) {
@@ -4044,7 +4045,7 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 		}
 	}
 
-	//DW-1904
+	//DW-1904 this area is set up to check marked_rl and in sync bit when receiving resync data.
 	if (in_sync) {
 		//DW-1911 marked_rl bit is excluded.
 		if (s_marked_rl != NULL)
