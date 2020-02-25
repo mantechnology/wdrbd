@@ -3978,7 +3978,7 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 		e_bb -= 1;
 
 	//DW-1904 next resync data range(device->e_resync_bb ~ n_resync_bb)
-	ULONG_PTR n_resync_bb = device->e_resync_bb + (ULONG_PTR)atomic_read64(&device->bm_resync_curr);
+	ULONG_PTR n_resync_bb = (ULONG_PTR)atomic_read64(&device->bm_resync_curr);
 	struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
 
 	if ((device->e_resync_bb < e_bb && n_resync_bb >= e_bb) ||
