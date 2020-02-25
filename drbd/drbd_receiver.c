@@ -2971,9 +2971,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	e_next_bb = d->bi_size == 0 ? s_bb : (ULONG_PTR)BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
 	e_oos = 0;
 
-	//DW-1904 set e_resync_bb
-	device->e_resync_bb = (e_next_bb - 1);
-
 	if (d->bi_size < BM_BLOCK_SIZE) {
 		drbd_warn(peer_device, "bug FIMXME!! bi_size(%lu) < BM_BLOCK_SIZE\n", d->bi_size);
 	}
@@ -3969,6 +3966,10 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 	ULONG_PTR s_bb, e_bb;
 	struct drbd_device* device = peer_device->device;
 
+	// DW-2065
+	if (device->e_resync_bb == (ULONG_PTR)atomic_read64(&device->bm_resync_curr))
+		return 0;
+
 	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(sst);
 	e_bb = (ULONG_PTR)BM_SECT_TO_BIT(est);
 
@@ -3977,7 +3978,7 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 		e_bb -= 1;
 
 	//DW-1904 next resync data range(device->e_resync_bb ~ n_resync_bb)
-	ULONG_PTR n_resync_bb = device->e_resync_bb + (ULONG_PTR)BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
+	ULONG_PTR n_resync_bb = (ULONG_PTR)atomic_read64(&device->bm_resync_curr);
 	struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
 
 	if ((device->e_resync_bb < e_bb && n_resync_bb >= e_bb) ||
@@ -9641,6 +9642,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 			// DW-2042 resume resync using rs_failed
 			device->bm_resync_fo = bit;
 		}
+
+		// DW-2065
+		if (bit < device->e_resync_bb)
+			device->e_resync_bb = bit;
 
 		break; 
 	default:

@@ -1415,6 +1415,10 @@ next_sector:
 			device->bm_resync_fo = bit + 1;
 #endif
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		// DW-2065
+		atomic_set64(&device->bm_resync_curr, device->bm_resync_fo);
+#endif
 		/* adjust very last sectors, in case we are oddly sized */
 		if (sector + (size>>9) > capacity)
 			size = (unsigned int)(capacity-sector)<<9;
@@ -3057,6 +3061,9 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 
 				offset = tmp;
 			}
+
+			// DW-2065
+			atomic_set64(&device->bm_resync_curr, device->e_resync_bb);
 
 			//DW-1908
 			device->h_marked_bb = 0;
