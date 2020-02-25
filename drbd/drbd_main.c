@@ -5876,24 +5876,21 @@ static void drbd_propagate_uuids(struct drbd_device *device, u64 nodes)
 void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 val, u64 weak_nodes) __must_hold(local)
 {
 	struct drbd_device *device = peer_device->device;
-#ifdef _WIN32
-	// MODIFIED_BY_MANTECH DW-977
-	struct drbd_peer_device *peer_uuid_sent = peer_device;
-#endif
+	struct drbd_peer_device *target;
 	u64 dagtag = peer_device->connection->last_dagtag_sector;
 	u64 got_new_bitmap_uuid = 0;
 	bool set_current = true;
 
 	spin_lock_irq(&device->ldev->md.uuid_lock);
 
-	for_each_peer_device(peer_device, device) {
-		if (peer_device->repl_state[NOW] == L_SYNC_TARGET ||
-			peer_device->repl_state[NOW] == L_PAUSED_SYNC_T ||
+	for_each_peer_device(target, device) {
+		if (target->repl_state[NOW] == L_SYNC_TARGET ||
+			target->repl_state[NOW] == L_PAUSED_SYNC_T ||
 			//DW-1924 
 			//Added a condition because there was a problem applying new UUID during synchronization.
-			peer_device->repl_state[NOW] == L_BEHIND ||
-			peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
-			peer_device->current_uuid = val;
+			target->repl_state[NOW] == L_BEHIND ||
+			target->repl_state[NOW] == L_WF_BITMAP_T) {
+			target->current_uuid = val;
 			set_current = false;
 		}
 	}
@@ -5921,7 +5918,7 @@ void drbd_uuid_received_new_current(struct drbd_peer_device *peer_device, u64 va
 
 	if(set_current) {
 		// MODIFIED_BY_MANTECH DW-977: Send current uuid as soon as set it to let the node which created uuid update mine.
-		drbd_send_current_uuid(peer_uuid_sent, val, drbd_weak_nodes_device(device));
+		drbd_send_current_uuid(peer_device, val, drbd_weak_nodes_device(device));
 	}
 	else
 		drbd_warn(peer_device, "receive new current but not update UUID: %016llX\n", peer_device->current_uuid);
