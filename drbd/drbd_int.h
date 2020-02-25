@@ -1893,6 +1893,9 @@ struct drbd_device {
 	//DW-1911 hit resync in progress hit marked replicate,in sync count
 	ULONG_PTR h_marked_bb;	
 	ULONG_PTR h_insync_bb;
+
+	// DW-2065
+	atomic_t64 bm_resync_curr;
 #endif
 
 	int open_rw_cnt, open_ro_cnt;
