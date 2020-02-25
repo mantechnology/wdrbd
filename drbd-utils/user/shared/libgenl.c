@@ -291,10 +291,11 @@ retry:
 	} else if (flags != 0) {
 		/* Buffer is big enough, do the actual reading */
 #ifdef _WIN32
+		size_t len = nlh->nlmsg_len;
 		// DW-2071 read one at a time.
 		if (iov->iov_len < nlh->nlmsg_len)
-			iov->iov_base = realloc(iov->iov_base, nlh->nlmsg_len);
-		iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
+			iov->iov_base = realloc(iov->iov_base, len);
+		iov->iov_len = len; // resize to rx only one reaponse
 #endif
 		flags = 0;
 		goto retry;
@@ -303,7 +304,7 @@ retry:
 finished:
 	//DW-2071 if less data is received than the requested data, it is treated as an error.
 	if (nlh->nlmsg_len > n) {
-		dbg(3, "failed because received a res(%u) smaller than req(%u)\n", n, iov->iov_len);
+		dbg(3, "failed because received a res(%u) smaller than req(%u)\n", n, nlh->nlmsg_len);
 		return -E_RCV_FAILED;
 	}
 
