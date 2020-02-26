@@ -3572,6 +3572,8 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	return rv;
 }
 
+#define EVENT_KEY_MAX 8192
+
 #define _EVPRINT(checksize, fstr, ...) do { \
     ret = snprintf(key + pos, size, fstr, __VA_ARGS__); \
     if (ret < 0) \
@@ -3768,7 +3770,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		int size;
 
 		size = event_key(NULL, 0, name, dh->minor, &ctx);
-		if (size < 0)
+		if (size < 0 ||
+			// DW-2072 add event_key() maximum(EVENT_KEY_MAX == 8192) value comparison condition
+			size > EVENT_KEY_MAX)
 			goto fail;
 		key = malloc(size + 1);
 		if (!key)
