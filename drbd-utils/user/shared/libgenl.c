@@ -275,8 +275,11 @@ retry:
 			return -E_RCV_ENOBUFS;
 		}
 		// DW-2071 read one at a time.
-		if (iov->iov_len < nlh->nlmsg_len)
+		if (iov->iov_len < nlh->nlmsg_len) {
 			iov->iov_base = realloc(iov->iov_base, nlh->nlmsg_len);
+			if (!iov->iov_base)
+				return -E_RCV_ENOBUFS;
+		}
 		iov->iov_len = nlh->nlmsg_len;
 
 		// DW-2071
@@ -293,8 +296,11 @@ retry:
 #ifdef _WIN32
 		size_t len = nlh->nlmsg_len;
 		// DW-2071 read one at a time.
-		if (iov->iov_len < nlh->nlmsg_len)
+		if (iov->iov_len < nlh->nlmsg_len) {
 			iov->iov_base = realloc(iov->iov_base, len);
+			if (!iov->iov_base)
+				return -E_RCV_ENOBUFS;
+		}
 		iov->iov_len = len; // resize to rx only one reaponse
 #endif
 		flags = 0;
