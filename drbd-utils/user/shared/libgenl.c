@@ -194,7 +194,9 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 {
 	struct sockaddr_nl addr;
 	struct pollfd pfd;
-	int flags;
+	int flags = 0;
+	int nre = 0;
+
 	struct msghdr msg = {
 		.msg_name = &addr,
 		.msg_namelen = sizeof(struct sockaddr_nl),
@@ -207,12 +209,15 @@ int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 	int n;
 
 	if (!iov->iov_len) {
-		iov->iov_len = 8192;
+		iov->iov_len = DEFAULT_MSG_SIZE;
 		iov->iov_base = malloc(iov->iov_len);
 	}
 
 	flags = MSG_PEEK;
 retry:
+	// DW-2071 
+	memset(iov->iov_base, 0, iov->iov_len);
+
 	pfd.fd = s->s_fd;
 	pfd.events = POLLIN;
 	if ((poll(&pfd, 1, timeout_ms) != 1) || !(pfd.revents & POLLIN))
@@ -245,21 +250,62 @@ retry:
 		}
 	}
 
+	// DW-2071 error if header is not read after 3 retries
+	if (n < sizeof(struct nlmsghdr) && flags == MSG_PEEK) {
+		if (nre >= 3) {
+			dbg(3, "failed to read nlmsghdr(%u)\n", n);
+			return -E_RCV_FAILED;
+		}
+		nre++;
+		goto retry;
+	}
+
+	struct nlmsghdr *nlh = (struct nlmsghdr *)iov->iov_base;
+
 	if (iov->iov_len < (unsigned)n ||
-	    msg.msg_flags & MSG_TRUNC) {
+		msg.msg_flags & MSG_TRUNC) {
+#ifdef _WIN32
+		// DW-2071 MSG_TRUNC flag is treated as an error if the MSG_PEEK flag is not set.
+		if (flags == 0) {
+			// DW-2071 if you finish reading one nlmsghdr and body, complete it
+			if (nlh->nlmsg_len <= n) 
+				goto finished;
+
+			dbg(3, "failed because the response(%u) length is greater than the requested(%u) length\n", iov->iov_len, (unsigned)n);
+			return -E_RCV_ENOBUFS;
+		}
+		// DW-2071 read one at a time.
+		if (iov->iov_len < nlh->nlmsg_len)
+			iov->iov_base = realloc(iov->iov_base, nlh->nlmsg_len);
+		iov->iov_len = nlh->nlmsg_len;
+
+		// DW-2071
+		flags = 0;
+#else
 		/* Provided buffer is not long enough, enlarge it
-		 * and try again. */
+		* and try again. */
 		iov->iov_len *= 2;
 		iov->iov_base = realloc(iov->iov_base, iov->iov_len);
+#endif
 		goto retry;
 	} else if (flags != 0) {
 		/* Buffer is big enough, do the actual reading */
 #ifdef _WIN32
-		struct nlmsghdr *nlh = (struct nlmsghdr *)iov->iov_base;
-		iov->iov_len = nlh->nlmsg_len; // resize to rx only one reaponse
+		size_t len = nlh->nlmsg_len;
+		// DW-2071 read one at a time.
+		if (iov->iov_len < nlh->nlmsg_len)
+			iov->iov_base = realloc(iov->iov_base, len);
+		iov->iov_len = len; // resize to rx only one reaponse
 #endif
 		flags = 0;
 		goto retry;
+	}
+
+finished:
+	//DW-2071 if less data is received than the requested data, it is treated as an error.
+	if (nlh->nlmsg_len > n) {
+		dbg(3, "failed because received a res(%u) smaller than req(%u)\n", n, nlh->nlmsg_len);
+		return -E_RCV_FAILED;
 	}
 
 	if (msg.msg_namelen != sizeof(struct sockaddr_nl))
