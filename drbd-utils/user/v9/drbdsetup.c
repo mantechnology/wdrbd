@@ -3015,9 +3015,18 @@ static int remember_resource(struct drbd_cmd *cmd, struct genl_info *info, void 
 		struct resources_list *r = calloc(1, sizeof(*r));
 		struct nlattr *res_opts = global_attrs[DRBD_NLA_RESOURCE_OPTS];
 
+		if (!r)
+			exit(20);
+
 		r->name = strdup(cfg.ctx_resource_name);
 		if (res_opts) {
-			int size = nla_total_size(nla_len(res_opts));
+			int size;
+
+			// DW-2072 make sure that it is smaller than the NLA_HDRLEN
+			if (res_opts->nla_len <= NLA_HDRLEN)
+				exit(20);
+
+			size = nla_total_size((int)nla_len(res_opts));
 
 			r->res_opts = malloc(size);
 			memcpy(r->res_opts, res_opts, size);
@@ -3119,10 +3128,19 @@ static int remember_device(struct drbd_cmd *cm, struct genl_info *info, void *u_
 		struct devices_list *d = calloc(1, sizeof(*d));
 		struct nlattr *disk_conf_nl = global_attrs[DRBD_NLA_DISK_CONF];
 
+		if (!d)
+			exit(20);
+
 		d->minor =  ((struct drbd_genlmsghdr*)(info->userhdr))->minor;
 		d->ctx = ctx;
 		if (disk_conf_nl) {
-			int size = nla_total_size(nla_len(disk_conf_nl));
+			int size;
+
+			// DW-2072 make sure that it is smaller than the NLA_HDRLEN
+			if (disk_conf_nl->nla_len <= NLA_HDRLEN)
+				exit(20);
+
+			size = nla_total_size((int)nla_len(disk_conf_nl));
 
 			d->disk_conf_nl = malloc(size);
 			memcpy(d->disk_conf_nl, disk_conf_nl, size);
@@ -3196,15 +3214,24 @@ static int remember_connection(struct drbd_cmd *cmd, struct genl_info *info, voi
 		struct nlattr *net_conf = global_attrs[DRBD_NLA_NET_CONF];
 		struct nlattr *path_list = global_attrs[DRBD_NLA_PATH_PARMS];
 
+		if (!c)
+			exit(20);
+
 		c->ctx = ctx;
 		if (net_conf) {
-			int size = nla_total_size(nla_len(net_conf));
+			int size;
+
+			// DW-2072 make sure that it is smaller than the NLA_HDRLEN
+			if (net_conf->nla_len <= NLA_HDRLEN)
+				exit(20);
+
+			size = nla_total_size((int)nla_len(net_conf));
 
 			c->net_conf = malloc(size);
 			memcpy(c->net_conf, net_conf, size);
 		}
 		if (path_list) {
-			int size = nla_total_size(nla_len(path_list));
+			int size = nla_total_size((int)nla_len(path_list));
 			c->path_list = malloc(size);
 			memcpy(c->path_list, path_list, size);
 		}
@@ -3308,7 +3335,14 @@ static int remember_peer_device(struct drbd_cmd *cmd, struct genl_info *info, vo
 
 		p->ctx = ctx;
 		if (peer_device_conf) {
-			int size = nla_total_size(nla_len(peer_device_conf));
+			int size;
+
+			// DW-2072 make sure that it is smaller than the NLA_HDRLEN
+			if (peer_device_conf->nla_len <= NLA_HDRLEN)
+				exit(20);
+
+			size = nla_total_size((int)nla_len(peer_device_conf));
+
 			p->peer_device_conf = malloc(size);
 			memcpy(p->peer_device_conf, peer_device_conf, size);
 		}
@@ -3538,6 +3572,8 @@ static int down_cmd(struct drbd_cmd *cm, int argc, char **argv)
 	return rv;
 }
 
+#define EVENT_KEY_MAX 8192
+
 #define _EVPRINT(checksize, fstr, ...) do { \
     ret = snprintf(key + pos, size, fstr, __VA_ARGS__); \
     if (ret < 0) \
@@ -3734,7 +3770,9 @@ static int print_notifications(struct drbd_cmd *cm, struct genl_info *info, void
 		int size;
 
 		size = event_key(NULL, 0, name, dh->minor, &ctx);
-		if (size < 0)
+		if (size < 0 ||
+			// DW-2072 add event_key() maximum(EVENT_KEY_MAX == 8192) value comparison condition
+			size > EVENT_KEY_MAX)
 			goto fail;
 		key = malloc(size + 1);
 		if (!key)
