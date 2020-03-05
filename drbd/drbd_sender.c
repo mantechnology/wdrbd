@@ -3908,9 +3908,8 @@ static int process_one_request(struct drbd_connection *connection)
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			// DW-2058 if all request(pending out of sync) is sent when the current status is L_ESTABLISHED and out of sync remains, start resync.
 			if (peer_device->connection->agreed_pro_version >= 113) {
-				if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
-					// dec rq_pending_oos_cnt
-					atomic_dec_return(&peer_device->rq_pending_oos_cnt) == 0 &&
+				if (atomic_read(&peer_device->rq_pending_oos_cnt) == 0 &&
+					peer_device->repl_state[NOW] == L_ESTABLISHED &&
 					drbd_bm_total_weight(peer_device)) {
 
 					drbd_info(peer_device, "start resync again because there is out of sync(%llu) in L_ESTABLISHED state\n", (unsigned long long)drbd_bm_total_weight(peer_device)); 

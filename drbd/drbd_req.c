@@ -1099,6 +1099,14 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	}
 
 	if (!(old_net & RQ_NET_DONE) && (set & RQ_NET_DONE)) {
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (old_net & (RQ_OOS_NET_QUEUED | RQ_OOS_PENDING)) {
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2076 
+				atomic_dec(&peer_device->rq_pending_oos_cnt);
+			}
+		}
+#endif
 		if (old_net & RQ_NET_SENT) {
 			//atomic_sub(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			if (atomic_sub_return64(req->i.size, &peer_device->connection->ap_in_flight) < 0)

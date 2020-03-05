@@ -2590,7 +2590,7 @@ static int split_request_complete(struct drbd_peer_device* peer_device, struct d
 	int err = 0;
 
 	// DW-2055 resync data write complete should be set only when synctarget
-	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
+	if (is_sync_target(peer_device)) {
 		for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
 			if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
 				if (is_in_sync == true && i_bb != peer_req->s_bb) {
@@ -2750,7 +2750,7 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
 	// DW-2055 resync data write complete should be set only when synctarget
-	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
+	if (is_sync_target(peer_device)) { 
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 			if (!is_unmarked) {
 				// DW-2042
@@ -4726,6 +4726,17 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		}
 		else
 		{
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (connection->agreed_pro_version >= 113) {
+				// DW-2076 if rq_pending_oos_cnt is not zero, send P_RS_CANCEL
+				//			because if rq_pending_oos_cnt is not zero, there is out of sync that has not completed writing.
+				if (atomic_read(&peer_device->rq_pending_oos_cnt)) {
+					err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+					/* If err is set, we will drop the connection... */
+					goto fail3;
+				}
+			}
+#endif
 			err = drbd_try_rs_begin_io(peer_device, sector, false);
 			if (err) {
 				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
@@ -9614,7 +9625,6 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	sector = be64_to_cpu(p->sector); 
 
 	mutex_lock(&device->bm_resync_fo_mutex);
-	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
 
 	switch (peer_device->repl_state[NOW]) {
 	case L_WF_SYNC_UUID:
@@ -9642,11 +9652,11 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 			// DW-2042 resume resync using rs_failed
 			device->bm_resync_fo = bit;
 		}
-
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		// DW-2065
 		if (bit < device->e_resync_bb)
 			device->e_resync_bb = bit;
-
+#endif
 		break; 
 	default:
 #ifdef _WIN32
@@ -9657,6 +9667,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				drbd_repl_str(peer_device->repl_state[NOW]));
 #endif
 	}
+
+	// DW-2076  out of sync is set after adding resync pending list.
+	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
+
 	mutex_unlock(&device->bm_resync_fo_mutex);
 
 	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
@@ -10309,9 +10323,6 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		kref_get(&device->kref);
 		rcu_read_unlock();
-
-		// DW-2058
-		atomic_set(&peer_device->rq_pending_oos_cnt, 0);
 
 		// DW-2026 Initialize resync_again
 		peer_device->resync_again = false;

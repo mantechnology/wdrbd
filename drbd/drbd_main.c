@@ -4694,8 +4694,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	spin_lock_init(&device->al_lock);
 	mutex_init(&device->bm_resync_fo_mutex);
-	mutex_init(&device->resync_pending_fo_mutex);
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	mutex_init(&device->resync_pending_fo_mutex);
 	//DW-1901
 	INIT_LIST_HEAD(&device->marked_rl_list);
 	//DW-2042
