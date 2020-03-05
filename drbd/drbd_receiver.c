@@ -4726,17 +4726,6 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		}
 		else
 		{
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-			if (connection->agreed_pro_version >= 113) {
-				// DW-2076 if rq_pending_oos_cnt is not zero, send P_RS_CANCEL
-				//			because if rq_pending_oos_cnt is not zero, there is out of sync that has not completed writing.
-				if (atomic_read(&peer_device->rq_pending_oos_cnt)) {
-					err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
-					/* If err is set, we will drop the connection... */
-					goto fail3;
-				}
-			}
-#endif
 			err = drbd_try_rs_begin_io(peer_device, sector, false);
 			if (err) {
 				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
@@ -10338,6 +10327,9 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		peer_device_disconnected(peer_device);
 	
+		// DW-2076
+		atomic_set(&peer_device->rq_pending_oos_cnt, 0);
+
 		kref_put(&device->kref, drbd_destroy_device);
 		rcu_read_lock();
 	}
@@ -11214,7 +11206,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 			set_bit(GOT_NEG_ACK, &peer_device->flags);
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			drbd_info(connection, "drbd_rs_failed_io sector : %llu, size %d\n", sector, size);
+			drbd_debug(connection, "drbd_rs_failed_io sector : %llu, size %d\n", sector, size);
 			drbd_rs_failed_io(peer_device, sector, size);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);

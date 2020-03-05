@@ -2791,13 +2791,24 @@ bool drbd_stable_sync_source_present(struct drbd_peer_device *except_peer_device
 
 static void do_start_resync(struct drbd_peer_device *peer_device)
 {
+	bool retry_resync = false;
 
 	if (atomic_read(&peer_device->unacked_cnt) || 
 		atomic_read(&peer_device->rs_pending_cnt) ||
 		// DW-1979
 		atomic_read(&peer_device->wait_for_recv_bitmap)) {
 		drbd_warn(peer_device, "postponing start_resync ... unacked : %d, pending : %d\n", atomic_read(&peer_device->unacked_cnt), atomic_read(&peer_device->rs_pending_cnt));
-		peer_device->start_resync_timer.expires = jiffies + HZ/10;
+		retry_resync = true;
+	}
+
+	// DW-2076
+	if (test_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags) && atomic_read(&peer_device->rq_pending_oos_cnt)) {
+		drbd_debug(peer_device, "postponing start_resync ... pending oos : %d\n", atomic_read(&peer_device->rq_pending_oos_cnt)); 
+		retry_resync = true;
+	}
+
+	if (retry_resync) {
+		peer_device->start_resync_timer.expires = jiffies + HZ / 10;
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
