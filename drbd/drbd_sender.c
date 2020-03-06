@@ -2791,13 +2791,24 @@ bool drbd_stable_sync_source_present(struct drbd_peer_device *except_peer_device
 
 static void do_start_resync(struct drbd_peer_device *peer_device)
 {
+	bool retry_resync = false;
 
 	if (atomic_read(&peer_device->unacked_cnt) || 
 		atomic_read(&peer_device->rs_pending_cnt) ||
 		// DW-1979
 		atomic_read(&peer_device->wait_for_recv_bitmap)) {
 		drbd_warn(peer_device, "postponing start_resync ... unacked : %d, pending : %d\n", atomic_read(&peer_device->unacked_cnt), atomic_read(&peer_device->rs_pending_cnt));
-		peer_device->start_resync_timer.expires = jiffies + HZ/10;
+		retry_resync = true;
+	}
+
+	// DW-2076
+	if (test_bit(AHEAD_TO_SYNC_SOURCE, &peer_device->flags) && atomic_read(&peer_device->rq_pending_oos_cnt)) {
+		drbd_debug(peer_device, "postponing start_resync ... pending oos : %d\n", atomic_read(&peer_device->rq_pending_oos_cnt)); 
+		retry_resync = true;
+	}
+
+	if (retry_resync) {
+		peer_device->start_resync_timer.expires = jiffies + HZ / 10;
 		add_timer(&peer_device->start_resync_timer);
 		return;
 	}
@@ -3908,9 +3919,8 @@ static int process_one_request(struct drbd_connection *connection)
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			// DW-2058 if all request(pending out of sync) is sent when the current status is L_ESTABLISHED and out of sync remains, start resync.
 			if (peer_device->connection->agreed_pro_version >= 113) {
-				if (peer_device->repl_state[NOW] == L_ESTABLISHED &&
-					// dec rq_pending_oos_cnt
-					atomic_dec_return(&peer_device->rq_pending_oos_cnt) == 0 &&
+				if (atomic_read(&peer_device->rq_pending_oos_cnt) == 0 &&
+					peer_device->repl_state[NOW] == L_ESTABLISHED &&
 					drbd_bm_total_weight(peer_device)) {
 
 					drbd_info(peer_device, "start resync again because there is out of sync(%llu) in L_ESTABLISHED state\n", (unsigned long long)drbd_bm_total_weight(peer_device)); 

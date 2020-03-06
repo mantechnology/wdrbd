@@ -1005,8 +1005,9 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	if (!(old_net & RQ_NET_PENDING) && (set & RQ_NET_PENDING)) {
 		// DW-2058 inc rq_pending_oos_cnt
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-		if ((peer_device->connection->agreed_pro_version >= 113) && (set & RQ_OOS_PENDING))
+		if ((peer_device->connection->agreed_pro_version >= 113) && (set & RQ_OOS_PENDING)) {
 			atomic_inc(&peer_device->rq_pending_oos_cnt);
+		}
 #endif
 		inc_ap_pending(peer_device);
 		atomic_inc(&req->completion_ref);
@@ -1099,6 +1100,14 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	}
 
 	if (!(old_net & RQ_NET_DONE) && (set & RQ_NET_DONE)) {
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (old_net & (RQ_OOS_NET_QUEUED | RQ_OOS_PENDING)) {
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2076 
+				atomic_dec(&peer_device->rq_pending_oos_cnt);
+			}
+		}
+#endif
 		if (old_net & RQ_NET_SENT) {
 			//atomic_sub(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			if (atomic_sub_return64(req->i.size, &peer_device->connection->ap_in_flight) < 0)
@@ -1877,9 +1886,10 @@ static int drbd_process_write_request(struct drbd_request *req)
 		}
 		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-			if (peer_device->connection->agreed_pro_version >= 113)
-			// DW-2042 set QUEUE_FOR_SEND_OOS after completion of writing and send QUEUE_FOR_PENDING_OOS. For transmission, QUEUE_FOR_PENDING_OOS must be set before setting QUEUE_FOR_SEND_OOS.
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2042 set QUEUE_FOR_SEND_OOS after completion of writing and send QUEUE_FOR_PENDING_OOS. For transmission, QUEUE_FOR_PENDING_OOS must be set before setting QUEUE_FOR_SEND_OOS.
 				_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
+			}
 			else
 #endif
 				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
