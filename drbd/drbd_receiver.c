@@ -3118,7 +3118,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						atomic_set(unmarked_count, (sizeof(marked_rl->marked_rl) * 8) - __popcnt(marked_rl->marked_rl));
 						atomic_set(failed_unmarked, 0);
 
-						device->h_marked_bb += 1;
+						device->h_marked_bb++;
 
 						for (int i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
 							//DW-1911 perform writing per unmarked sector.
