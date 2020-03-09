@@ -4302,8 +4302,6 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					return err;
 				}
 				drbd_al_begin_io_commit(device);
-				WDRBD_INFO("%s, al commit, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 			}
 			else {
 #endif
