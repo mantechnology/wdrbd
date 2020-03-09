@@ -3015,6 +3015,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					if (is_all_sync) {
 						//DW-1886
 						atomic_add64(d->bi_size, &peer_device->rs_written);
+						device->h_insync_bb += (e_next_bb - s_bb);
 
 						//DW-1601 all data is synced.
 						drbd_debug(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", (unsigned long long)i_bb, (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1));
@@ -3028,6 +3029,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 						return err;
 					}
+
+					device->h_insync_bb++;
 
 					//DW-1886
 					if (already_in_sync_bb)
@@ -3114,6 +3117,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						//DW-1911 unmakred sector counting
 						atomic_set(unmarked_count, (sizeof(marked_rl->marked_rl) * 8) - __popcnt(marked_rl->marked_rl));
 						atomic_set(failed_unmarked, 0);
+
+						device->h_marked_bb += 1;
 
 						for (int i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
 							//DW-1911 perform writing per unmarked sector.
@@ -4286,12 +4291,28 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					dec_unacked(peer_device);
 				}
 #endif
-			goto disconnect_during_al_begin_io;
+				goto disconnect_during_al_begin_io;
 			}
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
-			peer_req->do_submit = true;
-			drbd_queue_peer_request(device, peer_req);
-			return 0;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2082 process actlog commit(do_submt()) immediately without separate queuing.
+				err = drbd_al_begin_io_nonblock(device, &peer_req->i);
+				if (err) {
+					return err;
+				}
+				drbd_al_begin_io_commit(device);
+				WDRBD_INFO("%s, al commit, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+			}
+			else {
+#endif
+				peer_req->do_submit = true;
+				drbd_queue_peer_request(device, peer_req);
+				return 0;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			}
+#endif
 		}
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
@@ -9643,7 +9664,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 		}
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		// DW-2065
-		if (bit < device->e_resync_bb)
+		if (peer_device->connection->agreed_pro_version >= 113 && bit < device->e_resync_bb)
 			device->e_resync_bb = bit;
 #endif
 		break; 
