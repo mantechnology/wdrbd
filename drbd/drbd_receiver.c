@@ -8918,6 +8918,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			set_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags);
 			peer_device->negotiation_result = new_repl_state;
 		}
+
+		// DW-2084 set to 0 in situations where bitmap exchange is not required
+		if (new_repl_state == L_ESTABLISHED && atomic_read(&peer_device->wait_for_recv_bitmap)) 
+			atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+
 	} else if (peer_state.role == R_PRIMARY &&
 		peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
 		device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
