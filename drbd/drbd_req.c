@@ -976,7 +976,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 	// DW-2042 When setting RQ_OOS_NET_QUEUED, RQ_OOS_PENDING shall be set.
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-	if (peer_device->connection->agreed_pro_version >= 113) {
+	if (peer_device && peer_device->connection->agreed_pro_version >= 113) {
 		if ((set & RQ_OOS_NET_QUEUED) && !(req->rq_state[idx] & RQ_OOS_PENDING)) {
 			return;
 		}
@@ -1105,7 +1105,7 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 
 	if (!(old_net & RQ_NET_DONE) && (set & RQ_NET_DONE)) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-		if (peer_device->connection->agreed_pro_version >= 113) {
+		if (peer_device && peer_device->connection->agreed_pro_version >= 113) {
 			if (old_net & (RQ_OOS_NET_QUEUED | RQ_OOS_PENDING)) {
 					// DW-2076 
 					atomic_dec(&peer_device->rq_pending_oos_cnt);
@@ -2280,8 +2280,11 @@ out:
 	 * If however this request did not even have a private bio to submit
 	 * (e.g. remote read), req may already be invalid now.
 	 * That's why we cannot check on req->private_bio. */
-	if (submit_private_bio)
+	if (submit_private_bio) {
+		WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, req->i.sector, req->i.size, BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
 		drbd_submit_req_private_bio(req);
+	}
 #ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */

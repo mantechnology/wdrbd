@@ -2747,6 +2747,9 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 
 	drbd_debug(peer_device, "--bitmap bit : %llu ~ %llu\n", BM_SECT_TO_BIT(peer_req->i.sector), (BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)) - 1));
 
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
 	is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
 	// DW-2055 resync data write complete should be set only when synctarget
@@ -3017,6 +3020,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						atomic_add64(d->bi_size, &peer_device->rs_written);
 						device->h_insync_bb += (e_next_bb - s_bb);
 
+						WDRBD_VERIFY_DATA("%s, all in sync, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+							__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
 						//DW-1601 all data is synced.
 						drbd_debug(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", (unsigned long long)i_bb, (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1));
 						err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
@@ -3054,6 +3060,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							err = -ENOMEM;
 							goto split_error_clear;
 						}
+
+						WDRBD_VERIFY_DATA("%s, split, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+							__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)));
 
 						spin_lock_irq(&device->resource->req_lock);
 						list_add_tail(&split_peer_req->w.list, &peer_device->connection->sync_ee);
@@ -3124,7 +3133,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							//DW-1911 perform writing per unmarked sector.
 							if (!(marked_rl->marked_rl & 1 << i)) {
 								split_peer_req = split_read_in_block(peer_device, peer_req,
-																	BM_BIT_TO_SECT(marked_rl->bb), 
+																	// DW-2082 corrected incorrectly calculated start sector
+																	(BM_BIT_TO_SECT(marked_rl->bb) + i), 
 																	((BM_BIT_TO_SECT(marked_rl->bb - s_bb) + i) << 9),
 																	1 << 9,
 																	s_bb, e_next_bb,
@@ -3142,6 +3152,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 									err = -ENOMEM;
 									goto split_error_clear;
 								}
+
+								WDRBD_VERIFY_DATA("%s, marked, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+									__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)));
 
 								split_peer_req->unmarked_count = unmarked_count;
 								split_peer_req->failed_unmarked = failed_unmarked;
@@ -3219,6 +3232,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	}
 	else {
 	all_out_of_sync:
+		WDRBD_VERIFY_DATA("%s, all out of sync, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
 		/* corresponding dec_unacked() in e_end_resync_block()
 		* respective _drbd_clear_done_ee */
 		peer_req->w.cb = split_e_end_resync_block;
@@ -3485,6 +3501,9 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	struct drbd_device *device = peer_device->device;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
+
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
 	if (peer_req->flags & EE_IS_BARRIER) {
 		epoch = previous_epoch(peer_device->connection, peer_req->epoch);
@@ -4302,6 +4321,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					return err;
 				}
 				drbd_al_begin_io_commit(device);
+				WDRBD_VERIFY_DATA("%s, al commit, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector +( peer_req->i.size >> 9)));
 			}
 			else {
 #endif
@@ -4311,6 +4332,10 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			}
 #endif
+		}
+		else {
+			WDRBD_VERIFY_DATA("%s, al fastpath, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+				__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 		}
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
@@ -4772,6 +4797,9 @@ submit_for_resync:
 	atomic_add(size >> 9, &device->rs_sect_ev);
 
 submit:
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
 	update_receiver_timing_details(connection, drbd_submit_peer_request);
 	inc_unacked(peer_device);
 	if (drbd_submit_peer_request(device, peer_req, REQ_OP_READ, 0,

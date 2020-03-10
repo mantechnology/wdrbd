@@ -704,6 +704,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	BIO_ENDIO_FN_START;
 
+	if (bio_data_dir(bio) & WRITE) {
+		WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, req->i.sector, req->i.size, BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
+	}
+
 
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
@@ -2161,6 +2166,9 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 				//DW-1817
 				//Add the data size to rs_in_flight before sending the resync data.
 				atomic_add64(peer_req->i.size, &peer_device->connection->rs_in_flight);
+
+				WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);

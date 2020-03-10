@@ -395,6 +395,7 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG ##_m_, __VA_ARGS__)
 #endif
 
+
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM					// about timer
 #define WDRBD_TRACE_RCU					// about rcu
@@ -409,6 +410,7 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_CO		
 #define WDRBD_CONN_TRACE	
 #define WDRBD_TRACE_AL	
+#define WDRBD_VERIFY_DATA//(_m_, ...)	printk(KERN_INFO "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop
