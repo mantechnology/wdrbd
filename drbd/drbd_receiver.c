@@ -3983,10 +3983,6 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 	ULONG_PTR s_bb, e_bb;
 	struct drbd_device* device = peer_device->device;
 
-	// DW-2065
-	if (device->e_resync_bb == (ULONG_PTR)atomic_read64(&device->bm_resync_curr))
-		return 0;
-
 	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(sst);
 	e_bb = (ULONG_PTR)BM_SECT_TO_BIT(est);
 
@@ -4314,8 +4310,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					return err;
 				}
 				drbd_al_begin_io_commit(device);
-				WDRBD_VERIFY_DATA("%s, al commit, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector +( peer_req->i.size >> 9)));
+				WDRBD_VERIFY_DATA("%s, al commit(%s), sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+					__FUNCTION__, drbd_repl_str(peer_device->repl_state[NOW]), peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector +( peer_req->i.size >> 9)));
 			}
 			else {
 #endif
@@ -4327,8 +4323,8 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 #endif
 		}
 		else {
-			WDRBD_VERIFY_DATA("%s, al fastpath, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-				__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+			WDRBD_VERIFY_DATA("%s, al fastpath(%s), sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+				__FUNCTION__, drbd_repl_str(peer_device->repl_state[NOW]), peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 		}
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
