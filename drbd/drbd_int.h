@@ -1887,15 +1887,15 @@ struct drbd_device {
 	ULONG_PTR s_rl_bb;
 	ULONG_PTR e_rl_bb;
 
-	//DW-1904 last recv resync data bitmap bit
-	ULONG_PTR e_resync_bb;
 
 	//DW-1911 hit resync in progress hit marked replicate,in sync count
 	ULONG_PTR h_marked_bb;	
 	ULONG_PTR h_insync_bb;
 
-	// DW-2065
-	atomic_t64 bm_resync_curr;
+	// DW-1904 resyc start bitmap offset
+	atomic_t64 s_resync_bb;
+	// DW-2065 resyc end bitmap offset
+	atomic_t64 e_resync_bb;
 #endif
 
 	int open_rw_cnt, open_ro_cnt;

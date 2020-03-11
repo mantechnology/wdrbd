@@ -4703,9 +4703,8 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	device->s_rl_bb = UINT64_MAX;
 	device->e_rl_bb = 0;
-	device->e_resync_bb = 0;
-
-	atomic_set64(&device->bm_resync_curr, 0);
+	atomic_set64(&device->s_resync_bb, 0);
+	atomic_set64(&device->e_resync_bb, 0);
 #endif
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);

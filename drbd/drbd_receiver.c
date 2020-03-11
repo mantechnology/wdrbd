@@ -3983,6 +3983,10 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 	ULONG_PTR s_bb, e_bb;
 	struct drbd_device* device = peer_device->device;
 
+	//DW-1904 range in progress for resync (device->s_resync_bb ~ device->e_resync_bb)
+	ULONG_PTR s_resync_bb = (ULONG_PTR)atomic_read64(&device->s_resync_bb);
+	ULONG_PTR n_resync_bb = (ULONG_PTR)atomic_read64(&device->e_resync_bb);
+
 	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(sst);
 	e_bb = (ULONG_PTR)BM_SECT_TO_BIT(est);
 
@@ -3990,12 +3994,10 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 	if (BM_BIT_TO_SECT(e_bb) == est)
 		e_bb -= 1;
 
-	//DW-1904 next resync data range(device->e_resync_bb ~ n_resync_bb)
-	ULONG_PTR n_resync_bb = (ULONG_PTR)atomic_read64(&device->bm_resync_curr);
 	struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
 
-	if ((device->e_resync_bb < e_bb && n_resync_bb >= e_bb) ||
-		(device->e_resync_bb < s_bb && n_resync_bb >= s_bb)) {
+	if ((s_resync_bb < e_bb && n_resync_bb >= e_bb) ||
+		(s_resync_bb < s_bb && n_resync_bb >= s_bb)) {
 		//DW-1911 check if marked already exists.
 		list_for_each_entry(struct drbd_marked_replicate, marked_rl, &(device->marked_rl_list), marked_rl_list) {
 			if (marked_rl->bb == s_bb)
@@ -9684,8 +9686,10 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 		}
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		// DW-2065
-		if (peer_device->connection->agreed_pro_version >= 113 && bit < device->e_resync_bb)
-			device->e_resync_bb = bit;
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			if (bit < (ULONGLONG)atomic_read64(&device->s_resync_bb))
+				atomic_set64(&device->s_resync_bb, bit);
+		}
 #endif
 		break; 
 	default:
