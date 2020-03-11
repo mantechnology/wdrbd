@@ -2921,24 +2921,17 @@ bool is_out_of_sync_after_replication(struct drbd_device *device, ULONG_PTR s_bb
 {
 	// DW-1904 check that the resync data is within the out of sync range of the replication data.
 	// DW-2065 modify to incorrect conditions
+	// DW-2082 the range(s_rl_bb, e_rl_bb) should not be reset because there is no warranty coming in sequentially.
 	if (device->e_rl_bb >= device->s_rl_bb) {
 		if ((device->s_rl_bb <= s_bb && device->e_rl_bb >= s_bb)) {
-			if (device->e_rl_bb <= (e_next_bb - 1)) {
-				device->e_rl_bb = (s_bb - 1);
-			}
 			return true;
 		}
 
 		if (device->s_rl_bb <= (e_next_bb - 1) && device->e_rl_bb >= (e_next_bb - 1)) {
-			if (device->s_rl_bb >= s_bb) {
-				device->s_rl_bb = e_next_bb;
-			}
 			return true;
 		}
 
 		if ((device->s_rl_bb >= s_bb && device->e_rl_bb <= (e_next_bb - 1))) {
-			device->s_rl_bb = UINT64_MAX;
-			device->e_rl_bb = 0;
 			return true;
 		}
 	}
@@ -3020,8 +3013,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						atomic_add64(d->bi_size, &peer_device->rs_written);
 						device->h_insync_bb += (e_next_bb - s_bb);
 
-						WDRBD_VERIFY_DATA("%s, all in sync, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-							__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+						WDRBD_VERIFY_DATA("%s, all in sync, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+							__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 						//DW-1601 all data is synced.
 						drbd_debug(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", (unsigned long long)i_bb, (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1));
@@ -3061,8 +3054,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							goto split_error_clear;
 						}
 
-						WDRBD_VERIFY_DATA("%s, split, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-							__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)));
+						WDRBD_VERIFY_DATA("%s, split, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+							__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 						spin_lock_irq(&device->resource->req_lock);
 						list_add_tail(&split_peer_req->w.list, &peer_device->connection->sync_ee);
@@ -3153,8 +3146,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 									goto split_error_clear;
 								}
 
-								WDRBD_VERIFY_DATA("%s, marked, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-									__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)));
+								WDRBD_VERIFY_DATA("%s, marked, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+									__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 								split_peer_req->unmarked_count = unmarked_count;
 								split_peer_req->failed_unmarked = failed_unmarked;
@@ -3232,8 +3225,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	}
 	else {
 	all_out_of_sync:
-		WDRBD_VERIFY_DATA("%s, all out of sync, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
-			__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+		WDRBD_VERIFY_DATA("%s, all out of sync, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+			__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)),device->s_rl_bb, device->e_rl_bb);
 
 		/* corresponding dec_unacked() in e_end_resync_block()
 		* respective _drbd_clear_done_ee */
