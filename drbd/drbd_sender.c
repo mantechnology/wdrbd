@@ -704,6 +704,11 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 
 	BIO_ENDIO_FN_START;
 
+	if (bio_data_dir(bio) & WRITE) {
+		WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, req->i.sector, req->i.size, BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
+	}
+
 
 	// DW-1961 Calculate and Log IO Latency
 	if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY)
@@ -1295,6 +1300,18 @@ static int make_resync_request(struct drbd_peer_device *peer_device, int cancel)
 		return 0;
 	}
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	if (peer_device->connection->agreed_pro_version >= 113) {
+		// DW-2082 if the bitmap exchange was not completed and the resync request was sent once, the next resync request is not sent.
+		if (atomic_read(&peer_device->wait_for_recv_rs_reply) &&
+			atomic_read(&peer_device->sent_rs_request)) {
+			WDRBD_VERIFY_DATA("waiting for syncsource to complete bitmap operation, (%d, %d)\n",
+				atomic_read(&peer_device->wait_for_recv_rs_reply), atomic_read(&peer_device->sent_rs_request));
+			goto requeue;
+		}
+	}
+#endif
+
 	if (peer_device->connection->agreed_features & DRBD_FF_THIN_RESYNC) {
 		rcu_read_lock();
 		discard_granularity = rcu_dereference(device->ldev->disk_conf)->rs_discard_granularity;
@@ -1417,7 +1434,7 @@ next_sector:
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		// DW-2065
-		atomic_set64(&device->bm_resync_curr, device->bm_resync_fo);
+		atomic_set64(&device->e_resync_bb, device->bm_resync_fo);
 #endif
 		/* adjust very last sectors, in case we are oddly sized */
 		if (sector + (size>>9) > capacity)
@@ -1452,10 +1469,20 @@ next_sector:
 				put_ldev(device);
 				return err;
 			}
-
 			//DW-1886
 			peer_device->rs_send_req += size;
 		}
+
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			// DW-2082 if the bitmap exchange is not completed, the resync request is used to determine whether the bitmap has been replaced.
+			if (atomic_read(&peer_device->wait_for_recv_rs_reply) && !atomic_read(&peer_device->sent_rs_request)) {
+				WDRBD_VERIFY_DATA("first sent resync request, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+					sector, size, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (size >> 9)));
+				atomic_set(&peer_device->sent_rs_request, 1);
+			}
+		}
+#endif
 	}
 
 	if (device->bm_resync_fo >= drbd_bm_bits(device)) {
@@ -1973,6 +2000,8 @@ out_unlock:
 	peer_device->rs_failed = 0;
 	peer_device->rs_paused = 0;
 	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
+	// DW-2082
+	atomic_set(&peer_device->sent_rs_request, 0);
 
 	if (peer_device->resync_again) {
 		enum drbd_repl_state new_repl_state =
@@ -2161,6 +2190,9 @@ int w_e_end_rsdata_req(struct drbd_work *w, int cancel)
 				//DW-1817
 				//Add the data size to rs_in_flight before sending the resync data.
 				atomic_add64(peer_req->i.size, &peer_device->connection->rs_in_flight);
+
+				WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+					__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
 				if (peer_req->flags & EE_RS_THIN_REQ && all_zero(peer_req))
 					err = drbd_send_rs_deallocated(peer_device, peer_req);
@@ -3051,7 +3083,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 				kfree2(marked_rl);
 			}
 
-
 			device->s_rl_bb = UINT64_MAX;
 			device->e_rl_bb = 0;
 
@@ -3061,12 +3092,12 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 				ULONG_PTR tmp = drbd_bm_range_find_next(peer_device, offset, offset + RANGE_FIND_NEXT_BIT);
 
 				if (tmp < (offset + RANGE_FIND_NEXT_BIT + 1)) {
-					device->e_resync_bb = tmp;
+					atomic_set64(&device->s_resync_bb, tmp);
 					break;
 				}
 
 				if (tmp >= drbd_bm_bits(device)) {
-					device->e_resync_bb = DRBD_END_OF_BITMAP;
+					atomic_set64(&device->s_resync_bb, DRBD_END_OF_BITMAP);
 					break;
 				}
 
@@ -3074,11 +3105,27 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 			}
 
 			// DW-2065
-			atomic_set64(&device->bm_resync_curr, device->e_resync_bb);
+			atomic_set64(&device->e_resync_bb, device->s_resync_bb);
 
 			//DW-1908
 			device->h_marked_bb = 0;
 			device->h_insync_bb = 0;
+
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2082 if it is not completed before, complete it at the start of resync.
+				if (peer_device->sent_rs_req_size) {
+					WDRBD_VERIFY_DATA("start resync from syncsource, force failed sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+						peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
+					if (_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE)) {
+						change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+						return;
+					}
+					peer_device->sent_rs_req_sector = 0;
+					peer_device->sent_rs_req_size = 0;
+				}
+			}
+#endif
 		}
 	}
 #endif
