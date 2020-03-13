@@ -2643,6 +2643,32 @@ int drbd_send_rs_deallocated(struct drbd_peer_device *peer_device,
 	return drbd_send_command(peer_device, P_RS_DEALLOCATED, DATA_STREAM);
 }
 
+/**
+* _drbd_send_ack() - Sends an ack packet
+* @device:	DRBD device.
+* @cmd:	Packet command code.
+* @sector:	sector, needs to be in big endian byte order
+* @blksize:	size in byte, needs to be in big endian byte order
+* @block_id:	Id, big endian byte order
+*/
+int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
+	u64 sector, u32 blksize, u64 block_id)
+{
+	struct p_block_ack *p;
+
+	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
+		return -EIO;
+
+	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
+	if (!p)
+		return -EIO;
+	p->sector = sector;
+	p->block_id = block_id;
+	p->blksize = blksize;
+	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
+	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
+}
+
 int drbd_send_drequest(struct drbd_peer_device *peer_device, int cmd,
 		       sector_t sector, int size, u64 block_id)
 {
@@ -4607,6 +4633,10 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->rs_sect_in, 0);	
 	atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
+	// DW-2082 
+	atomic_set(&peer_device->sent_rs_request, 0);		
+	peer_device->sent_rs_req_sector = 0;
+	peer_device->sent_rs_req_size = 0;
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;
