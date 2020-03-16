@@ -1433,8 +1433,11 @@ next_sector:
 #endif
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-		// DW-2065
-		atomic_set64(&device->e_resync_bb, device->bm_resync_fo);
+		// DW-2082
+		if ((ULONG_PTR)atomic_read64(&device->e_resync_bb) < device->bm_resync_fo) {
+			// DW-2065
+			atomic_set64(&device->e_resync_bb, device->bm_resync_fo);
+		}
 #endif
 		/* adjust very last sectors, in case we are oddly sized */
 		if (sector + (size>>9) > capacity)
@@ -3064,28 +3067,48 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 	//DW-2042
 	if (peer_device->connection->agreed_pro_version >= 113) {
+		//DW-1911
+		struct drbd_marked_replicate *marked_rl, *mrt;
+		struct drbd_resync_pending_sectors *pending_st, *rpt;
+		ULONG_PTR offset = 0;
+
 		mutex_lock(&device->resync_pending_fo_mutex);
-		struct drbd_resync_pending_sectors *pending_st, *t;
-		list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, t, &(device->resync_pending_sectors), pending_sectors) {
+		list_for_each_entry_safe(struct drbd_resync_pending_sectors, pending_st, rpt, &(device->resync_pending_sectors), pending_sectors) {
 			list_del(&pending_st->pending_sectors);
 			kfree2(pending_st);
 		}
 		mutex_unlock(&device->resync_pending_fo_mutex);
 
-		// DW - 2050
-		if (side == L_SYNC_TARGET) {
-			//DW-1911
-			struct drbd_marked_replicate *marked_rl, *t;
-			ULONG_PTR offset = 0;
+		//DW-1908
+		device->h_marked_bb = 0;
+		device->h_insync_bb = 0;
+		
+		list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, mrt, &(device->marked_rl_list), marked_rl_list) {
+			list_del(&marked_rl->marked_rl_list);
+			kfree2(marked_rl);
+		}
 
-			list_for_each_entry_safe(struct drbd_marked_replicate, marked_rl, t, &(device->marked_rl_list), marked_rl_list) {
-				list_del(&marked_rl->marked_rl_list);
-				kfree2(marked_rl);
+		device->s_rl_bb = UINT64_MAX;
+		device->e_rl_bb = 0;
+
+		// DW-2065
+		atomic_set64(&device->s_resync_bb, 0);
+		atomic_set64(&device->e_resync_bb, 0);
+
+		// DW-2082 if it is not completed before, complete it at the start of resync.
+		if (peer_device->sent_rs_req_size) {
+			WDRBD_VERIFY_DATA("start resync from syncsource, force failed sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+				peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
+			if (_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE)) {
+				change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+				return;
 			}
+			peer_device->sent_rs_req_sector = 0;
+			peer_device->sent_rs_req_size = 0;
+		}
 
-			device->s_rl_bb = UINT64_MAX;
-			device->e_rl_bb = 0;
-
+		// DW-2050
+		if (side == L_SYNC_TARGET) {
 			// DW-1908 set start out of sync bit
 			// DW-2050 fix temporary hang caused by req_lock and bm_lock
 			for (;;) {
@@ -3106,26 +3129,6 @@ void drbd_start_resync(struct drbd_peer_device *peer_device, enum drbd_repl_stat
 
 			// DW-2065
 			atomic_set64(&device->e_resync_bb, device->s_resync_bb);
-
-			//DW-1908
-			device->h_marked_bb = 0;
-			device->h_insync_bb = 0;
-
-#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
-			if (peer_device->connection->agreed_pro_version >= 113) {
-				// DW-2082 if it is not completed before, complete it at the start of resync.
-				if (peer_device->sent_rs_req_size) {
-					WDRBD_VERIFY_DATA("start resync from syncsource, force failed sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
-						peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
-					if (_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE)) {
-						change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
-						return;
-					}
-					peer_device->sent_rs_req_sector = 0;
-					peer_device->sent_rs_req_size = 0;
-				}
-			}
-#endif
 		}
 	}
 #endif
