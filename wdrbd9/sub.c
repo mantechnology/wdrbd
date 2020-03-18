@@ -139,13 +139,12 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 
 	IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
-	IoDetachDevice(VolumeExtension->TargetDeviceObject);
-	IoDeleteDevice(DeviceObject);
 
+	// DW-2081 the VolumeExtension internal resources should be released before calling the IoDeleteDevice().
 #ifdef _WIN32_MULTIVOL_THREAD
 	if (VolumeExtension->WorkThreadInfo)
 	{
-		VolumeExtension->WorkThreadInfo = NULL;		
+		VolumeExtension->WorkThreadInfo = NULL;
 	}
 #else
 	if (VolumeExtension->WorkThreadInfo.Active)
@@ -172,12 +171,12 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 				long timeo = 3 * HZ;
 				wait_event_interruptible_timeout(timeo, device->misc_wait,
-							 get_disk_state2(device) != D_FAILED, timeo);
-			}			
+					get_disk_state2(device) != D_FAILED, timeo);
+			}
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
 		}
-		
+
 		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
 		// deleting block device can be defered if drbd device is using.		
 		blkdev_put(VolumeExtension->dev, 0);
@@ -196,12 +195,16 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
 		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
-	
+
 	FreeUnicodeString(&VolumeExtension->MountPoint);
 	FreeUnicodeString(&VolumeExtension->VolumeGuid);
 
+	IoDetachDevice(VolumeExtension->TargetDeviceObject);
+
 	// DW-2033 to avoid potential BSOD in mvolGetVolumeSize()
 	VolumeExtension->TargetDeviceObject = NULL;
+
+	IoDeleteDevice(DeviceObject);
 
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
