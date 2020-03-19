@@ -2640,26 +2640,21 @@ static void dup_verification_and_processing(struct drbd_peer_device* peer_device
 
 	while (offset < est && offset >= sst) {
 		if (!get_resync_pending_range(peer_device, offset, est, &offset)) {
-			// return false indicates ranges in sync.
-			for_each_peer_device(tmp, peer_device->device) {
-				if (tmp == peer_device ||
-					tmp->current_uuid == peer_device->current_uuid) {
-					drbd_set_in_sync(tmp, sst, (int)(offset - sst) << 9);
-					cmd = P_RS_WRITE_ACK;
-				}
-			}
+			// DW-1815
+			// DW-2086 remove conditions that may remain out of sync on other nodes
+			drbd_set_in_sync(tmp, sst, (int)(offset - sst) << 9);
+			cmd = P_RS_WRITE_ACK;
 		}
 		else {
-			// return true indicates ranges out of sync (duplicate ranges)
+			// DW-1815
 			for_each_peer_device(tmp, peer_device->device) {
-				if (tmp == peer_device ||
-					tmp->current_uuid == peer_device->current_uuid) {
+				if (tmp == peer_device) {
 					// DW-2058 set rs_failed
 					drbd_rs_failed_io(tmp, sst, (int)(offset - sst) << 9);
-					drbd_set_out_of_sync(tmp, sst, (int)(offset - sst) << 9);
-					cmd = P_NEG_ACK;
 				}
+				drbd_set_out_of_sync(tmp, sst, (int)(offset - sst) << 9);
 			}
+			cmd = P_NEG_ACK;
 		}
 
 		// send the result only when it is not a split request.
