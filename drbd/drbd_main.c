@@ -2504,15 +2504,9 @@ void drbd_send_bitmap_target_complete(struct drbd_device *device, struct drbd_pe
 		D_ASSERT(device, rv == SS_SUCCESS);
 	}
 	else {
-		// DW-2088 set the syncs source to the same uuid at the start of resync.
-		if ((peer_device->current_uuid & ~UUID_PRIMARY) == drbd_current_uuid(device)) {
-			drbd_md_set_peer_flag(peer_device, MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID);
-			drbd_md_sync(device);
-		}
-		else {
-			drbd_info(peer_device, "self %016llX, peer %016llX\n",
-				(unsigned long long)drbd_current_uuid(peer_device->device), peer_device->current_uuid & ~UUID_PRIMARY);
-		}
+		// DW-2088 set the MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID to the peer_device that is syncsource in the synctarget at the start of resync
+		drbd_md_set_peer_flag(peer_device, MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID);
+		drbd_md_sync(device);
 
 		drbd_start_resync(peer_device, L_SYNC_TARGET);
 	}
@@ -2579,7 +2573,7 @@ int drbd_send_bitmap(struct drbd_device *device, struct drbd_peer_device *peer_d
 	struct drbd_peer_device* incomp_sync_source = NULL;
 	bool incomp_sync = false;;
 	for_each_peer_device(incomp_sync_source, device) {
-		if (drbd_md_test_peer_flag(incomp_sync_source, MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID))  {
+		if (drbd_md_test_peer_flag(incomp_sync_source, MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID)) {
 			incomp_sync = true;
 			break;
 		}
