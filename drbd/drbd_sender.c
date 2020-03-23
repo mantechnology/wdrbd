@@ -2036,8 +2036,10 @@ out:
 	// DW-2088
 	drbd_md_clear_peer_flag(peer_device, MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID);
 
-	// DW-1874
-	drbd_md_clear_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC);
+	if (old_repl_state == L_SYNC_SOURCE || old_repl_state == L_PAUSED_SYNC_S) {
+		// DW-1874
+		drbd_md_clear_peer_flag(peer_device, MDF_PEER_IN_PROGRESS_SYNC);
+	}
 
 	drbd_md_sync_if_dirty(device);
 
