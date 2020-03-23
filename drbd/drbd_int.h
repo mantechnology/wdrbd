@@ -1938,6 +1938,11 @@ struct drbd_device {
 	the list counts will not increase in a large amount 
 	because they will occur only in a specific sector. */
 	atomic_t io_error_count;
+
+	// DW-2088 It is set when a abort occurs during resync.
+	bool aborted_resync;
+	// DW-2088 bitmap index on syncsource
+	int aborted_resync_bitmap_index;
 };
 
 struct drbd_bm_aio_ctx {

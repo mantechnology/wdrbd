@@ -7190,9 +7190,16 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
 #endif
 		{
+			unsigned long irq_flags;
+
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
-			unsigned long irq_flags;
+			// DW-2088 set the sync target only.
+			if (is_sync_target(peer_device)) {
+				device->aborted_resync = true;
+				device->aborted_resync_bitmap_index = peer_device->bitmap_index;
+			}
+
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 			end_state_change(device->resource, &irq_flags, __FUNCTION__);
