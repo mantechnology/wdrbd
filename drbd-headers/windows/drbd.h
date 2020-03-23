@@ -448,6 +448,7 @@ enum mdf_peer_flag {
 													//when the connection is lost during synchronization and the synctarget is complete synchronizing with another node, 
 													//it is used to determine the unnecessary out of sync removal when reconnected.
 	MDF_PEER_PRIMARY_IO_ERROR = 1 << 19,         /* DW-1843 Set the peer flag to indicate that an io-error occurred at the primary.*/
+	MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID	= 1 << 20,	// DW-2088 if the source is the same UUID at the start of resync, set up the flag on the resync source node and use it to verify that the synchronization source node has changed.
 #endif
 };
 

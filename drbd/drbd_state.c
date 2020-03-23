@@ -3939,12 +3939,6 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			{
 				drbd_info(peer_device, "Resync will be aborted due to change of state.\n");
 
-				// DW-2088 set the sync target only.
-				if (is_sync_target(peer_device)) {
-					device->aborted_resync = true;
-					device->aborted_resync_bitmap_index = peer_device->bitmap_index;
-				}
-
 				if (repl_state[NOW] > L_ESTABLISHED)
 				{
 					unsigned long irq_flags;
