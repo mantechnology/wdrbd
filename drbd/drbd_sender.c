@@ -812,6 +812,8 @@ BIO_ENDIO_TYPE drbd_request_endio BIO_ENDIO_ARGS(struct bio *bio, int error)
 				// DW-2058 set out of sync again before sending.
 				drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
 				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+				// DW-2090
+				wake_up(&peer_device->connection->sender_work.q_wait);
 			}
 		}
 	}
