@@ -4663,9 +4663,9 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->wait_for_actlog, 0);
 	atomic_set(&peer_device->rs_sect_in, 0);	
 	atomic_set(&peer_device->wait_for_recv_bitmap, 1);
-	atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
+	atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 	// DW-2082 
-	atomic_set(&peer_device->sent_rs_request, 0);		
+	atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);		
 	peer_device->sent_rs_req_sector = 0;
 	peer_device->sent_rs_req_size = 0;
 
