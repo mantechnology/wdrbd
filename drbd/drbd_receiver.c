@@ -11425,6 +11425,11 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
 				mutex_lock(&device->bm_resync_fo_mutex);
+				// DW-2089 if the request for confirmation of completion of bitmap exchange is canceled, set the sent_rs_request to zero for retransmission.
+				if (atomic_read(&peer_device->sent_rs_request) &&
+					atomic_read(&peer_device->wait_for_recv_rs_reply)) {
+					atomic_set(&peer_device->sent_rs_request, 0);
+				}
 				device->bm_resync_fo = min(device->bm_resync_fo, bit);
 				mutex_unlock(&device->bm_resync_fo_mutex);
 
