@@ -331,16 +331,19 @@ tail_recursion:
 				unsigned int rq_state;
 
 				rq_state = req->rq_state[1 + node_id];
-				if (rq_state & RQ_NET_OK) {
+				// Dw-2091 clear the peer index that sent out of sync (rq_state & RQ_NET_DONE && rq_state & RQ_OOS_NET_QUEUED).
+				if (rq_state & RQ_NET_OK || (rq_state & RQ_NET_DONE && rq_state & RQ_OOS_NET_QUEUED)) {
 					int bitmap_index = peer_md[node_id].bitmap_index;
 
 					if (bitmap_index == -1)
 						continue;
 
-					if (rq_state & RQ_NET_SIS)
+					if (rq_state & RQ_NET_SIS) {
 						clear_bit(bitmap_index, &bits);
-					else
+					}
+					else {
 						clear_bit(bitmap_index, &mask);
+					}
 				}
 			}
 #ifdef _WIN32
@@ -1888,16 +1891,29 @@ static int drbd_process_write_request(struct drbd_request *req)
 			}
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
 		}
-		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		else {
+			ULONG_PTR c = drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
+
 			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2091 send all out of snyc regardless of redundancy.
+				// the downside is that if out of sync continues to occur in the same area, it will transmit more than before.
+				// out of sync is sent after the writing is complete and the consistency issues are resolved by separating old and new oos from synctarget to resync_pending.
+
 				// DW-2042 set QUEUE_FOR_SEND_OOS after completion of writing and send QUEUE_FOR_PENDING_OOS. For transmission, QUEUE_FOR_PENDING_OOS must be set before setting QUEUE_FOR_SEND_OOS.
 				_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
 			}
-			else
-#endif
-				_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+			else {
+				if (c) {
+					_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+				}
+			}
 		}
+#else
+		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
+			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+		}
+#endif
 	}
 
 	return count;
