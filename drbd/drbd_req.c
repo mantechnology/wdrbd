@@ -332,7 +332,7 @@ tail_recursion:
 
 				rq_state = req->rq_state[1 + node_id];
 				// Dw-2091 clear the peer index that sent out of sync (rq_state & RQ_NET_DONE && rq_state & RQ_OOS_NET_QUEUED).
-				if (rq_state & RQ_NET_OK || ((rq_state & RQ_NET_DONE) && rq_state & (RQ_OOS_NET_QUEUED))) {
+				if (rq_state & RQ_NET_OK || ((rq_state & RQ_NET_DONE) && (rq_state & RQ_OOS_NET_QUEUED))) {
 					int bitmap_index = peer_md[node_id].bitmap_index;
 
 					if (bitmap_index == -1)
