@@ -2640,15 +2640,8 @@ static void dup_verification_and_processing(struct drbd_peer_device* peer_device
 
 	while (offset < est && offset >= sst) {
 		if (!get_resync_pending_range(peer_device, offset, est, &offset)) {
-			// DW-1815
-			for_each_peer_device(tmp, peer_device->device) {
-				// DW-2086 modify of the condition so that out of sync remains
-				if (tmp == peer_device ||
-					tmp->current_uuid == (peer_device->current_uuid & ~UUID_PRIMARY) ||
-					tmp->current_uuid == drbd_current_uuid(peer_device->device)) {
-					drbd_set_in_sync(tmp, sst, (int)(offset - sst) << 9);
-				}
-			}
+			// Dw-2092 when a node is configured as a star, in sync should only be applied to the target node, since applying all out of snyc with uuid alone will result in a consistency mismatch.
+			drbd_set_in_sync(peer_device, sst, (int)(offset - sst) << 9);
 			cmd = P_RS_WRITE_ACK;
 		}
 		else {
