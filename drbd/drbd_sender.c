@@ -1485,6 +1485,8 @@ next_sector:
 				WDRBD_VERIFY_DATA("first sent resync request, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
 					sector, size, BM_SECT_TO_BIT(sector), BM_SECT_TO_BIT(sector + (size >> 9)));
 				atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 1);
+				// DW-2098 only one resync request should be sent.
+				break;
 			}
 		}
 #endif
