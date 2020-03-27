@@ -348,8 +348,8 @@ IOCTL_SetMinimumLogLevel(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		WDRBD_INFO("set minimum log level, type : %s(%d), minumum level : %s(%d) => %s(%d), result : %lu\n", 
 					g_log_type_str[pLoggingMinLv->nType], pLoggingMinLv->nType, 
 					// DW-2041
-					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[previous_lv_min] : g_default_lv_str[previous_lv_min]), previous_lv_min, 
-					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? g_feature_lv_str[pLoggingMinLv->nErrLvMin] : g_default_lv_str[pLoggingMinLv->nErrLvMin]), pLoggingMinLv->nErrLvMin,
+					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? "" : g_default_lv_str[previous_lv_min]), previous_lv_min, 
+					((pLoggingMinLv->nType == LOGGING_TYPE_FEATURELOG) ? "" : g_default_lv_str[pLoggingMinLv->nErrLvMin]), pLoggingMinLv->nErrLvMin,
 					Status);
 		if (Status != STATUS_SUCCESS) {
 			return STATUS_UNSUCCESSFUL; 

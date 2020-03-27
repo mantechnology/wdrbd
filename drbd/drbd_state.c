@@ -4530,7 +4530,7 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
 	enum drbd_packet twopc_cmd = success ? P_TWOPC_COMMIT : P_TWOPC_ABORT;
 	struct drbd_connection *connection;
 	u64 im;
-	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
+	//unsigned int target_node_id = be32_to_cpu(request->target_node_id);
 	
 	// DW-2093 rollback DW-2029 modifications due to timing problems.
 	// DW-2029 send a twopc request to target node first
