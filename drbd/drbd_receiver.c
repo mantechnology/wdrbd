@@ -11103,9 +11103,6 @@ static int got_IsInSync(struct drbd_connection *connection, struct packet_info *
 				atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 				atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
 
-				// DW-2082 store resync response information that checks completion of bitmap exchange
-				peer_device->sent_rs_req_sector = sector;
-				peer_device->sent_rs_req_size = blksize;
 				drbd_set_out_of_sync(peer_device, sector, blksize);
 
 				// DW-2082 since the bitmap exchange is complete, start resync from the beginning.
