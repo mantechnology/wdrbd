@@ -877,7 +877,7 @@ DWORD MVOL_SetMinimumLogLevel(PLOGGING_MIN_LV pLml)
 		((pLml->nType == LOGGING_TYPE_SYSLOG || pLml->nType == LOGGING_TYPE_DBGLOG) && (pLml->nErrLvMin < 0 || pLml->nErrLvMin >= LOG_DEFAULT_MAX_LEVEL)) ||
 		(pLml->nType == LOGGING_TYPE_FEATURELOG && (pLml->nErrLvMin < 0 || pLml->nErrLvMin >= LOG_FEATURE_MAX_LEVEL)))
 	{
-		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter\n", __FUNCTION__);
+		fprintf(stderr, "LOG_ERROR: %s: Invalid parameter(%d)\n", __FUNCTION__, pLml->nErrLvMin);
 		return ERROR_INVALID_PARAMETER;
 	}
 
