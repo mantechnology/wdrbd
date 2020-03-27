@@ -11123,8 +11123,12 @@ static int got_IsInSync(struct drbd_connection *connection, struct packet_info *
 				drbd_set_in_sync(peer_device, sector, blksize);
 		}
 		else
+		{
 #else
 			drbd_set_in_sync(peer_device, sector, blksize);
+#endif
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		}
 #endif
 		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		/* rs_same_csums is supposed to count in units of BM_BLOCK_SIZE */
