@@ -2946,10 +2946,21 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			// DW-1979
 			atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 			atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
-
-			// DW-2082 store resync response information that checks completion of bitmap exchange
-			peer_device->sent_rs_req_sector = peer_req->i.sector;
-			peer_device->sent_rs_req_size = peer_req->i.size;
+			
+			// DW-2103 if the resync data is not in the L_SYNC_TARGET state, complete the incomplete request.
+			if (peer_device->repl_state[NOW] != L_SYNC_TARGET) {
+				WDRBD_VERIFY_DATA("send request to complete bitmap exchange since is not in synctarget state, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+					peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+				peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+				if (drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req)) {
+					return -EIO;
+				}
+			}
+			else {
+				// DW-2082 store resync response information that checks completion of bitmap exchange
+				peer_device->sent_rs_req_sector = peer_req->i.sector;
+				peer_device->sent_rs_req_size = peer_req->i.size;
+			}
 
 			// DW-2082 since the bitmap exchange is complete, start resync from the beginning.
 			restart = (device->bm_resync_fo == drbd_bm_bits(device));
@@ -2966,15 +2977,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			drbd_free_peer_req(peer_req);
 
 			return 0;
-		}
-
-		// DW-2082 completion of resync requests that previously confirmed completion of bitmap exchange
-		if (peer_device->sent_rs_req_size != 0) {
-			WDRBD_VERIFY_DATA("send ack from syncsource, force failed sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
-				peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
-			err = _drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE);
-			peer_device->sent_rs_req_sector = 0;
-			peer_device->sent_rs_req_size = 0;
 		}
 	}
 #endif
