@@ -3635,18 +3635,15 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			if (peer_device->connection->agreed_pro_version >= 113) {
 				// DW-2103 if the status changes from L_SYNC_TARGET or L_PAUSED_SYNC_T, complete send of any remaining request.
 				if ((repl_state[OLD] == L_SYNC_TARGET || repl_state[OLD] == L_PAUSED_SYNC_T) && repl_state[OLD] != repl_state[NEW]) {
-					if (get_ldev(device)) {
-						mutex_lock(&device->bm_resync_fo_mutex);
-						if (peer_device->sent_rs_req_size) {
-							WDRBD_VERIFY_DATA("send request to complete bitmap exchange since status has changed, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
-								peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
-							_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE);
-							peer_device->sent_rs_req_sector = 0;
-							peer_device->sent_rs_req_size = 0;
-						}
-						mutex_unlock(&device->bm_resync_fo_mutex);
-						put_ldev(device);
+					mutex_lock(&device->bm_resync_fo_mutex);
+					if (peer_device->sent_rs_req_size) {
+						WDRBD_VERIFY_DATA("send request to complete bitmap exchange since status has changed, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+							peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
+						_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE);
+						peer_device->sent_rs_req_sector = 0;
+						peer_device->sent_rs_req_size = 0;
 					}
+					mutex_unlock(&device->bm_resync_fo_mutex);
 				}
 			}
 #endif
