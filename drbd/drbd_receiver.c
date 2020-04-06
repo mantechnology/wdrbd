@@ -11236,7 +11236,12 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			drbd_set_in_sync(peer_device, sector, blksize);
+			// DW-2112 set in sync only when syncsource status or syncsource can be.
+			if (is_sync_source(peer_device) || 
+				peer_device->repl_state[NOW] == L_AHEAD || 
+				device->resource->role[NOW] == R_PRIMARY)
+				drbd_set_in_sync(peer_device, sector, blksize);
+
 			//DW-1601 add DW-1859
 			if (device->resource->role[NOW] == R_PRIMARY)
 				check_and_clear_io_error_in_primary(device);
