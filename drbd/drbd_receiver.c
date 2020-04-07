@@ -2946,22 +2946,13 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			// DW-1979
 			atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 			atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
-			
-			// DW-2103 if the resync data is not in the L_SYNC_TARGET state, complete the incomplete request.
-			if (peer_device->repl_state[NOW] != L_SYNC_TARGET) {
-				WDRBD_VERIFY_DATA("send request to complete bitmap exchange since is not in synctarget state, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
-					peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
-				// DW-2112 
-				peer_req->block_id = ID_SYNCER_NOT_INSYNC_DONE;
-				if (drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req)) {
-					return -EIO;
-				}
-			}
-			else {
-				// DW-2082 store resync response information that checks completion of bitmap exchange
-				peer_device->sent_rs_req_sector = peer_req->i.sector;
-				peer_device->sent_rs_req_size = peer_req->i.size;
-			}
+
+			// DW-2112 
+			WDRBD_VERIFY_DATA("send request to complete bitmap exchange since is not in synctarget state, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+				peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+			peer_req->block_id = ID_SYNCER_NOT_INSYNC_DONE;
+			if (drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req))
+				return -EIO;
 
 			// DW-2082 since the bitmap exchange is complete, start resync from the beginning.
 			restart = (device->bm_resync_fo == drbd_bm_bits(device));
@@ -10409,8 +10400,6 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		// DW-2082
 		atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
-		peer_device->sent_rs_req_sector = 0;
-		peer_device->sent_rs_req_size = 0;
 
 		// DW-1965 initialize values that need to be answered or set after completion of I/O.
 		atomic_set(&peer_device->unacked_cnt, 0);

@@ -1662,10 +1662,6 @@ struct drbd_peer_device {
 
 	// DW-2082 whether to send a resync request to decide whether to replace the bitmap if the bitmap exchange is not complete
 	atomic_t sent_bitmap_exchange_complete_request;
-	// DW-2082 about resync requests that have determined whether to replace the bitmap
-	// additional completion during synchronization after bitmap replacement (P_RS_WRITE_ACK)
-	ULONG_PTR sent_rs_req_sector;
-	int sent_rs_req_size;
 
 	// DW-2058 number of incomplete write requests to send out of sync
 	atomic_t rq_pending_oos_cnt;

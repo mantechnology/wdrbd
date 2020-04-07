@@ -4666,8 +4666,6 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 	// DW-2082 
 	atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);		
-	peer_device->sent_rs_req_sector = 0;
-	peer_device->sent_rs_req_size = 0;
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;
