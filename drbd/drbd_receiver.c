@@ -11225,9 +11225,14 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 
 		// DW-2112 add ID_SYNCER_NOT_INSYNC_DONE
 		if (p->block_id == ID_SYNCER_NOT_INSYNC_DONE || p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			// DW-2112 set in sync if block id is not ID_SYNCER_NOT_INSYNC_DONE
-			if (p->block_id != ID_SYNCER_NOT_INSYNC_DONE)
-				drbd_set_in_sync(peer_device, sector, blksize);
+			// DW-2112 only set when in sync is in a certain state to avoid overlapping.
+			if (device->resource->role[NOW] == R_PRIMARY || 
+				is_sync_source(peer_device) || 
+				peer_device->repl_state[NOW] == L_AHEAD) {
+				// DW-2112 set in sync if block id is not ID_SYNCER_NOT_INSYNC_DONE
+				if (p->block_id != ID_SYNCER_NOT_INSYNC_DONE)
+					drbd_set_in_sync(peer_device, sector, blksize);
+			}
 
 			//DW-1601 add DW-1859
 			if (device->resource->role[NOW] == R_PRIMARY)
