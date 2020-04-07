@@ -3639,7 +3639,8 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 					if (peer_device->sent_rs_req_size) {
 						WDRBD_VERIFY_DATA("send request to complete bitmap exchange since status has changed, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
 							peer_device->sent_rs_req_sector, peer_device->sent_rs_req_size, BM_SECT_TO_BIT(peer_device->sent_rs_req_sector), BM_SECT_TO_BIT(peer_device->sent_rs_req_sector + (peer_device->sent_rs_req_size >> 9)));
-						_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_SPLIT_DONE);
+						// DW-2112 
+						_drbd_send_ack(peer_device, P_RS_WRITE_ACK, cpu_to_be64(peer_device->sent_rs_req_sector), cpu_to_be32(peer_device->sent_rs_req_size), ID_SYNCER_NOT_INSYNC_DONE);
 						peer_device->sent_rs_req_sector = 0;
 						peer_device->sent_rs_req_size = 0;
 					}

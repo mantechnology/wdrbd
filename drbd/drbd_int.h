@@ -134,6 +134,9 @@ extern char usermode_helper[];
 //DW-1601 Add define values for split peer request processing and already sync processing
 #define ID_SYNCER_SPLIT_DONE ID_SYNCER
 #define ID_SYNCER_SPLIT (ID_SYNCER - 1)
+// DW-2112 Add block id that does not set in sync when sending P_RS_WRITE_WRITE_ACK
+// currently, it is only used for synchronization requests that confirm completion of bitmap exchange.
+#define ID_SYNCER_NOT_INSYNC_DONE (ID_SYNCER - 2)
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 

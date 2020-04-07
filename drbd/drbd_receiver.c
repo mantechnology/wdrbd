@@ -2951,7 +2951,8 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			if (peer_device->repl_state[NOW] != L_SYNC_TARGET) {
 				WDRBD_VERIFY_DATA("send request to complete bitmap exchange since is not in synctarget state, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
 					peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
-				peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+				// DW-2112 
+				peer_req->block_id = ID_SYNCER_NOT_INSYNC_DONE;
 				if (drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req)) {
 					return -EIO;
 				}
@@ -11235,11 +11236,10 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 		if (p->block_id != ID_SYNCER_SPLIT)
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
-		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			// DW-2112 set in sync only when syncsource status or syncsource can be.
-			if (is_sync_source(peer_device) || 
-				peer_device->repl_state[NOW] == L_AHEAD || 
-				device->resource->role[NOW] == R_PRIMARY)
+		// DW-2112 add ID_SYNCER_NOT_INSYNC_DONE
+		if (p->block_id == ID_SYNCER_NOT_INSYNC_DONE || p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
+			// DW-2112 set in sync if block id is not ID_SYNCER_NOT_INSYNC_DONE
+			if (p->block_id != ID_SYNCER_NOT_INSYNC_DONE)
 				drbd_set_in_sync(peer_device, sector, blksize);
 
 			//DW-1601 add DW-1859
@@ -11248,7 +11248,8 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 			else
 				check_and_clear_io_error_in_secondary(peer_device);
 
-			if (p->block_id == ID_SYNCER_SPLIT_DONE) 
+			// DW-2112
+			if (p->block_id == ID_SYNCER_NOT_INSYNC_DONE || p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);
 
 			//DW-1601 add DW-1817
