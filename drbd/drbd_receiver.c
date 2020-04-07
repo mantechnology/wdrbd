@@ -2948,7 +2948,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 			atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
 
 			// DW-2112 
-			WDRBD_VERIFY_DATA("send request to complete bitmap exchange since is not in synctarget state, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
+			WDRBD_VERIFY_DATA("send request to complete bitmap exchange, sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
 				peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 			peer_req->block_id = ID_SYNCER_NOT_INSYNC_DONE;
 			if (drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req))
@@ -2962,8 +2962,6 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 
 			mutex_unlock(&device->bm_resync_fo_mutex);
-			WDRBD_VERIFY_DATA("syncsource bitmap operation completed, force failed sector(%llu) size(%u), bitmap(%llu ~ %llu)\n",
-				peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
 			dec_rs_pending(peer_device);
 			drbd_free_peer_req(peer_req);
