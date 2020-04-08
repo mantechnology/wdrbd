@@ -3041,8 +3041,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						dec_unacked(peer_device);
 
 						kfree2(split_count);
+						// DW-2117 added because put_ldev is missing.
+						put_ldev(device);
 
-						return err;
+						return 0;
 					}
 
 					device->h_insync_bb++;
