@@ -4665,7 +4665,10 @@ struct drbd_peer_device *create_peer_device(struct drbd_device *device, struct d
 	atomic_set(&peer_device->wait_for_recv_bitmap, 1);
 	atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 	// DW-2082 
-	atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);		
+	atomic_set(&peer_device->sent_bitmap_exchange_complete_request, 0);
+
+	atomic_set64(&peer_device->s_resync_bb, 0);
+	atomic_set64(&peer_device->e_resync_bb, 0);
 
 	peer_device->bitmap_index = -1;
 	peer_device->resync_wenr = LC_FREE;
@@ -4762,8 +4765,6 @@ enum drbd_ret_code drbd_create_device(struct drbd_config_context *adm_ctx, unsig
 
 	device->s_rl_bb = UINT64_MAX;
 	device->e_rl_bb = 0;
-	atomic_set64(&device->s_resync_bb, 0);
-	atomic_set64(&device->e_resync_bb, 0);
 #endif
 	INIT_LIST_HEAD(&device->pending_master_completion[0]);
 	INIT_LIST_HEAD(&device->pending_master_completion[1]);
