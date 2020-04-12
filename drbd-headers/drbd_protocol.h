@@ -98,6 +98,8 @@ enum drbd_packet {
 	P_TWOPC_NO            = 0x46, /* meta sock: reject two-phase commit */
 	P_TWOPC_COMMIT        = 0x47, /* data sock: commit state change */
 	P_TWOPC_RETRY         = 0x48, /* meta sock: retry two-phase commit */
+	// DW-2124
+	P_BM_EXCHANGE_STATE	  = 0x49, /* data sock: send status after bitmap echange is complete (now only status is sent for completion) */
 
 	P_MAY_IGNORE	      = 0x100, /* Flag to test if (cmd > P_MAY_IGNORE) ... */
 
@@ -179,6 +181,12 @@ struct p_trim {
 struct p_wsame {
 	struct p_data p_data;
 	uint32_t size;     /* == bio->bi_size */
+} __packed;
+
+// DW-2220
+struct p_bm_exchange_state {
+	uint32_t state;
+	uint32_t pad;	/* to multiple of 8 Byte */
 } __packed;
 
 /*
