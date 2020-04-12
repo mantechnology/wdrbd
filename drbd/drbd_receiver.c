@@ -10090,7 +10090,7 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_TRIM]	    = { 0, sizeof(struct p_trim), receive_Data },
 	[P_RS_DEALLOCATED]  = { 0, sizeof(struct p_block_desc), receive_rs_deallocated },
 	[P_WSAME]	    = { 1, sizeof(struct p_wsame), receive_Data },
-	// DW-2220
+	// DW-2124
 	[P_BM_EXCHANGE_STATE] = { 0, sizeof(struct p_bm_exchange_state), receive_bm_exchange_state },
 };
 

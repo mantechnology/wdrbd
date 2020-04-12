@@ -183,7 +183,7 @@ struct p_wsame {
 	uint32_t size;     /* == bio->bi_size */
 } __packed;
 
-// DW-2220
+// DW-2124
 struct p_bm_exchange_state {
 	uint32_t state;
 	uint32_t pad;	/* to multiple of 8 Byte */
