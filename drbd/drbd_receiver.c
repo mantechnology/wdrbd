@@ -4011,8 +4011,9 @@ static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, s
 
 	struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
 
-	if ((s_resync_bb < e_bb && n_resync_bb >= e_bb) ||
-		(s_resync_bb < s_bb && n_resync_bb >= s_bb)) {
+	// DW-2125 marked bit must be set even if the first(s_bb) or the end(e_bb) is equal to s_resync_bb in the replication range
+	if ((s_resync_bb <= e_bb && n_resync_bb >= e_bb) ||
+		(s_resync_bb <= s_bb && n_resync_bb >= s_bb)) {
 		//DW-1911 check if marked already exists.
 		list_for_each_entry(struct drbd_marked_replicate, marked_rl, &(device->marked_rl_list), marked_rl_list) {
 			if (marked_rl->bb == s_bb)
