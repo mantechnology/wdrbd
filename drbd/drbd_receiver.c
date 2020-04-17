@@ -10462,6 +10462,10 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	connection->send.seen_any_write_yet = false;
 
+	// DW-2121
+	clear_bit(BARRIER_ACK_PENDING, &connection->flags);
+	wake_up(&resource->barrier_wait);
+
 	// DW-2035
 	clear_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags);
 
