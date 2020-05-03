@@ -137,6 +137,9 @@ extern char usermode_helper[];
 
 #define UUID_NEW_BM_OFFSET ((u64)0x0001000000000000ULL)
 
+// DW-2124
+#define B_COMPLETE 0x01
+
 //DW-1927
 #define CONTROL_BUFF_SIZE	1024 * 5120
 struct drbd_device;
@@ -1194,8 +1197,8 @@ enum {
 	RECONNECT,
 	CONN_DISCARD_MY_DATA,
 	SEND_STATE_AFTER_AHEAD_C,
-	//DW-1874
-	FORCE_DISCONNECT,
+	// DW-2035 set only when command down is in role secondary
+	DISCONN_NO_WAIT_RESYNC,
 };
 
 /* flag bits per resource */
@@ -1643,7 +1646,7 @@ struct drbd_peer_device {
 	/* resync extent number waiting for application requests */
 	unsigned int resync_wenr;
 	enum drbd_disk_state resync_finished_pdsk; /* Finished while starting resync */
-	int resync_again; /* decided to resync again while resync running */
+	bool resync_again; /* decided to resync again while resync running */
 
 	atomic_t ap_pending_cnt; /* AP data packets on the wire, ack expected */
 	atomic_t unacked_cnt;	 /* Need to send replies for */
@@ -1652,10 +1655,19 @@ struct drbd_peer_device {
 	
 	// DW-1979 the value used by the syncaget to match the "out of sync" with the sync source when exchanging the bitmap.
 	// set to 1 when waiting for a response to a resync request.
-	atomic_t wait_for_recv_rs_reply;
+	atomic_t wait_for_bitmp_exchange_complete;
 	// DW-1979 used to determine whether the bitmap exchange is complete on the syncsource.
 	// set to 1 to wait for bitmap exchange.
 	atomic_t wait_for_recv_bitmap;
+
+	// DW-2058 number of incomplete write requests to send out of sync
+	atomic_t rq_pending_oos_cnt;
+
+	// DW-2119 this variables in the device were moved to the peer_device.
+	// DW-1904 resync start bitmap offset
+	atomic_t64 s_resync_bb;
+	// DW-2065 resync end bitmap offset
+	atomic_t64 e_resync_bb;
 
 	/* use checksums for *this* resync */
 	bool use_csums;
@@ -1770,6 +1782,12 @@ struct drbd_marked_replicate {
 	u16 end_unmarked_rl;
 };
 
+// DW-2042
+struct drbd_resync_pending_sectors {
+	sector_t sst;	/* start sector number */
+	sector_t est;	/* end sector number */
+	struct list_head pending_sectors;
+};
 
 struct submit_worker {
 	struct workqueue_struct *wq;
@@ -1863,7 +1881,11 @@ struct drbd_device {
 #endif
 	struct mutex bm_resync_fo_mutex;
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
- 
+	// DW-2042
+	struct list_head resync_pending_sectors;
+	// DW-2058 mutex for resync pending list
+	struct mutex resync_pending_fo_mutex;
+
 	//DW-1911 marked replication list, used for resync
 	//does not use lock because it guarantees synchronization for the use of marked_rl_list.
 	//Use lock if you cannot guarantee future marked_rl_list synchronization
@@ -1874,8 +1896,6 @@ struct drbd_device {
 	ULONG_PTR s_rl_bb;
 	ULONG_PTR e_rl_bb;
 
-	//DW-1904 last recv resync data bitmap bit
-	ULONG_PTR e_resync_bb;
 
 	//DW-1911 hit resync in progress hit marked replicate,in sync count
 	ULONG_PTR h_marked_bb;	
@@ -2119,9 +2139,17 @@ extern int drbd_send_block(struct drbd_peer_device *, enum drbd_packet,
 extern int drbd_send_dblock(struct drbd_peer_device *, struct drbd_request *req);
 extern int drbd_send_drequest(struct drbd_peer_device *, int cmd,
 			      sector_t sector, int size, u64 block_id);
+
+extern int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
+	u64 sector, u32 blksize, u64 block_id);
+
+extern int _drbd_send_bitmap_exchange_state(struct drbd_peer_device *peer_device, enum drbd_packet cmd, u32 state);
+
 extern void *drbd_prepare_drequest_csum(struct drbd_peer_request *peer_req, int digest_size);
 extern int drbd_send_ov_request(struct drbd_peer_device *, sector_t sector, int size);
 
+// DW-2037
+extern void drbd_send_bitmap_source_complete(struct drbd_device *, struct drbd_peer_device *, int);
 // DW-1979
 extern void drbd_send_bitmap_target_complete(struct drbd_device *, struct drbd_peer_device *, int);
 extern int drbd_send_bitmap(struct drbd_device *, struct drbd_peer_device *);
@@ -2154,7 +2182,7 @@ extern void drbd_uuid_received_new_current(struct drbd_peer_device *, u64 , u64)
 extern void drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_bitmap(struct drbd_peer_device *peer_device, u64 val) __must_hold(local);
 extern void _drbd_uuid_set_current(struct drbd_device *device, u64 val) __must_hold(local);
-extern void drbd_uuid_new_current(struct drbd_device *device, bool forced);
+extern void drbd_uuid_new_current(struct drbd_device *device, bool forced, char* caller);
 extern void drbd_uuid_new_current_by_user(struct drbd_device *device);
 extern void _drbd_uuid_push_history(struct drbd_device *device, u64 val) __must_hold(local);
 extern u64 _drbd_uuid_pull_history(struct drbd_peer_device *peer_device) __must_hold(local);
@@ -2954,13 +2982,13 @@ extern ULONG_PTR update_sync_bits(struct drbd_peer_device *peer_device,
 extern bool drbd_set_sync(struct drbd_device *, sector_t, int, unsigned long, unsigned long);
 #endif
 extern ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		update_sync_bits_mode mode);
+		update_sync_bits_mode mode, char* caller);
 #define drbd_set_in_sync(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC)
+	__drbd_change_sync(peer_device, sector, size, SET_IN_SYNC, __FUNCTION__)
 #define drbd_set_out_of_sync(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, SET_OUT_OF_SYNC)
+	__drbd_change_sync(peer_device, sector, size, SET_OUT_OF_SYNC, __FUNCTION__)
 #define drbd_rs_failed_io(peer_device, sector, size) \
-	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED)
+	__drbd_change_sync(peer_device, sector, size, RECORD_RS_FAILED, __FUNCTION__)
 
 extern void drbd_al_shrink(struct drbd_device *device);
 extern bool drbd_sector_has_priority(struct drbd_peer_device *, sector_t);
@@ -3091,7 +3119,8 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		 */
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
-		if (device->disk_state[NOW] > D_FAILED) {
+		// DW-2033 Change to Failed even at Attaching
+		if (device->disk_state[NOW] > D_FAILED || device->disk_state[NOW] == D_ATTACHING) {
 			begin_state_change_locked(device->resource, CS_HARD);
 			__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
@@ -3109,7 +3138,8 @@ static inline void __drbd_chk_io_error_(struct drbd_device *device,
 		if (df == DRBD_FORCE_DETACH)
 			set_bit(FORCE_DETACH, &device->flags);
 		if (df == DRBD_META_IO_ERROR || df == DRBD_FORCE_DETACH) {
-			if (device->disk_state[NOW] > D_FAILED) {
+			// DW-2033 Change to Failed even at Attaching
+			if (device->disk_state[NOW] > D_FAILED || device->disk_state[NOW] == D_ATTACHING) {
 				begin_state_change_locked(device->resource, CS_HARD);
 				__change_disk_state(device, D_FAILED, __FUNCTION__);
 #ifdef _WIN32_RCU_LOCKED
@@ -3461,9 +3491,11 @@ static inline void inc_rs_pending(struct drbd_peer_device *peer_device)
 }
 
 #define dec_rs_pending(peer_device) \
-	((void)expect((peer_device), __dec_rs_pending(peer_device) >= 0))
-static inline int __dec_rs_pending(struct drbd_peer_device *peer_device)
+	((void)expect((peer_device), __dec_rs_pending(peer_device, __FUNCTION__) >= 0))
+static inline int __dec_rs_pending(struct drbd_peer_device *peer_device, const char* caller)
 {
+	if (atomic_read(&peer_device->rs_pending_cnt) == 0)
+		drbd_warn(peer_device, "%s => %s, peer_device->rs_pending_cnt(%u)\n", caller, __FUNCTION__, atomic_read(&peer_device->rs_pending_cnt));
 	return atomic_dec_return(&peer_device->rs_pending_cnt);
 }
 
@@ -3482,9 +3514,11 @@ static inline void inc_unacked(struct drbd_peer_device *peer_device)
 }
 
 #define dec_unacked(peer_device) \
-	((void)expect(peer_device, __dec_unacked(peer_device) >= 0))
-static inline int __dec_unacked(struct drbd_peer_device *peer_device)
+	((void)expect(peer_device, __dec_unacked(peer_device, __FUNCTION__) >= 0))
+static inline int __dec_unacked(struct drbd_peer_device *peer_device, const char* caller)
 {
+	if (atomic_read(&peer_device->unacked_cnt) == 0)
+		drbd_warn(peer_device, "%s => %s, peer_device->unacked_cnt(%u)\n", caller, __FUNCTION__, atomic_read(&peer_device->unacked_cnt));
 	return atomic_dec_return(&peer_device->unacked_cnt);
 }
 

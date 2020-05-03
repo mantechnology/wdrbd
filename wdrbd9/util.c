@@ -501,12 +501,14 @@ HANDLE GetVolumeHandleFromDeviceMinor(unsigned int minor)
 }
 
 // returns file system type, NTFS(1), FAT(2), EXFAT(3), REFS(4)
-USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
+USHORT GetFileSystemTypeWithHandle(HANDLE hVolume, bool *retry)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	IO_STATUS_BLOCK iostatus = { 0, };
 	FILESYSTEM_STATISTICS fss = { 0, };
 	
+	*retry = false;
+
 	if (NULL == hVolume)
 	{
 		WDRBD_ERROR("Invalid parameter\n");
@@ -514,6 +516,12 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 	}
 	
 	status = ZwFsControlFile(hVolume, NULL, NULL, NULL, &iostatus, FSCTL_FILESYSTEM_GET_STATISTICS, NULL, 0, &fss, sizeof(fss));
+
+	// DW-2015 set the retry when STATUS_INVALID_PARAMETER.
+	if (iostatus.Status == STATUS_INVALID_PARAMETER) {
+		*retry = true;
+	}
+
 	// retrieved status might indicate there's more data, never mind this as long as the only thing we need is file system type.
 	if (fss.FileSystemType == 0 &&
 		!NT_SUCCESS(status))
@@ -526,30 +534,35 @@ USHORT GetFileSystemTypeWithHandle(HANDLE hVolume)
 }
 
 // retrieves file system specified cluster information ( total cluster count, number of bytes per cluster )
-BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalCluster, PULONG pulBytesPerCluster)
+int GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalCluster, PULONG pulBytesPerCluster)
 {
-	BOOLEAN bRet = FALSE;
+	int bRet = -EINVAL;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	IO_STATUS_BLOCK ioStatus = { 0, };
 	USHORT usFileSystemType = 0;
 	ULONGLONG ullTotalCluster = 0;
 	ULONG ulBytesPerCluster = 0;
 	HANDLE hEvent = NULL;
+	bool retry = false;
 
 	if (NULL == hVolume ||
 		NULL == pullTotalCluster ||
 		NULL == pulBytesPerCluster)
 	{
 		WDRBD_ERROR("Invalid parameter, hVolume(%p), pullTotalCluster(%p), pulBytesPerCluster(%p)\n", hVolume, pullTotalCluster, pulBytesPerCluster);
-		return FALSE;
+		return bRet;
 	}
 
 	do
 	{
-		usFileSystemType = GetFileSystemTypeWithHandle(hVolume);
+		usFileSystemType = GetFileSystemTypeWithHandle(hVolume, &retry);
 		if (usFileSystemType == 0)
 		{
-			WDRBD_ERROR("GetFileSystemTypeWithHandle returned invalid file system type\n");
+			if (retry) 
+				bRet = -EAGAIN;
+			else
+				WDRBD_ERROR("GetFileSystemTypeWithHandle returned invalid file system type\n");
+
 			break;		
 		}
 
@@ -613,11 +626,11 @@ BOOLEAN GetClusterInfoWithVolumeHandle(HANDLE hVolume, PULONGLONG pullTotalClust
 			break;
 		}
 
-		bRet = TRUE;
+		bRet = 0;
 
 	} while (false, false);
 
-	if (bRet)
+	if (bRet == 0)
 	{
 		*pullTotalCluster = ALIGN(ullTotalCluster, BITS_PER_BYTE);
 		*pulBytesPerCluster = ulBytesPerCluster;
@@ -754,6 +767,8 @@ bool ChangeVolumeReadonly(unsigned int minor, bool set)
 	return bRet;
 }
 
+#define RETRY_MAX_COUNT 10
+
 // returns volume bitmap and cluster information.
 PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCluster, PULONG pulBytesPerCluster)
 {
@@ -763,6 +778,7 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 	STARTING_LCN_INPUT_BUFFER slib = { 0, };
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	BOOLEAN bRet = FALSE;
+	int ret = 0;
 
 	if (NULL == pullTotalCluster ||
 		NULL == pulBytesPerCluster)
@@ -779,15 +795,29 @@ PVOLUME_BITMAP_BUFFER GetVolumeBitmap(unsigned int minor, PULONGLONG pullTotalCl
 
 	do
 	{
+		int rtc = 0;
+		
+retry:
 		hVolume = GetVolumeHandleFromDeviceMinor(minor);
 		if (NULL == hVolume)
 		{
 			WDRBD_ERROR("Could not get volume handle from minor(%u)\n", minor);
 			break;
 		}
-				
-		if (FALSE == GetClusterInfoWithVolumeHandle(hVolume, pullTotalCluster, pulBytesPerCluster))
+
+		ret = GetClusterInfoWithVolumeHandle(hVolume, pullTotalCluster, pulBytesPerCluster);
+		if (0 != ret)
 		{
+			// DW-2015 if the STATUS_INVALID_PARAMETER condition is received when using the handle, retries up to RETRY_MAX_COUNT(10).
+			if (ret == -EAGAIN && rtc < RETRY_MAX_COUNT) {
+				if (NULL != hVolume){
+					ZwClose(hVolume);
+					hVolume = NULL;
+				}
+				rtc++;
+				WDRBD_INFO("handle retry (%d/%d), minor(%u)\n", rtc, RETRY_MAX_COUNT, minor);
+				goto retry;
+			}
 			WDRBD_ERROR("Could not get cluster information\n");
 			break;
 		}

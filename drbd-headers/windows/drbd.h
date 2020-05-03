@@ -438,9 +438,8 @@ enum mdf_peer_flag {
 	// It needs to be cleared when resync's done and gets matched current uuid.
 	// This flag indicates that above situation so that uuid will be propagated once resync is finished.
 	MDF_PEER_DIFF_CUR_UUID = 1 << 5,
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	MDF_PEER_IGNORE_CRASHED_PRIMARY = 1 << 6,		/* MODIFIED_BY_MANTECH DW-1357: no need to get synced from this peer, ignore crashed primary */
-#endif
+	// DW-2044 need to get synced from this peer
+	MDF_CRASHED_PRIMARY_WORK_PENDING = 1 << 6,
 #endif
 	MDF_NODE_EXISTS =       1 << 16, /* */
 #ifdef _WIN32
@@ -449,6 +448,7 @@ enum mdf_peer_flag {
 													//when the connection is lost during synchronization and the synctarget is complete synchronizing with another node, 
 													//it is used to determine the unnecessary out of sync removal when reconnected.
 	MDF_PEER_PRIMARY_IO_ERROR = 1 << 19,         /* DW-1843 Set the peer flag to indicate that an io-error occurred at the primary.*/
+	MDF_PEER_INCOMP_SYNC_WITH_SAME_UUID	= 1 << 20,	// DW-2088 if the source is the same UUID at the start of resync, set up the flag on the resync source node and use it to verify that the synchronization source node has changed.
 #endif
 };
 
@@ -551,5 +551,4 @@ enum {
 #define _WIN32_RCU_LOCKED // DW-1477 : Lock if not locked.
 #define _WIN32_NOWAIT_COMPLETION // DW-1479 : Do not wait for WskCloseSocket to complete.
 #define _WIN32_NETQUEUED_LOG // DW-1521 : Improve I/O response time at low bandwidth.
-#define _WIN32_CRASHED_PRIMARY_SYNCSOURCE // DW-1630 : crashed_primary node to be SyncSource.
 #endif

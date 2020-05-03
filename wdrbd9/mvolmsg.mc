@@ -326,6 +326,13 @@ Language		= English
 <7>%2
 .
 
+MessageID		= 12029
+Severity		= Informational
+SymbolicName	= PRINTK_NON
+Language		= English
+%2
+.
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 MessageID		= 15001
 Severity		= Error

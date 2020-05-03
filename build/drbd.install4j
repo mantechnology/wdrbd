@@ -1407,13 +1407,13 @@ return true;</string>
                         <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
                       </void>
                       <void property="stderrVariableName">
-                        <string>wipe_md_result</string>
+                        <string>wipe_stderr</string>
                       </void>
                       <void property="stdoutRedirectionMode">
                         <object class="com.install4j.runtime.installer.helper.launching.OutputRedirectionMode" field="VARIABLE" />
                       </void>
                       <void property="stdoutVariableName">
-                        <string>wipe_md_result</string>
+                        <string>wipe_stdout</string>
                       </void>
                       <void property="wait">
                         <boolean>true</boolean>
@@ -1441,18 +1441,20 @@ else
 }
 </condition>
               </action>
-              <action name="" id="2726" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="">
+              <action name="" id="2726" customizedId="" beanClass="com.install4j.runtime.beans.actions.control.RunScriptAction" enabled="true" commentSet="false" comment="" actionElevationType="inherit" rollbackBarrier="false" multiExec="false" failureStrategy="1" errorMessage="${i18n:FailWipeMd}">
                 <serializedBean>
                   <java class="java.beans.XMLDecoder">
                     <object class="com.install4j.runtime.beans.actions.control.RunScriptAction">
                       <void property="script">
                         <object class="com.install4j.api.beans.ScriptProperty">
                           <void property="value">
-                            <string>String wipe_md_result = (String)context.getVariable("wipe_md_result");
-if(wipe_md_result.contains("wipe-md --force' terminated"))
-{
-    Util.showMessage(context.getMessage("FailWipeMd"));
+                            <string>String msg = (String)context.getVariable("wipe_stderr");
+
+if(msg.length() &gt; 0) {
+    Util.showMessage((String)context.getVariable("wipe_stderr"));
+    return false;
 }
+
 return true;</string>
                           </void>
                         </object>

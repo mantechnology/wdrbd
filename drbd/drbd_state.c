@@ -3328,49 +3328,39 @@ enum drbd_disk_state os, enum drbd_disk_state ns)
 }
 
 #ifdef _WIN32
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-/* MODIFIED_BY_MANTECH DW-1357: it is called when we determined that crashed primary is no longer need for one of peer at least.
+/* DW-2044 it is called when we determined that crashed primary is no longer need for one of peer at least.
 	I am no longer crashed primary for all peers if..
 		1. I've done resync as a sync target from one of uptodate peer.
 		2. I've done resync as a sync source for all existing peers.
 	I am no longer crashed primary for only this peer if..
 		1. I've done resync as a sync source for this peer, but have not done resync for another peer.
 */
-static void consider_finish_crashed_primary(struct drbd_peer_device *peer_device, bool bTargetDone)
+static void consider_finish_crashed_primary(struct drbd_peer_device *peer_device, bool done)
 {
 	struct drbd_device *device = peer_device->device;
 	struct drbd_peer_device *p;
-	bool bAllPeerDone = true;
-
-	if (bTargetDone)
-	{
+	if (done) {
 		clear_bit(CRASHED_PRIMARY, &device->flags);
-
+		
 		for_each_peer_device(p, device)
-			drbd_md_clear_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY);
+			drbd_md_clear_peer_flag(p, MDF_CRASHED_PRIMARY_WORK_PENDING);
 
 		return;
 	}
 
-	drbd_md_set_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY);
+	drbd_md_clear_peer_flag(peer_device, MDF_CRASHED_PRIMARY_WORK_PENDING);
 
-	for_each_peer_device(p, device)
-	{
-		if (!drbd_md_test_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY))
-		{
-			bAllPeerDone = false;
+	done = true;
+	for_each_peer_device(p, device) {
+		if (p != peer_device &&
+			drbd_md_test_peer_flag(p, MDF_CRASHED_PRIMARY_WORK_PENDING)) {
+			done = false;
+			break;
 		}
 	}
-
-	if (bAllPeerDone)
-	{
+	if (done)
 		clear_bit(CRASHED_PRIMARY, &device->flags);
-
-		for_each_peer_device(p, device)
-			drbd_md_clear_peer_flag(p, MDF_PEER_IGNORE_CRASHED_PRIMARY);
-	}	
 }
-#endif
 #endif
 
 static void check_may_resume_io_after_fencing(struct drbd_state_change *state_change, int n_connection)
@@ -3408,7 +3398,7 @@ static void check_may_resume_io_after_fencing(struct drbd_state_change *state_ch
 #endif
 			struct drbd_device *device = peer_device->device;
 			if (test_and_clear_bit(NEW_CUR_UUID, &device->flags))
-				drbd_uuid_new_current(device, false);
+				drbd_uuid_new_current(device, false, __FUNCTION__);
 		}
 		mutex_unlock(&resource->conf_update);
 		begin_state_change(resource, &irq_flags, CS_VERBOSE);
@@ -3511,13 +3501,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 #ifdef _WIN32
 			// MODIFIED_BY_MANTECH DW-998: Disk state is adopted by peer disk and it could have any syncable state, so is local disk state.
 			if (resync_finished && disk_state[NEW] >= D_OUTDATED && disk_state[NEW] == peer_disk_state[NOW]){
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
+				// DW-2044 clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer.
 				if (test_bit(CRASHED_PRIMARY, &device->flags))
 					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);
-#else
-				clear_bit(CRASHED_PRIMARY, &device->flags);
-#endif
 
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
@@ -3573,13 +3559,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 			if ((disk_state[OLD] != D_UP_TO_DATE || peer_disk_state[OLD] != D_UP_TO_DATE) &&
 			    (disk_state[NEW] == D_UP_TO_DATE && peer_disk_state[NEW] == D_UP_TO_DATE)) {
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-				// MODIFIED_BY_MANTECH DW-1357: clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer or as a sync source for all peers.
+				// DW-2044 clear CRASHED_PRIMARY flag if I've done resync as a sync target from one of peer.
 				if (test_bit(CRASHED_PRIMARY, &device->flags))
 					consider_finish_crashed_primary(peer_device, repl_state[NOW] == L_SYNC_TARGET && repl_state[NEW] == L_ESTABLISHED);
-#else
-				clear_bit(CRASHED_PRIMARY, &device->flags);
-#endif
+
 				if (peer_device->uuids_received)
 					peer_device->uuid_flags &= ~((u64)UUID_FLAG_CRASHED_PRIMARY);
 			}
@@ -3669,8 +3652,10 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 			// If the SEND_BITMAP_WORK_PENDING flag is set, also check the peer's repl_state. if L_WF_BITMAP_T, queuing send_bitmap().
 			if (test_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags))
 			{
-				if (repl_state[NEW] == L_WF_BITMAP_S && peer_device->repl_state[NOW] == L_WF_BITMAP_S && 
-					peer_device->last_repl_state == L_WF_BITMAP_T)
+				if (repl_state[NEW] == L_WF_BITMAP_S && 
+					((peer_device->repl_state[NOW] == L_WF_BITMAP_S && peer_device->last_repl_state == L_WF_BITMAP_T) ||
+					// DW-2064 send bitmap when L_AHEAD is in state and wait_for_recv_bitmap is set
+					(peer_device->repl_state[NOW] == L_AHEAD && atomic_read(&peer_device->wait_for_recv_bitmap))))
 				{
 					send_bitmap = true;
 					clear_bit(SEND_BITMAP_WORK_PENDING, &peer_device->flags);
@@ -3681,7 +3666,9 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				}
 			}
 			else if (repl_state[OLD] != L_WF_BITMAP_S && repl_state[NEW] == L_WF_BITMAP_S && 
-				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
+				((peer_device->repl_state[NOW] == L_WF_BITMAP_S) ||
+				// DW-2064 send bitmap when L_AHEAD is in state and wait_for_recv_bitmap is set
+				(peer_device->repl_state[NOW] == L_AHEAD && atomic_read(&peer_device->wait_for_recv_bitmap))))
 			{
 				send_bitmap = true;
 			}
@@ -3696,7 +3683,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				peer_device->repl_state[NOW] == L_WF_BITMAP_S)
 			{
 #endif
-				drbd_queue_bitmap_io(device, &drbd_send_bitmap, NULL,
+				drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_source_complete,
 						"send_bitmap (WFBitMapS)",
 						BM_LOCK_SET | BM_LOCK_CLEAR | BM_LOCK_BULK | BM_LOCK_SINGLE_SLOT | BM_LOCK_POINTLESS,
 						peer_device);
@@ -3704,13 +3691,15 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 
 
 #ifdef _WIN32 
-			// DW-1447
-			if (repl_state[OLD] == L_STARTING_SYNC_T && repl_state[NEW] == L_WF_BITMAP_T
-				&& peer_device->repl_state[NOW] == L_WF_BITMAP_T)
-			{
-				send_state = true;
-			}			
-
+			if (repl_state[NEW] == L_WF_BITMAP_T &&
+				peer_device->repl_state[NOW] == L_WF_BITMAP_T) {
+				// DW-1447
+				if (repl_state[OLD] == L_STARTING_SYNC_T)
+					send_state = true;
+				// DW-2026 if the status is not L_STARTING_SYNC_T, the status is not send.
+				else
+					drbd_info(peer_device, "not sending state because of old repl_state(%s)\n", drbd_repl_str(repl_state[OLD]));
+			}
 #endif
 
 			if (peer_disk_state[NEW] < D_INCONSISTENT && get_ldev(device)) {
@@ -3976,7 +3965,7 @@ static int w_after_state_change(struct drbd_work *w, int unused)
 				/* When a peer disk goes from D_UP_TO_DATE to D_FAILED or D_INCONSISTENT
 				   we know that a write failed on that node. Therefore we need to create
 				   the new UUID right now (not wait for the next write to come in) */
-				drbd_uuid_new_current(device, false);
+				drbd_uuid_new_current(device, false, __FUNCTION__);
 			}
 
 
@@ -4282,6 +4271,40 @@ change_peer_state(struct drbd_connection *connection, int vnr,
 	return rv;
 }
 
+// DW-2029
+static enum drbd_state_rv
+conn_send_twopc(struct drbd_resource *resource, struct drbd_connection *connection, struct p_twopc_request *request,
+			int vnr, enum drbd_packet cmd, u64 reach_immediately)
+{
+	u64 mask;
+	enum drbd_state_rv rv = SS_SUCCESS;
+
+	clear_bit(TWOPC_PREPARED, &connection->flags);
+
+	if (connection->agreed_pro_version < 110)
+		return rv;
+
+	mask = NODE_MASK(connection->peer_node_id);
+	if (reach_immediately & mask)
+		set_bit(TWOPC_PREPARED, &connection->flags);
+	else
+		return rv;
+
+	clear_bit(TWOPC_YES, &connection->flags);
+	clear_bit(TWOPC_NO, &connection->flags);
+	clear_bit(TWOPC_RETRY, &connection->flags);
+
+	if (!conn_send_twopc_request(connection, vnr, cmd, request)) {
+		rv = SS_CW_SUCCESS;
+	}
+	else {
+		clear_bit(TWOPC_PREPARED, &connection->flags);
+		wake_up(&resource->work.q_wait);
+	}
+	
+	return rv;
+}
+
 static enum drbd_state_rv
 __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet cmd,
 		       struct p_twopc_request *request, u64 reach_immediately)
@@ -4289,30 +4312,24 @@ __cluster_wide_request(struct drbd_resource *resource, int vnr, enum drbd_packet
 	struct drbd_connection *connection;
 	enum drbd_state_rv rv = SS_SUCCESS;
 	u64 im;
+	unsigned int target_node_id = be32_to_cpu(request->target_node_id);
 
-	for_each_connection_ref(connection, im, resource) {
-		u64 mask;
-
-		clear_bit(TWOPC_PREPARED, &connection->flags);
-
-		if (connection->agreed_pro_version < 110)
-			continue;
-		mask = NODE_MASK(connection->peer_node_id);
-		if (reach_immediately & mask)
-			set_bit(TWOPC_PREPARED, &connection->flags);
-		else
-			continue;
-
-		clear_bit(TWOPC_YES, &connection->flags);
-		clear_bit(TWOPC_NO, &connection->flags);
-		clear_bit(TWOPC_RETRY, &connection->flags);
-
-		if (!conn_send_twopc_request(connection, vnr, cmd, request)) {
-			rv = SS_CW_SUCCESS;
-		} else {
-			clear_bit(TWOPC_PREPARED, &connection->flags);
-			wake_up(&resource->work.q_wait);
+	// DW-2029 send a twopc request to target node first
+	if (target_node_id != -1) {
+		connection = drbd_connection_by_node_id(resource, target_node_id);
+		if (connection) {
+			if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
+				rv = SS_CW_SUCCESS;
 		}
+	}
+
+	// send to other nodes
+	for_each_connection_ref(connection, im, resource) {
+		if (target_node_id != -1 && target_node_id == connection->peer_node_id)
+			continue;
+
+		if (SS_SUCCESS != conn_send_twopc(resource, connection, request, vnr, cmd, reach_immediately))
+			rv = SS_CW_SUCCESS;
 	}
 	return rv;
 }
@@ -4513,9 +4530,24 @@ static void twopc_phase2(struct drbd_resource *resource, int vnr,
 	enum drbd_packet twopc_cmd = success ? P_TWOPC_COMMIT : P_TWOPC_ABORT;
 	struct drbd_connection *connection;
 	u64 im;
+	//unsigned int target_node_id = be32_to_cpu(request->target_node_id);
+	
+	// DW-2093 rollback DW-2029 modifications due to timing problems.
+	// DW-2029 send a twopc request to target node first
+	//if (target_node_id != -1) {
+	//	connection = drbd_connection_by_node_id(resource, target_node_id);
+	//	if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
+	//		conn_send_twopc_request(connection, vnr, twopc_cmd, request);
+	//}
 
+	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
 		u64 mask = NODE_MASK(connection->peer_node_id);
+
+		// DW-2029
+		//if (target_node_id != -1 && target_node_id == connection->peer_node_id)
+		//	continue;
+
 		if (!(reach_immediately & mask))
 			continue;
 
