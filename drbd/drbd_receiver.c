@@ -2352,6 +2352,14 @@ static int ignore_remaining_packet(struct drbd_connection *connection, int size)
 	while (size) {
 		int s = min_t(int, size, DRBD_SOCKET_BUFFER_SIZE);
 		int rv = drbd_recv(connection, &data_to_ignore, s, 0);
+
+		// DW-2052 fix infinite loop
+		if (rv != s) {
+			if (rv >= 0) {
+				rv = -EIO;
+			}
+		}
+		
 		if (rv < 0)
 			return rv;
 
@@ -2450,7 +2458,8 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	}
 
 	//DW-1846 send P_NEG_ACK if not sync target
-	if (is_sync_target(peer_device)) {
+	// DW-2055 
+	if (is_sync_target(peer_device) || peer_device->repl_state[NOW] == L_BEHIND) {
 		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
 			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
 			err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
@@ -2458,7 +2467,6 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 		else {
 			/* Record failure to sync */
 			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-
 			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
 	}
@@ -2468,32 +2476,6 @@ static int e_end_resync_block(struct drbd_work *w, int unused)
 	dec_unacked(peer_device);
 
 	return err;
-}
-
-/**
-* _drbd_send_ack() - Sends an ack packet
-* @device:	DRBD device.
-* @cmd:	Packet command code.
-* @sector:	sector, needs to be in big endian byte order
-* @blksize:	size in byte, needs to be in big endian byte order
-* @block_id:	Id, big endian byte order
-*/
-static int _drbd_send_ack(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
-	u64 sector, u32 blksize, u64 block_id)
-{
-	struct p_block_ack *p;
-
-	if (peer_device->repl_state[NOW] < L_ESTABLISHED)
-		return -EIO;
-
-	p = drbd_prepare_command(peer_device, sizeof(*p), CONTROL_STREAM);
-	if (!p)
-		return -EIO;
-	p->sector = sector;
-	p->block_id = block_id;
-	p->blksize = blksize;
-	p->seq_num = cpu_to_be32(atomic_inc_return(&peer_device->packet_seq));
-	return drbd_send_command(peer_device, cmd, CONTROL_STREAM);
 }
 
 static int drbd_send_ack_dp(struct drbd_peer_device *peer_device, enum drbd_packet cmd, struct drbd_peer_request_details *d)
@@ -2520,6 +2502,213 @@ static bool drbd_send_ack_and_rs_failed(struct drbd_peer_device *peer_device, se
 
 
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+// DW-2042 get duplicate or non-redundant ranges from sst to est (cst is the last search sector)
+static bool get_resync_pending_range(struct drbd_peer_device* peer_device, sector_t sst, sector_t est, sector_t *cst)
+{
+	struct drbd_resync_pending_sectors *target = NULL;
+
+	mutex_lock(&peer_device->device->resync_pending_fo_mutex);
+	list_for_each_entry(struct drbd_resync_pending_sectors, target, &(peer_device->device->resync_pending_sectors), pending_sectors) {
+		if (est <= target->sst) {
+			// all ranges are not duplicated with resync pending
+			// cst (current sector)
+			*cst = est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+			// return false not duplicate
+			return false;
+		}
+		else if ((sst >= target->sst && est <= target->est)) {
+			// all ranges are duplicated with resync pending
+			drbd_info(peer_device, "dup all out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)sst, (unsigned long long)est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
+			*cst = est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+			// return true duplicate 
+			return true;
+		}
+		else if (sst < target->sst && est > target->sst) {
+			// not all ranges duplicated
+			*cst = target->sst;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+			return false;
+		}
+		else if (sst < target->sst && (est <= target->est || est >= target->est)) {
+			// front range duplicated
+			drbd_info(peer_device, "dup front out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)target->sst, (unsigned long long)(target->est < est ? target->est : est), (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
+			*cst = (target->est < est ? target->est : est);
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+			return true;
+		}
+		else if (sst >= target->sst && sst < target->est && est > target->est) {
+			// end range duplicated 
+			drbd_info(peer_device, "dup end out of sync sectors %llu ~ %llu => source %llu ~ %llu, target %llu ~ %llu\n",
+				(unsigned long long)sst, (unsigned long long)target->est, (unsigned long long)sst, (unsigned long long)est, (unsigned long long)target->sst, (unsigned long long)target->est);
+			*cst = target->est;
+			mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+			return true;
+		}
+	}
+	*cst = est;
+	mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+
+	return false;
+}
+
+static int split_request_complete(struct drbd_peer_device* peer_device, struct drbd_peer_request *peer_req)
+{
+	//true : in sync, false : out of sync
+	bool is_in_sync = false;	
+	ULONG_PTR s_bb = peer_req->s_bb;
+	ULONG_PTR e_next_bb = peer_req->e_next_bb;
+	int err = 0;
+
+	// DW-2055 resync data write complete should be set only when synctarget
+	if (is_sync_target(peer_device)) {
+		for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
+			if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
+				if (is_in_sync == true && i_bb != peer_req->s_bb) {
+				complete_end_sync:
+					//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
+					peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
+					peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
+					drbd_debug(peer_device, "--set in sync, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
+						(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+					if (i_bb == e_next_bb)
+						peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+					else
+						peer_req->block_id = ID_SYNCER_SPLIT;
+
+					err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
+					s_bb = i_bb;
+				}
+
+				if ((i_bb + 1) == e_next_bb) {
+					i_bb = e_next_bb;
+					goto complete_end_out_of_sync;
+				}
+
+				is_in_sync = false;
+			}
+			else {
+				if (is_in_sync == false && i_bb != peer_req->s_bb) {
+				complete_end_out_of_sync:
+					//DW-1601 If out of sync is found within range, it is set as a failure.
+					peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
+					peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
+					drbd_err(peer_device, "--set failed to I/O, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n",
+						(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
+					if (i_bb == e_next_bb)
+						peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+					else
+						peer_req->block_id = ID_SYNCER_SPLIT;
+
+					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+					s_bb = i_bb;
+				}
+
+				if ((i_bb + 1) == e_next_bb) {
+					i_bb = e_next_bb;
+					goto complete_end_sync;
+				}
+
+				is_in_sync = true;
+			}
+		}
+	}
+	else {
+		peer_req->block_id = ID_SYNCER_SPLIT_DONE;
+		peer_req->i.sector = BM_BIT_TO_SECT(peer_req->s_bb);
+		peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(peer_req->e_next_bb - peer_req->s_bb) << 9;
+		err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
+	}
+
+	if (peer_req->count)
+		kfree2(peer_req->count);
+
+	return err;
+}
+
+// DW-2042 after the duplicate inspection, the bitmap setting and the results are sent.
+static void dup_verification_and_processing(struct drbd_peer_device* peer_device, struct drbd_peer_request *peer_req)
+{
+	sector_t sst, offset, est = peer_req->i.sector + (peer_req->i.size >> 9);
+	struct drbd_peer_device* tmp = NULL;
+	enum drbd_packet cmd = P_RS_WRITE_ACK;
+
+	sst = offset = peer_req->i.sector;
+
+	while (offset < est && offset >= sst) {
+		if (!get_resync_pending_range(peer_device, offset, est, &offset)) {
+			// Dw-2092 when a node is configured as a star, in sync should only be applied to the target node, since applying all out of snyc with uuid alone will result in a consistency mismatch.
+			drbd_set_in_sync(peer_device, sst, (int)(offset - sst) << 9);
+			cmd = P_RS_WRITE_ACK;
+		}
+		else {
+			// DW-1815
+			for_each_peer_device(tmp, peer_device->device) {
+				// DW-2086 modify of the condition so that out of sync remains
+				if (tmp == peer_device ||
+					tmp->current_uuid == (peer_device->current_uuid & ~UUID_PRIMARY) ||
+					tmp->current_uuid == drbd_current_uuid(peer_device->device)) {
+					if (tmp == peer_device) {
+						// DW-2058 set rs_failed
+						drbd_rs_failed_io(tmp, sst, (int)(offset - sst) << 9);
+					}
+					drbd_set_out_of_sync(tmp, sst, (int)(offset - sst) << 9);
+				}
+			}
+			cmd = P_NEG_ACK;
+		}
+
+		// send the result only when it is not a split request.
+		// (if it is a split request, set the bitmap only and send the result from the split_request_complet())
+		if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
+			_drbd_send_ack(peer_device, cmd, cpu_to_be64(sst), cpu_to_be32((int)(offset - sst) << 9),
+				((offset == est) ? ID_SYNCER_SPLIT_DONE : ID_SYNCER_SPLIT));
+		}
+
+		sst = offset;
+	}
+}
+
+static bool check_unmarked_and_processing(struct drbd_peer_device *peer_device, struct drbd_peer_request *peer_req)
+{
+	bool unmakred = peer_req->unmarked_count != NULL;
+	sector_t sector = peer_req->i.sector;
+
+	if (peer_req->unmarked_count && 
+		0 == atomic_dec_return(peer_req->unmarked_count)) {
+		unmakred = false;
+
+		//DW-1911 if there is a failure, set the EE_WAS_ERROR setting.
+		if (atomic_read(peer_req->failed_unmarked) == 1)
+			peer_req->flags |= EE_WAS_ERROR;
+
+		drbd_debug(peer_device, "--finished unmarked s_bb(%llu), e_bb(%llu), sector(%llu), res(%s)\n", (unsigned long long)peer_req->s_bb, (unsigned long long)(peer_req->e_next_bb - 1), sector, (atomic_read(peer_req->failed_unmarked) == 1 ? "failed" : "success"));
+
+		// DW-2082
+		peer_req->i.sector = BM_BIT_TO_SECT(BM_SECT_TO_BIT(peer_req->i.sector));
+		peer_req->i.size = BM_SECT_PER_BIT << 9;
+
+		WDRBD_VERIFY_DATA("%s, finished unmarked sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
+		kfree2(peer_req->unmarked_count);
+		if (peer_req->failed_unmarked)
+			kfree2(peer_req->failed_unmarked);
+	}
+	else {
+		if (peer_req->flags & EE_WAS_ERROR) {
+			//DW-1911 
+			if (unmakred && peer_req->failed_unmarked)
+				atomic_set(peer_req->failed_unmarked, 1);
+		}
+	}
+
+	return unmakred;
+}
+
 static int split_e_end_resync_block(struct drbd_work *w, int unused)
 {
 	UNREFERENCED_PARAMETER(unused);
@@ -2529,65 +2718,38 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	struct drbd_peer_device *peer_device = peer_req->peer_device;
 	sector_t sector = peer_req->i.sector;
 	int err = 0;
-
-	ULONG_PTR e_next_bb = peer_req->e_next_bb;
+	bool is_unmarked = false;
 
 	D_ASSERT((struct drbd_device *)peer_device->device, drbd_interval_empty(&peer_req->i));
 
 	drbd_debug(peer_device, "--bitmap bit : %llu ~ %llu\n", BM_SECT_TO_BIT(peer_req->i.sector), (BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)) - 1));
 
-	//DW-1911 do not apply DW-1846 for a split request when resync writing is complete.
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
-	bool is_unmarked = peer_req->unmarked_count != NULL;
+	is_unmarked = check_unmarked_and_processing(peer_device, peer_req);
 
-	//DW-1911 set to in sync when all the unmakred are written.
-	if (peer_req->unmarked_count && 0 == atomic_dec_return(peer_req->unmarked_count)) {
-		is_unmarked = false;
-
-		//DW-1911 if there is a failure, set the EE_WAS_ERROR setting.
-		if (atomic_read(peer_req->failed_unmarked) == 1)
-			peer_req->flags |= EE_WAS_ERROR;
-
-		drbd_debug(peer_device, "--finished unmarked s_bb(%llu), e_bb(%llu), sector(%llu), res(%s)\n", (unsigned long long)peer_req->s_bb, (unsigned long long)(peer_req->e_next_bb - 1), sector, (atomic_read(peer_req->failed_unmarked) == 1 ? "failed" : "success"));
-
-		sector = BM_BIT_TO_SECT(BM_SECT_TO_BIT(peer_req->i.sector));
-		peer_req->i.size = BM_SECT_PER_BIT << 9;
-
-		kfree2(peer_req->unmarked_count);
-		if (peer_req->failed_unmarked)
-			kfree2(peer_req->failed_unmarked);
-
-	}
-
-	if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
-		if (!is_unmarked) {
-			drbd_set_in_sync(peer_device, sector, peer_req->i.size);
-
-			//DW-1815 set in sync for peer_device with the same current_uuid.
-			struct drbd_peer_device* pd;
-			for_each_peer_device(pd, peer_device->device) {
-				if (pd == peer_device)
-					continue;
-
-				if (pd->current_uuid == peer_device->current_uuid) {
-					drbd_set_in_sync(pd, sector, peer_req->i.size);
+	// DW-2055 resync data write complete should be set only when synctarget
+	if (is_sync_target(peer_device)) { 
+		if (likely((peer_req->flags & EE_WAS_ERROR) == 0)) {
+			if (!is_unmarked) {
+				// DW-2042
+				dup_verification_and_processing(peer_device, peer_req);
+			}
+		}
+		else {
+			if (!is_unmarked) {
+				drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
+				if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
+					err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 				}
 			}
-
-			if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ))
-				err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
 		}
 	}
-	else {
-		//DW-1911 
-		if (is_unmarked && peer_req->failed_unmarked)
-			atomic_set(peer_req->failed_unmarked, 1);
-
-		if (!is_unmarked) {
-			drbd_rs_failed_io(peer_device, sector, peer_req->i.size);
-			if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
-				err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-			}
+	else  {
+		drbd_set_out_of_sync(peer_device, sector, peer_req->i.size);
+		if (!(peer_req->flags & EE_SPLIT_REQ) && !(peer_req->flags & EE_SPLIT_LAST_REQ)) {
+			err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
 		}
 	}
 
@@ -2595,64 +2757,8 @@ static int split_e_end_resync_block(struct drbd_work *w, int unused)
 	if (peer_req->flags & EE_SPLIT_REQ || peer_req->flags & EE_SPLIT_LAST_REQ) {
 		//DW-1911 check that all split requests are completed.
 		if (peer_req->count && 0 == atomic_dec_return(peer_req->count)) {
-			bool is_in_sync = false;	//true : in sync, false : out of sync
-			ULONG_PTR s_bb = peer_req->s_bb;
-
 			dec_unacked(peer_device);
-
-			for (ULONG_PTR i_bb = peer_req->s_bb; i_bb < e_next_bb; i_bb++) {
-				if (drbd_bm_test_bit(peer_device, i_bb) == 1) {
-					if (is_in_sync == true && i_bb != peer_req->s_bb) {
-					complete_end_sync:
-						//DW-1601 If all of the data are sync, then P_RS_WRITE_ACK transmit.
-						peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
-						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-						drbd_debug(peer_device, "--set in sync, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n", 
-							(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
-						if (i_bb == e_next_bb)
-							peer_req->block_id = ID_SYNCER_SPLIT_DONE;
-						else
-							peer_req->block_id = ID_SYNCER_SPLIT;
-
-						err = drbd_send_ack(peer_device, P_RS_WRITE_ACK, peer_req);
-						s_bb = i_bb;
-					}
-
-					if ((i_bb + 1) == e_next_bb) {
-						i_bb = e_next_bb;
-						goto complete_end_out_of_sync;
-					}
-
-					is_in_sync = false;
-				}
-				else {
-					if (is_in_sync == false && i_bb != peer_req->s_bb) {
-					complete_end_out_of_sync:
-						//DW-1601 If out of sync is found within range, it is set as a failure.
-						peer_req->i.sector = BM_BIT_TO_SECT(s_bb);
-						peer_req->i.size = (unsigned int)BM_BIT_TO_SECT(i_bb - s_bb) << 9;
-						drbd_err(peer_device, "--set failed to I/O, bitmap bit start : %llu, range : %llu ~ %llu, size %llu\n", 
-							(unsigned long long)peer_req->s_bb, (unsigned long long)s_bb, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - s_bb) << 9));
-						if (i_bb == e_next_bb)
-							peer_req->block_id = ID_SYNCER_SPLIT_DONE;
-						else
-							peer_req->block_id = ID_SYNCER_SPLIT;
-
-						err = drbd_send_ack(peer_device, P_NEG_ACK, peer_req);
-						s_bb = i_bb;
-					}
-
-					if ((i_bb + 1) == e_next_bb) {
-						i_bb = e_next_bb;
-						goto complete_end_sync;
-					}
-
-					is_in_sync = true;
-				}
-			}
-
-			if (peer_req->count)
-				kfree2(peer_req->count);
+			err = split_request_complete(peer_device, peer_req);
 		}
 	}
 	else {
@@ -2788,27 +2894,21 @@ static bool prepare_split_peer_request(struct drbd_peer_device *peer_device, ULO
 	return find_isb;
 }
 
-bool is_set_area_replicate_out_of_sync(struct drbd_device *device, ULONG_PTR s_bb, ULONG_PTR e_next_bb)
+bool is_out_of_sync_after_replication(struct drbd_device *device, ULONG_PTR s_bb, ULONG_PTR e_next_bb)
 {
-	//DW-1904 check that the resync data is within the out of sync range of the replication data.
-	if (device->e_rl_bb > device->s_rl_bb) {
+	// DW-1904 check that the resync data is within the out of sync range of the replication data.
+	// DW-2065 modify to incorrect conditions
+	// DW-2082 the range(s_rl_bb, e_rl_bb) should not be reset because there is no warranty coming in sequentially.
+	if (device->e_rl_bb >= device->s_rl_bb) {
 		if ((device->s_rl_bb <= s_bb && device->e_rl_bb >= s_bb)) {
-			if (device->e_rl_bb <= (e_next_bb - 1)) {
-				device->e_rl_bb = (s_bb - 1);
-			}
 			return true;
 		}
 
 		if (device->s_rl_bb <= (e_next_bb - 1) && device->e_rl_bb >= (e_next_bb - 1)) {
-			if (device->s_rl_bb >= s_bb) {
-				device->s_rl_bb = e_next_bb;
-			}
 			return true;
 		}
 
 		if ((device->s_rl_bb >= s_bb && device->e_rl_bb <= (e_next_bb - 1))) {
-			device->s_rl_bb = UINT64_MAX;
-			device->e_rl_bb = 0;
 			return true;
 		}
 	}
@@ -2840,13 +2940,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	dec_rs_pending(peer_device);
 	inc_unacked(peer_device);
 
-
 	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(d->sector);
 	e_next_bb = d->bi_size == 0 ? s_bb : (ULONG_PTR)BM_SECT_TO_BIT(d->sector + (d->bi_size >> 9));
 	e_oos = 0;
-
-	//DW-1904 set e_resync_bb
-	device->e_resync_bb = (e_next_bb - 1);
 
 	if (d->bi_size < BM_BLOCK_SIZE) {
 		drbd_warn(peer_device, "bug FIMXME!! bi_size(%lu) < BM_BLOCK_SIZE\n", d->bi_size);
@@ -2857,7 +2953,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 
 	if (peer_device->connection->agreed_pro_version >= 113 && 
 		//DW-1904 if it is not affected by the replication data, it writes the resync data without check(split request, marked replicate list). 
-		(!list_empty(&device->marked_rl_list) || is_set_area_replicate_out_of_sync(device, s_bb, e_next_bb))) {
+		(!list_empty(&device->marked_rl_list) || is_out_of_sync_after_replication(device, s_bb, e_next_bb))) {
 
 		//DW-1601 
 		//the number of peer_requests in the bitmap area that are released when the bitmap is found in the synchronization data.
@@ -2892,6 +2988,10 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 					if (is_all_sync) {
 						//DW-1886
 						atomic_add64(d->bi_size, &peer_device->rs_written);
+						device->h_insync_bb += (e_next_bb - s_bb);
+
+						WDRBD_VERIFY_DATA("%s, all in sync, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+							__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 						//DW-1601 all data is synced.
 						drbd_debug(peer_device, "##all, sync bitmap(%llu), start : %llu, end :%llu\n", (unsigned long long)i_bb, (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1));
@@ -2902,9 +3002,13 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						dec_unacked(peer_device);
 
 						kfree2(split_count);
+						// DW-2117 added because put_ldev is missing.
+						put_ldev(device);
 
-						return err;
+						return 0;
 					}
+
+					device->h_insync_bb++;
 
 					//DW-1886
 					if (already_in_sync_bb)
@@ -2913,7 +3017,7 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 				submit_peer:
 					//DW-1601 if offset is set to out of sync previously, write request to split_peer_req for data in index now from the corresponding offset.
 					if (s_split_request) {
-						drbd_debug(peer_device, "##sync bitmap bit %llu, split request %llu ~ %lu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
+						drbd_debug(peer_device, "##sync bitmap bit %llu, split request %llu ~ %llu, size %llu, start(%llu) ~ end(%llu), end out of sync(%llu)\n",
 							(unsigned long long)(i_bb - 1), (unsigned long long)offset, (unsigned long long)(i_bb - 1), (unsigned long long)(BM_BIT_TO_SECT(i_bb - offset) << 9), (unsigned long long)s_bb, (unsigned long long)(e_next_bb - 1), (unsigned long long)e_oos);
 
 						split_peer_req = split_read_in_block(peer_device, peer_req,
@@ -2928,6 +3032,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 							err = -ENOMEM;
 							goto split_error_clear;
 						}
+
+						WDRBD_VERIFY_DATA("%s, split, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+							__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 						spin_lock_irq(&device->resource->req_lock);
 						list_add_tail(&split_peer_req->w.list, &peer_device->connection->sync_ee);
@@ -2992,11 +3099,14 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 						atomic_set(unmarked_count, (sizeof(marked_rl->marked_rl) * 8) - __popcnt(marked_rl->marked_rl));
 						atomic_set(failed_unmarked, 0);
 
+						device->h_marked_bb++;
+
 						for (int i = 0; i < sizeof(marked_rl->marked_rl) * 8; i++) {
 							//DW-1911 perform writing per unmarked sector.
 							if (!(marked_rl->marked_rl & 1 << i)) {
 								split_peer_req = split_read_in_block(peer_device, peer_req,
-																	BM_BIT_TO_SECT(marked_rl->bb), 
+																	// DW-2082 corrected incorrectly calculated start sector
+																	(BM_BIT_TO_SECT(marked_rl->bb) + i), 
 																	((BM_BIT_TO_SECT(marked_rl->bb - s_bb) + i) << 9),
 																	1 << 9,
 																	s_bb, e_next_bb,
@@ -3014,6 +3124,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 									err = -ENOMEM;
 									goto split_error_clear;
 								}
+
+								WDRBD_VERIFY_DATA("%s, marked, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+									__FUNCTION__, split_peer_req->i.sector, split_peer_req->i.size, BM_SECT_TO_BIT(split_peer_req->i.sector), BM_SECT_TO_BIT(split_peer_req->i.sector + (split_peer_req->i.size >> 9)), device->s_rl_bb, device->e_rl_bb);
 
 								split_peer_req->unmarked_count = unmarked_count;
 								split_peer_req->failed_unmarked = failed_unmarked;
@@ -3091,6 +3204,9 @@ static int split_recv_resync_read(struct drbd_peer_device *peer_device, struct d
 	}
 	else {
 	all_out_of_sync:
+		WDRBD_VERIFY_DATA("%s, all out of sync, sector(%llu), size(%u), bitmap(%llu ~ %llu), s_rl_bb(%llu), e_rl_bb(%llu)\n",
+			__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)),device->s_rl_bb, device->e_rl_bb);
+
 		/* corresponding dec_unacked() in e_end_resync_block()
 		* respective _drbd_clear_done_ee */
 		peer_req->w.cb = split_e_end_resync_block;
@@ -3214,6 +3330,28 @@ find_request(struct drbd_device *device, struct rb_root *root, u64 id,
 	return NULL;
 }
 
+// DW-2124
+static int receive_bm_exchange_state(struct drbd_connection *connection, struct packet_info *pi) {
+	struct p_bm_exchange_state* p = pi->data;
+	uint32_t state = be32_to_cpu(p->state);
+	struct drbd_peer_device *peer_device = conn_peer_device(connection, pi->vnr);
+
+	if (!peer_device)
+		return -EIO;
+
+	switch (state) {
+	case B_COMPLETE:
+		atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
+		drbd_info(peer_device, "bitmap exchange complete\n"); 
+		break;
+	default:
+		drbd_err(peer_device, "unknown error(%u)\n", state);
+		break;
+	}
+
+	return 0;
+}
+
 static int receive_DataReply(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_device *peer_device;
@@ -3282,6 +3420,11 @@ int drbd_send_ack_ex(struct drbd_peer_device *peer_device, enum drbd_packet cmd,
 			      cpu_to_be64(block_id));
 }
 
+// DW-2124
+int drbd_send_bitmap_exchange_state(struct drbd_peer_device *peer_device, enum drbd_packet cmd, u32 state) {
+	return _drbd_send_bitmap_exchange_state(peer_device, cmd, state);
+}
+
 static int receive_RSDataReply(struct drbd_connection *connection, struct packet_info *pi)
 {
 	struct drbd_peer_request_details d;
@@ -3300,9 +3443,6 @@ static int receive_RSDataReply(struct drbd_connection *connection, struct packet
 	D_ASSERT(device, d.block_id == ID_SYNCER);
 
 	if (get_ldev(device)) {
-		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
-
 		//DW-1845 disables the DW-1601 function. If enabled, you must set ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 		err = split_recv_resync_read(peer_device, &d);
@@ -3357,6 +3497,9 @@ static int e_end_block(struct drbd_work *w, int cancel)
 	struct drbd_device *device = peer_device->device;
 	struct drbd_epoch *epoch;
 	int err = 0, pcmd;
+
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
 
 	if (peer_req->flags & EE_IS_BARRIER) {
 		epoch = previous_epoch(peer_device->connection, peer_req->epoch);
@@ -3779,6 +3922,167 @@ static void drbd_queue_peer_request(struct drbd_device *device, struct drbd_peer
 	wake_up(&device->al_wait);
 }
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+// DW-2042 remove the duplicate range.(examined for all/front/middle/end)
+static int dedup_from_resync_pending(struct drbd_peer_device *peer_device, sector_t sst, sector_t est)
+{
+	struct drbd_resync_pending_sectors *target, *tmp;
+
+	mutex_lock(&peer_device->device->resync_pending_fo_mutex);
+	list_for_each_entry_safe(struct drbd_resync_pending_sectors, target, tmp, &(peer_device->device->resync_pending_sectors), pending_sectors) {
+		if (sst <= target->sst && est >= target->est) {
+			drbd_info(peer_device, "resync pending remove sector %llu(%llu) ~ %llu(%llu)\n",
+				(unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+			// remove because it contains the full range
+			list_del(&target->pending_sectors);
+			kfree2(target);
+			continue;
+		}
+
+		if (sst >= target->sst && est <= target->est) {
+			// remove because the middle range is the same
+			struct drbd_resync_pending_sectors *pending_st;
+
+			// adding it to the list because it will disperse when the middle is removed
+			pending_st = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_resync_pending_sectors), 'E9DW');
+			if (!pending_st) {
+				drbd_err(peer_device, "failed to resync pending bits allocate, sector : %llu ~ %llu\n", (unsigned long long)sst, (unsigned long long)est);
+				mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+				return -ENOMEM;
+			}
+
+			pending_st->sst = est;
+			pending_st->est = target->est;
+			list_add(&pending_st->pending_sectors, &target->pending_sectors);
+			drbd_info(peer_device, "resync pending split new sector %llu(%llu) ~ %llu(%llu)\n",
+				(unsigned long long)pending_st->sst, (unsigned long long)BM_SECT_TO_BIT(pending_st->sst), (unsigned long long)pending_st->est, (unsigned long long)BM_SECT_TO_BIT(pending_st->est));
+
+			target->est = sst;
+			drbd_info(peer_device, "resync pending split sector %llu(%llu) ~ %llu(%llu)\n",
+				(unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+		}
+
+		if (sst <= target->sst && est > target->sst && est <= target->est) {
+			// remove because the start range is the same.
+			target->sst = est;
+			drbd_info(peer_device, "resync pending modify sector %llu(%llu) ~ %llu(%llu)\n",
+				(unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+		}
+
+		if (sst >= target->sst && sst < target->est && est >= target->est) {
+			// remove because the end range is the same.
+			target->est = sst;
+			drbd_info(peer_device, "resync pending modify sector %llu(%llu) ~ %llu(%llu)\n",
+				(unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+		}
+	}
+	mutex_unlock(&peer_device->device->resync_pending_fo_mutex);
+
+	return 0;
+}
+
+static int list_add_marked(struct drbd_peer_device* peer_device, sector_t sst, sector_t est, unsigned int size, ULONG_PTR in_sync) 
+{
+	ULONG_PTR s_bb, e_bb;
+	struct drbd_device* device = peer_device->device;
+
+	//DW-1904 range in progress for resync (peer_device->s_resync_bb ~ peer_device->e_resync_bb)
+	ULONG_PTR s_resync_bb = (ULONG_PTR)atomic_read64(&peer_device->s_resync_bb);
+	ULONG_PTR n_resync_bb = (ULONG_PTR)atomic_read64(&peer_device->e_resync_bb);
+
+	s_bb = (ULONG_PTR)BM_SECT_TO_BIT(sst);
+	e_bb = (ULONG_PTR)BM_SECT_TO_BIT(est);
+
+	//DW-1911 use e_bb instead of e_next_b for replication.
+	if (BM_BIT_TO_SECT(e_bb) == est)
+		e_bb -= 1;
+
+	struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
+
+	// DW-2125 marked bit must be set even if the first(s_bb) or the end(e_bb) is equal to s_resync_bb in the replication range
+	if ((s_resync_bb <= e_bb && n_resync_bb >= e_bb) ||
+		(s_resync_bb <= s_bb && n_resync_bb >= s_bb)) {
+		//DW-1911 check if marked already exists.
+		list_for_each_entry(struct drbd_marked_replicate, marked_rl, &(device->marked_rl_list), marked_rl_list) {
+			if (marked_rl->bb == s_bb)
+				s_marked_rl = marked_rl;
+			if (marked_rl->bb == e_bb)
+				e_marked_rl = marked_rl;
+
+			if (s_marked_rl && e_marked_rl)
+				break;
+		}
+
+		// DW-2065 modify to incorrect conditions
+		if ((BM_BIT_TO_SECT(s_bb) != sst || (BM_BIT_TO_SECT(s_bb) == sst && s_bb == e_bb)) && drbd_bm_test_bit(peer_device, s_bb) == 1) {
+			if (!s_marked_rl) {
+				s_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
+				if (s_marked_rl != NULL) {
+					s_marked_rl->bb = s_bb;
+					s_marked_rl->marked_rl = 0;
+					s_marked_rl->end_unmarked_rl = 0;
+					list_add(&(s_marked_rl->marked_rl_list), &device->marked_rl_list);
+				}
+				else {
+					drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", (unsigned long long)s_bb);
+					return -ENOMEM;
+				}
+			}
+
+			//DW-1911 set the bit to match the sector.
+			u16 offset = (u16)(sst - BM_BIT_TO_SECT(s_bb));;
+			for (u16 i = offset; i < (offset + (size >> 9)); i++) {
+				if (BM_SECT_TO_BIT(BM_BIT_TO_SECT(s_bb) + i) != s_bb)
+					break;
+				s_marked_rl->marked_rl |= 1 << i;
+			}
+			drbd_debug(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n",
+				(unsigned long long)s_marked_rl->bb, (unsigned long long)sst, (unsigned long long)BM_BIT_TO_SECT(s_marked_rl->bb), (size >> 9), s_marked_rl->marked_rl, offset);
+		}
+
+		// DW-2065 modify to incorrect conditions
+		if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(est)) != est && drbd_bm_test_bit(peer_device, e_bb) == 1) {
+			if (!e_marked_rl) {
+				e_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
+				if (e_marked_rl != NULL) {
+					e_marked_rl->bb = e_bb;
+					e_marked_rl->marked_rl = 0;
+					e_marked_rl->end_unmarked_rl = 0;
+					list_add(&(e_marked_rl->marked_rl_list), &device->marked_rl_list);
+				}
+				else {
+					drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", (unsigned long long)e_bb);
+					return -ENOMEM;
+				}
+			}
+
+			//DW-1911 set the bit to match the sector.
+			for (u16 i = 0; i < (est - BM_BIT_TO_SECT(e_bb)); i++) {
+				e_marked_rl->marked_rl |= 1 << i;
+			}
+			drbd_debug(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n",
+				(unsigned long long)e_marked_rl->bb, est, (unsigned long long)BM_BIT_TO_SECT(e_marked_rl->bb), (size >> 9), e_marked_rl->marked_rl, 0);
+		}
+	}
+
+	//DW-1904 this area is set up to check marked_rl and in sync bit when receiving resync data.
+	if (in_sync) {
+		//DW-1911 marked_rl bit is excluded.
+		if (s_marked_rl != NULL)
+			s_bb += 1;
+		if (e_marked_rl != NULL)
+			e_bb -= 1;
+
+		if (device->s_rl_bb > s_bb)
+			device->s_rl_bb = s_bb;
+		if (device->e_rl_bb < e_bb)
+			device->e_rl_bb = e_bb;
+	}
+
+	return 0;
+}
+#endif
+
 /* mirrored write */
 static int receive_Data(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -4001,12 +4305,34 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 					dec_unacked(peer_device);
 				}
 #endif
-			goto disconnect_during_al_begin_io;
+				goto disconnect_during_al_begin_io;
 			}
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
-			peer_req->do_submit = true;
-			drbd_queue_peer_request(device, peer_req);
-			return 0;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2082 process actlog commit(do_submt()) immediately without separate queuing.
+				err = drbd_al_begin_io_nonblock(device, &peer_req->i);
+				if (err) {
+					return err;
+				}
+				drbd_al_begin_io_commit(device);
+				WDRBD_VERIFY_DATA("%s, al commit(%s), sector(%llu), size(%u), bitmap(%llu ~ %llu), wait(%s)\n",
+					__FUNCTION__, drbd_repl_str(peer_device->repl_state[NOW]), peer_req->i.sector, peer_req->i.size, 
+					BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)), atomic_read(&peer_device->wait_for_bitmp_exchange_complete) ? "true" : "false");
+			}
+			else {
+#endif
+				peer_req->do_submit = true;
+				drbd_queue_peer_request(device, peer_req);
+				return 0;
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			}
+#endif
+		}
+		else {
+			WDRBD_VERIFY_DATA("%s, al fastpath(%s), sector(%llu), size(%u), bitmap(%llu ~ %llu), wait(%s)\n",
+				__FUNCTION__, drbd_repl_str(peer_device->repl_state[NOW]), peer_req->i.sector, peer_req->i.size, 
+				BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)), atomic_read(&peer_device->wait_for_bitmp_exchange_complete) ? "true" : "false");
 		}
 		peer_req->flags |= EE_IN_ACTLOG;
 	}
@@ -4019,7 +4345,7 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 	{
 		// DW-1979 do not set "in sync" before starting resync.
 		if (peer_device->repl_state[NOW] == L_WF_BITMAP_T ||
-			(peer_device->repl_state[NOW] == L_SYNC_TARGET && atomic_read(&peer_device->wait_for_recv_rs_reply))) {
+			(peer_device->repl_state[NOW] == L_SYNC_TARGET && atomic_read(&peer_device->wait_for_bitmp_exchange_complete))) {
 			// DW-1979 set to D_INCONSISTENT when replication data occurs during resync start.
 			if (peer_device->device->disk_state[NOW] != D_INCONSISTENT &&
 				peer_device->device->disk_state[NEW] != D_INCONSISTENT) {
@@ -4030,20 +4356,22 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			}
 		}
 		else {
-			ULONG_PTR in_sync = 0;
-
 			//DW-1904
-			in_sync = drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
+			ULONG_PTR in_sync = drbd_set_in_sync(peer_device, peer_req->i.sector, peer_req->i.size);
 
 			//DW-1815 if the replication is in sync during resync, set it to peer_device with the same current_uuid. set to sync for peer_device that is the same current_uuid.
 			if (is_sync_target(peer_device) && in_sync) {
-				struct drbd_peer_device* pd;
-				for_each_peer_device(pd, peer_device->device) {
-					if (pd == peer_device)
+				// DW-2042
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+				if (peer_device->connection->agreed_pro_version >= 113)
+					err = dedup_from_resync_pending(peer_device, peer_req->i.sector, (peer_req->i.sector + (peer_req->i.size >> 9)));
+#endif
+				struct drbd_peer_device* target;
+				for_each_peer_device(target, peer_device->device) {
+					if (target == peer_device)
 						continue;
-
-					if (pd->current_uuid == peer_device->current_uuid) {
-						drbd_set_in_sync(pd, peer_req->i.sector, peer_req->i.size);
+					if (target->current_uuid == peer_device->current_uuid) {
+						drbd_set_in_sync(target, peer_req->i.sector, peer_req->i.size);
 					}
 				}
 			}
@@ -4051,109 +4379,15 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 			//DW-1601 if the status is L_SYNC_TARGET calculate
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			if (peer_device->connection->agreed_pro_version >= 113 && peer_device->repl_state[NOW] == L_SYNC_TARGET) {
-				sector_t ssector, esector;
-				ULONG_PTR s_bb, e_bb;
-
-				ssector = peer_req->i.sector;
-				esector = peer_req->i.sector + (peer_req->i.size >> 9);
-
-				s_bb = (ULONG_PTR)BM_SECT_TO_BIT(ssector);
-				e_bb = (ULONG_PTR)BM_SECT_TO_BIT(esector);
-
-				//DW-1911 use e_bb instead of e_next_b for replication.
-				if (BM_BIT_TO_SECT(e_bb) == esector)
-					e_bb -= 1;
-
-				//DW-1904 next resync data range(device->e_resync_bb ~ n_resync_bb)
-				ULONG_PTR n_resync_bb = device->e_resync_bb + (ULONG_PTR)BM_SECT_TO_BIT((min((queue_max_hw_sectors(device->rq_queue) << 9), DRBD_MAX_BIO_SIZE)) >> 9);
-				struct drbd_marked_replicate *marked_rl = NULL, *s_marked_rl = NULL, *e_marked_rl = NULL;
-
-				if ((device->e_resync_bb < e_bb && n_resync_bb >= e_bb) ||
-					(device->e_resync_bb < s_bb && n_resync_bb >= s_bb)) {
-					//DW-1911 check if marked already exists.
-					list_for_each_entry(struct drbd_marked_replicate, marked_rl, &(device->marked_rl_list), marked_rl_list) {
-						if (marked_rl->bb == s_bb)
-							s_marked_rl = marked_rl;
-						if (marked_rl->bb == e_bb)
-							e_marked_rl = marked_rl;
-
-						if (s_marked_rl && e_marked_rl)
-							break;
-					}
-
-					if ((BM_BIT_TO_SECT(s_bb) != ssector || (BM_BIT_TO_SECT(s_bb) == ssector && s_bb == s_bb)) &&
-						drbd_bm_test_bit(peer_device, s_bb) == 1) {
-						if (!s_marked_rl) {
-							s_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
-							if (s_marked_rl != NULL) {
-								s_marked_rl->bb = s_bb;
-								s_marked_rl->marked_rl = 0;
-								s_marked_rl->end_unmarked_rl = 0;
-								list_add(&(s_marked_rl->marked_rl_list), &device->marked_rl_list);
-							}
-							else {
-								drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", (unsigned long long)s_bb);
-								return -ENOMEM;
-							}
-						}
-
-						//DW-1911 set the bit to match the sector.
-						u16 offset = (u16)(ssector - BM_BIT_TO_SECT(s_bb));;
-						for (u16 i = offset; i < (offset + (peer_req->i.size >> 9)); i++) {
-							if (BM_SECT_TO_BIT(BM_BIT_TO_SECT(s_bb) + i) != s_bb)
-								break;
-							s_marked_rl->marked_rl |= 1 << i;
-						}
-						drbd_debug(peer_device, "sbb marking bb(%llu), ssector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n",
-							(unsigned long long)s_marked_rl->bb, (unsigned long long)ssector, (unsigned long long)BM_BIT_TO_SECT(s_marked_rl->bb), (peer_req->i.size >> 9), s_marked_rl->marked_rl, offset);
-					}
-
-					if (s_bb != e_bb && BM_BIT_TO_SECT(BM_SECT_TO_BIT(esector)) != (esector - 1) &&
-						drbd_bm_test_bit(peer_device, e_bb) == 1) {
-						if (!e_marked_rl) {
-							e_marked_rl = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_marked_replicate), 'E8DW');
-							if (e_marked_rl != NULL) {
-								e_marked_rl->bb = e_bb;
-								e_marked_rl->marked_rl = 0;
-								e_marked_rl->end_unmarked_rl = 0;
-								list_add(&(e_marked_rl->marked_rl_list), &device->marked_rl_list);
-							}
-							else {
-								drbd_err(peer_device, "failed to marked replicate allocate, bit : %llu\n", (unsigned long long)e_bb);
-								return -ENOMEM;
-							}
-						}
-
-						//DW-1911 set the bit to match the sector.
-						for (u16 i = 0; i < (esector - BM_BIT_TO_SECT(e_bb)); i++) {
-							e_marked_rl->marked_rl |= 1 << i;
-						}
-						drbd_debug(peer_device, "marking bb(%llu), esector(%llu), sector(%llu), size(%u), marked(%u), offset(%u)\n",
-							(unsigned long long)e_marked_rl->bb, esector, (unsigned long long)BM_BIT_TO_SECT(e_marked_rl->bb), (peer_req->i.size >> 9), e_marked_rl->marked_rl, 0);
-					}
-				}
-
-				//DW-1904
-				if (in_sync) {
-					//DW-1911 marked_rl bit is excluded.
-					if (s_marked_rl != NULL)
-						s_bb += 1;
-					if (e_marked_rl != NULL)
-						e_bb -= 1;
-
-					if (device->s_rl_bb > s_bb)
-						device->s_rl_bb = s_bb;
-					if (device->e_rl_bb < e_bb)
-						device->e_rl_bb = e_bb;
-				}
+				err = list_add_marked(peer_device, peer_req->i.sector, peer_req->i.sector + (peer_req->i.size >> 9), peer_req->i.size, in_sync);
 			}
-		}
 #endif
+		}
 
 #ifdef _WIN32_TRACE_PEER_DAGTAG
 		WDRBD_INFO("receive_Data connection->last_dagtag_sector:%llx ack_receiver thread state:%d\n",connection->last_dagtag_sector, get_t_state(&connection->ack_receiver));
 #endif
-		return 0;
+		return err;
 	}
 #else
 		return 0;
@@ -4398,7 +4632,8 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		peer_req->flags |= EE_RS_THIN_REQ;
 	case P_RS_DATA_REQUEST:
 		//DW-1857 If P_RS_DATA_REQUEST is received, send P_RS_CANCEL unless L_SYNC_SOURCE.
-		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE) {
+		// DW-2055 primary is always the syncsource of resync, so send the resync data.
+		if (peer_device->repl_state[NOW] != L_SYNC_SOURCE && device->resource->role[NOW] != R_PRIMARY) {
 			err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
 			/* If err is set, we will drop the connection... */
 			goto fail3;
@@ -4532,6 +4767,17 @@ static int receive_DataRequest(struct drbd_connection *connection, struct packet
 		}
 		else
 		{
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			//DW-1601 ID_SYNCER_SPLIT_DONE == ID_SYNCER
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2082 send RS_CANCEL if bitmap replacement is not complete
+				if (atomic_read(&peer_device->wait_for_recv_bitmap)) {
+					WDRBD_VERIFY_DATA("cancels resync data until the bitmap operation is complete\n");
+					err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
+					goto fail3;
+				}
+			}
+#endif
 			err = drbd_try_rs_begin_io(peer_device, sector, false);
 			if (err) {
 				err = drbd_send_ack(peer_device, P_RS_CANCEL, peer_req);
@@ -4559,6 +4805,9 @@ submit_for_resync:
 	atomic_add(size >> 9, &device->rs_sect_ev);
 
 submit:
+	WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+		__FUNCTION__, peer_req->i.sector, peer_req->i.size, BM_SECT_TO_BIT(peer_req->i.sector), BM_SECT_TO_BIT(peer_req->i.sector + (peer_req->i.size >> 9)));
+
 	update_receiver_timing_details(connection, drbd_submit_peer_request);
 	inc_unacked(peer_device);
 	if (drbd_submit_peer_request(device, peer_req, REQ_OP_READ, 0,
@@ -4996,27 +5245,11 @@ static int drbd_uuid_compare(struct drbd_peer_device *peer_device,
 			test_bit(RECONNECT, &peer_device->connection->flags))
 			return 0;
 
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-		/* Peer crashed as primary, I survived, resync from me */
-		if (peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY &&
-		    test_bit(RECONNECT, &peer_device->connection->flags))
-			return 1;
-
-		/* I am a crashed primary, peer survived, resync to me */
-		if (test_bit(CRASHED_PRIMARY, &device->flags) &&
-		    peer_device->uuid_flags & UUID_FLAG_RECONNECT)
-			return -1;
-
-		/* One of us had a connection to the other node before.
-		   i.e. this is not a common power failure. */
-		if (peer_device->uuid_flags & UUID_FLAG_RECONNECT ||
-		    test_bit(RECONNECT, &peer_device->connection->flags))
-			return 0;
-#endif
-
 		/* Common power [off|failure]? */
 		*rule_nr = 40;
-		if (test_bit(CRASHED_PRIMARY, &device->flags)) {
+		if (test_bit(CRASHED_PRIMARY, &device->flags) &&
+				// DW-2044
+				drbd_md_test_peer_flag(peer_device, MDF_CRASHED_PRIMARY_WORK_PENDING)) {
 			if ((peer_device->uuid_flags & UUID_FLAG_CRASHED_PRIMARY) &&
 			    test_bit(RESOLVE_CONFLICTS, &connection->transport.flags))
 				return -1;
@@ -5357,30 +5590,11 @@ static enum drbd_repl_state goodness_to_repl_state(struct drbd_peer_device *peer
 }
 
 static void disk_states_to_goodness(struct drbd_device *device,
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-// MODIFIED_BY_MANTECH DW-1357: need to see peer device md flags.
-					struct drbd_peer_device *peer_device,
-#endif
 				    enum drbd_disk_state peer_disk_state,
 				    int *hg, int rule_nr)
 {
 	enum drbd_disk_state disk_state = device->disk_state[NOW];
 	bool p = false;
-
-#ifdef _WIN32
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	/* MODIFIED_BY_MANTECH DW-1357: one of node is crashed primary, but need to ignore if..
-		1. crashed primary's disk state is higher than peer's, crashed primary will be sync source.
-		2. we've already done resync(by #1).
-	*/
-	if (abs(*hg) == 1)
-	{
-		if ((disk_state - peer_disk_state) * (*hg) < 0 ||
-			drbd_md_test_peer_flag(peer_device, MDF_PEER_IGNORE_CRASHED_PRIMARY))
-			*hg = 0;
-	}		
-#endif
-#endif
 
 	if (*hg != 0 && rule_nr != 40)
 		return;
@@ -5497,11 +5711,7 @@ static enum drbd_repl_state drbd_attach_handshake(struct drbd_peer_device *peer_
 		return -1;
 
 	bitmap_mod_after_handshake(peer_device, hg, peer_node_id);
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	disk_states_to_goodness(peer_device->device, peer_device, peer_disk_state, &hg, rule_nr);
-#else
 	disk_states_to_goodness(peer_device->device, peer_disk_state, &hg, rule_nr);
-#endif
 
 	return goodness_to_repl_state(peer_device, peer_device->connection->peer_role[NOW], hg);
 }
@@ -5534,11 +5744,7 @@ static enum drbd_repl_state drbd_sync_handshake(struct drbd_peer_device *peer_de
 		return -1;
 	}
 
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	disk_states_to_goodness(device, peer_device, peer_disk_state, &hg, rule_nr);
-#else
 	disk_states_to_goodness(device, peer_disk_state, &hg, rule_nr);
-#endif
 
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1014: to trigger sync when hg is 0 and oos exists, check more states as long as 'disk_states_to_goodness' doesn't cover all situations.
@@ -6108,7 +6314,7 @@ static int receive_SyncParam(struct drbd_connection *connection, struct packet_i
 	synchronize_rcu_w32_wlock();
 #endif
 	if (new_peer_device_conf) {
-		drbd_info(peer_device, "sync, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n",
+		drbd_info(peer_device, "sync, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %us, c_max_rate : %uk, c_min_rate : %uk\n",
 			new_peer_device_conf->resync_rate, new_peer_device_conf->c_plan_ahead, new_peer_device_conf->c_delay_target,
 			new_peer_device_conf->c_fill_target, new_peer_device_conf->c_max_rate, new_peer_device_conf->c_min_rate);
 		rcu_assign_pointer(peer_device->conf, new_peer_device_conf);
@@ -6509,20 +6715,11 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 	hg = drbd_handshake(peer_device, &rule_nr, &peer_node_id, reason == DISKLESS_PRIMARY);
 
 #ifdef _WIN32
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	// DW-1306: need to start resync in spite of identical current uuid, try to find the resync side.
-	if (reason == AFTER_UNSTABLE)
-	{
-		disk_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], &hg, rule_nr);
-		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
-	}
-#else
 	if (!hg && reason == AFTER_UNSTABLE)
 	{
 		disk_states_to_goodness(peer_device->device, peer_device->disk_state[NOW], &hg, rule_nr);
 		various_states_to_goodness(peer_device->device, peer_device, peer_device->disk_state[NOW], peer_device->connection->peer_role[NOW], &hg);
 	}
-#endif
 #endif
 	new_repl_state = hg < -4 || hg > 4 ? -1 : goodness_to_repl_state(peer_device, peer_role, hg);
 
@@ -6557,8 +6754,9 @@ static void drbd_resync(struct drbd_peer_device *peer_device,
 		/* Those events might happen very quickly. In case we are still processing
 		   the previous resync we need to re-enter that state. Schedule sending of
 		   the bitmap here explicitly */
-		peer_device->resync_again++;
-		drbd_info(peer_device, "...postponing this until current resync finished\n");
+		// DW-2026 remove unnecessary resync again
+		//peer_device->resync_again++;
+		drbd_info(peer_device, "...resync is already in progress.\n");
 	}
 }
 
@@ -6640,8 +6838,9 @@ static void drbd_resync_authoritative(struct drbd_peer_device *peer_device, enum
 
 	rv = change_repl_state(peer_device, new_repl_state, CS_VERBOSE);
 	if (rv == SS_NOTHING_TO_DO || rv == SS_RESYNC_RUNNING) {
-		peer_device->resync_again++;
-		drbd_info(peer_device, "...postponing this until current resync finished\n");
+		// DW-2026 remove unnecessary resync again
+		//peer_device->resync_again++;
+		drbd_info(peer_device, "...resync is already in progress.\n");
 	}
 }
 #endif
@@ -6711,8 +6910,11 @@ static int __receive_uuids(struct drbd_peer_device *peer_device, u64 node_mask)
 		}
 
 		if (peer_device->uuid_flags & UUID_FLAG_NEW_DATAGEN) {
-			drbd_warn(peer_device, "received new current UUID: %016llX\n", peer_device->current_uuid);
+			drbd_info(peer_device, "received new current UUID: %016llX\n", peer_device->current_uuid);
 			drbd_uuid_received_new_current(peer_device, peer_device->current_uuid, node_mask);
+		}
+		else {
+			drbd_warn(peer_device, "receive new current but not update UUID: %016llX\n", peer_device->current_uuid);
 		}
 
 		if (device->disk_state[NOW] > D_OUTDATED) {
@@ -6965,9 +7167,10 @@ static int receive_uuids110(struct drbd_connection *connection, struct packet_in
 		if (!drbd_inspect_resync_side(peer_device, peer_device->repl_state[NOW], NOW))
 #endif
 		{
+			unsigned long irq_flags;
+
 			drbd_info(peer_device, "Resync will be aborted since peer goes unsyncable.\n");
 
-			unsigned long irq_flags;
 			begin_state_change(device->resource, &irq_flags, CS_VERBOSE);
 			__change_repl_state_and_auto_cstate(peer_device, L_ESTABLISHED, __FUNCTION__);
 			end_state_change(device->resource, &irq_flags, __FUNCTION__);
@@ -7817,15 +8020,28 @@ static void nested_twopc_abort(struct drbd_resource *resource, int vnr, enum drb
 {
 	struct drbd_connection *connection;
 	u64 nodes_to_reach, reach_immediately, im;
+	unsigned int target_node_id;
 
 	spin_lock_irq(&resource->req_lock);
 	nodes_to_reach = be64_to_cpu(request->nodes_to_reach);
 	reach_immediately = directly_connected_nodes(resource, NOW) & nodes_to_reach;
 	nodes_to_reach &= ~(reach_immediately | NODE_MASK(resource->res_opts.node_id));
 	request->nodes_to_reach = cpu_to_be64(nodes_to_reach);
+	target_node_id = be32_to_cpu(request->target_node_id);
 	spin_unlock_irq(&resource->req_lock);
 
+
+	// DW-2029 send a twopc request to target node first
+	if (target_node_id != -1) {
+		connection = drbd_connection_by_node_id(resource, target_node_id);
+		if (connection && (reach_immediately & NODE_MASK(connection->peer_node_id)))
+			conn_send_twopc_request(connection, vnr, cmd, request);
+	}
+	// send to other nodes
 	for_each_connection_ref(connection, im, resource) {
+		if (target_node_id != -1 && target_node_id == connection->peer_node_id)
+			continue;
+
 		u64 mask = NODE_MASK(connection->peer_node_id);
 		if (reach_immediately & mask)
 			conn_send_twopc_request(connection, vnr, cmd, request);
@@ -8040,7 +8256,23 @@ static int process_twopc(struct drbd_connection *connection,
 					}
 				} 
 			}
-#endif			
+#endif		
+
+			// DW-2029 reconnect if twopc(L_STARTING_SYNC_S) commit have already timed out
+			if (resource->twopc_type == TWOPC_STATE_CHANGE && pi->cmd == P_TWOPC_COMMIT) {
+				mask.i = be32_to_cpu(p->mask);
+				val.i = be32_to_cpu(p->val);
+							
+				if (reply->target_node_id == (int)resource->res_opts.node_id &&
+					mask.conn == conn_MASK && val.conn == L_STARTING_SYNC_S) {
+					drbd_err(connection, "[TWOPC:%u] target_node_id (%d) unexpected packet \n",
+							reply->tid, reply->target_node_id);
+
+					return -EIO;
+				}
+			}
+			
+
 			return 0;
 		}
 		if (reply->is_aborted) {
@@ -8536,6 +8768,12 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			D_INCONSISTENT : D_CONSISTENT;
 		drbd_info(device, "real peer disk state = %s\n", drbd_disk_str(peer_disk_state));
 	}
+	// DW-2054 if state is received in D_ATTACHING condition, it induces re-connection.
+	else if (device->disk_state[NOW] == D_ATTACHING) {
+		drbd_info(device, "reconnect because initialization packets were received in D_ATTACHING state");
+		change_cstate_ex(peer_device->connection, C_NETWORK_FAILURE, CS_HARD);
+		return 0;
+	}
 
 	spin_lock_irq(&resource->req_lock);
 	old_peer_state = drbd_get_peer_device_state(peer_device, NOW);
@@ -8594,7 +8832,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 				if (drbd_bm_total_weight(peer_device) > peer_device->rs_failed)
 				{
 					// DW-1199: print log for remaining out-of-sync to recogsize which sector has to be traced
-					drbd_info(peer_device, "SyncSource still sees bits set!! FIXME\n");
+					drbd_info(peer_device, "SyncSource still sees bits set!! FIXME, total(%llu), failed(%llu)\n", drbd_bm_total_weight(peer_device), peer_device->rs_failed);
 					if (atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_OOS)
 					{
 						ULONG_PTR bit = 0;
@@ -8639,7 +8877,10 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1085 fix resync stop in the state of 'PausedSyncS/Behind'.
 		// L_PAUSED_SYNC_S also call drbd_start_resync(). L_BEHIND will transition to L_PAUSED_SYNC_T.
-		(peer_state.conn == L_SYNC_SOURCE || peer_state.conn == L_PAUSED_SYNC_S) && old_peer_state.conn == L_BEHIND) {
+		(peer_state.conn == L_SYNC_SOURCE || peer_state.conn == L_PAUSED_SYNC_S) &&
+		// DW-2003 resync is also initiated when the current status is L_ESTABLISHED.
+		(old_peer_state.conn == L_ESTABLISHED || 
+		old_peer_state.conn == L_BEHIND)) {
 #else
 		peer_state.conn == L_SYNC_SOURCE && old_peer_state.conn == L_BEHIND) {
 #endif
@@ -8666,7 +8907,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		{
 			drbd_info(peer_device, "peer is Ahead. change to Behind mode\n"); // DW-1518
 		}
-		new_repl_state = L_BEHIND;
+		// DW-2104 When the Ahead node is demoted, Behind state is changed to Established.
+		if (peer_state.role == R_SECONDARY)
+			new_repl_state = L_ESTABLISHED;
+		else
+			new_repl_state = L_BEHIND;
 	}
 
 	if (peer_device->uuids_received &&
@@ -8733,6 +8978,11 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			set_bit(NEGOTIATION_RESULT_TOUCHED, &resource->flags);
 			peer_device->negotiation_result = new_repl_state;
 		}
+
+		// DW-2084 set to 0 in situations where bitmap exchange is not required
+		if (new_repl_state == L_ESTABLISHED && atomic_read(&peer_device->wait_for_recv_bitmap)) 
+			atomic_set(&peer_device->wait_for_recv_bitmap, 0);
+
 	} else if (peer_state.role == R_PRIMARY &&
 		peer_device->disk_state[NOW] == D_UNKNOWN && peer_state.disk == D_DISKLESS &&
 		device->disk_state[NOW] >= D_NEGOTIATING && device->disk_state[NOW] < D_UP_TO_DATE) {
@@ -8746,6 +8996,8 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 			try_to_get_resync = true;
 		}
 	}
+
+	drbd_info(peer_device, "receive new repl state \"%s\"\n", drbd_repl_str(new_repl_state));
 
 	spin_lock_irq(&resource->req_lock);
 	begin_state_change_locked(resource, CS_VERBOSE);
@@ -8789,7 +9041,7 @@ static int receive_state(struct drbd_connection *connection, struct packet_info 
 		drbd_err(device, "Aborting Connect, can not thaw IO with an only Consistent peer\n");
 		tl_clear(connection);
 		mutex_lock(&resource->conf_update);
-		drbd_uuid_new_current(device, false);
+		drbd_uuid_new_current(device, false, __FUNCTION__);
 		mutex_unlock(&resource->conf_update);
 		begin_state_change(resource, &irq_flags, CS_HARD);
 		__change_cstate(connection, C_PROTOCOL_ERROR);
@@ -9135,7 +9387,7 @@ static int receive_bitmap_finished(struct drbd_connection *connection, struct dr
 		// DW-1979
 		peer_device->repl_state[NOW] == L_BEHIND) {
 		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_rs_reply, 1);
+		atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 1);
 
 		drbd_queue_bitmap_io(device, &drbd_send_bitmap, &drbd_send_bitmap_target_complete,
 			"send_bitmap (WFBitMapT)",
@@ -9149,13 +9401,24 @@ static int receive_bitmap_finished(struct drbd_connection *connection, struct dr
 		* other threads may have noticed network errors */
 		drbd_info(peer_device, "unexpected repl_state (%s) in receive_bitmap\n",
 			drbd_repl_str(peer_device->repl_state[NOW]));
-		//DW-1613 : Reconnect the UUID because it might not be received properly due to a synchronization issue.
+		// DW-1613 reconnect the UUID because it might not be received properly due to a synchronization issue.
+		// DW-2014 error return for reconnect
 		change_cstate_ex(connection, C_NETWORK_FAILURE, CS_HARD);
+		return -EAGAIN;
 	}
 
 	if (peer_device->repl_state[NOW] == L_WF_BITMAP_S ||
 		// DW-1979
 		peer_device->repl_state[NOW] == L_AHEAD) {
+
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (connection->agreed_pro_version >= 113) {
+			// DW-2124 resync process after sending bitmap exchange state
+			drbd_info(peer_device, "send that bitmap exchange has been completed\n");
+			drbd_send_bitmap_exchange_state(peer_device, P_BM_EXCHANGE_STATE, B_COMPLETE);
+		}
+#endif
+
 		drbd_start_resync(peer_device, L_SYNC_SOURCE);
 	}
 
@@ -9284,6 +9547,125 @@ static int receive_UnplugRemote(struct drbd_connection *connection, struct packe
 
 	return 0;
 }
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+// DW-2042 validate that range is already (null return if not already)
+static struct drbd_resync_pending_sectors *resync_pending_check_and_expand_dup(struct drbd_device* device, sector_t sst, sector_t est)
+{
+	struct drbd_resync_pending_sectors *pending_st = NULL;
+
+	if (list_empty(&device->resync_pending_sectors))
+		return NULL;
+
+	list_for_each_entry(struct drbd_resync_pending_sectors, pending_st, &(device->resync_pending_sectors), pending_sectors) {
+		if (sst >= pending_st->sst && sst <= pending_st->est && est <= pending_st->est) {
+			// ignore them because they already have the all rangs.
+			return pending_st;
+		}
+
+		if (sst <= pending_st->sst && est >= pending_st->sst && est > pending_st->est) {
+			// update sst and est because it contains a larger range that already exists.
+			pending_st->sst = sst;
+			pending_st->est = est;
+			return pending_st;
+		}
+
+		if (sst >= pending_st->sst && sst < pending_st->est && est > pending_st->est) {
+			// existing ranges include start ranges, but end ranges are larger, so update the est values.
+			pending_st->est = est;
+			return pending_st;
+		}
+
+		if (sst < pending_st->sst && est > pending_st->sst && est <= pending_st->est) {
+			// existing ranges include end ranges, but start ranges are small, so update the sst values.
+			pending_st->sst = sst;
+			return pending_st;
+		}
+	}
+	// there is no equal range.
+	return NULL;
+}
+
+// DW-2042 if you already have a range, remove the duplicate entry. (all list item)
+static void resync_pending_list_all_check_and_dedup(struct drbd_device* device, struct drbd_resync_pending_sectors *pending_st)
+{
+	struct drbd_resync_pending_sectors *target, *tmp;
+
+	list_for_each_entry_safe(struct drbd_resync_pending_sectors, target, tmp, &(device->resync_pending_sectors), pending_sectors) {
+		if (pending_st == target)
+			continue;
+
+		if (pending_st->sst <= target->sst && pending_st->est >= target->est) {
+			// remove all ranges as they are included.
+			list_del(&target->pending_sectors);
+			kfree2(target);
+			continue;
+		}
+		if (pending_st->sst > target->sst && pending_st->sst <= target->est) {
+			// the end range is included, so update the est.
+			target->est = pending_st->sst;
+		}
+
+		if (pending_st->sst <= target->sst && pending_st->est > target->sst) {
+			// the start range is included, so update the sst.
+			target->sst = pending_st->est;
+		}
+	}
+}
+
+// DW-2042 add resync pending only when the range is not included. (sort and add)
+static int list_add_resync_pending(struct drbd_device* device, sector_t sst, sector_t est)
+{
+	struct drbd_resync_pending_sectors *pending_st = NULL;
+	struct drbd_resync_pending_sectors *target = NULL;
+
+	int i = 0;
+
+	// remove duplicates from items you want to add.
+	mutex_lock(&device->resync_pending_fo_mutex);
+	pending_st = resync_pending_check_and_expand_dup(device, sst, est);
+	if (pending_st) {
+		resync_pending_list_all_check_and_dedup(device, pending_st);
+	}
+	else {
+		struct drbd_resync_pending_sectors *target;
+
+		pending_st = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct drbd_resync_pending_sectors), 'E9DW');
+		if (!pending_st) {
+			drbd_err(device, "failed to resync pending bits allocate, sector : %llu ~ %llu\n", (unsigned long long)sst, (unsigned long long)est);
+			mutex_unlock(&device->resync_pending_fo_mutex);
+			return -ENOMEM;
+		}
+
+		pending_st->sst = sst;
+		pending_st->est = est;
+
+		// add to the list in sequential sort.
+		if (list_empty(&device->resync_pending_sectors)) {
+			list_add(&pending_st->pending_sectors, &device->resync_pending_sectors);
+		}
+		else {
+			list_for_each_entry(struct drbd_resync_pending_sectors, target, &(device->resync_pending_sectors), pending_sectors) {
+				if (pending_st->sst < target->sst) {
+					if (device->resync_pending_sectors.next == &target->pending_sectors)
+						list_add(&pending_st->pending_sectors, &device->resync_pending_sectors);
+					else
+						list_add_tail(&pending_st->pending_sectors, &target->pending_sectors);
+
+					goto eof;
+				}
+			}
+			list_add_tail(&pending_st->pending_sectors, &device->resync_pending_sectors);
+		}
+	}
+eof:
+	list_for_each_entry(struct drbd_resync_pending_sectors, target, &(device->resync_pending_sectors), pending_sectors)
+		drbd_info(device, "%d. resync pending sector %llu(%llu) ~ %llu(%llu)\n", i++, (unsigned long long)target->sst, (unsigned long long)BM_SECT_TO_BIT(target->sst), (unsigned long long)target->est, (unsigned long long)BM_SECT_TO_BIT(target->est));
+	mutex_unlock(&device->resync_pending_fo_mutex);
+
+	return 0;
+}
+
+#endif 
 
 static int receive_out_of_sync(struct drbd_connection *connection, struct packet_info *pi)
 {
@@ -9292,6 +9674,7 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	struct p_block_desc *p = pi->data;
 	sector_t sector; 
 	ULONG_PTR bit; 
+	int err = 0;
 #ifdef _WIN32
 	// MODIFIED_BY_MANTECH DW-1354
 	bool bResetTimer = false;
@@ -9303,21 +9686,42 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 	device = peer_device->device;
 	
 	sector = be64_to_cpu(p->sector); 
+
+	mutex_lock(&device->bm_resync_fo_mutex);
+
 	switch (peer_device->repl_state[NOW]) {
 	case L_WF_SYNC_UUID:
 	case L_WF_BITMAP_T:
 	case L_BEHIND:
 		break; 
-	case L_SYNC_TARGET: 
-		mutex_lock(&device->bm_resync_fo_mutex);
+	case L_SYNC_TARGET:
+// DW-2042 resume resync using rs_failed
 #ifdef _WIN32
 		// MODIFIED_BY_MANTECH DW-1354: I am a sync target and find offset points the end, does mean no more requeueing resync timer.
 		bResetTimer = (device->bm_resync_fo == drbd_bm_bits(device));
 #endif
 		bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
-		if (bit < device->bm_resync_fo)
-			device->bm_resync_fo = bit; 
-		mutex_unlock(&device->bm_resync_fo_mutex);
+
+		if (bit < device->bm_resync_fo) {
+		// DW-2042
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				int err;
+				err = list_add_resync_pending(device, sector, sector + (be32_to_cpu(p->blksize) >> 9));
+				if (err < 0)
+					return err;
+			}
+#endif
+			// DW-2042 resume resync using rs_failed
+			device->bm_resync_fo = bit;
+		}
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		// DW-2065
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			if (bit < (ULONGLONG)atomic_read64(&peer_device->s_resync_bb))
+				atomic_set64(&peer_device->s_resync_bb, bit);
+		}
+#endif
 		break; 
 	default:
 #ifdef _WIN32
@@ -9328,18 +9732,19 @@ static int receive_out_of_sync(struct drbd_connection *connection, struct packet
 				drbd_repl_str(peer_device->repl_state[NOW]));
 #endif
 	}
-	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize)); 
 
-#ifdef _WIN32
+	// DW-2076  out of sync is set after adding resync pending list.
+	drbd_set_out_of_sync(peer_device, sector, be32_to_cpu(p->blksize));
+
+	mutex_unlock(&device->bm_resync_fo_mutex);
+
 	// MODIFIED_BY_MANTECH DW-1354: new out-of-sync has been set and resync timer has been expired, 
-	if (bResetTimer)
-	{
+	if (bResetTimer) {
 		drbd_info(peer_device, "received out-of-sync has been set after resync timer has been expired, restart timer to send rs request for rest\n");
 		mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 	}
-#endif
 
-	return 0;
+	return err;
 }
 
 static int receive_dagtag(struct drbd_connection *connection, struct packet_info *pi)
@@ -9487,7 +9892,8 @@ static int receive_peer_dagtag(struct drbd_connection *connection, struct packet
 			// MODIFIED_BY_MANTECH DW-1340 : no clearing bitmap when disk is inconsistent.
 			// DW-1365 : fixup secondary's diskless case for crashed primary.
 			// DW-1644 : if the peer's disk_state is inconsistent, no clearing bitmap.
-			if(get_ldev_if_state(peer_device->device, D_OUTDATED) && peer_device->disk_state[NOW] > D_INCONSISTENT) {
+			// DW-2031 add put_ldev() due to ldev leak occurrence
+			if (peer_device->disk_state[NOW] > D_INCONSISTENT && get_ldev_if_state(peer_device->device, D_OUTDATED)) {
 				drbd_bm_clear_many_bits(peer_device->device, peer_device->bitmap_index, 0, DRBD_END_OF_BITMAP);
 				put_ldev (peer_device->device);
 			} else {
@@ -9531,13 +9937,16 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 	if (connection->peer_role[NOW] == R_UNKNOWN)
 		return 0;
 
+	// DW-1975 If the current uuid is updated, the remaining bitmap uuid is also removed.
 	if (current_uuid == drbd_current_uuid(device)) {
-		// DW-1975 If the current uuid is updated, the remaining bitmap uuid is also removed.
 		struct drbd_device *device = peer_device->device;
-		struct drbd_peer_md *peer_md = &device->ldev->md.peers[peer_device->node_id];
-		if (peer_md->bitmap_uuid != 0) { 
-			drbd_info(peer_device, "Clear bitmap_uuid (cur_uuid:%016llX bm_uuid:%016llX)\n", current_uuid, peer_md->bitmap_uuid);
-			drbd_uuid_set_bitmap(peer_device, 0);
+		// DW-2009 initialize the bitmap uuid only in specific condition
+		if (drbd_current_uuid(device) != 0 && device->ldev) {
+			struct drbd_peer_md *peer_md = &device->ldev->md.peers[peer_device->node_id];
+			if (peer_md->bitmap_uuid != 0) {
+				drbd_info(peer_device, "Clear bitmap_uuid (cur_uuid:%016llX bm_uuid:%016llX)\n", current_uuid, peer_md->bitmap_uuid);
+				drbd_uuid_set_bitmap(peer_device, 0);
+			}
 		}
 
 		return 0;
@@ -9554,6 +9963,10 @@ static int receive_current_uuid(struct drbd_connection *connection, struct packe
 			drbd_uuid_received_new_current(peer_device, current_uuid, weak_nodes);
 			drbd_md_sync_if_dirty(device);
 		}
+		else
+			drbd_warn(peer_device, "receive new current but not update UUID: %016llX "
+									"weak_nodes=%016llX\n", current_uuid, weak_nodes);
+
 		put_ldev(device);
 	} else if (device->disk_state[NOW] == D_DISKLESS && resource->role[NOW] == R_PRIMARY) {
 		drbd_set_exposed_data_uuid(device, peer_device->current_uuid);
@@ -9678,6 +10091,8 @@ static struct data_cmd drbd_cmd_handler[] = {
 	[P_TRIM]	    = { 0, sizeof(struct p_trim), receive_Data },
 	[P_RS_DEALLOCATED]  = { 0, sizeof(struct p_block_desc), receive_rs_deallocated },
 	[P_WSAME]	    = { 1, sizeof(struct p_wsame), receive_Data },
+	// DW-2124
+	[P_BM_EXCHANGE_STATE] = { 0, sizeof(struct p_bm_exchange_state), receive_bm_exchange_state },
 };
 
 static void drbdd(struct drbd_connection *connection)
@@ -9790,13 +10205,13 @@ static void drain_resync_activity(struct drbd_connection *connection)
 	struct drbd_peer_device *peer_device;
 	int vnr;
 
-	//DW-1874 if FORCE_DISCONNECT is set, do not wait
-	if (test_bit(FORCE_DISCONNECT, &connection->flags)) {
+	// DW-2035 if DISCONN_NO_WAIT_RESYNC is set, don't wait for sync_ee.
+	if (test_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags)) {
 		/* verify or resync related peer requests are read_ee or sync_ee,
 		* drain them first */
-		conn_wait_ee_empty(connection, &connection->read_ee);
 		conn_wait_ee_empty(connection, &connection->sync_ee);
 	}
+	conn_wait_ee_empty(connection, &connection->read_ee);
 
 	rcu_read_lock();
 #ifdef _WIN32
@@ -9976,9 +10391,12 @@ void conn_disconnect(struct drbd_connection *connection)
 		kref_get(&device->kref);
 		rcu_read_unlock();
 
+		// DW-2026 Initialize resync_again
+		peer_device->resync_again = false;
+
 		// DW-1979
-		atomic_set(&peer_device->wait_for_recv_bitmap, 0);
-		atomic_set(&peer_device->wait_for_recv_rs_reply, 0);
+		atomic_set(&peer_device->wait_for_recv_bitmap, 1);
+		atomic_set(&peer_device->wait_for_bitmp_exchange_complete, 0);
 
 		// DW-1965 initialize values that need to be answered or set after completion of I/O.
 		atomic_set(&peer_device->unacked_cnt, 0);
@@ -9987,6 +10405,10 @@ void conn_disconnect(struct drbd_connection *connection)
 
 		peer_device_disconnected(peer_device);
 	
+		// DW-2076
+		atomic_set(&peer_device->rq_pending_oos_cnt, 0);
+
+
 		kref_put(&device->kref, drbd_destroy_device);
 		rcu_read_lock();
 	}
@@ -10040,8 +10462,12 @@ void conn_disconnect(struct drbd_connection *connection)
 
 	connection->send.seen_any_write_yet = false;
 
-	//DW-1874
-	clear_bit(FORCE_DISCONNECT, &connection->flags); 
+	// DW-2121
+	clear_bit(BARRIER_ACK_PENDING, &connection->flags);
+	wake_up(&resource->barrier_wait);
+
+	// DW-2035
+	clear_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags);
 
 	drbd_info(connection, "Connection closed\n");
 
@@ -10664,8 +11090,8 @@ static int got_IsInSync(struct drbd_connection *connection, struct packet_info *
 	update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 	if (get_ldev(device)) {
-		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		drbd_set_in_sync(peer_device, sector, blksize);
+		drbd_rs_complete_io(peer_device, sector, __FUNCTION__);
 		/* rs_same_csums is supposed to count in units of BM_BLOCK_SIZE */
 		peer_device->rs_same_csum += (blksize >> BM_BLOCK_SHIFT);
 		// DW-1942 applied to release io-error value.
@@ -10766,14 +11192,21 @@ static int got_BlockAck(struct drbd_connection *connection, struct packet_info *
 			update_peer_seq(peer_device, be32_to_cpu(p->seq_num));
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			drbd_set_in_sync(peer_device, sector, blksize);
+			// DW-2112 only set when in sync is in a certain state to avoid overlapping.
+			if (device->resource->role[NOW] == R_PRIMARY || 
+				is_sync_source(peer_device) || 
+				peer_device->repl_state[NOW] == L_AHEAD) {
+				drbd_set_in_sync(peer_device, sector, blksize);
+			}
+
 			//DW-1601 add DW-1859
 			if (device->resource->role[NOW] == R_PRIMARY)
 				check_and_clear_io_error_in_primary(device);
 			else
 				check_and_clear_io_error_in_secondary(peer_device);
 
-			if (p->block_id == ID_SYNCER_SPLIT_DONE) 
+			// DW-2112
+			if (p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);
 
 			//DW-1601 add DW-1817
@@ -10863,7 +11296,7 @@ static int got_NegAck(struct drbd_connection *connection, struct packet_info *pi
 			set_bit(GOT_NEG_ACK, &peer_device->flags);
 
 		if (p->block_id == ID_SYNCER_SPLIT || p->block_id == ID_SYNCER_SPLIT_DONE) {
-			drbd_info(connection, "drbd_rs_failed_io secotr : %llu, size %d\n", sector, size);
+			drbd_debug(connection, "drbd_rs_failed_io sector : %llu, size %d\n", sector, size);
 			drbd_rs_failed_io(peer_device, sector, size);
 			if (p->block_id == ID_SYNCER_SPLIT_DONE)
 				dec_rs_pending(peer_device);
@@ -10982,18 +11415,20 @@ static int got_NegRSDReply(struct drbd_connection *connection, struct packet_inf
 
 			break;
 		case P_RS_CANCEL:
+			mutex_lock(&device->bm_resync_fo_mutex);
 			//DW-1807 Ignore P_RS_CANCEL if peer_device is not in resync.
 			//DW-1846 receive data when synchronization is in progress.
 			if (is_sync_target(peer_device)) {
+				WDRBD_VERIFY_DATA("receive sync request cancellation\n");
+
 				bit = (ULONG_PTR)BM_SECT_TO_BIT(sector);
 
-				mutex_lock(&device->bm_resync_fo_mutex);
 				device->bm_resync_fo = min(device->bm_resync_fo, bit);
-				mutex_unlock(&device->bm_resync_fo_mutex);
 
 				atomic_add(size >> 9, &peer_device->rs_sect_in);
 				mod_timer(&peer_device->resync_timer, jiffies + SLEEP_TIME);
 			}
+			mutex_unlock(&device->bm_resync_fo_mutex);
 			break;
 		default:
 			BUG();

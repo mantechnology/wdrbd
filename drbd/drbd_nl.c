@@ -1439,9 +1439,9 @@ retry:
 			} 
 
 			if (forced)
-				drbd_uuid_new_current(device, true);
+				drbd_uuid_new_current(device, true, __FUNCTION__);
 			else if (younger_primary)
-				drbd_uuid_new_current(device, false); // DW-1944 set UUID_FLAG_NEW_DATAGEN when sending new current UUID
+				drbd_uuid_new_current(device, false, __FUNCTION__); // DW-1944 set UUID_FLAG_NEW_DATAGEN when sending new current UUID
 			else
 				set_bit(NEW_CUR_UUID, &device->flags);
 			
@@ -1796,6 +1796,17 @@ int drbd_adm_set_role(struct sk_buff *skb, struct genl_info *info)
 		}
 
 		
+		// DW-2107 remove from block target if setting from primary to secondary fails
+		if (retcode != SS_SUCCESS && adm_ctx.resource->role[NOW] == R_PRIMARY) {
+			idr_for_each_entry(struct drbd_device *, &adm_ctx.resource->devices, device, vnr)
+			{
+				PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
+				if (pvext)
+				{
+					SetDrbdlockIoBlock(pvext, FALSE);
+				}
+			}
+		}
 #else
         int vnr;
         struct drbd_device * device;
@@ -3539,27 +3550,15 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		clear_bit(CRASHED_PRIMARY, &device->flags);
 
 	if (drbd_md_test_flag(device, MDF_PRIMARY_IND) &&
-	    !(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
-	    !device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags))
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	// MODIFIED_BY_MANTECH DW-1357: this is initialzing crashed primary. set crashed primary flag and clear all peer's ignoring flags.
-	{
+		!(resource->role[NOW] == R_PRIMARY && resource->susp_nod[NOW]) &&
+		!device->exposed_data_uuid && !test_bit(NEW_CUR_UUID, &device->flags)) {
+
 		set_bit(CRASHED_PRIMARY, &device->flags);
 
-		struct drbd_md *md = &device->ldev->md;
-		int node_id = 0;
-
-		for (node_id = 0; node_id < DRBD_NODE_ID_MAX; node_id++)
-			md->peers[node_id].flags &= ~MDF_PEER_IGNORE_CRASHED_PRIMARY;
-
-		// it will change to outdate.
-		md->flags &= ~MDF_WAS_UP_TO_DATE;
-		
-		drbd_md_mark_dirty(device);
+		// DW-2044 set crashed primary work pending flags
+		for_each_peer_device(peer_device, device)
+			drbd_md_set_peer_flag(peer_device, MDF_CRASHED_PRIMARY_WORK_PENDING);
 	}
-#else
-		set_bit(CRASHED_PRIMARY, &device->flags);
-#endif
 
 	device->read_cnt = 0;
 	device->writ_cnt = 0;
@@ -4221,7 +4220,7 @@ int drbd_adm_peer_device_opts(struct sk_buff *skb, struct genl_info *info)
 #ifdef _WIN32
 	synchronize_rcu_w32_wlock();
 #endif
-	drbd_info(peer_device, "new, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n", 
+	drbd_info(peer_device, "new, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %us, c_max_rate : %uk, c_min_rate : %uk\n", 
 		new_peer_device_conf->resync_rate, new_peer_device_conf->c_plan_ahead, new_peer_device_conf->c_delay_target, 
 		new_peer_device_conf->c_fill_target, new_peer_device_conf->c_max_rate, new_peer_device_conf->c_min_rate);
 
@@ -4263,7 +4262,7 @@ int drbd_create_peer_device_default_config(struct drbd_peer_device *peer_device)
 	if (err)
 		return err;
 
-	drbd_info(peer_device, "default, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %uk, c_max_rate : %uk, c_min_rate : %uk\n",
+	drbd_info(peer_device, "default, resync_rate : %uk, c_plan_ahead : %uk, c_delay_target : %uk, c_fill_target : %us, c_max_rate : %uk, c_min_rate : %uk\n",
 		conf->resync_rate, conf->c_plan_ahead, conf->c_delay_target,
 		conf->c_fill_target, conf->c_max_rate, conf->c_min_rate);
 
@@ -4873,8 +4872,10 @@ int drbd_open_ro_count(struct drbd_resource *resource)
 }
 
 
-static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection, bool force,
-					      struct sk_buff *reply_skb)
+static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection, bool force, 
+												// DW-2035 no wait resync option (sync_ee)
+												bool DISCONN_NO_WAIT_RESYNC,
+												struct sk_buff *reply_skb)
 {
 	struct drbd_resource *resource = connection->resource;
 	enum drbd_conn_state cstate;
@@ -4889,9 +4890,9 @@ static enum drbd_state_rv conn_try_disconnect(struct drbd_connection *connection
 #endif 
 
 repeat:
-	//DW-1874
-	if (flags)
-		set_bit(FORCE_DISCONNECT, &connection->flags);
+	// DW-2035
+	if (DISCONN_NO_WAIT_RESYNC)
+		set_bit(DISCONN_NO_WAIT_RESYNC, &connection->flags);
 
 	rv = change_cstate_es(connection, C_DISCONNECTING, flags, &err_str, __FUNCTION__);
 	switch (rv) {
@@ -5044,7 +5045,7 @@ int adm_disconnect(struct sk_buff *skb, struct genl_info *info, bool destroy)
 
 	connection = adm_ctx.connection;
 	mutex_lock(&adm_ctx.resource->adm_mutex);
-	rv = conn_try_disconnect(connection, parms.force_disconnect, adm_ctx.reply_skb);
+	rv = conn_try_disconnect(connection, parms.force_disconnect, false, adm_ctx.reply_skb);
 	if (rv >= SS_SUCCESS && destroy) {
 		mutex_lock(&connection->resource->conf_update);
 		del_connection(connection);
@@ -5451,12 +5452,15 @@ int drbd_adm_invalidate(struct sk_buff *skb, struct genl_info *info)
 			(repl_state[NEW] >= L_SYNC_SOURCE && repl_state[NEW] <= L_PAUSED_SYNC_T))
 		{
 #ifdef _WIN32_RCU_LOCKED
-			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, false))
+			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW, false)) {
 #else
 			if (repl_state[NOW] >= L_ESTABLISHED && !drbd_inspect_resync_side(peer_device, repl_state[NEW], NEW))
 #endif
 				retcode = ERR_CODE_BASE;
-				goto out_no_ldev;
+			}
+			// DW-2031 add put_ldev() due to ldev leak occurrence
+			put_ldev(device);
+			goto out_no_ldev;
 		}
 	}
 #endif
@@ -7193,6 +7197,18 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 	
 	if(retcode < SS_SUCCESS)
 	{
+		// DW-2107 remove from block target if setting from primary to secondary fails
+		if (resource->role[NOW] == R_PRIMARY) {
+			idr_for_each_entry(struct drbd_device *, &resource->devices, device, vnr)
+			{
+				PVOLUME_EXTENSION pvext = get_targetdev_by_minor(device->minor, FALSE);
+				if (pvext)
+				{
+					SetDrbdlockIoBlock(pvext, FALSE);
+				}
+			}
+		}
+
 		goto out;
 	}
 #else
@@ -7249,7 +7265,8 @@ int drbd_adm_down(struct sk_buff *skb, struct genl_info *info)
 #endif
 
 	for_each_connection_ref(connection, im, resource) {
-		retcode = conn_try_disconnect(connection, 0, adm_ctx.reply_skb);
+		// DW-2035
+		retcode = conn_try_disconnect(connection, false, true, adm_ctx.reply_skb);
 		if (retcode >= SS_SUCCESS) {
 
 			mutex_lock(&resource->conf_update);

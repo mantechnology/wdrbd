@@ -932,7 +932,8 @@ void drbd_al_shrink(struct drbd_device *device)
 
 static bool extent_in_sync(struct drbd_peer_device *peer_device, unsigned int rs_enr)
 {
-	if (peer_device->repl_state[NOW] == L_ESTABLISHED) {
+	// DW-2096 send peer_in_sync to Ahead node.
+	if (peer_device->repl_state[NOW] == L_ESTABLISHED || peer_device->repl_state[NOW] == L_AHEAD) {
 		if (drbd_bm_total_weight(peer_device) == 0)
 			return true;
 		if (bm_e_weight(peer_device, rs_enr) == 0)
@@ -1323,6 +1324,14 @@ static int update_sync_bits(struct drbd_peer_device *peer_device,
 			ULONG_PTR still_to_go = drbd_bm_total_weight(peer_device);
 			bool rs_is_done = (still_to_go <= peer_device->rs_failed);
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2076 resync completion must be done on the only synctarget otherwise retry resync may not proceed.
+				if (rs_is_done && peer_device->repl_state[NOW] == L_SYNC_SOURCE) {
+					rs_is_done = false;
+				}
+			}
+#endif
 			if (mode == SET_IN_SYNC) 
 				drbd_advance_rs_marks(peer_device, still_to_go);
 
@@ -1376,7 +1385,7 @@ static bool plausible_request_size(int size)
  *
  */
 ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sector, int size,
-		update_sync_bits_mode mode)
+								update_sync_bits_mode mode, char* caller)
 {
 	/* Is called from worker and receiver context _only_ */
 	struct drbd_device *device = peer_device->device;
@@ -1389,7 +1398,8 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 		return 0;
 
 	if (!plausible_request_size(size)) {
-		drbd_err(device, "%s: sector=%llus size=%u nonsense!\n",
+		drbd_err(device, "%s => %s: sector=%llus size=%u nonsense!\n",
+				caller, 
 				drbd_change_sync_fname[mode],
 				(unsigned long long)sector, size);
 		return 0;
@@ -1399,7 +1409,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(device, "get_ldev failed, sector(%llu)\n", sector);
+		drbd_err(device, "%s => get_ldev failed, sector(%llu), mode(%u)\n", caller, sector, mode);
 		return 0; /* no disk, no metadata, no bitmap to manipulate bits in */
 	}
 #else
@@ -1413,7 +1423,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 #ifdef _WIN32_DEBUG_OOS
 		// MODIFIED_BY_MANTECH DW-1153: add error log
 	{
-		drbd_err(peer_device, "unexpected error, sector(%llu) < nr_sectors(%llu)\n", sector, nr_sectors);
+		drbd_err(peer_device, "%s => unexpected error, sector(%llu) < nr_sectors(%llu)\n", caller, sector, nr_sectors);
 		goto out;
 	}
 #else
@@ -1432,7 +1442,7 @@ ULONG_PTR __drbd_change_sync(struct drbd_peer_device *peer_device, sector_t sect
 			// MODIFIED_BY_MANTECH DW-1153: add error log
 		{
 			// DW-1992 it is a normal operation, not an error, so it is output at the info level.
-			drbd_info(peer_device, "not in sync because it is smaller than bitmap bit size, sector(%llu) ~ sector(%llu)\n", sector, esector);
+			drbd_info(peer_device, "%s => not in sync because it is smaller than bitmap bit size, sector(%llu) ~ sector(%llu)\n", caller, sector, esector);
 			goto out;
 		}
 #else
@@ -1974,8 +1984,8 @@ int drbd_rs_del_all(struct drbd_peer_device *peer_device)
 				lc_put(peer_device->resync_lru, &bm_ext->lce);
 			}
 			if (bm_ext->lce.refcnt != 0) {
-				drbd_info(peer_device, "Retrying drbd_rs_del_all() later. "
-				     "refcnt=%u\n", bm_ext->lce.refcnt);
+				drbd_info(peer_device, "Retrying drbd_rs_del_all() later. number=%u, "
+				     "refcnt=%u\n", bm_ext->lce.lc_number, bm_ext->lce.refcnt);
 				put_ldev(device);
 				spin_unlock_irq(&device->al_lock);
 				return -EAGAIN;

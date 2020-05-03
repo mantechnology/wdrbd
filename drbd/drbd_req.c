@@ -331,16 +331,19 @@ tail_recursion:
 				unsigned int rq_state;
 
 				rq_state = req->rq_state[1 + node_id];
-				if (rq_state & RQ_NET_OK) {
+				// Dw-2091 clear the peer index that sent out of sync (rq_state & RQ_NET_DONE && rq_state & RQ_OOS_NET_QUEUED).
+				if (rq_state & RQ_NET_OK || ((rq_state & RQ_NET_DONE) && (rq_state & RQ_OOS_NET_QUEUED))) {
 					int bitmap_index = peer_md[node_id].bitmap_index;
 
 					if (bitmap_index == -1)
 						continue;
 
-					if (rq_state & RQ_NET_SIS)
+					if (rq_state & RQ_NET_SIS) {
 						clear_bit(bitmap_index, &bits);
-					else
+					}
+					else {
 						clear_bit(bitmap_index, &mask);
+					}
 				}
 			}
 #ifdef _WIN32
@@ -360,7 +363,7 @@ tail_recursion:
 								 queueing sending out-of-sync into connection ack sender here guarantees that oos will be sent before peer ack does. */
 						struct drbd_oos_no_req* send_oos = NULL;
 
-						drbd_debug(peer_device,"found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
+						drbd_info(peer_device,"found disappeared out-of-sync, need to send new one(sector(%llu), size(%u))\n", req->i.sector, req->i.size);
 
 						send_oos = kmalloc(sizeof(struct drbd_oos_no_req), 0, 'OSDW');
 						if (send_oos)
@@ -974,6 +977,15 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		BUG_ON(clear);
 	}
 
+	// DW-2042 When setting RQ_OOS_NET_QUEUED, RQ_OOS_PENDING shall be set.
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	if (peer_device && peer_device->connection->agreed_pro_version >= 113) {
+		if ((set & RQ_OOS_NET_QUEUED) && !(req->rq_state[idx] & RQ_OOS_PENDING)) {
+			return;
+		}
+	}
+#endif
+
 	if (drbd_suspended(req->device) && !((old_local | clear_local) & RQ_COMPLETION_SUSP))
 		set_local |= RQ_COMPLETION_SUSP;
 
@@ -996,6 +1008,14 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 		atomic_inc(&req->completion_ref);
 
 	if (!(old_net & RQ_NET_PENDING) && (set & RQ_NET_PENDING)) {
+		// DW-2058 inc rq_pending_oos_cnt
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (peer_device->connection->agreed_pro_version >= 113) {
+			if (set & RQ_OOS_PENDING) {
+				atomic_inc(&peer_device->rq_pending_oos_cnt);
+			}
+		}
+#endif
 		inc_ap_pending(peer_device);
 		atomic_inc(&req->completion_ref);
 	}
@@ -1087,6 +1107,14 @@ static void mod_rq_state(struct drbd_request *req, struct bio_and_error *m,
 	}
 
 	if (!(old_net & RQ_NET_DONE) && (set & RQ_NET_DONE)) {
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		if (peer_device && peer_device->connection->agreed_pro_version >= 113) {
+			if (old_net & (RQ_OOS_NET_QUEUED | RQ_OOS_PENDING)) {
+					// DW-2076 
+					atomic_dec(&peer_device->rq_pending_oos_cnt);
+			}
+		}
+#endif
 		if (old_net & RQ_NET_SENT) {
 			//atomic_sub(req->i.size >> 9, &peer_device->connection->ap_in_flight);
 			if (atomic_sub_return64(req->i.size, &peer_device->connection->ap_in_flight) < 0)
@@ -1348,8 +1376,18 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 			start_new_tl_epoch(device->resource);
 		break;
 
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+	case QUEUE_FOR_PENDING_OOS:
+		mod_rq_state(req, m, peer_device, 0, RQ_OOS_PENDING|RQ_NET_PENDING);
+		break;
+#endif
+
 	case QUEUE_FOR_SEND_OOS:
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		mod_rq_state(req, m, peer_device, RQ_OOS_PENDING|RQ_NET_PENDING, RQ_OOS_NET_QUEUED | RQ_NET_QUEUED);
+#else
 		mod_rq_state(req, m, peer_device, 0, RQ_NET_QUEUED);
+#endif
 		break;
 
 	case READ_RETRY_REMOTE_CANCELED:
@@ -1365,7 +1403,7 @@ int __req_mod(struct drbd_request *req, enum drbd_req_event what,
 		if (is_pending_write_protocol_A(req, idx))
 			/* this is what is dangerous about protocol A:
 			 * pretend it was successfully written on the peer. */
-			mod_rq_state(req, m, peer_device, RQ_NET_QUEUED|RQ_NET_PENDING,
+			 mod_rq_state(req, m, peer_device, RQ_NET_QUEUED|RQ_NET_PENDING,
 				     RQ_NET_SENT|RQ_NET_OK);
 		else
 			mod_rq_state(req, m, peer_device, RQ_NET_QUEUED, RQ_NET_SENT);
@@ -1752,7 +1790,9 @@ bool drbd_should_do_remote(struct drbd_peer_device *peer_device, enum which_stat
 
 static bool drbd_should_send_out_of_sync(struct drbd_peer_device *peer_device)
 {
-	return peer_device->repl_state[NOW] == L_AHEAD || peer_device->repl_state[NOW] == L_WF_BITMAP_S;
+	return peer_device->repl_state[NOW] == L_AHEAD;
+	// DW-2058 modify DW-1979 to remove the L_WF_BITMAPS_S condition
+	// || peer_device->repl_state[NOW] == L_WF_BITMAP_S;
 	/* pdsk = D_INCONSISTENT as a consequence. Protocol 96 check not necessary
 	   since we enter state L_AHEAD only if proto >= 96 */
 }
@@ -1850,9 +1890,30 @@ static int drbd_process_write_request(struct drbd_request *req)
 				in_tree = true;
 			}
 			_req_mod(req, QUEUE_FOR_NET_WRITE, peer_device);
-		} else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size))
-			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+		}
+#ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
+		else {
+			ULONG_PTR c = drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size);
 
+			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2091 send all out of snyc regardless of redundancy.
+				// the downside is that if out of sync continues to occur in the same area, it will transmit more than before.
+				// out of sync is sent after the writing is complete and the consistency issues are resolved by separating old and new oos from synctarget to resync_pending.
+
+				// DW-2042 set QUEUE_FOR_SEND_OOS after completion of writing and send QUEUE_FOR_PENDING_OOS. For transmission, QUEUE_FOR_PENDING_OOS must be set before setting QUEUE_FOR_SEND_OOS.
+				_req_mod(req, QUEUE_FOR_PENDING_OOS, peer_device);
+			}
+			else {
+				if (c) {
+					_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+				}
+			}
+		}
+#else
+		else if (drbd_set_out_of_sync(peer_device, req->i.sector, req->i.size)) {
+			_req_mod(req, QUEUE_FOR_SEND_OOS, peer_device);
+		}
+#endif
 	}
 
 	return count;
@@ -2235,8 +2296,11 @@ out:
 	 * If however this request did not even have a private bio to submit
 	 * (e.g. remote read), req may already be invalid now.
 	 * That's why we cannot check on req->private_bio. */
-	if (submit_private_bio)
+	if (submit_private_bio) {
+		WDRBD_VERIFY_DATA("%s, sector(%llu), size(%u), bitmap(%llu ~ %llu)\n",
+			__FUNCTION__, req->i.sector, req->i.size, BM_SECT_TO_BIT(req->i.sector), BM_SECT_TO_BIT(req->i.sector + (req->i.size >> 9)));
 		drbd_submit_req_private_bio(req);
+	}
 #ifndef _WIN32
 	/* we need to plug ALWAYS since we possibly need to kick lo_dev.
 	 * we plug after submit, so we won't miss an unplug event */
@@ -2496,10 +2560,13 @@ static void send_and_submit_pending(struct drbd_device *device, struct waiting_f
 static void ensure_current_uuid(struct drbd_device *device)
 {
 	if (test_and_clear_bit(NEW_CUR_UUID, &device->flags)) {
-		struct drbd_resource *resource = device->resource;
-		mutex_lock(&resource->conf_update);
-		drbd_uuid_new_current(device, false);
-		mutex_unlock(&resource->conf_update);
+		// DW-2004 the function ensure_current_uuid() updates the uuid during replication, so if uuid update is required in D_FAILED state, please update with other function.
+		if (device->disk_state[NOW] != D_FAILED) {
+			struct drbd_resource *resource = device->resource;
+			mutex_lock(&resource->conf_update);
+			drbd_uuid_new_current(device, false, __FUNCTION__);
+			mutex_unlock(&resource->conf_update);
+		}
 	}
 }
 

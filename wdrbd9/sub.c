@@ -119,12 +119,12 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	NTSTATUS		status;
 	PVOLUME_EXTENSION	VolumeExtension = DeviceObject->DeviceExtension;
 
-	// we should call acuire removelock before pass down irp.
-	// if acuire-removelock fail, we should return fail(STATUS_DELETE_PENDING).
 	if (KeGetCurrentIrql() <= DISPATCH_LEVEL) {
+		// the value of IoAcquireRemoveLock() return has STATUS_SUCCESS or STATUS_DELETE_PENDING and the value of STATUS_DELETE_PENDING is returned when already in progress.
 		status = IoAcquireRemoveLock(&VolumeExtension->RemoveLock, NULL);
 		if(!NT_SUCCESS(status)) {
-			Irp->IoStatus.Status = status;
+			// DW-2028 when irp is completed in remove, it must always be in STATUS_SUCCESS state.
+			Irp->IoStatus.Status = STATUS_SUCCESS;
 			Irp->IoStatus.Information = 0;
 
 			IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -139,13 +139,12 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 
 	IoReleaseRemoveLockAndWait(&VolumeExtension->RemoveLock, NULL); //wait remove lock
-	IoDetachDevice(VolumeExtension->TargetDeviceObject);
-	IoDeleteDevice(DeviceObject);
 
+	// DW-2081 the VolumeExtension internal resources should be released before calling the IoDeleteDevice().
 #ifdef _WIN32_MULTIVOL_THREAD
 	if (VolumeExtension->WorkThreadInfo)
 	{
-		VolumeExtension->WorkThreadInfo = NULL;		
+		VolumeExtension->WorkThreadInfo = NULL;
 	}
 #else
 	if (VolumeExtension->WorkThreadInfo.Active)
@@ -165,18 +164,19 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		struct drbd_device *device = get_device_with_vol_ext(VolumeExtension, FALSE);
 		if (device)
 		{
-			if (get_disk_state2(device) >= D_INCONSISTENT)
+			// DW-2033 If a disk is removed while attaching, change to diskless. even in negotiating
+			if (get_disk_state2(device) >= D_NEGOTIATING || get_disk_state2(device) == D_ATTACHING)
 			{
 				drbd_chk_io_error(device, 1, DRBD_FORCE_DETACH);
 
 				long timeo = 3 * HZ;
 				wait_event_interruptible_timeout(timeo, device->misc_wait,
-							 get_disk_state2(device) != D_FAILED, timeo);
-			}			
+					get_disk_state2(device) != D_FAILED, timeo);
+			}
 			// DW-1300: put device reference count when no longer use.
 			kref_put(&device->kref, drbd_destroy_device);
 		}
-		
+
 		// DW-1109: put ref count that's been set as 1 when initialized, in add device routine.
 		// deleting block device can be defered if drbd device is using.		
 		blkdev_put(VolumeExtension->dev, 0);
@@ -195,10 +195,17 @@ mvolRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	if (test_and_clear_bit(VOLUME_TYPE_META, &VolumeExtension->Flag)) {
 		WDRBD_INFO("Meta volume:%p (%wZ) was removed\n", VolumeExtension, &VolumeExtension->MountPoint);
 	}
-	
+
 	FreeUnicodeString(&VolumeExtension->MountPoint);
 	FreeUnicodeString(&VolumeExtension->VolumeGuid);
-	
+
+	IoDetachDevice(VolumeExtension->TargetDeviceObject);
+
+	// DW-2033 to avoid potential BSOD in mvolGetVolumeSize()
+	VolumeExtension->TargetDeviceObject = NULL;
+
+	IoDeleteDevice(DeviceObject);
+
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;
@@ -644,10 +651,14 @@ void save_to_system_event(char * buf, int length, int level_index)
 {
 	int offset = 3;
 	char *p = buf + offset;
+	DWORD msgid = msgids[level_index];
 
 	while (offset < length)
 	{
-		int line_sz = WriteEventLogEntryData(msgids[level_index], 0, 0, 1, L"%S", p);
+		if (offset != 3)
+			msgid = PRINTK_NON;
+
+		int line_sz = WriteEventLogEntryData(msgid, 0, 0, 1, L"%S", p);
 		if (line_sz > 0)
 		{
 			offset = offset + (line_sz / 2);
@@ -677,6 +688,9 @@ void _printk(const char * func, const char * format, ...)
 	int ret = 0;
 	va_list args;
 	char* buf = NULL;
+	int length = 0;
+	char *ebuf = NULL;
+	int elength = 0;
 	long logcnt = 0;
 	int level_index = format[1] - '0';
 	int printLevel = 0;
@@ -702,72 +716,68 @@ void _printk(const char * func, const char * format, ...)
 		bOosLog = TRUE;
 	if ((atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_LATENCY) && (level_index == KERN_LATENCY_NUM))
 		bLatency = TRUE;
-
-	// nothing to log.
-	if (!bEventLog && !bDbgLog && !bOosLog & !bLatency) {
-		return;
-	}
 	
-	logcnt = InterlockedIncrement(&gLogCnt);
-	if(logcnt >= LOGBUF_MAXCNT) {
-		InterlockedExchange(&gLogCnt, 0);
-		logcnt = 0;
-	}
-	totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
-	
-	buf = gLogBuf[logcnt];
-	RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
-//#define TOTALCNT_OFFSET	(9)
-//#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
-	KeQuerySystemTime(&systemTime);
-    ExSystemTimeToLocalTime(&systemTime, &localTime);
+	// DW-2034 if only eventlogs are to be recorded, they are not recorded in the log buffer.
+	if (bDbgLog || bOosLog || bLatency) {
+		logcnt = InterlockedIncrement(&gLogCnt);
+		if (logcnt >= LOGBUF_MAXCNT) {
+			InterlockedExchange(&gLogCnt, 0);
+			logcnt = 0;
+		}
+		totallogcnt = InterlockedIncrement64(&gTotalLogCnt);
 
-    RtlTimeToTimeFields(&localTime, &timeFields);
+		buf = gLogBuf[logcnt];
+		RtlZeroMemory(buf, MAX_DRBDLOG_BUF);
+		//#define TOTALCNT_OFFSET	(9)
+		//#define TIME_OFFSET		(TOTALCNT_OFFSET+24)	//"00001234 08/02/2016 13:24:13.123 "
+		KeQuerySystemTime(&systemTime);
+		ExSystemTimeToLocalTime(&systemTime, &localTime);
 
-	offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
-										totallogcnt,
-										timeFields.Month,
-										timeFields.Day,
-										timeFields.Year,
-										timeFields.Hour,
-										timeFields.Minute,
-										timeFields.Second,
-										timeFields.Milliseconds,
-										func);
+		RtlTimeToTimeFields(&localTime, &timeFields);
+
+		offset = _snprintf(buf, MAX_DRBDLOG_BUF - 1, "%08lld %02d/%02d/%04d %02d:%02d:%02d.%03d [%s] ",
+			totallogcnt,
+			timeFields.Month,
+			timeFields.Day,
+			timeFields.Year,
+			timeFields.Hour,
+			timeFields.Minute,
+			timeFields.Second,
+			timeFields.Milliseconds,
+			func);
 
 #define LEVEL_OFFSET	10
 
-	switch (level_index) {
-	case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_FATA", LEVEL_OFFSET); break;
-	case KERN_ERR_NUM: 
-		printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf+offset, "WDRBD_ERRO", LEVEL_OFFSET); break;
-	case KERN_WARNING_NUM: 
-		printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf+offset, "WDRBD_WARN", LEVEL_OFFSET); break;
-	case KERN_NOTICE_NUM: case KERN_INFO_NUM: 
-		printLevel = DPFLTR_INFO_LEVEL; memcpy(buf+offset, "WDRBD_INFO", LEVEL_OFFSET); break;
-	case KERN_DEBUG_NUM: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
-	case KERN_OOS_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_OOS ", LEVEL_OFFSET); break;
-	case KERN_LATENCY_NUM:
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_LATE", LEVEL_OFFSET); break;
-	default: 
-		printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf+offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
-	}
-	
-	va_start(args, format);
-	ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
-	va_end(args);
-#ifdef _WIN64
-	BUG_ON_INT32_OVER(strlen(buf));
-#endif
-	int length = (int)strlen(buf);
-	if (length > MAX_DRBDLOG_BUF) {
-		length = MAX_DRBDLOG_BUF - 1;
-		buf[MAX_DRBDLOG_BUF - 1] = 0;
-	} else {
-		// TODO: chekc min?
+		switch (level_index) {
+		case KERN_EMERG_NUM: case KERN_ALERT_NUM: case KERN_CRIT_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf + offset, "WDRBD_FATA", LEVEL_OFFSET); break;
+		case KERN_ERR_NUM:
+			printLevel = DPFLTR_ERROR_LEVEL; memcpy(buf + offset, "WDRBD_ERRO", LEVEL_OFFSET); break;
+		case KERN_WARNING_NUM:
+			printLevel = DPFLTR_WARNING_LEVEL; memcpy(buf + offset, "WDRBD_WARN", LEVEL_OFFSET); break;
+		case KERN_NOTICE_NUM: case KERN_INFO_NUM:
+			printLevel = DPFLTR_INFO_LEVEL; memcpy(buf + offset, "WDRBD_INFO", LEVEL_OFFSET); break;
+		case KERN_DEBUG_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_TRAC", LEVEL_OFFSET); break;
+		case KERN_OOS_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_OOS ", LEVEL_OFFSET); break;
+		case KERN_LATENCY_NUM:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_LATE", LEVEL_OFFSET); break;
+		default:
+			printLevel = DPFLTR_TRACE_LEVEL; memcpy(buf + offset, "WDRBD_UNKN", LEVEL_OFFSET); break;
+		}
+
+		va_start(args, format);
+		ret = _vsnprintf(buf + offset + LEVEL_OFFSET, MAX_DRBDLOG_BUF - offset - LEVEL_OFFSET - 1, format, args); // DRBD_DOC: improve vsnprintf 
+		va_end(args);
+
+		length = (int)strlen(buf);
+		if (length > MAX_DRBDLOG_BUF) {
+			length = MAX_DRBDLOG_BUF - 1;
+			buf[MAX_DRBDLOG_BUF - 1] = 0;
+		}
+
+		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
 	}
 	
 #ifdef _WIN32_WPP
@@ -777,12 +787,31 @@ void _printk(const char * func, const char * format, ...)
 #else
 	
 	if (bEventLog) {
-		save_to_system_event(buf, length, level_index);
-	}
-	
-	if (bDbgLog || bOosLog || bLatency)
-		DbgPrintEx(FLTR_COMPONENT, printLevel, buf);
+		char tbuf[MAX_DRBDLOG_BUF] = {0,};
 
+		if (buf) {
+			ebuf = buf + offset + LEVEL_OFFSET;
+			elength = length - (offset + LEVEL_OFFSET);
+		}
+		else {
+			// DW-2034 log event logs only
+			va_start(args, format);
+			ret = _vsnprintf(tbuf, MAX_DRBDLOG_BUF - 1, format, args); 
+			va_end(args);
+
+			length = (int)strlen(tbuf);
+			if (length > MAX_DRBDLOG_BUF) {
+				length = MAX_DRBDLOG_BUF - 1;
+				tbuf[MAX_DRBDLOG_BUF - 1] = 0;
+			}
+
+			ebuf = tbuf;
+			elength = length;
+		}
+
+		// DW-2066 outputs shall be for object information and message only
+		save_to_system_event(ebuf, elength, level_index);
+	}
 #endif
 }
 #endif

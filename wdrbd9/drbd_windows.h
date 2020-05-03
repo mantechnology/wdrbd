@@ -20,6 +20,7 @@
 
 #ifndef DRBD_WINDOWS_H
 #define DRBD_WINDOWS_H
+#include <ntddk.h>
 #include <wdm.h>
 #include <stdint.h>
 #include <ntstrsafe.h>
@@ -86,22 +87,6 @@
 #define	KERN_DEBUG				"<7>"	/* debug-level messages			*/
 #define KERN_OOS				"<8>"	/* DW-1153: debug-oos */
 #define KERN_LATENCY			"<9>"	/* DW-1961 feature log */ 
-
-enum
-{
-	KERN_EMERG_NUM = 0,
-	KERN_ALERT_NUM,
-	KERN_CRIT_NUM,
-	KERN_ERR_NUM,
-	KERN_WARNING_NUM,
-	KERN_NOTICE_NUM,
-	KERN_INFO_NUM,
-	KERN_DEBUG_NUM,
-	KERN_OOS_NUM,
-	KERN_LATENCY_NUM,
-	KERN_NUM_END
-};
-
 
 #define smp_mb()				KeMemoryBarrier() 
 #define smp_rmb()				KeMemoryBarrier()
@@ -325,26 +310,6 @@ extern atomic_t g_featurelog_flag;
 
 #define LOG_LV_REG_VALUE_NAME	L"log_level"
 
-/* Log level value is 32-bit integer
-   00000000 00000000 00000000 00000000
-                                   ||| 3 bit between 0 ~ 2 indicates system event log level (0 ~ 7)
-                                |||	   3 bit between 3 ~ 5 indicates debug print log level (0 ~ 7)
-                              ||	   2 bit indicates feature log flag (0x01: oos trace, 0x02: latency)
-*/
-#define LOG_LV_BIT_POS_EVENTLOG		(0)
-#define LOG_LV_BIT_POS_DBG			(LOG_LV_BIT_POS_EVENTLOG + 3)
-#define LOG_LV_BIT_POS_FEATURELOG	(LOG_LV_BIT_POS_DBG + 3)
-
-// Default values are used when log_level value doesn't exist.
-#define LOG_LV_DEFAULT_EVENTLOG	KERN_ERR_NUM
-#define LOG_LV_DEFAULT_DBG		KERN_INFO_NUM
-#define LOG_LV_DEFAULT			(LOG_LV_DEFAULT_EVENTLOG << LOG_LV_BIT_POS_EVENTLOG) | (LOG_LV_DEFAULT_DBG << LOG_LV_BIT_POS_DBG) 
-
-#define LOG_LV_MASK			0x7
-
-#define FEATURELOG_FLAG_OOS 		(1 << 0)
-#define FEATURELOG_FLAG_LATENCY 	(1 << 1)
-
 #define Set_log_lv(log_level) \
 	atomic_set(&g_eventlog_lv_min, (log_level >> LOG_LV_BIT_POS_EVENTLOG) & LOG_LV_MASK);	\
 	atomic_set(&g_dbglog_lv_min, (log_level >> LOG_LV_BIT_POS_DBG) & LOG_LV_MASK);	\
@@ -430,6 +395,7 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_ALL(_m_, ...)    printk(KERN_EMERG ##_m_, __VA_ARGS__)
 #endif
 
+
 #define WDRBD_TRACE_NETLINK
 #define WDRBD_TRACE_TM					// about timer
 #define WDRBD_TRACE_RCU					// about rcu
@@ -444,6 +410,8 @@ extern VOID WriteOOSTraceLog(int bitmap_index, ULONG_PTR startBit, ULONG_PTR end
 #define WDRBD_TRACE_CO		
 #define WDRBD_CONN_TRACE	
 #define WDRBD_TRACE_AL	
+// DW-2099
+#define WDRBD_VERIFY_DATA(_m_, ...)	if(atomic_read(&g_featurelog_flag) & FEATURELOG_FLAG_VERIFY) printk(KERN_INFO "[0x%p] "##_m_, KeGetCurrentThread(), __VA_ARGS__)
 
 #ifndef FEATURE_WDRBD_PRINT
 #define WDRBD_ERROR     __noop

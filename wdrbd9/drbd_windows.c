@@ -2660,12 +2660,11 @@ void delete_drbd_block_device(struct kref *kref)
 {
 	struct block_device *bdev = container_of(kref, struct block_device, kref);
 
-	// DW-1109: reference count has been increased when we create block device, decrease here.
-	ObDereferenceObject(bdev->bd_disk->pDeviceExtension->DeviceObject);
-	bdev->bd_disk->pDeviceExtension->DeviceObject = NULL;
-
+	// DW-2081 pDeviceExtension shall only be referred to before calling ObDereferenceObject(). This is because the device may already be the device from which the IoDeleteDevice() has been called.
 	// DW-1381: set dev as NULL not to access from this volume extension since it's being deleted.
 	bdev->bd_disk->pDeviceExtension->dev = NULL;
+	// DW-1109: reference count has been increased when we create block device, decrease here.
+	ObDereferenceObject(bdev->bd_disk->pDeviceExtension->DeviceObject);
 
 	blk_cleanup_queue(bdev->bd_disk->queue);
 

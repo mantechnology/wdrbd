@@ -376,9 +376,8 @@ enum mdf_peer_flag {
 	// It needs to be cleared when resync's done and gets matched current uuid.
 	// This flag indicates that above situation so that uuid will be propagated once resync is finished.
 	MDF_PEER_DIFF_CUR_UUID = 1 << 5,
-#ifndef _WIN32_CRASHED_PRIMARY_SYNCSOURCE
-	MDF_PEER_IGNORE_CRASHED_PRIMARY = 1 << 6,		/* MODIFIED_BY_MANTECH DW-1357: no need to get synced from this peer, ignore crashed primary */
-#endif
+	// DW-2044 need to get synced from this peer
+	MDF_CRASHED_PRIMARY_WORK_PENDING = 1 << 6,
 #endif
 	MDF_NODE_EXISTS =       1 << 16, /* */
 #ifdef _WIN32

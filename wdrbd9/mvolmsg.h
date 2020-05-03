@@ -450,6 +450,15 @@
 //
 #define PRINTK_DBG                       0x40002EFCL
 
+//
+// MessageId: PRINTK_NON
+//
+// MessageText:
+//
+// %2
+//
+#define PRINTK_NON                       0x40002EFDL
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 //
 // MessageId: MSG_CLI_EMERG
