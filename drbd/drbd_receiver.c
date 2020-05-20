@@ -4310,10 +4310,14 @@ static int receive_Data(struct drbd_connection *connection, struct packet_info *
 		} else if (!drbd_al_begin_io_fastpath(device, &peer_req->i)) {
 #ifdef ACT_LOG_TO_RESYNC_LRU_RELATIVITY_DISABLE
 			if (peer_device->connection->agreed_pro_version >= 113) {
+				// DW-2131 drbd_al_begin_io_nonblock() shall call al_lock from outside.
+				spin_lock_irq(&device->al_lock);
 				// DW-2082 process actlog commit(do_submt()) immediately without separate queuing.
 				err = drbd_al_begin_io_nonblock(device, &peer_req->i);
+				spin_unlock_irq(&device->al_lock);
 				if (err) {
-					return err;
+					// DW-2131 if an error occurs, go to the label disconnect_during_al_begin_io and release the resource
+					goto disconnect_during_al_begin_io;
 				}
 				drbd_al_begin_io_commit(device);
 				WDRBD_VERIFY_DATA("%s, al commit(%s), sector(%llu), size(%u), bitmap(%llu ~ %llu), wait(%s)\n",
