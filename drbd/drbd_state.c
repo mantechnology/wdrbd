@@ -2534,15 +2534,12 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 				peer_device->rs_paused += (long)jiffies
 						  -(long)peer_device->rs_mark_time[peer_device->rs_last_mark];
 
-				// DW-2127
-				mutex_lock(&device->bm_resync_fo_mutex);
 #ifdef _WIN32
 				// MODIFIED_BY_MANTECH DW-972: PausedSyncSource could have bit to be resynced outside of previous sync range, need to find bit from the beginning when switching resync.
 				device->bm_resync_fo = 0;
 #else
 				device->bm_resync_fo &= ~BM_BLOCKS_PER_BM_EXT_MASK;
 #endif
-				mutex_unlock(&device->bm_resync_fo_mutex);
 
 				if (repl_state[NEW] == L_SYNC_TARGET)
 					mod_timer(&peer_device->resync_timer, jiffies);
