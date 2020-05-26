@@ -2533,8 +2533,6 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 				drbd_info(peer_device, "Syncer continues.\n");
 				peer_device->rs_paused += (long)jiffies
 						  -(long)peer_device->rs_mark_time[peer_device->rs_last_mark];
-				if (repl_state[NEW] == L_SYNC_TARGET)
-					mod_timer(&peer_device->resync_timer, jiffies);
 
 #ifdef _WIN32
 				// MODIFIED_BY_MANTECH DW-972: PausedSyncSource could have bit to be resynced outside of previous sync range, need to find bit from the beginning when switching resync.
@@ -2542,6 +2540,10 @@ static void finish_state_change(struct drbd_resource *resource, struct completio
 #else
 				device->bm_resync_fo &= ~BM_BLOCKS_PER_BM_EXT_MASK;
 #endif
+
+				if (repl_state[NEW] == L_SYNC_TARGET)
+					mod_timer(&peer_device->resync_timer, jiffies);
+
 				/* Setting the find_offset back is necessary when switching resync from
 				   one peer to the other. Since in the bitmap of the new peer, there
 				   might be bits before the current find_offset. Since the peer is
