@@ -757,9 +757,10 @@ void lc_committed(struct lru_cache *lc)
  */
 int lc_put(struct lru_cache *lc, struct lc_element *e)
 {
-	PARANOIA_ENTRY();
 	if (lc == NULL || e == NULL)
 		return -EINVAL;
+
+	PARANOIA_ENTRY();
 
 	PARANOIA_LC_ELEMENT(lc, e);
 #ifdef WIN_AL_BUG_ON	
